@@ -355,6 +355,71 @@ PillowTestImageOpsPadRejectsInvalidParameters(*) {
 
 AhkTest.Test("Pillow ImageOps.Pad rejects invalid parameters", PillowTestImageOpsPadRejectsInvalidParameters)
 
+PillowTestImageOpsFitUsesNativeCropResize(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 2], PillowTestBuffer([0, 40, 80, 120, 160, 200, 220, 255]))
+    fit := 0
+    try {
+        fit := Pillow.ImageOps.Fit(source, [2, 2], Pillow.Resampling.NEAREST)
+
+        AhkTest.AssertEqual("L", fit.Mode)
+        AhkTest.AssertEqual([2, 2], fit.Size)
+        AhkTest.AssertEqual([40, 80, 200, 220], PillowTestBufferToArray(fit.ToBytes()))
+    } finally {
+        if IsObject(fit)
+            fit.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Fit uses native crop resize", PillowTestImageOpsFitUsesNativeCropResize)
+
+PillowTestImageOpsFitParsesBleedAndCenteringLikePillow(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 2], PillowTestBuffer([0, 40, 80, 120, 160, 200, 220, 255]))
+    fallback := 0
+    bleed := 0
+    try {
+        fallback := Pillow.ImageOps.Fit(source, [2, 2], Pillow.Resampling.NEAREST, -0.1, [-1, 99])
+        bleed := Pillow.ImageOps.Fit(source, [2, 1], Pillow.Resampling.NEAREST, 0.25, [0.5, 0.5])
+
+        AhkTest.AssertEqual([40, 80, 200, 220], PillowTestBufferToArray(fallback.ToBytes()))
+        AhkTest.AssertEqual([200, 220], PillowTestBufferToArray(bleed.ToBytes()))
+    } finally {
+        if IsObject(bleed)
+            bleed.Close()
+        if IsObject(fallback)
+            fallback.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Fit parses bleed and centering like Pillow", PillowTestImageOpsFitParsesBleedAndCenteringLikePillow)
+
+PillowTestImageOpsFitRejectsInvalidParameters(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [4, 2], PillowTestBuffer([0, 40, 80, 120, 160, 200, 220, 255]))
+    try {
+        try {
+            Pillow.ImageOps.Fit(image, [0, 1], Pillow.Resampling.NEAREST)
+            AhkTest.Fail("Expected Fit to reject invalid output size")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+
+        try {
+            Pillow.ImageOps.Fit(image, [2, 2], Pillow.Resampling.NEAREST, 0.0, [0.5])
+            AhkTest.Fail("Expected Fit to reject malformed centering")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "centering") > 0)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Fit rejects invalid parameters", PillowTestImageOpsFitRejectsInvalidParameters)
+
 PillowTestImageTransposeUsesPillowConstants(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([

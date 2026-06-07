@@ -93,12 +93,32 @@ class Pillow {
             return Pillow.ImageOps.NativeProportionalResize(image, size, IsSet(method) ? method : Pillow.Resampling.BICUBIC, "pillow_c_image_cover")
         }
 
+        static Fit(image, size, method := unset, bleed := 0.0, centering := unset) {
+            if !IsObject(size) || size.Length != 2
+                throw Error("Pillow.ImageOps.Fit expects size [width, height]", -1)
+            center := Pillow.ImageOps.CenteringPair(IsSet(centering) ? centering : [0.5, 0.5], "Fit")
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_fit",
+                "Ptr", Pillow.ImageOps.RequireImageHandle(image, "Fit"),
+                "Int", size[1],
+                "Int", size[2],
+                "Int", IsSet(method) ? method : Pillow.Resampling.BICUBIC,
+                "Double", bleed,
+                "Double", center[1],
+                "Double", center[2],
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static Pad(image, size, method := unset, color := unset, centering := unset) {
             if !IsObject(size) || size.Length != 2
                 throw Error("Pillow.ImageOps.Pad expects size [width, height]", -1)
             handle := Pillow.ImageOps.RequireImageHandle(image, "Pad")
             fill := Pillow.ImageOps.FillBuffer(image, IsSet(color) ? color : 0, "Pad")
-            center := Pillow.ImageOps.CenteringPair(IsSet(centering) ? centering : [0.5, 0.5])
+            center := Pillow.ImageOps.CenteringPair(IsSet(centering) ? centering : [0.5, 0.5], "Pad")
             outHandle := 0
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_pad",
@@ -218,9 +238,9 @@ class Pillow {
             return buf
         }
 
-        static CenteringPair(centering) {
+        static CenteringPair(centering, operationName := "Pad") {
             if !IsObject(centering) || centering.Length != 2
-                throw Error("Pillow.ImageOps.Pad centering expects [x, y]", -1)
+                throw Error("Pillow.ImageOps." operationName " centering expects [x, y]", -1)
             return [centering[1], centering[2]]
         }
 

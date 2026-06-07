@@ -1103,15 +1103,20 @@ int autocontrast_image_into(
     }
 }
 
-bool precompute_nearest_indices(int src_size, int dst_size, std::vector<int>* indices)
+bool precompute_nearest_indices_for_box(
+    int src_size,
+    int dst_size,
+    double box_start,
+    double box_end,
+    std::vector<int>* indices)
 {
-    if (src_size <= 0 || dst_size <= 0 || !indices) {
+    if (src_size <= 0 || dst_size <= 0 || !(box_end > box_start) || !indices) {
         return false;
     }
 
     indices->assign(static_cast<std::size_t>(dst_size), 0);
-    const double scale = static_cast<double>(src_size) / dst_size;
-    double source_position = scale * 0.5;
+    const double scale = (box_end - box_start) / dst_size;
+    double source_position = box_start + scale * 0.5;
     for (int dst_index = 0; dst_index < dst_size; ++dst_index) {
         int value = source_position < 0.0 ? -1 : static_cast<int>(source_position);
         if (value < 0) {
@@ -1124,6 +1129,11 @@ bool precompute_nearest_indices(int src_size, int dst_size, std::vector<int>* in
         source_position += scale;
     }
     return true;
+}
+
+bool precompute_nearest_indices(int src_size, int dst_size, std::vector<int>* indices)
+{
+    return precompute_nearest_indices_for_box(src_size, dst_size, 0.0, static_cast<double>(src_size), indices);
 }
 
 double bilinear_filter(double value)
@@ -1218,13 +1228,19 @@ const ResampleFilterSpec* filter_spec_for_resample(int resample)
     }
 }
 
-bool precompute_filter_coefficients(int in_size, int out_size, const ResampleFilterSpec& filter, ResampleCoefficients* coeffs)
+bool precompute_filter_coefficients_for_box(
+    int in_size,
+    int out_size,
+    double box_start,
+    double box_end,
+    const ResampleFilterSpec& filter,
+    ResampleCoefficients* coeffs)
 {
-    if (in_size <= 0 || out_size <= 0 || !coeffs) {
+    if (in_size <= 0 || out_size <= 0 || !(box_end > box_start) || !coeffs) {
         return false;
     }
 
-    double filterscale = static_cast<double>(in_size) / out_size;
+    double filterscale = (box_end - box_start) / out_size;
     if (filterscale < 1.0) {
         filterscale = 1.0;
     }
@@ -1238,11 +1254,11 @@ bool precompute_filter_coefficients(int in_size, int out_size, const ResampleFil
     coeffs->bounds.assign(static_cast<std::size_t>(out_size) * 2u, 0);
     coeffs->weights.assign(static_cast<std::size_t>(out_size) * kernel_size, 0);
 
-    const double scale = static_cast<double>(in_size) / out_size;
+    const double scale = (box_end - box_start) / out_size;
     const double ss = 1.0 / filterscale;
     std::vector<double> normalized(static_cast<std::size_t>(kernel_size), 0.0);
     for (int out_index = 0; out_index < out_size; ++out_index) {
-        const double center = (out_index + 0.5) * scale;
+        const double center = box_start + (out_index + 0.5) * scale;
         int xmin = static_cast<int>(center - support + 0.5);
         if (xmin < 0) {
             xmin = 0;
@@ -1279,6 +1295,17 @@ bool precompute_filter_coefficients(int in_size, int out_size, const ResampleFil
     return true;
 }
 
+bool precompute_filter_coefficients(int in_size, int out_size, const ResampleFilterSpec& filter, ResampleCoefficients* coeffs)
+{
+    return precompute_filter_coefficients_for_box(
+        in_size,
+        out_size,
+        0.0,
+        static_cast<double>(in_size),
+        filter,
+        coeffs);
+}
+
 std::uint8_t source_sample_for_resize(const PillowCImage* source, int x, int y, int channel)
 {
     const std::uint8_t* px =
@@ -1291,12 +1318,35 @@ std::uint8_t source_sample_for_resize(const PillowCImage* source, int x, int y, 
     return px[channel];
 }
 
-int resize_filter_into(const PillowCImage* source, int out_width, int out_height, int resample, PillowCImage* target)
+bool valid_resize_box(const PillowCImage* source, double left, double top, double right, double bottom)
+{
+    return source &&
+           std::isfinite(left) &&
+           std::isfinite(top) &&
+           std::isfinite(right) &&
+           std::isfinite(bottom) &&
+           right > left &&
+           bottom > top;
+}
+
+int resize_filter_box_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    int resample,
+    double box_left,
+    double box_top,
+    double box_right,
+    double box_bottom,
+    PillowCImage* target)
 {
     if (!source || !target) {
         return PILLOW_C_NULL_POINTER;
     }
     if (out_width <= 0 || out_height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!valid_resize_box(source, box_left, box_top, box_right, box_bottom)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
     if (!image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {
@@ -1310,8 +1360,8 @@ int resize_filter_into(const PillowCImage* source, int out_width, int out_height
         }
         ResampleCoefficients x_coeffs{};
         ResampleCoefficients y_coeffs{};
-        if (!precompute_filter_coefficients(source->width, out_width, *filter, &x_coeffs) ||
-            !precompute_filter_coefficients(source->height, out_height, *filter, &y_coeffs)) {
+        if (!precompute_filter_coefficients_for_box(source->width, out_width, box_left, box_right, *filter, &x_coeffs) ||
+            !precompute_filter_coefficients_for_box(source->height, out_height, box_top, box_bottom, *filter, &y_coeffs)) {
             return PILLOW_C_ALLOCATION_FAILED;
         }
 
@@ -1387,12 +1437,37 @@ int resize_filter_into(const PillowCImage* source, int out_width, int out_height
     }
 }
 
-int resize_nearest_into(const PillowCImage* source, int out_width, int out_height, PillowCImage* target)
+int resize_filter_into(const PillowCImage* source, int out_width, int out_height, int resample, PillowCImage* target)
+{
+    return resize_filter_box_into(
+        source,
+        out_width,
+        out_height,
+        resample,
+        0.0,
+        0.0,
+        source ? static_cast<double>(source->width) : 0.0,
+        source ? static_cast<double>(source->height) : 0.0,
+        target);
+}
+
+int resize_nearest_box_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    double box_left,
+    double box_top,
+    double box_right,
+    double box_bottom,
+    PillowCImage* target)
 {
     if (!source || !target) {
         return PILLOW_C_NULL_POINTER;
     }
     if (out_width <= 0 || out_height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!valid_resize_box(source, box_left, box_top, box_right, box_bottom)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
     if (!image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {
@@ -1402,8 +1477,8 @@ int resize_nearest_into(const PillowCImage* source, int out_width, int out_heigh
     try {
         std::vector<int> x_indices;
         std::vector<int> y_indices;
-        if (!precompute_nearest_indices(source->width, out_width, &x_indices) ||
-            !precompute_nearest_indices(source->height, out_height, &y_indices)) {
+        if (!precompute_nearest_indices_for_box(source->width, out_width, box_left, box_right, &x_indices) ||
+            !precompute_nearest_indices_for_box(source->height, out_height, box_top, box_bottom, &y_indices)) {
             return PILLOW_C_ALLOCATION_FAILED;
         }
 
@@ -1427,6 +1502,19 @@ int resize_nearest_into(const PillowCImage* source, int out_width, int out_heigh
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int resize_nearest_into(const PillowCImage* source, int out_width, int out_height, PillowCImage* target)
+{
+    return resize_nearest_box_into(
+        source,
+        out_width,
+        out_height,
+        0.0,
+        0.0,
+        source ? static_cast<double>(source->width) : 0.0,
+        source ? static_cast<double>(source->height) : 0.0,
+        target);
 }
 
 int resize_image_into(const PillowCImage* source, int out_width, int out_height, int resample, PillowCImage* target)
@@ -1456,6 +1544,54 @@ int resize_image_into(const PillowCImage* source, int out_width, int out_height,
     case PILLOW_C_RESAMPLE_BICUBIC:
     case PILLOW_C_RESAMPLE_LANCZOS:
         return resize_filter_into(source, out_width, out_height, resample, target);
+    default:
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+}
+
+int resize_image_box_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    int resample,
+    double box_left,
+    double box_top,
+    double box_right,
+    double box_bottom,
+    PillowCImage* target)
+{
+    const bool supported =
+        resample == PILLOW_C_RESAMPLE_NEAREST ||
+        filter_spec_for_resample(resample) != nullptr;
+    if (!supported) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!valid_resize_box(source, box_left, box_top, box_right, box_bottom)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (source && target &&
+        out_width == source->width &&
+        out_height == source->height &&
+        box_left == 0.0 &&
+        box_top == 0.0 &&
+        box_right == source->width &&
+        box_bottom == source->height &&
+        image_shape_matches(target, source)) {
+        if (!source->pixels.empty()) {
+            std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
+        }
+        return PILLOW_C_OK;
+    }
+
+    switch (resample) {
+    case PILLOW_C_RESAMPLE_NEAREST:
+        return resize_nearest_box_into(source, out_width, out_height, box_left, box_top, box_right, box_bottom, target);
+    case PILLOW_C_RESAMPLE_BOX:
+    case PILLOW_C_RESAMPLE_HAMMING:
+    case PILLOW_C_RESAMPLE_BILINEAR:
+    case PILLOW_C_RESAMPLE_BICUBIC:
+    case PILLOW_C_RESAMPLE_LANCZOS:
+        return resize_filter_box_into(source, out_width, out_height, resample, box_left, box_top, box_right, box_bottom, target);
     default:
         return PILLOW_C_INVALID_ARGUMENT;
     }
@@ -1545,6 +1681,78 @@ double clamp_unit(double value)
         return 1.0;
     }
     return value;
+}
+
+double fit_centering_value(double value)
+{
+    return (value >= 0.0 && value <= 1.0) ? value : 0.5;
+}
+
+double fit_bleed_value(double value)
+{
+    return (value >= 0.0 && value < 0.5) ? value : 0.0;
+}
+
+int fit_image_into(
+    const PillowCImage* source,
+    int requested_width,
+    int requested_height,
+    int resample,
+    double bleed,
+    double center_x,
+    double center_y,
+    PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (requested_width <= 0 || requested_height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, requested_width, requested_height, source->mode, source->channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    bleed = fit_bleed_value(bleed);
+    center_x = fit_centering_value(center_x);
+    center_y = fit_centering_value(center_y);
+
+    const double bleed_x = bleed * source->width;
+    const double bleed_y = bleed * source->height;
+    const double live_width = source->width - bleed_x * 2.0;
+    const double live_height = source->height - bleed_y * 2.0;
+    if (!(live_width > 0.0) || !(live_height > 0.0)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const double live_ratio = live_width / live_height;
+    const double output_ratio = static_cast<double>(requested_width) / requested_height;
+
+    double crop_width = live_width;
+    double crop_height = live_height;
+    if (live_ratio == output_ratio) {
+        crop_width = live_width;
+        crop_height = live_height;
+    } else if (live_ratio >= output_ratio) {
+        crop_width = output_ratio * live_height;
+        crop_height = live_height;
+    } else {
+        crop_width = live_width;
+        crop_height = live_width / output_ratio;
+    }
+
+    const double crop_left = bleed_x + (live_width - crop_width) * center_x;
+    const double crop_top = bleed_y + (live_height - crop_height) * center_y;
+    return resize_image_box_into(
+        source,
+        requested_width,
+        requested_height,
+        resample,
+        crop_left,
+        crop_top,
+        crop_left + crop_width,
+        crop_top + crop_height,
+        target);
 }
 
 int pad_image_into(
@@ -2973,6 +3181,61 @@ int proportional_resize_allocating(
             stride,
             std::vector<std::uint8_t>(size)};
         status = resize_image_into(source, out_width, out_height, resample, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_fit(
+    const PillowCImage* source,
+    int requested_width,
+    int requested_height,
+    int resample,
+    double bleed,
+    double center_x,
+    double center_y,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (requested_width <= 0 || requested_height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (resample != PILLOW_C_RESAMPLE_NEAREST && !filter_spec_for_resample(resample)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size(requested_width, requested_height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            requested_width,
+            requested_height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = fit_image_into(
+            source,
+            requested_width,
+            requested_height,
+            resample,
+            bleed,
+            center_x,
+            center_y,
+            image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

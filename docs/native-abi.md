@@ -81,6 +81,7 @@ Image operations:
 - `pillow_c_image_resize`
 - `pillow_c_image_contain`
 - `pillow_c_image_cover`
+- `pillow_c_image_fit`
 - `pillow_c_image_pad`
 - `pillow_c_image_paste`
 - `pillow_c_image_transpose`

@@ -779,6 +779,25 @@ PillowCImagePad(sourceHandle, width, height, resample, colorValues, centerX := 0
     return outHandle
 }
 
+PillowCImageFit(sourceHandle, width, height, resample, bleed := 0.0, centerX := 0.5, centerY := 0.5) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_fit",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Int", resample,
+        "Double", bleed,
+        "Double", centerX,
+        "Double", centerY,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageAutocontrast(sourceHandle, lowCutoff := 0.0, highCutoff := 0.0, ignoreCount := 0, ignoreValues := 0) {
     outHandle := 0
     status := DllCall(
@@ -3013,6 +3032,94 @@ PillowCTestImagePadRejectsInvalidRequestedSize(*) {
 }
 
 AhkTest.Test("pillow_c image Pad rejects invalid requested sizes", PillowCTestImagePadRejectsInvalidRequestedSize)
+
+PillowCTestImageFitNearestMatchesPillowCropGeometry(*) {
+    source := PillowCCreateImageMode(4, 2, 1)
+    center := 0
+    left := 0
+    right := 0
+    fallback := 0
+    wide := 0
+    bleed := 0
+    try {
+        PillowCImageSetBytes(source, [0, 40, 80, 120, 160, 200, 220, 255])
+        center := PillowCImageFit(source, 2, 2, 0, 0.0, 0.5, 0.5)
+        left := PillowCImageFit(source, 2, 2, 0, 0.0, 0.0, 0.0)
+        right := PillowCImageFit(source, 2, 2, 0, 0.0, 1.0, 1.0)
+        fallback := PillowCImageFit(source, 2, 2, 0, 0.0, -1.0, 99.0)
+        wide := PillowCImageFit(source, 2, 1, 0, 0.0, 0.5, 0.5)
+        bleed := PillowCImageFit(source, 2, 1, 0, 0.25, 0.5, 0.5)
+
+        AhkTest.AssertEqual([2, 2], [PillowCImageInt(center, "pillow_c_image_width"), PillowCImageInt(center, "pillow_c_image_height")])
+        AhkTest.AssertEqual([40, 80, 200, 220], PillowCImageToArray(center, 4))
+        AhkTest.AssertEqual([0, 40, 160, 200], PillowCImageToArray(left, 4))
+        AhkTest.AssertEqual([80, 120, 220, 255], PillowCImageToArray(right, 4))
+        AhkTest.AssertEqual([40, 80, 200, 220], PillowCImageToArray(fallback, 4))
+        AhkTest.AssertEqual([200, 255], PillowCImageToArray(wide, 2))
+        AhkTest.AssertEqual([200, 220], PillowCImageToArray(bleed, 2))
+    } finally {
+        for handle in [bleed, wide, fallback, right, left, center] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image Fit NEAREST matches Pillow crop geometry", PillowCTestImageFitNearestMatchesPillowCropGeometry)
+
+PillowCTestImageFitBilinearMatchesPillowFloatBoxResize(*) {
+    source := PillowCCreateImageMode(3, 2, 3)
+    out := 0
+    try {
+        PillowCImageSetBytes(source, [
+            1, 2, 3, 20, 30, 40, 60, 70, 80,
+            100, 110, 120, 150, 160, 170, 200, 210, 220,
+        ])
+        out := PillowCImageFit(source, 4, 4, 2, 0.0, 0.5, 0.5)
+
+        AhkTest.AssertEqual([4, 4], [PillowCImageInt(out, "pillow_c_image_width"), PillowCImageInt(out, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            6, 9, 12, 15, 23, 31, 30, 40, 50, 50, 60, 70,
+            33, 38, 42, 46, 54, 63, 63, 73, 83, 85, 95, 105,
+            86, 95, 103, 107, 117, 126, 130, 140, 150, 154, 164, 174,
+            113, 123, 133, 138, 148, 158, 163, 173, 183, 188, 198, 208,
+        ], PillowCImageToArray(out, 48))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image Fit BILINEAR matches Pillow float box resize", PillowCTestImageFitBilinearMatchesPillowFloatBoxResize)
+
+PillowCTestImageFitRejectsInvalidOutputSize(*) {
+    source := PillowCCreateImageMode(4, 2, 1)
+    outHandle := 0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_fit",
+            "Ptr", source,
+            "Int", 0,
+            "Int", 1,
+            "Int", 0,
+            "Double", 0.0,
+            "Double", 0.5,
+            "Double", 0.5,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image Fit rejects invalid output size", PillowCTestImageFitRejectsInvalidOutputSize)
 
 PillowCTestImagePasteInsidePoint(*) {
     target := PillowCCreateImage(4, 3, 3)
