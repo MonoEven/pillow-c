@@ -343,6 +343,34 @@ PillowCImageGetChannelInto(sourceHandle, channelIndex, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImagePutAlphaValue(sourceHandle, alpha) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_put_alpha_value",
+        "Ptr", sourceHandle,
+        "UChar", alpha,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImagePutAlphaImage(sourceHandle, alphaHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_put_alpha_image",
+        "Ptr", sourceHandle,
+        "Ptr", alphaHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageRgbToLInto(sourceHandle, targetHandle) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_rgb_to_l_into",
@@ -890,6 +918,73 @@ PillowCTestImageGetChannelRejectsOutOfRangeIndex(*) {
 }
 
 AhkTest.Test("pillow_c image get_channel rejects out-of-range channel indexes", PillowCTestImageGetChannelRejectsOutOfRangeIndex)
+
+PillowCTestImagePutAlphaValueReturnsRgba(*) {
+    rgb := PillowCCreateImageMode(2, 1, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(rgb, [1, 2, 3, 10, 20, 30])
+        PillowCImageSetBytes(rgba, [1, 2, 3, 4, 10, 20, 30, 40])
+        rgbOut := PillowCImagePutAlphaValue(rgb, 7)
+        rgbaOut := PillowCImagePutAlphaValue(rgba, 8)
+        AhkTest.AssertEqual(4, PillowCImageMode(rgbOut))
+        AhkTest.AssertEqual([1, 2, 3, 7, 10, 20, 30, 7], PillowCImageToArray(rgbOut, 8))
+        AhkTest.AssertEqual([1, 2, 3, 8, 10, 20, 30, 8], PillowCImageToArray(rgbaOut, 8))
+    } finally {
+        if rgbaOut
+            PillowCFreeImage(rgbaOut)
+        if rgbOut
+            PillowCFreeImage(rgbOut)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c image put_alpha_value returns an RGBA image", PillowCTestImagePutAlphaValueReturnsRgba)
+
+PillowCTestImagePutAlphaImageReturnsRgba(*) {
+    rgb := PillowCCreateImageMode(2, 1, 3)
+    alpha := PillowCCreateImageMode(2, 1, 1)
+    out := 0
+    try {
+        PillowCImageSetBytes(rgb, [1, 2, 3, 10, 20, 30])
+        PillowCImageSetBytes(alpha, [50, 60])
+        out := PillowCImagePutAlphaImage(rgb, alpha)
+        AhkTest.AssertEqual(4, PillowCImageMode(out))
+        AhkTest.AssertEqual([1, 2, 3, 50, 10, 20, 30, 60], PillowCImageToArray(out, 8))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        PillowCFreeImage(alpha)
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c image put_alpha_image accepts an L alpha image", PillowCTestImagePutAlphaImageReturnsRgba)
+
+PillowCTestImagePutAlphaRejectsUnsupportedSourceMode(*) {
+    source := PillowCCreateImageMode(2, 1, 1)
+    outHandle := 0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_put_alpha_value",
+            "Ptr", source,
+            "UChar", 7,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image put_alpha rejects unsupported source modes until LA exists", PillowCTestImagePutAlphaRejectsUnsupportedSourceMode)
 
 PillowCTestImageRgbToLHandleOperation(*) {
     source := PillowCCreateImage(8, 1, 3)

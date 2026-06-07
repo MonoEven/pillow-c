@@ -62,6 +62,8 @@ Image operations:
 - `pillow_c_image_blend`
 - `pillow_c_image_point_lut`
 - `pillow_c_image_get_channel`
+- `pillow_c_image_put_alpha_value`
+- `pillow_c_image_put_alpha_image`
 - `pillow_c_image_rgb_to_l`
 - `pillow_c_image_alpha_composite_rgba`
 - `pillow_c_image_crop`
@@ -74,6 +76,8 @@ Reusable target operations:
 - `pillow_c_image_blend_into`
 - `pillow_c_image_point_lut_into`
 - `pillow_c_image_get_channel_into`
+- `pillow_c_image_put_alpha_value_into`
+- `pillow_c_image_put_alpha_image_into`
 - `pillow_c_image_rgb_to_l_into`
 - `pillow_c_image_alpha_composite_rgba_into`
 - `pillow_c_image_crop_into`

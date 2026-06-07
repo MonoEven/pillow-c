@@ -406,6 +406,62 @@ int copy_channel_into(const PillowCImage* source, int channel_index, PillowCImag
     return PILLOW_C_OK;
 }
 
+bool supports_rgba_alpha_target(const PillowCImage* source)
+{
+    return source && (source->mode == PILLOW_C_MODE_RGB || source->mode == PILLOW_C_MODE_RGBA);
+}
+
+int put_alpha_value_into(const PillowCImage* source, std::uint8_t alpha, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!supports_rgba_alpha_target(source)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_RGBA, 4)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    for (std::size_t i = 0; i < pixels; ++i) {
+        const std::uint8_t* src = source->pixels.data() + i * source->channels;
+        std::uint8_t* dst = target->pixels.data() + i * 4;
+        dst[0] = src[0];
+        dst[1] = src[1];
+        dst[2] = src[2];
+        dst[3] = alpha;
+    }
+    return PILLOW_C_OK;
+}
+
+int put_alpha_image_into(const PillowCImage* source, const PillowCImage* alpha, PillowCImage* target)
+{
+    if (!source || !alpha || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!supports_rgba_alpha_target(source) || alpha->mode != PILLOW_C_MODE_L || alpha->channels != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (alpha->width != source->width || alpha->height != source->height) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_RGBA, 4)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    for (std::size_t i = 0; i < pixels; ++i) {
+        const std::uint8_t* src = source->pixels.data() + i * source->channels;
+        std::uint8_t* dst = target->pixels.data() + i * 4;
+        dst[0] = src[0];
+        dst[1] = src[1];
+        dst[2] = src[2];
+        dst[3] = alpha->pixels[i];
+    }
+    return PILLOW_C_OK;
+}
+
 } // namespace
 
 extern "C" __declspec(dllexport) int pillow_c_abi_version(
@@ -864,6 +920,22 @@ extern "C" __declspec(dllexport) int pillow_c_image_get_channel_into(
     return copy_channel_into(source, channel_index, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_put_alpha_value_into(
+    const PillowCImage* source,
+    std::uint8_t alpha,
+    PillowCImage* target)
+{
+    return put_alpha_value_into(source, alpha, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_put_alpha_image_into(
+    const PillowCImage* source,
+    const PillowCImage* alpha,
+    PillowCImage* target)
+{
+    return put_alpha_image_into(source, alpha, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_alpha_composite_rgba_into(
     const PillowCImage* dst,
     const PillowCImage* src,
@@ -1239,6 +1311,75 @@ extern "C" __declspec(dllexport) int pillow_c_image_get_channel(
             static_cast<std::size_t>(source->width),
             std::vector<std::uint8_t>(static_cast<std::size_t>(source->width) * source->height)};
         const int status = copy_channel_into(source, channel_index, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_put_alpha_value(
+    const PillowCImage* source,
+    std::uint8_t alpha,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!supports_rgba_alpha_target(source)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            PILLOW_C_MODE_RGBA,
+            4,
+            static_cast<std::size_t>(source->width) * 4u,
+            std::vector<std::uint8_t>(static_cast<std::size_t>(source->width) * source->height * 4u)};
+        const int status = put_alpha_value_into(source, alpha, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_put_alpha_image(
+    const PillowCImage* source,
+    const PillowCImage* alpha,
+    PillowCImage** out_image)
+{
+    if (!source || !alpha || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!supports_rgba_alpha_target(source) || alpha->mode != PILLOW_C_MODE_L || alpha->channels != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (alpha->width != source->width || alpha->height != source->height) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            PILLOW_C_MODE_RGBA,
+            4,
+            static_cast<std::size_t>(source->width) * 4u,
+            std::vector<std::uint8_t>(static_cast<std::size_t>(source->width) * source->height * 4u)};
+        const int status = put_alpha_image_into(source, alpha, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

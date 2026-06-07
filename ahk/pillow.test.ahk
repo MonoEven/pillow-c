@@ -247,6 +247,30 @@ PillowTestImageGetChannelUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.GetChannel extracts one channel through native handles", PillowTestImageGetChannelUsesNativeOperation)
 
+PillowTestImagePutAlphaUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 10, 20, 30]))
+    alpha := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([50, 60]))
+    byValue := 0
+    byImage := 0
+    try {
+        byValue := source.PutAlpha(7)
+        byImage := source.PutAlpha(alpha)
+        AhkTest.AssertEqual("RGBA", byValue.Mode)
+        AhkTest.AssertEqual([1, 2, 3, 7, 10, 20, 30, 7], PillowTestBufferToArray(byValue.ToBytes()))
+        AhkTest.AssertEqual([1, 2, 3, 50, 10, 20, 30, 60], PillowTestBufferToArray(byImage.ToBytes()))
+    } finally {
+        if IsObject(byImage)
+            byImage.Close()
+        if IsObject(byValue)
+            byValue.Close()
+        alpha.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.PutAlpha returns an RGBA image through native handles", PillowTestImagePutAlphaUsesNativeOperation)
+
 PillowTestImagePasteMutatesTargetThroughNativeHandleOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     target := Pillow.Image.FromBytes("RGB", [4, 3], PillowTestBuffer([

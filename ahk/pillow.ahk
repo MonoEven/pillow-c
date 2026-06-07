@@ -362,6 +362,28 @@ class Pillow {
             throw Error('The image has no channel "' name '"', -1)
         }
 
+        PutAlpha(alpha) {
+            outHandle := 0
+            if IsObject(alpha) && alpha is Pillow.Image {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_put_alpha_image",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", alpha.RequireHandle(),
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+            } else {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_put_alpha_value",
+                    "Ptr", this.RequireHandle(),
+                    "UChar", alpha,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+            }
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         Copy() {
             outHandle := 0
             Pillow.CheckStatus(DllCall(
