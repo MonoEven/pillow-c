@@ -1219,6 +1219,72 @@ int extrema_image(
     return PILLOW_C_OK;
 }
 
+int getbbox_image(
+    const PillowCImage* source,
+    bool alpha_only,
+    int* out_left,
+    int* out_top,
+    int* out_right,
+    int* out_bottom,
+    int* out_has_bbox)
+{
+    if (!source || !out_left || !out_top || !out_right || !out_bottom || !out_has_bbox) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    *out_left = 0;
+    *out_top = 0;
+    *out_right = 0;
+    *out_bottom = 0;
+    *out_has_bbox = 0;
+    if (source->width <= 0 || source->height <= 0) {
+        return PILLOW_C_OK;
+    }
+
+    int left = source->width;
+    int top = source->height;
+    int right = 0;
+    int bottom = 0;
+    const bool use_alpha = alpha_only && source->mode == PILLOW_C_MODE_RGBA && source->channels == 4;
+
+    for (int y = 0; y < source->height; ++y) {
+        const std::uint8_t* row = source->pixels.data() + static_cast<std::size_t>(y) * source->stride;
+        for (int x = 0; x < source->width; ++x) {
+            const std::uint8_t* pixel = row + static_cast<std::size_t>(x) * source->channels;
+            bool nonzero = false;
+            if (use_alpha) {
+                nonzero = pixel[3] != 0;
+            } else {
+                for (int channel = 0; channel < source->channels; ++channel) {
+                    if (pixel[channel] != 0) {
+                        nonzero = true;
+                        break;
+                    }
+                }
+            }
+            if (!nonzero) {
+                continue;
+            }
+
+            left = std::min(left, x);
+            top = std::min(top, y);
+            right = std::max(right, x + 1);
+            bottom = std::max(bottom, y + 1);
+        }
+    }
+
+    if (right <= left || bottom <= top) {
+        return PILLOW_C_OK;
+    }
+
+    *out_left = left;
+    *out_top = top;
+    *out_right = right;
+    *out_bottom = bottom;
+    *out_has_bbox = 1;
+    return PILLOW_C_OK;
+}
+
 bool autocontrast_supported_mode(const PillowCImage* source)
 {
     return supports_imageops_lut(source);
@@ -3375,6 +3441,18 @@ extern "C" __declspec(dllexport) int pillow_c_image_get_extrema(
     std::size_t out_count)
 {
     return extrema_image(image, out_min, out_max, out_has_value, out_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_getbbox(
+    const PillowCImage* image,
+    int alpha_only,
+    int* out_left,
+    int* out_top,
+    int* out_right,
+    int* out_bottom,
+    int* out_has_bbox)
+{
+    return getbbox_image(image, alpha_only != 0, out_left, out_top, out_right, out_bottom, out_has_bbox);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_copy(

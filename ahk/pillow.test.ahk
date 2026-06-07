@@ -803,6 +803,33 @@ PillowTestImageGetExtremaUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.GetExtrema returns Pillow-style extrema through native handles", PillowTestImageGetExtremaUsesNativeOperation)
 
+PillowTestImageGetBboxUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
+        0, 0, 0, 0,
+        0, 5, 0, 0,
+        0, 0, 7, 0,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [3, 1], PillowTestBuffer([
+        0, 0, 0, 0,
+        9, 0, 0, 0,
+        0, 0, 0, 5,
+    ]))
+    empty := Pillow.Image.New("L", [3, 2])
+    try {
+        AhkTest.AssertEqual([1, 1, 3, 3], l.GetBbox())
+        AhkTest.AssertEqual([2, 0, 3, 1], rgba.GetBbox())
+        AhkTest.AssertEqual([1, 0, 3, 1], rgba.GetBbox(false))
+        AhkTest.AssertEqual(0, empty.GetBbox())
+    } finally {
+        empty.Close()
+        rgba.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetBbox returns Pillow-style bounding boxes through native handles", PillowTestImageGetBboxUsesNativeOperation)
+
 PillowTestImageOpsGrayscaleConvertsCoreModes(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 200, 100, 50]))

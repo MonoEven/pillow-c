@@ -1005,6 +1005,26 @@ class Pillow {
             return bandCount = 1 ? extrema[1] : extrema
         }
 
+        GetBbox(alphaOnly := true) {
+            left := 0
+            top := 0
+            right := 0
+            bottom := 0
+            hasBbox := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_getbbox",
+                "Ptr", this.RequireHandle(),
+                "Int", alphaOnly ? 1 : 0,
+                "Int*", &left,
+                "Int*", &top,
+                "Int*", &right,
+                "Int*", &bottom,
+                "Int*", &hasBbox,
+                "Int"
+            ))
+            return hasBbox ? [left, top, right, bottom] : 0
+        }
+
         Split() {
             bandCount := this.Channels
             outHandles := Buffer(bandCount * A_PtrSize, 0)
