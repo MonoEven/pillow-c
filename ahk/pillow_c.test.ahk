@@ -5232,6 +5232,100 @@ PillowCTestImageRotateNearestExpandAndFillMatchesPillow(*) {
 
 AhkTest.Test("pillow_c image rotate NEAREST expand and fill match Pillow", PillowCTestImageRotateNearestExpandAndFillMatchesPillow)
 
+PillowCTestImageRotateBilinearMatchesPillowGeometry(*) {
+    l := PillowCCreateImageMode(3, 2, 1)
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    rgba := PillowCCreateImageMode(2, 2, 4)
+    lOut := 0
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(l, [1, 2, 3, 4, 5, 6])
+        PillowCImageSetBytes(rgb, [
+            1, 2, 3,
+            10, 20, 30,
+            40, 50, 60,
+            70, 80, 90,
+            100, 110, 120,
+            130, 140, 150,
+        ])
+        PillowCImageSetBytes(rgba, [
+            1, 2, 3, 4,
+            10, 20, 30, 40,
+            50, 60, 70, 80,
+            90, 100, 110, 120,
+        ])
+
+        lOut := PillowCImageRotate(l, 45, 2)
+        rgbOut := PillowCImageRotate(rgb, 45, 2)
+        rgbaOut := PillowCImageRotate(rgba, 45, 2)
+
+        AhkTest.AssertEqual([0, 2, 5, 1, 4, 0], PillowCImageToArray(lOut, 6))
+        AhkTest.AssertEqual([
+            0, 0, 0,
+            33, 43, 53,
+            116, 126, 136,
+            11, 13, 15,
+            77, 86, 96,
+            0, 0, 0,
+        ], PillowCImageToArray(rgbOut, 18))
+        AhkTest.AssertEqual([
+            11, 11, 23, 22,
+            70, 79, 89, 80,
+            48, 54, 66, 42,
+            73, 84, 94, 100,
+        ], PillowCImageToArray(rgbaOut, 16))
+    } finally {
+        for handle in [rgbaOut, rgbOut, lOut, rgba, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image rotate BILINEAR matches Pillow geometry", PillowCTestImageRotateBilinearMatchesPillowGeometry)
+
+PillowCTestImageRotateBilinearExpandFillTranslateAndInto(*) {
+    l := PillowCCreateImageMode(3, 2, 1)
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    target := PillowCCreateImageMode(3, 2, 1)
+    lOut := 0
+    rgbOut := 0
+    try {
+        PillowCImageSetBytes(l, [1, 2, 3, 4, 5, 6])
+        PillowCImageSetBytes(rgb, [
+            1, 2, 3,
+            10, 20, 30,
+            40, 50, 60,
+            70, 80, 90,
+            100, 110, 120,
+            130, 140, 150,
+        ])
+        PillowCImageSetBytes(target, [99, 99, 99, 99, 99, 99])
+
+        lOut := PillowCImageRotate(l, 30, 2, false, 0.0, 0.0, false, 1.0, -1.0, true, [8])
+        rgbOut := PillowCImageRotate(rgb, 45, 2, true, 0.0, 0.0, false, 0.0, 0.0, false, [9, 0, 0])
+        PillowCImageRotateInto(l, 30, target, 2, false, 0.0, 0.0, false, 1.0, -1.0, true, [8])
+
+        AhkTest.AssertEqual([8, 2, 4, 8, 8, 8], PillowCImageToArray(lOut, 6))
+        AhkTest.AssertEqual([8, 2, 4, 8, 8, 8], PillowCImageToArray(target, 6))
+        AhkTest.AssertEqual([5, 4], [PillowCImageInt(rgbOut, "pillow_c_image_width"), PillowCImageInt(rgbOut, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            9, 0, 0, 9, 0, 0, 9, 0, 0, 9, 0, 0, 9, 0, 0,
+            9, 0, 0, 9, 0, 0, 33, 43, 53, 116, 126, 136, 9, 0, 0,
+            9, 0, 0, 11, 13, 15, 77, 86, 96, 9, 0, 0, 9, 0, 0,
+            9, 0, 0, 9, 0, 0, 9, 0, 0, 9, 0, 0, 9, 0, 0,
+        ], PillowCImageToArray(rgbOut, 60))
+    } finally {
+        for handle in [rgbOut, lOut, target, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image rotate BILINEAR expand fill translate and _into match Pillow", PillowCTestImageRotateBilinearExpandFillTranslateAndInto)
+
 PillowCTestImageRotateNearestCenterTranslateAndInto(*) {
     source := PillowCCreateImageMode(3, 2, 1)
     centered := 0
@@ -5268,7 +5362,7 @@ PillowCTestImageRotateRejectsUnsupportedResampleAndTargetShape(*) {
             PillowCDllPath() "\pillow_c_image_rotate",
             "Ptr", source,
             "Double", 45.0,
-            "Int", 2,
+            "Int", 3,
             "Int", false,
             "Double", 0.0,
             "Double", 0.0,

@@ -2083,6 +2083,56 @@ int nearest_transform_coordinate(double value)
     return static_cast<int>(std::floor(value + 0.5));
 }
 
+int clamp_index(int value, int upper_exclusive)
+{
+    if (value < 0) {
+        return 0;
+    }
+    if (value >= upper_exclusive) {
+        return upper_exclusive - 1;
+    }
+    return value;
+}
+
+std::uint8_t bilinear_transform_channel(
+    const PillowCImage* source,
+    double source_x,
+    double source_y,
+    int channel,
+    bool premultiply_alpha)
+{
+    source_x -= 0.5;
+    source_y -= 0.5;
+    const int x = static_cast<int>(std::floor(source_x));
+    const int y = static_cast<int>(std::floor(source_y));
+    const double dx = source_x - x;
+    const double dy = source_y - y;
+    const int x0 = clamp_index(x, source->width);
+    const int x1 = clamp_index(x + 1, source->width);
+    const int y0 = clamp_index(y, source->height);
+    const int y1 = (y + 1 >= 0 && y + 1 < source->height) ? y + 1 : y0;
+
+    const std::uint8_t* row0 = source->pixels.data() + static_cast<std::size_t>(y0) * source->stride;
+    const std::uint8_t* row1 = source->pixels.data() + static_cast<std::size_t>(y1) * source->stride;
+    const std::size_t offset0 = static_cast<std::size_t>(x0) * source->channels + channel;
+    const std::size_t offset1 = static_cast<std::size_t>(x1) * source->channels + channel;
+    const auto sample = [source, channel, premultiply_alpha](const std::uint8_t* row, std::size_t offset) -> std::uint8_t {
+        if (premultiply_alpha && source->mode == PILLOW_C_MODE_RGBA && channel < 3) {
+            const std::uint8_t alpha = row[offset - static_cast<std::size_t>(channel) + 3u];
+            return mul_div_255(row[offset], alpha);
+        }
+        return row[offset];
+    };
+    const double top_left = sample(row0, offset0);
+    const double top_right = sample(row0, offset1);
+    const double bottom_left = sample(row1, offset0);
+    const double bottom_right = sample(row1, offset1);
+    const double v1 = top_left + (top_right - top_left) * dx;
+    const double v2 = bottom_left + (bottom_right - bottom_left) * dx;
+    const double value = v1 + (v2 - v1) * dy;
+    return static_cast<std::uint8_t>(value);
+}
+
 int rotate_nearest_into(
     const PillowCImage* source,
     double angle,
@@ -2179,6 +2229,114 @@ int rotate_nearest_into(
     return PILLOW_C_OK;
 }
 
+int rotate_bilinear_into(
+    const PillowCImage* source,
+    double angle,
+    bool expand,
+    double center_x,
+    double center_y,
+    bool has_center,
+    double translate_x,
+    double translate_y,
+    bool has_translate,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    double normalized_angle = 0.0;
+    int status = normalize_angle_degrees(angle, &normalized_angle);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    int method = 0;
+    if (rotate_fast_path_method(normalized_angle, expand, has_center, has_translate, source, &method)) {
+        return copy_transpose_pixels_into(source, method, target);
+    }
+    if (!has_center && !has_translate && normalized_angle == 0.0) {
+        if (!image_shape_matches(target, source)) {
+            return PILLOW_C_MISMATCH;
+        }
+        if (!source->pixels.empty()) {
+            std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
+        }
+        return PILLOW_C_OK;
+    }
+
+    AffineGeometry geometry{};
+    status = rotate_affine_geometry(
+        source,
+        normalized_angle,
+        expand,
+        center_x,
+        center_y,
+        has_center,
+        translate_x,
+        translate_y,
+        has_translate,
+        &geometry);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!image_shape_matches(target, geometry.width, geometry.height, source->mode, source->channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    std::uint8_t fill[4]{0, 0, 0, 0};
+    status = normalize_transform_fill(source, fill_color, fill_color_size, fill);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const std::size_t pixel_bytes = static_cast<std::size_t>(source->channels);
+    for (int dst_y = 0; dst_y < target->height; ++dst_y) {
+        std::uint8_t* dst_row = target->pixels.data() + static_cast<std::size_t>(dst_y) * target->stride;
+        for (int dst_x = 0; dst_x < target->width; ++dst_x) {
+            double source_x = 0.0;
+            double source_y = 0.0;
+            affine_transform_point(
+                geometry,
+                static_cast<double>(dst_x) + 0.5,
+                static_cast<double>(dst_y) + 0.5,
+                &source_x,
+                &source_y);
+            std::uint8_t* dst = dst_row + static_cast<std::size_t>(dst_x) * pixel_bytes;
+            if (source_x < 0.0 || source_y < 0.0 || source_x >= source->width || source_y >= source->height) {
+                std::memcpy(dst, fill, pixel_bytes);
+                continue;
+            }
+            std::uint8_t values[4]{0, 0, 0, 0};
+            for (int channel = 0; channel < source->channels; ++channel) {
+                values[channel] = bilinear_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA);
+            }
+            if (source->mode == PILLOW_C_MODE_RGBA) {
+                const std::uint8_t alpha = values[3];
+                if (alpha == 0 || alpha == 255) {
+                    dst[0] = values[0];
+                    dst[1] = values[1];
+                    dst[2] = values[2];
+                } else {
+                    dst[0] = clip_u8_int(255 * values[0] / alpha);
+                    dst[1] = clip_u8_int(255 * values[1] / alpha);
+                    dst[2] = clip_u8_int(255 * values[2] / alpha);
+                }
+                dst[3] = alpha;
+            } else {
+                for (int channel = 0; channel < source->channels; ++channel) {
+                    dst[channel] = values[channel];
+                }
+            }
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 int rotate_image_into(
     const PillowCImage* source,
     double angle,
@@ -2194,22 +2352,37 @@ int rotate_image_into(
     std::size_t fill_color_size,
     PillowCImage* target)
 {
-    if (resample != PILLOW_C_RESAMPLE_NEAREST) {
-        return PILLOW_C_INVALID_ARGUMENT;
+    if (resample == PILLOW_C_RESAMPLE_NEAREST) {
+        return rotate_nearest_into(
+            source,
+            angle,
+            expand,
+            center_x,
+            center_y,
+            has_center,
+            translate_x,
+            translate_y,
+            has_translate,
+            fill_color,
+            fill_color_size,
+            target);
     }
-    return rotate_nearest_into(
-        source,
-        angle,
-        expand,
-        center_x,
-        center_y,
-        has_center,
-        translate_x,
-        translate_y,
-        has_translate,
-        fill_color,
-        fill_color_size,
-        target);
+    if (resample == PILLOW_C_RESAMPLE_BILINEAR) {
+        return rotate_bilinear_into(
+            source,
+            angle,
+            expand,
+            center_x,
+            center_y,
+            has_center,
+            translate_x,
+            translate_y,
+            has_translate,
+            fill_color,
+            fill_color_size,
+            target);
+    }
+    return PILLOW_C_INVALID_ARGUMENT;
 }
 
 bool precompute_nearest_indices_for_box(
@@ -5451,7 +5624,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_rotate(
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
-    if (resample != PILLOW_C_RESAMPLE_NEAREST) {
+    if (resample != PILLOW_C_RESAMPLE_NEAREST && resample != PILLOW_C_RESAMPLE_BILINEAR) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 

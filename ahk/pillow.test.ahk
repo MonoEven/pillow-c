@@ -308,6 +308,44 @@ PillowTestImageRotateNearestUsesNativeAffinePath(*) {
 
 AhkTest.Test("Pillow Image.Rotate NEAREST uses native affine path", PillowTestImageRotateNearestUsesNativeAffinePath)
 
+PillowTestImageRotateBilinearUsesNativeAffinePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    rgb := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([
+        1, 2, 3,
+        10, 20, 30,
+        40, 50, 60,
+        70, 80, 90,
+        100, 110, 120,
+        130, 140, 150,
+    ]))
+    out := 0
+    expanded := 0
+    translated := 0
+    try {
+        out := source.Rotate(45, Pillow.Resampling.BILINEAR)
+        expanded := rgb.Rotate(45, Pillow.Resampling.BILINEAR, true, , , [9, 0, 0])
+        translated := source.Rotate(30, Pillow.Resampling.BILINEAR, false, , [1, -1], 8)
+
+        AhkTest.AssertEqual([0, 2, 5, 1, 4, 0], PillowTestBufferToArray(out.ToBytes()))
+        AhkTest.AssertEqual([5, 4], expanded.Size)
+        AhkTest.AssertEqual([
+            9, 0, 0, 9, 0, 0, 9, 0, 0, 9, 0, 0, 9, 0, 0,
+            9, 0, 0, 9, 0, 0, 33, 43, 53, 116, 126, 136, 9, 0, 0,
+            9, 0, 0, 11, 13, 15, 77, 86, 96, 9, 0, 0, 9, 0, 0,
+            9, 0, 0, 9, 0, 0, 9, 0, 0, 9, 0, 0, 9, 0, 0,
+        ], PillowTestBufferToArray(expanded.ToBytes()))
+        AhkTest.AssertEqual([8, 2, 4, 8, 8, 8], PillowTestBufferToArray(translated.ToBytes()))
+    } finally {
+        for image in [translated, expanded, out, rgb, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Rotate BILINEAR uses native affine path", PillowTestImageRotateBilinearUsesNativeAffinePath)
+
 PillowTestImageOpsScaleUsesNativeResizeAndPythonRounding(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [5, 3], PillowTestBuffer([
