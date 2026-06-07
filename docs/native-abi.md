@@ -106,6 +106,7 @@ Image operations:
 - `pillow_c_image_filter_mode`
 - `pillow_c_image_filter_box_blur`
 - `pillow_c_image_filter_gaussian_blur`
+- `pillow_c_image_filter_unsharp_mask`
 - `pillow_c_image_transform_affine`
 - `pillow_c_image_transform_perspective`
 - `pillow_c_image_transform_quad`
@@ -160,6 +161,7 @@ Reusable target operations:
 - `pillow_c_image_filter_mode_into`
 - `pillow_c_image_filter_box_blur_into`
 - `pillow_c_image_filter_gaussian_blur_into`
+- `pillow_c_image_filter_unsharp_mask_into`
 - `pillow_c_image_transform_affine_into`
 - `pillow_c_image_transform_perspective_into`
 - `pillow_c_image_transform_quad_into`
@@ -180,6 +182,8 @@ Reusable target operations:
 `pillow_c_image_filter_box_blur` and `pillow_c_image_filter_box_blur_into` accept `xradius` and `yradius` doubles. The current implementation supports non-negative finite radii for `L`, `RGB`, and `RGBA`, including fractional radii and single-axis blurs. It follows Pillow's separable fixed-point box blur with endpoint edge extension; radius `(0, 0)` returns a byte copy. Invalid radius returns `-3`.
 
 `pillow_c_image_filter_gaussian_blur` and `pillow_c_image_filter_gaussian_blur_into` accept `xradius` and `yradius` doubles. The current implementation supports finite radii for `L`, `RGB`, and `RGBA`, including fractional radii and single-axis blurs. It mirrors Pillow's default three-pass Gaussian approximation by transforming each requested radius into a BoxBlur radius, running all horizontal passes before vertical passes, and returning a byte copy when both effective radii are zero. Non-finite or out-of-range radii return `-3`.
+
+`pillow_c_image_filter_unsharp_mask` and `pillow_c_image_filter_unsharp_mask_into` accept a scalar `radius` double plus integer `percent` and `threshold`. The current implementation supports finite radii for `L`, `RGB`, and `RGBA`. It reuses native GaussianBlur, then applies Pillow's per-channel `abs(original - blurred) > threshold` condition and `original + (original - blurred) * percent / 100` sharpening with byte clipping. Non-finite or out-of-range radii return `-3`.
 
 `pillow_c_image_transform_affine` and `pillow_c_image_transform_affine_into` accept output width, output height, a pointer to six doubles `(a, b, c, d, e, f)`, resample, and optional fill color arguments. The matrix follows Pillow `Image.transform(..., Transform.AFFINE, matrix, ...)` destination-to-source coordinates. The current implementation supports `NEAREST`, `BILINEAR`, and `BICUBIC`; transform-only unsupported resamplers return `-3`.
 

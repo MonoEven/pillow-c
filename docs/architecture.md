@@ -104,6 +104,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `Pillow.ImageFilter.ModeFilter(...)`
 - `Pillow.ImageFilter.BoxBlur(...)`
 - `Pillow.ImageFilter.GaussianBlur(...)`
+- `Pillow.ImageFilter.UnsharpMask(...)`
 - `image.GetChannel(...)`
 - `image.Split(...)`
 - `image.PutAlpha(...)`
@@ -120,7 +121,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 
 AHK owns ergonomics and lifetime. The DLL owns image bytes and transformations.
 
-Core `L`, `RGB`, and `RGBA` conversions, histogram/extrema/bounding-box/projection/color-count scans, fixed-LUT and histogram-derived `ImageOps` transforms for supported `L`/`RGB` modes, `ImageOps.colorize` L-to-RGB mapping, `Image.eval`/`Image.point` LUT mapping, `Image.Filter(ImageFilter.Kernel(...))`, `Image.Filter(ImageFilter.RankFilter(...))`, `Image.Filter(ImageFilter.ModeFilter(...))`, `Image.Filter(ImageFilter.BoxBlur(...))`, `Image.Filter(ImageFilter.GaussianBlur(...))`, `ImageOps.crop`/`ImageOps.expand`, scaled, proportional, fitted, and padded `ImageOps` resize helpers, current `ImageChops` helpers and binary operations, mask compositing, masked and preserve-tone autocontrast histograms, L-band split, L-band merge, Python-like AFFINE/EXTENT/PERSPECTIVE/QUAD/MESH transform dispatch, general NEAREST/BILINEAR/BICUBIC affine, perspective, quad, and mesh transforms, NEAREST/BILINEAR/BICUBIC affine rotate, and all current Pillow resize filters are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
+Core `L`, `RGB`, and `RGBA` conversions, histogram/extrema/bounding-box/projection/color-count scans, fixed-LUT and histogram-derived `ImageOps` transforms for supported `L`/`RGB` modes, `ImageOps.colorize` L-to-RGB mapping, `Image.eval`/`Image.point` LUT mapping, `Image.Filter(ImageFilter.Kernel(...))`, `Image.Filter(ImageFilter.RankFilter(...))`, `Image.Filter(ImageFilter.ModeFilter(...))`, `Image.Filter(ImageFilter.BoxBlur(...))`, `Image.Filter(ImageFilter.GaussianBlur(...))`, `Image.Filter(ImageFilter.UnsharpMask(...))`, `ImageOps.crop`/`ImageOps.expand`, scaled, proportional, fitted, and padded `ImageOps` resize helpers, current `ImageChops` helpers and binary operations, mask compositing, masked and preserve-tone autocontrast histograms, L-band split, L-band merge, Python-like AFFINE/EXTENT/PERSPECTIVE/QUAD/MESH transform dispatch, general NEAREST/BILINEAR/BICUBIC affine, perspective, quad, and mesh transforms, NEAREST/BILINEAR/BICUBIC affine rotate, and all current Pillow resize filters are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
 
 `ImageOps.autocontrast` currently implements the common histogram/LUT path with `cutoff`, `ignore`, L-mode masks, and Pillow's `preserve_tone` mode for supported `L`/`RGB` images.
 
@@ -135,6 +136,8 @@ Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes. `NEAREST` u
 `ImageFilter.BoxBlur` currently supports `L`, `RGB`, and `RGBA`. It uses Pillow's separable fixed-point box blur, including fractional radius weighting and endpoint edge extension. This native path is the shared primitive for Gaussian blur and future unsharp-mask work instead of adding AHK-side pixel loops.
 
 `ImageFilter.GaussianBlur` currently supports `L`, `RGB`, and `RGBA`. It follows Pillow's three-pass Gaussian approximation by transforming the requested radius into a BoxBlur radius, running horizontal passes before vertical passes, and preserving allocation-avoiding `_into` behavior for native callers.
+
+`ImageFilter.UnsharpMask` currently supports `L`, `RGB`, and `RGBA`. It reuses the native GaussianBlur path, then applies Pillow's per-channel `abs(original - blurred) > threshold` rule with integer `percent` strength and byte clipping.
 
 `Image.rotate` currently supports Pillow-style geometry, expansion, center, translate, and fill color for `NEAREST`, `BILINEAR`, and `BICUBIC`. Additional rotate resamplers should build on the same affine ABI instead of adding wrapper loops.
 

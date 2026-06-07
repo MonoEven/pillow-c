@@ -792,6 +792,38 @@ class Pillow {
             }
         }
 
+        class UnsharpMask {
+            __New(radius := 2, percent := 150, threshold := 3) {
+                if !(radius is Number)
+                    throw Error("Pillow.ImageFilter.UnsharpMask radius must be numeric", -1)
+                if !(percent is Integer)
+                    throw Error("Pillow.ImageFilter.UnsharpMask percent must be an integer", -1)
+                if !(threshold is Integer)
+                    throw Error("Pillow.ImageFilter.UnsharpMask threshold must be an integer", -1)
+                this.Name := "UnsharpMask"
+                this.Radius := radius
+                this.Percent := percent
+                this.Threshold := threshold
+            }
+
+            Apply(image) {
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("Pillow.ImageFilter.UnsharpMask expects a Pillow.Image", -1)
+
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_filter_unsharp_mask",
+                    "Ptr", image.RequireHandle(),
+                    "Double", this.Radius,
+                    "Int", this.Percent,
+                    "Int", this.Threshold,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return Pillow.WrapImageHandle(outHandle)
+            }
+        }
+
         static BLUR() {
             return Pillow.ImageFilter.BuiltinKernel("Blur", [5, 5], 16, 0, [
                 1, 1, 1, 1, 1,

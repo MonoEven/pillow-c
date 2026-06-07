@@ -1306,6 +1306,35 @@ PillowCImageFilterGaussianBlurInto(sourceHandle, xRadius, yRadius, targetHandle)
     PillowCAssertStatus(status)
 }
 
+PillowCImageFilterUnsharpMask(sourceHandle, radius, percent, threshold) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_filter_unsharp_mask",
+        "Ptr", sourceHandle,
+        "Double", radius,
+        "Int", percent,
+        "Int", threshold,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageFilterUnsharpMaskInto(sourceHandle, radius, percent, threshold, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_filter_unsharp_mask_into",
+        "Ptr", sourceHandle,
+        "Double", radius,
+        "Int", percent,
+        "Int", threshold,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCAffineMatrix(values) {
     buf := Buffer(6 * 8, 0)
     for index, value in values
@@ -6206,6 +6235,131 @@ PillowCTestImageFilterGaussianBlurRejectsOutOfRangeRadius(*) {
 }
 
 AhkTest.Test("pillow_c image filter GaussianBlur rejects out-of-range radius", PillowCTestImageFilterGaussianBlurRejectsOutOfRangeRadius)
+
+PillowCTestImageFilterUnsharpMaskMatchesPillowLVariants(*) {
+    source := PillowCCreateImageMode(4, 3, 1)
+    defaultOut := 0
+    radius0 := 0
+    r05 := 0
+    r1 := 0
+    strong := 0
+    thresholded := 0
+    negativePercent := 0
+    try {
+        PillowCImageSetBytes(source, [
+            0, 30, 80, 120,
+            160, 200, 220, 255,
+            10, 40, 90, 140,
+        ])
+
+        defaultOut := PillowCImageFilterUnsharpMask(source, 2, 150, 3)
+        radius0 := PillowCImageFilterUnsharpMask(source, 0, 150, 3)
+        r05 := PillowCImageFilterUnsharpMask(source, 0.5, 150, 3)
+        r1 := PillowCImageFilterUnsharpMask(source, 1, 150, 3)
+        strong := PillowCImageFilterUnsharpMask(source, 1, 200, 0)
+        thresholded := PillowCImageFilterUnsharpMask(source, 1, 50, 20)
+        negativePercent := PillowCImageFilterUnsharpMask(source, 1, -100, 0)
+
+        AhkTest.AssertEqual([0, 0, 37, 120, 255, 255, 255, 255, 0, 0, 59, 165], PillowCImageToArray(defaultOut, 12))
+        AhkTest.AssertEqual([
+            0, 30, 80, 120,
+            160, 200, 220, 255,
+            10, 40, 90, 140,
+        ], PillowCImageToArray(radius0, 12))
+        AhkTest.AssertEqual([0, 0, 58, 107, 203, 255, 255, 255, 0, 10, 69, 130], PillowCImageToArray(r05, 12))
+        AhkTest.AssertEqual([0, 0, 23, 86, 255, 255, 255, 255, 0, 0, 36, 121], PillowCImageToArray(r1, 12))
+        AhkTest.AssertEqual([0, 0, 4, 74, 255, 255, 255, 255, 0, 0, 18, 114], PillowCImageToArray(strong, 12))
+        AhkTest.AssertEqual([0, 3, 61, 109, 197, 247, 255, 255, 0, 15, 72, 140], PillowCImageToArray(thresholded, 12))
+        AhkTest.AssertEqual([62, 84, 118, 143, 85, 106, 139, 164, 67, 91, 126, 153], PillowCImageToArray(negativePercent, 12))
+    } finally {
+        for handle in [negativePercent, thresholded, strong, r1, r05, radius0, defaultOut, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image filter UnsharpMask matches Pillow L variants", PillowCTestImageFilterUnsharpMaskMatchesPillowLVariants)
+
+PillowCTestImageFilterUnsharpMaskMatchesPillowRgbRgbaAndInto(*) {
+    rgb := PillowCCreateImageMode(4, 2, 3)
+    rgba := PillowCCreateImageMode(3, 2, 4)
+    rgbTarget := PillowCCreateImageMode(4, 2, 3)
+    wrongTarget := PillowCCreateImageMode(4, 2, 1)
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(rgb, [
+            1, 2, 3, 20, 30, 40, 60, 70, 80, 100, 110, 120,
+            130, 140, 150, 160, 170, 180, 200, 210, 220, 230, 240, 250,
+        ])
+        PillowCImageSetBytes(rgba, [
+            1, 2, 3, 4, 20, 30, 40, 50, 60, 70, 80, 90,
+            100, 110, 120, 130, 140, 150, 160, 170, 200, 210, 220, 230,
+        ])
+        before := PillowCImageData(rgbTarget).Ptr
+
+        rgbOut := PillowCImageFilterUnsharpMask(rgb, 1.25, 200, 0)
+        rgbaOut := PillowCImageFilterUnsharpMask(rgba, 1.25, 200, 0)
+        PillowCImageFilterUnsharpMaskInto(rgb, 1.25, 200, 0, rgbTarget)
+
+        AhkTest.AssertEqual(before, PillowCImageData(rgbTarget).Ptr)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 28, 38, 48,
+            210, 224, 238, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+        ], PillowCImageToArray(rgbOut, 24))
+        AhkTest.AssertEqual(PillowCImageToArray(rgbOut, 24), PillowCImageToArray(rgbTarget, 24))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 22,
+            148, 162, 176, 190, 234, 246, 255, 255, 255, 255, 255, 255,
+        ], PillowCImageToArray(rgbaOut, 24))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_filter_unsharp_mask_into",
+            "Ptr", rgb,
+            "Double", 1.0,
+            "Int", 150,
+            "Int", 3,
+            "Ptr", wrongTarget,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        for handle in [rgbaOut, rgbOut, wrongTarget, rgbTarget, rgba, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image filter UnsharpMask matches Pillow RGB RGBA and _into", PillowCTestImageFilterUnsharpMaskMatchesPillowRgbRgbaAndInto)
+
+PillowCTestImageFilterUnsharpMaskRejectsOutOfRangeRadius(*) {
+    source := PillowCCreateImageMode(1, 1, 1)
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(source, [5])
+        for radius in [1.0e300, -1.0e300] {
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_filter_unsharp_mask",
+                "Ptr", source,
+                "Double", radius,
+                "Int", 150,
+                "Int", 3,
+                "Ptr*", &outHandle,
+                "Int"
+            )
+            AhkTest.AssertEqual(-3, status)
+            AhkTest.AssertEqual(0, outHandle)
+        }
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image filter UnsharpMask rejects out-of-range radius", PillowCTestImageFilterUnsharpMaskRejectsOutOfRangeRadius)
 
 PillowCTestImageTransformAffineNearestMatchesPillow(*) {
     source := PillowCCreateImageMode(3, 2, 1)

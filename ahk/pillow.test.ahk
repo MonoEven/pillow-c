@@ -906,6 +906,122 @@ PillowTestImageFilterGaussianBlurRejectsInvalidRadiusShape(*) {
 
 AhkTest.Test("Pillow ImageFilter GaussianBlur rejects invalid radius shape", PillowTestImageFilterGaussianBlurRejectsInvalidRadiusShape)
 
+PillowTestImageFilterUnsharpMaskUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
+        0, 30, 80, 120,
+        160, 200, 220, 255,
+        10, 40, 90, 140,
+    ]))
+    outputs := []
+    try {
+        cases := [
+            { Filter: Pillow.ImageFilter.UnsharpMask(), Name: "UnsharpMask", Bytes: [
+                0, 0, 37, 120,
+                255, 255, 255, 255,
+                0, 0, 59, 165,
+            ] },
+            { Filter: Pillow.ImageFilter.UnsharpMask(0), Name: "UnsharpMask", Bytes: [
+                0, 30, 80, 120,
+                160, 200, 220, 255,
+                10, 40, 90, 140,
+            ] },
+            { Filter: Pillow.ImageFilter.UnsharpMask(0.5, 150, 3), Name: "UnsharpMask", Bytes: [
+                0, 0, 58, 107,
+                203, 255, 255, 255,
+                0, 10, 69, 130,
+            ] },
+            { Filter: Pillow.ImageFilter.UnsharpMask(1, 200, 0), Name: "UnsharpMask", Bytes: [
+                0, 0, 4, 74,
+                255, 255, 255, 255,
+                0, 0, 18, 114,
+            ] },
+            { Filter: Pillow.ImageFilter.UnsharpMask(1, 50, 20), Name: "UnsharpMask", Bytes: [
+                0, 3, 61, 109,
+                197, 247, 255, 255,
+                0, 15, 72, 140,
+            ] },
+        ]
+
+        for item in cases {
+            AhkTest.AssertEqual(item.Name, item.Filter.Name)
+            out := source.Filter(item.Filter)
+            outputs.Push(out)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(out.ToBytes()))
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter UnsharpMask uses native path", PillowTestImageFilterUnsharpMaskUsesNativePath)
+
+PillowTestImageFilterUnsharpMaskSupportsRgbRgba(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [4, 2], PillowTestBuffer([
+        1, 2, 3, 20, 30, 40, 60, 70, 80, 100, 110, 120,
+        130, 140, 150, 160, 170, 180, 200, 210, 220, 230, 240, 250,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [3, 2], PillowTestBuffer([
+        1, 2, 3, 4, 20, 30, 40, 50, 60, 70, 80, 90,
+        100, 110, 120, 130, 140, 150, 160, 170, 200, 210, 220, 230,
+    ]))
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        rgbOut := rgb.Filter(Pillow.ImageFilter.UnsharpMask(1.25, 200, 0))
+        rgbaOut := rgba.Filter(Pillow.ImageFilter.UnsharpMask(1.25, 200, 0))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 28, 38, 48,
+            210, 224, 238, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+        ], PillowTestBufferToArray(rgbOut.ToBytes()))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 22,
+            148, 162, 176, 190, 234, 246, 255, 255, 255, 255, 255, 255,
+        ], PillowTestBufferToArray(rgbaOut.ToBytes()))
+    } finally {
+        for image in [rgbaOut, rgbOut, rgba, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter UnsharpMask supports RGB and RGBA", PillowTestImageFilterUnsharpMaskSupportsRgbRgba)
+
+PillowTestImageFilterUnsharpMaskRejectsInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.New("L", [1, 1])
+    try {
+        cases := [
+            { Radius: [1, 2], Percent: 150, Threshold: 3 },
+            { Radius: "x", Percent: 150, Threshold: 3 },
+            { Radius: 1, Percent: 1.5, Threshold: 3 },
+            { Radius: 1, Percent: 150, Threshold: 3.5 },
+        ]
+        for item in cases {
+            try {
+                source.Filter(Pillow.ImageFilter.UnsharpMask(item.Radius, item.Percent, item.Threshold))
+                AhkTest.Fail("Expected UnsharpMask to reject invalid arguments")
+            } catch Error as err {
+                AhkTest.AssertTrue(
+                    InStr(err.Message, "radius") > 0 ||
+                    InStr(err.Message, "percent") > 0 ||
+                    InStr(err.Message, "threshold") > 0
+                )
+            }
+        }
+    } finally {
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter UnsharpMask rejects invalid arguments", PillowTestImageFilterUnsharpMaskRejectsInvalidArguments)
+
 PillowTestImageTransformAffineUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))

@@ -4006,6 +4006,62 @@ int filter_gaussian_blur_image_into(
     return filter_box_blur_passes_image_into(source, xbox_radius, ybox_radius, passes, target);
 }
 
+int filter_unsharp_mask_image_into(
+    const PillowCImage* source,
+    double radius,
+    int percent,
+    int threshold,
+    PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!image_shape_matches(target, source)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (!std::isfinite(radius)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    try {
+        PillowCImage blurred{
+            source->width,
+            source->height,
+            source->mode,
+            source->channels,
+            source->stride,
+            std::vector<std::uint8_t>(source->pixels.size())};
+        const int blur_status = filter_gaussian_blur_image_into(source, radius, radius, &blurred);
+        if (blur_status != PILLOW_C_OK) {
+            return blur_status;
+        }
+
+        std::vector<std::uint8_t> source_snapshot;
+        const std::uint8_t* source_data = source->pixels.data();
+        if (source == target) {
+            source_snapshot = source->pixels;
+            source_data = source_snapshot.data();
+        }
+
+        for (std::size_t index = 0; index < source->pixels.size(); ++index) {
+            const int source_value = static_cast<int>(source_data[index]);
+            const int diff = source_value - static_cast<int>(blurred.pixels[index]);
+            if (std::abs(diff) > threshold) {
+                const int sharpened = source_value + diff * percent / 100;
+                target->pixels[index] = clip_u8_int(sharpened);
+            } else {
+                target->pixels[index] = static_cast<std::uint8_t>(source_value);
+            }
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 int resize_image_box_into(
     const PillowCImage* source,
     int out_width,
@@ -5424,6 +5480,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_gaussian_blur_into(
     PillowCImage* target)
 {
     return filter_gaussian_blur_image_into(source, xradius, yradius, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_unsharp_mask_into(
+    const PillowCImage* source,
+    double radius,
+    int percent,
+    int threshold,
+    PillowCImage* target)
+{
+    return filter_unsharp_mask_image_into(source, radius, percent, threshold, target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_transform_affine_into(
@@ -7092,6 +7158,41 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_gaussian_blur(
             source->stride,
             std::vector<std::uint8_t>(source->pixels.size())};
         const int status = filter_gaussian_blur_image_into(source, xradius, yradius, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_unsharp_mask(
+    const PillowCImage* source,
+    double radius,
+    int percent,
+    int threshold,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!std::isfinite(radius)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            source->mode,
+            source->channels,
+            source->stride,
+            std::vector<std::uint8_t>(source->pixels.size())};
+        const int status = filter_unsharp_mask_image_into(source, radius, percent, threshold, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;
