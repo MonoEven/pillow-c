@@ -1734,16 +1734,20 @@ AhkTest.Test("pillow_c exposes stable status messages for wrapper exceptions", (
 
 AhkTest.Test("pillow_c maps core Pillow mode names to native mode ids", (*) => (
     AhkTest.AssertEqual(1, PillowCModeFromString("L")),
+    AhkTest.AssertEqual(2, PillowCModeFromString("LA")),
     AhkTest.AssertEqual(3, PillowCModeFromString("RGB")),
     AhkTest.AssertEqual(4, PillowCModeFromString("RGBA"))
 ))
 
 AhkTest.Test("pillow_c maps native mode ids back to Pillow mode names", (*) => (
     l := PillowCModeName(1),
+    la := PillowCModeName(2),
     rgb := PillowCModeName(3),
     rgba := PillowCModeName(4),
     AhkTest.AssertEqual("L", l.Text),
     AhkTest.AssertEqual(2, l.Required),
+    AhkTest.AssertEqual("LA", la.Text),
+    AhkTest.AssertEqual(3, la.Required),
     AhkTest.AssertEqual("RGB", rgb.Text),
     AhkTest.AssertEqual(4, rgb.Required),
     AhkTest.AssertEqual("RGBA", rgba.Text),
@@ -1817,12 +1821,16 @@ AhkTest.Test("pillow_c image handle owns RGB bytes and metadata", PillowCTestIma
 
 PillowCTestImageHandleOwnsModeMetadata(*) {
     l := PillowCCreateImageMode(3, 2, 1)
+    la := PillowCCreateImageMode(3, 2, 2)
     rgb := PillowCCreateImageMode(2, 1, 3)
     rgba := PillowCCreateImageMode(2, 1, 4)
     try {
         AhkTest.AssertEqual(1, PillowCImageMode(l))
         AhkTest.AssertEqual(1, PillowCImageInt(l, "pillow_c_image_channels"))
         AhkTest.AssertEqual(6, PillowCImageSize(l))
+        AhkTest.AssertEqual(2, PillowCImageMode(la))
+        AhkTest.AssertEqual(2, PillowCImageInt(la, "pillow_c_image_channels"))
+        AhkTest.AssertEqual(12, PillowCImageSize(la))
         AhkTest.AssertEqual(3, PillowCImageMode(rgb))
         AhkTest.AssertEqual(3, PillowCImageInt(rgb, "pillow_c_image_channels"))
         AhkTest.AssertEqual(6, PillowCImageSize(rgb))
@@ -1832,6 +1840,7 @@ PillowCTestImageHandleOwnsModeMetadata(*) {
     } finally {
         PillowCFreeImage(rgba)
         PillowCFreeImage(rgb)
+        PillowCFreeImage(la)
         PillowCFreeImage(l)
     }
 }
@@ -1840,15 +1849,18 @@ AhkTest.Test("pillow_c image handle owns Pillow mode metadata", PillowCTestImage
 
 PillowCTestImageCreateKeepsLegacyChannelModeMapping(*) {
     l := PillowCCreateImage(3, 2, 1)
+    la := PillowCCreateImage(3, 2, 2)
     rgb := PillowCCreateImage(2, 1, 3)
     rgba := PillowCCreateImage(2, 1, 4)
     try {
         AhkTest.AssertEqual(1, PillowCImageMode(l))
+        AhkTest.AssertEqual(2, PillowCImageMode(la))
         AhkTest.AssertEqual(3, PillowCImageMode(rgb))
         AhkTest.AssertEqual(4, PillowCImageMode(rgba))
     } finally {
         PillowCFreeImage(rgba)
         PillowCFreeImage(rgb)
+        PillowCFreeImage(la)
         PillowCFreeImage(l)
     }
 }
@@ -4450,28 +4462,41 @@ AhkTest.Test("pillow_c image autocontrast rejects modes Pillow ImageOps._lut doe
 PillowCTestImageGetChannelReturnsLImage(*) {
     rgb := PillowCCreateImageMode(2, 1, 3)
     rgba := PillowCCreateImageMode(2, 1, 4)
+    la := PillowCCreateImageMode(2, 1, 2)
     r := 0
     g := 0
     a := 0
+    laL := 0
+    laA := 0
     try {
         PillowCImageSetBytes(rgb, [1, 2, 3, 10, 20, 30])
         PillowCImageSetBytes(rgba, [1, 2, 3, 4, 10, 20, 30, 40])
+        PillowCImageSetBytes(la, [11, 12, 21, 22])
         r := PillowCImageGetChannel(rgb, 0)
         g := PillowCImageGetChannel(rgb, 1)
         a := PillowCImageGetChannel(rgba, 3)
+        laL := PillowCImageGetChannel(la, 0)
+        laA := PillowCImageGetChannel(la, 1)
         AhkTest.AssertEqual(1, PillowCImageMode(r))
         AhkTest.AssertEqual(1, PillowCImageInt(r, "pillow_c_image_channels"))
         AhkTest.AssertEqual([2, 1], [PillowCImageInt(r, "pillow_c_image_width"), PillowCImageInt(r, "pillow_c_image_height")])
         AhkTest.AssertEqual([1, 10], PillowCImageToArray(r, 2))
         AhkTest.AssertEqual([2, 20], PillowCImageToArray(g, 2))
         AhkTest.AssertEqual([4, 40], PillowCImageToArray(a, 2))
+        AhkTest.AssertEqual([11, 21], PillowCImageToArray(laL, 2))
+        AhkTest.AssertEqual([12, 22], PillowCImageToArray(laA, 2))
     } finally {
+        if laA
+            PillowCFreeImage(laA)
+        if laL
+            PillowCFreeImage(laL)
         if a
             PillowCFreeImage(a)
         if g
             PillowCFreeImage(g)
         if r
             PillowCFreeImage(r)
+        PillowCFreeImage(la)
         PillowCFreeImage(rgba)
         PillowCFreeImage(rgb)
     }
@@ -4521,21 +4546,27 @@ AhkTest.Test("pillow_c image get_channel rejects out-of-range channel indexes", 
 
 PillowCTestImageSplitBandsReturnsAllLBandsInOneCall(*) {
     l := PillowCCreateImageMode(3, 1, 1)
+    la := PillowCCreateImageMode(2, 1, 2)
     rgb := PillowCCreateImageMode(2, 1, 3)
     rgba := PillowCCreateImageMode(2, 1, 4)
     lBands := []
+    laBands := []
     rgbBands := []
     rgbaBands := []
     try {
         PillowCImageSetBytes(l, [1, 2, 3])
+        PillowCImageSetBytes(la, [1, 2, 10, 20])
         PillowCImageSetBytes(rgb, [1, 2, 3, 10, 20, 30])
         PillowCImageSetBytes(rgba, [1, 2, 3, 4, 10, 20, 30, 40])
         lBands := PillowCImageSplitBands(l, 1)
+        laBands := PillowCImageSplitBands(la, 2)
         rgbBands := PillowCImageSplitBands(rgb, 3)
         rgbaBands := PillowCImageSplitBands(rgba, 4)
 
         AhkTest.AssertEqual(1, PillowCImageMode(lBands[1]))
         AhkTest.AssertEqual([1, 2, 3], PillowCImageToArray(lBands[1], 3))
+        AhkTest.AssertEqual([1, 10], PillowCImageToArray(laBands[1], 2))
+        AhkTest.AssertEqual([2, 20], PillowCImageToArray(laBands[2], 2))
         AhkTest.AssertEqual([1, 10], PillowCImageToArray(rgbBands[1], 2))
         AhkTest.AssertEqual([2, 20], PillowCImageToArray(rgbBands[2], 2))
         AhkTest.AssertEqual([3, 30], PillowCImageToArray(rgbBands[3], 2))
@@ -4548,10 +4579,13 @@ PillowCTestImageSplitBandsReturnsAllLBandsInOneCall(*) {
             PillowCFreeImage(handle)
         for handle in rgbBands
             PillowCFreeImage(handle)
+        for handle in laBands
+            PillowCFreeImage(handle)
         for handle in lBands
             PillowCFreeImage(handle)
         PillowCFreeImage(rgba)
         PillowCFreeImage(rgb)
+        PillowCFreeImage(la)
         PillowCFreeImage(l)
     }
 }
@@ -4584,6 +4618,7 @@ PillowCTestImageMergeBandsInterleavesLBandsIntoTargetMode(*) {
     g := PillowCCreateImageMode(2, 1, 1)
     b := PillowCCreateImageMode(2, 1, 1)
     a := PillowCCreateImageMode(2, 1, 1)
+    la := 0
     rgb := 0
     rgba := 0
     try {
@@ -4591,8 +4626,11 @@ PillowCTestImageMergeBandsInterleavesLBandsIntoTargetMode(*) {
         PillowCImageSetBytes(g, [3, 4])
         PillowCImageSetBytes(b, [5, 6])
         PillowCImageSetBytes(a, [7, 8])
+        la := PillowCImageMergeBands(2, [r, a])
         rgb := PillowCImageMergeBands(3, [r, g, b])
         rgba := PillowCImageMergeBands(4, [r, g, b, a])
+        AhkTest.AssertEqual(2, PillowCImageMode(la))
+        AhkTest.AssertEqual([1, 7, 2, 8], PillowCImageToArray(la, 4))
         AhkTest.AssertEqual(3, PillowCImageMode(rgb))
         AhkTest.AssertEqual([2, 1], [PillowCImageInt(rgb, "pillow_c_image_width"), PillowCImageInt(rgb, "pillow_c_image_height")])
         AhkTest.AssertEqual([1, 3, 5, 2, 4, 6], PillowCImageToArray(rgb, 6))
@@ -4603,6 +4641,8 @@ PillowCTestImageMergeBandsInterleavesLBandsIntoTargetMode(*) {
             PillowCFreeImage(rgba)
         if rgb
             PillowCFreeImage(rgb)
+        if la
+            PillowCFreeImage(la)
         PillowCFreeImage(a)
         PillowCFreeImage(b)
         PillowCFreeImage(g)
@@ -4691,15 +4731,27 @@ PillowCTestImageMergeBandsRejectsWrongBandShapeOrMode(*) {
 AhkTest.Test("pillow_c image merge_bands rejects wrong band count mode or size", PillowCTestImageMergeBandsRejectsWrongBandShapeOrMode)
 
 PillowCTestImagePutAlphaValueReturnsRgba(*) {
+    l := PillowCCreateImageMode(2, 1, 1)
+    la := PillowCCreateImageMode(2, 1, 2)
     rgb := PillowCCreateImageMode(2, 1, 3)
     rgba := PillowCCreateImageMode(2, 1, 4)
+    lOut := 0
+    laOut := 0
     rgbOut := 0
     rgbaOut := 0
     try {
+        PillowCImageSetBytes(l, [1, 10])
+        PillowCImageSetBytes(la, [1, 2, 10, 20])
         PillowCImageSetBytes(rgb, [1, 2, 3, 10, 20, 30])
         PillowCImageSetBytes(rgba, [1, 2, 3, 4, 10, 20, 30, 40])
+        lOut := PillowCImagePutAlphaValue(l, 6)
+        laOut := PillowCImagePutAlphaValue(la, 7)
         rgbOut := PillowCImagePutAlphaValue(rgb, 7)
         rgbaOut := PillowCImagePutAlphaValue(rgba, 8)
+        AhkTest.AssertEqual(2, PillowCImageMode(lOut))
+        AhkTest.AssertEqual([1, 6, 10, 6], PillowCImageToArray(lOut, 4))
+        AhkTest.AssertEqual(2, PillowCImageMode(laOut))
+        AhkTest.AssertEqual([1, 7, 10, 7], PillowCImageToArray(laOut, 4))
         AhkTest.AssertEqual(4, PillowCImageMode(rgbOut))
         AhkTest.AssertEqual([1, 2, 3, 7, 10, 20, 30, 7], PillowCImageToArray(rgbOut, 8))
         AhkTest.AssertEqual([1, 2, 3, 8, 10, 20, 30, 8], PillowCImageToArray(rgbaOut, 8))
@@ -4708,54 +4760,56 @@ PillowCTestImagePutAlphaValueReturnsRgba(*) {
             PillowCFreeImage(rgbaOut)
         if rgbOut
             PillowCFreeImage(rgbOut)
+        if laOut
+            PillowCFreeImage(laOut)
+        if lOut
+            PillowCFreeImage(lOut)
         PillowCFreeImage(rgba)
         PillowCFreeImage(rgb)
+        PillowCFreeImage(la)
+        PillowCFreeImage(l)
     }
 }
 
-AhkTest.Test("pillow_c image put_alpha_value returns an RGBA image", PillowCTestImagePutAlphaValueReturnsRgba)
+AhkTest.Test("pillow_c image put_alpha_value returns LA or RGBA by source mode", PillowCTestImagePutAlphaValueReturnsRgba)
 
 PillowCTestImagePutAlphaImageReturnsRgba(*) {
+    l := PillowCCreateImageMode(2, 1, 1)
+    la := PillowCCreateImageMode(2, 1, 2)
     rgb := PillowCCreateImageMode(2, 1, 3)
     alpha := PillowCCreateImageMode(2, 1, 1)
+    lOut := 0
+    laOut := 0
     out := 0
     try {
+        PillowCImageSetBytes(l, [1, 10])
+        PillowCImageSetBytes(la, [1, 2, 10, 20])
         PillowCImageSetBytes(rgb, [1, 2, 3, 10, 20, 30])
         PillowCImageSetBytes(alpha, [50, 60])
+        lOut := PillowCImagePutAlphaImage(l, alpha)
+        laOut := PillowCImagePutAlphaImage(la, alpha)
         out := PillowCImagePutAlphaImage(rgb, alpha)
+        AhkTest.AssertEqual(2, PillowCImageMode(lOut))
+        AhkTest.AssertEqual([1, 50, 10, 60], PillowCImageToArray(lOut, 4))
+        AhkTest.AssertEqual(2, PillowCImageMode(laOut))
+        AhkTest.AssertEqual([1, 50, 10, 60], PillowCImageToArray(laOut, 4))
         AhkTest.AssertEqual(4, PillowCImageMode(out))
         AhkTest.AssertEqual([1, 2, 3, 50, 10, 20, 30, 60], PillowCImageToArray(out, 8))
     } finally {
         if out
             PillowCFreeImage(out)
+        if laOut
+            PillowCFreeImage(laOut)
+        if lOut
+            PillowCFreeImage(lOut)
         PillowCFreeImage(alpha)
         PillowCFreeImage(rgb)
+        PillowCFreeImage(la)
+        PillowCFreeImage(l)
     }
 }
 
 AhkTest.Test("pillow_c image put_alpha_image accepts an L alpha image", PillowCTestImagePutAlphaImageReturnsRgba)
-
-PillowCTestImagePutAlphaRejectsUnsupportedSourceMode(*) {
-    source := PillowCCreateImageMode(2, 1, 1)
-    outHandle := 0
-    try {
-        status := DllCall(
-            PillowCDllPath() "\pillow_c_image_put_alpha_value",
-            "Ptr", source,
-            "UChar", 7,
-            "Ptr*", &outHandle,
-            "Int"
-        )
-        AhkTest.AssertEqual(-3, status)
-        AhkTest.AssertEqual(0, outHandle)
-    } finally {
-        if outHandle
-            PillowCFreeImage(outHandle)
-        PillowCFreeImage(source)
-    }
-}
-
-AhkTest.Test("pillow_c image put_alpha rejects unsupported source modes until LA exists", PillowCTestImagePutAlphaRejectsUnsupportedSourceMode)
 
 PillowCTestImageConvertModeCoversCorePillowModes(*) {
     l := PillowCCreateImageMode(3, 1, 1)
@@ -4793,6 +4847,57 @@ PillowCTestImageConvertModeCoversCorePillowModes(*) {
 }
 
 AhkTest.Test("pillow_c image convert_mode covers core Pillow modes", PillowCTestImageConvertModeCoversCorePillowModes)
+
+PillowCTestImageConvertModeCoversLAMode(*) {
+    l := PillowCCreateImageMode(3, 2, 1)
+    la := PillowCCreateImageMode(3, 2, 2)
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    rgba := PillowCCreateImageMode(3, 2, 4)
+    outputs := []
+    try {
+        PillowCImageSetBytes(l, [10, 80, 130, 200, 20, 250])
+        PillowCImageSetBytes(la, [10, 40, 80, 70, 130, 100, 200, 130, 20, 160, 250, 190])
+        PillowCImageSetBytes(rgb, [
+            10, 20, 30, 80, 40, 10, 130, 140, 150,
+            200, 190, 180, 20, 120, 220, 250, 240, 10,
+        ])
+        PillowCImageSetBytes(rgba, [
+            10, 20, 30, 40, 80, 40, 10, 70, 130, 140, 150, 100,
+            200, 190, 180, 130, 20, 120, 220, 160, 250, 240, 10, 190,
+        ])
+
+        cases := [
+            { Source: la, Mode: 1, Size: 6, Bytes: [10, 80, 130, 200, 20, 250] },
+            { Source: la, Mode: 2, Size: 12, Bytes: [10, 40, 80, 70, 130, 100, 200, 130, 20, 160, 250, 190] },
+            { Source: la, Mode: 3, Size: 18, Bytes: [
+                10, 10, 10, 80, 80, 80, 130, 130, 130,
+                200, 200, 200, 20, 20, 20, 250, 250, 250,
+            ] },
+            { Source: la, Mode: 4, Size: 24, Bytes: [
+                10, 10, 10, 40, 80, 80, 80, 70, 130, 130, 130, 100,
+                200, 200, 200, 130, 20, 20, 20, 160, 250, 250, 250, 190,
+            ] },
+            { Source: l, Mode: 2, Size: 12, Bytes: [10, 255, 80, 255, 130, 255, 200, 255, 20, 255, 250, 255] },
+            { Source: rgb, Mode: 2, Size: 12, Bytes: [18, 255, 49, 255, 138, 255, 192, 255, 102, 255, 217, 255] },
+            { Source: rgba, Mode: 2, Size: 12, Bytes: [18, 40, 49, 70, 138, 100, 192, 130, 102, 160, 217, 190] },
+        ]
+        for item in cases {
+            out := PillowCImageConvertMode(item.Source, item.Mode)
+            outputs.Push(out)
+            AhkTest.AssertEqual(item.Mode, PillowCImageMode(out))
+            AhkTest.AssertEqual(item.Bytes, PillowCImageToArray(out, item.Size))
+        }
+    } finally {
+        for handle in outputs
+            PillowCFreeImage(handle)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(la)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image convert_mode covers Pillow LA mode", PillowCTestImageConvertModeCoversLAMode)
 
 PillowCTestImageConvertModeIntoReusesTargetHandle(*) {
     source := PillowCCreateImageMode(2, 1, 3)

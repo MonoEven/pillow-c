@@ -1739,6 +1739,53 @@ PillowTestImageConvertCoreModesUseNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.Convert covers core L RGB RGBA modes through native handles", PillowTestImageConvertCoreModesUseNativeOperation)
 
+PillowTestImageConvertLaModeUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([10, 80, 130, 200, 20, 250]))
+    la := Pillow.Image.FromBytes("LA", [3, 2], PillowTestBuffer([10, 40, 80, 70, 130, 100, 200, 130, 20, 160, 250, 190]))
+    rgb := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([
+        10, 20, 30, 80, 40, 10, 130, 140, 150,
+        200, 190, 180, 20, 120, 220, 250, 240, 10,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [3, 2], PillowTestBuffer([
+        10, 20, 30, 40, 80, 40, 10, 70, 130, 140, 150, 100,
+        200, 190, 180, 130, 20, 120, 220, 160, 250, 240, 10, 190,
+    ]))
+    outputs := []
+    try {
+        cases := [
+            { Out: la.Convert("L"), Mode: "L", Bytes: [10, 80, 130, 200, 20, 250] },
+            { Out: la.Convert("RGB"), Mode: "RGB", Bytes: [
+                10, 10, 10, 80, 80, 80, 130, 130, 130,
+                200, 200, 200, 20, 20, 20, 250, 250, 250,
+            ] },
+            { Out: la.Convert("RGBA"), Mode: "RGBA", Bytes: [
+                10, 10, 10, 40, 80, 80, 80, 70, 130, 130, 130, 100,
+                200, 200, 200, 130, 20, 20, 20, 160, 250, 250, 250, 190,
+            ] },
+            { Out: l.Convert("LA"), Mode: "LA", Bytes: [10, 255, 80, 255, 130, 255, 200, 255, 20, 255, 250, 255] },
+            { Out: rgb.Convert("LA"), Mode: "LA", Bytes: [18, 255, 49, 255, 138, 255, 192, 255, 102, 255, 217, 255] },
+            { Out: rgba.Convert("LA"), Mode: "LA", Bytes: [18, 40, 49, 70, 138, 100, 192, 130, 102, 160, 217, 190] },
+        ]
+        for item in cases {
+            outputs.Push(item.Out)
+            AhkTest.AssertEqual(item.Mode, item.Out.Mode)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(item.Out.ToBytes()))
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        rgba.Close()
+        rgb.Close()
+        la.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Convert supports LA mode through native handles", PillowTestImageConvertLaModeUsesNativeOperation)
+
 PillowTestMakeInvertLut(channelCount) {
     lut := []
     loop channelCount {
@@ -1887,6 +1934,28 @@ PillowTestImageGetChannelUsesNativeOperation(*) {
 }
 
 AhkTest.Test("Pillow Image.GetChannel extracts one channel through native handles", PillowTestImageGetChannelUsesNativeOperation)
+
+PillowTestImageGetChannelSupportsLaMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("LA", [3, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    l := 0
+    a := 0
+    try {
+        l := source.GetChannel("L")
+        a := source.GetChannel("A")
+        AhkTest.AssertEqual("L", l.Mode)
+        AhkTest.AssertEqual([10, 30, 50], PillowTestBufferToArray(l.ToBytes()))
+        AhkTest.AssertEqual([20, 40, 60], PillowTestBufferToArray(a.ToBytes()))
+    } finally {
+        if IsObject(a)
+            a.Close()
+        if IsObject(l)
+            l.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetChannel supports LA mode names", PillowTestImageGetChannelSupportsLaMode)
 
 PillowTestImageHistogramUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -2648,6 +2717,25 @@ PillowTestImageMergeStaticUsesNativeHandles(*) {
 
 AhkTest.Test("Pillow Image.Merge interleaves L bands through native handles", PillowTestImageMergeStaticUsesNativeHandles)
 
+PillowTestImageMergeSupportsLaMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([1, 2]))
+    a := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([7, 8]))
+    la := 0
+    try {
+        la := Pillow.Image.Merge("LA", [l, a])
+        AhkTest.AssertEqual("LA", la.Mode)
+        AhkTest.AssertEqual([1, 7, 2, 8], PillowTestBufferToArray(la.ToBytes()))
+    } finally {
+        if IsObject(la)
+            la.Close()
+        a.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Merge supports LA mode", PillowTestImageMergeSupportsLaMode)
+
 PillowTestImagePutAlphaUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 10, 20, 30]))
@@ -2671,6 +2759,38 @@ PillowTestImagePutAlphaUsesNativeOperation(*) {
 }
 
 AhkTest.Test("Pillow Image.PutAlpha returns an RGBA image through native handles", PillowTestImagePutAlphaUsesNativeOperation)
+
+PillowTestImagePutAlphaReturnsLaForLMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([1, 10]))
+    existing := Pillow.Image.FromBytes("LA", [2, 1], PillowTestBuffer([1, 2, 10, 20]))
+    alpha := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([50, 60]))
+    byValue := 0
+    byImage := 0
+    replaced := 0
+    try {
+        byValue := source.PutAlpha(7)
+        byImage := source.PutAlpha(alpha)
+        replaced := existing.PutAlpha(alpha)
+        AhkTest.AssertEqual("LA", byValue.Mode)
+        AhkTest.AssertEqual([1, 7, 10, 7], PillowTestBufferToArray(byValue.ToBytes()))
+        AhkTest.AssertEqual("LA", byImage.Mode)
+        AhkTest.AssertEqual([1, 50, 10, 60], PillowTestBufferToArray(byImage.ToBytes()))
+        AhkTest.AssertEqual([1, 50, 10, 60], PillowTestBufferToArray(replaced.ToBytes()))
+    } finally {
+        if IsObject(replaced)
+            replaced.Close()
+        if IsObject(byImage)
+            byImage.Close()
+        if IsObject(byValue)
+            byValue.Close()
+        alpha.Close()
+        existing.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.PutAlpha returns LA for L and LA sources", PillowTestImagePutAlphaReturnsLaForLMode)
 
 PillowTestImagePasteMutatesTargetThroughNativeHandleOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -2841,6 +2961,22 @@ PillowTestImageEnhanceBrightnessContrastColorUseNativeComposition(*) {
             { Out: Pillow.ImageEnhance.Color(rgb).Enhance(-0.5), Bytes: [
                 22, 17, 12, 33, 53, 68, 142, 137, 132,
                 188, 193, 198, 143, 93, 43, 200, 205, 255,
+            ] },
+            { Out: Pillow.ImageEnhance.Color(rgba).Enhance(0), Bytes: [
+                18, 18, 18, 40, 49, 49, 49, 70, 138, 138, 138, 100,
+                192, 192, 192, 130, 102, 102, 102, 160, 217, 217, 217, 190,
+            ] },
+            { Out: Pillow.ImageEnhance.Color(rgba).Enhance(0.5), Bytes: [
+                14, 19, 24, 40, 64, 44, 29, 70, 134, 139, 144, 100,
+                196, 191, 186, 130, 61, 111, 161, 160, 233, 228, 113, 190,
+            ] },
+            { Out: Pillow.ImageEnhance.Color(rgba).Enhance(2), Bytes: [
+                2, 22, 42, 40, 111, 31, 0, 70, 122, 142, 162, 100,
+                208, 188, 168, 130, 0, 138, 255, 160, 255, 255, 0, 190,
+            ] },
+            { Out: Pillow.ImageEnhance.Color(rgba).Enhance(-0.5), Bytes: [
+                22, 17, 12, 40, 33, 53, 68, 70, 142, 137, 132, 100,
+                188, 193, 198, 130, 143, 93, 43, 160, 200, 205, 255, 190,
             ] },
         ]
         for item in cases {

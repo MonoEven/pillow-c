@@ -19,11 +19,14 @@ Current mode IDs:
 
 ```text
 1 L
+2 LA
 3 RGB
 4 RGBA
 ```
 
 `pillow_c_mode_from_string`, `pillow_c_mode_name`, `pillow_c_image_create_mode`, and `pillow_c_image_mode` keep handles mode-aware. Channel count is storage layout; mode is wrapper-visible Pillow semantics.
+
+The legacy `pillow_c_image_create(width, height, channels, ...)` maps channel count `1`, `2`, `3`, and `4` to `L`, `LA`, `RGB`, and `RGBA`.
 
 ## Export Groups
 
@@ -170,6 +173,10 @@ Reusable target operations:
 - `pillow_c_image_transpose_into`
 
 `pillow_c_image_autocontrast` and `pillow_c_image_autocontrast_into` accept an optional L-mode mask handle after the ignore list arguments, followed by a `preserve_tone` integer flag. A null mask keeps full-image histogram behavior.
+
+`pillow_c_image_convert_mode` and `pillow_c_image_convert_mode_into` cover the verified `L`/`LA`/`RGB`/`RGBA` conversion matrix. `LA` preserves alpha as the second band; RGB-derived conversions use Pillow's 8-bit luma coefficients.
+
+`pillow_c_image_put_alpha_value` and `pillow_c_image_put_alpha_image` return `LA` for `L`/`LA` sources and `RGBA` for `RGB`/`RGBA` sources. The matching `_into` variants require the caller to provide that target mode and shape.
 
 `pillow_c_image_rotate` and `pillow_c_image_rotate_into` accept angle, resample, expand, optional center, optional translate, and optional fill color arguments. The current implementation supports `NEAREST`, `BILINEAR`, and `BICUBIC` rotate; unsupported resamplers return `-3`.
 

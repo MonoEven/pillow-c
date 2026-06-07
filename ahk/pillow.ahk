@@ -947,10 +947,14 @@ class Pillow {
                 this.Image := image
                 if image.Mode = "L" {
                     this.Degenerate := image.Copy()
+                } else if image.Mode = "LA" {
+                    this.Degenerate := image.Copy()
                 } else if image.Mode = "RGB" {
                     this.Degenerate := image.Convert("L").Convert("RGB")
+                } else if image.Mode = "RGBA" {
+                    this.Degenerate := image.Convert("LA").Convert("RGBA")
                 } else {
-                    throw Error("Pillow.ImageEnhance.Color currently supports L and RGB", -1)
+                    throw Error("Pillow.ImageEnhance.Color currently supports L LA RGB and RGBA", -1)
                 }
             }
         }
@@ -1727,7 +1731,7 @@ class Pillow {
 
             name := channel ""
             mode := this.Mode
-            names := mode = "L" ? ["L"] : mode = "RGB" ? ["R", "G", "B"] : mode = "RGBA" ? ["R", "G", "B", "A"] : []
+            names := mode = "L" ? ["L"] : mode = "LA" ? ["L", "A"] : mode = "RGB" ? ["R", "G", "B"] : mode = "RGBA" ? ["R", "G", "B", "A"] : []
             for index, item in names {
                 if item = name
                     return index - 1
