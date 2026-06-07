@@ -193,6 +193,32 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static Merge(modeName, bands) {
+            if !IsObject(bands)
+                throw Error("Pillow.Image.Merge expects an array of band images", -1)
+            bandHandles := Pillow.Image.HandleArray(bands)
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_merge_bands",
+                "Int", Pillow.ModeId(modeName),
+                "Ptr", bandHandles,
+                "UPtr", bands.Length,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static HandleArray(images) {
+            buf := Buffer(images.Length * A_PtrSize, 0)
+            for index, image in images {
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("Pillow.Image.Merge bands must be Pillow.Image objects", -1)
+                NumPut("Ptr", image.RequireHandle(), buf, (index - 1) * A_PtrSize)
+            }
+            return buf
+        }
+
         Close() {
             if !this.HasOwnProp("Handle") || this.Handle = 0
                 return

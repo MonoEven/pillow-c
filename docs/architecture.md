@@ -51,11 +51,11 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `image.Point(...)`
 - `image.GetChannel(...)`
 - `image.PutAlpha(...)`
-- static helpers such as `Pillow.Image.Blend(...)`
+- static helpers such as `Pillow.Image.Blend(...)` and `Pillow.Image.Merge(...)`
 
 AHK owns ergonomics and lifetime. The DLL owns image bytes and transformations.
 
-Core `L`, `RGB`, and `RGBA` conversions are a single native operation so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
+Core `L`, `RGB`, and `RGBA` conversions and L-band merge are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
 
 ## Performance Direction
 

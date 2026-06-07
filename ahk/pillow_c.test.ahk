@@ -396,6 +396,42 @@ PillowCImageConvertModeInto(sourceHandle, mode, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageHandleArray(handles) {
+    buf := Buffer(handles.Length * A_PtrSize, 0)
+    for index, handle in handles
+        NumPut("Ptr", handle, buf, (index - 1) * A_PtrSize)
+    return buf
+}
+
+PillowCImageMergeBands(mode, bandHandles) {
+    bands := PillowCImageHandleArray(bandHandles)
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_merge_bands",
+        "Int", mode,
+        "Ptr", bands,
+        "UPtr", bandHandles.Length,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageMergeBandsInto(mode, bandHandles, targetHandle) {
+    bands := PillowCImageHandleArray(bandHandles)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_merge_bands_into",
+        "Int", mode,
+        "Ptr", bands,
+        "UPtr", bandHandles.Length,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageRgbToLInto(sourceHandle, targetHandle) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_rgb_to_l_into",
@@ -943,6 +979,117 @@ PillowCTestImageGetChannelRejectsOutOfRangeIndex(*) {
 }
 
 AhkTest.Test("pillow_c image get_channel rejects out-of-range channel indexes", PillowCTestImageGetChannelRejectsOutOfRangeIndex)
+
+PillowCTestImageMergeBandsInterleavesLBandsIntoTargetMode(*) {
+    r := PillowCCreateImageMode(2, 1, 1)
+    g := PillowCCreateImageMode(2, 1, 1)
+    b := PillowCCreateImageMode(2, 1, 1)
+    a := PillowCCreateImageMode(2, 1, 1)
+    rgb := 0
+    rgba := 0
+    try {
+        PillowCImageSetBytes(r, [1, 2])
+        PillowCImageSetBytes(g, [3, 4])
+        PillowCImageSetBytes(b, [5, 6])
+        PillowCImageSetBytes(a, [7, 8])
+        rgb := PillowCImageMergeBands(3, [r, g, b])
+        rgba := PillowCImageMergeBands(4, [r, g, b, a])
+        AhkTest.AssertEqual(3, PillowCImageMode(rgb))
+        AhkTest.AssertEqual([2, 1], [PillowCImageInt(rgb, "pillow_c_image_width"), PillowCImageInt(rgb, "pillow_c_image_height")])
+        AhkTest.AssertEqual([1, 3, 5, 2, 4, 6], PillowCImageToArray(rgb, 6))
+        AhkTest.AssertEqual(4, PillowCImageMode(rgba))
+        AhkTest.AssertEqual([1, 3, 5, 7, 2, 4, 6, 8], PillowCImageToArray(rgba, 8))
+    } finally {
+        if rgba
+            PillowCFreeImage(rgba)
+        if rgb
+            PillowCFreeImage(rgb)
+        PillowCFreeImage(a)
+        PillowCFreeImage(b)
+        PillowCFreeImage(g)
+        PillowCFreeImage(r)
+    }
+}
+
+AhkTest.Test("pillow_c image merge_bands interleaves L bands into Pillow modes", PillowCTestImageMergeBandsInterleavesLBandsIntoTargetMode)
+
+PillowCTestImageMergeBandsIntoReusesTargetHandle(*) {
+    r := PillowCCreateImageMode(2, 1, 1)
+    g := PillowCCreateImageMode(2, 1, 1)
+    b := PillowCCreateImageMode(2, 1, 1)
+    target := PillowCCreateImageMode(2, 1, 3)
+    try {
+        PillowCImageSetBytes(r, [10, 20])
+        PillowCImageSetBytes(g, [30, 40])
+        PillowCImageSetBytes(b, [50, 60])
+        before := PillowCImageData(target).Ptr
+        PillowCImageMergeBandsInto(3, [r, g, b], target)
+        after := PillowCImageData(target).Ptr
+        AhkTest.AssertEqual(before, after)
+        AhkTest.AssertEqual([10, 30, 50, 20, 40, 60], PillowCImageToArray(target, 6))
+    } finally {
+        PillowCFreeImage(target)
+        PillowCFreeImage(b)
+        PillowCFreeImage(g)
+        PillowCFreeImage(r)
+    }
+}
+
+AhkTest.Test("pillow_c image merge_bands_into reuses target handle storage", PillowCTestImageMergeBandsIntoReusesTargetHandle)
+
+PillowCTestImageMergeBandsRejectsWrongBandShapeOrMode(*) {
+    r := PillowCCreateImageMode(2, 1, 1)
+    g := PillowCCreateImageMode(2, 1, 1)
+    rgbBand := PillowCCreateImageMode(2, 1, 3)
+    wrongSize := PillowCCreateImageMode(3, 1, 1)
+    outHandle := 0
+    try {
+        bands := PillowCImageHandleArray([r, g])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_merge_bands",
+            "Int", 3,
+            "Ptr", bands,
+            "UPtr", 2,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        bands := PillowCImageHandleArray([rgbBand, g, r])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_merge_bands",
+            "Int", 3,
+            "Ptr", bands,
+            "UPtr", 3,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        bands := PillowCImageHandleArray([r, g, wrongSize])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_merge_bands",
+            "Int", 3,
+            "Ptr", bands,
+            "UPtr", 3,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(wrongSize)
+        PillowCFreeImage(rgbBand)
+        PillowCFreeImage(g)
+        PillowCFreeImage(r)
+    }
+}
+
+AhkTest.Test("pillow_c image merge_bands rejects wrong band count mode or size", PillowCTestImageMergeBandsRejectsWrongBandShapeOrMode)
 
 PillowCTestImagePutAlphaValueReturnsRgba(*) {
     rgb := PillowCCreateImageMode(2, 1, 3)

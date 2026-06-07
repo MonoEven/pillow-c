@@ -547,6 +547,55 @@ int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowC
     return PILLOW_C_INVALID_ARGUMENT;
 }
 
+int merge_bands_into(int target_mode, const PillowCImage* const* bands, std::size_t band_count, PillowCImage* target)
+{
+    if (!bands || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    const int target_channels = channels_for_mode(target_mode);
+    if (target_channels == 0 || band_count != static_cast<std::size_t>(target_channels)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const PillowCImage* first = bands[0];
+    if (!first) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (first->mode != PILLOW_C_MODE_L || first->channels != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    for (std::size_t channel = 1; channel < band_count; ++channel) {
+        const PillowCImage* band = bands[channel];
+        if (!band) {
+            return PILLOW_C_NULL_POINTER;
+        }
+        if (band->mode != PILLOW_C_MODE_L || band->channels != 1) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (band->width != first->width || band->height != first->height) {
+            return PILLOW_C_MISMATCH;
+        }
+    }
+
+    if (!image_shape_matches(target, first->width, first->height, target_mode, target_channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const std::size_t pixels = static_cast<std::size_t>(first->width) * first->height;
+    for (std::size_t i = 0; i < pixels; ++i) {
+        std::uint8_t* dst = target->pixels.data() + i * target_channels;
+        for (int channel = 0; channel < target_channels; ++channel) {
+            dst[channel] = bands[channel]->pixels[i];
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 } // namespace
 
 extern "C" __declspec(dllexport) int pillow_c_abi_version(
@@ -1027,6 +1076,15 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_mode_into(
     PillowCImage* target)
 {
     return convert_image_mode_into(source, target_mode, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_merge_bands_into(
+    int target_mode,
+    const PillowCImage* const* bands,
+    std::size_t band_count,
+    PillowCImage* target)
+{
+    return merge_bands_into(target_mode, bands, band_count, target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_alpha_composite_rgba_into(
@@ -1513,6 +1571,55 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_mode(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = convert_image_mode_into(source, target_mode, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_merge_bands(
+    int target_mode,
+    const PillowCImage* const* bands,
+    std::size_t band_count,
+    PillowCImage** out_image)
+{
+    if (!bands || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    const int target_channels = channels_for_mode(target_mode);
+    if (target_channels == 0 || band_count != static_cast<std::size_t>(target_channels)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const PillowCImage* first = bands[0];
+    if (!first) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (first->mode != PILLOW_C_MODE_L || first->channels != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(first->width, first->height, target_channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            first->width,
+            first->height,
+            target_mode,
+            target_channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = merge_bands_into(target_mode, bands, band_count, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

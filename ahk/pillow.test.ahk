@@ -272,6 +272,35 @@ PillowTestImageGetChannelUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.GetChannel extracts one channel through native handles", PillowTestImageGetChannelUsesNativeOperation)
 
+PillowTestImageMergeStaticUsesNativeHandles(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    r := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([1, 2]))
+    g := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([3, 4]))
+    b := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([5, 6]))
+    a := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([7, 8]))
+    rgb := 0
+    rgba := 0
+    try {
+        rgb := Pillow.Image.Merge("RGB", [r, g, b])
+        rgba := Pillow.Image.Merge("RGBA", [r, g, b, a])
+        AhkTest.AssertEqual("RGB", rgb.Mode)
+        AhkTest.AssertEqual([1, 3, 5, 2, 4, 6], PillowTestBufferToArray(rgb.ToBytes()))
+        AhkTest.AssertEqual("RGBA", rgba.Mode)
+        AhkTest.AssertEqual([1, 3, 5, 7, 2, 4, 6, 8], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        if IsObject(rgba)
+            rgba.Close()
+        if IsObject(rgb)
+            rgb.Close()
+        a.Close()
+        b.Close()
+        g.Close()
+        r.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Merge interleaves L bands through native handles", PillowTestImageMergeStaticUsesNativeHandles)
+
 PillowTestImagePutAlphaUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 10, 20, 30]))
