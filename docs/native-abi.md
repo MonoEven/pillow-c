@@ -62,6 +62,7 @@ Image operations:
 
 - `pillow_c_image_copy`
 - `pillow_c_image_blend`
+- `pillow_c_image_difference`
 - `pillow_c_image_point_lut`
 - `pillow_c_image_invert`
 - `pillow_c_image_posterize`
@@ -90,6 +91,7 @@ Reusable target operations:
 
 - `pillow_c_image_copy_into`
 - `pillow_c_image_blend_into`
+- `pillow_c_image_difference_into`
 - `pillow_c_image_point_lut_into`
 - `pillow_c_image_invert_into`
 - `pillow_c_image_posterize_into`

@@ -275,6 +275,26 @@ class Pillow {
         }
     }
 
+    class ImageChops {
+        static Difference(left, right) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_difference",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Difference"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Difference"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static RequireImageHandle(image, operationName) {
+            if !(IsObject(image) && image is Pillow.Image)
+                throw Error("Pillow.ImageChops." operationName " expects a Pillow.Image", -1)
+            return image.RequireHandle()
+        }
+    }
+
     static Configure(options := unset) {
         if IsSet(options) && options.HasOwnProp("DllPath")
             Pillow.DllPath := options.DllPath
