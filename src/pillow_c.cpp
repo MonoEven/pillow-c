@@ -1536,6 +1536,86 @@ int proportional_resize_into(
     return resize_image_into(source, out_width, out_height, resample, target);
 }
 
+double clamp_unit(double value)
+{
+    if (value < 0.0) {
+        return 0.0;
+    }
+    if (value > 1.0) {
+        return 1.0;
+    }
+    return value;
+}
+
+int pad_image_into(
+    const PillowCImage* source,
+    int requested_width,
+    int requested_height,
+    int resample,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    double center_x,
+    double center_y,
+    PillowCImage* target)
+{
+    if (!source || !color || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (color_size != static_cast<std::size_t>(source->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    int resized_width = 0;
+    int resized_height = 0;
+    int status = proportional_resize_size(source, requested_width, requested_height, false, &resized_width, &resized_height);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!image_shape_matches(target, requested_width, requested_height, source->mode, source->channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    if (resized_width == requested_width && resized_height == requested_height) {
+        return resize_image_into(source, requested_width, requested_height, resample, target);
+    }
+
+    status = fill_image_pixels(target, color, color_size);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+
+    std::size_t resized_stride = 0;
+    std::size_t resized_size = 0;
+    if (!checked_image_size(resized_width, resized_height, source->channels, &resized_stride, &resized_size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        PillowCImage resized{
+            resized_width,
+            resized_height,
+            source->mode,
+            source->channels,
+            resized_stride,
+            std::vector<std::uint8_t>(resized_size)};
+        status = resize_image_into(source, resized_width, resized_height, resample, &resized);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        int left = 0;
+        int top = 0;
+        if (resized_width != requested_width) {
+            left = python_round_to_int((requested_width - resized_width) * clamp_unit(center_x));
+        } else if (resized_height != requested_height) {
+            top = python_round_to_int((requested_height - resized_height) * clamp_unit(center_y));
+        }
+        return paste_image_pixels_into(target, &resized, left, top);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 void free_image_array(PillowCImage** images, std::size_t count)
 {
     if (!images) {
@@ -2893,6 +2973,70 @@ int proportional_resize_allocating(
             stride,
             std::vector<std::uint8_t>(size)};
         status = resize_image_into(source, out_width, out_height, resample, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_pad(
+    const PillowCImage* source,
+    int requested_width,
+    int requested_height,
+    int resample,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    double center_x,
+    double center_y,
+    PillowCImage** out_image)
+{
+    if (!source || !color || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (color_size != static_cast<std::size_t>(source->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (resample != PILLOW_C_RESAMPLE_NEAREST && !filter_spec_for_resample(resample)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    int resized_width = 0;
+    int resized_height = 0;
+    int status = proportional_resize_size(source, requested_width, requested_height, false, &resized_width, &resized_height);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size(requested_width, requested_height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            requested_width,
+            requested_height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        status = pad_image_into(
+            source,
+            requested_width,
+            requested_height,
+            resample,
+            color,
+            color_size,
+            center_x,
+            center_y,
+            image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

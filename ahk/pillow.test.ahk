@@ -271,6 +271,90 @@ PillowTestImageOpsContainAndCoverRejectInvalidSize(*) {
 
 AhkTest.Test("Pillow ImageOps.Contain and Cover reject invalid requested sizes", PillowTestImageOpsContainAndCoverRejectInvalidSize)
 
+PillowTestImageOpsPadUsesNativeResizeAndFill(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 2], PillowTestBuffer([0, 40, 80, 120, 160, 200, 220, 255]))
+    padded := 0
+    try {
+        padded := Pillow.ImageOps.Pad(source, [4, 4], Pillow.Resampling.NEAREST)
+
+        AhkTest.AssertEqual("L", padded.Mode)
+        AhkTest.AssertEqual([4, 4], padded.Size)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0,
+            0, 40, 80, 120,
+            160, 200, 220, 255,
+            0, 0, 0, 0,
+        ], PillowTestBufferToArray(padded.ToBytes()))
+    } finally {
+        if IsObject(padded)
+            padded.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Pad uses native resize and fill", PillowTestImageOpsPadUsesNativeResizeAndFill)
+
+PillowTestImageOpsPadParsesColorAndCenteringLikePillow(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    rgba := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
+    scalarRgb := 0
+    tupleRgba := 0
+    try {
+        scalarRgb := Pillow.ImageOps.Pad(rgb, [4, 4], Pillow.Resampling.NEAREST, 7, [0.5, 0.5])
+        tupleRgba := Pillow.ImageOps.Pad(rgba, [3, 5], Pillow.Resampling.NEAREST, [7, 8, 9], [-1, 99])
+
+        AhkTest.AssertEqual([
+            7, 0, 0, 7, 0, 0, 7, 0, 0, 7, 0, 0,
+            1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6,
+            1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6,
+            7, 0, 0, 7, 0, 0, 7, 0, 0, 7, 0, 0,
+        ], PillowTestBufferToArray(scalarRgb.ToBytes()))
+
+        AhkTest.AssertEqual([
+            7, 8, 9, 255, 7, 8, 9, 255, 7, 8, 9, 255,
+            7, 8, 9, 255, 7, 8, 9, 255, 7, 8, 9, 255,
+            1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+            1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+            1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+        ], PillowTestBufferToArray(tupleRgba.ToBytes()))
+    } finally {
+        if IsObject(tupleRgba)
+            tupleRgba.Close()
+        if IsObject(scalarRgb)
+            scalarRgb.Close()
+        rgba.Close()
+        rgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Pad parses color and centering like Pillow", PillowTestImageOpsPadParsesColorAndCenteringLikePillow)
+
+PillowTestImageOpsPadRejectsInvalidParameters(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [4, 2], PillowTestBuffer([0, 40, 80, 120, 160, 200, 220, 255]))
+    try {
+        try {
+            Pillow.ImageOps.Pad(image, [1, 1], Pillow.Resampling.NEAREST)
+            AhkTest.Fail("Expected Pad to reject zero computed height")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+
+        try {
+            Pillow.ImageOps.Pad(image, [4, 4], Pillow.Resampling.NEAREST, 0, [0.5])
+            AhkTest.Fail("Expected Pad to reject malformed centering")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "centering") > 0)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Pad rejects invalid parameters", PillowTestImageOpsPadRejectsInvalidParameters)
+
 PillowTestImageTransposeUsesPillowConstants(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([

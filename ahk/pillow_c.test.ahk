@@ -758,6 +758,27 @@ PillowCImageCover(sourceHandle, width, height, resample) {
     return outHandle
 }
 
+PillowCImagePad(sourceHandle, width, height, resample, colorValues, centerX := 0.5, centerY := 0.5) {
+    color := PillowCBuffer(colorValues)
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_pad",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Int", resample,
+        "Ptr", color,
+        "UPtr", color.Size,
+        "Double", centerX,
+        "Double", centerY,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageAutocontrast(sourceHandle, lowCutoff := 0.0, highCutoff := 0.0, ignoreCount := 0, ignoreValues := 0) {
     outHandle := 0
     status := DllCall(
@@ -2852,6 +2873,146 @@ PillowCTestImageContainAndCoverRejectInvalidRequestedSize(*) {
 }
 
 AhkTest.Test("pillow_c image contain and cover reject invalid requested sizes", PillowCTestImageContainAndCoverRejectInvalidRequestedSize)
+
+PillowCTestImagePadNearestMatchesPillowLFillAndCentering(*) {
+    source := PillowCCreateImageMode(4, 2, 1)
+    centered := 0
+    top := 0
+    bottom := 0
+    narrow := 0
+    same := 0
+    try {
+        PillowCImageSetBytes(source, [0, 40, 80, 120, 160, 200, 220, 255])
+        centered := PillowCImagePad(source, 4, 4, 0, [0], 0.5, 0.5)
+        top := PillowCImagePad(source, 4, 4, 0, [7], 0, 0)
+        bottom := PillowCImagePad(source, 4, 4, 0, [7], 1, 1)
+        narrow := PillowCImagePad(source, 2, 4, 0, [9], 0.5, 0.5)
+        same := PillowCImagePad(source, 4, 2, 0, [99], 0.5, 0.5)
+
+        AhkTest.AssertEqual([4, 4], [PillowCImageInt(centered, "pillow_c_image_width"), PillowCImageInt(centered, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            0, 0, 0, 0,
+            0, 40, 80, 120,
+            160, 200, 220, 255,
+            0, 0, 0, 0,
+        ], PillowCImageToArray(centered, 16))
+
+        AhkTest.AssertEqual([
+            0, 40, 80, 120,
+            160, 200, 220, 255,
+            7, 7, 7, 7,
+            7, 7, 7, 7,
+        ], PillowCImageToArray(top, 16))
+
+        AhkTest.AssertEqual([
+            7, 7, 7, 7,
+            7, 7, 7, 7,
+            0, 40, 80, 120,
+            160, 200, 220, 255,
+        ], PillowCImageToArray(bottom, 16))
+
+        AhkTest.AssertEqual([2, 4], [PillowCImageInt(narrow, "pillow_c_image_width"), PillowCImageInt(narrow, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            9, 9,
+            9, 9,
+            200, 255,
+            9, 9,
+        ], PillowCImageToArray(narrow, 8))
+
+        AhkTest.AssertEqual([4, 2], [PillowCImageInt(same, "pillow_c_image_width"), PillowCImageInt(same, "pillow_c_image_height")])
+        AhkTest.AssertEqual([0, 40, 80, 120, 160, 200, 220, 255], PillowCImageToArray(same, 8))
+    } finally {
+        for handle in [same, narrow, bottom, top, centered] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image Pad NEAREST matches Pillow L fill and centering", PillowCTestImagePadNearestMatchesPillowLFillAndCentering)
+
+PillowCTestImagePadHandlesRgbRgbaFillAndCenteringClamp(*) {
+    rgb := PillowCCreateImageMode(2, 1, 3)
+    rgba := PillowCCreateImageMode(1, 1, 4)
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(rgb, [1, 2, 3, 4, 5, 6])
+        PillowCImageSetBytes(rgba, [1, 2, 3, 4])
+        rgbOut := PillowCImagePad(rgb, 4, 4, 0, [7, 8, 9], 0.5, 0.5)
+        rgbaOut := PillowCImagePad(rgba, 3, 5, 0, [7, 8, 9, 255], -1, 99)
+
+        AhkTest.AssertEqual([4, 4], [PillowCImageInt(rgbOut, "pillow_c_image_width"), PillowCImageInt(rgbOut, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+            1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6,
+            1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6,
+            7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+        ], PillowCImageToArray(rgbOut, 48))
+
+        AhkTest.AssertEqual([3, 5], [PillowCImageInt(rgbaOut, "pillow_c_image_width"), PillowCImageInt(rgbaOut, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            7, 8, 9, 255, 7, 8, 9, 255, 7, 8, 9, 255,
+            7, 8, 9, 255, 7, 8, 9, 255, 7, 8, 9, 255,
+            1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+            1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+            1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+        ], PillowCImageToArray(rgbaOut, 60))
+    } finally {
+        for handle in [rgbaOut, rgbOut, rgba, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image Pad handles RGB RGBA fill and centering clamp", PillowCTestImagePadHandlesRgbRgbaFillAndCenteringClamp)
+
+PillowCTestImagePadRejectsInvalidRequestedSize(*) {
+    source := PillowCCreateImageMode(4, 2, 1)
+    color := PillowCBuffer([0])
+    outHandle := 0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_pad",
+            "Ptr", source,
+            "Int", 1,
+            "Int", 1,
+            "Int", 0,
+            "Ptr", color,
+            "UPtr", color.Size,
+            "Double", 0.5,
+            "Double", 0.5,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_pad",
+            "Ptr", source,
+            "Int", 4,
+            "Int", 0,
+            "Int", 0,
+            "Ptr", color,
+            "UPtr", color.Size,
+            "Double", 0.5,
+            "Double", 0.5,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image Pad rejects invalid requested sizes", PillowCTestImagePadRejectsInvalidRequestedSize)
 
 PillowCTestImagePasteInsidePoint(*) {
     target := PillowCCreateImage(4, 3, 3)

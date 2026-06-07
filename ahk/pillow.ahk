@@ -93,6 +93,29 @@ class Pillow {
             return Pillow.ImageOps.NativeProportionalResize(image, size, IsSet(method) ? method : Pillow.Resampling.BICUBIC, "pillow_c_image_cover")
         }
 
+        static Pad(image, size, method := unset, color := unset, centering := unset) {
+            if !IsObject(size) || size.Length != 2
+                throw Error("Pillow.ImageOps.Pad expects size [width, height]", -1)
+            handle := Pillow.ImageOps.RequireImageHandle(image, "Pad")
+            fill := Pillow.ImageOps.FillBuffer(image, IsSet(color) ? color : 0, "Pad")
+            center := Pillow.ImageOps.CenteringPair(IsSet(centering) ? centering : [0.5, 0.5])
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_pad",
+                "Ptr", handle,
+                "Int", size[1],
+                "Int", size[2],
+                "Int", IsSet(method) ? method : Pillow.Resampling.BICUBIC,
+                "Ptr", fill,
+                "UPtr", fill.Size,
+                "Double", center[1],
+                "Double", center[2],
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static Autocontrast(image, cutoff := 0, ignore := unset) {
             cuts := Pillow.ImageOps.CutoffPair(cutoff)
             ignorePtr := 0
@@ -162,37 +185,43 @@ class Pillow {
             return [border, border, border, border]
         }
 
-        static FillBuffer(image, fill) {
+        static FillBuffer(image, fill, operationName := "Expand") {
             channels := image.Channels
             buf := Buffer(channels, 0)
             if IsObject(fill) {
                 if channels = 1 {
                     if fill.Length != 1
-                        throw Error("Pillow.ImageOps.Expand fill must match image mode", -1)
+                        throw Error("Pillow.ImageOps." operationName " fill must match image mode", -1)
                     NumPut("UChar", fill[1], buf, 0)
                     return buf
                 }
                 if channels = 3 {
                     if fill.Length != 3 && fill.Length != 4
-                        throw Error("Pillow.ImageOps.Expand fill must match image mode", -1)
+                        throw Error("Pillow.ImageOps." operationName " fill must match image mode", -1)
                     loop 3
                         NumPut("UChar", fill[A_Index], buf, A_Index - 1)
                     return buf
                 }
                 if channels = 4 {
                     if fill.Length != 3 && fill.Length != 4
-                        throw Error("Pillow.ImageOps.Expand fill must match image mode", -1)
+                        throw Error("Pillow.ImageOps." operationName " fill must match image mode", -1)
                     NumPut("UChar", fill[1], buf, 0)
                     NumPut("UChar", fill[2], buf, 1)
                     NumPut("UChar", fill[3], buf, 2)
                     NumPut("UChar", fill.Length = 4 ? fill[4] : 255, buf, 3)
                     return buf
                 }
-                throw Error("Pillow.ImageOps.Expand fill is unsupported for this image mode", -1)
+                throw Error("Pillow.ImageOps." operationName " fill is unsupported for this image mode", -1)
             }
 
             NumPut("UChar", fill, buf, 0)
             return buf
+        }
+
+        static CenteringPair(centering) {
+            if !IsObject(centering) || centering.Length != 2
+                throw Error("Pillow.ImageOps.Pad centering expects [x, y]", -1)
+            return [centering[1], centering[2]]
         }
 
         static CutoffPair(cutoff) {
