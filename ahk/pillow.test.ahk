@@ -447,6 +447,139 @@ PillowTestImageFilterFiveByFiveBuiltinsUseNativeKernelPath(*) {
 
 AhkTest.Test("Pillow 5x5 ImageFilter builtins use native Kernel path", PillowTestImageFilterFiveByFiveBuiltinsUseNativeKernelPath)
 
+PillowTestImageFilterRankFiltersUseNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [5, 5], PillowTestBuffer([
+        0, 200, 2, 180, 4,
+        50, 6, 70, 8, 90,
+        10, 110, 12, 130, 14,
+        150, 16, 170, 18, 190,
+        20, 210, 22, 230, 24,
+    ]))
+    outputs := []
+    try {
+        cases := [
+            { Filter: Pillow.ImageFilter.RankFilter(3, 0), Name: "Rank", Bytes: [
+                0, 0, 2, 2, 4,
+                0, 0, 2, 2, 4,
+                6, 6, 6, 8, 8,
+                10, 10, 12, 12, 14,
+                16, 16, 16, 18, 18,
+            ] },
+            { Filter: Pillow.ImageFilter.MinFilter(3), Name: "Min", Bytes: [
+                0, 0, 2, 2, 4,
+                0, 0, 2, 2, 4,
+                6, 6, 6, 8, 8,
+                10, 10, 12, 12, 14,
+                16, 16, 16, 18, 18,
+            ] },
+            { Filter: Pillow.ImageFilter.MedianFilter(3), Name: "Median", Bytes: [
+                6, 6, 70, 8, 8,
+                10, 12, 70, 14, 14,
+                50, 50, 18, 70, 90,
+                20, 22, 110, 24, 24,
+                20, 22, 170, 24, 24,
+            ] },
+            { Filter: Pillow.ImageFilter.MaxFilter(3), Name: "Max", Bytes: [
+                200, 200, 200, 180, 180,
+                200, 200, 200, 180, 180,
+                150, 170, 170, 190, 190,
+                210, 210, 230, 230, 230,
+                210, 210, 230, 230, 230,
+            ] },
+            { Filter: Pillow.ImageFilter.RankFilter(7, 24), Name: "Rank", Bytes: [
+                10, 10, 12, 14, 14,
+                20, 20, 20, 20, 22,
+                20, 20, 22, 24, 24,
+                20, 22, 24, 24, 24,
+                20, 22, 24, 24, 24,
+            ] },
+        ]
+
+        for item in cases {
+            AhkTest.AssertEqual(item.Name, item.Filter.Name)
+            out := source.Filter(item.Filter)
+            outputs.Push(out)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(out.ToBytes()))
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter rank filters use native path", PillowTestImageFilterRankFiltersUseNativePath)
+
+PillowTestImageFilterRankFiltersSupportRgbRgba(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [4, 3], PillowTestBuffer([
+        1, 2, 3, 10, 20, 30, 40, 50, 60, 70, 80, 90,
+        90, 80, 70, 120, 110, 100, 150, 140, 130, 180, 170, 160,
+        5, 15, 25, 35, 45, 55, 65, 75, 85, 95, 105, 115,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [3, 3], PillowTestBuffer([
+        1, 2, 3, 4, 10, 20, 30, 40, 50, 60, 70, 80,
+        90, 80, 70, 60, 120, 110, 100, 90, 150, 140, 130, 120,
+        5, 15, 25, 35, 35, 45, 55, 65, 65, 75, 85, 95,
+    ]))
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        rgbOut := rgb.Filter(Pillow.ImageFilter.MedianFilter(3))
+        rgbaOut := rgba.Filter(Pillow.ImageFilter.MedianFilter(3))
+        AhkTest.AssertEqual([
+            10, 20, 30, 40, 50, 60, 70, 80, 90, 70, 80, 90,
+            10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 105, 115,
+            35, 45, 55, 65, 75, 70, 95, 105, 100, 95, 105, 115,
+        ], PillowTestBufferToArray(rgbOut.ToBytes()))
+        AhkTest.AssertEqual([
+            10, 20, 30, 40, 50, 60, 70, 60, 50, 60, 70, 80,
+            10, 20, 30, 40, 50, 60, 70, 65, 65, 75, 85, 90,
+            35, 45, 55, 60, 65, 75, 70, 65, 65, 75, 85, 95,
+        ], PillowTestBufferToArray(rgbaOut.ToBytes()))
+    } finally {
+        for image in [rgbaOut, rgbOut, rgba, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter rank filters support RGB and RGBA", PillowTestImageFilterRankFiltersSupportRgbRgba)
+
+PillowTestImageFilterRankFiltersRejectInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [3, 3], PillowTestBuffer([0, 1, 2, 3, 4, 5, 6, 7, 8]))
+    out := 0
+    try {
+        out := source.Filter(Pillow.ImageFilter.RankFilter(1, 0))
+        AhkTest.AssertEqual([0, 1, 2, 3, 4, 5, 6, 7, 8], PillowTestBufferToArray(out.ToBytes()))
+
+        for item in [
+            { Filter: Pillow.ImageFilter.RankFilter(2, 0), Text: "bad filter size" },
+            { Filter: Pillow.ImageFilter.RankFilter(3, -1), Text: "bad rank value" },
+            { Filter: Pillow.ImageFilter.RankFilter(3, 9), Text: "bad rank value" },
+            { Filter: Pillow.ImageFilter.MaxFilter(0), Text: "bad filter size" },
+        ] {
+            try {
+                source.Filter(item.Filter)
+                AhkTest.Fail("Expected rank filter failure")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, item.Text) > 0)
+            }
+        }
+    } finally {
+        if IsObject(out)
+            out.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter rank filters reject invalid arguments", PillowTestImageFilterRankFiltersRejectInvalidArguments)
+
 PillowTestImageTransformAffineUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))

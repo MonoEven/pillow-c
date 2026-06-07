@@ -669,6 +669,51 @@ class Pillow {
             }
         }
 
+        class RankFilter {
+            __New(size, rank, name := "Rank") {
+                if !(size is Integer)
+                    throw Error("Pillow.ImageFilter.RankFilter size must be an integer", -1)
+                if !(rank is Integer)
+                    throw Error("Pillow.ImageFilter.RankFilter rank must be an integer", -1)
+                this.Name := name
+                this.Size := size
+                this.Rank := rank
+            }
+
+            Apply(image) {
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("Pillow.ImageFilter.RankFilter expects a Pillow.Image", -1)
+                if this.Size <= 0 || Mod(this.Size, 2) = 0
+                    throw Error("bad filter size", -1)
+                maxRank := this.Size * this.Size - 1
+                if this.Rank < 0 || this.Rank > maxRank
+                    throw Error("bad rank value", -1)
+
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_filter_rank",
+                    "Ptr", image.RequireHandle(),
+                    "Int", this.Size,
+                    "Int", this.Rank,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return Pillow.WrapImageHandle(outHandle)
+            }
+        }
+
+        static MinFilter(size := 3) {
+            return Pillow.ImageFilter.RankFilter(size, 0, "Min")
+        }
+
+        static MedianFilter(size := 3) {
+            return Pillow.ImageFilter.RankFilter(size, size * size // 2, "Median")
+        }
+
+        static MaxFilter(size := 3) {
+            return Pillow.ImageFilter.RankFilter(size, size * size - 1, "Max")
+        }
+
         static BLUR() {
             return Pillow.ImageFilter.BuiltinKernel("Blur", [5, 5], 16, 0, [
                 1, 1, 1, 1, 1,

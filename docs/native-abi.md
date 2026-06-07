@@ -102,6 +102,7 @@ Image operations:
 - `pillow_c_image_expand`
 - `pillow_c_image_resize`
 - `pillow_c_image_filter_kernel`
+- `pillow_c_image_filter_rank`
 - `pillow_c_image_transform_affine`
 - `pillow_c_image_transform_perspective`
 - `pillow_c_image_transform_quad`
@@ -152,6 +153,7 @@ Reusable target operations:
 - `pillow_c_image_expand_into`
 - `pillow_c_image_resize_into`
 - `pillow_c_image_filter_kernel_into`
+- `pillow_c_image_filter_rank_into`
 - `pillow_c_image_transform_affine_into`
 - `pillow_c_image_transform_perspective_into`
 - `pillow_c_image_transform_quad_into`
@@ -164,6 +166,8 @@ Reusable target operations:
 `pillow_c_image_rotate` and `pillow_c_image_rotate_into` accept angle, resample, expand, optional center, optional translate, and optional fill color arguments. The current implementation supports `NEAREST`, `BILINEAR`, and `BICUBIC` rotate; unsupported resamplers return `-3`.
 
 `pillow_c_image_filter_kernel` and `pillow_c_image_filter_kernel_into` accept kernel width, kernel height, a pointer to double coefficients, coefficient count, scale, and offset. The current implementation supports Pillow's `(3, 3)` and `(5, 5)` kernel sizes for `L`, `RGB`, and `RGBA`. Border pixels are copied unchanged, coefficients are applied with Pillow's vertical kernel flip, and filtered values use half-up rounding and byte clipping. Unsupported kernel sizes return `-3`; coefficient count mismatches return `-2`.
+
+`pillow_c_image_filter_rank` and `pillow_c_image_filter_rank_into` accept filter size and rank. The current implementation supports arbitrary positive odd sizes for `L`, `RGB`, and `RGBA`; rank must satisfy `0 <= rank < size * size`. Edge pixels are computed with Pillow-style clamped coordinates, not copied unchanged. Invalid size or rank returns `-3`.
 
 `pillow_c_image_transform_affine` and `pillow_c_image_transform_affine_into` accept output width, output height, a pointer to six doubles `(a, b, c, d, e, f)`, resample, and optional fill color arguments. The matrix follows Pillow `Image.transform(..., Transform.AFFINE, matrix, ...)` destination-to-source coordinates. The current implementation supports `NEAREST`, `BILINEAR`, and `BICUBIC`; transform-only unsupported resamplers return `-3`.
 

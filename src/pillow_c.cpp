@@ -143,6 +143,11 @@ inline std::uint8_t round_half_up_clip_u8(double value)
     return static_cast<std::uint8_t>(std::floor(value + 0.5));
 }
 
+inline int clamp_int(int value, int low, int high)
+{
+    return value < low ? low : (value > high ? high : value);
+}
+
 inline std::uint8_t clip_chops_scaled_u8(double value)
 {
     if (!(value > 0.0)) {
@@ -3532,6 +3537,70 @@ int filter_kernel_image_into(
     return PILLOW_C_OK;
 }
 
+bool valid_rank_filter_arguments(int size, int rank)
+{
+    if (size <= 0 || (size % 2) == 0) {
+        return false;
+    }
+    const std::int64_t count = static_cast<std::int64_t>(size) * size;
+    return count <= INT_MAX && rank >= 0 && static_cast<std::int64_t>(rank) < count;
+}
+
+int filter_rank_image_into(const PillowCImage* source, int size, int rank, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!image_shape_matches(target, source)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (!valid_rank_filter_arguments(size, rank)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    std::vector<std::uint8_t> source_snapshot;
+    const std::uint8_t* source_data = source->pixels.data();
+    if (source == target) {
+        source_snapshot = source->pixels;
+        source_data = source_snapshot.data();
+    }
+
+    const int radius = size / 2;
+    const std::size_t window_size = static_cast<std::size_t>(size) * size;
+    std::vector<std::uint8_t> window(window_size);
+    for (int y = 0; y < source->height; ++y) {
+        for (int x = 0; x < source->width; ++x) {
+            const std::size_t dst_offset =
+                static_cast<std::size_t>(y) * target->stride +
+                static_cast<std::size_t>(x) * target->channels;
+            for (int channel = 0; channel < source->channels; ++channel) {
+                std::size_t window_index = 0;
+                for (int ky = 0; ky < size; ++ky) {
+                    const int src_y = clamp_int(y + ky - radius, 0, source->height - 1);
+                    const std::size_t src_row = static_cast<std::size_t>(src_y) * source->stride;
+                    for (int kx = 0; kx < size; ++kx) {
+                        const int src_x = clamp_int(x + kx - radius, 0, source->width - 1);
+                        const std::size_t src_offset =
+                            src_row +
+                            static_cast<std::size_t>(src_x) * source->channels +
+                            static_cast<std::size_t>(channel);
+                        window[window_index++] = source_data[src_offset];
+                    }
+                }
+                auto rank_iter = window.begin() + rank;
+                std::nth_element(window.begin(), rank_iter, window.end());
+                target->pixels[dst_offset + static_cast<std::size_t>(channel)] = *rank_iter;
+            }
+        }
+    }
+
+    return PILLOW_C_OK;
+}
+
 int resize_image_box_into(
     const PillowCImage* source,
     int out_width,
@@ -4915,6 +4984,15 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_kernel_into(
     PillowCImage* target)
 {
     return filter_kernel_image_into(source, kernel_width, kernel_height, kernel, kernel_count, scale, offset, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_rank_into(
+    const PillowCImage* source,
+    int size,
+    int rank,
+    PillowCImage* target)
+{
+    return filter_rank_image_into(source, size, rank, target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_transform_affine_into(
@@ -6451,6 +6529,40 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_kernel(
             scale,
             offset,
             image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_rank(
+    const PillowCImage* source,
+    int size,
+    int rank,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!valid_rank_filter_arguments(size, rank)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            source->mode,
+            source->channels,
+            source->stride,
+            std::vector<std::uint8_t>(source->pixels.size())};
+        const int status = filter_rank_image_into(source, size, rank, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;
