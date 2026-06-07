@@ -110,6 +110,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `Pillow.ImageEnhance.Brightness(...).Enhance(...)`
 - `Pillow.ImageEnhance.Sharpness(...).Enhance(...)`
 - `Pillow.ImageStat.Stat(...)`
+- `image.GetBands(...)`
 - `image.GetChannel(...)`
 - `image.Split(...)`
 - `image.PutAlpha(...)`

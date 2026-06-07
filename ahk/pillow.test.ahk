@@ -1957,6 +1957,31 @@ PillowTestImageGetChannelSupportsLaMode(*) {
 
 AhkTest.Test("Pillow Image.GetChannel supports LA mode names", PillowTestImageGetChannelSupportsLaMode)
 
+PillowTestImageGetBandsReturnsPillowModeBandNames(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.New("L", [1, 1])
+    la := Pillow.Image.New("LA", [1, 1])
+    rgb := Pillow.Image.New("RGB", [1, 1])
+    rgba := Pillow.Image.New("RGBA", [1, 1])
+    try {
+        AhkTest.AssertEqual(["L"], l.GetBands())
+        AhkTest.AssertEqual(["L", "A"], la.GetBands())
+        AhkTest.AssertEqual(["R", "G", "B"], rgb.GetBands())
+        AhkTest.AssertEqual(["R", "G", "B", "A"], rgba.GetBands())
+
+        bands := rgba.GetBands()
+        bands[1] := "changed"
+        AhkTest.AssertEqual(["R", "G", "B", "A"], rgba.GetBands())
+    } finally {
+        rgba.Close()
+        rgb.Close()
+        la.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetBands returns Pillow mode band names", PillowTestImageGetBandsReturnsPillowModeBandNames)
+
 PillowTestImageHistogramUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [3, 1], PillowTestBuffer([

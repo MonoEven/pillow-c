@@ -1944,6 +1944,24 @@ class Pillow {
             return bands
         }
 
+        GetBands() {
+            names := this.BandNames()
+            return names.Clone()
+        }
+
+        BandNames() {
+            mode := this.Mode
+            if mode = "L"
+                return ["L"]
+            if mode = "LA"
+                return ["L", "A"]
+            if mode = "RGB"
+                return ["R", "G", "B"]
+            if mode = "RGBA"
+                return ["R", "G", "B", "A"]
+            return []
+        }
+
         ChannelIndex(channel) {
             if !IsObject(channel) && channel is Integer {
                 if channel < 0 || channel >= this.Channels
@@ -1952,8 +1970,7 @@ class Pillow {
             }
 
             name := channel ""
-            mode := this.Mode
-            names := mode = "L" ? ["L"] : mode = "LA" ? ["L", "A"] : mode = "RGB" ? ["R", "G", "B"] : mode = "RGBA" ? ["R", "G", "B", "A"] : []
+            names := this.BandNames()
             for index, item in names {
                 if item = name
                     return index - 1
