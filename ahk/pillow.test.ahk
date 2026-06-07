@@ -995,6 +995,116 @@ PillowTestImageBlendStaticUsesNativeHandles(*) {
 
 AhkTest.Test("Pillow Image.Blend blends images through native handles", PillowTestImageBlendStaticUsesNativeHandles)
 
+PillowTestImageCompositeStaticUsesNativeHandles(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("RGB", [3, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60, 70, 80, 90]))
+    right := Pillow.Image.FromBytes("RGB", [3, 1], PillowTestBuffer([200, 210, 220, 180, 170, 160, 100, 90, 80]))
+    mask := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([0, 128, 255]))
+    out := 0
+    try {
+        out := Pillow.Image.Composite(left, right, mask)
+
+        AhkTest.AssertEqual("RGB", out.Mode)
+        AhkTest.AssertEqual([3, 1], out.Size)
+        AhkTest.AssertEqual([200, 210, 220, 110, 110, 110, 70, 80, 90], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        for item in [out, mask, right, left] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Composite blends images through native handles", PillowTestImageCompositeStaticUsesNativeHandles)
+
+PillowTestImageCompositeUsesRgbaMaskAndClipsSource(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    right := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([200, 210, 220, 180, 170, 160]))
+    mask := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 128]))
+    out := 0
+    try {
+        out := Pillow.Image.Composite(left, right, mask)
+
+        AhkTest.AssertEqual("RGB", out.Mode)
+        AhkTest.AssertEqual([2, 1], out.Size)
+        AhkTest.AssertEqual([105, 115, 125, 180, 170, 160], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        for item in [out, mask, right, left] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Composite uses RGBA mask alpha and target size", PillowTestImageCompositeUsesRgbaMaskAndClipsSource)
+
+PillowTestImageCompositeConvertsSourceToTargetMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    target := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([1, 2]))
+    mask := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([255, 128]))
+    out := 0
+    try {
+        out := Pillow.Image.Composite(source, target, mask)
+
+        AhkTest.AssertEqual("L", out.Mode)
+        AhkTest.AssertEqual([18, 25], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        for item in [out, mask, target, source] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Composite converts source to target mode", PillowTestImageCompositeConvertsSourceToTargetMode)
+
+PillowTestImageCompositeRejectsUnsupportedMask(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    right := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([200, 210, 220, 180, 170, 160]))
+    mask := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    try {
+        try {
+            Pillow.Image.Composite(left, right, mask)
+            AhkTest.Fail("Expected Image.Composite to reject unsupported mask")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "bad transparency mask") > 0 || InStr(err.Message, "invalid argument") > 0 || InStr(err.Message, "Composite") > 0)
+        }
+    } finally {
+        for item in [mask, right, left] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Composite rejects unsupported mask modes", PillowTestImageCompositeRejectsUnsupportedMask)
+
+PillowTestImageChopsBlendAndCompositeUseNativeAliases(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 100, 110, 120]))
+    right := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([250, 240, 230, 1, 2, 3]))
+    mask := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([0, 128]))
+    blended := 0
+    composited := 0
+    try {
+        blended := Pillow.ImageChops.Blend(left, right, 0.25)
+        composited := Pillow.ImageChops.Composite(left, right, mask)
+
+        AhkTest.AssertEqual([70, 75, 80, 75, 83, 90], PillowTestBufferToArray(blended.ToBytes()))
+        AhkTest.AssertEqual([250, 240, 230, 51, 56, 62], PillowTestBufferToArray(composited.ToBytes()))
+    } finally {
+        for item in [composited, blended, mask, right, left] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Blend and Composite alias native image operations", PillowTestImageChopsBlendAndCompositeUseNativeAliases)
+
 PillowTestImageChopsConstantReturnsLImage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]))

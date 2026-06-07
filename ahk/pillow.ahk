@@ -276,6 +276,14 @@ class Pillow {
     }
 
     class ImageChops {
+        static Blend(left, right, alpha) {
+            return Pillow.Image.Blend(left, right, alpha)
+        }
+
+        static Composite(image1, image2, mask) {
+            return Pillow.Image.Composite(image1, image2, mask)
+        }
+
         static Constant(image, value) {
             if !(value is Integer)
                 throw Error("Pillow.ImageChops.Constant value must be an integer", -1)
@@ -662,6 +670,24 @@ class Pillow {
                 "Ptr", left.RequireHandle(),
                 "Ptr", right.RequireHandle(),
                 "Double", alpha,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static Composite(image1, image2, mask) {
+            if !(IsObject(mask) && mask is Pillow.Image)
+                throw Error("bad transparency mask", -1)
+            if !(mask.Mode = "L" || mask.Mode = "RGBA")
+                throw Error("bad transparency mask", -1)
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_composite",
+                "Ptr", image1.RequireHandle(),
+                "Ptr", image2.RequireHandle(),
+                "Ptr", mask.RequireHandle(),
                 "Ptr*", &outHandle,
                 "Int"
             ))

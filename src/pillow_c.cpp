@@ -246,6 +246,13 @@ bool images_match(const PillowCImage* left, const PillowCImage* right)
            left->pixels.size() == right->pixels.size();
 }
 
+bool supported_composite_mask(const PillowCImage* mask)
+{
+    return mask &&
+           ((mask->mode == PILLOW_C_MODE_L && mask->channels == 1) ||
+            (mask->mode == PILLOW_C_MODE_RGBA && mask->channels == 4));
+}
+
 bool image_shape_matches(const PillowCImage* image, int width, int height, int channels)
 {
     std::size_t stride = 0;
@@ -467,6 +474,7 @@ int paste_image_pixels_into(PillowCImage* target, const PillowCImage* source, in
 }
 
 int fill_image_pixels(PillowCImage* image, const std::uint8_t* color, std::size_t color_size);
+int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowCImage* target);
 
 int expand_image_into(
     const PillowCImage* source,
@@ -633,6 +641,96 @@ int fill_image_pixels(PillowCImage* image, const std::uint8_t* color, std::size_
         const std::size_t copy_size = std::min(filled, image->pixels.size() - filled);
         std::memcpy(data + filled, data, copy_size);
         filled += copy_size;
+    }
+    return PILLOW_C_OK;
+}
+
+int composite_image_into(
+    const PillowCImage* source,
+    const PillowCImage* target_source,
+    const PillowCImage* mask,
+    PillowCImage* target)
+{
+    if (!source || !target_source || !mask || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!supported_composite_mask(mask)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (mask->width != source->width || mask->height != source->height) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (!image_shape_matches(target, target_source)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    const PillowCImage* effective_source = source;
+    PillowCImage converted_source{};
+    try {
+        if (source->mode != target_source->mode || source->channels != target_source->channels) {
+            std::size_t stride = 0;
+            std::size_t size = 0;
+            if (!checked_image_size_allow_empty(source->width, source->height, target_source->channels, &stride, &size)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            converted_source = PillowCImage{
+                source->width,
+                source->height,
+                target_source->mode,
+                target_source->channels,
+                stride,
+                std::vector<std::uint8_t>(size)};
+            const int convert_status = convert_image_mode_into(source, target_source->mode, &converted_source);
+            if (convert_status != PILLOW_C_OK) {
+                return convert_status;
+            }
+            effective_source = &converted_source;
+        }
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+
+    if (!target_source->pixels.empty()) {
+        std::memcpy(target->pixels.data(), target_source->pixels.data(), target_source->pixels.size());
+    }
+
+    const int width = overlapping_width(effective_source, target_source);
+    const int height = overlapping_height(effective_source, target_source);
+    if (width <= 0 || height <= 0) {
+        return PILLOW_C_OK;
+    }
+
+    const int channels = effective_source->channels;
+    for (int y = 0; y < height; ++y) {
+        const std::uint8_t* source_row = effective_source->pixels.data() + static_cast<std::size_t>(y) * effective_source->stride;
+        const std::uint8_t* target_source_row = target_source->pixels.data() + static_cast<std::size_t>(y) * target_source->stride;
+        const std::uint8_t* mask_row = mask->pixels.data() + static_cast<std::size_t>(y) * mask->stride;
+        std::uint8_t* target_row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+
+        for (int x = 0; x < width; ++x) {
+            const std::uint8_t alpha = mask->channels == 1
+                ? mask_row[x]
+                : mask_row[static_cast<std::size_t>(x) * 4u + 3u];
+            if (alpha == 0) {
+                continue;
+            }
+
+            const std::size_t pixel_offset = static_cast<std::size_t>(x) * channels;
+            if (alpha == 255) {
+                std::memcpy(target_row + pixel_offset, source_row + pixel_offset, static_cast<std::size_t>(channels));
+                continue;
+            }
+
+            for (int channel = 0; channel < channels; ++channel) {
+                const std::uint8_t dst = target_source_row[pixel_offset + channel];
+                const std::uint8_t src = source_row[pixel_offset + channel];
+                const std::uint32_t blended =
+                    static_cast<std::uint32_t>(dst) * (255u - alpha) +
+                    static_cast<std::uint32_t>(src) * alpha +
+                    128u;
+                target_row[pixel_offset + channel] = static_cast<std::uint8_t>(shift_for_div255(blended));
+            }
+        }
     }
     return PILLOW_C_OK;
 }
@@ -2475,6 +2573,15 @@ extern "C" __declspec(dllexport) int pillow_c_image_blend_into(
         alpha);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_composite_into(
+    const PillowCImage* source,
+    const PillowCImage* target_source,
+    const PillowCImage* mask,
+    PillowCImage* target)
+{
+    return composite_image_into(source, target_source, mask, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_difference_into(
     const PillowCImage* left,
     const PillowCImage* right,
@@ -3374,6 +3481,43 @@ extern "C" __declspec(dllexport) int pillow_c_image_blend(
             image->pixels.data(),
             image->pixels.size(),
             alpha);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_composite(
+    const PillowCImage* source,
+    const PillowCImage* target_source,
+    const PillowCImage* mask,
+    PillowCImage** out_image)
+{
+    if (!source || !target_source || !mask || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!supported_composite_mask(mask)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (mask->width != source->width || mask->height != source->height) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            target_source->width,
+            target_source->height,
+            target_source->mode,
+            target_source->channels,
+            target_source->stride,
+            std::vector<std::uint8_t>(target_source->pixels.size())};
+        const int status = composite_image_into(source, target_source, mask, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

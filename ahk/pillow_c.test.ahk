@@ -315,6 +315,21 @@ PillowCImageBlend(leftHandle, rightHandle, alpha) {
     return outHandle
 }
 
+PillowCImageComposite(sourceHandle, targetHandle, maskHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_composite",
+        "Ptr", sourceHandle,
+        "Ptr", targetHandle,
+        "Ptr", maskHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageDifference(leftHandle, rightHandle) {
     outHandle := 0
     status := DllCall(
@@ -519,6 +534,18 @@ PillowCImageBlendInto(leftHandle, rightHandle, alpha, targetHandle) {
         "Ptr", rightHandle,
         "Double", alpha,
         "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageCompositeInto(sourceHandle, targetHandle, maskHandle, outHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_composite_into",
+        "Ptr", sourceHandle,
+        "Ptr", targetHandle,
+        "Ptr", maskHandle,
+        "Ptr", outHandle,
         "Int"
     )
     PillowCAssertStatus(status)
@@ -1317,6 +1344,172 @@ PillowCTestImageBlendIntoReusesTargetHandle(*) {
 }
 
 AhkTest.Test("pillow_c image blend_into reuses target handle storage", PillowCTestImageBlendIntoReusesTargetHandle)
+
+PillowCTestImageCompositeMatchesPillowMaskBlending(*) {
+    left := PillowCCreateImageMode(3, 1, 3)
+    right := PillowCCreateImageMode(3, 1, 3)
+    mask := PillowCCreateImageMode(3, 1, 1)
+    out := 0
+    try {
+        PillowCImageSetBytes(left, [10, 20, 30, 40, 50, 60, 70, 80, 90])
+        PillowCImageSetBytes(right, [200, 210, 220, 180, 170, 160, 100, 90, 80])
+        PillowCImageSetBytes(mask, [0, 128, 255])
+
+        out := PillowCImageComposite(left, right, mask)
+
+        AhkTest.AssertEqual(3, PillowCImageMode(out))
+        AhkTest.AssertEqual([3, 1], [PillowCImageInt(out, "pillow_c_image_width"), PillowCImageInt(out, "pillow_c_image_height")])
+        AhkTest.AssertEqual([200, 210, 220, 110, 110, 110, 70, 80, 90], PillowCImageToArray(out, 9))
+    } finally {
+        for handle in [out, mask, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image composite matches Pillow L mask blending", PillowCTestImageCompositeMatchesPillowMaskBlending)
+
+PillowCTestImageCompositeUsesRgbaMaskAlpha(*) {
+    left := PillowCCreateImageMode(2, 1, 3)
+    right := PillowCCreateImageMode(2, 1, 3)
+    mask := PillowCCreateImageMode(2, 1, 4)
+    out := 0
+    try {
+        PillowCImageSetBytes(left, [10, 20, 30, 40, 50, 60])
+        PillowCImageSetBytes(right, [200, 210, 220, 180, 170, 160])
+        PillowCImageSetBytes(mask, [1, 2, 3, 128, 4, 5, 6, 255])
+
+        out := PillowCImageComposite(left, right, mask)
+
+        AhkTest.AssertEqual([105, 115, 125, 40, 50, 60], PillowCImageToArray(out, 6))
+    } finally {
+        for handle in [out, mask, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image composite uses RGBA mask alpha", PillowCTestImageCompositeUsesRgbaMaskAlpha)
+
+PillowCTestImageCompositeUsesTargetSizeAndClipsSource(*) {
+    left := PillowCCreateImageMode(1, 1, 3)
+    right := PillowCCreateImageMode(2, 1, 3)
+    mask := PillowCCreateImageMode(1, 1, 1)
+    out := 0
+    try {
+        PillowCImageSetBytes(left, [10, 20, 30])
+        PillowCImageSetBytes(right, [200, 210, 220, 180, 170, 160])
+        PillowCImageSetBytes(mask, [128])
+
+        out := PillowCImageComposite(left, right, mask)
+
+        AhkTest.AssertEqual([2, 1], [PillowCImageInt(out, "pillow_c_image_width"), PillowCImageInt(out, "pillow_c_image_height")])
+        AhkTest.AssertEqual([105, 115, 125, 180, 170, 160], PillowCImageToArray(out, 6))
+    } finally {
+        for handle in [out, mask, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image composite uses target size and clips source", PillowCTestImageCompositeUsesTargetSizeAndClipsSource)
+
+PillowCTestImageCompositeConvertsSourceToTargetMode(*) {
+    rgbSource := PillowCCreateImageMode(2, 1, 3)
+    lTarget := PillowCCreateImageMode(2, 1, 1)
+    lMask := PillowCCreateImageMode(2, 1, 1)
+    lOut := 0
+    lSource := PillowCCreateImageMode(2, 1, 1)
+    rgbTarget := PillowCCreateImageMode(2, 1, 3)
+    rgbMask := PillowCCreateImageMode(2, 1, 1)
+    rgbOut := 0
+    rgbaTarget := PillowCCreateImageMode(2, 1, 4)
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(rgbSource, [10, 20, 30, 40, 50, 60])
+        PillowCImageSetBytes(lTarget, [1, 2])
+        PillowCImageSetBytes(lMask, [255, 128])
+        lOut := PillowCImageComposite(rgbSource, lTarget, lMask)
+        AhkTest.AssertEqual(1, PillowCImageMode(lOut))
+        AhkTest.AssertEqual([18, 25], PillowCImageToArray(lOut, 2))
+
+        PillowCImageSetBytes(lSource, [10, 40])
+        PillowCImageSetBytes(rgbTarget, [200, 210, 220, 180, 170, 160])
+        PillowCImageSetBytes(rgbMask, [255, 128])
+        rgbOut := PillowCImageComposite(lSource, rgbTarget, rgbMask)
+        AhkTest.AssertEqual(3, PillowCImageMode(rgbOut))
+        AhkTest.AssertEqual([10, 10, 10, 110, 105, 100], PillowCImageToArray(rgbOut, 6))
+
+        PillowCImageSetBytes(rgbaTarget, [200, 210, 220, 230, 1, 2, 3, 4])
+        rgbaOut := PillowCImageComposite(rgbSource, rgbaTarget, rgbMask)
+        AhkTest.AssertEqual(4, PillowCImageMode(rgbaOut))
+        AhkTest.AssertEqual([10, 20, 30, 255, 21, 26, 32, 130], PillowCImageToArray(rgbaOut, 8))
+    } finally {
+        for handle in [rgbaOut, rgbaTarget, rgbOut, rgbMask, rgbTarget, lSource, lOut, lMask, lTarget, rgbSource] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image composite converts source to target mode like Pillow paste", PillowCTestImageCompositeConvertsSourceToTargetMode)
+
+PillowCTestImageCompositeIntoReusesTargetStorage(*) {
+    left := PillowCCreateImageMode(2, 1, 4)
+    right := PillowCCreateImageMode(2, 1, 4)
+    mask := PillowCCreateImageMode(2, 1, 1)
+    target := PillowCCreateImageMode(2, 1, 4)
+    try {
+        PillowCImageSetBytes(left, [10, 20, 30, 40, 100, 110, 120, 130])
+        PillowCImageSetBytes(right, [200, 210, 220, 230, 1, 2, 3, 4])
+        PillowCImageSetBytes(mask, [128, 255])
+
+        before := PillowCImageData(target).Ptr
+        PillowCImageCompositeInto(left, right, mask, target)
+
+        AhkTest.AssertEqual(before, PillowCImageData(target).Ptr)
+        AhkTest.AssertEqual([105, 115, 125, 135, 100, 110, 120, 130], PillowCImageToArray(target, 8))
+    } finally {
+        for handle in [target, mask, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image composite_into reuses target storage", PillowCTestImageCompositeIntoReusesTargetStorage)
+
+PillowCTestImageCompositeRejectsUnsupportedMaskOrTargetShape(*) {
+    left := PillowCCreateImageMode(2, 1, 3)
+    right := PillowCCreateImageMode(2, 1, 3)
+    rgbMask := PillowCCreateImageMode(2, 1, 3)
+    smallMask := PillowCCreateImageMode(1, 1, 1)
+    wrongOut := PillowCCreateImageMode(2, 1, 1)
+    try {
+        outHandle := 0
+        status := DllCall(PillowCDllPath() "\pillow_c_image_composite", "Ptr", left, "Ptr", right, "Ptr", rgbMask, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        outHandle := 0
+        status := DllCall(PillowCDllPath() "\pillow_c_image_composite", "Ptr", left, "Ptr", right, "Ptr", smallMask, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-5, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_composite_into", "Ptr", left, "Ptr", right, "Ptr", smallMask, "Ptr", wrongOut, "Int")
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        for handle in [wrongOut, smallMask, rgbMask, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image composite rejects unsupported mask or target shape", PillowCTestImageCompositeRejectsUnsupportedMaskOrTargetShape)
 
 PillowCTestImageConstantReturnsLImageLikePillow(*) {
     l := PillowCCreateImageMode(3, 2, 1)

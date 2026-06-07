@@ -64,6 +64,7 @@ Image operations:
 - `pillow_c_image_constant`
 - `pillow_c_image_chops_invert`
 - `pillow_c_image_blend`
+- `pillow_c_image_composite`
 - `pillow_c_image_difference`
 - `pillow_c_image_multiply`
 - `pillow_c_image_screen`
@@ -107,6 +108,7 @@ Reusable target operations:
 - `pillow_c_image_constant_into`
 - `pillow_c_image_chops_invert_into`
 - `pillow_c_image_blend_into`
+- `pillow_c_image_composite_into`
 - `pillow_c_image_difference_into`
 - `pillow_c_image_multiply_into`
 - `pillow_c_image_screen_into`
