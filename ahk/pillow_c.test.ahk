@@ -90,6 +90,12 @@ PillowCModeName(mode) {
     return { Text: StrGet(buf.Ptr, required - 1, "UTF-8"), Required: required }
 }
 
+PillowCRawModeBuffer(rawMode) {
+    buf := Buffer(StrPut(rawMode, "UTF-8"), 0)
+    StrPut(rawMode, buf, "UTF-8")
+    return buf
+}
+
 PillowCBlend(leftValues, rightValues, alpha) {
     left := PillowCBuffer(leftValues)
     right := PillowCBuffer(rightValues)
@@ -181,6 +187,51 @@ PillowCImageSetBytes(handle, values) {
         "Int"
     )
     PillowCAssertStatus(status)
+}
+
+PillowCImageSetRawBytes(handle, values, rawMode, stride := 0, orientation := 1) {
+    data := PillowCBuffer(values)
+    modeBytes := PillowCRawModeBuffer(rawMode)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_set_raw_bytes",
+        "Ptr", handle,
+        "Ptr", data,
+        "UPtr", data.Size,
+        "Ptr", modeBytes,
+        "Int", stride,
+        "Int", orientation,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageGetRawBytes(handle, rawMode) {
+    modeBytes := PillowCRawModeBuffer(rawMode)
+    required := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_get_raw_bytes",
+        "Ptr", handle,
+        "Ptr", modeBytes,
+        "Ptr", 0,
+        "UPtr", 0,
+        "UPtr*", &required,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    out := Buffer(required, 0)
+    if required = 0
+        return []
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_get_raw_bytes",
+        "Ptr", handle,
+        "Ptr", modeBytes,
+        "Ptr", out,
+        "UPtr", out.Size,
+        "UPtr*", &required,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return PillowCBufferToArray(out)
 }
 
 PillowCImagePutData(handle, values, pixelCount) {
@@ -3593,6 +3644,98 @@ PillowCTestImageDataPointerSharesMemoryWithAhk(*) {
 }
 
 AhkTest.Test("pillow_c image data pointer shares handle memory with AHK", PillowCTestImageDataPointerSharesMemoryWithAhk)
+
+PillowCTestImageRawBytesDecodeStrideAndOrientation(*) {
+    rgb := PillowCCreateImageMode(2, 2, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    try {
+        PillowCImageSetRawBytes(rgb, [
+            1, 2, 3, 4, 5, 6, 99, 99,
+            7, 8, 9, 10, 11, 12, 88, 88,
+        ], "BGR", 8, -1)
+        AhkTest.AssertEqual([9, 8, 7, 12, 11, 10, 3, 2, 1, 6, 5, 4], PillowCImageToArray(rgb, 12))
+
+        PillowCImageSetRawBytes(rgba, [1, 2, 3, 4, 5, 6, 7, 8], "BGRA")
+        AhkTest.AssertEqual([3, 2, 1, 4, 7, 6, 5, 8], PillowCImageToArray(rgba, 8))
+
+        PillowCImageSetRawBytes(rgba, [1, 2, 3, 4, 5, 6], "BGR")
+        AhkTest.AssertEqual([3, 2, 1, 255, 6, 5, 4, 255], PillowCImageToArray(rgba, 8))
+    } finally {
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c image raw bytes decode modes stride and orientation", PillowCTestImageRawBytesDecodeStrideAndOrientation)
+
+PillowCTestImageRawBytesEncodeModes(*) {
+    rgb := PillowCCreateImageMode(2, 1, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    try {
+        PillowCImageSetBytes(rgb, [10, 20, 30, 40, 50, 60])
+        PillowCImageSetBytes(rgba, [10, 20, 30, 40, 50, 60, 70, 80])
+
+        AhkTest.AssertEqual([30, 20, 10, 60, 50, 40], PillowCImageGetRawBytes(rgb, "BGR"))
+        AhkTest.AssertEqual([10, 20, 30, 255, 40, 50, 60, 255], PillowCImageGetRawBytes(rgb, "RGBX"))
+        AhkTest.AssertEqual([30, 20, 10, 0, 60, 50, 40, 0], PillowCImageGetRawBytes(rgb, "BGRX"))
+        AhkTest.AssertEqual([30, 20, 10, 40, 70, 60, 50, 80], PillowCImageGetRawBytes(rgba, "BGRA"))
+        AhkTest.AssertEqual([40, 30, 20, 10, 80, 70, 60, 50], PillowCImageGetRawBytes(rgba, "ABGR"))
+        AhkTest.AssertEqual([30, 20, 10, 70, 60, 50], PillowCImageGetRawBytes(rgba, "BGR"))
+    } finally {
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c image raw bytes encode modes", PillowCTestImageRawBytesEncodeModes)
+
+PillowCTestImageRawBytesRejectInvalidArguments(*) {
+    rgb := PillowCCreateImageMode(2, 1, 3)
+    data := PillowCBuffer([1, 2, 3])
+    badMode := PillowCRawModeBuffer("BGRA")
+    goodMode := PillowCRawModeBuffer("BGR")
+    required := 0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_set_raw_bytes",
+            "Ptr", rgb,
+            "Ptr", data,
+            "UPtr", data.Size,
+            "Ptr", badMode,
+            "Int", 0,
+            "Int", 1,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_set_raw_bytes",
+            "Ptr", rgb,
+            "Ptr", data,
+            "UPtr", data.Size,
+            "Ptr", goodMode,
+            "Int", 0,
+            "Int", 1,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_get_raw_bytes",
+            "Ptr", rgb,
+            "Ptr", badMode,
+            "Ptr", 0,
+            "UPtr", 0,
+            "UPtr*", &required,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+    } finally {
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c image raw bytes reject invalid arguments", PillowCTestImageRawBytesRejectInvalidArguments)
 
 PillowCTestImagePutDataWritesPixelPrefix(*) {
     image := PillowCCreateImageMode(3, 1, 3)

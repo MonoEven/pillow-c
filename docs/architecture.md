@@ -44,6 +44,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 
 - `Pillow.Image.New(...)`
 - `Pillow.Image.FromBytes(...)`
+- `image.ToBytes(...)`
 - `image.Fill(...)`
 - `image.Crop(...)`
 - `image.Resize(...)`
@@ -138,6 +139,8 @@ Core `L`, `LA`, `RGB`, and `RGBA` conversions, histogram/extrema/entropy/boundin
 `ImageOps.equalize` and `ImageOps.autocontrast` currently implement common histogram/LUT paths with L-mode masks for supported `L`/`RGB` images. Autocontrast also supports `cutoff`, `ignore`, and Pillow's `preserve_tone` mode.
 
 Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes. `NEAREST` uses Pillow's affine-scale coordinate progression. `BOX`, `BILINEAR`, `HAMMING`, `BICUBIC`, and `LANCZOS` use separable two-pass filtering with Pillow-style fixed-point coefficient normalization. Non-NEAREST `RGBA` resize uses premultiplied color internally and preserves identity resizes as byte copies.
+
+`Image.frombytes` and `Image.tobytes` keep raw byte import/export in the DLL for common interop layouts such as BGR, BGRA, ARGB, ABGR, RGBX, BGRX, and bottom-up stride-based source rows. This keeps screen/GDI/file-adjacent byte order conversion out of AHK loops.
 
 `Image.getdata` and `Image.putdata` expose Pillow-like pixel sequence ergonomics while keeping the native handle as the storage authority. `GetData` exports a bulk byte snapshot, and `PutData` packs AHK values once before calling the native `put_data` prefix-writer instead of crossing the DLL boundary per pixel.
 

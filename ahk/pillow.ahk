@@ -1388,16 +1388,34 @@ class Pillow {
             return image
         }
 
-        static FromBytes(modeName, size, bytes) {
+        static FromBytes(modeName, size, bytes, decoder := unset, rawmode := unset, stride := 0, orientation := 1) {
             image := Pillow.Image.New(modeName, size)
             try {
-                Pillow.CheckStatus(DllCall(
-                    Pillow.RequireDllPath() "\pillow_c_image_set_bytes",
-                    "Ptr", image.Handle,
-                    "Ptr", bytes,
-                    "UPtr", bytes.Size,
-                    "Int"
-                ))
+                if IsSet(decoder) {
+                    if decoder != "raw"
+                        throw Error("Pillow.Image.FromBytes currently supports only the raw decoder", -1)
+                    if !IsSet(rawmode)
+                        rawmode := modeName
+                    rawModeBytes := Pillow.Image.RawModeBuffer(rawmode)
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_set_raw_bytes",
+                        "Ptr", image.Handle,
+                        "Ptr", bytes,
+                        "UPtr", bytes.Size,
+                        "Ptr", rawModeBytes,
+                        "Int", stride,
+                        "Int", orientation,
+                        "Int"
+                    ))
+                } else {
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_set_bytes",
+                        "Ptr", image.Handle,
+                        "Ptr", bytes,
+                        "UPtr", bytes.Size,
+                        "Int"
+                    ))
+                }
                 return image
             } catch {
                 image.Close()
@@ -1523,6 +1541,12 @@ class Pillow {
             return value
         }
 
+        static RawModeBuffer(rawmode) {
+            buf := Buffer(StrPut(rawmode, "UTF-8"), 0)
+            StrPut(rawmode, buf, "UTF-8")
+            return buf
+        }
+
         static HandleArray(images) {
             buf := Buffer(images.Length * A_PtrSize, 0)
             for index, image in images {
@@ -1589,7 +1613,38 @@ class Pillow {
             return value
         }
 
-        ToBytes() {
+        ToBytes(encoder := unset, rawmode := unset) {
+            if IsSet(encoder) {
+                if encoder != "raw"
+                    throw Error("Pillow.Image.ToBytes currently supports only the raw encoder", -1)
+                if !IsSet(rawmode)
+                    rawmode := this.Mode
+                rawModeBytes := Pillow.Image.RawModeBuffer(rawmode)
+                required := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_get_raw_bytes",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", rawModeBytes,
+                    "Ptr", 0,
+                    "UPtr", 0,
+                    "UPtr*", &required,
+                    "Int"
+                ))
+                out := Buffer(required, 0)
+                if required = 0
+                    return out
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_get_raw_bytes",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", rawModeBytes,
+                    "Ptr", out,
+                    "UPtr", out.Size,
+                    "UPtr*", &required,
+                    "Int"
+                ))
+                return out
+            }
+
             size := this.ByteSize
             out := Buffer(size, 0)
             if size = 0

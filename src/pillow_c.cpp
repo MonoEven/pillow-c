@@ -95,6 +95,26 @@ struct ColorCountEntry {
     std::uint8_t color[4];
 };
 
+enum class RawCodecKind {
+    Unsupported,
+    L,
+    LA,
+    RGB,
+    RGBX,
+    BGR,
+    BGRX,
+    XBGR,
+    RGBA,
+    BGRA,
+    ARGB,
+    ABGR,
+};
+
+struct RawCodecSpec {
+    RawCodecKind kind;
+    int bytes_per_pixel;
+};
+
 inline std::uint32_t shift_for_div255(std::uint32_t value)
 {
     return (((value >> 8) + value) >> 8);
@@ -295,6 +315,135 @@ const char* mode_name(int mode)
     }
 }
 
+RawCodecSpec raw_decode_spec(int target_mode, const char* raw_mode)
+{
+    if (!raw_mode) {
+        return {RawCodecKind::Unsupported, 0};
+    }
+
+    switch (target_mode) {
+    case PILLOW_C_MODE_L:
+        if (std::strcmp(raw_mode, "L") == 0) {
+            return {RawCodecKind::L, 1};
+        }
+        break;
+    case PILLOW_C_MODE_LA:
+        if (std::strcmp(raw_mode, "LA") == 0) {
+            return {RawCodecKind::LA, 2};
+        }
+        break;
+    case PILLOW_C_MODE_RGB:
+        if (std::strcmp(raw_mode, "RGB") == 0) {
+            return {RawCodecKind::RGB, 3};
+        }
+        if (std::strcmp(raw_mode, "RGBX") == 0) {
+            return {RawCodecKind::RGBX, 4};
+        }
+        if (std::strcmp(raw_mode, "BGR") == 0) {
+            return {RawCodecKind::BGR, 3};
+        }
+        if (std::strcmp(raw_mode, "BGRX") == 0) {
+            return {RawCodecKind::BGRX, 4};
+        }
+        if (std::strcmp(raw_mode, "XBGR") == 0) {
+            return {RawCodecKind::XBGR, 4};
+        }
+        break;
+    case PILLOW_C_MODE_RGBA:
+        if (std::strcmp(raw_mode, "RGBA") == 0) {
+            return {RawCodecKind::RGBA, 4};
+        }
+        if (std::strcmp(raw_mode, "BGRA") == 0) {
+            return {RawCodecKind::BGRA, 4};
+        }
+        if (std::strcmp(raw_mode, "ARGB") == 0) {
+            return {RawCodecKind::ARGB, 4};
+        }
+        if (std::strcmp(raw_mode, "ABGR") == 0) {
+            return {RawCodecKind::ABGR, 4};
+        }
+        if (std::strcmp(raw_mode, "BGR") == 0) {
+            return {RawCodecKind::BGR, 3};
+        }
+        break;
+    default:
+        break;
+    }
+
+    return {RawCodecKind::Unsupported, 0};
+}
+
+RawCodecSpec raw_encode_spec(int source_mode, const char* raw_mode)
+{
+    if (!raw_mode) {
+        return {RawCodecKind::Unsupported, 0};
+    }
+
+    switch (source_mode) {
+    case PILLOW_C_MODE_L:
+        if (std::strcmp(raw_mode, "L") == 0) {
+            return {RawCodecKind::L, 1};
+        }
+        break;
+    case PILLOW_C_MODE_LA:
+        if (std::strcmp(raw_mode, "LA") == 0) {
+            return {RawCodecKind::LA, 2};
+        }
+        break;
+    case PILLOW_C_MODE_RGB:
+        if (std::strcmp(raw_mode, "RGB") == 0) {
+            return {RawCodecKind::RGB, 3};
+        }
+        if (std::strcmp(raw_mode, "BGR") == 0) {
+            return {RawCodecKind::BGR, 3};
+        }
+        if (std::strcmp(raw_mode, "RGBX") == 0 || std::strcmp(raw_mode, "RGBA") == 0) {
+            return {RawCodecKind::RGBX, 4};
+        }
+        if (std::strcmp(raw_mode, "BGRX") == 0) {
+            return {RawCodecKind::BGRX, 4};
+        }
+        if (std::strcmp(raw_mode, "XBGR") == 0) {
+            return {RawCodecKind::XBGR, 4};
+        }
+        break;
+    case PILLOW_C_MODE_RGBA:
+        if (std::strcmp(raw_mode, "RGBA") == 0) {
+            return {RawCodecKind::RGBA, 4};
+        }
+        if (std::strcmp(raw_mode, "BGRA") == 0) {
+            return {RawCodecKind::BGRA, 4};
+        }
+        if (std::strcmp(raw_mode, "ABGR") == 0) {
+            return {RawCodecKind::ABGR, 4};
+        }
+        if (std::strcmp(raw_mode, "RGB") == 0) {
+            return {RawCodecKind::RGB, 3};
+        }
+        if (std::strcmp(raw_mode, "BGR") == 0) {
+            return {RawCodecKind::BGR, 3};
+        }
+        break;
+    default:
+        break;
+    }
+
+    return {RawCodecKind::Unsupported, 0};
+}
+
+bool checked_raw_output_size(const PillowCImage* image, int bytes_per_pixel, std::size_t* out_size)
+{
+    if (!image || bytes_per_pixel <= 0 || !out_size) {
+        return false;
+    }
+    const std::size_t pixels = static_cast<std::size_t>(image->width) * static_cast<std::size_t>(image->height);
+    if (bytes_per_pixel != 0 && pixels > static_cast<std::size_t>(-1) / static_cast<std::size_t>(bytes_per_pixel)) {
+        return false;
+    }
+    *out_size = pixels * static_cast<std::size_t>(bytes_per_pixel);
+    return true;
+}
+
 bool checked_image_size(int width, int height, int channels, std::size_t* stride, std::size_t* size)
 {
     if (!valid_image_shape(width, height, channels) || !stride || !size) {
@@ -396,6 +545,244 @@ bool image_shape_matches(const PillowCImage* left, const PillowCImage* right)
            left->mode == right->mode &&
            left->stride == right->stride &&
            left->pixels.size() == right->pixels.size();
+}
+
+void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::uint8_t* dst, int target_mode)
+{
+    switch (target_mode) {
+    case PILLOW_C_MODE_L:
+        dst[0] = src[0];
+        return;
+    case PILLOW_C_MODE_LA:
+        dst[0] = src[0];
+        dst[1] = src[1];
+        return;
+    case PILLOW_C_MODE_RGB:
+        switch (spec.kind) {
+        case RawCodecKind::RGB:
+        case RawCodecKind::RGBX:
+            dst[0] = src[0];
+            dst[1] = src[1];
+            dst[2] = src[2];
+            return;
+        case RawCodecKind::BGR:
+        case RawCodecKind::BGRX:
+            dst[0] = src[2];
+            dst[1] = src[1];
+            dst[2] = src[0];
+            return;
+        case RawCodecKind::XBGR:
+            dst[0] = src[3];
+            dst[1] = src[2];
+            dst[2] = src[1];
+            return;
+        default:
+            return;
+        }
+    case PILLOW_C_MODE_RGBA:
+        switch (spec.kind) {
+        case RawCodecKind::RGBA:
+            dst[0] = src[0];
+            dst[1] = src[1];
+            dst[2] = src[2];
+            dst[3] = src[3];
+            return;
+        case RawCodecKind::BGRA:
+            dst[0] = src[2];
+            dst[1] = src[1];
+            dst[2] = src[0];
+            dst[3] = src[3];
+            return;
+        case RawCodecKind::ARGB:
+            dst[0] = src[1];
+            dst[1] = src[2];
+            dst[2] = src[3];
+            dst[3] = src[0];
+            return;
+        case RawCodecKind::ABGR:
+            dst[0] = src[3];
+            dst[1] = src[2];
+            dst[2] = src[1];
+            dst[3] = src[0];
+            return;
+        case RawCodecKind::BGR:
+            dst[0] = src[2];
+            dst[1] = src[1];
+            dst[2] = src[0];
+            dst[3] = 255;
+            return;
+        default:
+            return;
+        }
+    default:
+        return;
+    }
+}
+
+void encode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::uint8_t* dst, int source_mode)
+{
+    switch (source_mode) {
+    case PILLOW_C_MODE_L:
+        dst[0] = src[0];
+        return;
+    case PILLOW_C_MODE_LA:
+        dst[0] = src[0];
+        dst[1] = src[1];
+        return;
+    case PILLOW_C_MODE_RGB:
+        switch (spec.kind) {
+        case RawCodecKind::RGB:
+            dst[0] = src[0];
+            dst[1] = src[1];
+            dst[2] = src[2];
+            return;
+        case RawCodecKind::BGR:
+            dst[0] = src[2];
+            dst[1] = src[1];
+            dst[2] = src[0];
+            return;
+        case RawCodecKind::RGBX:
+            dst[0] = src[0];
+            dst[1] = src[1];
+            dst[2] = src[2];
+            dst[3] = 255;
+            return;
+        case RawCodecKind::BGRX:
+            dst[0] = src[2];
+            dst[1] = src[1];
+            dst[2] = src[0];
+            dst[3] = 0;
+            return;
+        case RawCodecKind::XBGR:
+            dst[0] = 0;
+            dst[1] = src[2];
+            dst[2] = src[1];
+            dst[3] = src[0];
+            return;
+        default:
+            return;
+        }
+    case PILLOW_C_MODE_RGBA:
+        switch (spec.kind) {
+        case RawCodecKind::RGBA:
+            dst[0] = src[0];
+            dst[1] = src[1];
+            dst[2] = src[2];
+            dst[3] = src[3];
+            return;
+        case RawCodecKind::BGRA:
+            dst[0] = src[2];
+            dst[1] = src[1];
+            dst[2] = src[0];
+            dst[3] = src[3];
+            return;
+        case RawCodecKind::ABGR:
+            dst[0] = src[3];
+            dst[1] = src[2];
+            dst[2] = src[1];
+            dst[3] = src[0];
+            return;
+        case RawCodecKind::RGB:
+            dst[0] = src[0];
+            dst[1] = src[1];
+            dst[2] = src[2];
+            return;
+        case RawCodecKind::BGR:
+            dst[0] = src[2];
+            dst[1] = src[1];
+            dst[2] = src[0];
+            return;
+        default:
+            return;
+        }
+    default:
+        return;
+    }
+}
+
+int set_raw_bytes_image(
+    PillowCImage* image,
+    const std::uint8_t* data,
+    std::size_t size,
+    const char* raw_mode,
+    int stride,
+    int orientation)
+{
+    if (!image || !data || !raw_mode) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const RawCodecSpec spec = raw_decode_spec(image->mode, raw_mode);
+    if (spec.kind == RawCodecKind::Unsupported || spec.bytes_per_pixel <= 0 || stride < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const std::size_t tight_stride = static_cast<std::size_t>(image->width) * static_cast<std::size_t>(spec.bytes_per_pixel);
+    const std::size_t source_stride = stride == 0 ? tight_stride : static_cast<std::size_t>(stride);
+    if (source_stride < tight_stride) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (image->height > 0) {
+        const std::size_t required = source_stride * static_cast<std::size_t>(image->height - 1) + tight_stride;
+        if (required > size) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+    }
+
+    for (int y = 0; y < image->height; ++y) {
+        const int source_y = orientation < 0 ? (image->height - 1 - y) : y;
+        const std::uint8_t* src_row = data + static_cast<std::size_t>(source_y) * source_stride;
+        std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+        for (int x = 0; x < image->width; ++x) {
+            decode_raw_pixel(
+                spec,
+                src_row + static_cast<std::size_t>(x) * static_cast<std::size_t>(spec.bytes_per_pixel),
+                dst_row + static_cast<std::size_t>(x) * static_cast<std::size_t>(image->channels),
+                image->mode);
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int get_raw_bytes_image(
+    const PillowCImage* image,
+    const char* raw_mode,
+    std::uint8_t* out,
+    std::size_t out_size,
+    std::size_t* out_required)
+{
+    if (!image || !raw_mode || !out_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const RawCodecSpec spec = raw_encode_spec(image->mode, raw_mode);
+    if (spec.kind == RawCodecKind::Unsupported || spec.bytes_per_pixel <= 0) {
+        *out_required = 0;
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::size_t required = 0;
+    if (!checked_raw_output_size(image, spec.bytes_per_pixel, &required)) {
+        *out_required = 0;
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    *out_required = required;
+    if (!out) {
+        return PILLOW_C_OK;
+    }
+    if (out_size < required) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    for (int y = 0; y < image->height; ++y) {
+        const std::uint8_t* src_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+        std::uint8_t* dst_row = out + static_cast<std::size_t>(y) * static_cast<std::size_t>(image->width) * static_cast<std::size_t>(spec.bytes_per_pixel);
+        for (int x = 0; x < image->width; ++x) {
+            encode_raw_pixel(
+                spec,
+                src_row + static_cast<std::size_t>(x) * static_cast<std::size_t>(image->channels),
+                dst_row + static_cast<std::size_t>(x) * static_cast<std::size_t>(spec.bytes_per_pixel),
+                image->mode);
+        }
+    }
+    return PILLOW_C_OK;
 }
 
 int overlapping_width(const PillowCImage* left, const PillowCImage* right)
@@ -6241,6 +6628,17 @@ extern "C" __declspec(dllexport) int pillow_c_image_set_bytes(
     return PILLOW_C_OK;
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_set_raw_bytes(
+    PillowCImage* image,
+    const std::uint8_t* data,
+    std::size_t size,
+    const char* raw_mode,
+    int stride,
+    int orientation)
+{
+    return set_raw_bytes_image(image, data, size, raw_mode, stride, orientation);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_put_data(
     PillowCImage* image,
     const std::uint8_t* data,
@@ -6304,6 +6702,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_get_bytes(
     }
     std::memcpy(out, image->pixels.data(), size);
     return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_get_raw_bytes(
+    const PillowCImage* image,
+    const char* raw_mode,
+    std::uint8_t* out,
+    std::size_t out_size,
+    std::size_t* out_required)
+{
+    return get_raw_bytes_image(image, raw_mode, out, out_size, out_required);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_histogram(

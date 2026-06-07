@@ -78,6 +78,41 @@ PillowTestImageFromBytesOwnsNativeCopy(*) {
 
 AhkTest.Test("Pillow Image.FromBytes copies caller bytes into native storage", PillowTestImageFromBytesOwnsNativeCopy)
 
+PillowTestImageFromBytesSupportsRawModesAndStride(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([
+        1, 2, 3, 4, 5, 6, 99, 99,
+        7, 8, 9, 10, 11, 12, 88, 88,
+    ]), "raw", "BGR", 8, -1)
+    rgba := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8]), "raw", "BGRA")
+    try {
+        AhkTest.AssertEqual([9, 8, 7, 12, 11, 10, 3, 2, 1, 6, 5, 4], PillowTestBufferToArray(rgb.ToBytes()))
+        AhkTest.AssertEqual([3, 2, 1, 4, 7, 6, 5, 8], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        rgba.Close()
+        rgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBytes supports raw modes and stride", PillowTestImageFromBytesSupportsRawModesAndStride)
+
+PillowTestImageToBytesSupportsRawModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    rgba := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60, 70, 80]))
+    try {
+        AhkTest.AssertEqual([30, 20, 10, 60, 50, 40], PillowTestBufferToArray(rgb.ToBytes("raw", "BGR")))
+        AhkTest.AssertEqual([10, 20, 30, 255, 40, 50, 60, 255], PillowTestBufferToArray(rgb.ToBytes("raw", "RGBX")))
+        AhkTest.AssertEqual([30, 20, 10, 40, 70, 60, 50, 80], PillowTestBufferToArray(rgba.ToBytes("raw", "BGRA")))
+        AhkTest.AssertEqual([40, 30, 20, 10, 80, 70, 60, 50], PillowTestBufferToArray(rgba.ToBytes("raw", "ABGR")))
+    } finally {
+        rgba.Close()
+        rgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.ToBytes supports raw modes", PillowTestImageToBytesSupportsRawModes)
+
 PillowTestImageDataPointerSharesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [3, 1])
