@@ -149,6 +149,31 @@ PillowTestImageCropUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Crop returns a native cropped image", PillowTestImageCropUsesNativeHandleOperation)
 
+PillowTestImageResizeNearestUsesNativeHandleOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([
+        1, 2, 3, 10, 20, 30,
+        100, 110, 120, 200, 210, 220,
+    ]))
+    resized := 0
+    try {
+        resized := source.Resize([3, 3], Pillow.Resampling.NEAREST)
+        AhkTest.AssertEqual("RGB", resized.Mode)
+        AhkTest.AssertEqual([3, 3], resized.Size)
+        AhkTest.AssertEqual([
+            1, 2, 3, 10, 20, 30, 10, 20, 30,
+            100, 110, 120, 200, 210, 220, 200, 210, 220,
+            100, 110, 120, 200, 210, 220, 200, 210, 220,
+        ], PillowTestBufferToArray(resized.ToBytes()))
+    } finally {
+        if IsObject(resized)
+            resized.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Resize NEAREST resizes through native handles", PillowTestImageResizeNearestUsesNativeHandleOperation)
+
 PillowTestImageTransposeUsesPillowConstants(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([

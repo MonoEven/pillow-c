@@ -19,6 +19,8 @@ constexpr int PILLOW_C_MODE_L = 1;
 constexpr int PILLOW_C_MODE_RGB = 3;
 constexpr int PILLOW_C_MODE_RGBA = 4;
 
+constexpr int PILLOW_C_RESAMPLE_NEAREST = 0;
+
 struct PillowCImage {
     int width;
     int height;
@@ -591,6 +593,50 @@ int merge_bands_into(int target_mode, const PillowCImage* const* bands, std::siz
         std::uint8_t* dst = target->pixels.data() + i * target_channels;
         for (int channel = 0; channel < target_channels; ++channel) {
             dst[channel] = bands[channel]->pixels[i];
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int nearest_source_index(int dst_index, int src_size, int dst_size)
+{
+    int value = static_cast<int>(
+        ((static_cast<long long>(dst_index) * 2 + 1) * src_size) / (2 * static_cast<long long>(dst_size)));
+    if (value < 0) {
+        return 0;
+    }
+    if (value >= src_size) {
+        return src_size - 1;
+    }
+    return value;
+}
+
+int resize_nearest_into(const PillowCImage* source, int out_width, int out_height, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_width <= 0 || out_height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    for (int y = 0; y < out_height; ++y) {
+        const int src_y = nearest_source_index(y, source->height, out_height);
+        for (int x = 0; x < out_width; ++x) {
+            const int src_x = nearest_source_index(x, source->width, out_width);
+            const std::size_t src_offset =
+                static_cast<std::size_t>(src_y) * source->stride +
+                static_cast<std::size_t>(src_x) * source->channels;
+            const std::size_t dst_offset =
+                static_cast<std::size_t>(y) * target->stride +
+                static_cast<std::size_t>(x) * target->channels;
+            std::memcpy(
+                target->pixels.data() + dst_offset,
+                source->pixels.data() + src_offset,
+                static_cast<std::size_t>(source->channels));
         }
     }
     return PILLOW_C_OK;
@@ -1175,6 +1221,19 @@ extern "C" __declspec(dllexport) int pillow_c_image_crop_into(
     return copy_crop_pixels_into(source, left, top, right, bottom, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_resize_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    int resample,
+    PillowCImage* target)
+{
+    if (resample != PILLOW_C_RESAMPLE_NEAREST) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return resize_nearest_into(source, out_width, out_height, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_transpose_into(
     const PillowCImage* source,
     int method,
@@ -1627,6 +1686,47 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_mode(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = convert_image_mode_into(source, target_mode, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_resize(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    int resample,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (out_width <= 0 || out_height <= 0 || resample != PILLOW_C_RESAMPLE_NEAREST) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size(out_width, out_height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = resize_nearest_into(source, out_width, out_height, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

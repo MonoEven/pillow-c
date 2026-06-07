@@ -13,6 +13,15 @@ class Pillow {
         static TRANSVERSE := 6
     }
 
+    class Resampling {
+        static NEAREST := 0
+        static BOX := 4
+        static BILINEAR := 2
+        static HAMMING := 5
+        static BICUBIC := 3
+        static LANCZOS := 1
+    }
+
     static Configure(options := unset) {
         if IsSet(options) && options.HasOwnProp("DllPath")
             Pillow.DllPath := options.DllPath
@@ -449,6 +458,25 @@ class Pillow {
                 "Int", box[2],
                 "Int", box[3],
                 "Int", box[4],
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        Resize(size, resample := unset) {
+            if size.Length != 2
+                throw Error("Pillow.Image.Resize expects size [width, height]", -1)
+            if !IsSet(resample)
+                resample := Pillow.Resampling.NEAREST
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_resize",
+                "Ptr", this.RequireHandle(),
+                "Int", size[1],
+                "Int", size[2],
+                "Int", resample,
                 "Ptr*", &outHandle,
                 "Int"
             ))

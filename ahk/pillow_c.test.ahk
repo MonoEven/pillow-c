@@ -517,6 +517,35 @@ PillowCImageCropInto(sourceHandle, left, top, right, bottom, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageResize(sourceHandle, width, height, resample) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_resize",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Int", resample,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageResizeInto(sourceHandle, width, height, resample, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_resize_into",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Int", resample,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImagePaste(targetHandle, sourceHandle, left, top) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_paste",
@@ -1542,6 +1571,115 @@ PillowCTestImageCropRejectsInvertedBox(*) {
 }
 
 AhkTest.Test("pillow_c image crop rejects right less than left", PillowCTestImageCropRejectsInvertedBox)
+
+PillowCTestImageResizeNearestMatchesPillowCenterSampling(*) {
+    l := PillowCCreateImageMode(2, 2, 1)
+    rgb := PillowCCreateImageMode(2, 2, 3)
+    lBig := 0
+    lSmall := 0
+    lSmallSource := 0
+    rgbOut := 0
+    try {
+        PillowCImageSetBytes(l, [1, 2, 3, 4])
+        PillowCImageSetBytes(rgb, [
+            1, 2, 3, 10, 20, 30,
+            100, 110, 120, 200, 210, 220,
+        ])
+        lBig := PillowCImageResize(l, 4, 4, 0)
+        lSmallSource := PillowCCreateImageMode(4, 1, 1)
+        try {
+            PillowCImageSetBytes(lSmallSource, [10, 20, 30, 40])
+            lSmall := PillowCImageResize(lSmallSource, 2, 1, 0)
+        } finally {
+            if lSmallSource
+                PillowCFreeImage(lSmallSource)
+        }
+        rgbOut := PillowCImageResize(rgb, 3, 3, 0)
+        AhkTest.AssertEqual([4, 4], [PillowCImageInt(lBig, "pillow_c_image_width"), PillowCImageInt(lBig, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            1, 1, 2, 2,
+            1, 1, 2, 2,
+            3, 3, 4, 4,
+            3, 3, 4, 4,
+        ], PillowCImageToArray(lBig, 16))
+        AhkTest.AssertEqual([20, 40], PillowCImageToArray(lSmall, 2))
+        AhkTest.AssertEqual([
+            1, 2, 3, 10, 20, 30, 10, 20, 30,
+            100, 110, 120, 200, 210, 220, 200, 210, 220,
+            100, 110, 120, 200, 210, 220, 200, 210, 220,
+        ], PillowCImageToArray(rgbOut, 27))
+    } finally {
+        if rgbOut
+            PillowCFreeImage(rgbOut)
+        if lSmall
+            PillowCFreeImage(lSmall)
+        if lBig
+            PillowCFreeImage(lBig)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image resize NEAREST matches Pillow center sampling", PillowCTestImageResizeNearestMatchesPillowCenterSampling)
+
+PillowCTestImageResizeNearestIntoReusesTargetHandle(*) {
+    source := PillowCCreateImageMode(2, 2, 1)
+    target := PillowCCreateImageMode(4, 4, 1)
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4])
+        before := PillowCImageData(target).Ptr
+        PillowCImageResizeInto(source, 4, 4, 0, target)
+        after := PillowCImageData(target).Ptr
+        AhkTest.AssertEqual(before, after)
+        AhkTest.AssertEqual([
+            1, 1, 2, 2,
+            1, 1, 2, 2,
+            3, 3, 4, 4,
+            3, 3, 4, 4,
+        ], PillowCImageToArray(target, 16))
+    } finally {
+        PillowCFreeImage(target)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image resize_into NEAREST reuses target handle storage", PillowCTestImageResizeNearestIntoReusesTargetHandle)
+
+PillowCTestImageResizeRejectsUnsupportedResampleAndInvalidSize(*) {
+    source := PillowCCreateImageMode(2, 2, 1)
+    outHandle := 0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_resize",
+            "Ptr", source,
+            "Int", 4,
+            "Int", 4,
+            "Int", 2,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_resize",
+            "Ptr", source,
+            "Int", 0,
+            "Int", 1,
+            "Int", 0,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image resize rejects unsupported resample and invalid output size", PillowCTestImageResizeRejectsUnsupportedResampleAndInvalidSize)
 
 PillowCTestImagePasteInsidePoint(*) {
     target := PillowCCreateImage(4, 3, 3)
