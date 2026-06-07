@@ -380,6 +380,47 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        Histogram() {
+            count := this.Channels * 256
+            out := Buffer(count * 8, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_histogram",
+                "Ptr", this.RequireHandle(),
+                "Ptr", out,
+                "UPtr", count,
+                "Int"
+            ))
+            values := []
+            loop count
+                values.Push(NumGet(out, (A_Index - 1) * 8, "Int64"))
+            return values
+        }
+
+        GetExtrema() {
+            bandCount := this.Channels
+            minBuf := Buffer(bandCount, 0)
+            maxBuf := Buffer(bandCount, 0)
+            hasBuf := Buffer(bandCount, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_get_extrema",
+                "Ptr", this.RequireHandle(),
+                "Ptr", minBuf,
+                "Ptr", maxBuf,
+                "Ptr", hasBuf,
+                "UPtr", bandCount,
+                "Int"
+            ))
+
+            extrema := []
+            loop bandCount {
+                if NumGet(hasBuf, A_Index - 1, "UChar")
+                    extrema.Push([NumGet(minBuf, A_Index - 1, "UChar"), NumGet(maxBuf, A_Index - 1, "UChar")])
+                else
+                    extrema.Push(0)
+            }
+            return bandCount = 1 ? extrema[1] : extrema
+        }
+
         Split() {
             bandCount := this.Channels
             outHandles := Buffer(bandCount * A_PtrSize, 0)

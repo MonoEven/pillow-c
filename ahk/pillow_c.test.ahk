@@ -20,6 +20,13 @@ PillowCBufferToArray(buf) {
     return values
 }
 
+SumArray(values) {
+    total := 0
+    for value in values
+        total += value
+    return total
+}
+
 PillowCAssertStatus(status) {
     AhkTest.AssertEqual(0, status)
 }
@@ -215,6 +222,46 @@ PillowCImageMode(handle) {
     status := DllCall(PillowCDllPath() "\pillow_c_image_mode", "Ptr", handle, "Int*", &mode, "Int")
     PillowCAssertStatus(status)
     return mode
+}
+
+PillowCImageHistogram(handle, expectedCount) {
+    out := Buffer(expectedCount * 8, 0)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_histogram",
+        "Ptr", handle,
+        "Ptr", out,
+        "UPtr", expectedCount,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    values := []
+    loop expectedCount
+        values.Push(NumGet(out, (A_Index - 1) * 8, "Int64"))
+    return values
+}
+
+PillowCImageExtrema(handle, bandCount) {
+    minBuf := Buffer(bandCount, 0)
+    maxBuf := Buffer(bandCount, 0)
+    hasBuf := Buffer(bandCount, 0)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_get_extrema",
+        "Ptr", handle,
+        "Ptr", minBuf,
+        "Ptr", maxBuf,
+        "Ptr", hasBuf,
+        "UPtr", bandCount,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    values := []
+    loop bandCount {
+        if NumGet(hasBuf, A_Index - 1, "UChar")
+            values.Push([NumGet(minBuf, A_Index - 1, "UChar"), NumGet(maxBuf, A_Index - 1, "UChar")])
+        else
+            values.Push(0)
+    }
+    return values
 }
 
 PillowCImageSize(handle) {
@@ -955,6 +1002,95 @@ PillowCTestImagePointLutRejectsWrongLength(*) {
 }
 
 AhkTest.Test("pillow_c image point_lut rejects LUT lengths that do not match Pillow mode", PillowCTestImagePointLutRejectsWrongLength)
+
+PillowCTestImageHistogramMatchesPillowBands(*) {
+    l := PillowCCreateImageMode(4, 1, 1)
+    rgb := PillowCCreateImageMode(3, 1, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    empty := 0
+    try {
+        PillowCImageSetBytes(l, [0, 10, 10, 255])
+        PillowCImageSetBytes(rgb, [
+            0, 10, 20,
+            255, 10, 20,
+            0, 255, 20,
+        ])
+        PillowCImageSetBytes(rgba, [
+            0, 10, 20, 30,
+            255, 10, 20, 128,
+        ])
+        empty := PillowCImageCrop(l, 0, 0, 0, 1)
+
+        lHist := PillowCImageHistogram(l, 256)
+        rgbHist := PillowCImageHistogram(rgb, 768)
+        rgbaHist := PillowCImageHistogram(rgba, 1024)
+        emptyHist := PillowCImageHistogram(empty, 256)
+
+        AhkTest.AssertEqual(1, lHist[1])
+        AhkTest.AssertEqual(2, lHist[11])
+        AhkTest.AssertEqual(1, lHist[256])
+        AhkTest.AssertEqual(4, SumArray(lHist))
+
+        AhkTest.AssertEqual(2, rgbHist[1])
+        AhkTest.AssertEqual(1, rgbHist[256])
+        AhkTest.AssertEqual(2, rgbHist[267])
+        AhkTest.AssertEqual(1, rgbHist[512])
+        AhkTest.AssertEqual(3, rgbHist[533])
+        AhkTest.AssertEqual(9, SumArray(rgbHist))
+
+        AhkTest.AssertEqual(1, rgbaHist[1])
+        AhkTest.AssertEqual(1, rgbaHist[256])
+        AhkTest.AssertEqual(2, rgbaHist[267])
+        AhkTest.AssertEqual(2, rgbaHist[533])
+        AhkTest.AssertEqual(1, rgbaHist[799])
+        AhkTest.AssertEqual(1, rgbaHist[897])
+        AhkTest.AssertEqual(8, SumArray(rgbaHist))
+
+        AhkTest.AssertEqual(256, emptyHist.Length)
+        AhkTest.AssertEqual(0, SumArray(emptyHist))
+    } finally {
+        if empty
+            PillowCFreeImage(empty)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image histogram matches Pillow band layout", PillowCTestImageHistogramMatchesPillowBands)
+
+PillowCTestImageGetExtremaMatchesPillowBands(*) {
+    l := PillowCCreateImageMode(4, 1, 1)
+    rgb := PillowCCreateImageMode(3, 1, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    empty := 0
+    try {
+        PillowCImageSetBytes(l, [0, 10, 10, 255])
+        PillowCImageSetBytes(rgb, [
+            0, 10, 20,
+            255, 10, 20,
+            0, 255, 20,
+        ])
+        PillowCImageSetBytes(rgba, [
+            0, 10, 20, 30,
+            255, 10, 20, 128,
+        ])
+        empty := PillowCImageCrop(l, 0, 0, 0, 1)
+
+        AhkTest.AssertEqual([[0, 255]], PillowCImageExtrema(l, 1))
+        AhkTest.AssertEqual([[0, 255], [10, 255], [20, 20]], PillowCImageExtrema(rgb, 3))
+        AhkTest.AssertEqual([[0, 255], [10, 10], [20, 20], [30, 128]], PillowCImageExtrema(rgba, 4))
+        AhkTest.AssertEqual([0], PillowCImageExtrema(empty, 1))
+    } finally {
+        if empty
+            PillowCFreeImage(empty)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image get_extrema matches Pillow band extrema", PillowCTestImageGetExtremaMatchesPillowBands)
 
 PillowCTestImageGetChannelReturnsLImage(*) {
     rgb := PillowCCreateImageMode(2, 1, 3)

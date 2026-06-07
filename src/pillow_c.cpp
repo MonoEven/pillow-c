@@ -649,6 +649,72 @@ int merge_bands_into(int target_mode, const PillowCImage* const* bands, std::siz
     return PILLOW_C_OK;
 }
 
+int histogram_image(const PillowCImage* source, std::uint64_t* out_histogram, std::size_t out_count)
+{
+    if (!source || !out_histogram) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const std::size_t required = static_cast<std::size_t>(source->channels) * 256u;
+    if (out_count != required) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::fill(out_histogram, out_histogram + out_count, 0);
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    const std::uint8_t* data = source->pixels.data();
+    for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
+        const std::uint8_t* src = data + pixel * source->channels;
+        for (int channel = 0; channel < source->channels; ++channel) {
+            ++out_histogram[static_cast<std::size_t>(channel) * 256u + src[channel]];
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int extrema_image(
+    const PillowCImage* source,
+    std::uint8_t* out_min,
+    std::uint8_t* out_max,
+    std::uint8_t* out_has_value,
+    std::size_t out_count)
+{
+    if (!source || !out_min || !out_max || !out_has_value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_count != static_cast<std::size_t>(source->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::fill(out_min, out_min + out_count, static_cast<std::uint8_t>(0));
+    std::fill(out_max, out_max + out_count, static_cast<std::uint8_t>(0));
+    std::fill(out_has_value, out_has_value + out_count, static_cast<std::uint8_t>(0));
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    if (pixels == 0) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* data = source->pixels.data();
+    for (int channel = 0; channel < source->channels; ++channel) {
+        const std::uint8_t first = data[channel];
+        out_min[channel] = first;
+        out_max[channel] = first;
+        out_has_value[channel] = 1;
+    }
+
+    for (std::size_t pixel = 1; pixel < pixels; ++pixel) {
+        const std::uint8_t* src = data + pixel * source->channels;
+        for (int channel = 0; channel < source->channels; ++channel) {
+            const std::uint8_t value = src[channel];
+            if (value < out_min[channel]) {
+                out_min[channel] = value;
+            } else if (value > out_max[channel]) {
+                out_max[channel] = value;
+            }
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 bool precompute_nearest_indices(int src_size, int dst_size, std::vector<int>* indices)
 {
     if (src_size <= 0 || dst_size <= 0 || !indices) {
@@ -1802,6 +1868,24 @@ extern "C" __declspec(dllexport) int pillow_c_image_get_bytes(
     }
     std::memcpy(out, image->pixels.data(), size);
     return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_histogram(
+    const PillowCImage* image,
+    std::uint64_t* out_histogram,
+    std::size_t out_count)
+{
+    return histogram_image(image, out_histogram, out_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_get_extrema(
+    const PillowCImage* image,
+    std::uint8_t* out_min,
+    std::uint8_t* out_max,
+    std::uint8_t* out_has_value,
+    std::size_t out_count)
+{
+    return extrema_image(image, out_min, out_max, out_has_value, out_count);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_copy(

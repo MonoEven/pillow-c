@@ -341,6 +341,47 @@ PillowTestImageGetChannelUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.GetChannel extracts one channel through native handles", PillowTestImageGetChannelUsesNativeOperation)
 
+PillowTestImageHistogramUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [3, 1], PillowTestBuffer([
+        0, 10, 20,
+        255, 10, 20,
+        0, 255, 20,
+    ]))
+    try {
+        hist := source.Histogram()
+        AhkTest.AssertEqual(768, hist.Length)
+        AhkTest.AssertEqual(2, hist[1])
+        AhkTest.AssertEqual(1, hist[256])
+        AhkTest.AssertEqual(2, hist[267])
+        AhkTest.AssertEqual(1, hist[512])
+        AhkTest.AssertEqual(3, hist[533])
+    } finally {
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Histogram returns Pillow band histograms through native handles", PillowTestImageHistogramUsesNativeOperation)
+
+PillowTestImageGetExtremaUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [3, 1], PillowTestBuffer([
+        0, 10, 20,
+        255, 10, 20,
+        0, 255, 20,
+    ]))
+    l := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 10, 10, 255]))
+    try {
+        AhkTest.AssertEqual([[0, 255], [10, 255], [20, 20]], rgb.GetExtrema())
+        AhkTest.AssertEqual([0, 255], l.GetExtrema())
+    } finally {
+        l.Close()
+        rgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetExtrema returns Pillow-style extrema through native handles", PillowTestImageGetExtremaUsesNativeOperation)
+
 PillowTestImageSplitUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([1, 2, 3, 4, 10, 20, 30, 40]))
