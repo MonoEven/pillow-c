@@ -1879,6 +1879,52 @@ class Pillow {
             return buf
         }
 
+        PasteColorBuffer(color) {
+            channels := this.Channels
+            if IsObject(color) {
+                length := color.Length
+                if channels = 1 {
+                    if length != 1
+                        throw Error("Pillow color must be int or single-element array", -1)
+                    buf := Buffer(1, 0)
+                    NumPut("UChar", color[1], buf, 0)
+                    return buf
+                }
+                if channels = 2 {
+                    if length != 1 && length != 2
+                        throw Error("Pillow color must be int, or array of one or two elements", -1)
+                    buf := Buffer(2, 0)
+                    NumPut("UChar", color[1], buf, 0)
+                    NumPut("UChar", length = 2 ? color[2] : 0, buf, 1)
+                    return buf
+                }
+                if channels = 3 {
+                    if length != 1 && length != 3 && length != 4
+                        throw Error("Pillow color must be int, or array of one, three or four elements", -1)
+                    buf := Buffer(3, 0)
+                    NumPut("UChar", color[1], buf, 0)
+                    NumPut("UChar", length >= 3 ? color[2] : 0, buf, 1)
+                    NumPut("UChar", length >= 3 ? color[3] : 0, buf, 2)
+                    return buf
+                }
+                if channels = 4 {
+                    if length != 1 && length != 3 && length != 4
+                        throw Error("Pillow color must be int, or array of one, three or four elements", -1)
+                    buf := Buffer(4, 0)
+                    NumPut("UChar", color[1], buf, 0)
+                    NumPut("UChar", length >= 3 ? color[2] : 0, buf, 1)
+                    NumPut("UChar", length >= 3 ? color[3] : 0, buf, 2)
+                    NumPut("UChar", length = 4 ? color[4] : (length = 3 ? 255 : 0), buf, 3)
+                    return buf
+                }
+                throw Error("Pillow color is unsupported for this image mode", -1)
+            }
+
+            buf := Buffer(channels, 0)
+            NumPut("UChar", color, buf, 0)
+            return buf
+        }
+
         TransformFillBuffer(color) {
             channels := this.Channels
             if IsObject(color) {
@@ -2508,6 +2554,27 @@ class Pillow {
         Paste(source, box, mask := unset) {
             if box.Length < 2
                 throw Error("Pillow.Image.Paste expects box [left, top]", -1)
+
+            if !(IsObject(source) && source is Pillow.Image) {
+                if box.Length != 4
+                    throw Error("Pillow.Image.Paste cannot determine region size; use 4-item box", -1)
+                if IsSet(mask) && !(IsObject(mask) && mask is Pillow.Image)
+                    throw Error("Pillow.Image.Paste mask expects a Pillow.Image", -1)
+                color := this.PasteColorBuffer(source)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_paste_color",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", color,
+                    "UPtr", color.Size,
+                    "Int", box[1],
+                    "Int", box[2],
+                    "Int", box[3],
+                    "Int", box[4],
+                    "Ptr", IsSet(mask) ? mask.RequireHandle() : 0,
+                    "Int"
+                ))
+                return this
+            }
 
             if IsSet(mask) {
                 if !(IsObject(mask) && mask is Pillow.Image)

@@ -1886,6 +1886,27 @@ PillowCImagePasteMasked(targetHandle, sourceHandle, left, top, maskHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImagePasteColor(targetHandle, values, left, top, right, bottom, maskHandle := 0) {
+    color := PillowCBuffer(values)
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_paste_color",
+            "Ptr", targetHandle,
+            "Ptr", color,
+            "UPtr", color.Size,
+            "Int", left,
+            "Int", top,
+            "Int", right,
+            "Int", bottom,
+            "Ptr", maskHandle,
+            "Int"
+        )
+    } catch Error as err {
+        AhkTest.Fail("Expected pillow_c_image_paste_color export: " err.Message)
+    }
+    PillowCAssertStatus(status)
+}
+
 PillowCImageTranspose(sourceHandle, method) {
     outHandle := 0
     status := DllCall(
@@ -8535,6 +8556,63 @@ PillowCTestImagePasteMaskedConvertsSourceToTargetMode(*) {
 }
 
 AhkTest.Test("pillow_c image paste_masked converts source to target mode", PillowCTestImagePasteMaskedConvertsSourceToTargetMode)
+
+PillowCTestImagePasteColorFillsRectangleAndClipsLikePillow(*) {
+    target := PillowCCreateImageMode(4, 3, 3)
+    clippedTarget := PillowCCreateImageMode(4, 3, 3)
+    try {
+        base := [
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        ]
+        PillowCImageSetBytes(target, base)
+        PillowCImageSetBytes(clippedTarget, base)
+
+        PillowCImagePasteColor(target, [9, 8, 7], 1, 0, 3, 2)
+        PillowCImagePasteColor(clippedTarget, [9, 8, 7], -1, -1, 2, 1)
+
+        AhkTest.AssertEqual([
+            10, 10, 10, 9, 8, 7, 9, 8, 7, 10, 10, 10,
+            10, 10, 10, 9, 8, 7, 9, 8, 7, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        ], PillowCImageToArray(target, 36))
+        AhkTest.AssertEqual([
+            9, 8, 7, 9, 8, 7, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        ], PillowCImageToArray(clippedTarget, 36))
+    } finally {
+        PillowCFreeImage(clippedTarget)
+        PillowCFreeImage(target)
+    }
+}
+
+AhkTest.Test("pillow_c image paste_color fills rectangles and clips like Pillow", PillowCTestImagePasteColorFillsRectangleAndClipsLikePillow)
+
+PillowCTestImagePasteColorUsesMaskAlpha(*) {
+    target := PillowCCreateImageMode(3, 2, 3)
+    mask := PillowCCreateImageMode(2, 1, 1)
+    try {
+        PillowCImageSetBytes(target, [
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ])
+        PillowCImageSetBytes(mask, [0, 128])
+
+        PillowCImagePasteColor(target, [9, 8, 7], 1, 0, 3, 1, mask)
+
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 5, 4, 4,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(target, 18))
+    } finally {
+        PillowCFreeImage(mask)
+        PillowCFreeImage(target)
+    }
+}
+
+AhkTest.Test("pillow_c image paste_color blends through masks", PillowCTestImagePasteColorUsesMaskAlpha)
 
 PillowCTestImagePasteRejectsChannelMismatch(*) {
     target := PillowCCreateImage(2, 2, 3)

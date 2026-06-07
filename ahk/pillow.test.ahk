@@ -3299,6 +3299,48 @@ PillowTestImagePasteUsesMaskAndConvertsSourceMode(*) {
 
 AhkTest.Test("Pillow Image.Paste uses mask and converts source mode", PillowTestImagePasteUsesMaskAndConvertsSourceMode)
 
+PillowTestImagePasteAcceptsColorSources(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    target := Pillow.Image.FromBytes("RGB", [4, 3], PillowTestBuffer([
+        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+    ]))
+    mask := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([0, 128]))
+    try {
+        target.Paste([9, 8, 7], [1, 0, 3, 2])
+        target.Paste([1, 2, 3], [1, 2, 3, 3], mask)
+
+        AhkTest.AssertEqual([
+            10, 10, 10, 9, 8, 7, 9, 8, 7, 10, 10, 10,
+            10, 10, 10, 9, 8, 7, 9, 8, 7, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 5, 6, 6, 10, 10, 10,
+        ], PillowTestBufferToArray(target.ToBytes()))
+    } finally {
+        mask.Close()
+        target.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Paste accepts color sources through native path", PillowTestImagePasteAcceptsColorSources)
+
+PillowTestImagePasteColorRejectsTwoItemBox(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    target := Pillow.Image.New("RGB", [2, 2])
+    try {
+        try {
+            target.Paste([9, 8, 7], [0, 0])
+            AhkTest.Fail("Expected color Paste to reject two-item box")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "4-item box") > 0)
+        }
+    } finally {
+        target.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Paste color source requires a four-item box", PillowTestImagePasteColorRejectsTwoItemBox)
+
 PillowTestImageBlendStaticUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 100, 110, 120]))

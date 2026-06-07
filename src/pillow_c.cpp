@@ -1093,6 +1093,100 @@ int paste_image_masked_into(
     return PILLOW_C_OK;
 }
 
+int paste_color_into(
+    PillowCImage* target,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const PillowCImage* mask)
+{
+    if (!target || !color) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (color_size != static_cast<std::size_t>(target->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    const std::int64_t region_width_i64 = static_cast<std::int64_t>(right) - left;
+    const std::int64_t region_height_i64 = static_cast<std::int64_t>(bottom) - top;
+    if (region_width_i64 <= 0 || region_height_i64 <= 0) {
+        return PILLOW_C_OK;
+    }
+    if (region_width_i64 > INT_MAX || region_height_i64 > INT_MAX) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int region_width = static_cast<int>(region_width_i64);
+    const int region_height = static_cast<int>(region_height_i64);
+    if (mask) {
+        if (!supported_composite_mask(mask)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (mask->width != region_width || mask->height != region_height) {
+            return PILLOW_C_MISMATCH;
+        }
+    }
+
+    const std::int64_t dst_left_i64 = left < 0 ? 0 : left;
+    const std::int64_t dst_top_i64 = top < 0 ? 0 : top;
+    const std::int64_t dst_right_i64 = right > target->width ? target->width : right;
+    const std::int64_t dst_bottom_i64 = bottom > target->height ? target->height : bottom;
+
+    if (dst_right_i64 <= dst_left_i64 || dst_bottom_i64 <= dst_top_i64) {
+        return PILLOW_C_OK;
+    }
+
+    const int dst_left = static_cast<int>(dst_left_i64);
+    const int dst_top = static_cast<int>(dst_top_i64);
+    const int dst_right = static_cast<int>(dst_right_i64);
+    const int dst_bottom = static_cast<int>(dst_bottom_i64);
+    const int src_left = dst_left - left;
+    const int src_top = dst_top - top;
+    const int channels = target->channels;
+
+    for (int y = 0; y < dst_bottom - dst_top; ++y) {
+        const std::uint8_t* mask_row = mask
+            ? mask->pixels.data() +
+                static_cast<std::size_t>(src_top + y) * mask->stride +
+                static_cast<std::size_t>(src_left) * mask->channels
+            : nullptr;
+        std::uint8_t* dst_row =
+            target->pixels.data() +
+            static_cast<std::size_t>(dst_top + y) * target->stride +
+            static_cast<std::size_t>(dst_left) * target->channels;
+
+        for (int x = 0; x < dst_right - dst_left; ++x) {
+            const std::size_t pixel_offset = static_cast<std::size_t>(x) * channels;
+            if (!mask) {
+                std::memcpy(dst_row + pixel_offset, color, color_size);
+                continue;
+            }
+
+            const std::uint8_t alpha = mask_alpha_at(mask, mask_row, x);
+            if (alpha == 0) {
+                continue;
+            }
+            if (alpha == 255) {
+                std::memcpy(dst_row + pixel_offset, color, color_size);
+                continue;
+            }
+
+            for (int channel = 0; channel < channels; ++channel) {
+                const std::uint8_t dst = dst_row[pixel_offset + channel];
+                const std::uint8_t src = color[channel];
+                const std::uint32_t blended =
+                    static_cast<std::uint32_t>(dst) * (255u - alpha) +
+                    static_cast<std::uint32_t>(src) * alpha +
+                    128u;
+                dst_row[pixel_offset + channel] = static_cast<std::uint8_t>(shift_for_div255(blended));
+            }
+        }
+    }
+
+    return PILLOW_C_OK;
+}
+
 int normalize_coordinate(int value, int limit, int* out_value)
 {
     if (!out_value || limit <= 0) {
@@ -5586,6 +5680,19 @@ extern "C" __declspec(dllexport) int pillow_c_image_paste_masked(
     const PillowCImage* mask)
 {
     return paste_image_masked_into(target, source, left, top, mask);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_paste_color(
+    PillowCImage* target,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const PillowCImage* mask)
+{
+    return paste_color_into(target, color, color_size, left, top, right, bottom, mask);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_copy_into(
