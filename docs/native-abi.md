@@ -102,6 +102,7 @@ Image operations:
 - `pillow_c_image_expand`
 - `pillow_c_image_resize`
 - `pillow_c_image_transform_affine`
+- `pillow_c_image_transform_perspective`
 - `pillow_c_image_rotate`
 - `pillow_c_image_contain`
 - `pillow_c_image_cover`
@@ -148,6 +149,7 @@ Reusable target operations:
 - `pillow_c_image_expand_into`
 - `pillow_c_image_resize_into`
 - `pillow_c_image_transform_affine_into`
+- `pillow_c_image_transform_perspective_into`
 - `pillow_c_image_rotate_into`
 - `pillow_c_image_transpose_into`
 
@@ -156,6 +158,8 @@ Reusable target operations:
 `pillow_c_image_rotate` and `pillow_c_image_rotate_into` accept angle, resample, expand, optional center, optional translate, and optional fill color arguments. The current implementation supports `NEAREST`, `BILINEAR`, and `BICUBIC` rotate; unsupported resamplers return `-3`.
 
 `pillow_c_image_transform_affine` and `pillow_c_image_transform_affine_into` accept output width, output height, a pointer to six doubles `(a, b, c, d, e, f)`, resample, and optional fill color arguments. The matrix follows Pillow `Image.transform(..., Transform.AFFINE, matrix, ...)` destination-to-source coordinates. The current implementation supports `NEAREST`, `BILINEAR`, and `BICUBIC`; transform-only unsupported resamplers return `-3`.
+
+`pillow_c_image_transform_perspective` and `pillow_c_image_transform_perspective_into` accept output width, output height, a pointer to eight doubles `(a, b, c, d, e, f, g, h)`, resample, and optional fill color arguments. The coefficients follow Pillow `Image.transform(..., Transform.PERSPECTIVE, coefficients, ...)` destination-to-source coordinates. The current implementation supports `NEAREST`, `BILINEAR`, and `BICUBIC`; transform-only unsupported resamplers return `-3`.
 
 ## Resize Resampling IDs
 

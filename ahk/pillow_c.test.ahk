@@ -1163,6 +1163,13 @@ PillowCAffineMatrix(values) {
     return buf
 }
 
+PillowCPerspectiveCoefficients(values) {
+    buf := Buffer(8 * 8, 0)
+    for index, value in values
+        NumPut("Double", value, buf, (index - 1) * 8)
+    return buf
+}
+
 PillowCImageTransformAffine(sourceHandle, width, height, matrixValues, resample := 0, fillValues := 0) {
     matrix := PillowCAffineMatrix(matrixValues)
     fill := IsObject(fillValues) ? PillowCBuffer(fillValues) : 0
@@ -1184,6 +1191,27 @@ PillowCImageTransformAffine(sourceHandle, width, height, matrixValues, resample 
     return outHandle
 }
 
+PillowCImageTransformPerspective(sourceHandle, width, height, coefficientValues, resample := 0, fillValues := 0) {
+    coefficients := PillowCPerspectiveCoefficients(coefficientValues)
+    fill := IsObject(fillValues) ? PillowCBuffer(fillValues) : 0
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_transform_perspective",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Ptr", coefficients,
+        "Int", resample,
+        "Ptr", IsObject(fill) ? fill.Ptr : 0,
+        "UPtr", IsObject(fill) ? fill.Size : 0,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageTransformAffineInto(sourceHandle, width, height, matrixValues, targetHandle, resample := 0, fillValues := 0) {
     matrix := PillowCAffineMatrix(matrixValues)
     fill := IsObject(fillValues) ? PillowCBuffer(fillValues) : 0
@@ -1193,6 +1221,24 @@ PillowCImageTransformAffineInto(sourceHandle, width, height, matrixValues, targe
         "Int", width,
         "Int", height,
         "Ptr", matrix,
+        "Int", resample,
+        "Ptr", IsObject(fill) ? fill.Ptr : 0,
+        "UPtr", IsObject(fill) ? fill.Size : 0,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageTransformPerspectiveInto(sourceHandle, width, height, coefficientValues, targetHandle, resample := 0, fillValues := 0) {
+    coefficients := PillowCPerspectiveCoefficients(coefficientValues)
+    fill := IsObject(fillValues) ? PillowCBuffer(fillValues) : 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_transform_perspective_into",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Ptr", coefficients,
         "Int", resample,
         "Ptr", IsObject(fill) ? fill.Ptr : 0,
         "UPtr", IsObject(fill) ? fill.Size : 0,
@@ -5283,6 +5329,98 @@ PillowCTestImageTransformAffineRejectsUnsupportedResampleAndTargetShape(*) {
 }
 
 AhkTest.Test("pillow_c image transform AFFINE rejects unsupported resample and target shape", PillowCTestImageTransformAffineRejectsUnsupportedResampleAndTargetShape)
+
+PillowCTestImageTransformPerspectiveMatchesPillow(*) {
+    l := PillowCCreateImageMode(4, 3, 1)
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    nearest := 0
+    bilinear := 0
+    bicubic := 0
+    target := PillowCCreateImageMode(3, 2, 1)
+    try {
+        PillowCImageSetBytes(l, [
+            1, 2, 3, 4,
+            5, 6, 7, 8,
+            9, 10, 11, 12,
+        ])
+        PillowCImageSetBytes(rgb, [
+            1, 2, 3,
+            10, 20, 30,
+            40, 50, 60,
+            70, 80, 90,
+            100, 110, 120,
+            130, 140, 150,
+        ])
+        PillowCImageSetBytes(target, [99, 99, 99, 99, 99, 99])
+
+        nearest := PillowCImageTransformPerspective(l, 3, 2, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.1, 0.05], 0, [9])
+        bilinear := PillowCImageTransformPerspective(l, 3, 2, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.1, 0.05], 2, [9])
+        bicubic := PillowCImageTransformPerspective(rgb, 4, 3, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.1, 0.05], 3, [9, 0, 0])
+        PillowCImageTransformPerspectiveInto(l, 3, 2, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.1, 0.05], target, 2, [9])
+
+        AhkTest.AssertEqual([1, 2, 2, 5, 6, 6], PillowCImageToArray(nearest, 6))
+        AhkTest.AssertEqual([1, 1, 2, 4, 4, 4], PillowCImageToArray(bilinear, 6))
+        AhkTest.AssertEqual([1, 1, 2, 4, 4, 4], PillowCImageToArray(target, 6))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 6, 14, 17, 28, 39, 32, 42, 52,
+            57, 65, 74, 64, 73, 82, 81, 92, 102, 88, 98, 108,
+            9, 0, 0, 97, 107, 117, 127, 137, 147, 138, 148, 157,
+        ], PillowCImageToArray(bicubic, 36))
+    } finally {
+        for handle in [target, bicubic, bilinear, nearest, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image transform PERSPECTIVE matches Pillow", PillowCTestImageTransformPerspectiveMatchesPillow)
+
+PillowCTestImageTransformPerspectiveRejectsUnsupportedResampleAndTargetShape(*) {
+    source := PillowCCreateImageMode(3, 2, 1)
+    wrongTarget := PillowCCreateImageMode(2, 2, 1)
+    coefficients := PillowCPerspectiveCoefficients([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
+    fill := PillowCBuffer([0])
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4, 5, 6])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_transform_perspective",
+            "Ptr", source,
+            "Int", 3,
+            "Int", 2,
+            "Ptr", coefficients,
+            "Int", 4,
+            "Ptr", fill,
+            "UPtr", fill.Size,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_transform_perspective_into",
+            "Ptr", source,
+            "Int", 3,
+            "Int", 2,
+            "Ptr", coefficients,
+            "Int", 0,
+            "Ptr", fill,
+            "UPtr", fill.Size,
+            "Ptr", wrongTarget,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(wrongTarget)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image transform PERSPECTIVE rejects unsupported resample and target shape", PillowCTestImageTransformPerspectiveRejectsUnsupportedResampleAndTargetShape)
 
 PillowCTestImageRotateNearestMatchesPillowGeometry(*) {
     l := PillowCCreateImageMode(3, 2, 1)

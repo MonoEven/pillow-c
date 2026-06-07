@@ -1360,7 +1360,9 @@ class Pillow {
                 return this.TransformAffine(size, data, IsSet(resample) ? resample : unset, IsSet(fillcolor) ? fillcolor : unset)
             if method == Pillow.Transform.EXTENT
                 return this.TransformExtent(size, data, IsSet(resample) ? resample : unset, IsSet(fillcolor) ? fillcolor : unset)
-            throw Error("Pillow.Image.Transform currently supports Pillow.Transform.AFFINE and EXTENT only", -1)
+            if method == Pillow.Transform.PERSPECTIVE
+                return this.TransformPerspective(size, data, IsSet(resample) ? resample : unset, IsSet(fillcolor) ? fillcolor : unset)
+            throw Error("Pillow.Image.Transform currently supports Pillow.Transform.AFFINE, EXTENT, and PERSPECTIVE only", -1)
         }
 
         TransformExtent(size, extent, resample := unset, fillcolor := unset) {
@@ -1380,6 +1382,38 @@ class Pillow {
                 0.0, (extent[4] - extent[2]) / size[2], extent[2],
             ]
             return this.TransformAffine(size, matrix, resample, IsSet(fillcolor) ? fillcolor : unset)
+        }
+
+        TransformPerspective(size, coefficients, resample := unset, fillcolor := unset) {
+            if size.Length != 2
+                throw Error("Pillow.Image.Transform PERSPECTIVE expects size [width, height]", -1)
+            if coefficients.Length < 8
+                throw Error("Pillow.Image.Transform PERSPECTIVE expects at least 8 coefficients", -1)
+            if !IsSet(resample)
+                resample := Pillow.Resampling.NEAREST
+            coefficientBuffer := Buffer(8 * 8, 0)
+            loop 8 {
+                value := coefficients[A_Index]
+                if !(value is Number)
+                    throw Error("Pillow.Image.Transform PERSPECTIVE coefficients must be numeric", -1)
+                NumPut("Double", value, coefficientBuffer, (A_Index - 1) * 8)
+            }
+            fill := IsSet(fillcolor) ? this.TransformFillBuffer(fillcolor) : 0
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_transform_perspective",
+                "Ptr", this.RequireHandle(),
+                "Int", size[1],
+                "Int", size[2],
+                "Ptr", coefficientBuffer,
+                "Int", resample,
+                "Ptr", IsObject(fill) ? fill.Ptr : 0,
+                "UPtr", IsObject(fill) ? fill.Size : 0,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
         }
 
         TransformAffine(size, matrix, resample := unset, fillcolor := unset) {
