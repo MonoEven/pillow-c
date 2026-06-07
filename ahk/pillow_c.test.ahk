@@ -308,6 +308,69 @@ PillowCImageGetProjection(handle, width, height) {
     return [PillowCProjectionArray(xProjection), PillowCProjectionArray(yProjection)]
 }
 
+PillowCImageGetColors(handle, maxcolors, channels) {
+    count := 0
+    exceeded := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_getcolors",
+        "Ptr", handle,
+        "Int", maxcolors,
+        "Ptr", 0,
+        "Ptr", 0,
+        "UPtr", 0,
+        "UPtr*", &count,
+        "Int*", &exceeded,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    if exceeded
+        return 0
+
+    counts := Buffer(count * 8, 0)
+    colors := Buffer(count * channels, 0)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_getcolors",
+        "Ptr", handle,
+        "Int", maxcolors,
+        "Ptr", counts,
+        "Ptr", colors,
+        "UPtr", count,
+        "UPtr*", &count,
+        "Int*", &exceeded,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    if exceeded
+        return 0
+
+    out := []
+    loop count {
+        itemIndex := A_Index - 1
+        color := []
+        loop channels
+            color.Push(NumGet(colors, itemIndex * channels + A_Index - 1, "UChar"))
+        out.Push([NumGet(counts, itemIndex * 8, "Int64"), color])
+    }
+    return out
+}
+
+PillowCFindColor(colors, expectedColor) {
+    for entry in colors {
+        if entry[2].Length != expectedColor.Length
+            continue
+        matched := true
+        for index, value in expectedColor {
+            if entry[2][index] != value {
+                matched := false
+                break
+            }
+        }
+        if matched
+            return entry
+    }
+    return 0
+}
+
 PillowCImageSize(handle) {
     value := 0
     status := DllCall(PillowCDllPath() "\pillow_c_image_size", "Ptr", handle, "UPtr*", &value, "Int")
@@ -3442,6 +3505,59 @@ PillowCTestImageGetProjectionMatchesPillowModes(*) {
 }
 
 AhkTest.Test("pillow_c image getprojection matches Pillow modes", PillowCTestImageGetProjectionMatchesPillowModes)
+
+PillowCTestImageGetColorsMatchesPillowModes(*) {
+    l := PillowCCreateImageMode(5, 1, 1)
+    rgb := PillowCCreateImageMode(4, 1, 3)
+    rgba := PillowCCreateImageMode(4, 1, 4)
+    empty := PillowCCreateImageMode(1, 1, 1)
+    emptyCrop := 0
+    try {
+        PillowCImageSetBytes(l, [0, 7, 7, 255, 0])
+        PillowCImageSetBytes(rgb, [
+            1, 2, 3,
+            1, 2, 3,
+            4, 5, 6,
+            0, 0, 0,
+        ])
+        PillowCImageSetBytes(rgba, [
+            1, 2, 3, 4,
+            1, 2, 3, 4,
+            1, 2, 3, 0,
+            0, 0, 0, 0,
+        ])
+        emptyCrop := PillowCImageCrop(empty, 0, 0, 0, 1)
+
+        lColors := PillowCImageGetColors(l, 256, 1)
+        rgbColors := PillowCImageGetColors(rgb, 256, 3)
+        rgbaColors := PillowCImageGetColors(rgba, 256, 4)
+
+        AhkTest.AssertEqual(3, lColors.Length)
+        AhkTest.AssertEqual([2, [0]], PillowCFindColor(lColors, [0]))
+        AhkTest.AssertEqual([2, [7]], PillowCFindColor(lColors, [7]))
+        AhkTest.AssertEqual([1, [255]], PillowCFindColor(lColors, [255]))
+        AhkTest.AssertEqual(3, rgbColors.Length)
+        AhkTest.AssertEqual([2, [1, 2, 3]], PillowCFindColor(rgbColors, [1, 2, 3]))
+        AhkTest.AssertEqual([1, [4, 5, 6]], PillowCFindColor(rgbColors, [4, 5, 6]))
+        AhkTest.AssertEqual([1, [0, 0, 0]], PillowCFindColor(rgbColors, [0, 0, 0]))
+        AhkTest.AssertEqual(3, rgbaColors.Length)
+        AhkTest.AssertEqual([2, [1, 2, 3, 4]], PillowCFindColor(rgbaColors, [1, 2, 3, 4]))
+        AhkTest.AssertEqual([1, [1, 2, 3, 0]], PillowCFindColor(rgbaColors, [1, 2, 3, 0]))
+        AhkTest.AssertEqual([1, [0, 0, 0, 0]], PillowCFindColor(rgbaColors, [0, 0, 0, 0]))
+        AhkTest.AssertEqual(0, PillowCImageGetColors(rgb, 2, 3))
+        AhkTest.AssertEqual([], PillowCImageGetColors(emptyCrop, 0, 1))
+        AhkTest.AssertEqual(0, PillowCImageGetColors(emptyCrop, -1, 1))
+    } finally {
+        if emptyCrop
+            PillowCFreeImage(emptyCrop)
+        PillowCFreeImage(empty)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image getcolors matches Pillow modes and maxcolors", PillowCTestImageGetColorsMatchesPillowModes)
 
 PillowCTestImageAutocontrastMatchesPillowLAndRgb(*) {
     l := PillowCCreateImageMode(4, 1, 1)

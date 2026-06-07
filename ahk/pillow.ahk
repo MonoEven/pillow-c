@@ -1047,6 +1047,59 @@ class Pillow {
             return values
         }
 
+        GetColors(maxcolors := 256) {
+            count := 0
+            exceeded := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_getcolors",
+                "Ptr", this.RequireHandle(),
+                "Int", maxcolors,
+                "Ptr", 0,
+                "Ptr", 0,
+                "UPtr", 0,
+                "UPtr*", &count,
+                "Int*", &exceeded,
+                "Int"
+            ))
+            if exceeded
+                return 0
+
+            counts := Buffer(count * 8, 0)
+            colors := Buffer(count * this.Channels, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_getcolors",
+                "Ptr", this.RequireHandle(),
+                "Int", maxcolors,
+                "Ptr", counts,
+                "Ptr", colors,
+                "UPtr", count,
+                "UPtr*", &count,
+                "Int*", &exceeded,
+                "Int"
+            ))
+            if exceeded
+                return 0
+            return this.ColorCountsToArray(counts, colors, count)
+        }
+
+        ColorCountsToArray(counts, colors, count) {
+            out := []
+            channels := this.Channels
+            loop count {
+                itemIndex := A_Index - 1
+                pixel := 0
+                if channels = 1 {
+                    pixel := NumGet(colors, itemIndex, "UChar")
+                } else {
+                    pixel := []
+                    loop channels
+                        pixel.Push(NumGet(colors, itemIndex * channels + A_Index - 1, "UChar"))
+                }
+                out.Push([NumGet(counts, itemIndex * 8, "Int64"), pixel])
+            }
+            return out
+        }
+
         Split() {
             bandCount := this.Channels
             outHandles := Buffer(bandCount * A_PtrSize, 0)

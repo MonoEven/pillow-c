@@ -52,6 +52,11 @@ struct ResampleFilterSpec {
     double (*filter)(double);
 };
 
+struct ColorCountEntry {
+    std::uint64_t count;
+    std::uint8_t color[4];
+};
+
 inline std::uint32_t shift_for_div255(std::uint32_t value)
 {
     return (((value >> 8) + value) >> 8);
@@ -1322,6 +1327,90 @@ int getprojection_image(
                 out_y_projection[y] = 1;
             }
         }
+    }
+    return PILLOW_C_OK;
+}
+
+int find_color_entry(const std::vector<ColorCountEntry>& entries, const std::uint8_t* color, int channels)
+{
+    for (std::size_t index = 0; index < entries.size(); ++index) {
+        if (std::memcmp(entries[index].color, color, static_cast<std::size_t>(channels)) == 0) {
+            return static_cast<int>(index);
+        }
+    }
+    return -1;
+}
+
+int getcolors_image(
+    const PillowCImage* source,
+    int maxcolors,
+    std::uint64_t* out_counts,
+    std::uint8_t* out_colors,
+    std::size_t out_capacity,
+    std::size_t* out_count,
+    int* out_exceeded)
+{
+    if (!source || !out_count || !out_exceeded) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    *out_count = 0;
+    *out_exceeded = 0;
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    if (pixels == 0) {
+        if (maxcolors < 0) {
+            *out_exceeded = 1;
+        }
+        return PILLOW_C_OK;
+    }
+    if (maxcolors < 1) {
+        *out_exceeded = 1;
+        return PILLOW_C_OK;
+    }
+
+    std::vector<ColorCountEntry> entries;
+    const auto max_unique = static_cast<std::size_t>(maxcolors);
+    const std::uint8_t* data = source->pixels.data();
+    for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
+        const std::uint8_t* color = data + pixel * source->channels;
+        const int existing = find_color_entry(entries, color, source->channels);
+        if (existing >= 0) {
+            ++entries[static_cast<std::size_t>(existing)].count;
+            continue;
+        }
+
+        if (entries.size() >= max_unique) {
+            *out_exceeded = 1;
+            return PILLOW_C_OK;
+        }
+
+        ColorCountEntry entry{};
+        entry.count = 1;
+        std::memcpy(entry.color, color, static_cast<std::size_t>(source->channels));
+        try {
+            entries.push_back(entry);
+        } catch (const std::bad_alloc&) {
+            return PILLOW_C_ALLOCATION_FAILED;
+        }
+    }
+
+    *out_count = entries.size();
+    if (!out_counts && !out_colors && out_capacity == 0) {
+        return PILLOW_C_OK;
+    }
+    if (!out_counts || !out_colors) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_capacity < entries.size()) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    for (std::size_t index = 0; index < entries.size(); ++index) {
+        out_counts[index] = entries[index].count;
+        std::memcpy(
+            out_colors + index * static_cast<std::size_t>(source->channels),
+            entries[index].color,
+            static_cast<std::size_t>(source->channels));
     }
     return PILLOW_C_OK;
 }
@@ -3504,6 +3593,18 @@ extern "C" __declspec(dllexport) int pillow_c_image_getprojection(
     std::size_t out_y_count)
 {
     return getprojection_image(image, out_x_projection, out_x_count, out_y_projection, out_y_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_getcolors(
+    const PillowCImage* image,
+    int maxcolors,
+    std::uint64_t* out_counts,
+    std::uint8_t* out_colors,
+    std::size_t out_capacity,
+    std::size_t* out_count,
+    int* out_exceeded)
+{
+    return getcolors_image(image, maxcolors, out_counts, out_colors, out_capacity, out_count, out_exceeded);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_copy(

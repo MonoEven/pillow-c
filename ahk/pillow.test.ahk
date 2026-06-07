@@ -862,6 +862,66 @@ PillowTestImageGetProjectionUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.GetProjection returns Pillow-style axis projections through native handles", PillowTestImageGetProjectionUsesNativeOperation)
 
+PillowTestFindColor(colors, expectedColor) {
+    for entry in colors {
+        color := entry[2]
+        if IsObject(expectedColor) {
+            if !IsObject(color) || color.Length != expectedColor.Length
+                continue
+            matched := true
+            for index, value in expectedColor {
+                if color[index] != value {
+                    matched := false
+                    break
+                }
+            }
+            if matched
+                return entry
+        } else if !IsObject(color) && color = expectedColor {
+            return entry
+        }
+    }
+    return 0
+}
+
+PillowTestImageGetColorsUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 7, 7, 255, 0]))
+    rgb := Pillow.Image.FromBytes("RGB", [4, 1], PillowTestBuffer([
+        1, 2, 3,
+        1, 2, 3,
+        4, 5, 6,
+        0, 0, 0,
+    ]))
+    empty := Pillow.Image.New("L", [1, 1])
+    emptyCrop := 0
+    try {
+        emptyCrop := empty.Crop([0, 0, 0, 1])
+        lColors := l.GetColors()
+        rgbColors := rgb.GetColors()
+
+        AhkTest.AssertEqual(3, lColors.Length)
+        AhkTest.AssertEqual([2, 0], PillowTestFindColor(lColors, 0))
+        AhkTest.AssertEqual([2, 7], PillowTestFindColor(lColors, 7))
+        AhkTest.AssertEqual([1, 255], PillowTestFindColor(lColors, 255))
+        AhkTest.AssertEqual(3, rgbColors.Length)
+        AhkTest.AssertEqual([2, [1, 2, 3]], PillowTestFindColor(rgbColors, [1, 2, 3]))
+        AhkTest.AssertEqual([1, [4, 5, 6]], PillowTestFindColor(rgbColors, [4, 5, 6]))
+        AhkTest.AssertEqual([1, [0, 0, 0]], PillowTestFindColor(rgbColors, [0, 0, 0]))
+        AhkTest.AssertEqual(0, rgb.GetColors(2))
+        AhkTest.AssertEqual([], emptyCrop.GetColors(0))
+        AhkTest.AssertEqual(0, emptyCrop.GetColors(-1))
+    } finally {
+        if IsObject(emptyCrop)
+            emptyCrop.Close()
+        empty.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetColors returns Pillow-style color counts through native handles", PillowTestImageGetColorsUsesNativeOperation)
+
 PillowTestImageOpsGrayscaleConvertsCoreModes(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 200, 100, 50]))

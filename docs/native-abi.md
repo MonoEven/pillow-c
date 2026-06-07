@@ -59,6 +59,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_get_extrema`
 - `pillow_c_image_getbbox`
 - `pillow_c_image_getprojection`
+- `pillow_c_image_getcolors`
 
 Image operations:
 
