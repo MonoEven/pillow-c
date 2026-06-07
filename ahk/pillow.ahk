@@ -1899,7 +1899,7 @@ class Pillow {
                     if value.Length != 1
                         throw Error("Pillow.Image.PutPixel color must be int or single-element array", -1)
                     buf := Buffer(1, 0)
-                    NumPut("UChar", value[1], buf, 0)
+                    NumPut("UChar", this.Mode = "1" ? Pillow.Image.ModeOnePixelValue(value[1]) : value[1], buf, 0)
                     return buf
                 }
                 if value.Length != this.Channels
@@ -1911,8 +1911,12 @@ class Pillow {
             }
 
             buf := Buffer(1, 0)
-            NumPut("UChar", value, buf, 0)
+            NumPut("UChar", this.Mode = "1" ? Pillow.Image.ModeOnePixelValue(value) : value, buf, 0)
             return buf
+        }
+
+        static ModeOnePixelValue(value) {
+            return value <= 0 ? 0 : value > 255 ? 255 : value
         }
 
         ColorBuffer(color) {

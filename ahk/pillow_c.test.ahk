@@ -4060,24 +4060,31 @@ PillowCTestImageGetAndPutPixelMatchPillowCoreModes(*) {
     l := PillowCCreateImageMode(2, 2, 1)
     rgb := PillowCCreateImageMode(2, 1, 3)
     rgba := PillowCCreateImageMode(1, 2, 4)
+    one := PillowCCreateImageMode(4, 1, 5)
     try {
         PillowCImageSetBytes(l, [1, 2, 3, 4])
         PillowCImageSetBytes(rgb, [1, 2, 3, 4, 5, 6])
         PillowCImageSetBytes(rgba, [1, 2, 3, 4, 5, 6, 7, 8])
+        PillowCImageSetRawBytes(one, [0x50], "1")
 
         AhkTest.AssertEqual([1], PillowCImageGetPixel(l, 0, 0, 1))
         AhkTest.AssertEqual([2], PillowCImageGetPixel(l, -1, 0, 1))
         AhkTest.AssertEqual([4, 5, 6], PillowCImageGetPixel(rgb, 1, 0, 3))
         AhkTest.AssertEqual([1, 2, 3, 4], PillowCImageGetPixel(rgba, -1, 0, 4))
+        AhkTest.AssertEqual([0], PillowCImageGetPixel(one, 0, 0, 1))
+        AhkTest.AssertEqual([255], PillowCImageGetPixel(one, 1, 0, 1))
 
         PillowCImagePutPixel(l, 0, 0, [9])
         PillowCImagePutPixel(rgb, 0, 0, [9, 0, 0])
         PillowCImagePutPixel(rgba, 0, 0, [9, 9, 9, 9])
+        PillowCImagePutPixel(one, 2, 0, [1])
 
         AhkTest.AssertEqual([9, 2, 3, 4], PillowCImageToArray(l, 4))
         AhkTest.AssertEqual([9, 0, 0, 4, 5, 6], PillowCImageToArray(rgb, 6))
         AhkTest.AssertEqual([9, 9, 9, 9, 5, 6, 7, 8], PillowCImageToArray(rgba, 8))
+        AhkTest.AssertEqual([0, 255, 1, 255], PillowCImageToArray(one, 4))
     } finally {
+        PillowCFreeImage(one)
         PillowCFreeImage(rgba)
         PillowCFreeImage(rgb)
         PillowCFreeImage(l)

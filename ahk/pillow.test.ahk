@@ -259,20 +259,27 @@ PillowTestImageGetAndPutPixelUseNativeOperation(*) {
     l := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([1, 2, 3, 4]))
     rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
     rgba := Pillow.Image.FromBytes("RGBA", [1, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8]))
+    one := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x50]))
     try {
         AhkTest.AssertEqual(1, l.GetPixel([0, 0]))
         AhkTest.AssertEqual(2, l.GetPixel([-1, 0]))
         AhkTest.AssertEqual([4, 5, 6], rgb.GetPixel([1, 0]))
         AhkTest.AssertEqual([1, 2, 3, 4], rgba.GetPixel([-1, 0]))
+        AhkTest.AssertEqual(0, one.GetPixel([0, 0]))
+        AhkTest.AssertEqual(255, one.GetPixel([1, 0]))
 
         l.PutPixel([0, 0], 9)
         rgb.PutPixel([0, 0], 9)
         rgba.PutPixel([0, 0], [9, 9, 9, 9])
+        one.PutPixel([2, 0], 256)
 
         AhkTest.AssertEqual([9, 2, 3, 4], PillowTestBufferToArray(l.ToBytes()))
         AhkTest.AssertEqual([9, 0, 0, 4, 5, 6], PillowTestBufferToArray(rgb.ToBytes()))
         AhkTest.AssertEqual([9, 9, 9, 9, 5, 6, 7, 8], PillowTestBufferToArray(rgba.ToBytes()))
+        AhkTest.AssertEqual(255, one.GetPixel([2, 0]))
+        AhkTest.AssertEqual([0x70], PillowTestBufferToArray(one.ToBytes()))
     } finally {
+        one.Close()
         rgba.Close()
         rgb.Close()
         l.Close()
