@@ -303,6 +303,40 @@ PillowTestImageTransformAffineUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.TransformAffine uses native affine path", PillowTestImageTransformAffineUsesNativePath)
 
+PillowTestImageTransformAffinePythonLikeEntryPoint(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    out := 0
+    try {
+        out := source.Transform([3, 2], Pillow.Transform.AFFINE, [1.0, 0.0, -1.0, 0.0, 1.0, 0.0], Pillow.Resampling.NEAREST, 8)
+        AhkTest.AssertEqual([8, 1, 2, 8, 4, 5], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        for image in [out, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Transform AFFINE uses Python-like entry point", PillowTestImageTransformAffinePythonLikeEntryPoint)
+
+PillowTestImageTransformRejectsUnsupportedMethods(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    try {
+        try {
+            source.Transform([3, 2], Pillow.Transform.EXTENT, [0, 0, 3, 2], Pillow.Resampling.NEAREST)
+            AhkTest.Fail("Expected unsupported transform method to throw")
+        } catch as err {
+            AhkTest.AssertTrue(InStr(err.Message, "AFFINE only") > 0)
+        }
+    } finally {
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Transform rejects unsupported methods until native coverage exists", PillowTestImageTransformRejectsUnsupportedMethods)
+
 PillowTestImageRotateNearestUsesNativeAffinePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))

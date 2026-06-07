@@ -13,6 +13,14 @@ class Pillow {
         static TRANSVERSE := 6
     }
 
+    class Transform {
+        static AFFINE := 0
+        static EXTENT := 1
+        static PERSPECTIVE := 2
+        static QUAD := 3
+        static MESH := 4
+    }
+
     class Resampling {
         static NEAREST := 0
         static BOX := 4
@@ -1345,6 +1353,12 @@ class Pillow {
                 "Int"
             ))
             return Pillow.WrapImageHandle(outHandle)
+        }
+
+        Transform(size, method, data, resample := unset, fillcolor := unset) {
+            if method == Pillow.Transform.AFFINE
+                return this.TransformAffine(size, data, IsSet(resample) ? resample : unset, IsSet(fillcolor) ? fillcolor : unset)
+            throw Error("Pillow.Image.Transform currently supports Pillow.Transform.AFFINE only", -1)
         }
 
         TransformAffine(size, matrix, resample := unset, fillcolor := unset) {
