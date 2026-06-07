@@ -99,13 +99,13 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 
 AHK owns ergonomics and lifetime. The DLL owns image bytes and transformations.
 
-Core `L`, `RGB`, and `RGBA` conversions, histogram/extrema/bounding-box/projection/color-count scans, fixed-LUT and histogram-derived `ImageOps` transforms for supported `L`/`RGB` modes, `ImageOps.colorize` L-to-RGB mapping, `Image.eval`/`Image.point` LUT mapping, `ImageOps.crop`/`ImageOps.expand`, scaled, proportional, fitted, and padded `ImageOps` resize helpers, current `ImageChops` helpers and binary operations, mask compositing, masked and preserve-tone autocontrast histograms, L-band split, L-band merge, NEAREST/BILINEAR affine rotate, and all current Pillow resize filters are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
+Core `L`, `RGB`, and `RGBA` conversions, histogram/extrema/bounding-box/projection/color-count scans, fixed-LUT and histogram-derived `ImageOps` transforms for supported `L`/`RGB` modes, `ImageOps.colorize` L-to-RGB mapping, `Image.eval`/`Image.point` LUT mapping, `ImageOps.crop`/`ImageOps.expand`, scaled, proportional, fitted, and padded `ImageOps` resize helpers, current `ImageChops` helpers and binary operations, mask compositing, masked and preserve-tone autocontrast histograms, L-band split, L-band merge, NEAREST/BILINEAR/BICUBIC affine rotate, and all current Pillow resize filters are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
 
 `ImageOps.autocontrast` currently implements the common histogram/LUT path with `cutoff`, `ignore`, L-mode masks, and Pillow's `preserve_tone` mode for supported `L`/`RGB` images.
 
 Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes. `NEAREST` uses Pillow's affine-scale coordinate progression. `BOX`, `BILINEAR`, `HAMMING`, `BICUBIC`, and `LANCZOS` use separable two-pass filtering with Pillow-style fixed-point coefficient normalization. Non-NEAREST `RGBA` resize uses premultiplied color internally and preserves identity resizes as byte copies.
 
-`Image.rotate` currently supports Pillow-style geometry, expansion, center, translate, and fill color for `NEAREST` and `BILINEAR`. Additional rotate resamplers should build on the same affine ABI instead of adding wrapper loops.
+`Image.rotate` currently supports Pillow-style geometry, expansion, center, translate, and fill color for `NEAREST`, `BILINEAR`, and `BICUBIC`. Additional rotate resamplers should build on the same affine ABI instead of adding wrapper loops.
 
 ## Performance Direction
 

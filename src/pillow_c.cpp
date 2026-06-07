@@ -95,6 +95,17 @@ inline std::uint8_t clip_u8_int(int value)
     return static_cast<std::uint8_t>(value);
 }
 
+inline std::uint8_t clip_u8_double(double value)
+{
+    if (value <= 0.0) {
+        return 0;
+    }
+    if (value >= 255.0) {
+        return 255;
+    }
+    return static_cast<std::uint8_t>(value);
+}
+
 inline std::uint8_t clip_chops_scaled_u8(double value)
 {
     if (!(value > 0.0)) {
@@ -2094,6 +2105,23 @@ int clamp_index(int value, int upper_exclusive)
     return value;
 }
 
+std::uint8_t transform_sample_channel(
+    const PillowCImage* source,
+    int x,
+    int y,
+    int channel,
+    bool premultiply_alpha)
+{
+    const std::uint8_t* px =
+        source->pixels.data() +
+        static_cast<std::size_t>(y) * source->stride +
+        static_cast<std::size_t>(x) * source->channels;
+    if (premultiply_alpha && source->mode == PILLOW_C_MODE_RGBA && channel < 3) {
+        return mul_div_255(px[channel], px[3]);
+    }
+    return px[channel];
+}
+
 std::uint8_t bilinear_transform_channel(
     const PillowCImage* source,
     double source_x,
@@ -2117,11 +2145,11 @@ std::uint8_t bilinear_transform_channel(
     const std::size_t offset0 = static_cast<std::size_t>(x0) * source->channels + channel;
     const std::size_t offset1 = static_cast<std::size_t>(x1) * source->channels + channel;
     const auto sample = [source, channel, premultiply_alpha](const std::uint8_t* row, std::size_t offset) -> std::uint8_t {
+        const std::uint8_t* px = row + offset - static_cast<std::size_t>(channel);
         if (premultiply_alpha && source->mode == PILLOW_C_MODE_RGBA && channel < 3) {
-            const std::uint8_t alpha = row[offset - static_cast<std::size_t>(channel) + 3u];
-            return mul_div_255(row[offset], alpha);
+            return mul_div_255(px[channel], px[3]);
         }
-        return row[offset];
+        return px[channel];
     };
     const double top_left = sample(row0, offset0);
     const double top_right = sample(row0, offset1);
@@ -2131,6 +2159,72 @@ std::uint8_t bilinear_transform_channel(
     const double v2 = bottom_left + (bottom_right - bottom_left) * dx;
     const double value = v1 + (v2 - v1) * dy;
     return static_cast<std::uint8_t>(value);
+}
+
+double bicubic_interpolate(double v1, double v2, double v3, double v4, double d)
+{
+    const double p1 = v2;
+    const double p2 = -v1 + v3;
+    const double p3 = 2.0 * (v1 - v2) + v3 - v4;
+    const double p4 = -v1 + v2 - v3 + v4;
+    return p1 + d * (p2 + d * (p3 + d * p4));
+}
+
+std::uint8_t bicubic_transform_channel(
+    const PillowCImage* source,
+    double source_x,
+    double source_y,
+    int channel,
+    bool premultiply_alpha)
+{
+    source_x -= 0.5;
+    source_y -= 0.5;
+    int x = static_cast<int>(std::floor(source_x));
+    int y = static_cast<int>(std::floor(source_y));
+    const double dx = source_x - x;
+    const double dy = source_y - y;
+    --x;
+    --y;
+
+    const int x0 = clamp_index(x, source->width);
+    const int x1 = clamp_index(x + 1, source->width);
+    const int x2 = clamp_index(x + 2, source->width);
+    const int x3 = clamp_index(x + 3, source->width);
+    const auto horizontal_value = [source, channel, premultiply_alpha, x0, x1, x2, x3, dx](int row_y) -> double {
+        return bicubic_interpolate(
+            transform_sample_channel(source, x0, row_y, channel, premultiply_alpha),
+            transform_sample_channel(source, x1, row_y, channel, premultiply_alpha),
+            transform_sample_channel(source, x2, row_y, channel, premultiply_alpha),
+            transform_sample_channel(source, x3, row_y, channel, premultiply_alpha),
+            dx);
+    };
+    const double v1 = horizontal_value(clamp_index(y, source->height));
+    const double v2 = y + 1 >= 0 && y + 1 < source->height ? horizontal_value(y + 1) : v1;
+    const double v3 = y + 2 >= 0 && y + 2 < source->height ? horizontal_value(y + 2) : v2;
+    const double v4 = y + 3 >= 0 && y + 3 < source->height ? horizontal_value(y + 3) : v3;
+
+    return clip_u8_double(bicubic_interpolate(v1, v2, v3, v4, dy));
+}
+
+void write_transform_values(const PillowCImage* source, const std::uint8_t* values, std::uint8_t* dst)
+{
+    if (source->mode == PILLOW_C_MODE_RGBA) {
+        const std::uint8_t alpha = values[3];
+        if (alpha == 0 || alpha == 255) {
+            dst[0] = values[0];
+            dst[1] = values[1];
+            dst[2] = values[2];
+        } else {
+            dst[0] = clip_u8_int(255 * values[0] / alpha);
+            dst[1] = clip_u8_int(255 * values[1] / alpha);
+            dst[2] = clip_u8_int(255 * values[2] / alpha);
+        }
+        dst[3] = alpha;
+    } else {
+        for (int channel = 0; channel < source->channels; ++channel) {
+            dst[channel] = values[channel];
+        }
+    }
 }
 
 int rotate_nearest_into(
@@ -2308,30 +2402,106 @@ int rotate_bilinear_into(
                 &source_y);
             std::uint8_t* dst = dst_row + static_cast<std::size_t>(dst_x) * pixel_bytes;
             if (source_x < 0.0 || source_y < 0.0 || source_x >= source->width || source_y >= source->height) {
-                std::memcpy(dst, fill, pixel_bytes);
+                write_transform_values(source, fill, dst);
                 continue;
             }
             std::uint8_t values[4]{0, 0, 0, 0};
             for (int channel = 0; channel < source->channels; ++channel) {
                 values[channel] = bilinear_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA);
             }
-            if (source->mode == PILLOW_C_MODE_RGBA) {
-                const std::uint8_t alpha = values[3];
-                if (alpha == 0 || alpha == 255) {
-                    dst[0] = values[0];
-                    dst[1] = values[1];
-                    dst[2] = values[2];
-                } else {
-                    dst[0] = clip_u8_int(255 * values[0] / alpha);
-                    dst[1] = clip_u8_int(255 * values[1] / alpha);
-                    dst[2] = clip_u8_int(255 * values[2] / alpha);
-                }
-                dst[3] = alpha;
-            } else {
-                for (int channel = 0; channel < source->channels; ++channel) {
-                    dst[channel] = values[channel];
-                }
+            write_transform_values(source, values, dst);
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int rotate_bicubic_into(
+    const PillowCImage* source,
+    double angle,
+    bool expand,
+    double center_x,
+    double center_y,
+    bool has_center,
+    double translate_x,
+    double translate_y,
+    bool has_translate,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    double normalized_angle = 0.0;
+    int status = normalize_angle_degrees(angle, &normalized_angle);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    int method = 0;
+    if (rotate_fast_path_method(normalized_angle, expand, has_center, has_translate, source, &method)) {
+        return copy_transpose_pixels_into(source, method, target);
+    }
+    if (!has_center && !has_translate && normalized_angle == 0.0) {
+        if (!image_shape_matches(target, source)) {
+            return PILLOW_C_MISMATCH;
+        }
+        if (!source->pixels.empty()) {
+            std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
+        }
+        return PILLOW_C_OK;
+    }
+
+    AffineGeometry geometry{};
+    status = rotate_affine_geometry(
+        source,
+        normalized_angle,
+        expand,
+        center_x,
+        center_y,
+        has_center,
+        translate_x,
+        translate_y,
+        has_translate,
+        &geometry);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!image_shape_matches(target, geometry.width, geometry.height, source->mode, source->channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    std::uint8_t fill[4]{0, 0, 0, 0};
+    status = normalize_transform_fill(source, fill_color, fill_color_size, fill);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const std::size_t pixel_bytes = static_cast<std::size_t>(source->channels);
+    for (int dst_y = 0; dst_y < target->height; ++dst_y) {
+        std::uint8_t* dst_row = target->pixels.data() + static_cast<std::size_t>(dst_y) * target->stride;
+        for (int dst_x = 0; dst_x < target->width; ++dst_x) {
+            double source_x = 0.0;
+            double source_y = 0.0;
+            affine_transform_point(
+                geometry,
+                static_cast<double>(dst_x) + 0.5,
+                static_cast<double>(dst_y) + 0.5,
+                &source_x,
+                &source_y);
+            std::uint8_t* dst = dst_row + static_cast<std::size_t>(dst_x) * pixel_bytes;
+            if (source_x < 0.0 || source_y < 0.0 || source_x >= source->width || source_y >= source->height) {
+                write_transform_values(source, fill, dst);
+                continue;
             }
+            std::uint8_t values[4]{0, 0, 0, 0};
+            for (int channel = 0; channel < source->channels; ++channel) {
+                values[channel] = bicubic_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA);
+            }
+            write_transform_values(source, values, dst);
         }
     }
     return PILLOW_C_OK;
@@ -2369,6 +2539,21 @@ int rotate_image_into(
     }
     if (resample == PILLOW_C_RESAMPLE_BILINEAR) {
         return rotate_bilinear_into(
+            source,
+            angle,
+            expand,
+            center_x,
+            center_y,
+            has_center,
+            translate_x,
+            translate_y,
+            has_translate,
+            fill_color,
+            fill_color_size,
+            target);
+    }
+    if (resample == PILLOW_C_RESAMPLE_BICUBIC) {
+        return rotate_bicubic_into(
             source,
             angle,
             expand,
@@ -5624,7 +5809,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_rotate(
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
-    if (resample != PILLOW_C_RESAMPLE_NEAREST && resample != PILLOW_C_RESAMPLE_BILINEAR) {
+    if (resample != PILLOW_C_RESAMPLE_NEAREST &&
+        resample != PILLOW_C_RESAMPLE_BILINEAR &&
+        resample != PILLOW_C_RESAMPLE_BICUBIC) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
