@@ -1,0 +1,93 @@
+# Native ABI
+
+All exported functions currently return an integer status code:
+
+```text
+0   success
+-1  null pointer
+-2  invalid length
+-3  invalid argument
+-4  allocation failed
+-5  mismatch
+```
+
+`pillow_c_status_message` maps status codes to stable UTF-8 text for wrapper exceptions.
+
+## Modes
+
+Current mode IDs:
+
+```text
+1 L
+3 RGB
+4 RGBA
+```
+
+`pillow_c_mode_from_string`, `pillow_c_mode_name`, `pillow_c_image_create_mode`, and `pillow_c_image_mode` keep handles mode-aware. Channel count is storage layout; mode is wrapper-visible Pillow semantics.
+
+## Export Groups
+
+Infrastructure:
+
+- `pillow_c_abi_version`
+- `pillow_c_status_message`
+- `pillow_c_mode_from_string`
+- `pillow_c_mode_name`
+
+Buffer primitives:
+
+- `pillow_c_blend_u8`
+- `pillow_c_rgb_to_l`
+- `pillow_c_alpha_composite_rgba`
+
+Image lifecycle and metadata:
+
+- `pillow_c_image_create`
+- `pillow_c_image_create_mode`
+- `pillow_c_image_free`
+- `pillow_c_image_width`
+- `pillow_c_image_height`
+- `pillow_c_image_mode`
+- `pillow_c_image_channels`
+- `pillow_c_image_stride`
+- `pillow_c_image_size`
+- `pillow_c_image_data`
+- `pillow_c_image_set_bytes`
+- `pillow_c_image_get_bytes`
+
+Image operations:
+
+- `pillow_c_image_copy`
+- `pillow_c_image_blend`
+- `pillow_c_image_rgb_to_l`
+- `pillow_c_image_alpha_composite_rgba`
+- `pillow_c_image_crop`
+- `pillow_c_image_paste`
+- `pillow_c_image_transpose`
+
+Reusable target operations:
+
+- `pillow_c_image_copy_into`
+- `pillow_c_image_blend_into`
+- `pillow_c_image_rgb_to_l_into`
+- `pillow_c_image_alpha_composite_rgba_into`
+- `pillow_c_image_crop_into`
+- `pillow_c_image_transpose_into`
+
+## Transpose Method IDs
+
+These match Pillow 11.3.0 `Image.Transpose` values:
+
+```text
+0 FLIP_LEFT_RIGHT
+1 FLIP_TOP_BOTTOM
+2 ROTATE_90
+3 ROTATE_180
+4 ROTATE_270
+5 TRANSPOSE
+6 TRANSVERSE
+```
+
+## Pointer Lifetime
+
+`pillow_c_image_data` returns a pointer into handle-owned storage. The pointer is valid only while the image handle remains alive and the underlying storage is not reallocated.
