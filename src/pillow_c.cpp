@@ -637,6 +637,21 @@ int fill_image_pixels(PillowCImage* image, const std::uint8_t* color, std::size_
     return PILLOW_C_OK;
 }
 
+int constant_image_into(const PillowCImage* source, int value, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_L, 1)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+    std::memset(target->pixels.data(), clip_u8_int(value), target->pixels.size());
+    return PILLOW_C_OK;
+}
+
 int apply_point_lut_into(const PillowCImage* source, const std::uint8_t* lut, std::size_t lut_size, PillowCImage* target)
 {
     if (!source || !lut || !target) {
@@ -699,6 +714,24 @@ int invert_image_into(const PillowCImage* source, PillowCImage* target)
         lut[ix] = static_cast<std::uint8_t>(255 - ix);
     }
     return apply_imageops_lut_into(source, lut, target);
+}
+
+int chops_invert_image_into(const PillowCImage* source, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!image_shape_matches(target, source)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    const std::uint8_t* src = source->pixels.data();
+    std::uint8_t* dst = target->pixels.data();
+    const std::size_t count = source->pixels.size();
+    for (std::size_t i = 0; i < count; ++i) {
+        dst[i] = static_cast<std::uint8_t>(255 - src[i]);
+    }
+    return PILLOW_C_OK;
 }
 
 int posterize_image_into(const PillowCImage* source, int bits, PillowCImage* target)
@@ -2404,6 +2437,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_copy_into(
     return PILLOW_C_OK;
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_constant_into(
+    const PillowCImage* source,
+    int value,
+    PillowCImage* target)
+{
+    return constant_image_into(source, value, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_chops_invert_into(
+    const PillowCImage* source,
+    PillowCImage* target)
+{
+    return chops_invert_image_into(source, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_blend_into(
     const PillowCImage* left,
     const PillowCImage* right,
@@ -3232,6 +3280,71 @@ extern "C" __declspec(dllexport) int pillow_c_image_copy(
     *out_image = nullptr;
     try {
         auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, source->pixels};
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_constant(
+    const PillowCImage* source,
+    int value,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(source->width, source->height, 1, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            PILLOW_C_MODE_L,
+            1,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = constant_image_into(source, value, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_chops_invert(
+    const PillowCImage* source,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            source->mode,
+            source->channels,
+            source->stride,
+            std::vector<std::uint8_t>(source->pixels.size())};
+        const int status = chops_invert_image_into(source, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
         *out_image = image;
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {

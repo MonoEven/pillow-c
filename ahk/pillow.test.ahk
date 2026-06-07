@@ -995,6 +995,108 @@ PillowTestImageBlendStaticUsesNativeHandles(*) {
 
 AhkTest.Test("Pillow Image.Blend blends images through native handles", PillowTestImageBlendStaticUsesNativeHandles)
 
+PillowTestImageChopsConstantReturnsLImage(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]))
+    out := 0
+    try {
+        out := Pillow.ImageChops.Constant(image, 300)
+
+        AhkTest.AssertEqual("L", out.Mode)
+        AhkTest.AssertEqual([2, 2], out.Size)
+        AhkTest.AssertEqual([255, 255, 255, 255], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        for item in [out, image] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Constant returns an L image through native handles", PillowTestImageChopsConstantReturnsLImage)
+
+PillowTestImageChopsConstantHandlesEmptyImages(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    empty := 0
+    out := 0
+    try {
+        empty := image.Crop([1, 0, 1, 2])
+        out := Pillow.ImageChops.Constant(empty, 7)
+
+        AhkTest.AssertEqual("L", out.Mode)
+        AhkTest.AssertEqual([0, 2], out.Size)
+        AhkTest.AssertEqual([], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        for item in [out, empty, image] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Constant handles empty images", PillowTestImageChopsConstantHandlesEmptyImages)
+
+PillowTestImageChopsDuplicateReturnsIndependentCopy(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    duplicate := 0
+    try {
+        duplicate := Pillow.ImageChops.Duplicate(image)
+        data := image.DataPointer()
+        NumPut("UChar", 99, data.Ptr, 0)
+
+        AhkTest.AssertEqual("L", duplicate.Mode)
+        AhkTest.AssertEqual([3, 2], duplicate.Size)
+        AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowTestBufferToArray(duplicate.ToBytes()))
+        AhkTest.AssertEqual([99, 2, 3, 4, 5, 6], PillowTestBufferToArray(image.ToBytes()))
+    } finally {
+        for item in [duplicate, image] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Duplicate returns an independent native copy", PillowTestImageChopsDuplicateReturnsIndependentCopy)
+
+PillowTestImageChopsInvertUsesNativeHandles(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8]))
+    out := 0
+    try {
+        out := Pillow.ImageChops.Invert(image)
+
+        AhkTest.AssertEqual("RGBA", out.Mode)
+        AhkTest.AssertEqual([2, 1], out.Size)
+        AhkTest.AssertEqual([254, 253, 252, 251, 250, 249, 248, 247], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        for item in [out, image] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Invert maps pixels through native handles", PillowTestImageChopsInvertUsesNativeHandles)
+
+PillowTestImageChopsConstantRejectsInvalidValue(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([1]))
+    try {
+        try {
+            Pillow.ImageChops.Constant(image, 1.5)
+            AhkTest.Fail("Expected ImageChops.Constant to reject non-integer values")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "value") > 0)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Constant rejects invalid value", PillowTestImageChopsConstantRejectsInvalidValue)
+
 PillowTestImageChopsDifferenceUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 50, 200, 255, 0, 80]))

@@ -286,6 +286,20 @@ PillowCImageData(handle) {
     return { Ptr: dataPtr, Size: size }
 }
 
+PillowCImageConstant(sourceHandle, value) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_constant",
+        "Ptr", sourceHandle,
+        "Int", value,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageBlend(leftHandle, rightHandle, alpha) {
     outHandle := 0
     status := DllCall(
@@ -568,6 +582,29 @@ PillowCImageInvert(sourceHandle) {
 PillowCImageInvertInto(sourceHandle, targetHandle) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_invert_into",
+        "Ptr", sourceHandle,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageChopsInvert(sourceHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_chops_invert",
+        "Ptr", sourceHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageChopsInvertInto(sourceHandle, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_chops_invert_into",
         "Ptr", sourceHandle,
         "Ptr", targetHandle,
         "Int"
@@ -1280,6 +1317,171 @@ PillowCTestImageBlendIntoReusesTargetHandle(*) {
 }
 
 AhkTest.Test("pillow_c image blend_into reuses target handle storage", PillowCTestImageBlendIntoReusesTargetHandle)
+
+PillowCTestImageConstantReturnsLImageLikePillow(*) {
+    l := PillowCCreateImageMode(3, 2, 1)
+    rgb := PillowCCreateImageMode(2, 2, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    lOut := 0
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        lOut := PillowCImageConstant(l, 7)
+        rgbOut := PillowCImageConstant(rgb, 300)
+        rgbaOut := PillowCImageConstant(rgba, -1)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(lOut))
+        AhkTest.AssertEqual([3, 2], [PillowCImageInt(lOut, "pillow_c_image_width"), PillowCImageInt(lOut, "pillow_c_image_height")])
+        AhkTest.AssertEqual([7, 7, 7, 7, 7, 7], PillowCImageToArray(lOut, 6))
+        AhkTest.AssertEqual(1, PillowCImageMode(rgbOut))
+        AhkTest.AssertEqual([255, 255, 255, 255], PillowCImageToArray(rgbOut, 4))
+        AhkTest.AssertEqual([0, 0], PillowCImageToArray(rgbaOut, 2))
+    } finally {
+        for handle in [rgbaOut, rgbOut, lOut, rgba, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image constant returns an L image like Pillow", PillowCTestImageConstantReturnsLImageLikePillow)
+
+PillowCTestImageConstantHandlesEmptyImages(*) {
+    source := PillowCCreateImageMode(3, 2, 1)
+    empty := 0
+    out := 0
+    try {
+        empty := PillowCImageCrop(source, 1, 0, 1, 2)
+        out := PillowCImageConstant(empty, 7)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(out))
+        AhkTest.AssertEqual([0, 2], [PillowCImageInt(out, "pillow_c_image_width"), PillowCImageInt(out, "pillow_c_image_height")])
+        AhkTest.AssertEqual([], PillowCImageToArray(out, 0))
+    } finally {
+        for handle in [out, empty, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image constant handles empty images", PillowCTestImageConstantHandlesEmptyImages)
+
+PillowCTestImageConstantIntoReusesTargetStorage(*) {
+    source := PillowCCreateImageMode(2, 2, 3)
+    target := PillowCCreateImageMode(2, 2, 1)
+    try {
+        before := PillowCImageData(target).Ptr
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_constant_into",
+            "Ptr", source,
+            "Int", 7,
+            "Ptr", target,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+
+        AhkTest.AssertEqual(before, PillowCImageData(target).Ptr)
+        AhkTest.AssertEqual([7, 7, 7, 7], PillowCImageToArray(target, 4))
+    } finally {
+        for handle in [target, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image constant_into reuses target storage", PillowCTestImageConstantIntoReusesTargetStorage)
+
+PillowCTestImageConstantIntoRejectsTargetShapeMismatch(*) {
+    source := PillowCCreateImageMode(2, 2, 3)
+    wrongMode := PillowCCreateImageMode(2, 2, 3)
+    wrongSize := PillowCCreateImageMode(3, 2, 1)
+    try {
+        status := DllCall(PillowCDllPath() "\pillow_c_image_constant_into", "Ptr", source, "Int", 7, "Ptr", wrongMode, "Int")
+        AhkTest.AssertEqual(-5, status)
+        status := DllCall(PillowCDllPath() "\pillow_c_image_constant_into", "Ptr", source, "Int", 7, "Ptr", wrongSize, "Int")
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        for handle in [wrongSize, wrongMode, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image constant_into rejects target shape mismatch", PillowCTestImageConstantIntoRejectsTargetShapeMismatch)
+
+PillowCTestImageChopsInvertMatchesPillowModes(*) {
+    l := PillowCCreateImageMode(3, 2, 1)
+    rgb := PillowCCreateImageMode(2, 2, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    lOut := 0
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(l, [1, 2, 3, 4, 5, 6])
+        PillowCImageSetBytes(rgb, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+        PillowCImageSetBytes(rgba, [1, 2, 3, 4, 5, 6, 7, 8])
+
+        lOut := PillowCImageChopsInvert(l)
+        rgbOut := PillowCImageChopsInvert(rgb)
+        rgbaOut := PillowCImageChopsInvert(rgba)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(lOut))
+        AhkTest.AssertEqual([254, 253, 252, 251, 250, 249], PillowCImageToArray(lOut, 6))
+        AhkTest.AssertEqual(3, PillowCImageMode(rgbOut))
+        AhkTest.AssertEqual([254, 253, 252, 251, 250, 249, 248, 247, 246, 245, 244, 243], PillowCImageToArray(rgbOut, 12))
+        AhkTest.AssertEqual(4, PillowCImageMode(rgbaOut))
+        AhkTest.AssertEqual([254, 253, 252, 251, 250, 249, 248, 247], PillowCImageToArray(rgbaOut, 8))
+    } finally {
+        for handle in [rgbaOut, rgbOut, lOut, rgba, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image chops_invert matches Pillow L RGB RGBA modes", PillowCTestImageChopsInvertMatchesPillowModes)
+
+PillowCTestImageChopsInvertIntoReusesTargetStorage(*) {
+    source := PillowCCreateImageMode(2, 1, 4)
+    target := PillowCCreateImageMode(2, 1, 4)
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4, 5, 6, 7, 8])
+        before := PillowCImageData(target).Ptr
+        PillowCImageChopsInvertInto(source, target)
+
+        AhkTest.AssertEqual(before, PillowCImageData(target).Ptr)
+        AhkTest.AssertEqual([254, 253, 252, 251, 250, 249, 248, 247], PillowCImageToArray(target, 8))
+    } finally {
+        for handle in [target, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image chops_invert_into reuses target storage", PillowCTestImageChopsInvertIntoReusesTargetStorage)
+
+PillowCTestImageChopsInvertIntoRejectsTargetShapeMismatch(*) {
+    source := PillowCCreateImageMode(2, 1, 4)
+    wrongMode := PillowCCreateImageMode(2, 1, 3)
+    wrongSize := PillowCCreateImageMode(1, 1, 4)
+    try {
+        status := DllCall(PillowCDllPath() "\pillow_c_image_chops_invert_into", "Ptr", source, "Ptr", wrongMode, "Int")
+        AhkTest.AssertEqual(-5, status)
+        status := DllCall(PillowCDllPath() "\pillow_c_image_chops_invert_into", "Ptr", source, "Ptr", wrongSize, "Int")
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        for handle in [wrongSize, wrongMode, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image chops_invert_into rejects target shape mismatch", PillowCTestImageChopsInvertIntoRejectsTargetShapeMismatch)
 
 PillowCTestImageDifferenceMatchesPillowModes(*) {
     l1 := PillowCCreateImageMode(4, 1, 1)

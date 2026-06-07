@@ -276,6 +276,43 @@ class Pillow {
     }
 
     class ImageChops {
+        static Constant(image, value) {
+            if !(value is Integer)
+                throw Error("Pillow.ImageChops.Constant value must be an integer", -1)
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_constant",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(image, "Constant"),
+                "Int", value,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static Duplicate(image) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_copy",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(image, "Duplicate"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static Invert(image) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_chops_invert",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(image, "Invert"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static Difference(left, right) {
             outHandle := 0
             Pillow.CheckStatus(DllCall(
