@@ -6241,6 +6241,28 @@ extern "C" __declspec(dllexport) int pillow_c_image_set_bytes(
     return PILLOW_C_OK;
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_put_data(
+    PillowCImage* image,
+    const std::uint8_t* data,
+    std::size_t size,
+    std::size_t pixel_count)
+{
+    if (!image || (!data && size > 0)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (pixel_count > static_cast<std::size_t>(image->width) * static_cast<std::size_t>(image->height)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    const std::size_t expected_size = pixel_count * static_cast<std::size_t>(image->channels);
+    if (size != expected_size || expected_size > image->pixels.size()) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (expected_size > 0) {
+        std::memcpy(image->pixels.data(), data, expected_size);
+    }
+    return PILLOW_C_OK;
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_fill(
     PillowCImage* image,
     const std::uint8_t* color,

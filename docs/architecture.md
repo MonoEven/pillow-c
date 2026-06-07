@@ -122,6 +122,8 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `image.GetBbox(...)`
 - `image.GetProjection(...)`
 - `image.GetColors(...)`
+- `image.GetData(...)`
+- `image.PutData(...)`
 - `image.GetPixel(...)`
 - `image.PutPixel(...)`
 - `image.Entropy(...)`
@@ -136,6 +138,8 @@ Core `L`, `LA`, `RGB`, and `RGBA` conversions, histogram/extrema/entropy/boundin
 `ImageOps.equalize` and `ImageOps.autocontrast` currently implement common histogram/LUT paths with L-mode masks for supported `L`/`RGB` images. Autocontrast also supports `cutoff`, `ignore`, and Pillow's `preserve_tone` mode.
 
 Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes. `NEAREST` uses Pillow's affine-scale coordinate progression. `BOX`, `BILINEAR`, `HAMMING`, `BICUBIC`, and `LANCZOS` use separable two-pass filtering with Pillow-style fixed-point coefficient normalization. Non-NEAREST `RGBA` resize uses premultiplied color internally and preserves identity resizes as byte copies.
+
+`Image.getdata` and `Image.putdata` expose Pillow-like pixel sequence ergonomics while keeping the native handle as the storage authority. `GetData` exports a bulk byte snapshot, and `PutData` packs AHK values once before calling the native `put_data` prefix-writer instead of crossing the DLL boundary per pixel.
 
 `Image.reduce` supports native integer block downsampling for `L`, `LA`, `RGB`, and `RGBA`, including Pillow-style output-size ceiling, optional box regions, and allocation-avoiding `_into` calls. `LA` and `RGBA` reduce through Pillow's premultiplied-alpha semantics before converting back to the public mode.
 

@@ -183,6 +183,19 @@ PillowCImageSetBytes(handle, values) {
     PillowCAssertStatus(status)
 }
 
+PillowCImagePutData(handle, values, pixelCount) {
+    data := PillowCBuffer(values)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_put_data",
+        "Ptr", handle,
+        "Ptr", data,
+        "UPtr", data.Size,
+        "UPtr", pixelCount,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageFill(handle, values) {
     color := PillowCBuffer(values)
     status := DllCall(
@@ -3580,6 +3593,52 @@ PillowCTestImageDataPointerSharesMemoryWithAhk(*) {
 }
 
 AhkTest.Test("pillow_c image data pointer shares handle memory with AHK", PillowCTestImageDataPointerSharesMemoryWithAhk)
+
+PillowCTestImagePutDataWritesPixelPrefix(*) {
+    image := PillowCCreateImageMode(3, 1, 3)
+    try {
+        PillowCImageSetBytes(image, [1, 2, 3, 4, 5, 6, 7, 8, 9])
+        PillowCImagePutData(image, [10, 20, 30, 40, 50, 60], 2)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 7, 8, 9], PillowCImageToArray(image, 9))
+
+        PillowCImagePutData(image, [], 0)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 7, 8, 9], PillowCImageToArray(image, 9))
+    } finally {
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image put_data writes a packed pixel prefix", PillowCTestImagePutDataWritesPixelPrefix)
+
+PillowCTestImagePutDataRejectsInvalidLengths(*) {
+    image := PillowCCreateImageMode(2, 1, 3)
+    data := PillowCBuffer([1, 2, 3])
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_put_data",
+            "Ptr", image,
+            "Ptr", data,
+            "UPtr", data.Size,
+            "UPtr", 2,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_put_data",
+            "Ptr", image,
+            "Ptr", data,
+            "UPtr", data.Size,
+            "UPtr", 3,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+    } finally {
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image put_data rejects invalid lengths", PillowCTestImagePutDataRejectsInvalidLengths)
 
 PillowCTestImageFillRepeatsModeSizedColor(*) {
     l := PillowCCreateImageMode(4, 1, 1)

@@ -96,6 +96,55 @@ PillowTestImageDataPointerSharesNativeStorage(*) {
 
 AhkTest.Test("Pillow Image.DataPointer exposes native storage for controlled sharing", PillowTestImageDataPointerSharesNativeStorage)
 
+PillowTestImageGetDataReturnsPillowLikePixelSequence(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([1, 2, 3]))
+    rgb := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([
+        1, 2, 3, 4, 5, 6,
+        7, 8, 9, 10, 11, 12,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8]))
+    try {
+        AhkTest.AssertEqual([1, 2, 3], l.GetData())
+        AhkTest.AssertEqual([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]], rgb.GetData())
+        AhkTest.AssertEqual([1, 4, 7, 10], rgb.GetData(0))
+        AhkTest.AssertEqual([3, 6, 9, 12], rgb.GetData(2))
+        AhkTest.AssertEqual([[1, 2, 3, 4], [5, 6, 7, 8]], rgba.GetData())
+    } finally {
+        rgba.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetData returns Pillow-like pixel sequences", PillowTestImageGetDataReturnsPillowLikePixelSequence)
+
+PillowTestImagePutDataBulkWritesNativeStorage(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.New("L", [4, 1])
+    rgb := Pillow.Image.New("RGB", [3, 1])
+    rgba := Pillow.Image.New("RGBA", [3, 1])
+    try {
+        l.PutData([1.2, 1.5, 255, 300], 2, 10)
+        AhkTest.AssertEqual([12, 13, 255, 255], PillowTestBufferToArray(l.ToBytes()))
+
+        l.PutData([9, 8])
+        AhkTest.AssertEqual([9, 8, 255, 255], PillowTestBufferToArray(l.ToBytes()))
+
+        rgb.PutData([[1, 2, 3], [4, 5, 6, 7], 0x010203])
+        AhkTest.AssertEqual([1, 2, 3, 4, 5, 6, 3, 2, 1], PillowTestBufferToArray(rgb.ToBytes()))
+
+        rgba.PutData([[1, 2, 3], [4, 5, 6, 7], 8])
+        AhkTest.AssertEqual([1, 2, 3, 255, 4, 5, 6, 7, 8, 0, 0, 0], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        rgba.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.PutData bulk writes native storage", PillowTestImagePutDataBulkWritesNativeStorage)
+
 PillowTestImageFromBytesRejectsInvalidLength(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     try {

@@ -1503,6 +1503,26 @@ class Pillow {
             return Mod(floorValue, 2) = 0 ? floorValue : floorValue + 1
         }
 
+        static TruncateClipU8(value) {
+            if !(value is Number)
+                throw Error("Pillow.Image.PutData expects numeric pixel values", -1)
+            if value <= 0
+                return 0
+            if value >= 255
+                return 255
+            return Floor(value)
+        }
+
+        static ClipTupleU8(value) {
+            if !(value is Integer)
+                throw Error("Pillow.Image.PutData tuple values must be integers", -1)
+            if value <= 0
+                return 0
+            if value >= 255
+                return 255
+            return value
+        }
+
         static HandleArray(images) {
             buf := Buffer(images.Length * A_PtrSize, 0)
             for index, image in images {
@@ -1595,6 +1615,117 @@ class Pillow {
                 "Int"
             ))
             return { Ptr: dataPtr, Size: size }
+        }
+
+        GetData(band := unset) {
+            bytes := this.ToBytes()
+            channels := this.Channels
+            pixelCount := this.Width * this.Height
+            values := []
+            if IsSet(band) {
+                if !(band is Integer)
+                    throw Error("sequence index must be integer", -1)
+                if band < 0 || band >= channels
+                    throw Error("band index out of range", -1)
+                loop pixelCount
+                    values.Push(NumGet(bytes, (A_Index - 1) * channels + band, "UChar"))
+                return values
+            }
+
+            if channels = 1 {
+                loop bytes.Size
+                    values.Push(NumGet(bytes, A_Index - 1, "UChar"))
+                return values
+            }
+
+            loop pixelCount {
+                offset := (A_Index - 1) * channels
+                pixel := []
+                loop channels
+                    pixel.Push(NumGet(bytes, offset + A_Index - 1, "UChar"))
+                values.Push(pixel)
+            }
+            return values
+        }
+
+        PutData(data, scale := 1.0, offset := 0.0) {
+            if !IsObject(data)
+                throw Error("Pillow.Image.PutData expects an array of pixel values", -1)
+            if !(scale is Number) || !(offset is Number)
+                throw Error("Pillow.Image.PutData scale and offset must be numeric", -1)
+
+            pixelCount := this.Width * this.Height
+            if data.Length > pixelCount
+                throw Error("too many data entries", -1)
+
+            channels := this.Channels
+            packed := Buffer(data.Length * channels, 0)
+            for index, value in data
+                this.WritePutDataPixel(packed, index - 1, value, scale, offset)
+
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_put_data",
+                "Ptr", this.RequireHandle(),
+                "Ptr", packed,
+                "UPtr", packed.Size,
+                "UPtr", data.Length,
+                "Int"
+            ))
+            return this
+        }
+
+        WritePutDataPixel(buf, pixelIndex, value, scale, offset) {
+            channels := this.Channels
+            base := pixelIndex * channels
+            if channels = 1 {
+                if IsObject(value)
+                    throw Error("sequence must be flattened", -1)
+                NumPut("UChar", Pillow.Image.TruncateClipU8(value * scale + offset), buf, base)
+                return
+            }
+
+            if IsObject(value) {
+                this.WritePutDataTuple(buf, base, value)
+                return
+            }
+
+            if !(value is Integer)
+                throw Error("color must be int or tuple", -1)
+            loop channels
+                NumPut("UChar", (value >> ((A_Index - 1) * 8)) & 0xFF, buf, base + A_Index - 1)
+        }
+
+        WritePutDataTuple(buf, base, value) {
+            channels := this.Channels
+            length := value.Length
+            if channels = 2 {
+                if length != 1 && length != 2
+                    throw Error("color must be int, or tuple of one or two elements", -1)
+                NumPut("UChar", Pillow.Image.ClipTupleU8(value[1]), buf, base)
+                NumPut("UChar", length = 2 ? Pillow.Image.ClipTupleU8(value[2]) : 0, buf, base + 1)
+                return
+            }
+
+            if channels = 3 {
+                if length != 1 && length != 3 && length != 4
+                    throw Error("color must be int, or tuple of one, three or four elements", -1)
+                NumPut("UChar", Pillow.Image.ClipTupleU8(value[1]), buf, base)
+                NumPut("UChar", length >= 3 ? Pillow.Image.ClipTupleU8(value[2]) : 0, buf, base + 1)
+                NumPut("UChar", length >= 3 ? Pillow.Image.ClipTupleU8(value[3]) : 0, buf, base + 2)
+                return
+            }
+
+            if channels = 4 {
+                if length != 1 && length != 3 && length != 4
+                    throw Error("color must be int, or tuple of one, three or four elements", -1)
+                NumPut("UChar", Pillow.Image.ClipTupleU8(value[1]), buf, base)
+                NumPut("UChar", length >= 3 ? Pillow.Image.ClipTupleU8(value[2]) : 0, buf, base + 1)
+                NumPut("UChar", length >= 3 ? Pillow.Image.ClipTupleU8(value[3]) : 0, buf, base + 2)
+                NumPut("UChar", length = 4 ? Pillow.Image.ClipTupleU8(value[4]) : (length = 3 ? 255 : 0), buf, base + 3)
+                return
+            }
+
+            throw Error("Pillow.Image.PutData unsupported image mode", -1)
         }
 
         Fill(color) {

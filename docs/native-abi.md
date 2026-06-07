@@ -56,6 +56,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_size`
 - `pillow_c_image_data`
 - `pillow_c_image_set_bytes`
+- `pillow_c_image_put_data`
 - `pillow_c_image_fill`
 - `pillow_c_image_getpixel`
 - `pillow_c_image_putpixel`
@@ -180,6 +181,8 @@ Reusable target operations:
 - `pillow_c_image_transpose_into`
 
 `pillow_c_image_equalize_masked` and `pillow_c_image_equalize_masked_into` accept a same-size L-mode mask handle after the source handle. A null mask keeps full-image histogram behavior.
+
+`pillow_c_image_put_data` accepts already-packed mode-sized pixel bytes plus a pixel count, writes that prefix into the image in row-major order, and leaves any remaining pixels unchanged. The AHK facade owns Python-like `putdata` value coercion before making this single native call.
 
 `pillow_c_image_paste_masked` mutates the target in place, clips the source rectangle to the target bounds, converts the source to the target mode when needed, and blends through a same-size source mask. Mask modes `L`, `LA`, and `RGBA` are accepted; `LA` and `RGBA` use their alpha band.
 
