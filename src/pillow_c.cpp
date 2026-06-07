@@ -335,7 +335,19 @@ bool supported_composite_mask(const PillowCImage* mask)
 {
     return mask &&
            ((mask->mode == PILLOW_C_MODE_L && mask->channels == 1) ||
+            (mask->mode == PILLOW_C_MODE_LA && mask->channels == 2) ||
             (mask->mode == PILLOW_C_MODE_RGBA && mask->channels == 4));
+}
+
+std::uint8_t mask_alpha_at(const PillowCImage* mask, const std::uint8_t* mask_row, int x)
+{
+    if (mask->channels == 1) {
+        return mask_row[x];
+    }
+    if (mask->channels == 2) {
+        return mask_row[static_cast<std::size_t>(x) * 2u + 1u];
+    }
+    return mask_row[static_cast<std::size_t>(x) * 4u + 3u];
 }
 
 bool image_shape_matches(const PillowCImage* image, int width, int height, int channels)
@@ -568,6 +580,113 @@ int paste_image_pixels_into(PillowCImage* target, const PillowCImage* source, in
     return PILLOW_C_OK;
 }
 
+int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowCImage* target);
+
+int paste_image_masked_into(
+    PillowCImage* target,
+    const PillowCImage* source,
+    int left,
+    int top,
+    const PillowCImage* mask)
+{
+    if (!target || !source || !mask) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!supported_composite_mask(mask)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (mask->width != source->width || mask->height != source->height) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    const PillowCImage* effective_source = source;
+    PillowCImage converted_source{};
+    try {
+        if (source->mode != target->mode || source->channels != target->channels) {
+            std::size_t stride = 0;
+            std::size_t size = 0;
+            if (!checked_image_size_allow_empty(source->width, source->height, target->channels, &stride, &size)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            converted_source = PillowCImage{
+                source->width,
+                source->height,
+                target->mode,
+                target->channels,
+                stride,
+                std::vector<std::uint8_t>(size)};
+            const int status = convert_image_mode_into(source, target->mode, &converted_source);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            effective_source = &converted_source;
+        }
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+
+    const std::int64_t dst_left_i64 = left < 0 ? 0 : left;
+    const std::int64_t dst_top_i64 = top < 0 ? 0 : top;
+    const std::int64_t source_right_i64 = static_cast<std::int64_t>(left) + source->width;
+    const std::int64_t source_bottom_i64 = static_cast<std::int64_t>(top) + source->height;
+    const std::int64_t dst_right_i64 =
+        source_right_i64 > target->width ? target->width : source_right_i64;
+    const std::int64_t dst_bottom_i64 =
+        source_bottom_i64 > target->height ? target->height : source_bottom_i64;
+
+    if (dst_right_i64 <= dst_left_i64 || dst_bottom_i64 <= dst_top_i64) {
+        return PILLOW_C_OK;
+    }
+
+    const int dst_left = static_cast<int>(dst_left_i64);
+    const int dst_top = static_cast<int>(dst_top_i64);
+    const int dst_right = static_cast<int>(dst_right_i64);
+    const int dst_bottom = static_cast<int>(dst_bottom_i64);
+    const int src_left = dst_left - left;
+    const int src_top = dst_top - top;
+    const int channels = target->channels;
+
+    for (int y = 0; y < dst_bottom - dst_top; ++y) {
+        const std::uint8_t* src_row =
+            effective_source->pixels.data() +
+            static_cast<std::size_t>(src_top + y) * effective_source->stride +
+            static_cast<std::size_t>(src_left) * effective_source->channels;
+        const std::uint8_t* mask_row =
+            mask->pixels.data() +
+            static_cast<std::size_t>(src_top + y) * mask->stride +
+            static_cast<std::size_t>(src_left) * mask->channels;
+        std::uint8_t* dst_row =
+            target->pixels.data() +
+            static_cast<std::size_t>(dst_top + y) * target->stride +
+            static_cast<std::size_t>(dst_left) * target->channels;
+
+        for (int x = 0; x < dst_right - dst_left; ++x) {
+            const std::uint8_t alpha = mask_alpha_at(mask, mask_row, x);
+            if (alpha == 0) {
+                continue;
+            }
+
+            const std::size_t pixel_offset = static_cast<std::size_t>(x) * channels;
+            if (alpha == 255) {
+                std::memcpy(dst_row + pixel_offset, src_row + pixel_offset, static_cast<std::size_t>(channels));
+                continue;
+            }
+
+            for (int channel = 0; channel < channels; ++channel) {
+                const std::uint8_t dst = dst_row[pixel_offset + channel];
+                const std::uint8_t src = src_row[pixel_offset + channel];
+                const std::uint32_t blended =
+                    static_cast<std::uint32_t>(dst) * (255u - alpha) +
+                    static_cast<std::uint32_t>(src) * alpha +
+                    128u;
+                dst_row[pixel_offset + channel] = static_cast<std::uint8_t>(shift_for_div255(blended));
+            }
+        }
+    }
+
+    return PILLOW_C_OK;
+}
+
 int normalize_coordinate(int value, int limit, int* out_value)
 {
     if (!out_value || limit <= 0) {
@@ -656,7 +775,6 @@ int put_pixel_image(
 }
 
 int fill_image_pixels(PillowCImage* image, const std::uint8_t* color, std::size_t color_size);
-int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowCImage* target);
 
 int expand_image_into(
     const PillowCImage* source,
@@ -890,9 +1008,7 @@ int composite_image_into(
         std::uint8_t* target_row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
 
         for (int x = 0; x < width; ++x) {
-            const std::uint8_t alpha = mask->channels == 1
-                ? mask_row[x]
-                : mask_row[static_cast<std::size_t>(x) * 4u + 3u];
+            const std::uint8_t alpha = mask_alpha_at(mask, mask_row, x);
             if (alpha == 0) {
                 continue;
             }
@@ -4894,6 +5010,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_paste(
     int top)
 {
     return paste_image_pixels_into(target, source, left, top);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_paste_masked(
+    PillowCImage* target,
+    const PillowCImage* source,
+    int left,
+    int top,
+    const PillowCImage* mask)
+{
+    return paste_image_masked_into(target, source, left, top, mask);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_copy_into(

@@ -2246,18 +2246,32 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
-        Paste(source, box) {
+        Paste(source, box, mask := unset) {
             if box.Length < 2
                 throw Error("Pillow.Image.Paste expects box [left, top]", -1)
 
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_paste",
-                "Ptr", this.RequireHandle(),
-                "Ptr", source.RequireHandle(),
-                "Int", box[1],
-                "Int", box[2],
-                "Int"
-            ))
+            if IsSet(mask) {
+                if !(IsObject(mask) && mask is Pillow.Image)
+                    throw Error("Pillow.Image.Paste mask expects a Pillow.Image", -1)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_paste_masked",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", source.RequireHandle(),
+                    "Int", box[1],
+                    "Int", box[2],
+                    "Ptr", mask.RequireHandle(),
+                    "Int"
+                ))
+            } else {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_paste",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", source.RequireHandle(),
+                    "Int", box[1],
+                    "Int", box[2],
+                    "Int"
+                ))
+            }
             return this
         }
 

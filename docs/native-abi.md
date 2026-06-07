@@ -122,6 +122,7 @@ Image operations:
 - `pillow_c_image_fit`
 - `pillow_c_image_pad`
 - `pillow_c_image_paste`
+- `pillow_c_image_paste_masked`
 - `pillow_c_image_transpose`
 
 Reusable target operations:
@@ -176,6 +177,8 @@ Reusable target operations:
 - `pillow_c_image_transpose_into`
 
 `pillow_c_image_equalize_masked` and `pillow_c_image_equalize_masked_into` accept a same-size L-mode mask handle after the source handle. A null mask keeps full-image histogram behavior.
+
+`pillow_c_image_paste_masked` mutates the target in place, clips the source rectangle to the target bounds, converts the source to the target mode when needed, and blends through a same-size source mask. Mask modes `L`, `LA`, and `RGBA` are accepted; `LA` and `RGBA` use their alpha band.
 
 `pillow_c_image_autocontrast` and `pillow_c_image_autocontrast_into` accept an optional L-mode mask handle after the ignore list arguments, followed by a `preserve_tone` integer flag. A null mask keeps full-image histogram behavior.
 

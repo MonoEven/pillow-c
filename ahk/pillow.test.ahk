@@ -3040,6 +3040,35 @@ PillowTestImagePasteMutatesTargetThroughNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Paste mutates target through native handles", PillowTestImagePasteMutatesTargetThroughNativeHandleOperation)
 
+PillowTestImagePasteUsesMaskAndConvertsSourceMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    target := Pillow.Image.FromBytes("RGB", [4, 3], PillowTestBuffer([
+        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+    ]))
+    source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([0, 50, 100, 150, 200, 250]))
+    mask := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([255, 128, 0, 64, 255, 255]))
+    try {
+        try {
+            target.Paste(source, [1, 1], mask)
+        } catch Error as err {
+            AhkTest.Fail("Expected Image.Paste to accept mask: " err.Message)
+        }
+        AhkTest.AssertEqual([
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 0, 0, 0, 30, 30, 30, 10, 10, 10,
+            10, 10, 10, 45, 45, 45, 200, 200, 200, 250, 250, 250,
+        ], PillowTestBufferToArray(target.ToBytes()))
+    } finally {
+        mask.Close()
+        source.Close()
+        target.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Paste uses mask and converts source mode", PillowTestImagePasteUsesMaskAndConvertsSourceMode)
+
 PillowTestImageBlendStaticUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 100, 110, 120]))

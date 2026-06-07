@@ -1748,6 +1748,23 @@ PillowCImagePaste(targetHandle, sourceHandle, left, top) {
     PillowCAssertStatus(status)
 }
 
+PillowCImagePasteMasked(targetHandle, sourceHandle, left, top, maskHandle) {
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_paste_masked",
+            "Ptr", targetHandle,
+            "Ptr", sourceHandle,
+            "Int", left,
+            "Int", top,
+            "Ptr", maskHandle,
+            "Int"
+        )
+    } catch Error as err {
+        AhkTest.Fail("Expected pillow_c_image_paste_masked export: " err.Message)
+    }
+    PillowCAssertStatus(status)
+}
+
 PillowCImageTranspose(sourceHandle, method) {
     outHandle := 0
     status := DllCall(
@@ -2060,6 +2077,29 @@ PillowCTestImageCompositeUsesRgbaMaskAlpha(*) {
 }
 
 AhkTest.Test("pillow_c image composite uses RGBA mask alpha", PillowCTestImageCompositeUsesRgbaMaskAlpha)
+
+PillowCTestImageCompositeUsesLaMaskAlpha(*) {
+    left := PillowCCreateImageMode(2, 1, 3)
+    right := PillowCCreateImageMode(2, 1, 3)
+    mask := PillowCCreateImageMode(2, 1, 2)
+    out := 0
+    try {
+        PillowCImageSetBytes(left, [10, 20, 30, 40, 50, 60])
+        PillowCImageSetBytes(right, [200, 210, 220, 180, 170, 160])
+        PillowCImageSetBytes(mask, [9, 128, 9, 255])
+
+        out := PillowCImageComposite(left, right, mask)
+
+        AhkTest.AssertEqual([105, 115, 125, 40, 50, 60], PillowCImageToArray(out, 6))
+    } finally {
+        for handle in [out, mask, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image composite uses LA mask alpha", PillowCTestImageCompositeUsesLaMaskAlpha)
 
 PillowCTestImageCompositeUsesTargetSizeAndClipsSource(*) {
     left := PillowCCreateImageMode(1, 1, 3)
@@ -7911,6 +7951,101 @@ PillowCTestImagePasteLowerRightPointClips(*) {
 }
 
 AhkTest.Test("pillow_c image paste clips a lower-right point region", PillowCTestImagePasteLowerRightPointClips)
+
+PillowCTestImagePasteMaskedBlendsAndClipsLikePillow(*) {
+    expected := [
+        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10, 5, 55, 5, 0, 0, 100,
+        10, 10, 10, 58, 10, 10, 10, 200, 10, 10, 10, 10,
+    ]
+    target := PillowCCreateImageMode(4, 3, 3)
+    rgbaTarget := PillowCCreateImageMode(4, 3, 3)
+    laTarget := PillowCCreateImageMode(4, 3, 3)
+    clippedTarget := PillowCCreateImageMode(4, 3, 3)
+    source := PillowCCreateImageMode(3, 2, 3)
+    lMask := PillowCCreateImageMode(3, 2, 1)
+    laMask := PillowCCreateImageMode(3, 2, 2)
+    rgbaMask := PillowCCreateImageMode(3, 2, 4)
+    try {
+        base := [
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        ]
+        PillowCImageSetBytes(target, base)
+        PillowCImageSetBytes(rgbaTarget, base)
+        PillowCImageSetBytes(laTarget, base)
+        PillowCImageSetBytes(clippedTarget, base)
+        PillowCImageSetBytes(source, [
+            100, 0, 0, 0, 100, 0, 0, 0, 100,
+            200, 10, 10, 10, 200, 10, 10, 10, 200,
+        ])
+        PillowCImageSetBytes(lMask, [0, 128, 255, 64, 255, 0])
+        PillowCImageSetBytes(laMask, [9, 0, 9, 128, 9, 255, 9, 64, 9, 255, 9, 0])
+        PillowCImageSetBytes(rgbaMask, [
+            1, 2, 3, 0,
+            4, 5, 6, 128,
+            7, 8, 9, 255,
+            10, 11, 12, 64,
+            13, 14, 15, 255,
+            16, 17, 18, 0,
+        ])
+
+        PillowCImagePasteMasked(target, source, 1, 1, lMask)
+        PillowCImagePasteMasked(rgbaTarget, source, 1, 1, rgbaMask)
+        PillowCImagePasteMasked(laTarget, source, 1, 1, laMask)
+        PillowCImagePasteMasked(clippedTarget, source, -1, -1, lMask)
+
+        AhkTest.AssertEqual(expected, PillowCImageToArray(target, 36))
+        AhkTest.AssertEqual(expected, PillowCImageToArray(rgbaTarget, 36))
+        AhkTest.AssertEqual(expected, PillowCImageToArray(laTarget, 36))
+        AhkTest.AssertEqual([
+            10, 200, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        ], PillowCImageToArray(clippedTarget, 36))
+    } finally {
+        PillowCFreeImage(rgbaMask)
+        PillowCFreeImage(laMask)
+        PillowCFreeImage(lMask)
+        PillowCFreeImage(source)
+        PillowCFreeImage(clippedTarget)
+        PillowCFreeImage(laTarget)
+        PillowCFreeImage(rgbaTarget)
+        PillowCFreeImage(target)
+    }
+}
+
+AhkTest.Test("pillow_c image paste_masked blends and clips like Pillow", PillowCTestImagePasteMaskedBlendsAndClipsLikePillow)
+
+PillowCTestImagePasteMaskedConvertsSourceToTargetMode(*) {
+    target := PillowCCreateImageMode(4, 3, 3)
+    source := PillowCCreateImageMode(3, 2, 1)
+    mask := PillowCCreateImageMode(3, 2, 1)
+    try {
+        PillowCImageSetBytes(target, [
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        ])
+        PillowCImageSetBytes(source, [0, 50, 100, 150, 200, 250])
+        PillowCImageSetBytes(mask, [255, 128, 0, 64, 255, 255])
+
+        PillowCImagePasteMasked(target, source, 1, 1, mask)
+
+        AhkTest.AssertEqual([
+            10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 0, 0, 0, 30, 30, 30, 10, 10, 10,
+            10, 10, 10, 45, 45, 45, 200, 200, 200, 250, 250, 250,
+        ], PillowCImageToArray(target, 36))
+    } finally {
+        PillowCFreeImage(mask)
+        PillowCFreeImage(source)
+        PillowCFreeImage(target)
+    }
+}
+
+AhkTest.Test("pillow_c image paste_masked converts source to target mode", PillowCTestImagePasteMaskedConvertsSourceToTargetMode)
 
 PillowCTestImagePasteRejectsChannelMismatch(*) {
     target := PillowCCreateImage(2, 2, 3)
