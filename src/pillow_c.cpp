@@ -878,6 +878,30 @@ int apply_point_lut_into(const PillowCImage* source, const std::uint8_t* lut, st
     return PILLOW_C_OK;
 }
 
+int apply_single_lut_into(const PillowCImage* source, const std::uint8_t* lut, std::size_t lut_size, PillowCImage* target)
+{
+    if (!source || !lut || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (lut_size != 256u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (!image_shape_matches(target, source)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* src = source->pixels.data();
+    std::uint8_t* dst = target->pixels.data();
+    const std::size_t count = source->pixels.size();
+    for (std::size_t i = 0; i < count; ++i) {
+        dst[i] = lut[src[i]];
+    }
+    return PILLOW_C_OK;
+}
+
 bool supports_imageops_lut(const PillowCImage* source)
 {
     return source && (source->mode == PILLOW_C_MODE_L || source->mode == PILLOW_C_MODE_RGB);
@@ -1640,6 +1664,11 @@ bool autocontrast_supported_mode(const PillowCImage* source)
     return supports_imageops_lut(source);
 }
 
+bool autocontrast_preserve_tone_supported_mode(const PillowCImage* source)
+{
+    return source && (source->mode == PILLOW_C_MODE_L || source->mode == PILLOW_C_MODE_RGB);
+}
+
 int apply_histogram_end_cut(std::uint64_t* histogram, long double cut, bool from_high)
 {
     if (!histogram) {
@@ -1666,6 +1695,46 @@ int apply_histogram_end_cut(std::uint64_t* histogram, long double cut, bool from
     return PILLOW_C_OK;
 }
 
+int histogram_image_preserve_tone(
+    const PillowCImage* source,
+    const PillowCImage* mask,
+    std::uint64_t* out_histogram,
+    std::size_t out_count)
+{
+    if (!source || !out_histogram) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!autocontrast_preserve_tone_supported_mode(source)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (out_count != 256u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (mask && (mask->mode != PILLOW_C_MODE_L || mask->channels != 1 ||
+        !image_shape_matches(mask, source->width, source->height, PILLOW_C_MODE_L, 1))) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    std::fill(out_histogram, out_histogram + out_count, 0);
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    const std::uint8_t* data = source->pixels.data();
+    const std::uint8_t* mask_data = mask ? mask->pixels.data() : nullptr;
+    for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
+        if (mask_data && mask_data[pixel] == 0) {
+            continue;
+        }
+        const std::uint8_t value = source->channels == 1
+            ? data[pixel]
+            : static_cast<std::uint8_t>(
+                (static_cast<std::int32_t>(data[pixel * 3u]) * 19595 +
+                 static_cast<std::int32_t>(data[pixel * 3u + 1u]) * 38470 +
+                 static_cast<std::int32_t>(data[pixel * 3u + 2u]) * 7471 +
+                 0x8000) >> 16);
+        ++out_histogram[value];
+    }
+    return PILLOW_C_OK;
+}
+
 int build_autocontrast_lut(
     const PillowCImage* source,
     double low_cutoff,
@@ -1673,26 +1742,33 @@ int build_autocontrast_lut(
     const std::uint8_t* ignore_values,
     std::size_t ignore_count,
     const PillowCImage* mask,
+    bool preserve_tone,
     std::vector<std::uint8_t>* out_lut)
 {
     if (!source || !out_lut) {
         return PILLOW_C_NULL_POINTER;
     }
-    if (!autocontrast_supported_mode(source) || !std::isfinite(low_cutoff) || !std::isfinite(high_cutoff)) {
+    if ((!preserve_tone && !autocontrast_supported_mode(source)) ||
+        (preserve_tone && !autocontrast_preserve_tone_supported_mode(source)) ||
+        !std::isfinite(low_cutoff) ||
+        !std::isfinite(high_cutoff)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
     if (ignore_count > 0 && !ignore_values) {
         return PILLOW_C_NULL_POINTER;
     }
 
-    std::vector<std::uint64_t> histogram(static_cast<std::size_t>(source->channels) * 256u);
-    int status = histogram_image_masked(source, mask, histogram.data(), histogram.size());
+    const int lut_channels = preserve_tone ? 1 : source->channels;
+    std::vector<std::uint64_t> histogram(static_cast<std::size_t>(lut_channels) * 256u);
+    int status = preserve_tone
+        ? histogram_image_preserve_tone(source, mask, histogram.data(), histogram.size())
+        : histogram_image_masked(source, mask, histogram.data(), histogram.size());
     if (status != PILLOW_C_OK) {
         return status;
     }
 
-    out_lut->assign(static_cast<std::size_t>(source->channels) * 256u, 0);
-    for (int channel = 0; channel < source->channels; ++channel) {
+    out_lut->assign(static_cast<std::size_t>(lut_channels) * 256u, 0);
+    for (int channel = 0; channel < lut_channels; ++channel) {
         std::uint64_t* h = histogram.data() + static_cast<std::size_t>(channel) * 256u;
         for (std::size_t i = 0; i < ignore_count; ++i) {
             h[ignore_values[i]] = 0;
@@ -1755,6 +1831,7 @@ int autocontrast_image_into(
     const std::uint8_t* ignore_values,
     std::size_t ignore_count,
     const PillowCImage* mask,
+    bool preserve_tone,
     PillowCImage* target)
 {
     if (!source || !target) {
@@ -1766,11 +1843,13 @@ int autocontrast_image_into(
 
     try {
         std::vector<std::uint8_t> lut;
-        const int status = build_autocontrast_lut(source, low_cutoff, high_cutoff, ignore_values, ignore_count, mask, &lut);
+        const int status = build_autocontrast_lut(source, low_cutoff, high_cutoff, ignore_values, ignore_count, mask, preserve_tone, &lut);
         if (status != PILLOW_C_OK) {
             return status;
         }
-        return apply_point_lut_into(source, lut.data(), lut.size(), target);
+        return preserve_tone
+            ? apply_single_lut_into(source, lut.data(), lut.size(), target)
+            : apply_point_lut_into(source, lut.data(), lut.size(), target);
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
@@ -3438,9 +3517,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_autocontrast_into(
     const std::uint8_t* ignore_values,
     std::size_t ignore_count,
     const PillowCImage* mask,
+    int preserve_tone,
     PillowCImage* target)
 {
-    return autocontrast_image_into(source, low_cutoff, high_cutoff, ignore_values, ignore_count, mask, target);
+    return autocontrast_image_into(source, low_cutoff, high_cutoff, ignore_values, ignore_count, mask, preserve_tone != 0, target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_get_channel_into(
@@ -4752,19 +4832,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_autocontrast(
     const std::uint8_t* ignore_values,
     std::size_t ignore_count,
     const PillowCImage* mask,
+    int preserve_tone,
     PillowCImage** out_image)
 {
     if (!source || !out_image) {
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
-    if (!autocontrast_supported_mode(source)) {
+    if ((preserve_tone == 0 && !autocontrast_supported_mode(source)) ||
+        (preserve_tone != 0 && !autocontrast_preserve_tone_supported_mode(source))) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
     try {
         auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
-        const int status = autocontrast_image_into(source, low_cutoff, high_cutoff, ignore_values, ignore_count, mask, image);
+        const int status = autocontrast_image_into(source, low_cutoff, high_cutoff, ignore_values, ignore_count, mask, preserve_tone != 0, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

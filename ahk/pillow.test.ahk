@@ -1106,6 +1106,33 @@ PillowTestImageOpsAutocontrastUsesMaskHistogram(*) {
 
 AhkTest.Test("Pillow ImageOps.Autocontrast uses mask histogram", PillowTestImageOpsAutocontrastUsesMaskHistogram)
 
+PillowTestImageOpsAutocontrastPreserveToneUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [4, 1], PillowTestBuffer([
+        10, 50, 100,
+        20, 60, 150,
+        30, 70, 200,
+        250, 1, 2,
+    ]))
+    mask := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 255, 255, 0]))
+    out := 0
+    maskedOut := 0
+    try {
+        out := Pillow.ImageOps.Autocontrast(rgb, , , , true)
+        maskedOut := Pillow.ImageOps.Autocontrast(rgb, , , mask, true)
+
+        AhkTest.AssertEqual([0, 47, 255, 0, 127, 255, 0, 207, 255, 255, 0, 0], PillowTestBufferToArray(out.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 255, 0, 34, 255, 0, 204, 255, 255, 0, 0], PillowTestBufferToArray(maskedOut.ToBytes()))
+    } finally {
+        for image in [maskedOut, out, mask, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Autocontrast preserve_tone uses native handles", PillowTestImageOpsAutocontrastPreserveToneUsesNativeOperation)
+
 PillowTestImageOpsLutTransformsUseNativeOperations(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 1, 127, 128, 255]))

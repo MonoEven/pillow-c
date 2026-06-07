@@ -211,7 +211,7 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
-        static Autocontrast(image, cutoff := 0, ignore := unset, mask := unset) {
+        static Autocontrast(image, cutoff := 0, ignore := unset, mask := unset, preserveTone := false) {
             cuts := Pillow.ImageOps.CutoffPair(cutoff)
             ignorePtr := 0
             ignoreCount := 0
@@ -234,6 +234,7 @@ class Pillow {
                 "Ptr", ignorePtr,
                 "UPtr", ignoreCount,
                 "Ptr", maskHandle,
+                "Int", preserveTone,
                 "Ptr*", &outHandle,
                 "Int"
             ))
