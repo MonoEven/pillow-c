@@ -107,6 +107,7 @@ Image operations:
 - `pillow_c_image_crop`
 - `pillow_c_image_expand`
 - `pillow_c_image_resize`
+- `pillow_c_image_reduce`
 - `pillow_c_image_filter_kernel`
 - `pillow_c_image_filter_rank`
 - `pillow_c_image_filter_mode`
@@ -164,6 +165,7 @@ Reusable target operations:
 - `pillow_c_image_crop_into`
 - `pillow_c_image_expand_into`
 - `pillow_c_image_resize_into`
+- `pillow_c_image_reduce_into`
 - `pillow_c_image_filter_kernel_into`
 - `pillow_c_image_filter_rank_into`
 - `pillow_c_image_filter_mode_into`
@@ -198,6 +200,8 @@ Reusable target operations:
 `pillow_c_image_filter_mode` and `pillow_c_image_filter_mode_into` accept filter size. The current implementation supports `L`, `RGB`, and `RGBA`, applying Pillow's single-band mode filter independently per channel. Size is converted to a radius with integer division by 2, so even sizes behave like the next odd window size. Only in-image coordinates are counted; outside pixels are ignored. A winning value replaces the original pixel only when it appears more than twice, and equal counts keep the smaller pixel value.
 
 `pillow_c_image_filter_box_blur` and `pillow_c_image_filter_box_blur_into` accept `xradius` and `yradius` doubles. The current implementation supports non-negative finite radii for `L`, `RGB`, and `RGBA`, including fractional radii and single-axis blurs. It follows Pillow's separable fixed-point box blur with endpoint edge extension; radius `(0, 0)` returns a byte copy. Invalid radius returns `-3`.
+
+`pillow_c_image_reduce` and `pillow_c_image_reduce_into` accept integer `xscale`, `yscale`, and a source box as `left`, `top`, `right`, `bottom`. Scales must be greater than zero, boxes must be non-empty and inside the source image, and `_into` targets must match the ceiling-divided output size and source mode. Current verified facade coverage is `L` and `RGB`; alpha modes need separate premultiplied-alpha parity tests before being treated as complete.
 
 `pillow_c_image_filter_gaussian_blur` and `pillow_c_image_filter_gaussian_blur_into` accept `xradius` and `yradius` doubles. The current implementation supports finite radii for `L`, `RGB`, and `RGBA`, including fractional radii and single-axis blurs. It mirrors Pillow's default three-pass Gaussian approximation by transforming each requested radius into a BoxBlur radius, running all horizontal passes before vertical passes, and returning a byte copy when both effective radii are zero. Non-finite or out-of-range radii return `-3`.
 

@@ -2048,6 +2048,40 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        Reduce(factor, box := unset) {
+            scale := this.ReduceFactor(factor)
+            cropBox := IsSet(box) ? this.ReduceBox(box) : [0, 0, this.Width, this.Height]
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_reduce",
+                "Ptr", this.RequireHandle(),
+                "Int", scale[1],
+                "Int", scale[2],
+                "Int", cropBox[1],
+                "Int", cropBox[2],
+                "Int", cropBox[3],
+                "Int", cropBox[4],
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        ReduceFactor(factor) {
+            if IsObject(factor) {
+                if factor.Length != 2
+                    throw Error("Pillow.Image.Reduce factor must be an integer or [x, y]", -1)
+                return [factor[1], factor[2]]
+            }
+            return [factor, factor]
+        }
+
+        ReduceBox(box) {
+            if !IsObject(box) || box.Length != 4
+                throw Error("Pillow.Image.Reduce box expects [left, top, right, bottom]", -1)
+            return box
+        }
+
         Filter(filter) {
             if IsObject(filter) && HasMethod(filter, "Apply")
                 return filter.Apply(this)

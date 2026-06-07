@@ -1228,6 +1228,41 @@ PillowCImageResizeInto(sourceHandle, width, height, resample, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageReduce(sourceHandle, xscale, yscale, left, top, right, bottom) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_reduce",
+        "Ptr", sourceHandle,
+        "Int", xscale,
+        "Int", yscale,
+        "Int", left,
+        "Int", top,
+        "Int", right,
+        "Int", bottom,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageReduceInto(sourceHandle, xscale, yscale, left, top, right, bottom, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_reduce_into",
+        "Ptr", sourceHandle,
+        "Int", xscale,
+        "Int", yscale,
+        "Int", left,
+        "Int", top,
+        "Int", right,
+        "Int", bottom,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCKernelWeights(values) {
     buf := Buffer(values.Length * 8, 0)
     for index, value in values
@@ -5893,6 +5928,123 @@ PillowCTestImageResizeRejectsUnsupportedResampleAndInvalidSize(*) {
 }
 
 AhkTest.Test("pillow_c image resize rejects unsupported resample and invalid output size", PillowCTestImageResizeRejectsUnsupportedResampleAndInvalidSize)
+
+PillowCTestImageReduceMatchesPillowLAndRgb(*) {
+    l := PillowCCreateImageMode(5, 3, 1)
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    lOut := 0
+    rgbOut := 0
+    try {
+        PillowCImageSetBytes(l, [
+            0, 1, 2, 3, 4,
+            5, 6, 7, 8, 9,
+            10, 11, 12, 13, 14,
+        ])
+        PillowCImageSetBytes(rgb, [
+            10, 20, 30, 40, 50, 60, 70, 80, 90,
+            100, 110, 120, 130, 140, 150, 160, 170, 180,
+        ])
+
+        lOut := PillowCImageReduce(l, 2, 2, 0, 0, 5, 3)
+        rgbOut := PillowCImageReduce(rgb, 2, 2, 0, 0, 3, 2)
+
+        AhkTest.AssertEqual([3, 2], [PillowCImageInt(lOut, "pillow_c_image_width"), PillowCImageInt(lOut, "pillow_c_image_height")])
+        AhkTest.AssertEqual([3, 5, 7, 11, 13, 14], PillowCImageToArray(lOut, 6))
+        AhkTest.AssertEqual([2, 1], [PillowCImageInt(rgbOut, "pillow_c_image_width"), PillowCImageInt(rgbOut, "pillow_c_image_height")])
+        AhkTest.AssertEqual([70, 80, 90, 115, 125, 135], PillowCImageToArray(rgbOut, 6))
+    } finally {
+        if rgbOut
+            PillowCFreeImage(rgbOut)
+        if lOut
+            PillowCFreeImage(lOut)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image reduce matches Pillow L and RGB", PillowCTestImageReduceMatchesPillowLAndRgb)
+
+PillowCTestImageReduceSupportsBoxFactorTupleAndInto(*) {
+    l := PillowCCreateImageMode(5, 3, 1)
+    target := PillowCCreateImageMode(3, 1, 1)
+    boxed := 0
+    try {
+        PillowCImageSetBytes(l, [
+            0, 1, 2, 3, 4,
+            5, 6, 7, 8, 9,
+            10, 11, 12, 13, 14,
+        ])
+
+        boxed := PillowCImageReduce(l, 2, 2, 1, 0, 5, 3)
+        AhkTest.AssertEqual([2, 2], [PillowCImageInt(boxed, "pillow_c_image_width"), PillowCImageInt(boxed, "pillow_c_image_height")])
+        AhkTest.AssertEqual([4, 6, 12, 14], PillowCImageToArray(boxed, 4))
+
+        before := PillowCImageData(target).Ptr
+        PillowCImageReduceInto(l, 2, 3, 0, 0, 5, 3, target)
+        AhkTest.AssertEqual(before, PillowCImageData(target).Ptr)
+        AhkTest.AssertEqual([5, 7, 9], PillowCImageToArray(target, 3))
+    } finally {
+        if boxed
+            PillowCFreeImage(boxed)
+        PillowCFreeImage(target)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image reduce supports box factor tuple and _into", PillowCTestImageReduceSupportsBoxFactorTupleAndInto)
+
+PillowCTestImageReduceRejectsInvalidArguments(*) {
+    source := PillowCCreateImageMode(2, 2, 1)
+    target := PillowCCreateImageMode(2, 1, 1)
+    out := 0
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4])
+        cases := [
+            { Args: [0, 1, 0, 0, 2, 2], Status: -3 },
+            { Args: [1, 0, 0, 0, 2, 2], Status: -3 },
+            { Args: [2, 2, -1, 0, 2, 2], Status: -3 },
+            { Args: [2, 2, 0, 0, 3, 2], Status: -3 },
+            { Args: [2, 2, 1, 1, 1, 2], Status: -3 },
+        ]
+        for item in cases {
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_reduce",
+                "Ptr", source,
+                "Int", item.Args[1],
+                "Int", item.Args[2],
+                "Int", item.Args[3],
+                "Int", item.Args[4],
+                "Int", item.Args[5],
+                "Int", item.Args[6],
+                "Ptr*", &out,
+                "Int"
+            )
+            AhkTest.AssertEqual(item.Status, status)
+            AhkTest.AssertEqual(0, out)
+        }
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_reduce_into",
+            "Ptr", source,
+            "Int", 2,
+            "Int", 2,
+            "Int", 0,
+            "Int", 0,
+            "Int", 2,
+            "Int", 2,
+            "Ptr", target,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        PillowCFreeImage(target)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image reduce rejects invalid arguments", PillowCTestImageReduceRejectsInvalidArguments)
 
 PillowCTestImageFilterKernelLMatchesPillowEdgesRoundingAndOrientation(*) {
     source := PillowCCreateImageMode(5, 5, 1)

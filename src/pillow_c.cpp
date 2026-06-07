@@ -149,6 +149,25 @@ inline int clamp_int(int value, int low, int high)
     return value < low ? low : (value > high ? high : value);
 }
 
+inline int ceil_div_int(int value, int divisor)
+{
+    return (value + divisor - 1) / divisor;
+}
+
+std::uint32_t fixed_point_division_u32(int divider, int result_bits)
+{
+    const double max_dividend = static_cast<double>(1 << result_bits) * divider;
+    constexpr double max_int = 4294967296.0;
+    return static_cast<std::uint32_t>(max_int / max_dividend);
+}
+
+std::uint8_t reduce_average_u8(std::uint64_t sum, std::uint32_t count)
+{
+    const std::uint64_t amended = sum + count / 2u;
+    const std::uint64_t multiplier = fixed_point_division_u32(static_cast<int>(count), 8);
+    return static_cast<std::uint8_t>((amended * multiplier) >> 24);
+}
+
 inline std::uint8_t clip_chops_scaled_u8(double value)
 {
     if (!(value > 0.0)) {
@@ -4395,6 +4414,82 @@ int resize_image_box_into(
     }
 }
 
+bool valid_reduce_box(const PillowCImage* source, int left, int top, int right, int bottom)
+{
+    return source &&
+           left >= 0 &&
+           top >= 0 &&
+           right <= source->width &&
+           bottom <= source->height &&
+           right > left &&
+           bottom > top;
+}
+
+int reduce_output_width(int left, int right, int xscale)
+{
+    return ceil_div_int(right - left, xscale);
+}
+
+int reduce_output_height(int top, int bottom, int yscale)
+{
+    return ceil_div_int(bottom - top, yscale);
+}
+
+int reduce_image_into(
+    const PillowCImage* source,
+    int xscale,
+    int yscale,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (xscale <= 0 || yscale <= 0 || !valid_reduce_box(source, left, top, right, bottom)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (source->mode != PILLOW_C_MODE_L && source->mode != PILLOW_C_MODE_RGB) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const int out_width = reduce_output_width(left, right, xscale);
+    const int out_height = reduce_output_height(top, bottom, yscale);
+    if (!image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    for (int out_y = 0; out_y < out_height; ++out_y) {
+        const int y0 = top + out_y * yscale;
+        const int y1 = std::min(y0 + yscale, bottom);
+        std::uint8_t* dst_row = target->pixels.data() + static_cast<std::size_t>(out_y) * target->stride;
+        for (int out_x = 0; out_x < out_width; ++out_x) {
+            const int x0 = left + out_x * xscale;
+            const int x1 = std::min(x0 + xscale, right);
+            const auto count = static_cast<std::uint32_t>((x1 - x0) * (y1 - y0));
+            std::uint8_t* dst = dst_row + static_cast<std::size_t>(out_x) * source->channels;
+            for (int channel = 0; channel < source->channels; ++channel) {
+                std::uint64_t sum = 0;
+                for (int y = y0; y < y1; ++y) {
+                    const std::uint8_t* src_row =
+                        source->pixels.data() + static_cast<std::size_t>(y) * source->stride;
+                    for (int x = x0; x < x1; ++x) {
+                        sum += src_row[static_cast<std::size_t>(x) * source->channels +
+                                       static_cast<std::size_t>(channel)];
+                    }
+                }
+                dst[channel] = reduce_average_u8(sum, count);
+            }
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 int python_round_to_int(double value)
 {
     const double floor_value = std::floor(value);
@@ -5735,6 +5830,19 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize_into(
     PillowCImage* target)
 {
     return resize_image_into(source, out_width, out_height, resample, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_reduce_into(
+    const PillowCImage* source,
+    int xscale,
+    int yscale,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    PillowCImage* target)
+{
+    return reduce_image_into(source, xscale, yscale, left, top, right, bottom, target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_filter_kernel_into(
@@ -7334,6 +7442,55 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = resize_image_into(source, out_width, out_height, resample, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_reduce(
+    const PillowCImage* source,
+    int xscale,
+    int yscale,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (xscale <= 0 || yscale <= 0 || !valid_reduce_box(source, left, top, right, bottom)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (source->mode != PILLOW_C_MODE_L && source->mode != PILLOW_C_MODE_RGB) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const int out_width = reduce_output_width(left, right, xscale);
+    const int out_height = reduce_output_height(top, bottom, yscale);
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size(out_width, out_height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = reduce_image_into(source, xscale, yscale, left, top, right, bottom, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

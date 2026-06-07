@@ -269,6 +269,47 @@ PillowTestImageResizeBicubicUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Resize BICUBIC resizes through native handles", PillowTestImageResizeBicubicUsesNativeHandleOperation)
 
+PillowTestImageReduceUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [5, 3], PillowTestBuffer([
+        0, 1, 2, 3, 4,
+        5, 6, 7, 8, 9,
+        10, 11, 12, 13, 14,
+    ]))
+    rgb := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([
+        10, 20, 30, 40, 50, 60, 70, 80, 90,
+        100, 110, 120, 130, 140, 150, 160, 170, 180,
+    ]))
+    lReduced := 0
+    lTuple := 0
+    lBox := 0
+    rgbReduced := 0
+    try {
+        lReduced := l.Reduce(2)
+        lTuple := l.Reduce([2, 3])
+        lBox := l.Reduce(2, [1, 0, 5, 3])
+        rgbReduced := rgb.Reduce(2)
+
+        AhkTest.AssertEqual("L", lReduced.Mode)
+        AhkTest.AssertEqual([3, 2], lReduced.Size)
+        AhkTest.AssertEqual([3, 5, 7, 11, 13, 14], PillowTestBufferToArray(lReduced.ToBytes()))
+        AhkTest.AssertEqual([3, 1], lTuple.Size)
+        AhkTest.AssertEqual([5, 7, 9], PillowTestBufferToArray(lTuple.ToBytes()))
+        AhkTest.AssertEqual([2, 2], lBox.Size)
+        AhkTest.AssertEqual([4, 6, 12, 14], PillowTestBufferToArray(lBox.ToBytes()))
+        AhkTest.AssertEqual("RGB", rgbReduced.Mode)
+        AhkTest.AssertEqual([2, 1], rgbReduced.Size)
+        AhkTest.AssertEqual([70, 80, 90, 115, 125, 135], PillowTestBufferToArray(rgbReduced.ToBytes()))
+    } finally {
+        for image in [rgbReduced, lBox, lTuple, lReduced, rgb, l] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Reduce uses native integer downsampling", PillowTestImageReduceUsesNativeOperation)
+
 PillowTestImageFilterKernelUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [5, 5], PillowTestBuffer([

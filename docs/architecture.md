@@ -47,6 +47,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `image.Fill(...)`
 - `image.Crop(...)`
 - `image.Resize(...)`
+- `image.Reduce(...)`
 - `image.Filter(Pillow.ImageFilter.Kernel(...))`
 - `image.Transform(...)`
 - `image.TransformAffine(...)`
@@ -128,13 +129,15 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 
 AHK owns ergonomics and lifetime. The DLL owns image bytes and transformations.
 
-Core `L`, `LA`, `RGB`, and `RGBA` conversions, histogram/extrema/entropy/bounding-box/projection/color-count scans, histogram-backed `ImageStat.Stat` properties with L-mode mask support, fixed-LUT and histogram-derived `ImageOps` transforms for supported `L`/`RGB` modes, `ImageOps.colorize` L-to-RGB mapping, `Image.eval`/`Image.point` LUT mapping, `Image.Filter(ImageFilter.Kernel(...))`, `Image.Filter(ImageFilter.RankFilter(...))`, `Image.Filter(ImageFilter.ModeFilter(...))`, `Image.Filter(ImageFilter.BoxBlur(...))`, `Image.Filter(ImageFilter.GaussianBlur(...))`, `Image.Filter(ImageFilter.UnsharpMask(...))`, ImageEnhance composition over native blend/convert/filter/stat operations, `ImageOps.crop`/`ImageOps.expand`, scaled, proportional, fitted, and padded `ImageOps` resize helpers, current `ImageChops` helpers and binary operations, mask compositing, masked paste, masked equalize, masked and preserve-tone autocontrast histograms, L-band split, L-band merge, Python-like AFFINE/EXTENT/PERSPECTIVE/QUAD/MESH transform dispatch, general NEAREST/BILINEAR/BICUBIC affine, perspective, quad, and mesh transforms, NEAREST/BILINEAR/BICUBIC affine rotate, and all current Pillow resize filters are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
+Core `L`, `LA`, `RGB`, and `RGBA` conversions, histogram/extrema/entropy/bounding-box/projection/color-count scans, histogram-backed `ImageStat.Stat` properties with L-mode mask support, fixed-LUT and histogram-derived `ImageOps` transforms for supported `L`/`RGB` modes, `ImageOps.colorize` L-to-RGB mapping, `Image.eval`/`Image.point` LUT mapping, `Image.Filter(ImageFilter.Kernel(...))`, `Image.Filter(ImageFilter.RankFilter(...))`, `Image.Filter(ImageFilter.ModeFilter(...))`, `Image.Filter(ImageFilter.BoxBlur(...))`, `Image.Filter(ImageFilter.GaussianBlur(...))`, `Image.Filter(ImageFilter.UnsharpMask(...))`, ImageEnhance composition over native blend/convert/filter/stat operations, `ImageOps.crop`/`ImageOps.expand`, scaled, proportional, fitted, padded, and integer-reduced resize helpers, current `ImageChops` helpers and binary operations, mask compositing, masked paste, masked equalize, masked and preserve-tone autocontrast histograms, L-band split, L-band merge, Python-like AFFINE/EXTENT/PERSPECTIVE/QUAD/MESH transform dispatch, general NEAREST/BILINEAR/BICUBIC affine, perspective, quad, and mesh transforms, NEAREST/BILINEAR/BICUBIC affine rotate, and all current Pillow resize filters are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
 
 `ImageStat.Stat` currently supports image inputs, image inputs with same-size L-mode masks, and precomputed histogram lists. Its properties follow Pillow's histogram-derived formulas for `extrema`, `count`, `sum`, `sum2`, `mean`, `median`, `rms`, `var`, and `stddev`. A mask on a histogram list is rejected because the native mask path requires image storage.
 
 `ImageOps.equalize` and `ImageOps.autocontrast` currently implement common histogram/LUT paths with L-mode masks for supported `L`/`RGB` images. Autocontrast also supports `cutoff`, `ignore`, and Pillow's `preserve_tone` mode.
 
 Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes. `NEAREST` uses Pillow's affine-scale coordinate progression. `BOX`, `BILINEAR`, `HAMMING`, `BICUBIC`, and `LANCZOS` use separable two-pass filtering with Pillow-style fixed-point coefficient normalization. Non-NEAREST `RGBA` resize uses premultiplied color internally and preserves identity resizes as byte copies.
+
+`Image.reduce` currently supports native integer block downsampling for `L` and `RGB` facade coverage, including Pillow-style output-size ceiling, optional box regions, and allocation-avoiding `_into` calls. RGBA/LA premultiplied alpha reduce should be locked with separate tests before claiming full alpha-mode parity.
 
 `ImageFilter.Kernel` currently supports Pillow's 3x3 and 5x5 kernel path for `L`, `RGB`, and `RGBA`. Native filtering copies border pixels unchanged, applies Pillow's vertical kernel flip, and uses Pillow-style half-up rounding before clipping. Pillow's fixed-kernel built-ins `BLUR`, `CONTOUR`, `DETAIL`, `EDGE_ENHANCE`, `EDGE_ENHANCE_MORE`, `EMBOSS`, `FIND_EDGES`, `SHARPEN`, `SMOOTH`, and `SMOOTH_MORE` reuse the same native kernel path.
 
