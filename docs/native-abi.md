@@ -58,6 +58,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_histogram`
 - `pillow_c_image_get_extrema`
 - `pillow_c_image_getbbox`
+- `pillow_c_image_getprojection`
 
 Image operations:
 

@@ -285,6 +285,29 @@ PillowCImageGetBbox(handle, alphaOnly := true) {
     return hasBbox ? [left, top, right, bottom] : 0
 }
 
+PillowCProjectionArray(buf) {
+    values := []
+    loop buf.Size
+        values.Push(NumGet(buf, A_Index - 1, "UChar"))
+    return values
+}
+
+PillowCImageGetProjection(handle, width, height) {
+    xProjection := Buffer(width, 0)
+    yProjection := Buffer(height, 0)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_getprojection",
+        "Ptr", handle,
+        "Ptr", xProjection,
+        "UPtr", xProjection.Size,
+        "Ptr", yProjection,
+        "UPtr", yProjection.Size,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [PillowCProjectionArray(xProjection), PillowCProjectionArray(yProjection)]
+}
+
 PillowCImageSize(handle) {
     value := 0
     status := DllCall(PillowCDllPath() "\pillow_c_image_size", "Ptr", handle, "UPtr*", &value, "Int")
@@ -3378,6 +3401,47 @@ PillowCTestImageGetBboxMatchesPillowModes(*) {
 }
 
 AhkTest.Test("pillow_c image getbbox matches Pillow modes and alpha_only", PillowCTestImageGetBboxMatchesPillowModes)
+
+PillowCTestImageGetProjectionMatchesPillowModes(*) {
+    l := PillowCCreateImageMode(4, 3, 1)
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    rgba := PillowCCreateImageMode(3, 1, 4)
+    empty := PillowCCreateImageMode(3, 2, 1)
+    zeroWidth := 0
+    try {
+        PillowCImageSetBytes(l, [
+            0, 0, 0, 0,
+            0, 5, 0, 0,
+            0, 0, 7, 0,
+        ])
+        PillowCImageSetBytes(rgb, [
+            0, 0, 0, 1, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 2, 0, 0, 0, 3,
+        ])
+        PillowCImageSetBytes(rgba, [
+            0, 0, 0, 0,
+            9, 0, 0, 0,
+            0, 0, 0, 5,
+        ])
+        PillowCImageSetBytes(empty, [0, 0, 0, 0, 0, 0])
+        zeroWidth := PillowCImageCrop(l, 0, 0, 0, 2)
+
+        AhkTest.AssertEqual([[0, 1, 1, 0], [0, 1, 1]], PillowCImageGetProjection(l, 4, 3))
+        AhkTest.AssertEqual([[0, 1, 1], [1, 1]], PillowCImageGetProjection(rgb, 3, 2))
+        AhkTest.AssertEqual([[0, 1, 1], [1]], PillowCImageGetProjection(rgba, 3, 1))
+        AhkTest.AssertEqual([[0, 0, 0], [0, 0]], PillowCImageGetProjection(empty, 3, 2))
+        AhkTest.AssertEqual([[], [0, 0]], PillowCImageGetProjection(zeroWidth, 0, 2))
+    } finally {
+        if zeroWidth
+            PillowCFreeImage(zeroWidth)
+        PillowCFreeImage(empty)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image getprojection matches Pillow modes", PillowCTestImageGetProjectionMatchesPillowModes)
 
 PillowCTestImageAutocontrastMatchesPillowLAndRgb(*) {
     l := PillowCCreateImageMode(4, 1, 1)

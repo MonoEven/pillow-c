@@ -1285,6 +1285,47 @@ int getbbox_image(
     return PILLOW_C_OK;
 }
 
+int getprojection_image(
+    const PillowCImage* source,
+    std::uint8_t* out_x_projection,
+    std::size_t out_x_count,
+    std::uint8_t* out_y_projection,
+    std::size_t out_y_count)
+{
+    if (!source || (out_x_count > 0 && !out_x_projection) || (out_y_count > 0 && !out_y_projection)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_x_count != static_cast<std::size_t>(source->width) ||
+        out_y_count != static_cast<std::size_t>(source->height)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    if (out_x_count > 0) {
+        std::fill(out_x_projection, out_x_projection + out_x_count, static_cast<std::uint8_t>(0));
+    }
+    if (out_y_count > 0) {
+        std::fill(out_y_projection, out_y_projection + out_y_count, static_cast<std::uint8_t>(0));
+    }
+    for (int y = 0; y < source->height; ++y) {
+        const std::uint8_t* row = source->pixels.data() + static_cast<std::size_t>(y) * source->stride;
+        for (int x = 0; x < source->width; ++x) {
+            const std::uint8_t* pixel = row + static_cast<std::size_t>(x) * source->channels;
+            bool nonzero = false;
+            for (int channel = 0; channel < source->channels; ++channel) {
+                if (pixel[channel] != 0) {
+                    nonzero = true;
+                    break;
+                }
+            }
+            if (nonzero) {
+                out_x_projection[x] = 1;
+                out_y_projection[y] = 1;
+            }
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 bool autocontrast_supported_mode(const PillowCImage* source)
 {
     return supports_imageops_lut(source);
@@ -3453,6 +3494,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_getbbox(
     int* out_has_bbox)
 {
     return getbbox_image(image, alpha_only != 0, out_left, out_top, out_right, out_bottom, out_has_bbox);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_getprojection(
+    const PillowCImage* image,
+    std::uint8_t* out_x_projection,
+    std::size_t out_x_count,
+    std::uint8_t* out_y_projection,
+    std::size_t out_y_count)
+{
+    return getprojection_image(image, out_x_projection, out_x_count, out_y_projection, out_y_count);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_copy(

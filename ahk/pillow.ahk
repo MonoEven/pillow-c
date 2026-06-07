@@ -1025,6 +1025,28 @@ class Pillow {
             return hasBbox ? [left, top, right, bottom] : 0
         }
 
+        GetProjection() {
+            xProjection := Buffer(this.Width, 0)
+            yProjection := Buffer(this.Height, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_getprojection",
+                "Ptr", this.RequireHandle(),
+                "Ptr", xProjection,
+                "UPtr", xProjection.Size,
+                "Ptr", yProjection,
+                "UPtr", yProjection.Size,
+                "Int"
+            ))
+            return [Pillow.Image.ProjectionBufferToArray(xProjection), Pillow.Image.ProjectionBufferToArray(yProjection)]
+        }
+
+        static ProjectionBufferToArray(buf) {
+            values := []
+            loop buf.Size
+                values.Push(NumGet(buf, A_Index - 1, "UChar"))
+            return values
+        }
+
         Split() {
             bandCount := this.Channels
             outHandles := Buffer(bandCount * A_PtrSize, 0)

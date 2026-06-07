@@ -830,6 +830,38 @@ PillowTestImageGetBboxUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.GetBbox returns Pillow-style bounding boxes through native handles", PillowTestImageGetBboxUsesNativeOperation)
 
+PillowTestImageGetProjectionUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
+        0, 0, 0, 0,
+        0, 5, 0, 0,
+        0, 0, 7, 0,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [3, 1], PillowTestBuffer([
+        0, 0, 0, 0,
+        9, 0, 0, 0,
+        0, 0, 0, 5,
+    ]))
+    empty := Pillow.Image.New("L", [3, 2])
+    zeroWidth := 0
+    try {
+        zeroWidth := l.Crop([0, 0, 0, 2])
+
+        AhkTest.AssertEqual([[0, 1, 1, 0], [0, 1, 1]], l.GetProjection())
+        AhkTest.AssertEqual([[0, 1, 1], [1]], rgba.GetProjection())
+        AhkTest.AssertEqual([[0, 0, 0], [0, 0]], empty.GetProjection())
+        AhkTest.AssertEqual([[], [0, 0]], zeroWidth.GetProjection())
+    } finally {
+        if IsObject(zeroWidth)
+            zeroWidth.Close()
+        empty.Close()
+        rgba.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetProjection returns Pillow-style axis projections through native handles", PillowTestImageGetProjectionUsesNativeOperation)
+
 PillowTestImageOpsGrayscaleConvertsCoreModes(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 200, 100, 50]))
