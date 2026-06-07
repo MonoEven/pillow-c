@@ -90,6 +90,37 @@ inline std::uint8_t clip_chops_scaled_u8(double value)
     return static_cast<std::uint8_t>(value);
 }
 
+inline std::uint8_t soft_light_u8(std::uint8_t left, std::uint8_t right)
+{
+    const int left_value = static_cast<int>(left);
+    const int right_value = static_cast<int>(right);
+    const int inverse_left = 255 - left_value;
+    const int value =
+        (inverse_left * (left_value * right_value) / 65536) +
+        (left_value * (255 - (inverse_left * (255 - right_value) / 255)) / 255);
+    return static_cast<std::uint8_t>(value);
+}
+
+inline std::uint8_t hard_light_u8(std::uint8_t left, std::uint8_t right)
+{
+    const int left_value = static_cast<int>(left);
+    const int right_value = static_cast<int>(right);
+    const int value = right_value < 128 ?
+        (left_value * right_value) / 127 :
+        255 - (((255 - right_value) * (255 - left_value)) / 127);
+    return static_cast<std::uint8_t>(value);
+}
+
+inline std::uint8_t overlay_u8(std::uint8_t left, std::uint8_t right)
+{
+    const int left_value = static_cast<int>(left);
+    const int right_value = static_cast<int>(right);
+    const int value = left_value < 128 ?
+        (left_value * right_value) / 127 :
+        255 - (((255 - left_value) * (255 - right_value)) / 127);
+    return static_cast<std::uint8_t>(value);
+}
+
 inline std::uint8_t clip_resample_u8(std::int64_t value)
 {
     const std::int64_t shifted = value >> RESAMPLE_PRECISION_BITS;
@@ -2448,6 +2479,87 @@ extern "C" __declspec(dllexport) int pillow_c_image_darker_into(
     return PILLOW_C_OK;
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_soft_light_into(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage* target)
+{
+    int out_width = 0;
+    int out_height = 0;
+    const int status = validate_chops_binary_target(left, right, target, &out_width, &out_height);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const int channels = left->channels;
+    for (int y = 0; y < out_height; ++y) {
+        const std::uint8_t* left_row = left->pixels.data() + static_cast<std::size_t>(y) * left->stride;
+        const std::uint8_t* right_row = right->pixels.data() + static_cast<std::size_t>(y) * right->stride;
+        std::uint8_t* target_row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+        for (int x = 0; x < out_width * channels; ++x) {
+            target_row[x] = soft_light_u8(left_row[x], right_row[x]);
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_hard_light_into(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage* target)
+{
+    int out_width = 0;
+    int out_height = 0;
+    const int status = validate_chops_binary_target(left, right, target, &out_width, &out_height);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const int channels = left->channels;
+    for (int y = 0; y < out_height; ++y) {
+        const std::uint8_t* left_row = left->pixels.data() + static_cast<std::size_t>(y) * left->stride;
+        const std::uint8_t* right_row = right->pixels.data() + static_cast<std::size_t>(y) * right->stride;
+        std::uint8_t* target_row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+        for (int x = 0; x < out_width * channels; ++x) {
+            target_row[x] = hard_light_u8(left_row[x], right_row[x]);
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_overlay_into(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage* target)
+{
+    int out_width = 0;
+    int out_height = 0;
+    const int status = validate_chops_binary_target(left, right, target, &out_width, &out_height);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const int channels = left->channels;
+    for (int y = 0; y < out_height; ++y) {
+        const std::uint8_t* left_row = left->pixels.data() + static_cast<std::size_t>(y) * left->stride;
+        const std::uint8_t* right_row = right->pixels.data() + static_cast<std::size_t>(y) * right->stride;
+        std::uint8_t* target_row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+        for (int x = 0; x < out_width * channels; ++x) {
+            target_row[x] = overlay_u8(left_row[x], right_row[x]);
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_add_into(
     const PillowCImage* left,
     const PillowCImage* right,
@@ -3258,6 +3370,129 @@ extern "C" __declspec(dllexport) int pillow_c_image_darker(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = pillow_c_image_darker_into(left, right, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_soft_light(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage** out_image)
+{
+    if (!left || !right || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (left->mode != right->mode || left->channels != right->channels) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    const int out_width = overlapping_width(left, right);
+    const int out_height = overlapping_height(left, right);
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(out_width, out_height, left->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            left->mode,
+            left->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = pillow_c_image_soft_light_into(left, right, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_hard_light(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage** out_image)
+{
+    if (!left || !right || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (left->mode != right->mode || left->channels != right->channels) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    const int out_width = overlapping_width(left, right);
+    const int out_height = overlapping_height(left, right);
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(out_width, out_height, left->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            left->mode,
+            left->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = pillow_c_image_hard_light_into(left, right, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_overlay(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage** out_image)
+{
+    if (!left || !right || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (left->mode != right->mode || left->channels != right->channels) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    const int out_width = overlapping_width(left, right);
+    const int out_height = overlapping_height(left, right);
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(out_width, out_height, left->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            left->mode,
+            left->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = pillow_c_image_overlay_into(left, right, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

@@ -336,6 +336,42 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static SoftLight(left, right) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_soft_light",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "SoftLight"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "SoftLight"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static HardLight(left, right) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_hard_light",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "HardLight"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "HardLight"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static Overlay(left, right) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_overlay",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Overlay"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Overlay"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static Add(left, right, scale := 1.0, offset := 0) {
             if !(scale is Number)
                 throw Error("Pillow.ImageChops.Add scale must be numeric", -1)

@@ -371,6 +371,48 @@ PillowCImageDarker(leftHandle, rightHandle) {
     return outHandle
 }
 
+PillowCImageSoftLight(leftHandle, rightHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_soft_light",
+        "Ptr", leftHandle,
+        "Ptr", rightHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageHardLight(leftHandle, rightHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_hard_light",
+        "Ptr", leftHandle,
+        "Ptr", rightHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageOverlay(leftHandle, rightHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_overlay",
+        "Ptr", leftHandle,
+        "Ptr", rightHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageAdd(leftHandle, rightHandle, scale := 1.0, offset := 0.0) {
     outHandle := 0
     status := DllCall(
@@ -1742,6 +1784,160 @@ PillowCTestImageLighterAndDarkerRejectModeMismatch(*) {
 }
 
 AhkTest.Test("pillow_c image lighter and darker reject mode mismatch", PillowCTestImageLighterAndDarkerRejectModeMismatch)
+
+PillowCTestImageSoftHardOverlayMatchPillowModes(*) {
+    l1 := PillowCCreateImageMode(4, 1, 1)
+    l2 := PillowCCreateImageMode(4, 1, 1)
+    rgb1 := PillowCCreateImageMode(2, 1, 3)
+    rgb2 := PillowCCreateImageMode(2, 1, 3)
+    rgba1 := PillowCCreateImageMode(2, 1, 4)
+    rgba2 := PillowCCreateImageMode(2, 1, 4)
+    lSoft := 0
+    rgbSoft := 0
+    rgbaSoft := 0
+    lHard := 0
+    rgbHard := 0
+    rgbaHard := 0
+    lOverlay := 0
+    rgbOverlay := 0
+    rgbaOverlay := 0
+    try {
+        PillowCImageSetBytes(l1, [0, 40, 128, 255])
+        PillowCImageSetBytes(l2, [255, 10, 128, 64])
+        PillowCImageSetBytes(rgb1, [1, 50, 200, 255, 0, 80])
+        PillowCImageSetBytes(rgb2, [4, 20, 100, 15, 200, 90])
+        PillowCImageSetBytes(rgba1, [1, 50, 200, 255, 20, 30, 40, 0])
+        PillowCImageSetBytes(rgba2, [4, 20, 100, 15, 200, 90, 50, 255])
+
+        lSoft := PillowCImageSoftLight(l1, l2)
+        rgbSoft := PillowCImageSoftLight(rgb1, rgb2)
+        rgbaSoft := PillowCImageSoftLight(rgba1, rgba2)
+        lHard := PillowCImageHardLight(l1, l2)
+        rgbHard := PillowCImageHardLight(rgb1, rgb2)
+        rgbaHard := PillowCImageHardLight(rgba1, rgba2)
+        lOverlay := PillowCImageOverlay(l1, l2)
+        rgbOverlay := PillowCImageOverlay(rgb1, rgb2)
+        rgbaOverlay := PillowCImageOverlay(rgba1, rgba2)
+
+        AhkTest.AssertEqual([0, 8, 127, 255], PillowCImageToArray(lSoft, 4))
+        AhkTest.AssertEqual([0, 16, 190, 255, 0, 63], PillowCImageToArray(rgbSoft, 6))
+        AhkTest.AssertEqual([0, 16, 190, 255, 30, 21, 19, 0], PillowCImageToArray(rgbaSoft, 8))
+        AhkTest.AssertEqual([255, 3, 128, 128], PillowCImageToArray(lHard, 4))
+        AhkTest.AssertEqual([0, 7, 157, 30, 145, 56], PillowCImageToArray(rgbHard, 6))
+        AhkTest.AssertEqual([0, 7, 157, 30, 154, 21, 15, 255], PillowCImageToArray(rgbaHard, 8))
+        AhkTest.AssertEqual([0, 3, 128, 255], PillowCImageToArray(lOverlay, 4))
+        AhkTest.AssertEqual([0, 7, 188, 255, 0, 56], PillowCImageToArray(rgbOverlay, 6))
+        AhkTest.AssertEqual([0, 7, 188, 255, 31, 21, 15, 0], PillowCImageToArray(rgbaOverlay, 8))
+    } finally {
+        for handle in [rgbaOverlay, rgbOverlay, lOverlay, rgbaHard, rgbHard, lHard, rgbaSoft, rgbSoft, lSoft, rgba2, rgba1, rgb2, rgb1, l2, l1] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image soft hard overlay match Pillow modes", PillowCTestImageSoftHardOverlayMatchPillowModes)
+
+PillowCTestImageSoftHardOverlayUseOverlappingAndEmptyOutputSize(*) {
+    left := PillowCCreateImageMode(4, 1, 1)
+    right := PillowCCreateImageMode(2, 1, 1)
+    empty := 0
+    softOverlap := 0
+    hardOverlap := 0
+    overlayOverlap := 0
+    softEmpty := 0
+    hardEmpty := 0
+    overlayEmpty := 0
+    try {
+        PillowCImageSetBytes(left, [0, 40, 128, 255])
+        PillowCImageSetBytes(right, [255, 10])
+        empty := PillowCImageCrop(left, 1, 0, 1, 1)
+        softOverlap := PillowCImageSoftLight(left, right)
+        hardOverlap := PillowCImageHardLight(left, right)
+        overlayOverlap := PillowCImageOverlay(left, right)
+        softEmpty := PillowCImageSoftLight(empty, left)
+        hardEmpty := PillowCImageHardLight(empty, left)
+        overlayEmpty := PillowCImageOverlay(empty, left)
+
+        AhkTest.AssertEqual([2, 1], [PillowCImageInt(softOverlap, "pillow_c_image_width"), PillowCImageInt(softOverlap, "pillow_c_image_height")])
+        AhkTest.AssertEqual([0, 8], PillowCImageToArray(softOverlap, 2))
+        AhkTest.AssertEqual([255, 3], PillowCImageToArray(hardOverlap, 2))
+        AhkTest.AssertEqual([0, 3], PillowCImageToArray(overlayOverlap, 2))
+        AhkTest.AssertEqual([0, 1], [PillowCImageInt(softEmpty, "pillow_c_image_width"), PillowCImageInt(softEmpty, "pillow_c_image_height")])
+        AhkTest.AssertEqual([], PillowCImageToArray(softEmpty, 0))
+        AhkTest.AssertEqual([], PillowCImageToArray(hardEmpty, 0))
+        AhkTest.AssertEqual([], PillowCImageToArray(overlayEmpty, 0))
+    } finally {
+        for handle in [overlayEmpty, hardEmpty, softEmpty, overlayOverlap, hardOverlap, softOverlap, empty, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image soft hard overlay use overlapping and empty output size like Pillow", PillowCTestImageSoftHardOverlayUseOverlappingAndEmptyOutputSize)
+
+PillowCTestImageSoftHardOverlayIntoReuseTargetHandle(*) {
+    left := PillowCCreateImageMode(4, 1, 1)
+    right := PillowCCreateImageMode(2, 1, 1)
+    softTarget := PillowCCreateImageMode(2, 1, 1)
+    hardTarget := PillowCCreateImageMode(2, 1, 1)
+    overlayTarget := PillowCCreateImageMode(2, 1, 1)
+    try {
+        PillowCImageSetBytes(left, [0, 40, 128, 255])
+        PillowCImageSetBytes(right, [255, 10])
+        softBefore := PillowCImageData(softTarget).Ptr
+        hardBefore := PillowCImageData(hardTarget).Ptr
+        overlayBefore := PillowCImageData(overlayTarget).Ptr
+
+        softStatus := DllCall(PillowCDllPath() "\pillow_c_image_soft_light_into", "Ptr", left, "Ptr", right, "Ptr", softTarget, "Int")
+        hardStatus := DllCall(PillowCDllPath() "\pillow_c_image_hard_light_into", "Ptr", left, "Ptr", right, "Ptr", hardTarget, "Int")
+        overlayStatus := DllCall(PillowCDllPath() "\pillow_c_image_overlay_into", "Ptr", left, "Ptr", right, "Ptr", overlayTarget, "Int")
+        PillowCAssertStatus(softStatus)
+        PillowCAssertStatus(hardStatus)
+        PillowCAssertStatus(overlayStatus)
+
+        AhkTest.AssertEqual(softBefore, PillowCImageData(softTarget).Ptr)
+        AhkTest.AssertEqual(hardBefore, PillowCImageData(hardTarget).Ptr)
+        AhkTest.AssertEqual(overlayBefore, PillowCImageData(overlayTarget).Ptr)
+        AhkTest.AssertEqual([0, 8], PillowCImageToArray(softTarget, 2))
+        AhkTest.AssertEqual([255, 3], PillowCImageToArray(hardTarget, 2))
+        AhkTest.AssertEqual([0, 3], PillowCImageToArray(overlayTarget, 2))
+    } finally {
+        for handle in [overlayTarget, hardTarget, softTarget, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image soft hard overlay _into reuse overlapping target storage", PillowCTestImageSoftHardOverlayIntoReuseTargetHandle)
+
+PillowCTestImageSoftHardOverlayRejectModeMismatch(*) {
+    left := PillowCCreateImageMode(1, 1, 1)
+    right := PillowCCreateImageMode(1, 1, 3)
+    outHandle := 0
+    try {
+        status := DllCall(PillowCDllPath() "\pillow_c_image_soft_light", "Ptr", left, "Ptr", right, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-5, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_hard_light", "Ptr", left, "Ptr", right, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-5, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_overlay", "Ptr", left, "Ptr", right, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-5, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(right)
+        PillowCFreeImage(left)
+    }
+}
+
+AhkTest.Test("pillow_c image soft hard overlay reject mode mismatch", PillowCTestImageSoftHardOverlayRejectModeMismatch)
 
 PillowCTestImageAddAndSubtractClampLikePillowModes(*) {
     l1 := PillowCCreateImageMode(4, 1, 1)

@@ -1293,6 +1293,92 @@ PillowTestImageChopsLighterAndDarkerRejectModeMismatch(*) {
 
 AhkTest.Test("Pillow ImageChops lighter and darker reject mode mismatch", PillowTestImageChopsLighterAndDarkerRejectModeMismatch)
 
+PillowTestImageChopsSoftHardOverlayUseNativeHandles(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 50, 200, 255, 0, 80]))
+    right := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([4, 20, 100, 15, 200, 90]))
+    softOut := 0
+    hardOut := 0
+    overlayOut := 0
+    try {
+        softOut := Pillow.ImageChops.SoftLight(left, right)
+        hardOut := Pillow.ImageChops.HardLight(left, right)
+        overlayOut := Pillow.ImageChops.Overlay(left, right)
+
+        AhkTest.AssertEqual("RGB", softOut.Mode)
+        AhkTest.AssertEqual([2, 1], softOut.Size)
+        AhkTest.AssertEqual([0, 16, 190, 255, 0, 63], PillowTestBufferToArray(softOut.ToBytes()))
+        AhkTest.AssertEqual([0, 7, 157, 30, 145, 56], PillowTestBufferToArray(hardOut.ToBytes()))
+        AhkTest.AssertEqual([0, 7, 188, 255, 0, 56], PillowTestBufferToArray(overlayOut.ToBytes()))
+    } finally {
+        for image in [overlayOut, hardOut, softOut, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops soft hard overlay compute blend modes through native handles", PillowTestImageChopsSoftHardOverlayUseNativeHandles)
+
+PillowTestImageChopsSoftHardOverlayUseOverlappingAndEmptyOutputSize(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 40, 128, 255]))
+    right := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([255, 10]))
+    empty := 0
+    softOverlap := 0
+    hardOverlap := 0
+    overlayOverlap := 0
+    softEmpty := 0
+    hardEmpty := 0
+    overlayEmpty := 0
+    try {
+        empty := left.Crop([1, 0, 1, 1])
+        softOverlap := Pillow.ImageChops.SoftLight(left, right)
+        hardOverlap := Pillow.ImageChops.HardLight(left, right)
+        overlayOverlap := Pillow.ImageChops.Overlay(left, right)
+        softEmpty := Pillow.ImageChops.SoftLight(empty, left)
+        hardEmpty := Pillow.ImageChops.HardLight(empty, left)
+        overlayEmpty := Pillow.ImageChops.Overlay(empty, left)
+
+        AhkTest.AssertEqual([2, 1], softOverlap.Size)
+        AhkTest.AssertEqual([0, 8], PillowTestBufferToArray(softOverlap.ToBytes()))
+        AhkTest.AssertEqual([255, 3], PillowTestBufferToArray(hardOverlap.ToBytes()))
+        AhkTest.AssertEqual([0, 3], PillowTestBufferToArray(overlayOverlap.ToBytes()))
+        AhkTest.AssertEqual([0, 1], softEmpty.Size)
+        AhkTest.AssertEqual([], PillowTestBufferToArray(softEmpty.ToBytes()))
+        AhkTest.AssertEqual([], PillowTestBufferToArray(hardEmpty.ToBytes()))
+        AhkTest.AssertEqual([], PillowTestBufferToArray(overlayEmpty.ToBytes()))
+    } finally {
+        for image in [overlayEmpty, hardEmpty, softEmpty, overlayOverlap, hardOverlap, softOverlap, empty, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops soft hard overlay return overlapping and empty output sizes", PillowTestImageChopsSoftHardOverlayUseOverlappingAndEmptyOutputSize)
+
+PillowTestImageChopsSoftHardOverlayRejectModeMismatch(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([1]))
+    right := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    try {
+        for methodName in ["SoftLight", "HardLight", "Overlay"] {
+            try {
+                Pillow.ImageChops.%methodName%(left, right)
+                AhkTest.Fail("Expected ImageChops." methodName " to reject mode mismatch")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, "mismatch") > 0)
+            }
+        }
+    } finally {
+        right.Close()
+        left.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageChops soft hard overlay reject mode mismatch", PillowTestImageChopsSoftHardOverlayRejectModeMismatch)
+
 PillowTestImageChopsAddAndSubtractUseNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 50, 200, 255, 0, 80]))
