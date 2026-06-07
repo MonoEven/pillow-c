@@ -87,6 +87,16 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `Pillow.ImageChops.SubtractModulo(...)`
 - `Pillow.ImageChops.Offset(...)`
 - `Pillow.ImageFilter.Kernel(...)`
+- `Pillow.ImageFilter.BLUR(...)`
+- `Pillow.ImageFilter.CONTOUR(...)`
+- `Pillow.ImageFilter.DETAIL(...)`
+- `Pillow.ImageFilter.EDGE_ENHANCE(...)`
+- `Pillow.ImageFilter.EDGE_ENHANCE_MORE(...)`
+- `Pillow.ImageFilter.EMBOSS(...)`
+- `Pillow.ImageFilter.FIND_EDGES(...)`
+- `Pillow.ImageFilter.SHARPEN(...)`
+- `Pillow.ImageFilter.SMOOTH(...)`
+- `Pillow.ImageFilter.SMOOTH_MORE(...)`
 - `image.GetChannel(...)`
 - `image.Split(...)`
 - `image.PutAlpha(...)`
@@ -109,7 +119,7 @@ Core `L`, `RGB`, and `RGBA` conversions, histogram/extrema/bounding-box/projecti
 
 Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes. `NEAREST` uses Pillow's affine-scale coordinate progression. `BOX`, `BILINEAR`, `HAMMING`, `BICUBIC`, and `LANCZOS` use separable two-pass filtering with Pillow-style fixed-point coefficient normalization. Non-NEAREST `RGBA` resize uses premultiplied color internally and preserves identity resizes as byte copies.
 
-`ImageFilter.Kernel` currently supports Pillow's 3x3 and 5x5 kernel path for `L`, `RGB`, and `RGBA`. Native filtering copies border pixels unchanged, applies Pillow's vertical kernel flip, and uses Pillow-style half-up rounding before clipping.
+`ImageFilter.Kernel` currently supports Pillow's 3x3 and 5x5 kernel path for `L`, `RGB`, and `RGBA`. Native filtering copies border pixels unchanged, applies Pillow's vertical kernel flip, and uses Pillow-style half-up rounding before clipping. Pillow's fixed-kernel built-ins `BLUR`, `CONTOUR`, `DETAIL`, `EDGE_ENHANCE`, `EDGE_ENHANCE_MORE`, `EMBOSS`, `FIND_EDGES`, `SHARPEN`, `SMOOTH`, and `SMOOTH_MORE` reuse the same native kernel path.
 
 `Image.rotate` currently supports Pillow-style geometry, expansion, center, translate, and fill color for `NEAREST`, `BILINEAR`, and `BICUBIC`. Additional rotate resamplers should build on the same affine ABI instead of adding wrapper loops.
 

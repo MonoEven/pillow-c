@@ -662,6 +662,97 @@ class Pillow {
             }
         }
 
+        class BuiltinKernel extends Pillow.ImageFilter.Kernel {
+            __New(name, size, scale, offset, kernel) {
+                this.Name := name
+                super.__New(size, kernel, scale, offset)
+            }
+        }
+
+        static BLUR() {
+            return Pillow.ImageFilter.BuiltinKernel("Blur", [5, 5], 16, 0, [
+                1, 1, 1, 1, 1,
+                1, 0, 0, 0, 1,
+                1, 0, 0, 0, 1,
+                1, 0, 0, 0, 1,
+                1, 1, 1, 1, 1,
+            ])
+        }
+
+        static CONTOUR() {
+            return Pillow.ImageFilter.BuiltinKernel("Contour", [3, 3], 1, 255, [
+                -1, -1, -1,
+                -1, 8, -1,
+                -1, -1, -1,
+            ])
+        }
+
+        static DETAIL() {
+            return Pillow.ImageFilter.BuiltinKernel("Detail", [3, 3], 6, 0, [
+                0, -1, 0,
+                -1, 10, -1,
+                0, -1, 0,
+            ])
+        }
+
+        static EDGE_ENHANCE() {
+            return Pillow.ImageFilter.BuiltinKernel("Edge-enhance", [3, 3], 2, 0, [
+                -1, -1, -1,
+                -1, 10, -1,
+                -1, -1, -1,
+            ])
+        }
+
+        static EDGE_ENHANCE_MORE() {
+            return Pillow.ImageFilter.BuiltinKernel("Edge-enhance More", [3, 3], 1, 0, [
+                -1, -1, -1,
+                -1, 9, -1,
+                -1, -1, -1,
+            ])
+        }
+
+        static EMBOSS() {
+            return Pillow.ImageFilter.BuiltinKernel("Emboss", [3, 3], 1, 128, [
+                -1, 0, 0,
+                0, 1, 0,
+                0, 0, 0,
+            ])
+        }
+
+        static FIND_EDGES() {
+            return Pillow.ImageFilter.BuiltinKernel("Find Edges", [3, 3], 1, 0, [
+                -1, -1, -1,
+                -1, 8, -1,
+                -1, -1, -1,
+            ])
+        }
+
+        static SHARPEN() {
+            return Pillow.ImageFilter.BuiltinKernel("Sharpen", [3, 3], 16, 0, [
+                -2, -2, -2,
+                -2, 32, -2,
+                -2, -2, -2,
+            ])
+        }
+
+        static SMOOTH() {
+            return Pillow.ImageFilter.BuiltinKernel("Smooth", [3, 3], 13, 0, [
+                1, 1, 1,
+                1, 5, 1,
+                1, 1, 1,
+            ])
+        }
+
+        static SMOOTH_MORE() {
+            return Pillow.ImageFilter.BuiltinKernel("Smooth More", [5, 5], 100, 0, [
+                1, 1, 1, 1, 1,
+                1, 5, 5, 5, 1,
+                1, 5, 44, 5, 1,
+                1, 5, 5, 5, 1,
+                1, 1, 1, 1, 1,
+            ])
+        }
+
         static SumCoefficients(values) {
             total := 0.0
             for value in values {

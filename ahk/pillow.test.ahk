@@ -345,6 +345,108 @@ PillowTestImageFilterKernelRejectsInvalidWrapperArguments(*) {
 
 AhkTest.Test("Pillow ImageFilter.Kernel rejects invalid wrapper arguments", PillowTestImageFilterKernelRejectsInvalidWrapperArguments)
 
+PillowTestImageFilterBuiltinsUseNativeKernelPath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [4, 3], PillowTestBuffer([
+        1, 2, 3, 10, 20, 30, 40, 50, 60, 70, 80, 90,
+        90, 80, 70, 120, 110, 100, 150, 140, 130, 180, 170, 160,
+        5, 15, 25, 35, 45, 55, 65, 75, 85, 95, 105, 115,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [3, 3], PillowTestBuffer([
+        1, 2, 3, 4, 10, 20, 30, 40, 50, 60, 70, 80,
+        90, 80, 70, 60, 120, 110, 100, 90, 150, 140, 130, 120,
+        5, 15, 25, 35, 35, 45, 55, 65, 65, 75, 85, 95,
+    ]))
+    outputs := []
+    try {
+        cases := [
+            { Filter: Pillow.ImageFilter.CONTOUR(), Name: "Contour", RgbBytes: [255, 255, 255, 255, 255, 255], RgbaCenter: [255, 255, 255, 255] },
+            { Filter: Pillow.ImageFilter.DETAIL(), Name: "Detail", RgbBytes: [153, 136, 119, 183, 166, 149], RgbaCenter: [153, 136, 119, 103] },
+            { Filter: Pillow.ImageFilter.EDGE_ENHANCE(), Name: "Edge-enhance", RgbBytes: [255, 255, 255, 255, 255, 255], RgbaCenter: [255, 255, 255, 201] },
+            { Filter: Pillow.ImageFilter.EDGE_ENHANCE_MORE(), Name: "Edge-enhance More", RgbBytes: [255, 255, 255, 255, 255, 255], RgbaCenter: [255, 255, 255, 255] },
+            { Filter: Pillow.ImageFilter.EMBOSS(), Name: "Emboss", RgbBytes: [243, 223, 203, 243, 223, 203], RgbaCenter: [243, 223, 203, 183] },
+            { Filter: Pillow.ImageFilter.FIND_EDGES(), Name: "Find Edges", RgbBytes: [255, 255, 255, 255, 255, 255], RgbaCenter: [255, 255, 255, 221] },
+            { Filter: Pillow.ImageFilter.SHARPEN(), Name: "Sharpen", RgbBytes: [191, 167, 143, 223, 198, 173], RgbaCenter: [189, 165, 142, 118] },
+            { Filter: Pillow.ImageFilter.SMOOTH(), Name: "Smooth", RgbBytes: [77, 75, 74, 105, 104, 103], RgbaCenter: [77, 76, 74, 73] },
+        ]
+
+        for item in cases {
+            AhkTest.AssertEqual(item.Name, item.Filter.Name)
+            rgbOut := rgb.Filter(item.Filter)
+            rgbaOut := rgba.Filter(item.Filter)
+            outputs.Push(rgbOut)
+            outputs.Push(rgbaOut)
+            rgbBytes := PillowTestBufferToArray(rgbOut.ToBytes())
+            rgbaBytes := PillowTestBufferToArray(rgbaOut.ToBytes())
+            AhkTest.AssertEqual(item.RgbBytes, [
+                rgbBytes[16], rgbBytes[17], rgbBytes[18],
+                rgbBytes[19], rgbBytes[20], rgbBytes[21],
+            ])
+            AhkTest.AssertEqual(item.RgbaCenter, [
+                rgbaBytes[17], rgbaBytes[18], rgbaBytes[19], rgbaBytes[20],
+            ])
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        rgba.Close()
+        rgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter builtins use native Kernel path", PillowTestImageFilterBuiltinsUseNativeKernelPath)
+
+PillowTestImageFilterFiveByFiveBuiltinsUseNativeKernelPath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [7, 7], PillowTestBuffer([
+        0, 11, 44, 99, 176, 19, 140,
+        78, 102, 148, 216, 50, 162, 40,
+        156, 193, 252, 77, 180, 49, 196,
+        111, 161, 233, 71, 187, 69, 229,
+        189, 252, 81, 188, 61, 212, 129,
+        11, 87, 185, 49, 191, 99, 29,
+        222, 55, 166, 43, 198, 119, 62,
+    ]))
+    blur := 0
+    smoothMore := 0
+    try {
+        blur := source.Filter(Pillow.ImageFilter.BLUR())
+        smoothMore := source.Filter(Pillow.ImageFilter.SMOOTH_MORE())
+        blurBytes := PillowTestBufferToArray(blur.ToBytes())
+        smoothBytes := PillowTestBufferToArray(smoothMore.ToBytes())
+
+        AhkTest.AssertEqual("Blur", Pillow.ImageFilter.BLUR().Name)
+        AhkTest.AssertEqual("Smooth More", Pillow.ImageFilter.SMOOTH_MORE().Name)
+        AhkTest.AssertEqual([
+            116, 117, 140,
+            125, 139, 143,
+            143, 138, 139,
+        ], [
+            blurBytes[17], blurBytes[18], blurBytes[19],
+            blurBytes[24], blurBytes[25], blurBytes[26],
+            blurBytes[31], blurBytes[32], blurBytes[33],
+        ])
+        AhkTest.AssertEqual([
+            190, 120, 146,
+            186, 116, 151,
+            120, 158, 102,
+        ], [
+            smoothBytes[17], smoothBytes[18], smoothBytes[19],
+            smoothBytes[24], smoothBytes[25], smoothBytes[26],
+            smoothBytes[31], smoothBytes[32], smoothBytes[33],
+        ])
+    } finally {
+        for image in [smoothMore, blur, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow 5x5 ImageFilter builtins use native Kernel path", PillowTestImageFilterFiveByFiveBuiltinsUseNativeKernelPath)
+
 PillowTestImageTransformAffineUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
