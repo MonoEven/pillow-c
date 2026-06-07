@@ -286,6 +286,28 @@ PillowCImageHistogramMasked(handle, maskHandle, expectedCount) {
     return values
 }
 
+PillowCImageEntropy(handle, maskHandle := 0) {
+    value := 0.0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_entropy",
+            "Ptr", handle,
+            "Ptr", maskHandle,
+            "Double*", &value,
+            "Int"
+        )
+    } catch Error as err {
+        AhkTest.Fail("Expected pillow_c_image_entropy export: " err.Message)
+    }
+    PillowCAssertStatus(status)
+    return value
+}
+
+PillowCAssertFloatClose(expected, actual, tolerance := 0.0000001) {
+    if Abs(expected - actual) > tolerance
+        AhkTest.Fail("Expected " expected " +/- " tolerance ", got " actual)
+}
+
 PillowCImageExtrema(handle, bandCount) {
     minBuf := Buffer(bandCount, 0)
     maxBuf := Buffer(bandCount, 0)
@@ -4244,6 +4266,71 @@ PillowCTestImageHistogramMaskedMatchesPillowMaskRules(*) {
 }
 
 AhkTest.Test("pillow_c image histogram_masked matches Pillow L mask rules", PillowCTestImageHistogramMaskedMatchesPillowMaskRules)
+
+PillowCTestImageEntropyMatchesPillowCoreModes(*) {
+    l := PillowCCreateImageMode(4, 1, 1)
+    rgb := PillowCCreateImageMode(3, 1, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    la := PillowCCreateImageMode(2, 1, 2)
+    empty := 0
+    try {
+        PillowCImageSetBytes(l, [0, 10, 10, 255])
+        PillowCImageSetBytes(rgb, [
+            0, 10, 20,
+            255, 10, 20,
+            0, 255, 20,
+        ])
+        PillowCImageSetBytes(rgba, [
+            0, 10, 20, 30,
+            255, 10, 20, 128,
+        ])
+        PillowCImageSetBytes(la, [10, 40, 200, 128])
+        empty := PillowCImageCrop(l, 0, 0, 0, 1)
+
+        PillowCAssertFloatClose(1.5, PillowCImageEntropy(l))
+        PillowCAssertFloatClose(2.197159723424149, PillowCImageEntropy(rgb))
+        PillowCAssertFloatClose(2.5, PillowCImageEntropy(rgba))
+        PillowCAssertFloatClose(2.0, PillowCImageEntropy(la))
+        emptyEntropy := PillowCImageEntropy(empty)
+        AhkTest.AssertTrue(emptyEntropy != emptyEntropy)
+    } finally {
+        if empty
+            PillowCFreeImage(empty)
+        PillowCFreeImage(la)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image entropy matches Pillow core modes", PillowCTestImageEntropyMatchesPillowCoreModes)
+
+PillowCTestImageEntropyUsesLMask(*) {
+    l := PillowCCreateImageMode(4, 1, 1)
+    rgb := PillowCCreateImageMode(3, 1, 3)
+    mask := PillowCCreateImageMode(4, 1, 1)
+    rgbMask := PillowCCreateImageMode(3, 1, 1)
+    try {
+        PillowCImageSetBytes(l, [0, 10, 20, 30])
+        PillowCImageSetBytes(mask, [0, 128, 255, 64])
+        PillowCImageSetBytes(rgb, [
+            10, 20, 30,
+            40, 50, 60,
+            70, 80, 90,
+        ])
+        PillowCImageSetBytes(rgbMask, [0, 128, 255])
+
+        PillowCAssertFloatClose(1.584962500721156, PillowCImageEntropy(l, mask))
+        PillowCAssertFloatClose(2.584962500721156, PillowCImageEntropy(rgb, rgbMask))
+    } finally {
+        PillowCFreeImage(rgbMask)
+        PillowCFreeImage(mask)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image entropy uses L mask", PillowCTestImageEntropyUsesLMask)
 
 PillowCTestImageGetExtremaMatchesPillowBands(*) {
     l := PillowCCreateImageMode(4, 1, 1)

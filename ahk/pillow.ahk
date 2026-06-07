@@ -1790,6 +1790,24 @@ class Pillow {
             return values
         }
 
+        Entropy(mask := unset) {
+            value := 0.0
+            maskHandle := 0
+            if IsSet(mask) {
+                if !(IsObject(mask) && mask is Pillow.Image)
+                    throw Error("Pillow.Image.Entropy mask expects a Pillow.Image", -1)
+                maskHandle := mask.RequireHandle()
+            }
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_entropy",
+                "Ptr", this.RequireHandle(),
+                "Ptr", maskHandle,
+                "Double*", &value,
+                "Int"
+            ))
+            return value
+        }
+
         GetExtrema() {
             bandCount := this.Channels
             minBuf := Buffer(bandCount, 0)

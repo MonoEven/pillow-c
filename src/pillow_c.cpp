@@ -1723,6 +1723,56 @@ int histogram_image_masked(
     return PILLOW_C_OK;
 }
 
+int entropy_image(const PillowCImage* source, const PillowCImage* mask, double* out_entropy)
+{
+    if (!source || !out_entropy) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (mask && (mask->mode != PILLOW_C_MODE_L || mask->channels != 1 ||
+        !image_shape_matches(mask, source->width, source->height, PILLOW_C_MODE_L, 1))) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    std::vector<std::uint64_t> histogram(static_cast<std::size_t>(source->channels) * 256u, 0);
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    const std::size_t samples = pixels * static_cast<std::size_t>(source->channels);
+    const std::uint8_t* data = source->pixels.data();
+    const std::uint8_t* mask_data = mask ? mask->pixels.data() : nullptr;
+    std::uint64_t total = 0;
+
+    for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
+        if (mask_data && mask_data[pixel] == 0) {
+            continue;
+        }
+        const std::uint8_t* src = data + pixel * static_cast<std::size_t>(source->channels);
+        for (int channel = 0; channel < source->channels; ++channel) {
+            ++histogram[static_cast<std::size_t>(channel) * 256u + src[channel]];
+            ++total;
+        }
+    }
+
+    if (!mask && samples == 0) {
+        *out_entropy = std::numeric_limits<double>::quiet_NaN();
+        return PILLOW_C_OK;
+    }
+    if (total == 0) {
+        *out_entropy = std::numeric_limits<double>::quiet_NaN();
+        return PILLOW_C_OK;
+    }
+
+    long double entropy = 0.0L;
+    const long double inv_total = 1.0L / static_cast<long double>(total);
+    for (const std::uint64_t count : histogram) {
+        if (count == 0) {
+            continue;
+        }
+        const long double p = static_cast<long double>(count) * inv_total;
+        entropy -= p * (std::log(static_cast<double>(p)) / std::log(2.0));
+    }
+    *out_entropy = static_cast<double>(entropy);
+    return PILLOW_C_OK;
+}
+
 int extrema_image(
     const PillowCImage* source,
     std::uint8_t* out_min,
@@ -6107,6 +6157,14 @@ extern "C" __declspec(dllexport) int pillow_c_image_histogram_masked(
     std::size_t out_count)
 {
     return histogram_image_masked(image, mask, out_histogram, out_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_entropy(
+    const PillowCImage* image,
+    const PillowCImage* mask,
+    double* out_entropy)
+{
+    return entropy_image(image, mask, out_entropy);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_get_extrema(

@@ -1997,6 +1997,48 @@ PillowTestImageHistogramMatchesPillowLaMode(*) {
 
 AhkTest.Test("Pillow Image.Histogram matches Pillow LA mode layout", PillowTestImageHistogramMatchesPillowLaMode)
 
+PillowTestAssertFloatClose(expected, actual, tolerance := 0.0000001) {
+    if Abs(expected - actual) > tolerance
+        AhkTest.Fail("Expected " expected " +/- " tolerance ", got " actual)
+}
+
+PillowTestImageEntropyUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 10, 10, 255]))
+    rgb := Pillow.Image.FromBytes("RGB", [3, 1], PillowTestBuffer([
+        0, 10, 20,
+        255, 10, 20,
+        0, 255, 20,
+    ]))
+    la := Pillow.Image.FromBytes("LA", [2, 1], PillowTestBuffer([10, 40, 200, 128]))
+    maskSource := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 10, 20, 30]))
+    mask := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 128, 255, 64]))
+    empty := 0
+    try {
+        try {
+            PillowTestAssertFloatClose(1.5, l.Entropy())
+            PillowTestAssertFloatClose(2.197159723424149, rgb.Entropy())
+            PillowTestAssertFloatClose(2.0, la.Entropy())
+            PillowTestAssertFloatClose(1.584962500721156, maskSource.Entropy(mask))
+            empty := l.Crop([0, 0, 0, 1])
+            emptyEntropy := empty.Entropy()
+            AhkTest.AssertTrue(emptyEntropy != emptyEntropy)
+        } catch Error as err {
+            AhkTest.Fail("Expected Image.Entropy to use native entropy: " err.Message)
+        }
+    } finally {
+        if IsObject(empty)
+            empty.Close()
+        mask.Close()
+        maskSource.Close()
+        la.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Entropy uses native histogram entropy", PillowTestImageEntropyUsesNativeOperation)
+
 PillowTestAssertFloatArrayClose(expected, actual, tolerance := 0.0000001) {
     AhkTest.AssertEqual(expected.Length, actual.Length)
     for index, value in expected
