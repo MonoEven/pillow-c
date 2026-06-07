@@ -92,10 +92,11 @@ Reusable target operations:
 
 ## Resize Resampling IDs
 
-Current resize support is limited to Pillow 11.3.0 `Image.Resampling.NEAREST`:
+Current resize support:
 
 ```text
 0 NEAREST
+2 BILINEAR
 ```
 
 ## Transpose Method IDs

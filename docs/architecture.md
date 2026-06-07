@@ -57,7 +57,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 
 AHK owns ergonomics and lifetime. The DLL owns image bytes and transformations.
 
-Core `L`, `RGB`, and `RGBA` conversions, L-band split, L-band merge, and NEAREST resize are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
+Core `L`, `RGB`, and `RGBA` conversions, L-band split, L-band merge, and NEAREST/BILINEAR resize are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
 
 ## Performance Direction
 
