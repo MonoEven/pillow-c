@@ -132,6 +132,17 @@ inline std::uint8_t clip_u8_double(double value)
     return static_cast<std::uint8_t>(value);
 }
 
+inline std::uint8_t round_half_up_clip_u8(double value)
+{
+    if (!(value > 0.0)) {
+        return 0;
+    }
+    if (value >= 254.5) {
+        return 255;
+    }
+    return static_cast<std::uint8_t>(std::floor(value + 0.5));
+}
+
 inline std::uint8_t clip_chops_scaled_u8(double value)
 {
     if (!(value > 0.0)) {
@@ -3440,6 +3451,87 @@ int resize_image_into(const PillowCImage* source, int out_width, int out_height,
     }
 }
 
+bool supported_kernel_size(int kernel_width, int kernel_height)
+{
+    return (kernel_width == 3 && kernel_height == 3) ||
+           (kernel_width == 5 && kernel_height == 5);
+}
+
+int filter_kernel_image_into(
+    const PillowCImage* source,
+    int kernel_width,
+    int kernel_height,
+    const double* kernel,
+    std::size_t kernel_count,
+    double scale,
+    double offset,
+    PillowCImage* target)
+{
+    if (!source || !kernel || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!image_shape_matches(target, source)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (!supported_kernel_size(kernel_width, kernel_height) || !std::isfinite(scale) || !std::isfinite(offset)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const std::size_t expected_count = static_cast<std::size_t>(kernel_width) * kernel_height;
+    if (kernel_count != expected_count) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    for (std::size_t index = 0; index < kernel_count; ++index) {
+        if (!std::isfinite(kernel[index])) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+
+    std::vector<std::uint8_t> source_snapshot;
+    const std::uint8_t* source_data = source->pixels.data();
+    if (source == target) {
+        source_snapshot = source->pixels;
+        source_data = source_snapshot.data();
+    } else if (!source->pixels.empty()) {
+        std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
+    }
+    if (source->width < kernel_width || source->height < kernel_height || source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const int radius_x = kernel_width / 2;
+    const int radius_y = kernel_height / 2;
+    for (int y = radius_y; y < source->height - radius_y; ++y) {
+        for (int x = radius_x; x < source->width - radius_x; ++x) {
+            const std::size_t dst_offset =
+                static_cast<std::size_t>(y) * target->stride +
+                static_cast<std::size_t>(x) * target->channels;
+            for (int channel = 0; channel < source->channels; ++channel) {
+                double sum = 0.0;
+                for (int ky = 0; ky < kernel_height; ++ky) {
+                    const int src_y = y + ky - radius_y;
+                    const int kernel_y = kernel_height - 1 - ky;
+                    const std::size_t src_row = static_cast<std::size_t>(src_y) * source->stride;
+                    const std::size_t kernel_row = static_cast<std::size_t>(kernel_y) * kernel_width;
+                    for (int kx = 0; kx < kernel_width; ++kx) {
+                        const int src_x = x + kx - radius_x;
+                        const std::size_t src_offset =
+                            src_row +
+                            static_cast<std::size_t>(src_x) * source->channels +
+                            static_cast<std::size_t>(channel);
+                        sum += static_cast<double>(source_data[src_offset]) * kernel[kernel_row + kx];
+                    }
+                }
+
+                const double filtered = scale == 0.0 ? 0.0 : (sum / scale) + offset;
+                target->pixels[dst_offset + static_cast<std::size_t>(channel)] = round_half_up_clip_u8(filtered);
+            }
+        }
+    }
+
+    return PILLOW_C_OK;
+}
+
 int resize_image_box_into(
     const PillowCImage* source,
     int out_width,
@@ -4810,6 +4902,19 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize_into(
     PillowCImage* target)
 {
     return resize_image_into(source, out_width, out_height, resample, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_kernel_into(
+    const PillowCImage* source,
+    int kernel_width,
+    int kernel_height,
+    const double* kernel,
+    std::size_t kernel_count,
+    double scale,
+    double offset,
+    PillowCImage* target)
+{
+    return filter_kernel_image_into(source, kernel_width, kernel_height, kernel, kernel_count, scale, offset, target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_transform_affine_into(
@@ -6291,6 +6396,61 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = resize_image_into(source, out_width, out_height, resample, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_kernel(
+    const PillowCImage* source,
+    int kernel_width,
+    int kernel_height,
+    const double* kernel,
+    std::size_t kernel_count,
+    double scale,
+    double offset,
+    PillowCImage** out_image)
+{
+    if (!source || !kernel || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!supported_kernel_size(kernel_width, kernel_height) || !std::isfinite(scale) || !std::isfinite(offset)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t expected_count = static_cast<std::size_t>(kernel_width) * kernel_height;
+    if (kernel_count != expected_count) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    for (std::size_t index = 0; index < kernel_count; ++index) {
+        if (!std::isfinite(kernel[index])) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            source->mode,
+            source->channels,
+            source->stride,
+            std::vector<std::uint8_t>(source->pixels.size())};
+        const int status = filter_kernel_image_into(
+            source,
+            kernel_width,
+            kernel_height,
+            kernel,
+            kernel_count,
+            scale,
+            offset,
+            image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

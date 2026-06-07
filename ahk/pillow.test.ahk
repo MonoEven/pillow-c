@@ -269,6 +269,82 @@ PillowTestImageResizeBicubicUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Resize BICUBIC resizes through native handles", PillowTestImageResizeBicubicUsesNativeHandleOperation)
 
+PillowTestImageFilterKernelUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [5, 5], PillowTestBuffer([
+        0, 1, 2, 3, 4,
+        5, 6, 7, 8, 9,
+        10, 11, 12, 13, 14,
+        15, 16, 17, 18, 19,
+        20, 21, 22, 23, 24,
+    ]))
+    rgb := Pillow.Image.FromBytes("RGB", [4, 3], PillowTestBuffer([
+        1, 2, 3, 10, 20, 30, 40, 50, 60, 70, 80, 90,
+        90, 80, 70, 120, 110, 100, 150, 140, 130, 180, 170, 160,
+        5, 15, 25, 35, 45, 55, 65, 75, 85, 95, 105, 115,
+    ]))
+    scaled := 0
+    sharpened := 0
+    try {
+        scaled := source.Filter(Pillow.ImageFilter.Kernel([3, 3], [0, 0, 0, 0, 1, 0, 0, 0, 0], 2.0, 0.5))
+        sharpened := rgb.Filter(Pillow.ImageFilter.Kernel([3, 3], [0, -1, 0, -1, 5, -1, 0, -1, 0], 1.0, 0.0))
+
+        AhkTest.AssertEqual("L", scaled.Mode)
+        AhkTest.AssertEqual([5, 5], scaled.Size)
+        AhkTest.AssertEqual([
+            0, 1, 2, 3, 4,
+            5, 4, 4, 5, 9,
+            10, 6, 7, 7, 14,
+            15, 9, 9, 10, 19,
+            20, 21, 22, 23, 24,
+        ], PillowTestBufferToArray(scaled.ToBytes()))
+        AhkTest.AssertEqual([
+            1, 2, 3, 10, 20, 30, 40, 50, 60, 70, 80, 90,
+            90, 80, 70, 255, 255, 215, 255, 255, 245, 180, 170, 160,
+            5, 15, 25, 35, 45, 55, 65, 75, 85, 95, 105, 115,
+        ], PillowTestBufferToArray(sharpened.ToBytes()))
+    } finally {
+        for image in [sharpened, scaled, rgb, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Filter applies ImageFilter.Kernel through native path", PillowTestImageFilterKernelUsesNativePath)
+
+PillowTestImageFilterKernelRejectsInvalidWrapperArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.New("L", [3, 3])
+    try {
+        try {
+            badSize := Pillow.ImageFilter.Kernel([2, 2], [1, 0, 0, 0])
+            source.Filter(badSize)
+            AhkTest.Fail("Expected Image.Filter to reject unsupported kernel size")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "bad kernel size") > 0)
+        }
+
+        try {
+            Pillow.ImageFilter.Kernel([3, 3], [1, 0, 0, 0])
+            AhkTest.Fail("Expected Kernel to reject coefficient length")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "not enough coefficients") > 0)
+        }
+
+        try {
+            source.Filter({ Apply: "not callable" })
+            AhkTest.Fail("Expected Image.Filter to reject invalid filter")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "filter") > 0)
+        }
+    } finally {
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter.Kernel rejects invalid wrapper arguments", PillowTestImageFilterKernelRejectsInvalidWrapperArguments)
+
 PillowTestImageTransformAffineUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))

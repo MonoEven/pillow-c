@@ -605,6 +605,74 @@ class Pillow {
         }
     }
 
+    class ImageFilter {
+        class Kernel {
+            __New(size, kernel, scale := unset, offset := 0) {
+                if !IsObject(size) || size.Length != 2
+                    throw Error("Pillow.ImageFilter.Kernel expects size [width, height]", -1)
+                if !(size[1] is Integer) || !(size[2] is Integer)
+                    throw Error("Pillow.ImageFilter.Kernel size values must be integers", -1)
+                if !IsObject(kernel)
+                    throw Error("Pillow.ImageFilter.Kernel expects an array of coefficients", -1)
+                expected := size[1] * size[2]
+                if kernel.Length != expected
+                    throw Error("not enough coefficients in kernel", -1)
+                if !(offset is Number)
+                    throw Error("Pillow.ImageFilter.Kernel offset must be numeric", -1)
+
+                this.Size := [size[1], size[2]]
+                this.Kernel := kernel.Clone()
+                if IsSet(scale) {
+                    if !(scale is Number)
+                        throw Error("Pillow.ImageFilter.Kernel scale must be numeric", -1)
+                    this.Scale := scale
+                } else {
+                    this.Scale := Pillow.ImageFilter.SumCoefficients(kernel)
+                }
+                this.Offset := offset
+            }
+
+            Apply(image) {
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("Pillow.ImageFilter.Kernel expects a Pillow.Image", -1)
+                if !((this.Size[1] = 3 && this.Size[2] = 3) || (this.Size[1] = 5 && this.Size[2] = 5))
+                    throw Error("bad kernel size", -1)
+
+                kernelBuffer := Buffer(this.Kernel.Length * 8, 0)
+                for index, value in this.Kernel {
+                    if !(value is Number)
+                        throw Error("Pillow.ImageFilter.Kernel coefficients must be numeric", -1)
+                    NumPut("Double", value, kernelBuffer, (index - 1) * 8)
+                }
+
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_filter_kernel",
+                    "Ptr", image.RequireHandle(),
+                    "Int", this.Size[1],
+                    "Int", this.Size[2],
+                    "Ptr", kernelBuffer,
+                    "UPtr", this.Kernel.Length,
+                    "Double", this.Scale,
+                    "Double", this.Offset,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return Pillow.WrapImageHandle(outHandle)
+            }
+        }
+
+        static SumCoefficients(values) {
+            total := 0.0
+            for value in values {
+                if !(value is Number)
+                    throw Error("Pillow.ImageFilter.Kernel coefficients must be numeric", -1)
+                total += value
+            }
+            return total
+        }
+    }
+
     static Configure(options := unset) {
         if IsSet(options) && options.HasOwnProp("DllPath")
             Pillow.DllPath := options.DllPath
@@ -1353,6 +1421,12 @@ class Pillow {
                 "Int"
             ))
             return Pillow.WrapImageHandle(outHandle)
+        }
+
+        Filter(filter) {
+            if IsObject(filter) && HasMethod(filter, "Apply")
+                return filter.Apply(this)
+            throw Error("Pillow.Image.Filter expects an ImageFilter object", -1)
         }
 
         Transform(size, method, data, resample := unset, fillcolor := unset) {
