@@ -74,6 +74,7 @@ Image operations:
 - `pillow_c_image_subtract`
 - `pillow_c_image_add_modulo`
 - `pillow_c_image_subtract_modulo`
+- `pillow_c_image_offset`
 - `pillow_c_image_point_lut`
 - `pillow_c_image_invert`
 - `pillow_c_image_posterize`
@@ -114,6 +115,7 @@ Reusable target operations:
 - `pillow_c_image_subtract_into`
 - `pillow_c_image_add_modulo_into`
 - `pillow_c_image_subtract_modulo_into`
+- `pillow_c_image_offset_into`
 - `pillow_c_image_point_lut_into`
 - `pillow_c_image_invert_into`
 - `pillow_c_image_posterize_into`

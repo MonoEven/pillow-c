@@ -1379,6 +1379,90 @@ PillowTestImageChopsSoftHardOverlayRejectModeMismatch(*) {
 
 AhkTest.Test("Pillow ImageChops soft hard overlay reject mode mismatch", PillowTestImageChopsSoftHardOverlayRejectModeMismatch)
 
+PillowTestImageChopsOffsetUsesNativeHandle(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    out := 0
+    try {
+        out := Pillow.ImageChops.Offset(image, 1)
+
+        AhkTest.AssertEqual("L", out.Mode)
+        AhkTest.AssertEqual([3, 2], out.Size)
+        AhkTest.AssertEqual([6, 4, 5, 3, 1, 2], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        for item in [out, image] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Offset wraps pixels through native handles", PillowTestImageChopsOffsetUsesNativeHandle)
+
+PillowTestImageChopsOffsetAcceptsExplicitYOffsetAndLargeNegativeOffsets(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]))
+    out := 0
+    try {
+        out := Pillow.ImageChops.Offset(image, -4, 3)
+
+        AhkTest.AssertEqual("RGB", out.Mode)
+        AhkTest.AssertEqual([2, 2], out.Size)
+        AhkTest.AssertEqual([7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        for item in [out, image] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Offset accepts explicit yoffset and large negative offsets", PillowTestImageChopsOffsetAcceptsExplicitYOffsetAndLargeNegativeOffsets)
+
+PillowTestImageChopsOffsetHandlesEmptyImagesSafely(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    empty := 0
+    out := 0
+    try {
+        empty := image.Crop([1, 0, 1, 2])
+        out := Pillow.ImageChops.Offset(empty, 1, -1)
+
+        AhkTest.AssertEqual("L", out.Mode)
+        AhkTest.AssertEqual([0, 2], out.Size)
+        AhkTest.AssertEqual([], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        for item in [out, empty, image] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Offset handles empty images safely", PillowTestImageChopsOffsetHandlesEmptyImagesSafely)
+
+PillowTestImageChopsOffsetRejectsInvalidOffsets(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([1]))
+    try {
+        for args in [["x"], [1, "y"]] {
+            try {
+                if args.Length = 1
+                    Pillow.ImageChops.Offset(image, args[1])
+                else
+                    Pillow.ImageChops.Offset(image, args[1], args[2])
+                AhkTest.Fail("Expected ImageChops.Offset to reject invalid offsets")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, "offset") > 0)
+            }
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Offset rejects invalid offsets", PillowTestImageChopsOffsetRejectsInvalidOffsets)
+
 PillowTestImageChopsAddAndSubtractUseNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 50, 200, 255, 0, 80]))

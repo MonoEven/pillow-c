@@ -285,6 +285,15 @@ int overlapping_height(const PillowCImage* left, const PillowCImage* right)
     return std::min(left->height, right->height);
 }
 
+int positive_mod(int value, int modulus)
+{
+    int result = value % modulus;
+    if (result < 0) {
+        result += modulus;
+    }
+    return result;
+}
+
 int validate_chops_binary_target(
     const PillowCImage* left,
     const PillowCImage* right,
@@ -556,6 +565,47 @@ int copy_transpose_pixels_into(const PillowCImage* source, int method, PillowCIm
         }
     }
 
+    return PILLOW_C_OK;
+}
+
+int offset_image_into(
+    const PillowCImage* source,
+    int x_offset,
+    int y_offset,
+    PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!image_shape_matches(target, source)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const int width = source->width;
+    const int height = source->height;
+    const int channels = source->channels;
+    if (width <= 0 || height <= 0) {
+        return PILLOW_C_OK;
+    }
+
+    const int normalized_x = positive_mod(x_offset, width);
+    const int normalized_y = positive_mod(y_offset, height);
+    const std::size_t pixel_bytes = static_cast<std::size_t>(channels);
+    for (int dst_y = 0; dst_y < height; ++dst_y) {
+        const int src_y = positive_mod(dst_y - normalized_y, height);
+        const std::uint8_t* src_row = source->pixels.data() + static_cast<std::size_t>(src_y) * source->stride;
+        std::uint8_t* dst_row = target->pixels.data() + static_cast<std::size_t>(dst_y) * target->stride;
+        for (int dst_x = 0; dst_x < width; ++dst_x) {
+            const int src_x = positive_mod(dst_x - normalized_x, width);
+            std::memcpy(
+                dst_row + static_cast<std::size_t>(dst_x) * pixel_bytes,
+                src_row + static_cast<std::size_t>(src_x) * pixel_bytes,
+                pixel_bytes);
+        }
+    }
     return PILLOW_C_OK;
 }
 
@@ -2292,6 +2342,43 @@ extern "C" __declspec(dllexport) int pillow_c_image_expand(
     }
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_offset(
+    const PillowCImage* source,
+    int x_offset,
+    int y_offset,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(source->width, source->height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = offset_image_into(source, x_offset, y_offset, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_paste(
     PillowCImage* target,
     const PillowCImage* source,
@@ -2888,6 +2975,15 @@ extern "C" __declspec(dllexport) int pillow_c_image_expand_into(
     PillowCImage* target)
 {
     return expand_image_into(source, left, top, right, bottom, color, color_size, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_offset_into(
+    const PillowCImage* source,
+    int x_offset,
+    int y_offset,
+    PillowCImage* target)
+{
+    return offset_image_into(source, x_offset, y_offset, target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_resize_into(

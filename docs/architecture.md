@@ -72,6 +72,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `Pillow.ImageChops.Subtract(...)`
 - `Pillow.ImageChops.AddModulo(...)`
 - `Pillow.ImageChops.SubtractModulo(...)`
+- `Pillow.ImageChops.Offset(...)`
 - `image.GetChannel(...)`
 - `image.Split(...)`
 - `image.PutAlpha(...)`

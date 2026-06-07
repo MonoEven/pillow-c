@@ -372,6 +372,28 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static Offset(image, xoffset, yoffset := unset) {
+            if !(xoffset is Integer)
+                throw Error("Pillow.ImageChops.Offset xoffset must be an integer", -1)
+            if IsSet(yoffset) {
+                if !(yoffset is Integer)
+                    throw Error("Pillow.ImageChops.Offset yoffset must be an integer", -1)
+            } else {
+                yoffset := xoffset
+            }
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_offset",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(image, "Offset"),
+                "Int", xoffset,
+                "Int", yoffset,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static Add(left, right, scale := 1.0, offset := 0) {
             if !(scale is Number)
                 throw Error("Pillow.ImageChops.Add scale must be numeric", -1)

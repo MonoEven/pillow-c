@@ -413,6 +413,21 @@ PillowCImageOverlay(leftHandle, rightHandle) {
     return outHandle
 }
 
+PillowCImageOffset(sourceHandle, xOffset, yOffset) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_offset",
+        "Ptr", sourceHandle,
+        "Int", xOffset,
+        "Int", yOffset,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageAdd(leftHandle, rightHandle, scale := 1.0, offset := 0.0) {
     outHandle := 0
     status := DllCall(
@@ -1938,6 +1953,111 @@ PillowCTestImageSoftHardOverlayRejectModeMismatch(*) {
 }
 
 AhkTest.Test("pillow_c image soft hard overlay reject mode mismatch", PillowCTestImageSoftHardOverlayRejectModeMismatch)
+
+PillowCTestImageOffsetWrapsPixelsLikePillowModes(*) {
+    l := PillowCCreateImageMode(3, 2, 1)
+    rgb := PillowCCreateImageMode(2, 2, 3)
+    rgba := PillowCCreateImageMode(2, 2, 4)
+    lOut := 0
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(l, [1, 2, 3, 4, 5, 6])
+        PillowCImageSetBytes(rgb, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+        PillowCImageSetBytes(rgba, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
+
+        lOut := PillowCImageOffset(l, 1, 1)
+        rgbOut := PillowCImageOffset(rgb, 1, -1)
+        rgbaOut := PillowCImageOffset(rgba, -4, 3)
+
+        AhkTest.AssertEqual([6, 4, 5, 3, 1, 2], PillowCImageToArray(lOut, 6))
+        AhkTest.AssertEqual([10, 11, 12, 7, 8, 9, 4, 5, 6, 1, 2, 3], PillowCImageToArray(rgbOut, 12))
+        AhkTest.AssertEqual([9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 4, 5, 6, 7, 8], PillowCImageToArray(rgbaOut, 16))
+    } finally {
+        for handle in [rgbaOut, rgbOut, lOut, rgba, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image offset wraps pixels like Pillow modes", PillowCTestImageOffsetWrapsPixelsLikePillowModes)
+
+PillowCTestImageOffsetIntoReusesTargetHandle(*) {
+    source := PillowCCreateImageMode(3, 2, 1)
+    target := PillowCCreateImageMode(3, 2, 1)
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4, 5, 6])
+        before := PillowCImageData(target).Ptr
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_offset_into",
+            "Ptr", source,
+            "Int", -4,
+            "Int", 3,
+            "Ptr", target,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+
+        AhkTest.AssertEqual(before, PillowCImageData(target).Ptr)
+        AhkTest.AssertEqual([5, 6, 4, 2, 3, 1], PillowCImageToArray(target, 6))
+    } finally {
+        for handle in [target, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image offset_into reuses target storage", PillowCTestImageOffsetIntoReusesTargetHandle)
+
+PillowCTestImageOffsetHandlesEmptyImagesSafely(*) {
+    source := PillowCCreateImageMode(3, 2, 1)
+    emptyWidth := 0
+    emptyHeight := 0
+    outWidth := 0
+    outHeight := 0
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4, 5, 6])
+        emptyWidth := PillowCImageCrop(source, 1, 0, 1, 2)
+        emptyHeight := PillowCImageCrop(source, 0, 1, 3, 1)
+        outWidth := PillowCImageOffset(emptyWidth, 1, -1)
+        outHeight := PillowCImageOffset(emptyHeight, 1, -1)
+
+        AhkTest.AssertEqual([0, 2], [PillowCImageInt(outWidth, "pillow_c_image_width"), PillowCImageInt(outWidth, "pillow_c_image_height")])
+        AhkTest.AssertEqual([3, 0], [PillowCImageInt(outHeight, "pillow_c_image_width"), PillowCImageInt(outHeight, "pillow_c_image_height")])
+        AhkTest.AssertEqual([], PillowCImageToArray(outWidth, 0))
+        AhkTest.AssertEqual([], PillowCImageToArray(outHeight, 0))
+    } finally {
+        for handle in [outHeight, outWidth, emptyHeight, emptyWidth, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image offset handles empty images safely", PillowCTestImageOffsetHandlesEmptyImagesSafely)
+
+PillowCTestImageOffsetIntoRejectsTargetShapeMismatch(*) {
+    source := PillowCCreateImageMode(3, 2, 1)
+    target := PillowCCreateImageMode(2, 2, 1)
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_offset_into",
+            "Ptr", source,
+            "Int", 1,
+            "Int", 1,
+            "Ptr", target,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        PillowCFreeImage(target)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image offset_into rejects target shape mismatch", PillowCTestImageOffsetIntoRejectsTargetShapeMismatch)
 
 PillowCTestImageAddAndSubtractClampLikePillowModes(*) {
     l1 := PillowCCreateImageMode(4, 1, 1)
