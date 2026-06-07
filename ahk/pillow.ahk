@@ -211,7 +211,7 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
-        static Autocontrast(image, cutoff := 0, ignore := unset) {
+        static Autocontrast(image, cutoff := 0, ignore := unset, mask := unset) {
             cuts := Pillow.ImageOps.CutoffPair(cutoff)
             ignorePtr := 0
             ignoreCount := 0
@@ -221,6 +221,9 @@ class Pillow {
                 ignorePtr := ignoreBuffer.Ptr
                 ignoreCount := ignoreBuffer.Size
             }
+            maskHandle := 0
+            if IsSet(mask)
+                maskHandle := Pillow.ImageOps.RequireImageHandle(mask, "Autocontrast mask")
 
             outHandle := 0
             Pillow.CheckStatus(DllCall(
@@ -230,6 +233,7 @@ class Pillow {
                 "Double", cuts[2],
                 "Ptr", ignorePtr,
                 "UPtr", ignoreCount,
+                "Ptr", maskHandle,
                 "Ptr*", &outHandle,
                 "Int"
             ))

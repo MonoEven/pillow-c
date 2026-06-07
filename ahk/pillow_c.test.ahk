@@ -1228,7 +1228,7 @@ PillowCImageFit(sourceHandle, width, height, resample, bleed := 0.0, centerX := 
     return outHandle
 }
 
-PillowCImageAutocontrast(sourceHandle, lowCutoff := 0.0, highCutoff := 0.0, ignoreCount := 0, ignoreValues := 0) {
+PillowCImageAutocontrast(sourceHandle, lowCutoff := 0.0, highCutoff := 0.0, ignoreCount := 0, ignoreValues := 0, maskHandle := 0) {
     outHandle := 0
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_autocontrast",
@@ -1237,6 +1237,7 @@ PillowCImageAutocontrast(sourceHandle, lowCutoff := 0.0, highCutoff := 0.0, igno
         "Double", highCutoff,
         "Ptr", ignoreValues,
         "UPtr", ignoreCount,
+        "Ptr", maskHandle,
         "Ptr*", &outHandle,
         "Int"
     )
@@ -1245,7 +1246,7 @@ PillowCImageAutocontrast(sourceHandle, lowCutoff := 0.0, highCutoff := 0.0, igno
     return outHandle
 }
 
-PillowCImageAutocontrastInto(sourceHandle, lowCutoff, highCutoff, targetHandle, ignoreCount := 0, ignoreValues := 0) {
+PillowCImageAutocontrastInto(sourceHandle, lowCutoff, highCutoff, targetHandle, ignoreCount := 0, ignoreValues := 0, maskHandle := 0) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_autocontrast_into",
         "Ptr", sourceHandle,
@@ -1253,6 +1254,7 @@ PillowCImageAutocontrastInto(sourceHandle, lowCutoff, highCutoff, targetHandle, 
         "Double", highCutoff,
         "Ptr", ignoreValues,
         "UPtr", ignoreCount,
+        "Ptr", maskHandle,
         "Ptr", targetHandle,
         "Int"
     )
@@ -3835,6 +3837,64 @@ PillowCTestImageAutocontrastAppliesCutoffAndIgnore(*) {
 
 AhkTest.Test("pillow_c image autocontrast applies Pillow cutoff and ignore rules", PillowCTestImageAutocontrastAppliesCutoffAndIgnore)
 
+PillowCTestImageAutocontrastUsesMaskHistogram(*) {
+    l := PillowCCreateImageMode(5, 1, 1)
+    lMask := PillowCCreateImageMode(5, 1, 1)
+    rgb := PillowCCreateImageMode(4, 1, 3)
+    rgbMask := PillowCCreateImageMode(4, 1, 1)
+    lOut := 0
+    lIgnoreOut := 0
+    rgbOut := 0
+    try {
+        PillowCImageSetBytes(l, [0, 10, 20, 30, 255])
+        PillowCImageSetBytes(lMask, [0, 255, 255, 0, 0])
+        PillowCImageSetBytes(rgb, [
+            10, 50, 100,
+            20, 60, 150,
+            30, 70, 200,
+            250, 1, 2,
+        ])
+        PillowCImageSetBytes(rgbMask, [0, 255, 255, 0])
+
+        ignoreTen := PillowCBuffer([10])
+        lOut := PillowCImageAutocontrast(l, 0.0, 0.0, 0, 0, lMask)
+        lIgnoreOut := PillowCImageAutocontrast(l, 0.0, 0.0, 1, ignoreTen, lMask)
+        rgbOut := PillowCImageAutocontrast(rgb, 0.0, 0.0, 0, 0, rgbMask)
+
+        AhkTest.AssertEqual([0, 0, 255, 255, 255], PillowCImageToArray(lOut, 5))
+        AhkTest.AssertEqual([0, 10, 20, 30, 255], PillowCImageToArray(lIgnoreOut, 5))
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 255, 255, 254, 255, 0, 0], PillowCImageToArray(rgbOut, 12))
+    } finally {
+        for handle in [rgbOut, lIgnoreOut, lOut, rgbMask, rgb, lMask, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image autocontrast uses mask histogram", PillowCTestImageAutocontrastUsesMaskHistogram)
+
+PillowCTestImageAutocontrastMaskIntoReusesTargetStorage(*) {
+    source := PillowCCreateImageMode(5, 1, 1)
+    mask := PillowCCreateImageMode(5, 1, 1)
+    target := PillowCCreateImageMode(5, 1, 1)
+    try {
+        PillowCImageSetBytes(source, [0, 10, 20, 30, 255])
+        PillowCImageSetBytes(mask, [0, 255, 255, 0, 0])
+        before := PillowCImageData(target).Ptr
+        PillowCImageAutocontrastInto(source, 0.0, 0.0, target, 0, 0, mask)
+        after := PillowCImageData(target).Ptr
+        AhkTest.AssertEqual(before, after)
+        AhkTest.AssertEqual([0, 0, 255, 255, 255], PillowCImageToArray(target, 5))
+    } finally {
+        PillowCFreeImage(target)
+        PillowCFreeImage(mask)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image autocontrast mask_into reuses target storage", PillowCTestImageAutocontrastMaskIntoReusesTargetStorage)
+
 PillowCTestImageAutocontrastIntoReusesTargetHandleStorage(*) {
     source := PillowCCreateImageMode(4, 1, 1)
     target := PillowCCreateImageMode(4, 1, 1)
@@ -3865,6 +3925,7 @@ PillowCTestImageAutocontrastRejectsUnsupportedModes(*) {
             "Double", 0.0,
             "Ptr", 0,
             "UPtr", 0,
+            "Ptr", 0,
             "Ptr*", &outHandle,
             "Int"
         )

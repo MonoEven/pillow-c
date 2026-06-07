@@ -1074,6 +1074,38 @@ PillowTestImageOpsAutocontrastAppliesCutoffAndIgnore(*) {
 
 AhkTest.Test("Pillow ImageOps.Autocontrast accepts Pillow-style cutoff and ignore options", PillowTestImageOpsAutocontrastAppliesCutoffAndIgnore)
 
+PillowTestImageOpsAutocontrastUsesMaskHistogram(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 10, 20, 30, 255]))
+    mask := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 255, 255, 0, 0]))
+    rgb := Pillow.Image.FromBytes("RGB", [4, 1], PillowTestBuffer([
+        10, 50, 100,
+        20, 60, 150,
+        30, 70, 200,
+        250, 1, 2,
+    ]))
+    rgbMask := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 255, 255, 0]))
+    lOut := 0
+    ignoredOut := 0
+    rgbOut := 0
+    try {
+        lOut := Pillow.ImageOps.Autocontrast(l, , , mask)
+        ignoredOut := Pillow.ImageOps.Autocontrast(l, 0, 10, mask)
+        rgbOut := Pillow.ImageOps.Autocontrast(rgb, , , rgbMask)
+
+        AhkTest.AssertEqual([0, 0, 255, 255, 255], PillowTestBufferToArray(lOut.ToBytes()))
+        AhkTest.AssertEqual([0, 10, 20, 30, 255], PillowTestBufferToArray(ignoredOut.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 255, 255, 254, 255, 0, 0], PillowTestBufferToArray(rgbOut.ToBytes()))
+    } finally {
+        for image in [rgbOut, ignoredOut, lOut, rgbMask, rgb, mask, l] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Autocontrast uses mask histogram", PillowTestImageOpsAutocontrastUsesMaskHistogram)
+
 PillowTestImageOpsLutTransformsUseNativeOperations(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 1, 127, 128, 255]))

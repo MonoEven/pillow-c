@@ -147,6 +147,8 @@ Reusable target operations:
 - `pillow_c_image_resize_into`
 - `pillow_c_image_transpose_into`
 
+`pillow_c_image_autocontrast` and `pillow_c_image_autocontrast_into` accept an optional L-mode mask handle after the ignore list arguments. A null mask keeps full-image histogram behavior.
+
 ## Resize Resampling IDs
 
 Current resize support:
