@@ -969,6 +969,94 @@ PillowTestImageOpsEqualizeRejectsUnsupportedMode(*) {
 
 AhkTest.Test("Pillow ImageOps.Equalize rejects modes Pillow _lut does not support", PillowTestImageOpsEqualizeRejectsUnsupportedMode)
 
+PillowTestImageOpsCropRemovesScalarAndTupleBorders(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
+        0, 1, 2, 3,
+        4, 5, 6, 7,
+        8, 9, 10, 11,
+    ]))
+    scalar := 0
+    tuple2 := 0
+    tuple4 := 0
+    try {
+        scalar := Pillow.ImageOps.Crop(source, 1)
+        tuple2 := Pillow.ImageOps.Crop(source, [1, 0])
+        tuple4 := Pillow.ImageOps.Crop(source, [1, 0, 2, 1])
+
+        AhkTest.AssertEqual([2, 1], scalar.Size)
+        AhkTest.AssertEqual([5, 6], PillowTestBufferToArray(scalar.ToBytes()))
+        AhkTest.AssertEqual([2, 3], tuple2.Size)
+        AhkTest.AssertEqual([1, 2, 5, 6, 9, 10], PillowTestBufferToArray(tuple2.ToBytes()))
+        AhkTest.AssertEqual([1, 2], tuple4.Size)
+        AhkTest.AssertEqual([1, 5], PillowTestBufferToArray(tuple4.ToBytes()))
+    } finally {
+        for item in [tuple4, tuple2, scalar, source] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Crop removes scalar and tuple borders through native crop", PillowTestImageOpsCropRemovesScalarAndTupleBorders)
+
+PillowTestImageOpsCropSupportsNegativeBorderExpansion(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
+        0, 1, 2, 3,
+        4, 5, 6, 7,
+        8, 9, 10, 11,
+    ]))
+    out := 0
+    try {
+        out := Pillow.ImageOps.Crop(source, -1)
+
+        AhkTest.AssertEqual([6, 5], out.Size)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            0, 0, 1, 2, 3, 0,
+            0, 4, 5, 6, 7, 0,
+            0, 8, 9, 10, 11, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        for item in [out, source] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Crop supports negative borders through native crop fill", PillowTestImageOpsCropSupportsNegativeBorderExpansion)
+
+PillowTestImageOpsCropRejectsInvalidBorders(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
+        0, 1, 2, 3,
+        4, 5, 6, 7,
+        8, 9, 10, 11,
+    ]))
+    try {
+        try {
+            Pillow.ImageOps.Crop(source, [1, 2, 3])
+            AhkTest.Fail("Expected ImageOps.Crop to reject a 3-item border")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "border") > 0 || InStr(err.Message, "Crop") > 0)
+        }
+
+        try {
+            Pillow.ImageOps.Crop(source, 2)
+            AhkTest.Fail("Expected ImageOps.Crop to reject an inverted crop box")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0 || InStr(err.Message, "Coordinate") > 0 || InStr(err.Message, "Crop") > 0)
+        }
+    } finally {
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Crop rejects invalid borders", PillowTestImageOpsCropRejectsInvalidBorders)
+
 PillowTestImageOpsExpandUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([1, 2, 3, 4]))

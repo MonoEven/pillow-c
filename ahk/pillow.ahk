@@ -80,6 +80,17 @@ class Pillow {
             return Pillow.ImageOps.NativeUnaryImageOp(image, "pillow_c_image_equalize")
         }
 
+        static Crop(image, border := 0) {
+            Pillow.ImageOps.RequireImageHandle(image, "Crop")
+            borders := Pillow.ImageOps.BorderBox(border, "Crop")
+            return image.Crop([
+                borders[1],
+                borders[2],
+                image.Width - borders[3],
+                image.Height - borders[4],
+            ])
+        }
+
         static Expand(image, border := 0, fill := 0) {
             handle := Pillow.ImageOps.RequireImageHandle(image, "Expand")
             borders := Pillow.ImageOps.BorderBox(border)
@@ -209,13 +220,13 @@ class Pillow {
             return image.RequireHandle()
         }
 
-        static BorderBox(border) {
+        static BorderBox(border, operationName := "Expand") {
             if IsObject(border) {
                 if border.Length = 2
                     return [border[1], border[2], border[1], border[2]]
                 if border.Length = 4
                     return [border[1], border[2], border[3], border[4]]
-                throw Error("Pillow.ImageOps.Expand border expects a number, [x, y], or [left, top, right, bottom]", -1)
+                throw Error("Pillow.ImageOps." operationName " border expects a number, [x, y], or [left, top, right, bottom]", -1)
             }
             return [border, border, border, border]
         }
