@@ -65,6 +65,26 @@ class Pillow {
             return Pillow.ImageOps.NativeUnaryImageOp(image, "pillow_c_image_equalize")
         }
 
+        static Expand(image, border := 0, fill := 0) {
+            handle := Pillow.ImageOps.RequireImageHandle(image, "Expand")
+            borders := Pillow.ImageOps.BorderBox(border)
+            color := Pillow.ImageOps.FillBuffer(image, fill)
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_expand",
+                "Ptr", handle,
+                "Int", borders[1],
+                "Int", borders[2],
+                "Int", borders[3],
+                "Int", borders[4],
+                "Ptr", color,
+                "UPtr", color.Size,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static Autocontrast(image, cutoff := 0, ignore := unset) {
             cuts := Pillow.ImageOps.CutoffPair(cutoff)
             ignorePtr := 0
@@ -105,6 +125,50 @@ class Pillow {
             if !(IsObject(image) && image is Pillow.Image)
                 throw Error("Pillow.ImageOps." operationName " expects a Pillow.Image", -1)
             return image.RequireHandle()
+        }
+
+        static BorderBox(border) {
+            if IsObject(border) {
+                if border.Length = 2
+                    return [border[1], border[2], border[1], border[2]]
+                if border.Length = 4
+                    return [border[1], border[2], border[3], border[4]]
+                throw Error("Pillow.ImageOps.Expand border expects a number, [x, y], or [left, top, right, bottom]", -1)
+            }
+            return [border, border, border, border]
+        }
+
+        static FillBuffer(image, fill) {
+            channels := image.Channels
+            buf := Buffer(channels, 0)
+            if IsObject(fill) {
+                if channels = 1 {
+                    if fill.Length != 1
+                        throw Error("Pillow.ImageOps.Expand fill must match image mode", -1)
+                    NumPut("UChar", fill[1], buf, 0)
+                    return buf
+                }
+                if channels = 3 {
+                    if fill.Length != 3 && fill.Length != 4
+                        throw Error("Pillow.ImageOps.Expand fill must match image mode", -1)
+                    loop 3
+                        NumPut("UChar", fill[A_Index], buf, A_Index - 1)
+                    return buf
+                }
+                if channels = 4 {
+                    if fill.Length != 3 && fill.Length != 4
+                        throw Error("Pillow.ImageOps.Expand fill must match image mode", -1)
+                    NumPut("UChar", fill[1], buf, 0)
+                    NumPut("UChar", fill[2], buf, 1)
+                    NumPut("UChar", fill[3], buf, 2)
+                    NumPut("UChar", fill.Length = 4 ? fill[4] : 255, buf, 3)
+                    return buf
+                }
+                throw Error("Pillow.ImageOps.Expand fill is unsupported for this image mode", -1)
+            }
+
+            NumPut("UChar", fill, buf, 0)
+            return buf
         }
 
         static CutoffPair(cutoff) {

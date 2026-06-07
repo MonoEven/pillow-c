@@ -77,6 +77,7 @@ Image operations:
 - `pillow_c_image_rgb_to_l`
 - `pillow_c_image_alpha_composite_rgba`
 - `pillow_c_image_crop`
+- `pillow_c_image_expand`
 - `pillow_c_image_resize`
 - `pillow_c_image_paste`
 - `pillow_c_image_transpose`
@@ -99,6 +100,7 @@ Reusable target operations:
 - `pillow_c_image_rgb_to_l_into`
 - `pillow_c_image_alpha_composite_rgba_into`
 - `pillow_c_image_crop_into`
+- `pillow_c_image_expand_into`
 - `pillow_c_image_resize_into`
 - `pillow_c_image_transpose_into`
 

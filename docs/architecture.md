@@ -55,6 +55,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `Pillow.ImageOps.Solarize(...)`
 - `Pillow.ImageOps.Equalize(...)`
 - `Pillow.ImageOps.Autocontrast(...)`
+- `Pillow.ImageOps.Expand(...)`
 - `image.GetChannel(...)`
 - `image.Split(...)`
 - `image.PutAlpha(...)`
@@ -62,7 +63,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 
 AHK owns ergonomics and lifetime. The DLL owns image bytes and transformations.
 
-Core `L`, `RGB`, and `RGBA` conversions, histogram/extrema scans, fixed-LUT and histogram-derived `ImageOps` transforms for supported `L`/`RGB` modes, L-band split, L-band merge, and all current Pillow resize filters are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
+Core `L`, `RGB`, and `RGBA` conversions, histogram/extrema scans, fixed-LUT and histogram-derived `ImageOps` transforms for supported `L`/`RGB` modes, `ImageOps.expand`, L-band split, L-band merge, and all current Pillow resize filters are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
 
 `ImageOps.autocontrast` currently implements the common histogram/LUT path with `cutoff` and `ignore`. Masked histograms and `preserve_tone` remain future ABI work.
 

@@ -660,6 +660,43 @@ PillowCImageCropInto(sourceHandle, left, top, right, bottom, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageExpand(sourceHandle, left, top, right, bottom, colorValues) {
+    color := PillowCBuffer(colorValues)
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_expand",
+        "Ptr", sourceHandle,
+        "Int", left,
+        "Int", top,
+        "Int", right,
+        "Int", bottom,
+        "Ptr", color,
+        "UPtr", color.Size,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageExpandInto(sourceHandle, left, top, right, bottom, colorValues, targetHandle) {
+    color := PillowCBuffer(colorValues)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_expand_into",
+        "Ptr", sourceHandle,
+        "Int", left,
+        "Int", top,
+        "Int", right,
+        "Int", bottom,
+        "Ptr", color,
+        "UPtr", color.Size,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageResize(sourceHandle, width, height, resample) {
     outHandle := 0
     status := DllCall(
@@ -2226,6 +2263,153 @@ PillowCTestImageCropRejectsInvertedBox(*) {
 }
 
 AhkTest.Test("pillow_c image crop rejects right less than left", PillowCTestImageCropRejectsInvertedBox)
+
+PillowCTestImageExpandAddsFilledBorderAroundLImage(*) {
+    source := PillowCCreateImageMode(2, 2, 1)
+    out := 0
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4])
+        out := PillowCImageExpand(source, 1, 1, 1, 1, [7])
+        AhkTest.AssertEqual(1, PillowCImageMode(out))
+        AhkTest.AssertEqual([4, 4], [PillowCImageInt(out, "pillow_c_image_width"), PillowCImageInt(out, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            7, 7, 7, 7,
+            7, 1, 2, 7,
+            7, 3, 4, 7,
+            7, 7, 7, 7,
+        ], PillowCImageToArray(out, 16))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image expand adds a filled border around an L image", PillowCTestImageExpandAddsFilledBorderAroundLImage)
+
+PillowCTestImageExpandSupportsRgbAndRgbaFillColors(*) {
+    rgb := PillowCCreateImageMode(2, 1, 3)
+    rgba := PillowCCreateImageMode(1, 1, 4)
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(rgb, [1, 2, 3, 4, 5, 6])
+        PillowCImageSetBytes(rgba, [1, 2, 3, 4])
+        rgbOut := PillowCImageExpand(rgb, 1, 0, 2, 1, [7, 8, 9])
+        rgbaOut := PillowCImageExpand(rgba, 1, 1, 1, 1, [7, 8, 9, 10])
+
+        AhkTest.AssertEqual([5, 2], [PillowCImageInt(rgbOut, "pillow_c_image_width"), PillowCImageInt(rgbOut, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9, 7, 8, 9,
+            7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+        ], PillowCImageToArray(rgbOut, 30))
+
+        AhkTest.AssertEqual(4, PillowCImageMode(rgbaOut))
+        AhkTest.AssertEqual([
+            7, 8, 9, 10, 7, 8, 9, 10, 7, 8, 9, 10,
+            7, 8, 9, 10, 1, 2, 3, 4, 7, 8, 9, 10,
+            7, 8, 9, 10, 7, 8, 9, 10, 7, 8, 9, 10,
+        ], PillowCImageToArray(rgbaOut, 36))
+    } finally {
+        if rgbaOut
+            PillowCFreeImage(rgbaOut)
+        if rgbOut
+            PillowCFreeImage(rgbOut)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c image expand supports RGB and RGBA fill colors", PillowCTestImageExpandSupportsRgbAndRgbaFillColors)
+
+PillowCTestImageExpandClipsNegativeBordersLikePillowPaste(*) {
+    source := PillowCCreateImageMode(2, 2, 1)
+    out := 0
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4])
+        out := PillowCImageExpand(source, -1, -1, 0, 0, [9])
+        AhkTest.AssertEqual([1, 1], [PillowCImageInt(out, "pillow_c_image_width"), PillowCImageInt(out, "pillow_c_image_height")])
+        AhkTest.AssertEqual([4], PillowCImageToArray(out, 1))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image expand clips negative borders like Pillow paste", PillowCTestImageExpandClipsNegativeBordersLikePillowPaste)
+
+PillowCTestImageExpandHandlesEmptySourcesAndReusesTargetStorage(*) {
+    source := PillowCCreateImageMode(2, 2, 1)
+    empty := 0
+    out := 0
+    target := PillowCCreateImageMode(3, 2, 1)
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4])
+        empty := PillowCImageCrop(source, 0, 0, 0, 1)
+        out := PillowCImageExpand(empty, 1, 1, 2, 0, [5])
+        AhkTest.AssertEqual([3, 2], [PillowCImageInt(out, "pillow_c_image_width"), PillowCImageInt(out, "pillow_c_image_height")])
+        AhkTest.AssertEqual([5, 5, 5, 5, 5, 5], PillowCImageToArray(out, 6))
+
+        before := PillowCImageData(target).Ptr
+        PillowCImageExpandInto(empty, 1, 1, 2, 0, [6], target)
+        AhkTest.AssertEqual(before, PillowCImageData(target).Ptr)
+        AhkTest.AssertEqual([6, 6, 6, 6, 6, 6], PillowCImageToArray(target, 6))
+    } finally {
+        PillowCFreeImage(target)
+        if out
+            PillowCFreeImage(out)
+        if empty
+            PillowCFreeImage(empty)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image expand handles empty sources and expand_into reuses target storage", PillowCTestImageExpandHandlesEmptySourcesAndReusesTargetStorage)
+
+PillowCTestImageExpandRejectsInvalidShapeOrFillLength(*) {
+    source := PillowCCreateImageMode(2, 1, 3)
+    out := 0
+    try {
+        color := PillowCBuffer([1, 2])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_expand",
+            "Ptr", source,
+            "Int", 1,
+            "Int", 1,
+            "Int", 1,
+            "Int", 1,
+            "Ptr", color,
+            "UPtr", color.Size,
+            "Ptr*", &out,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+        AhkTest.AssertEqual(0, out)
+
+        color := PillowCBuffer([0, 0, 0])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_expand",
+            "Ptr", source,
+            "Int", 0,
+            "Int", -2,
+            "Int", 0,
+            "Int", 0,
+            "Ptr", color,
+            "UPtr", color.Size,
+            "Ptr*", &out,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, out)
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image expand rejects invalid output shapes or fill lengths", PillowCTestImageExpandRejectsInvalidShapeOrFillLength)
 
 PillowCTestImageResizeNearestMatchesPillowCenterSampling(*) {
     l := PillowCCreateImageMode(2, 2, 1)

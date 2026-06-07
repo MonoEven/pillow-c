@@ -570,6 +570,109 @@ PillowTestImageOpsEqualizeRejectsUnsupportedMode(*) {
 
 AhkTest.Test("Pillow ImageOps.Equalize rejects modes Pillow _lut does not support", PillowTestImageOpsEqualizeRejectsUnsupportedMode)
 
+PillowTestImageOpsExpandUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([1, 2, 3, 4]))
+    rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    rgba := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
+    lOut := 0
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        lOut := Pillow.ImageOps.Expand(l, 1, 7)
+        rgbOut := Pillow.ImageOps.Expand(rgb, [1, 0, 2, 1], [7, 8, 9])
+        rgbaOut := Pillow.ImageOps.Expand(rgba, 1, [7, 8, 9, 10])
+
+        AhkTest.AssertEqual([4, 4], lOut.Size)
+        AhkTest.AssertEqual([
+            7, 7, 7, 7,
+            7, 1, 2, 7,
+            7, 3, 4, 7,
+            7, 7, 7, 7,
+        ], PillowTestBufferToArray(lOut.ToBytes()))
+
+        AhkTest.AssertEqual([5, 2], rgbOut.Size)
+        AhkTest.AssertEqual([
+            7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9, 7, 8, 9,
+            7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+        ], PillowTestBufferToArray(rgbOut.ToBytes()))
+
+        AhkTest.AssertEqual("RGBA", rgbaOut.Mode)
+        AhkTest.AssertEqual([
+            7, 8, 9, 10, 7, 8, 9, 10, 7, 8, 9, 10,
+            7, 8, 9, 10, 1, 2, 3, 4, 7, 8, 9, 10,
+            7, 8, 9, 10, 7, 8, 9, 10, 7, 8, 9, 10,
+        ], PillowTestBufferToArray(rgbaOut.ToBytes()))
+    } finally {
+        for image in [rgbaOut, rgbOut, lOut] {
+            if IsObject(image)
+                image.Close()
+        }
+        rgba.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Expand adds filled borders through native handles", PillowTestImageOpsExpandUsesNativeOperation)
+
+PillowTestImageOpsExpandParsesBorderAndFillLikePillow(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
+    tuple2 := 0
+    rgbFill := 0
+    scalarFill := 0
+    try {
+        tuple2 := Pillow.ImageOps.Expand(source, [1, 2], [7, 8, 9])
+        rgbFill := Pillow.ImageOps.Expand(source, 1, [7, 8, 9])
+        scalarFill := Pillow.ImageOps.Expand(source, 1, 7)
+
+        AhkTest.AssertEqual([3, 5], tuple2.Size)
+        AhkTest.AssertEqual([
+            7, 8, 9, 255, 7, 8, 9, 255, 7, 8, 9, 255,
+            7, 8, 9, 255, 7, 8, 9, 255, 7, 8, 9, 255,
+            7, 8, 9, 255, 1, 2, 3, 4, 7, 8, 9, 255,
+            7, 8, 9, 255, 7, 8, 9, 255, 7, 8, 9, 255,
+            7, 8, 9, 255, 7, 8, 9, 255, 7, 8, 9, 255,
+        ], PillowTestBufferToArray(tuple2.ToBytes()))
+        AhkTest.AssertEqual(255, NumGet(rgbFill.ToBytes(), 3, "UChar"))
+        scalarData := PillowTestBufferToArray(scalarFill.ToBytes())
+        AhkTest.AssertEqual([7, 0, 0, 0], [scalarData[1], scalarData[2], scalarData[3], scalarData[4]])
+    } finally {
+        for image in [scalarFill, rgbFill, tuple2] {
+            if IsObject(image)
+                image.Close()
+        }
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Expand parses border and fill shortcuts", PillowTestImageOpsExpandParsesBorderAndFillLikePillow)
+
+PillowTestImageOpsExpandRejectsInvalidWrapperParameters(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    try {
+        try {
+            Pillow.ImageOps.Expand(image, [1, 2, 3], 0)
+            AhkTest.Fail("Expected Expand to reject a 3-item border")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "border") > 0)
+        }
+
+        try {
+            Pillow.ImageOps.Expand(image, 1, [1, 2])
+            AhkTest.Fail("Expected Expand to reject a 2-item RGB fill")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "fill") > 0)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Expand rejects invalid wrapper parameters", PillowTestImageOpsExpandRejectsInvalidWrapperParameters)
+
 PillowTestImageSplitUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([1, 2, 3, 4, 10, 20, 30, 40]))

@@ -315,6 +315,110 @@ int copy_crop_pixels_into(
     return PILLOW_C_OK;
 }
 
+int output_size_from_borders(
+    const PillowCImage* source,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    int* out_width,
+    int* out_height)
+{
+    if (!source || !out_width || !out_height) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const std::int64_t width =
+        static_cast<std::int64_t>(left) + source->width + static_cast<std::int64_t>(right);
+    const std::int64_t height =
+        static_cast<std::int64_t>(top) + source->height + static_cast<std::int64_t>(bottom);
+    if (width < 0 || height < 0 || width > INT_MAX || height > INT_MAX) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    *out_width = static_cast<int>(width);
+    *out_height = static_cast<int>(height);
+    return PILLOW_C_OK;
+}
+
+int paste_image_pixels_into(PillowCImage* target, const PillowCImage* source, int left, int top)
+{
+    if (!target || !source) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (target->channels != source->channels) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    const std::int64_t dst_left_i64 = left < 0 ? 0 : left;
+    const std::int64_t dst_top_i64 = top < 0 ? 0 : top;
+    const std::int64_t source_right_i64 = static_cast<std::int64_t>(left) + source->width;
+    const std::int64_t source_bottom_i64 = static_cast<std::int64_t>(top) + source->height;
+    const std::int64_t dst_right_i64 =
+        source_right_i64 > target->width ? target->width : source_right_i64;
+    const std::int64_t dst_bottom_i64 =
+        source_bottom_i64 > target->height ? target->height : source_bottom_i64;
+
+    if (dst_right_i64 <= dst_left_i64 || dst_bottom_i64 <= dst_top_i64) {
+        return PILLOW_C_OK;
+    }
+
+    const int dst_left = static_cast<int>(dst_left_i64);
+    const int dst_top = static_cast<int>(dst_top_i64);
+    const int dst_right = static_cast<int>(dst_right_i64);
+    const int dst_bottom = static_cast<int>(dst_bottom_i64);
+    const int src_left = dst_left - left;
+    const int src_top = dst_top - top;
+    const std::size_t row_bytes =
+        static_cast<std::size_t>(dst_right - dst_left) * target->channels;
+
+    for (int y = 0; y < dst_bottom - dst_top; ++y) {
+        const std::size_t src_offset =
+            static_cast<std::size_t>(src_top + y) * source->stride +
+            static_cast<std::size_t>(src_left) * source->channels;
+        const std::size_t dst_offset =
+            static_cast<std::size_t>(dst_top + y) * target->stride +
+            static_cast<std::size_t>(dst_left) * target->channels;
+        std::memcpy(target->pixels.data() + dst_offset, source->pixels.data() + src_offset, row_bytes);
+    }
+
+    return PILLOW_C_OK;
+}
+
+int fill_image_pixels(PillowCImage* image, const std::uint8_t* color, std::size_t color_size);
+
+int expand_image_into(
+    const PillowCImage* source,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    PillowCImage* target)
+{
+    if (!source || !color || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (color_size != static_cast<std::size_t>(source->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    int out_width = 0;
+    int out_height = 0;
+    const int size_status = output_size_from_borders(source, left, top, right, bottom, &out_width, &out_height);
+    if (size_status != PILLOW_C_OK) {
+        return size_status;
+    }
+    if (!image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    int status = fill_image_pixels(target, color, color_size);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return paste_image_pixels_into(target, source, left, top);
+}
+
 int copy_transpose_pixels_into(const PillowCImage* source, int method, PillowCImage* target)
 {
     if (!source || !target) {
@@ -1700,52 +1804,64 @@ extern "C" __declspec(dllexport) int pillow_c_image_crop(
     }
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_expand(
+    const PillowCImage* source,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    PillowCImage** out_image)
+{
+    if (!source || !color || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (color_size != static_cast<std::size_t>(source->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    int out_width = 0;
+    int out_height = 0;
+    const int size_status = output_size_from_borders(source, left, top, right, bottom, &out_width, &out_height);
+    if (size_status != PILLOW_C_OK) {
+        return size_status;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(out_width, out_height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = expand_image_into(source, left, top, right, bottom, color, color_size, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_paste(
     PillowCImage* target,
     const PillowCImage* source,
     int left,
     int top)
 {
-    if (!target || !source) {
-        return PILLOW_C_NULL_POINTER;
-    }
-    if (target->channels != source->channels) {
-        return PILLOW_C_MISMATCH;
-    }
-
-    const std::int64_t dst_left_i64 = left < 0 ? 0 : left;
-    const std::int64_t dst_top_i64 = top < 0 ? 0 : top;
-    const std::int64_t source_right_i64 = static_cast<std::int64_t>(left) + source->width;
-    const std::int64_t source_bottom_i64 = static_cast<std::int64_t>(top) + source->height;
-    const std::int64_t dst_right_i64 =
-        source_right_i64 > target->width ? target->width : source_right_i64;
-    const std::int64_t dst_bottom_i64 =
-        source_bottom_i64 > target->height ? target->height : source_bottom_i64;
-
-    if (dst_right_i64 <= dst_left_i64 || dst_bottom_i64 <= dst_top_i64) {
-        return PILLOW_C_OK;
-    }
-
-    const int dst_left = static_cast<int>(dst_left_i64);
-    const int dst_top = static_cast<int>(dst_top_i64);
-    const int dst_right = static_cast<int>(dst_right_i64);
-    const int dst_bottom = static_cast<int>(dst_bottom_i64);
-    const int src_left = dst_left - left;
-    const int src_top = dst_top - top;
-    const std::size_t row_bytes =
-        static_cast<std::size_t>(dst_right - dst_left) * target->channels;
-
-    for (int y = 0; y < dst_bottom - dst_top; ++y) {
-        const std::size_t src_offset =
-            static_cast<std::size_t>(src_top + y) * source->stride +
-            static_cast<std::size_t>(src_left) * source->channels;
-        const std::size_t dst_offset =
-            static_cast<std::size_t>(dst_top + y) * target->stride +
-            static_cast<std::size_t>(dst_left) * target->channels;
-        std::memcpy(target->pixels.data() + dst_offset, source->pixels.data() + src_offset, row_bytes);
-    }
-
-    return PILLOW_C_OK;
+    return paste_image_pixels_into(target, source, left, top);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_copy_into(
@@ -1978,6 +2094,19 @@ extern "C" __declspec(dllexport) int pillow_c_image_crop_into(
     PillowCImage* target)
 {
     return copy_crop_pixels_into(source, left, top, right, bottom, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_expand_into(
+    const PillowCImage* source,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    PillowCImage* target)
+{
+    return expand_image_into(source, left, top, right, bottom, color, color_size, target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_resize_into(
