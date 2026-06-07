@@ -3,6 +3,16 @@
 class Pillow {
     static DllPath := ""
 
+    class Transpose {
+        static FLIP_LEFT_RIGHT := 0
+        static FLIP_TOP_BOTTOM := 1
+        static ROTATE_90 := 2
+        static ROTATE_180 := 3
+        static ROTATE_270 := 4
+        static TRANSPOSE := 5
+        static TRANSVERSE := 6
+    }
+
     static Configure(options := unset) {
         if IsSet(options) && options.HasOwnProp("DllPath")
             Pillow.DllPath := options.DllPath
@@ -101,6 +111,12 @@ class Pillow {
         return StrGet(buf.Ptr, required - 1, "UTF-8")
     }
 
+    static WrapImageHandle(handle) {
+        if handle = 0
+            throw Error("pillow_c returned a null image handle", -2)
+        return Pillow.Image(handle)
+    }
+
     class Image {
         __New(handle) {
             this.Handle := handle
@@ -141,6 +157,31 @@ class Pillow {
                 image.Close()
                 throw
             }
+        }
+
+        static Blend(left, right, alpha) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_blend",
+                "Ptr", left.RequireHandle(),
+                "Ptr", right.RequireHandle(),
+                "Double", alpha,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static AlphaComposite(dst, src) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_alpha_composite_rgba",
+                "Ptr", dst.RequireHandle(),
+                "Ptr", src.RequireHandle(),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
         }
 
         Close() {
@@ -225,6 +266,78 @@ class Pillow {
                 "Int"
             ))
             return { Ptr: dataPtr, Size: size }
+        }
+
+        Copy() {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_copy",
+                "Ptr", this.RequireHandle(),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        Crop(box) {
+            if box.Length != 4
+                throw Error("Pillow.Image.Crop expects box [left, top, right, bottom]", -1)
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_crop",
+                "Ptr", this.RequireHandle(),
+                "Int", box[1],
+                "Int", box[2],
+                "Int", box[3],
+                "Int", box[4],
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        Paste(source, box) {
+            if box.Length < 2
+                throw Error("Pillow.Image.Paste expects box [left, top]", -1)
+
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_paste",
+                "Ptr", this.RequireHandle(),
+                "Ptr", source.RequireHandle(),
+                "Int", box[1],
+                "Int", box[2],
+                "Int"
+            ))
+            return this
+        }
+
+        Transpose(method) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_transpose",
+                "Ptr", this.RequireHandle(),
+                "Int", method,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        Convert(modeName) {
+            if this.Mode = modeName
+                return this.Copy()
+            if this.Mode = "RGB" && modeName = "L" {
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_rgb_to_l",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return Pillow.WrapImageHandle(outHandle)
+            }
+            throw Error("Pillow.Image.Convert does not support " this.Mode " to " modeName " yet", -1)
         }
     }
 }
