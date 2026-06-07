@@ -1036,6 +1036,40 @@ class Pillow {
             return buf
         }
 
+        TransformFillBuffer(color) {
+            channels := this.Channels
+            if IsObject(color) {
+                if channels = 1 {
+                    if color.Length != 1
+                        throw Error("Pillow transform fill must match image mode", -1)
+                    buf := Buffer(1, 0)
+                    NumPut("UChar", color[1], buf, 0)
+                    return buf
+                }
+                if channels = 3 {
+                    if color.Length != 1 && color.Length != 3 && color.Length != 4
+                        throw Error("Pillow transform fill must match image mode", -1)
+                    buf := Buffer(color.Length = 1 ? 1 : color.Length, 0)
+                    loop color.Length
+                        NumPut("UChar", color[A_Index], buf, A_Index - 1)
+                    return buf
+                }
+                if channels = 4 {
+                    if color.Length != 1 && color.Length != 3 && color.Length != 4
+                        throw Error("Pillow transform fill must match image mode", -1)
+                    buf := Buffer(color.Length = 1 ? 1 : color.Length, 0)
+                    loop color.Length
+                        NumPut("UChar", color[A_Index], buf, A_Index - 1)
+                    return buf
+                }
+                throw Error("Pillow transform fill is unsupported for this image mode", -1)
+            }
+
+            buf := Buffer(1, 0)
+            NumPut("UChar", color, buf, 0)
+            return buf
+        }
+
         Point(lut) {
             lutBytes := this.LutBuffer(lut)
             outHandle := 0
@@ -1307,6 +1341,52 @@ class Pillow {
                 "Int", size[1],
                 "Int", size[2],
                 "Int", resample,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        Rotate(angle, resample := unset, expand := false, center := unset, translate := unset, fillcolor := unset) {
+            if !(angle is Number)
+                throw Error("Pillow.Image.Rotate angle must be numeric", -1)
+            if !IsSet(resample)
+                resample := Pillow.Resampling.NEAREST
+            hasCenter := IsSet(center)
+            centerX := 0.0
+            centerY := 0.0
+            if hasCenter {
+                if !IsObject(center) || center.Length != 2
+                    throw Error("Pillow.Image.Rotate center expects [x, y]", -1)
+                centerX := center[1]
+                centerY := center[2]
+            }
+            hasTranslate := IsSet(translate)
+            translateX := 0.0
+            translateY := 0.0
+            if hasTranslate {
+                if !IsObject(translate) || translate.Length != 2
+                    throw Error("Pillow.Image.Rotate translate expects [x, y]", -1)
+                translateX := translate[1]
+                translateY := translate[2]
+            }
+            fill := IsSet(fillcolor) ? this.TransformFillBuffer(fillcolor) : 0
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_rotate",
+                "Ptr", this.RequireHandle(),
+                "Double", angle,
+                "Int", resample,
+                "Int", expand,
+                "Double", centerX,
+                "Double", centerY,
+                "Int", hasCenter,
+                "Double", translateX,
+                "Double", translateY,
+                "Int", hasTranslate,
+                "Ptr", IsObject(fill) ? fill.Ptr : 0,
+                "UPtr", IsObject(fill) ? fill.Size : 0,
                 "Ptr*", &outHandle,
                 "Int"
             ))

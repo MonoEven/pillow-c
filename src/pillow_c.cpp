@@ -52,6 +52,17 @@ struct ResampleFilterSpec {
     double (*filter)(double);
 };
 
+struct AffineGeometry {
+    double a;
+    double b;
+    double c;
+    double d;
+    double e;
+    double f;
+    int width;
+    int height;
+};
+
 struct ColorCountEntry {
     std::uint64_t count;
     std::uint8_t color[4];
@@ -1853,6 +1864,352 @@ int autocontrast_image_into(
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+double round_15(double value)
+{
+    constexpr double scale = 1000000000000000.0;
+    return std::round(value * scale) / scale;
+}
+
+void affine_transform_point(const AffineGeometry& geometry, double x, double y, double* out_x, double* out_y)
+{
+    *out_x = geometry.a * x + geometry.b * y + geometry.c;
+    *out_y = geometry.d * x + geometry.e * y + geometry.f;
+}
+
+int normalize_angle_degrees(double angle, double* out_angle)
+{
+    if (!std::isfinite(angle) || !out_angle) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    double normalized = std::fmod(angle, 360.0);
+    if (normalized < 0.0) {
+        normalized += 360.0;
+    }
+    if (normalized == 360.0) {
+        normalized = 0.0;
+    }
+    *out_angle = normalized;
+    return PILLOW_C_OK;
+}
+
+bool rotate_fast_path_method(
+    double normalized_angle,
+    bool expand,
+    bool has_center,
+    bool has_translate,
+    const PillowCImage* source,
+    int* out_method)
+{
+    if (!source || !out_method || has_center || has_translate) {
+        return false;
+    }
+    if (normalized_angle == 180.0) {
+        *out_method = 3;
+        return true;
+    }
+    if ((normalized_angle == 90.0 || normalized_angle == 270.0) && (expand || source->width == source->height)) {
+        *out_method = normalized_angle == 90.0 ? 2 : 4;
+        return true;
+    }
+    return false;
+}
+
+int rotate_affine_geometry(
+    const PillowCImage* source,
+    double angle,
+    bool expand,
+    double center_x,
+    double center_y,
+    bool has_center,
+    double translate_x,
+    double translate_y,
+    bool has_translate,
+    AffineGeometry* out_geometry)
+{
+    if (!source || !out_geometry) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!std::isfinite(center_x) || !std::isfinite(center_y) ||
+        !std::isfinite(translate_x) || !std::isfinite(translate_y)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    double normalized_angle = 0.0;
+    const int angle_status = normalize_angle_degrees(angle, &normalized_angle);
+    if (angle_status != PILLOW_C_OK) {
+        return angle_status;
+    }
+
+    const double cx = has_center ? center_x : static_cast<double>(source->width) / 2.0;
+    const double cy = has_center ? center_y : static_cast<double>(source->height) / 2.0;
+    const double tx = has_translate ? translate_x : 0.0;
+    const double ty = has_translate ? translate_y : 0.0;
+    constexpr double pi = 3.1415926535897932384626433832795;
+    const double radians = -normalized_angle * pi / 180.0;
+
+    AffineGeometry geometry{
+        round_15(std::cos(radians)),
+        round_15(std::sin(radians)),
+        0.0,
+        round_15(-std::sin(radians)),
+        round_15(std::cos(radians)),
+        0.0,
+        source->width,
+        source->height};
+
+    affine_transform_point(geometry, -cx - tx, -cy - ty, &geometry.c, &geometry.f);
+    geometry.c += cx;
+    geometry.f += cy;
+
+    if (expand) {
+        double xx[4]{};
+        double yy[4]{};
+        const double w = static_cast<double>(source->width);
+        const double h = static_cast<double>(source->height);
+        const double corners[4][2]{{0.0, 0.0}, {w, 0.0}, {w, h}, {0.0, h}};
+        for (int i = 0; i < 4; ++i) {
+            affine_transform_point(geometry, corners[i][0], corners[i][1], &xx[i], &yy[i]);
+        }
+        const double min_x = *std::min_element(xx, xx + 4);
+        const double max_x = *std::max_element(xx, xx + 4);
+        const double min_y = *std::min_element(yy, yy + 4);
+        const double max_y = *std::max_element(yy, yy + 4);
+        const double new_width = std::ceil(max_x) - std::floor(min_x);
+        const double new_height = std::ceil(max_y) - std::floor(min_y);
+        if (new_width < 0.0 || new_height < 0.0 ||
+            new_width > static_cast<double>(std::numeric_limits<int>::max()) ||
+            new_height > static_cast<double>(std::numeric_limits<int>::max())) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        geometry.width = static_cast<int>(new_width);
+        geometry.height = static_cast<int>(new_height);
+        affine_transform_point(
+            geometry,
+            -(static_cast<double>(geometry.width) - source->width) / 2.0,
+            -(static_cast<double>(geometry.height) - source->height) / 2.0,
+            &geometry.c,
+            &geometry.f);
+    }
+
+    *out_geometry = geometry;
+    return PILLOW_C_OK;
+}
+
+int rotate_output_shape(
+    const PillowCImage* source,
+    double angle,
+    bool expand,
+    double center_x,
+    double center_y,
+    bool has_center,
+    double translate_x,
+    double translate_y,
+    bool has_translate,
+    int* out_width,
+    int* out_height)
+{
+    if (!source || !out_width || !out_height) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    double normalized_angle = 0.0;
+    int status = normalize_angle_degrees(angle, &normalized_angle);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    int method = 0;
+    if (rotate_fast_path_method(normalized_angle, expand, has_center, has_translate, source, &method)) {
+        return transpose_output_shape(source, method, out_width, out_height) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!has_center && !has_translate && normalized_angle == 0.0) {
+        *out_width = source->width;
+        *out_height = source->height;
+        return PILLOW_C_OK;
+    }
+
+    AffineGeometry geometry{};
+    status = rotate_affine_geometry(
+        source,
+        normalized_angle,
+        expand,
+        center_x,
+        center_y,
+        has_center,
+        translate_x,
+        translate_y,
+        has_translate,
+        &geometry);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    *out_width = geometry.width;
+    *out_height = geometry.height;
+    return PILLOW_C_OK;
+}
+
+int normalize_transform_fill(
+    const PillowCImage* source,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    std::uint8_t* out_fill)
+{
+    if (!source || !out_fill) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    std::fill(out_fill, out_fill + source->channels, static_cast<std::uint8_t>(0));
+    if (!fill_color) {
+        return fill_color_size == 0 ? PILLOW_C_OK : PILLOW_C_NULL_POINTER;
+    }
+    if (fill_color_size != 1 && fill_color_size != static_cast<std::size_t>(source->channels) &&
+        !(source->mode == PILLOW_C_MODE_RGB && fill_color_size == 4) &&
+        !(source->mode == PILLOW_C_MODE_RGBA && fill_color_size == 3)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (fill_color_size == 1) {
+        out_fill[0] = fill_color[0];
+        return PILLOW_C_OK;
+    }
+    const std::size_t copy_size = std::min(fill_color_size, static_cast<std::size_t>(source->channels));
+    std::memcpy(out_fill, fill_color, copy_size);
+    if (source->mode == PILLOW_C_MODE_RGBA && fill_color_size == 3) {
+        out_fill[3] = 255;
+    }
+    return PILLOW_C_OK;
+}
+
+int nearest_transform_coordinate(double value)
+{
+    return static_cast<int>(std::floor(value + 0.5));
+}
+
+int rotate_nearest_into(
+    const PillowCImage* source,
+    double angle,
+    bool expand,
+    double center_x,
+    double center_y,
+    bool has_center,
+    double translate_x,
+    double translate_y,
+    bool has_translate,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    double normalized_angle = 0.0;
+    int status = normalize_angle_degrees(angle, &normalized_angle);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    int method = 0;
+    if (rotate_fast_path_method(normalized_angle, expand, has_center, has_translate, source, &method)) {
+        return copy_transpose_pixels_into(source, method, target);
+    }
+    if (!has_center && !has_translate && normalized_angle == 0.0) {
+        if (!image_shape_matches(target, source)) {
+            return PILLOW_C_MISMATCH;
+        }
+        if (!source->pixels.empty()) {
+            std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
+        }
+        return PILLOW_C_OK;
+    }
+
+    AffineGeometry geometry{};
+    status = rotate_affine_geometry(
+        source,
+        normalized_angle,
+        expand,
+        center_x,
+        center_y,
+        has_center,
+        translate_x,
+        translate_y,
+        has_translate,
+        &geometry);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!image_shape_matches(target, geometry.width, geometry.height, source->mode, source->channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    std::uint8_t fill[4]{0, 0, 0, 0};
+    status = normalize_transform_fill(source, fill_color, fill_color_size, fill);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const std::size_t pixel_bytes = static_cast<std::size_t>(source->channels);
+    for (int dst_y = 0; dst_y < target->height; ++dst_y) {
+        std::uint8_t* dst_row = target->pixels.data() + static_cast<std::size_t>(dst_y) * target->stride;
+        for (int dst_x = 0; dst_x < target->width; ++dst_x) {
+            double src_x_value = 0.0;
+            double src_y_value = 0.0;
+            affine_transform_point(
+                geometry,
+                static_cast<double>(dst_x) + 0.5,
+                static_cast<double>(dst_y) + 0.5,
+                &src_x_value,
+                &src_y_value);
+            src_x_value -= 0.5;
+            src_y_value -= 0.5;
+            const int src_x = nearest_transform_coordinate(src_x_value);
+            const int src_y = nearest_transform_coordinate(src_y_value);
+            std::uint8_t* dst = dst_row + static_cast<std::size_t>(dst_x) * pixel_bytes;
+            if (src_x < 0 || src_y < 0 || src_x >= source->width || src_y >= source->height) {
+                std::memcpy(dst, fill, pixel_bytes);
+                continue;
+            }
+            const std::uint8_t* src =
+                source->pixels.data() +
+                static_cast<std::size_t>(src_y) * source->stride +
+                static_cast<std::size_t>(src_x) * pixel_bytes;
+            std::memcpy(dst, src, pixel_bytes);
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int rotate_image_into(
+    const PillowCImage* source,
+    double angle,
+    int resample,
+    bool expand,
+    double center_x,
+    double center_y,
+    bool has_center,
+    double translate_x,
+    double translate_y,
+    bool has_translate,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    if (resample != PILLOW_C_RESAMPLE_NEAREST) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return rotate_nearest_into(
+        source,
+        angle,
+        expand,
+        center_x,
+        center_y,
+        has_center,
+        translate_x,
+        translate_y,
+        has_translate,
+        fill_color,
+        fill_color_size,
+        target);
 }
 
 bool precompute_nearest_indices_for_box(
@@ -3673,6 +4030,37 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize_into(
     return resize_image_into(source, out_width, out_height, resample, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_rotate_into(
+    const PillowCImage* source,
+    double angle,
+    int resample,
+    int expand,
+    double center_x,
+    double center_y,
+    int has_center,
+    double translate_x,
+    double translate_y,
+    int has_translate,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    return rotate_image_into(
+        source,
+        angle,
+        resample,
+        expand != 0,
+        center_x,
+        center_y,
+        has_center != 0,
+        translate_x,
+        translate_y,
+        has_translate != 0,
+        fill_color,
+        fill_color_size,
+        target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_transpose_into(
     const PillowCImage* source,
     int method,
@@ -5033,6 +5421,86 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = resize_image_into(source, out_width, out_height, resample, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_rotate(
+    const PillowCImage* source,
+    double angle,
+    int resample,
+    int expand,
+    double center_x,
+    double center_y,
+    int has_center,
+    double translate_x,
+    double translate_y,
+    int has_translate,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (resample != PILLOW_C_RESAMPLE_NEAREST) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    int out_width = 0;
+    int out_height = 0;
+    int status = rotate_output_shape(
+        source,
+        angle,
+        expand != 0,
+        center_x,
+        center_y,
+        has_center != 0,
+        translate_x,
+        translate_y,
+        has_translate != 0,
+        &out_width,
+        &out_height);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(out_width, out_height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        status = rotate_image_into(
+            source,
+            angle,
+            resample,
+            expand != 0,
+            center_x,
+            center_y,
+            has_center != 0,
+            translate_x,
+            translate_y,
+            has_translate != 0,
+            fill_color,
+            fill_color_size,
+            image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

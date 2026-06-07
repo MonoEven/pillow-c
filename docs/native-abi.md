@@ -101,6 +101,7 @@ Image operations:
 - `pillow_c_image_crop`
 - `pillow_c_image_expand`
 - `pillow_c_image_resize`
+- `pillow_c_image_rotate`
 - `pillow_c_image_contain`
 - `pillow_c_image_cover`
 - `pillow_c_image_fit`
@@ -145,9 +146,12 @@ Reusable target operations:
 - `pillow_c_image_crop_into`
 - `pillow_c_image_expand_into`
 - `pillow_c_image_resize_into`
+- `pillow_c_image_rotate_into`
 - `pillow_c_image_transpose_into`
 
 `pillow_c_image_autocontrast` and `pillow_c_image_autocontrast_into` accept an optional L-mode mask handle after the ignore list arguments, followed by a `preserve_tone` integer flag. A null mask keeps full-image histogram behavior.
+
+`pillow_c_image_rotate` and `pillow_c_image_rotate_into` accept angle, resample, expand, optional center, optional translate, and optional fill color arguments. The current implementation supports `NEAREST` rotate only; unsupported resamplers return `-3`.
 
 ## Resize Resampling IDs
 
