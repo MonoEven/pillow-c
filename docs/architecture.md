@@ -91,6 +91,8 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `image.GetBbox(...)`
 - `image.GetProjection(...)`
 - `image.GetColors(...)`
+- `image.GetPixel(...)`
+- `image.PutPixel(...)`
 - static helpers such as `Pillow.Image.Blend(...)` and `Pillow.Image.Merge(...)`
 
 AHK owns ergonomics and lifetime. The DLL owns image bytes and transformations.

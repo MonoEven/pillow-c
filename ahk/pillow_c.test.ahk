@@ -195,6 +195,35 @@ PillowCImageFill(handle, values) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageGetPixel(handle, x, y, channels) {
+    out := Buffer(channels, 0)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_getpixel",
+        "Ptr", handle,
+        "Int", x,
+        "Int", y,
+        "Ptr", out,
+        "UPtr", out.Size,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return PillowCBufferToArray(out)
+}
+
+PillowCImagePutPixel(handle, x, y, values) {
+    color := PillowCBuffer(values)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_putpixel",
+        "Ptr", handle,
+        "Int", x,
+        "Int", y,
+        "Ptr", color,
+        "UPtr", color.Size,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageToArray(handle, expectedSize) {
     if expectedSize = 0
         return []
@@ -2969,6 +2998,55 @@ PillowCTestImageFillRejectsWrongColorLength(*) {
 }
 
 AhkTest.Test("pillow_c image fill rejects colors that do not match channel count", PillowCTestImageFillRejectsWrongColorLength)
+
+PillowCTestImageGetAndPutPixelMatchPillowCoreModes(*) {
+    l := PillowCCreateImageMode(2, 2, 1)
+    rgb := PillowCCreateImageMode(2, 1, 3)
+    rgba := PillowCCreateImageMode(1, 2, 4)
+    try {
+        PillowCImageSetBytes(l, [1, 2, 3, 4])
+        PillowCImageSetBytes(rgb, [1, 2, 3, 4, 5, 6])
+        PillowCImageSetBytes(rgba, [1, 2, 3, 4, 5, 6, 7, 8])
+
+        AhkTest.AssertEqual([1], PillowCImageGetPixel(l, 0, 0, 1))
+        AhkTest.AssertEqual([2], PillowCImageGetPixel(l, -1, 0, 1))
+        AhkTest.AssertEqual([4, 5, 6], PillowCImageGetPixel(rgb, 1, 0, 3))
+        AhkTest.AssertEqual([1, 2, 3, 4], PillowCImageGetPixel(rgba, -1, 0, 4))
+
+        PillowCImagePutPixel(l, 0, 0, [9])
+        PillowCImagePutPixel(rgb, 0, 0, [9, 0, 0])
+        PillowCImagePutPixel(rgba, 0, 0, [9, 9, 9, 9])
+
+        AhkTest.AssertEqual([9, 2, 3, 4], PillowCImageToArray(l, 4))
+        AhkTest.AssertEqual([9, 0, 0, 4, 5, 6], PillowCImageToArray(rgb, 6))
+        AhkTest.AssertEqual([9, 9, 9, 9, 5, 6, 7, 8], PillowCImageToArray(rgba, 8))
+    } finally {
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image getpixel and putpixel match Pillow core modes", PillowCTestImageGetAndPutPixelMatchPillowCoreModes)
+
+PillowCTestImageGetAndPutPixelRejectInvalidArguments(*) {
+    image := PillowCCreateImageMode(2, 1, 3)
+    try {
+        PillowCImageSetBytes(image, [1, 2, 3, 4, 5, 6])
+
+        out := Buffer(3, 0)
+        status := DllCall(PillowCDllPath() "\pillow_c_image_getpixel", "Ptr", image, "Int", 99, "Int", 0, "Ptr", out, "UPtr", out.Size, "Int")
+        AhkTest.AssertEqual(-3, status)
+
+        color := PillowCBuffer([1, 2])
+        status := DllCall(PillowCDllPath() "\pillow_c_image_putpixel", "Ptr", image, "Int", 0, "Int", 0, "Ptr", color, "UPtr", color.Size, "Int")
+        AhkTest.AssertEqual(-2, status)
+    } finally {
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image getpixel and putpixel reject invalid arguments", PillowCTestImageGetAndPutPixelRejectInvalidArguments)
 
 PillowCMakeInvertLut(channelCount) {
     lut := []

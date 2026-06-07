@@ -908,6 +908,68 @@ class Pillow {
             return this
         }
 
+        GetPixel(xy) {
+            if !IsObject(xy) || xy.Length != 2
+                throw Error("Pillow.Image.GetPixel expects xy [x, y]", -1)
+            out := Buffer(this.Channels, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_getpixel",
+                "Ptr", this.RequireHandle(),
+                "Int", xy[1],
+                "Int", xy[2],
+                "Ptr", out,
+                "UPtr", out.Size,
+                "Int"
+            ))
+            return this.PixelBufferToValue(out)
+        }
+
+        PutPixel(xy, value) {
+            if !IsObject(xy) || xy.Length != 2
+                throw Error("Pillow.Image.PutPixel expects xy [x, y]", -1)
+            color := this.PixelValueBuffer(value)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_putpixel",
+                "Ptr", this.RequireHandle(),
+                "Int", xy[1],
+                "Int", xy[2],
+                "Ptr", color,
+                "UPtr", color.Size,
+                "Int"
+            ))
+        }
+
+        PixelBufferToValue(buf) {
+            if this.Channels = 1
+                return NumGet(buf, 0, "UChar")
+            values := []
+            loop buf.Size
+                values.Push(NumGet(buf, A_Index - 1, "UChar"))
+            return values
+        }
+
+        PixelValueBuffer(value) {
+            if IsObject(value) {
+                if this.Channels = 1 {
+                    if value.Length != 1
+                        throw Error("Pillow.Image.PutPixel color must be int or single-element array", -1)
+                    buf := Buffer(1, 0)
+                    NumPut("UChar", value[1], buf, 0)
+                    return buf
+                }
+                if value.Length != this.Channels
+                    throw Error("Pillow.Image.PutPixel color must match image mode", -1)
+                buf := Buffer(this.Channels, 0)
+                for index, item in value
+                    NumPut("UChar", item, buf, index - 1)
+                return buf
+            }
+
+            buf := Buffer(1, 0)
+            NumPut("UChar", value, buf, 0)
+            return buf
+        }
+
         ColorBuffer(color) {
             channels := this.Channels
             if IsObject(color) {

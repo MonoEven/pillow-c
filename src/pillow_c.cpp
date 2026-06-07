@@ -478,6 +478,93 @@ int paste_image_pixels_into(PillowCImage* target, const PillowCImage* source, in
     return PILLOW_C_OK;
 }
 
+int normalize_coordinate(int value, int limit, int* out_value)
+{
+    if (!out_value || limit <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    int normalized = value;
+    if (normalized < 0) {
+        normalized += limit;
+    }
+    if (normalized < 0 || normalized >= limit) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    *out_value = normalized;
+    return PILLOW_C_OK;
+}
+
+int image_pixel_offset(const PillowCImage* image, int x, int y, std::size_t* out_offset)
+{
+    if (!image || !out_offset) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    int normalized_x = 0;
+    int normalized_y = 0;
+    int status = normalize_coordinate(x, image->width, &normalized_x);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    status = normalize_coordinate(y, image->height, &normalized_y);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    *out_offset =
+        static_cast<std::size_t>(normalized_y) * image->stride +
+        static_cast<std::size_t>(normalized_x) * image->channels;
+    return PILLOW_C_OK;
+}
+
+int get_pixel_image(
+    const PillowCImage* image,
+    int x,
+    int y,
+    std::uint8_t* out_color,
+    std::size_t out_color_size)
+{
+    if (!image || !out_color) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_color_size != static_cast<std::size_t>(image->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    std::size_t offset = 0;
+    const int status = image_pixel_offset(image, x, y, &offset);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    std::memcpy(out_color, image->pixels.data() + offset, out_color_size);
+    return PILLOW_C_OK;
+}
+
+int put_pixel_image(
+    PillowCImage* image,
+    int x,
+    int y,
+    const std::uint8_t* color,
+    std::size_t color_size)
+{
+    if (!image || !color) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (color_size != 1 && color_size != static_cast<std::size_t>(image->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    std::size_t offset = 0;
+    const int status = image_pixel_offset(image, x, y, &offset);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    std::uint8_t* dst = image->pixels.data() + offset;
+    if (color_size == 1 && image->channels > 1) {
+        dst[0] = color[0];
+        std::fill(dst + 1, dst + image->channels, static_cast<std::uint8_t>(0));
+    } else {
+        std::memcpy(dst, color, color_size);
+    }
+    return PILLOW_C_OK;
+}
+
 int fill_image_pixels(PillowCImage* image, const std::uint8_t* color, std::size_t color_size);
 int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowCImage* target);
 
@@ -3538,6 +3625,26 @@ extern "C" __declspec(dllexport) int pillow_c_image_fill(
     std::size_t color_size)
 {
     return fill_image_pixels(image, color, color_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_getpixel(
+    const PillowCImage* image,
+    int x,
+    int y,
+    std::uint8_t* out_color,
+    std::size_t out_color_size)
+{
+    return get_pixel_image(image, x, y, out_color, out_color_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_putpixel(
+    PillowCImage* image,
+    int x,
+    int y,
+    const std::uint8_t* color,
+    std::size_t color_size)
+{
+    return put_pixel_image(image, x, y, color, color_size);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_get_bytes(

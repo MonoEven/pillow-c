@@ -4,6 +4,8 @@ Tests use `ahktest` from [MonoEven/stdlib-ahk](https://github.com/MonoEven/stdli
 
 In the current local workspace, run tests through the parent `visual_studio\tools\run-ahktest.ps1` wrapper. That runner adds `#ErrorStdOut`, captures unhandled AHK errors, writes reports, and prevents modal error popups from blocking automation.
 
+Use `-TimeoutSeconds 120` for every AHK test run, including filtered and single-file runs, so incremental checks have the same timeout behavior as the full suite.
+
 ## Build
 
 ```powershell

@@ -128,6 +128,57 @@ PillowTestImageCopyReturnsIndependentNativeHandle(*) {
 
 AhkTest.Test("Pillow Image.Copy returns an independent native image", PillowTestImageCopyReturnsIndependentNativeHandle)
 
+PillowTestImageGetAndPutPixelUseNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([1, 2, 3, 4]))
+    rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    rgba := Pillow.Image.FromBytes("RGBA", [1, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8]))
+    try {
+        AhkTest.AssertEqual(1, l.GetPixel([0, 0]))
+        AhkTest.AssertEqual(2, l.GetPixel([-1, 0]))
+        AhkTest.AssertEqual([4, 5, 6], rgb.GetPixel([1, 0]))
+        AhkTest.AssertEqual([1, 2, 3, 4], rgba.GetPixel([-1, 0]))
+
+        l.PutPixel([0, 0], 9)
+        rgb.PutPixel([0, 0], 9)
+        rgba.PutPixel([0, 0], [9, 9, 9, 9])
+
+        AhkTest.AssertEqual([9, 2, 3, 4], PillowTestBufferToArray(l.ToBytes()))
+        AhkTest.AssertEqual([9, 0, 0, 4, 5, 6], PillowTestBufferToArray(rgb.ToBytes()))
+        AhkTest.AssertEqual([9, 9, 9, 9, 5, 6, 7, 8], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        rgba.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetPixel and PutPixel use native operations", PillowTestImageGetAndPutPixelUseNativeOperation)
+
+PillowTestImageGetAndPutPixelRejectInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    try {
+        try {
+            image.GetPixel([99, 0])
+            AhkTest.Fail("Expected GetPixel to reject out-of-range coordinates")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0 || InStr(err.Message, "index") > 0)
+        }
+
+        try {
+            image.PutPixel([0, 0], [1, 2])
+            AhkTest.Fail("Expected PutPixel to reject short RGB values")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid length") > 0 || InStr(err.Message, "color") > 0)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetPixel and PutPixel reject invalid arguments", PillowTestImageGetAndPutPixelRejectInvalidArguments)
+
 PillowTestImageCropUsesNativeHandleOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([

@@ -54,6 +54,8 @@ Image lifecycle and metadata:
 - `pillow_c_image_data`
 - `pillow_c_image_set_bytes`
 - `pillow_c_image_fill`
+- `pillow_c_image_getpixel`
+- `pillow_c_image_putpixel`
 - `pillow_c_image_get_bytes`
 - `pillow_c_image_histogram`
 - `pillow_c_image_get_extrema`
