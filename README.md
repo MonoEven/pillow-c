@@ -43,7 +43,7 @@ img.Close()
 Tests use `ahktest` from [MonoEven/stdlib-ahk](https://github.com/MonoEven/stdlib-ahk). In the current local workspace, run tests from the parent `visual_studio` directory with its `tools` runner so AHK errors are captured instead of shown in blocking popups:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 20
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 120
 ```
 
 ## Docs

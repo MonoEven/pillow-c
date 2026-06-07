@@ -35,7 +35,7 @@ F:\Python\Python310\python.exe .\oracle\pillow_oracle.py
 From the parent `visual_studio` workspace:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 20
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 120
 ```
 
 This suite currently covers both raw DLL calls and the AHK facade.

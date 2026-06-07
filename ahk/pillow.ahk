@@ -111,6 +111,21 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static Scale(image, factor, resample := unset) {
+            Pillow.ImageOps.RequireImageHandle(image, "Scale")
+            if !(factor is Number)
+                throw Error("Pillow.ImageOps.Scale factor must be numeric", -1)
+            if factor = 1
+                return image.Copy()
+            if factor <= 0
+                throw Error("Pillow.ImageOps.Scale factor must be greater than 0", -1)
+
+            return image.Resize([
+                Pillow.Image.RoundHalfEven(factor * image.Width),
+                Pillow.Image.RoundHalfEven(factor * image.Height),
+            ], IsSet(resample) ? resample : Pillow.Resampling.BICUBIC)
+        }
+
         static Contain(image, size, method := unset) {
             return Pillow.ImageOps.NativeProportionalResize(image, size, IsSet(method) ? method : Pillow.Resampling.BICUBIC, "pillow_c_image_contain")
         }

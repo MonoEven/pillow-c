@@ -218,6 +218,77 @@ PillowTestImageResizeBicubicUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Resize BICUBIC resizes through native handles", PillowTestImageResizeBicubicUsesNativeHandleOperation)
 
+PillowTestImageOpsScaleUsesNativeResizeAndPythonRounding(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [5, 3], PillowTestBuffer([
+        0, 1, 2, 3, 4,
+        5, 6, 7, 8, 9,
+        10, 11, 12, 13, 14,
+    ]))
+    nearest := 0
+    bicubic := 0
+    try {
+        nearest := Pillow.ImageOps.Scale(source, 0.5, Pillow.Resampling.NEAREST)
+        bicubic := Pillow.ImageOps.Scale(source, 0.5)
+
+        AhkTest.AssertEqual([2, 2], nearest.Size)
+        AhkTest.AssertEqual([1, 3, 11, 13], PillowTestBufferToArray(nearest.ToBytes()))
+        AhkTest.AssertEqual([2, 2], bicubic.Size)
+        AhkTest.AssertEqual([3, 5, 9, 11], PillowTestBufferToArray(bicubic.ToBytes()))
+    } finally {
+        if IsObject(bicubic)
+            bicubic.Close()
+        if IsObject(nearest)
+            nearest.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Scale uses native resize and Python rounding", PillowTestImageOpsScaleUsesNativeResizeAndPythonRounding)
+
+PillowTestImageOpsScaleFactorOneReturnsIndependentCopy(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([0, 1, 2, 3, 4, 5]))
+    scaled := 0
+    try {
+        scaled := Pillow.ImageOps.Scale(source, 1, Pillow.Resampling.NEAREST)
+        source.Fill(9)
+
+        AhkTest.AssertEqual([3, 2], scaled.Size)
+        AhkTest.AssertEqual([0, 1, 2, 3, 4, 5], PillowTestBufferToArray(scaled.ToBytes()))
+    } finally {
+        if IsObject(scaled)
+            scaled.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Scale factor one returns an independent copy", PillowTestImageOpsScaleFactorOneReturnsIndependentCopy)
+
+PillowTestImageOpsScaleRejectsInvalidFactor(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([0, 1, 2, 3, 4, 5]))
+    try {
+        try {
+            Pillow.ImageOps.Scale(image, 0)
+            AhkTest.Fail("Expected ImageOps.Scale to reject zero factor")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "factor") > 0)
+        }
+
+        try {
+            Pillow.ImageOps.Scale(image, "2")
+            AhkTest.Fail("Expected ImageOps.Scale to reject non-numeric factor")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "factor") > 0)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Scale rejects invalid factors", PillowTestImageOpsScaleRejectsInvalidFactor)
+
 PillowTestImageOpsContainAndCoverUseNativeResizeGeometry(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [4, 2], PillowTestBuffer([0, 40, 80, 120, 160, 200, 220, 255]))
