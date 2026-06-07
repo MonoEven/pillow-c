@@ -520,6 +520,105 @@ PillowTestImagePointUsesNativeLutOperation(*) {
 
 AhkTest.Test("Pillow Image.Point applies a Pillow-style LUT through native handles", PillowTestImagePointUsesNativeLutOperation)
 
+PillowTestImageEvalBuildsSharedLutForAllBands(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([0, 1, 2, 10, 20, 30]))
+    out := 0
+    calls := []
+    try {
+        out := Pillow.Image.Eval(source, (value) => (calls.Push(value), 255 - value))
+
+        AhkTest.AssertEqual("RGB", out.Mode)
+        AhkTest.AssertEqual([2, 1], out.Size)
+        AhkTest.AssertEqual([255, 254, 253, 245, 235, 225], PillowTestBufferToArray(out.ToBytes()))
+        AhkTest.AssertEqual(256, calls.Length)
+        AhkTest.AssertEqual(0, calls[1])
+        AhkTest.AssertEqual(255, calls[256])
+    } finally {
+        if IsObject(out)
+            out.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Eval builds one LUT and applies it through native handles", PillowTestImageEvalBuildsSharedLutForAllBands)
+
+PillowTestImageEvalRoundsAndClipsLikePillowPoint(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [6, 1], PillowTestBuffer([0, 1, 2, 127, 128, 255]))
+    half := 0
+    low := 0
+    high := 0
+    try {
+        half := Pillow.Image.Eval(source, (value) => value / 2)
+        low := Pillow.Image.Eval(source, (*) => -1)
+        high := Pillow.Image.Eval(source, (*) => 300)
+
+        AhkTest.AssertEqual([0, 0, 1, 64, 64, 128], PillowTestBufferToArray(half.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0], PillowTestBufferToArray(low.ToBytes()))
+        AhkTest.AssertEqual([255, 255, 255, 255, 255, 255], PillowTestBufferToArray(high.ToBytes()))
+    } finally {
+        for item in [high, low, half, source] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Eval rounds and clips generated LUT values", PillowTestImageEvalRoundsAndClipsLikePillowPoint)
+
+PillowTestImageEvalUsesPythonHalfEvenRounding(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [8, 1], PillowTestBuffer([0, 1, 2, 3, 4, 5, 6, 7]))
+    out := 0
+    try {
+        out := Pillow.Image.Eval(source, (value) => value + 0.5)
+
+        AhkTest.AssertEqual([0, 2, 2, 4, 4, 6, 6, 8], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        if IsObject(out)
+            out.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Eval uses Python half-even rounding", PillowTestImageEvalUsesPythonHalfEvenRounding)
+
+PillowTestImageEvalSupportsRgba(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([0, 1, 2, 3, 10, 20, 30, 40]))
+    out := 0
+    try {
+        out := Pillow.Image.Eval(source, (value) => 255 - value)
+
+        AhkTest.AssertEqual("RGBA", out.Mode)
+        AhkTest.AssertEqual([255, 254, 253, 252, 245, 235, 225, 215], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        if IsObject(out)
+            out.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Eval supports RGBA through native point LUT", PillowTestImageEvalSupportsRgba)
+
+PillowTestImageEvalRejectsInvalidFunctionReturns(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([1]))
+    try {
+        try {
+            Pillow.Image.Eval(source, (*) => "7")
+            AhkTest.Fail("Expected Image.Eval to reject non-numeric function returns")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "numeric") > 0 || InStr(err.Message, "Eval") > 0)
+        }
+    } finally {
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Eval rejects non-numeric function returns", PillowTestImageEvalRejectsInvalidFunctionReturns)
+
 PillowTestImageGetChannelUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([1, 2, 3, 4, 10, 20, 30, 40]))

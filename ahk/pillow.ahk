@@ -663,6 +663,24 @@ class Pillow {
             }
         }
 
+        static Eval(image, fn) {
+            if !(IsObject(image) && image is Pillow.Image)
+                throw Error("Pillow.Image.Eval expects a Pillow.Image", -1)
+            if !(fn is Func)
+                throw Error("Pillow.Image.Eval expects a callable function", -1)
+
+            baseLut := []
+            loop 256
+                baseLut.Push(Pillow.Image.RoundClipU8(fn.Call(A_Index - 1)))
+
+            lut := []
+            loop image.Channels {
+                for value in baseLut
+                    lut.Push(value)
+            }
+            return image.Point(lut)
+        }
+
         static Blend(left, right, alpha) {
             outHandle := 0
             Pillow.CheckStatus(DllCall(
@@ -720,6 +738,27 @@ class Pillow {
                 "Int"
             ))
             return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static RoundClipU8(value) {
+            if !(value is Number)
+                throw Error("Pillow.Image.Eval function must return numeric values", -1)
+            rounded := Pillow.Image.RoundHalfEven(value)
+            if rounded <= 0
+                return 0
+            if rounded >= 255
+                return 255
+            return rounded
+        }
+
+        static RoundHalfEven(value) {
+            floorValue := Floor(value)
+            fraction := value - floorValue
+            if fraction < 0.5
+                return floorValue
+            if fraction > 0.5
+                return floorValue + 1
+            return Mod(floorValue, 2) = 0 ? floorValue : floorValue + 1
         }
 
         static HandleArray(images) {
