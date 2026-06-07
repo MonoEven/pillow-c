@@ -525,6 +525,42 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static LogicalAnd(left, right) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_logical_and",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "LogicalAnd"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "LogicalAnd"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static LogicalOr(left, right) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_logical_or",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "LogicalOr"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "LogicalOr"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static LogicalXor(left, right) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_logical_xor",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "LogicalXor"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "LogicalXor"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static Offset(image, xoffset, yoffset := unset) {
             if !(xoffset is Integer)
                 throw Error("Pillow.ImageChops.Offset xoffset must be an integer", -1)
@@ -1649,6 +1685,9 @@ class Pillow {
                 return out
             }
 
+            if this.Mode = "1"
+                return this.ToBytes("raw", "1")
+
             size := this.ByteSize
             out := Buffer(size, 0)
             if size = 0
@@ -1677,7 +1716,7 @@ class Pillow {
         }
 
         GetData(band := unset) {
-            bytes := this.ToBytes()
+            bytes := this.Mode = "1" ? this.InternalBytes() : this.ToBytes()
             channels := this.Channels
             pixelCount := this.Width * this.Height
             values := []
@@ -1705,6 +1744,21 @@ class Pillow {
                 values.Push(pixel)
             }
             return values
+        }
+
+        InternalBytes() {
+            size := this.ByteSize
+            out := Buffer(size, 0)
+            if size = 0
+                return out
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_get_bytes",
+                "Ptr", this.RequireHandle(),
+                "Ptr", out,
+                "UPtr", out.Size,
+                "Int"
+            ))
+            return out
         }
 
         PutData(data, scale := 1.0, offset := 0.0) {
@@ -2187,6 +2241,8 @@ class Pillow {
 
         BandNames() {
             mode := this.Mode
+            if mode = "1"
+                return ["1"]
             if mode = "L"
                 return ["L"]
             if mode = "LA"

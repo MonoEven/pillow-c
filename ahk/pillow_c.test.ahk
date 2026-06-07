@@ -756,6 +756,48 @@ PillowCImageSubtractModulo(leftHandle, rightHandle) {
     return outHandle
 }
 
+PillowCImageLogicalAnd(leftHandle, rightHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_logical_and",
+        "Ptr", leftHandle,
+        "Ptr", rightHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageLogicalOr(leftHandle, rightHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_logical_or",
+        "Ptr", leftHandle,
+        "Ptr", rightHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageLogicalXor(leftHandle, rightHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_logical_xor",
+        "Ptr", leftHandle,
+        "Ptr", rightHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageCopyInto(sourceHandle, targetHandle) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_copy_into",
@@ -1942,6 +1984,7 @@ AhkTest.Test("pillow_c exposes stable status messages for wrapper exceptions", (
 ))
 
 AhkTest.Test("pillow_c maps core Pillow mode names to native mode ids", (*) => (
+    AhkTest.AssertEqual(5, PillowCModeFromString("1")),
     AhkTest.AssertEqual(1, PillowCModeFromString("L")),
     AhkTest.AssertEqual(2, PillowCModeFromString("LA")),
     AhkTest.AssertEqual(3, PillowCModeFromString("RGB")),
@@ -1949,10 +1992,13 @@ AhkTest.Test("pillow_c maps core Pillow mode names to native mode ids", (*) => (
 ))
 
 AhkTest.Test("pillow_c maps native mode ids back to Pillow mode names", (*) => (
+    one := PillowCModeName(5),
     l := PillowCModeName(1),
     la := PillowCModeName(2),
     rgb := PillowCModeName(3),
     rgba := PillowCModeName(4),
+    AhkTest.AssertEqual("1", one.Text),
+    AhkTest.AssertEqual(2, one.Required),
     AhkTest.AssertEqual("L", l.Text),
     AhkTest.AssertEqual(2, l.Required),
     AhkTest.AssertEqual("LA", la.Text),
@@ -2029,11 +2075,16 @@ PillowCTestImageHandleOwnsRgbBytesAndMetadata(*) {
 AhkTest.Test("pillow_c image handle owns RGB bytes and metadata", PillowCTestImageHandleOwnsRgbBytesAndMetadata)
 
 PillowCTestImageHandleOwnsModeMetadata(*) {
+    one := PillowCCreateImageMode(9, 2, 5)
     l := PillowCCreateImageMode(3, 2, 1)
     la := PillowCCreateImageMode(3, 2, 2)
     rgb := PillowCCreateImageMode(2, 1, 3)
     rgba := PillowCCreateImageMode(2, 1, 4)
     try {
+        AhkTest.AssertEqual(5, PillowCImageMode(one))
+        AhkTest.AssertEqual(1, PillowCImageInt(one, "pillow_c_image_channels"))
+        AhkTest.AssertEqual(9, PillowCImageInt(one, "pillow_c_image_stride"))
+        AhkTest.AssertEqual(18, PillowCImageSize(one))
         AhkTest.AssertEqual(1, PillowCImageMode(l))
         AhkTest.AssertEqual(1, PillowCImageInt(l, "pillow_c_image_channels"))
         AhkTest.AssertEqual(6, PillowCImageSize(l))
@@ -2051,6 +2102,7 @@ PillowCTestImageHandleOwnsModeMetadata(*) {
         PillowCFreeImage(rgb)
         PillowCFreeImage(la)
         PillowCFreeImage(l)
+        PillowCFreeImage(one)
     }
 }
 
@@ -3651,6 +3703,93 @@ PillowCTestImageModuloOpsRejectModeMismatch(*) {
 
 AhkTest.Test("pillow_c image modulo ops reject mode mismatch", PillowCTestImageModuloOpsRejectModeMismatch)
 
+PillowCTestImageLogicalOpsMatchPillowModeOne(*) {
+    left := PillowCCreateImageMode(4, 1, 5)
+    right := PillowCCreateImageMode(4, 1, 5)
+    andOut := 0
+    orOut := 0
+    xorOut := 0
+    try {
+        PillowCImageSetRawBytes(left, [0x60], "1")
+        PillowCImageSetRawBytes(right, [0x30], "1")
+
+        andOut := PillowCImageLogicalAnd(left, right)
+        orOut := PillowCImageLogicalOr(left, right)
+        xorOut := PillowCImageLogicalXor(left, right)
+
+        AhkTest.AssertEqual(5, PillowCImageMode(andOut))
+        AhkTest.AssertEqual([0, 0, 255, 0], PillowCImageToArray(andOut, 4))
+        AhkTest.AssertEqual([0x20], PillowCImageGetRawBytes(andOut, "1"))
+        AhkTest.AssertEqual([0, 255, 255, 255], PillowCImageToArray(orOut, 4))
+        AhkTest.AssertEqual([0x70], PillowCImageGetRawBytes(orOut, "1"))
+        AhkTest.AssertEqual([0, 255, 0, 255], PillowCImageToArray(xorOut, 4))
+        AhkTest.AssertEqual([0x50], PillowCImageGetRawBytes(xorOut, "1"))
+    } finally {
+        for handle in [xorOut, orOut, andOut, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image logical ops match Pillow mode 1", PillowCTestImageLogicalOpsMatchPillowModeOne)
+
+PillowCTestImageLogicalOpsUseOverlappingAndEmptyOutputSize(*) {
+    left := PillowCCreateImageMode(4, 1, 5)
+    right := PillowCCreateImageMode(2, 1, 5)
+    empty := 0
+    overlap := 0
+    emptyOut := 0
+    try {
+        PillowCImageSetRawBytes(left, [0x60], "1")
+        PillowCImageSetRawBytes(right, [0xC0], "1")
+        empty := PillowCImageCrop(left, 1, 0, 1, 1)
+        overlap := PillowCImageLogicalAnd(left, right)
+        emptyOut := PillowCImageLogicalAnd(empty, left)
+
+        AhkTest.AssertEqual([2, 1], [PillowCImageInt(overlap, "pillow_c_image_width"), PillowCImageInt(overlap, "pillow_c_image_height")])
+        AhkTest.AssertEqual([0, 255], PillowCImageToArray(overlap, 2))
+        AhkTest.AssertEqual([0x40], PillowCImageGetRawBytes(overlap, "1"))
+        AhkTest.AssertEqual([0, 1], [PillowCImageInt(emptyOut, "pillow_c_image_width"), PillowCImageInt(emptyOut, "pillow_c_image_height")])
+        AhkTest.AssertEqual([], PillowCImageToArray(emptyOut, 0))
+        AhkTest.AssertEqual([], PillowCImageGetRawBytes(emptyOut, "1"))
+    } finally {
+        for handle in [emptyOut, overlap, empty, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image logical ops use overlapping and empty output size like Pillow", PillowCTestImageLogicalOpsUseOverlappingAndEmptyOutputSize)
+
+PillowCTestImageLogicalOpsRejectNonModeOne(*) {
+    left := PillowCCreateImageMode(1, 1, 1)
+    right := PillowCCreateImageMode(1, 1, 1)
+    target := PillowCCreateImageMode(1, 1, 1)
+    outHandle := 0
+    try {
+        status := DllCall(PillowCDllPath() "\pillow_c_image_logical_and", "Ptr", left, "Ptr", right, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_logical_or", "Ptr", left, "Ptr", right, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_logical_xor_into", "Ptr", left, "Ptr", right, "Ptr", target, "Int")
+        AhkTest.AssertEqual(-3, status)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(target)
+        PillowCFreeImage(right)
+        PillowCFreeImage(left)
+    }
+}
+
+AhkTest.Test("pillow_c image logical ops reject non mode 1 inputs", PillowCTestImageLogicalOpsRejectNonModeOne)
+
 PillowCTestImageDataPointerSharesMemoryWithAhk(*) {
     image := PillowCCreateImage(2, 1, 3)
     try {
@@ -3709,6 +3848,48 @@ PillowCTestImageRawBytesEncodeModes(*) {
 }
 
 AhkTest.Test("pillow_c image raw bytes encode modes", PillowCTestImageRawBytesEncodeModes)
+
+PillowCTestImageModeOneRawBytesAreBitPacked(*) {
+    wide := PillowCCreateImageMode(9, 1, 5)
+    nibble := PillowCCreateImageMode(4, 1, 5)
+    try {
+        PillowCImageSetRawBytes(wide, [0xAA, 0x80], "1")
+        AhkTest.AssertEqual([255, 0, 255, 0, 255, 0, 255, 0, 255], PillowCImageToArray(wide, 9))
+        AhkTest.AssertEqual([0xAA, 0x80], PillowCImageGetRawBytes(wide, "1"))
+
+        PillowCImageSetRawBytes(nibble, [0x50], "1")
+        AhkTest.AssertEqual([0, 255, 0, 255], PillowCImageToArray(nibble, 4))
+        AhkTest.AssertEqual([0x50], PillowCImageGetRawBytes(nibble, "1"))
+    } finally {
+        PillowCFreeImage(nibble)
+        PillowCFreeImage(wide)
+    }
+}
+
+AhkTest.Test("pillow_c image mode 1 raw bytes use Pillow bit packing", PillowCTestImageModeOneRawBytesAreBitPacked)
+
+PillowCTestImageModeOneRawBytesRejectShortPackedInput(*) {
+    image := PillowCCreateImageMode(9, 1, 5)
+    data := PillowCBuffer([0xAA])
+    mode := PillowCRawModeBuffer("1")
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_set_raw_bytes",
+            "Ptr", image,
+            "Ptr", data,
+            "UPtr", data.Size,
+            "Ptr", mode,
+            "Int", 0,
+            "Int", 1,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+    } finally {
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image mode 1 raw bytes reject short packed input", PillowCTestImageModeOneRawBytesRejectShortPackedInput)
 
 PillowCTestImageRawBytesRejectInvalidArguments(*) {
     rgb := PillowCCreateImageMode(2, 1, 3)

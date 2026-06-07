@@ -133,6 +133,28 @@ PillowTestImageToBytesSupportsRawModes(*) {
 
 AhkTest.Test("Pillow Image.ToBytes supports raw modes", PillowTestImageToBytesSupportsRawModes)
 
+PillowTestModeOneFromAndToBytesUsePillowBitPacking(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("1", [9, 1], PillowTestBuffer([0xAA, 0x80]))
+    nibble := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x50]))
+    try {
+        AhkTest.AssertEqual("1", image.Mode)
+        AhkTest.AssertEqual(1, image.Channels)
+        AhkTest.AssertEqual(9, image.ByteSize)
+        AhkTest.AssertEqual(["1"], image.GetBands())
+        AhkTest.AssertEqual([0xAA, 0x80], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertEqual([0xAA, 0x80], PillowTestBufferToArray(image.ToBytes("raw", "1")))
+        AhkTest.AssertEqual([255, 0, 255, 0, 255, 0, 255, 0, 255], image.GetData())
+        AhkTest.AssertEqual([0x50], PillowTestBufferToArray(nibble.ToBytes()))
+        AhkTest.AssertEqual([0, 255, 0, 255], nibble.GetData())
+    } finally {
+        nibble.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow mode 1 FromBytes and ToBytes use Pillow bit packing", PillowTestModeOneFromAndToBytesUsePillowBitPacking)
+
 PillowTestImageDataPointerSharesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [3, 1])
@@ -4357,6 +4379,85 @@ PillowTestImageChopsModuloOpsRejectModeMismatch(*) {
 }
 
 AhkTest.Test("Pillow ImageChops modulo ops reject mode mismatch", PillowTestImageChopsModuloOpsRejectModeMismatch)
+
+PillowTestImageChopsLogicalOpsUseModeOneNativeHandles(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x60]))
+    right := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x30]))
+    andOut := 0
+    orOut := 0
+    xorOut := 0
+    try {
+        andOut := Pillow.ImageChops.LogicalAnd(left, right)
+        orOut := Pillow.ImageChops.LogicalOr(left, right)
+        xorOut := Pillow.ImageChops.LogicalXor(left, right)
+
+        AhkTest.AssertEqual("1", andOut.Mode)
+        AhkTest.AssertEqual([4, 1], andOut.Size)
+        AhkTest.AssertEqual([0x20], PillowTestBufferToArray(andOut.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 255, 0], andOut.GetData())
+        AhkTest.AssertEqual([0x70], PillowTestBufferToArray(orOut.ToBytes()))
+        AhkTest.AssertEqual([0, 255, 255, 255], orOut.GetData())
+        AhkTest.AssertEqual([0x50], PillowTestBufferToArray(xorOut.ToBytes()))
+        AhkTest.AssertEqual([0, 255, 0, 255], xorOut.GetData())
+    } finally {
+        for image in [xorOut, orOut, andOut, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops logical ops compute mode 1 pixels through native handles", PillowTestImageChopsLogicalOpsUseModeOneNativeHandles)
+
+PillowTestImageChopsLogicalOpsUseOverlappingAndEmptyOutputSize(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x60]))
+    right := Pillow.Image.FromBytes("1", [2, 1], PillowTestBuffer([0xC0]))
+    empty := 0
+    overlap := 0
+    emptyOut := 0
+    try {
+        empty := left.Crop([1, 0, 1, 1])
+        overlap := Pillow.ImageChops.LogicalAnd(left, right)
+        emptyOut := Pillow.ImageChops.LogicalAnd(empty, left)
+
+        AhkTest.AssertEqual([2, 1], overlap.Size)
+        AhkTest.AssertEqual([0x40], PillowTestBufferToArray(overlap.ToBytes()))
+        AhkTest.AssertEqual([0, 255], overlap.GetData())
+        AhkTest.AssertEqual([0, 1], emptyOut.Size)
+        AhkTest.AssertEqual([], PillowTestBufferToArray(emptyOut.ToBytes()))
+        AhkTest.AssertEqual([], emptyOut.GetData())
+    } finally {
+        for image in [emptyOut, overlap, empty, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops logical ops return overlapping and empty output sizes", PillowTestImageChopsLogicalOpsUseOverlappingAndEmptyOutputSize)
+
+PillowTestImageChopsLogicalOpsRejectNonModeOne(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([1]))
+    right := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([1]))
+    try {
+        for methodName in ["LogicalAnd", "LogicalOr", "LogicalXor"] {
+            try {
+                Pillow.ImageChops.%methodName%(left, right)
+                AhkTest.Fail("Expected ImageChops." methodName " to reject non mode 1 images")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+            }
+        }
+    } finally {
+        right.Close()
+        left.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageChops logical ops reject non mode 1 images", PillowTestImageChopsLogicalOpsRejectNonModeOne)
 
 PillowTestImageAlphaCompositeStaticUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

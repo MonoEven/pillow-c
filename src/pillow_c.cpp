@@ -21,6 +21,7 @@ constexpr int PILLOW_C_MODE_L = 1;
 constexpr int PILLOW_C_MODE_LA = 2;
 constexpr int PILLOW_C_MODE_RGB = 3;
 constexpr int PILLOW_C_MODE_RGBA = 4;
+constexpr int PILLOW_C_MODE_1 = 5;
 
 constexpr int PILLOW_C_RESAMPLE_NEAREST = 0;
 constexpr int PILLOW_C_RESAMPLE_LANCZOS = 1;
@@ -97,6 +98,7 @@ struct ColorCountEntry {
 
 enum class RawCodecKind {
     Unsupported,
+    One,
     L,
     LA,
     RGB,
@@ -270,6 +272,8 @@ bool valid_image_shape_allow_empty(int width, int height, int channels)
 int channels_for_mode(int mode)
 {
     switch (mode) {
+    case PILLOW_C_MODE_1:
+        return 1;
     case PILLOW_C_MODE_L:
         return 1;
     case PILLOW_C_MODE_LA:
@@ -302,6 +306,8 @@ int mode_for_channels(int channels)
 const char* mode_name(int mode)
 {
     switch (mode) {
+    case PILLOW_C_MODE_1:
+        return "1";
     case PILLOW_C_MODE_L:
         return "L";
     case PILLOW_C_MODE_LA:
@@ -322,6 +328,11 @@ RawCodecSpec raw_decode_spec(int target_mode, const char* raw_mode)
     }
 
     switch (target_mode) {
+    case PILLOW_C_MODE_1:
+        if (std::strcmp(raw_mode, "1") == 0) {
+            return {RawCodecKind::One, 0};
+        }
+        break;
     case PILLOW_C_MODE_L:
         if (std::strcmp(raw_mode, "L") == 0) {
             return {RawCodecKind::L, 1};
@@ -380,6 +391,11 @@ RawCodecSpec raw_encode_spec(int source_mode, const char* raw_mode)
     }
 
     switch (source_mode) {
+    case PILLOW_C_MODE_1:
+        if (std::strcmp(raw_mode, "1") == 0) {
+            return {RawCodecKind::One, 0};
+        }
+        break;
     case PILLOW_C_MODE_L:
         if (std::strcmp(raw_mode, "L") == 0) {
             return {RawCodecKind::L, 1};
@@ -441,6 +457,21 @@ bool checked_raw_output_size(const PillowCImage* image, int bytes_per_pixel, std
         return false;
     }
     *out_size = pixels * static_cast<std::size_t>(bytes_per_pixel);
+    return true;
+}
+
+bool checked_mode1_raw_size(const PillowCImage* image, std::size_t* row_bytes, std::size_t* out_size)
+{
+    if (!image || !row_bytes || !out_size || image->width < 0 || image->height < 0) {
+        return false;
+    }
+    const std::size_t row = (static_cast<std::size_t>(image->width) + 7u) / 8u;
+    const std::size_t height = static_cast<std::size_t>(image->height);
+    if (row != 0 && height > static_cast<std::size_t>(-1) / row) {
+        return false;
+    }
+    *row_bytes = row;
+    *out_size = row * height;
     return true;
 }
 
@@ -619,6 +650,89 @@ void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::ui
     }
 }
 
+int set_mode1_raw_bytes_image(
+    PillowCImage* image,
+    const std::uint8_t* data,
+    std::size_t size,
+    int stride,
+    int orientation)
+{
+    if (!image || !data) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (stride < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t tight_stride = 0;
+    std::size_t tight_size = 0;
+    if (!checked_mode1_raw_size(image, &tight_stride, &tight_size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t source_stride = stride == 0 ? tight_stride : static_cast<std::size_t>(stride);
+    if (source_stride < tight_stride) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (image->height > 0) {
+        const std::size_t required = source_stride * static_cast<std::size_t>(image->height - 1) + tight_stride;
+        if (required > size) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+    }
+
+    for (int y = 0; y < image->height; ++y) {
+        const int source_y = orientation < 0 ? (image->height - 1 - y) : y;
+        const std::uint8_t* src_row = data + static_cast<std::size_t>(source_y) * source_stride;
+        std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+        for (int x = 0; x < image->width; ++x) {
+            const std::uint8_t packed = src_row[static_cast<std::size_t>(x) / 8u];
+            const int shift = 7 - (x & 7);
+            dst_row[x] = ((packed >> shift) & 1u) ? 255u : 0u;
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int get_mode1_raw_bytes_image(
+    const PillowCImage* image,
+    std::uint8_t* out,
+    std::size_t out_size,
+    std::size_t* out_required)
+{
+    if (!image || !out_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    std::size_t row_bytes = 0;
+    std::size_t required = 0;
+    if (!checked_mode1_raw_size(image, &row_bytes, &required)) {
+        *out_required = 0;
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    *out_required = required;
+    if (!out) {
+        return PILLOW_C_OK;
+    }
+    if (out_size < required) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (required == 0) {
+        return PILLOW_C_OK;
+    }
+    std::fill(out, out + required, std::uint8_t{0});
+
+    for (int y = 0; y < image->height; ++y) {
+        const std::uint8_t* src_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+        std::uint8_t* dst_row = out + static_cast<std::size_t>(y) * row_bytes;
+        for (int x = 0; x < image->width; ++x) {
+            if (src_row[x] != 0) {
+                dst_row[static_cast<std::size_t>(x) / 8u] |= static_cast<std::uint8_t>(0x80u >> (x & 7));
+            }
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 void encode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::uint8_t* dst, int source_mode)
 {
     switch (source_mode) {
@@ -712,6 +826,9 @@ int set_raw_bytes_image(
         return PILLOW_C_NULL_POINTER;
     }
     const RawCodecSpec spec = raw_decode_spec(image->mode, raw_mode);
+    if (spec.kind == RawCodecKind::One) {
+        return set_mode1_raw_bytes_image(image, data, size, stride, orientation);
+    }
     if (spec.kind == RawCodecKind::Unsupported || spec.bytes_per_pixel <= 0 || stride < 0) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
@@ -754,6 +871,9 @@ int get_raw_bytes_image(
         return PILLOW_C_NULL_POINTER;
     }
     const RawCodecSpec spec = raw_encode_spec(image->mode, raw_mode);
+    if (spec.kind == RawCodecKind::One) {
+        return get_mode1_raw_bytes_image(image, out, out_size, out_required);
+    }
     if (spec.kind == RawCodecKind::Unsupported || spec.bytes_per_pixel <= 0) {
         *out_required = 0;
         return PILLOW_C_INVALID_ARGUMENT;
@@ -5289,6 +5409,10 @@ extern "C" __declspec(dllexport) int pillow_c_mode_from_string(
     if (!mode_name_text || !out_mode) {
         return PILLOW_C_NULL_POINTER;
     }
+    if (std::strcmp(mode_name_text, "1") == 0) {
+        *out_mode = PILLOW_C_MODE_1;
+        return PILLOW_C_OK;
+    }
     if (std::strcmp(mode_name_text, "L") == 0) {
         *out_mode = PILLOW_C_MODE_L;
         return PILLOW_C_OK;
@@ -6097,6 +6221,93 @@ extern "C" __declspec(dllexport) int pillow_c_image_subtract_modulo_into(
         std::uint8_t* target_row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
         for (int x = 0; x < out_width * channels; ++x) {
             target_row[x] = static_cast<std::uint8_t>(left_row[x] - right_row[x]);
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_logical_and_into(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage* target)
+{
+    int out_width = 0;
+    int out_height = 0;
+    const int status = validate_chops_binary_target(left, right, target, &out_width, &out_height);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (left->mode != PILLOW_C_MODE_1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    for (int y = 0; y < out_height; ++y) {
+        const std::uint8_t* left_row = left->pixels.data() + static_cast<std::size_t>(y) * left->stride;
+        const std::uint8_t* right_row = right->pixels.data() + static_cast<std::size_t>(y) * right->stride;
+        std::uint8_t* target_row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+        for (int x = 0; x < out_width; ++x) {
+            target_row[x] = (left_row[x] != 0 && right_row[x] != 0) ? 255u : 0u;
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_logical_or_into(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage* target)
+{
+    int out_width = 0;
+    int out_height = 0;
+    const int status = validate_chops_binary_target(left, right, target, &out_width, &out_height);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (left->mode != PILLOW_C_MODE_1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    for (int y = 0; y < out_height; ++y) {
+        const std::uint8_t* left_row = left->pixels.data() + static_cast<std::size_t>(y) * left->stride;
+        const std::uint8_t* right_row = right->pixels.data() + static_cast<std::size_t>(y) * right->stride;
+        std::uint8_t* target_row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+        for (int x = 0; x < out_width; ++x) {
+            target_row[x] = (left_row[x] != 0 || right_row[x] != 0) ? 255u : 0u;
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_logical_xor_into(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage* target)
+{
+    int out_width = 0;
+    int out_height = 0;
+    const int status = validate_chops_binary_target(left, right, target, &out_width, &out_height);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (left->mode != PILLOW_C_MODE_1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    for (int y = 0; y < out_height; ++y) {
+        const std::uint8_t* left_row = left->pixels.data() + static_cast<std::size_t>(y) * left->stride;
+        const std::uint8_t* right_row = right->pixels.data() + static_cast<std::size_t>(y) * right->stride;
+        std::uint8_t* target_row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+        for (int x = 0; x < out_width; ++x) {
+            target_row[x] = ((left_row[x] != 0) != (right_row[x] != 0)) ? 255u : 0u;
         }
     }
     return PILLOW_C_OK;
@@ -7536,6 +7747,114 @@ extern "C" __declspec(dllexport) int pillow_c_image_subtract_modulo(
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int allocate_chops_binary_image(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage** out_image)
+{
+    if (!left || !right || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (left->mode != right->mode || left->channels != right->channels) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    const int out_width = overlapping_width(left, right);
+    const int out_height = overlapping_height(left, right);
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(out_width, out_height, left->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            left->mode,
+            left->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_logical_and(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage** out_image)
+{
+    if (!out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    PillowCImage* image = nullptr;
+    const int allocate_status = allocate_chops_binary_image(left, right, &image);
+    if (allocate_status != PILLOW_C_OK) {
+        return allocate_status;
+    }
+    const int status = pillow_c_image_logical_and_into(left, right, image);
+    if (status != PILLOW_C_OK) {
+        delete image;
+        *out_image = nullptr;
+        return status;
+    }
+    *out_image = image;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_logical_or(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage** out_image)
+{
+    if (!out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    PillowCImage* image = nullptr;
+    const int allocate_status = allocate_chops_binary_image(left, right, &image);
+    if (allocate_status != PILLOW_C_OK) {
+        return allocate_status;
+    }
+    const int status = pillow_c_image_logical_or_into(left, right, image);
+    if (status != PILLOW_C_OK) {
+        delete image;
+        *out_image = nullptr;
+        return status;
+    }
+    *out_image = image;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_logical_xor(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage** out_image)
+{
+    if (!out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    PillowCImage* image = nullptr;
+    const int allocate_status = allocate_chops_binary_image(left, right, &image);
+    if (allocate_status != PILLOW_C_OK) {
+        return allocate_status;
+    }
+    const int status = pillow_c_image_logical_xor_into(left, right, image);
+    if (status != PILLOW_C_OK) {
+        delete image;
+        *out_image = nullptr;
+        return status;
+    }
+    *out_image = image;
+    return PILLOW_C_OK;
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_rgb_to_l(
