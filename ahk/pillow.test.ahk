@@ -2734,6 +2734,24 @@ PillowTestImageOpsLutTransformsUseNativeOperations(*) {
 
 AhkTest.Test("Pillow ImageOps LUT transforms map L and RGB images through native handles", PillowTestImageOpsLutTransformsUseNativeOperations)
 
+PillowTestImageOpsInvertSupportsModeOne(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("1", [3, 1], PillowTestBuffer([0x40]))
+    out := 0
+    try {
+        out := Pillow.ImageOps.Invert(image)
+
+        AhkTest.AssertEqual("1", out.Mode)
+        AhkTest.AssertEqual([0xA0], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        if IsObject(out)
+            out.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Invert supports mode 1 through native handles", PillowTestImageOpsInvertSupportsModeOne)
+
 PillowTestImageOpsLutTransformsRejectBadWrapperParameters(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([128]))

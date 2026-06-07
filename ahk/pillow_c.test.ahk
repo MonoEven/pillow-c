@@ -4230,6 +4230,25 @@ PillowCTestImageOpsLutTransformsMatchPillowLAndRgb(*) {
 
 AhkTest.Test("pillow_c image ImageOps LUT transforms match Pillow for L and RGB", PillowCTestImageOpsLutTransformsMatchPillowLAndRgb)
 
+PillowCTestImageOpsInvertMatchesPillowModeOne(*) {
+    source := PillowCCreateImageMode(3, 1, 5)
+    out := 0
+    try {
+        PillowCImageSetRawBytes(source, [0x40], "1")
+
+        out := PillowCImageInvert(source)
+
+        AhkTest.AssertEqual(5, PillowCImageMode(out))
+        AhkTest.AssertEqual([255, 0, 255], PillowCImageToArray(out, 3))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image ImageOps invert matches Pillow mode 1", PillowCTestImageOpsInvertMatchesPillowModeOne)
+
 PillowCTestImageOpsLutTransformsIntoReuseTargetHandleStorage(*) {
     source := PillowCCreateImageMode(5, 1, 1)
     invertTarget := PillowCCreateImageMode(5, 1, 1)

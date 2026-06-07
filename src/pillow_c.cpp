@@ -1750,6 +1750,22 @@ int apply_imageops_lut_into(const PillowCImage* source, const std::uint8_t* lut,
 
 int invert_image_into(const PillowCImage* source, PillowCImage* target)
 {
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (source->mode == PILLOW_C_MODE_1 && source->channels == 1) {
+        if (!image_shape_matches(target, source)) {
+            return PILLOW_C_MISMATCH;
+        }
+        const std::uint8_t* src = source->pixels.data();
+        std::uint8_t* dst = target->pixels.data();
+        const std::size_t count = source->pixels.size();
+        for (std::size_t i = 0; i < count; ++i) {
+            dst[i] = src[i] == 0 ? 255u : 0u;
+        }
+        return PILLOW_C_OK;
+    }
+
     std::uint8_t lut[256];
     for (int ix = 0; ix < 256; ++ix) {
         lut[ix] = static_cast<std::uint8_t>(255 - ix);
@@ -7929,7 +7945,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_invert(
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
-    if (!supports_imageops_lut(source)) {
+    if (!(supports_imageops_lut(source) || (source->mode == PILLOW_C_MODE_1 && source->channels == 1))) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
