@@ -1145,6 +1145,72 @@ PillowTestImageChopsMultiplyRejectsModeMismatch(*) {
 
 AhkTest.Test("Pillow ImageChops.Multiply rejects mode mismatch", PillowTestImageChopsMultiplyRejectsModeMismatch)
 
+PillowTestImageChopsScreenUsesNativeHandles(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 50, 200, 255, 0, 80]))
+    right := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([4, 20, 100, 15, 200, 90]))
+    out := 0
+    try {
+        out := Pillow.ImageChops.Screen(left, right)
+
+        AhkTest.AssertEqual("RGB", out.Mode)
+        AhkTest.AssertEqual([2, 1], out.Size)
+        AhkTest.AssertEqual([5, 67, 222, 255, 200, 142], PillowTestBufferToArray(out.ToBytes()))
+    } finally {
+        if IsObject(out)
+            out.Close()
+        right.Close()
+        left.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Screen computes screened pixels through native handles", PillowTestImageChopsScreenUsesNativeHandles)
+
+PillowTestImageChopsScreenUsesOverlappingAndEmptyOutputSize(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 40, 200, 255]))
+    right := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([255, 10]))
+    empty := 0
+    overlap := 0
+    emptyOut := 0
+    try {
+        empty := left.Crop([1, 0, 1, 1])
+        overlap := Pillow.ImageChops.Screen(left, right)
+        emptyOut := Pillow.ImageChops.Screen(empty, left)
+
+        AhkTest.AssertEqual([2, 1], overlap.Size)
+        AhkTest.AssertEqual([255, 49], PillowTestBufferToArray(overlap.ToBytes()))
+        AhkTest.AssertEqual([0, 1], emptyOut.Size)
+        AhkTest.AssertEqual([], PillowTestBufferToArray(emptyOut.ToBytes()))
+    } finally {
+        for image in [emptyOut, overlap, empty, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Screen returns overlapping and empty output sizes", PillowTestImageChopsScreenUsesOverlappingAndEmptyOutputSize)
+
+PillowTestImageChopsScreenRejectsModeMismatch(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([1]))
+    right := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    try {
+        try {
+            Pillow.ImageChops.Screen(left, right)
+            AhkTest.Fail("Expected ImageChops.Screen to reject mode mismatch")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "mismatch") > 0)
+        }
+    } finally {
+        right.Close()
+        left.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Screen rejects mode mismatch", PillowTestImageChopsScreenRejectsModeMismatch)
+
 PillowTestImageAlphaCompositeStaticUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     dst := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([

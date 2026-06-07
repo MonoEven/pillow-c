@@ -2354,6 +2354,35 @@ extern "C" __declspec(dllexport) int pillow_c_image_multiply_into(
     return PILLOW_C_OK;
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_screen_into(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage* target)
+{
+    int out_width = 0;
+    int out_height = 0;
+    const int status = validate_chops_binary_target(left, right, target, &out_width, &out_height);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const int channels = left->channels;
+    for (int y = 0; y < out_height; ++y) {
+        const std::uint8_t* left_row = left->pixels.data() + static_cast<std::size_t>(y) * left->stride;
+        const std::uint8_t* right_row = right->pixels.data() + static_cast<std::size_t>(y) * right->stride;
+        std::uint8_t* target_row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+        for (int x = 0; x < out_width * channels; ++x) {
+            const unsigned int left_inv = 255u - left_row[x];
+            const unsigned int right_inv = 255u - right_row[x];
+            target_row[x] = static_cast<std::uint8_t>(255u - (left_inv * right_inv / 255u));
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_rgb_to_l_into(
     const PillowCImage* source,
     PillowCImage* target)
@@ -2917,6 +2946,47 @@ extern "C" __declspec(dllexport) int pillow_c_image_multiply(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = pillow_c_image_multiply_into(left, right, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_screen(
+    const PillowCImage* left,
+    const PillowCImage* right,
+    PillowCImage** out_image)
+{
+    if (!left || !right || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (left->mode != right->mode || left->channels != right->channels) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    const int out_width = overlapping_width(left, right);
+    const int out_height = overlapping_height(left, right);
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(out_width, out_height, left->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            left->mode,
+            left->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = pillow_c_image_screen_into(left, right, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

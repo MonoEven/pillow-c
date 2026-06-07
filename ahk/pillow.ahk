@@ -300,6 +300,18 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static Screen(left, right) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_screen",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Screen"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Screen"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static RequireImageHandle(image, operationName) {
             if !(IsObject(image) && image is Pillow.Image)
                 throw Error("Pillow.ImageChops." operationName " expects a Pillow.Image", -1)
