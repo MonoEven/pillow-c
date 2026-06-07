@@ -4701,11 +4701,13 @@ PillowCTestImageHistogramMaskedMatchesPillowMaskRules(*) {
     rgb := PillowCCreateImageMode(3, 1, 3)
     la := PillowCCreateImageMode(2, 1, 2)
     lMask := PillowCCreateImageMode(4, 1, 1)
+    oneMask := PillowCCreateImageMode(4, 1, 5)
     rgbMask := PillowCCreateImageMode(3, 1, 1)
     laMask := PillowCCreateImageMode(2, 1, 1)
     try {
         PillowCImageSetBytes(l, [0, 10, 20, 30])
         PillowCImageSetBytes(lMask, [0, 128, 255, 64])
+        PillowCImageSetRawBytes(oneMask, [0x60], "1")
         PillowCImageSetBytes(rgb, [
             10, 20, 30,
             40, 50, 60,
@@ -4716,6 +4718,7 @@ PillowCTestImageHistogramMaskedMatchesPillowMaskRules(*) {
         PillowCImageSetBytes(laMask, [128, 255])
 
         lHist := PillowCImageHistogramMasked(l, lMask, 256)
+        oneHist := PillowCImageHistogramMasked(l, oneMask, 256)
         rgbHist := PillowCImageHistogramMasked(rgb, rgbMask, 768)
         laHist := PillowCImageHistogramMasked(la, laMask, 512)
 
@@ -4723,6 +4726,10 @@ PillowCTestImageHistogramMaskedMatchesPillowMaskRules(*) {
         AhkTest.AssertEqual(1, lHist[21])
         AhkTest.AssertEqual(1, lHist[31])
         AhkTest.AssertEqual(3, SumArray(lHist))
+
+        AhkTest.AssertEqual(1, oneHist[11])
+        AhkTest.AssertEqual(1, oneHist[21])
+        AhkTest.AssertEqual(2, SumArray(oneHist))
 
         AhkTest.AssertEqual(1, rgbHist[41])
         AhkTest.AssertEqual(1, rgbHist[71])
@@ -4740,6 +4747,7 @@ PillowCTestImageHistogramMaskedMatchesPillowMaskRules(*) {
     } finally {
         PillowCFreeImage(laMask)
         PillowCFreeImage(rgbMask)
+        PillowCFreeImage(oneMask)
         PillowCFreeImage(lMask)
         PillowCFreeImage(la)
         PillowCFreeImage(rgb)
@@ -4791,10 +4799,12 @@ PillowCTestImageEntropyUsesLMask(*) {
     l := PillowCCreateImageMode(4, 1, 1)
     rgb := PillowCCreateImageMode(3, 1, 3)
     mask := PillowCCreateImageMode(4, 1, 1)
+    oneMask := PillowCCreateImageMode(4, 1, 5)
     rgbMask := PillowCCreateImageMode(3, 1, 1)
     try {
         PillowCImageSetBytes(l, [0, 10, 20, 30])
         PillowCImageSetBytes(mask, [0, 128, 255, 64])
+        PillowCImageSetRawBytes(oneMask, [0x60], "1")
         PillowCImageSetBytes(rgb, [
             10, 20, 30,
             40, 50, 60,
@@ -4803,9 +4813,11 @@ PillowCTestImageEntropyUsesLMask(*) {
         PillowCImageSetBytes(rgbMask, [0, 128, 255])
 
         PillowCAssertFloatClose(1.584962500721156, PillowCImageEntropy(l, mask))
+        PillowCAssertFloatClose(1.0, PillowCImageEntropy(l, oneMask))
         PillowCAssertFloatClose(2.584962500721156, PillowCImageEntropy(rgb, rgbMask))
     } finally {
         PillowCFreeImage(rgbMask)
+        PillowCFreeImage(oneMask)
         PillowCFreeImage(mask)
         PillowCFreeImage(rgb)
         PillowCFreeImage(l)
@@ -5053,14 +5065,17 @@ AhkTest.Test("pillow_c image autocontrast applies Pillow cutoff and ignore rules
 PillowCTestImageAutocontrastUsesMaskHistogram(*) {
     l := PillowCCreateImageMode(5, 1, 1)
     lMask := PillowCCreateImageMode(5, 1, 1)
+    oneMask := PillowCCreateImageMode(5, 1, 5)
     rgb := PillowCCreateImageMode(4, 1, 3)
     rgbMask := PillowCCreateImageMode(4, 1, 1)
     lOut := 0
     lIgnoreOut := 0
+    oneOut := 0
     rgbOut := 0
     try {
         PillowCImageSetBytes(l, [0, 10, 20, 30, 255])
         PillowCImageSetBytes(lMask, [0, 255, 255, 0, 0])
+        PillowCImageSetRawBytes(oneMask, [0x60], "1")
         PillowCImageSetBytes(rgb, [
             10, 50, 100,
             20, 60, 150,
@@ -5072,13 +5087,15 @@ PillowCTestImageAutocontrastUsesMaskHistogram(*) {
         ignoreTen := PillowCBuffer([10])
         lOut := PillowCImageAutocontrast(l, 0.0, 0.0, 0, 0, lMask)
         lIgnoreOut := PillowCImageAutocontrast(l, 0.0, 0.0, 1, ignoreTen, lMask)
+        oneOut := PillowCImageAutocontrast(l, 0.0, 0.0, 0, 0, oneMask)
         rgbOut := PillowCImageAutocontrast(rgb, 0.0, 0.0, 0, 0, rgbMask)
 
         AhkTest.AssertEqual([0, 0, 255, 255, 255], PillowCImageToArray(lOut, 5))
         AhkTest.AssertEqual([0, 10, 20, 30, 255], PillowCImageToArray(lIgnoreOut, 5))
+        AhkTest.AssertEqual([0, 0, 255, 255, 255], PillowCImageToArray(oneOut, 5))
         AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 255, 255, 254, 255, 0, 0], PillowCImageToArray(rgbOut, 12))
     } finally {
-        for handle in [rgbOut, lIgnoreOut, lOut, rgbMask, rgb, lMask, l] {
+        for handle in [rgbOut, oneOut, lIgnoreOut, lOut, rgbMask, rgb, oneMask, lMask, l] {
             if handle
                 PillowCFreeImage(handle)
         }

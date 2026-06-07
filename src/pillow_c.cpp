@@ -539,6 +539,13 @@ bool supported_composite_mask(const PillowCImage* mask)
             (mask->mode == PILLOW_C_MODE_RGBA && mask->channels == 4));
 }
 
+bool supported_statistics_mask(const PillowCImage* mask)
+{
+    return mask &&
+           ((mask->mode == PILLOW_C_MODE_1 && mask->channels == 1) ||
+            (mask->mode == PILLOW_C_MODE_L && mask->channels == 1));
+}
+
 std::uint8_t mask_alpha_at(const PillowCImage* mask, const std::uint8_t* mask_row, int x)
 {
     if (mask->channels == 1) {
@@ -568,6 +575,12 @@ bool image_shape_matches(const PillowCImage* image, int width, int height, int c
 bool image_shape_matches(const PillowCImage* image, int width, int height, int mode, int channels)
 {
     return image_shape_matches(image, width, height, channels) && image->mode == mode;
+}
+
+bool statistics_mask_matches(const PillowCImage* mask, int width, int height)
+{
+    return supported_statistics_mask(mask) &&
+           image_shape_matches(mask, width, height, 1);
 }
 
 bool image_shape_matches(const PillowCImage* left, const PillowCImage* right)
@@ -2324,8 +2337,7 @@ int histogram_image_masked(
     if (!mask) {
         return histogram_image(source, out_histogram, out_count);
     }
-    if (mask->mode != PILLOW_C_MODE_L || mask->channels != 1 ||
-        !image_shape_matches(mask, source->width, source->height, PILLOW_C_MODE_L, 1)) {
+    if (!statistics_mask_matches(mask, source->width, source->height)) {
         return PILLOW_C_MISMATCH;
     }
     const std::size_t required = static_cast<std::size_t>(source->channels) * 256u;
@@ -2365,8 +2377,7 @@ int entropy_image(const PillowCImage* source, const PillowCImage* mask, double* 
     if (!source || !out_entropy) {
         return PILLOW_C_NULL_POINTER;
     }
-    if (mask && (mask->mode != PILLOW_C_MODE_L || mask->channels != 1 ||
-        !image_shape_matches(mask, source->width, source->height, PILLOW_C_MODE_L, 1))) {
+    if (mask && !statistics_mask_matches(mask, source->width, source->height)) {
         return PILLOW_C_MISMATCH;
     }
 
@@ -2696,8 +2707,7 @@ int histogram_image_preserve_tone(
     if (out_count != 256u) {
         return PILLOW_C_INVALID_LENGTH;
     }
-    if (mask && (mask->mode != PILLOW_C_MODE_L || mask->channels != 1 ||
-        !image_shape_matches(mask, source->width, source->height, PILLOW_C_MODE_L, 1))) {
+    if (mask && !statistics_mask_matches(mask, source->width, source->height)) {
         return PILLOW_C_MISMATCH;
     }
 

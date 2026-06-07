@@ -2249,6 +2249,39 @@ PillowTestImageEntropyUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.Entropy uses native histogram entropy", PillowTestImageEntropyUsesNativeOperation)
 
+PillowTestImageStatsAcceptModeOneMasks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 10, 20, 30]))
+    mask := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x60]))
+    equalized := 0
+    autocontrasted := 0
+    try {
+        hist := source.Histogram(mask)
+        stat := Pillow.ImageStat.Stat(source, mask)
+        equalized := Pillow.ImageOps.Equalize(source, mask)
+        autocontrasted := Pillow.ImageOps.Autocontrast(source, , , mask)
+
+        AhkTest.AssertEqual(1, hist[11])
+        AhkTest.AssertEqual(1, hist[21])
+        AhkTest.AssertEqual(0, hist[1])
+        AhkTest.AssertEqual(0, hist[31])
+        PillowTestAssertFloatClose(1.0, source.Entropy(mask))
+        AhkTest.AssertEqual([30.0], stat.Sum)
+        AhkTest.AssertEqual([[10, 20]], stat.Extrema)
+        AhkTest.AssertEqual([0, 10, 20, 30], PillowTestBufferToArray(equalized.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 255, 255], PillowTestBufferToArray(autocontrasted.ToBytes()))
+    } finally {
+        if IsObject(autocontrasted)
+            autocontrasted.Close()
+        if IsObject(equalized)
+            equalized.Close()
+        mask.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow histogram statistics accept mode 1 masks", PillowTestImageStatsAcceptModeOneMasks)
+
 PillowTestAssertFloatArrayClose(expected, actual, tolerance := 0.0000001) {
     AhkTest.AssertEqual(expected.Length, actual.Length)
     for index, value in expected

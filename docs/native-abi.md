@@ -192,7 +192,7 @@ Reusable target operations:
 - `pillow_c_image_rotate_into`
 - `pillow_c_image_transpose_into`
 
-`pillow_c_image_equalize_masked` and `pillow_c_image_equalize_masked_into` accept a same-size L-mode mask handle after the source handle. A null mask keeps full-image histogram behavior.
+`pillow_c_image_equalize_masked` and `pillow_c_image_equalize_masked_into` accept a same-size mode `1` or `L` mask handle after the source handle. A null mask keeps full-image histogram behavior.
 
 `pillow_c_image_put_data` accepts already-packed mode-sized pixel bytes plus a pixel count, writes that prefix into the image in row-major order, and leaves any remaining pixels unchanged. The AHK facade owns Python-like `putdata` value coercion before making this single native call.
 
@@ -208,13 +208,13 @@ Reusable target operations:
 
 `pillow_c_image_paste_color` mutates the target in place by filling a four-coordinate rectangle with a caller-packed target-mode color. The optional mask must match the unclipped rectangle size and may use `1`, `L`, `LA`, or `RGBA`; masked calls clip the destination rectangle and sample the matching mask offset after clipping. The AHK facade owns Pillow-style scalar/tuple color parsing before making this single native call.
 
-`pillow_c_image_autocontrast` and `pillow_c_image_autocontrast_into` accept an optional L-mode mask handle after the ignore list arguments, followed by a `preserve_tone` integer flag. A null mask keeps full-image histogram behavior.
+`pillow_c_image_autocontrast` and `pillow_c_image_autocontrast_into` accept an optional mode `1` or `L` mask handle after the ignore list arguments, followed by a `preserve_tone` integer flag. A null mask keeps full-image histogram behavior.
 
 `pillow_c_image_convert_mode` and `pillow_c_image_convert_mode_into` cover the verified `L`/`LA`/`RGB`/`RGBA` conversion matrix. `LA` preserves alpha as the second band; RGB-derived conversions use Pillow's 8-bit luma coefficients.
 
 `pillow_c_image_put_alpha_value` and `pillow_c_image_put_alpha_image` return `LA` for `L`/`LA` sources and `RGBA` for `RGB`/`RGBA` sources. The matching `_into` variants require the caller to provide that target mode and shape.
 
-`pillow_c_image_histogram` follows Pillow's 256-bin-per-band layout. `pillow_c_image_histogram_masked` accepts a same-size L-mode mask; any nonzero mask byte includes that pixel once, and zero excludes it. A null mask falls back to the unmasked histogram path. For `LA`, Pillow 11.3.0 reports two bands where the second histogram repeats the luminance bins rather than the alpha bins; both native histogram exports mirror that behavior so `ImageStat.Stat` matches Pillow.
+`pillow_c_image_histogram` follows Pillow's 256-bin-per-band layout. `pillow_c_image_histogram_masked` accepts a same-size mode `1` or `L` mask; any nonzero native mask byte includes that pixel once, and zero excludes it. A null mask falls back to the unmasked histogram path. For `LA`, Pillow 11.3.0 reports two bands where the second histogram repeats the luminance bins rather than the alpha bins; both native histogram exports mirror that behavior so `ImageStat.Stat` matches Pillow.
 
 `pillow_c_image_rotate` and `pillow_c_image_rotate_into` accept angle, resample, expand, optional center, optional translate, and optional fill color arguments. The current implementation supports `NEAREST`, `BILINEAR`, and `BICUBIC` rotate; unsupported resamplers return `-3`.
 
