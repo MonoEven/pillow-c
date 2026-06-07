@@ -441,19 +441,15 @@ class Pillow {
         }
 
         Convert(modeName) {
-            if this.Mode = modeName
-                return this.Copy()
-            if this.Mode = "RGB" && modeName = "L" {
-                outHandle := 0
-                Pillow.CheckStatus(DllCall(
-                    Pillow.RequireDllPath() "\pillow_c_image_rgb_to_l",
-                    "Ptr", this.RequireHandle(),
-                    "Ptr*", &outHandle,
-                    "Int"
-                ))
-                return Pillow.WrapImageHandle(outHandle)
-            }
-            throw Error("Pillow.Image.Convert does not support " this.Mode " to " modeName " yet", -1)
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_convert_mode",
+                "Ptr", this.RequireHandle(),
+                "Int", Pillow.ModeId(modeName),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
         }
     }
 }

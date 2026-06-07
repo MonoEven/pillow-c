@@ -371,6 +371,31 @@ PillowCImagePutAlphaImage(sourceHandle, alphaHandle) {
     return outHandle
 }
 
+PillowCImageConvertMode(sourceHandle, mode) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_convert_mode",
+        "Ptr", sourceHandle,
+        "Int", mode,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageConvertModeInto(sourceHandle, mode, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_convert_mode_into",
+        "Ptr", sourceHandle,
+        "Int", mode,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageRgbToLInto(sourceHandle, targetHandle) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_rgb_to_l_into",
@@ -985,6 +1010,61 @@ PillowCTestImagePutAlphaRejectsUnsupportedSourceMode(*) {
 }
 
 AhkTest.Test("pillow_c image put_alpha rejects unsupported source modes until LA exists", PillowCTestImagePutAlphaRejectsUnsupportedSourceMode)
+
+PillowCTestImageConvertModeCoversCorePillowModes(*) {
+    l := PillowCCreateImageMode(3, 1, 1)
+    rgb := PillowCCreateImageMode(2, 1, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    lToRgb := 0
+    lToRgba := 0
+    rgbaToRgb := 0
+    rgbaToL := 0
+    try {
+        PillowCImageSetBytes(l, [0, 10, 255])
+        PillowCImageSetBytes(rgb, [10, 20, 30, 200, 100, 50])
+        PillowCImageSetBytes(rgba, [10, 20, 30, 40, 200, 100, 50, 128])
+        lToRgb := PillowCImageConvertMode(l, 3)
+        lToRgba := PillowCImageConvertMode(l, 4)
+        rgbaToRgb := PillowCImageConvertMode(rgba, 3)
+        rgbaToL := PillowCImageConvertMode(rgba, 1)
+        AhkTest.AssertEqual([0, 0, 0, 10, 10, 10, 255, 255, 255], PillowCImageToArray(lToRgb, 9))
+        AhkTest.AssertEqual([0, 0, 0, 255, 10, 10, 10, 255, 255, 255, 255, 255], PillowCImageToArray(lToRgba, 12))
+        AhkTest.AssertEqual([10, 20, 30, 200, 100, 50], PillowCImageToArray(rgbaToRgb, 6))
+        AhkTest.AssertEqual([18, 124], PillowCImageToArray(rgbaToL, 2))
+    } finally {
+        if rgbaToL
+            PillowCFreeImage(rgbaToL)
+        if rgbaToRgb
+            PillowCFreeImage(rgbaToRgb)
+        if lToRgba
+            PillowCFreeImage(lToRgba)
+        if lToRgb
+            PillowCFreeImage(lToRgb)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image convert_mode covers core Pillow modes", PillowCTestImageConvertModeCoversCorePillowModes)
+
+PillowCTestImageConvertModeIntoReusesTargetHandle(*) {
+    source := PillowCCreateImageMode(2, 1, 3)
+    target := PillowCCreateImageMode(2, 1, 4)
+    try {
+        PillowCImageSetBytes(source, [10, 20, 30, 200, 100, 50])
+        before := PillowCImageData(target).Ptr
+        PillowCImageConvertModeInto(source, 4, target)
+        after := PillowCImageData(target).Ptr
+        AhkTest.AssertEqual(before, after)
+        AhkTest.AssertEqual([10, 20, 30, 255, 200, 100, 50, 255], PillowCImageToArray(target, 8))
+    } finally {
+        PillowCFreeImage(target)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image convert_mode_into reuses target handle storage", PillowCTestImageConvertModeIntoReusesTargetHandle)
 
 PillowCTestImageRgbToLHandleOperation(*) {
     source := PillowCCreateImage(8, 1, 3)

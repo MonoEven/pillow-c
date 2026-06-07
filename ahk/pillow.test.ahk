@@ -197,6 +197,31 @@ PillowTestImageConvertRgbToLUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Convert converts RGB to L through native handles", PillowTestImageConvertRgbToLUsesNativeHandleOperation)
 
+PillowTestImageConvertCoreModesUseNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([0, 10, 255]))
+    rgba := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([10, 20, 30, 40, 200, 100, 50, 128]))
+    lToRgba := 0
+    rgbaToRgb := 0
+    try {
+        lToRgba := l.Convert("RGBA")
+        rgbaToRgb := rgba.Convert("RGB")
+        AhkTest.AssertEqual("RGBA", lToRgba.Mode)
+        AhkTest.AssertEqual([0, 0, 0, 255, 10, 10, 10, 255, 255, 255, 255, 255], PillowTestBufferToArray(lToRgba.ToBytes()))
+        AhkTest.AssertEqual("RGB", rgbaToRgb.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 200, 100, 50], PillowTestBufferToArray(rgbaToRgb.ToBytes()))
+    } finally {
+        if IsObject(rgbaToRgb)
+            rgbaToRgb.Close()
+        if IsObject(lToRgba)
+            lToRgba.Close()
+        rgba.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Convert covers core L RGB RGBA modes through native handles", PillowTestImageConvertCoreModesUseNativeOperation)
+
 PillowTestMakeInvertLut(channelCount) {
     lut := []
     loop channelCount {

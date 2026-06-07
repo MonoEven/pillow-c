@@ -55,6 +55,8 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 
 AHK owns ergonomics and lifetime. The DLL owns image bytes and transformations.
 
+Core `L`, `RGB`, and `RGBA` conversions are a single native operation so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
+
 ## Performance Direction
 
 Scalar behavior must stay tested before SIMD or threading is introduced. Later optimizations should happen behind the same ABI so wrapper code does not change when the native backend improves.
