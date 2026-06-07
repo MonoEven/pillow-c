@@ -22,7 +22,15 @@ constexpr int PILLOW_C_MODE_RGB = 3;
 constexpr int PILLOW_C_MODE_RGBA = 4;
 
 constexpr int PILLOW_C_RESAMPLE_NEAREST = 0;
+constexpr int PILLOW_C_RESAMPLE_LANCZOS = 1;
 constexpr int PILLOW_C_RESAMPLE_BILINEAR = 2;
+constexpr int PILLOW_C_RESAMPLE_BICUBIC = 3;
+constexpr int PILLOW_C_RESAMPLE_BOX = 4;
+constexpr int PILLOW_C_RESAMPLE_HAMMING = 5;
+
+constexpr int RESAMPLE_PRECISION_BITS = 32 - 8 - 2;
+constexpr int RESAMPLE_PRECISION_SCALE = 1 << RESAMPLE_PRECISION_BITS;
+constexpr int RESAMPLE_ROUNDING_BIAS = 1 << (RESAMPLE_PRECISION_BITS - 1);
 
 struct PillowCImage {
     int width;
@@ -36,7 +44,12 @@ struct PillowCImage {
 struct ResampleCoefficients {
     int kernel_size;
     std::vector<int> bounds;
-    std::vector<double> weights;
+    std::vector<std::int32_t> weights;
+};
+
+struct ResampleFilterSpec {
+    double support;
+    double (*filter)(double);
 };
 
 inline std::uint32_t shift_for_div255(std::uint32_t value)
@@ -64,6 +77,18 @@ inline std::uint8_t clip_u8_int(int value)
         return 255;
     }
     return static_cast<std::uint8_t>(value);
+}
+
+inline std::uint8_t clip_resample_u8(std::int64_t value)
+{
+    const std::int64_t shifted = value >> RESAMPLE_PRECISION_BITS;
+    if (shifted <= 0) {
+        return 0;
+    }
+    if (shifted >= 256) {
+        return 255;
+    }
+    return static_cast<std::uint8_t>(shifted);
 }
 
 inline std::uint8_t mul_div_255(std::uint8_t value, std::uint8_t alpha)
@@ -624,17 +649,27 @@ int merge_bands_into(int target_mode, const PillowCImage* const* bands, std::siz
     return PILLOW_C_OK;
 }
 
-int nearest_source_index(int dst_index, int src_size, int dst_size)
+bool precompute_nearest_indices(int src_size, int dst_size, std::vector<int>* indices)
 {
-    int value = static_cast<int>(
-        ((static_cast<long long>(dst_index) * 2 + 1) * src_size) / (2 * static_cast<long long>(dst_size)));
-    if (value < 0) {
-        return 0;
+    if (src_size <= 0 || dst_size <= 0 || !indices) {
+        return false;
     }
-    if (value >= src_size) {
-        return src_size - 1;
+
+    indices->assign(static_cast<std::size_t>(dst_size), 0);
+    const double scale = static_cast<double>(src_size) / dst_size;
+    double source_position = scale * 0.5;
+    for (int dst_index = 0; dst_index < dst_size; ++dst_index) {
+        int value = source_position < 0.0 ? -1 : static_cast<int>(source_position);
+        if (value < 0) {
+            value = 0;
+        }
+        if (value >= src_size) {
+            value = src_size - 1;
+        }
+        (*indices)[static_cast<std::size_t>(dst_index)] = value;
+        source_position += scale;
     }
-    return value;
+    return true;
 }
 
 double bilinear_filter(double value)
@@ -648,18 +683,98 @@ double bilinear_filter(double value)
     return 0.0;
 }
 
-bool precompute_bilinear_coefficients(int in_size, int out_size, ResampleCoefficients* coeffs)
+double box_filter(double value)
+{
+    if (value > -0.5 && value <= 0.5) {
+        return 1.0;
+    }
+    return 0.0;
+}
+
+double hamming_filter(double value)
+{
+    if (value < 0.0) {
+        value = -value;
+    }
+    if (value == 0.0) {
+        return 1.0;
+    }
+    if (value >= 1.0) {
+        return 0.0;
+    }
+    constexpr double pi = 3.1415926535897932384626433832795;
+    value *= pi;
+    return std::sin(value) / value * (0.54 + 0.46 * std::cos(value));
+}
+
+double bicubic_filter(double value)
+{
+    constexpr double a = -0.5;
+    if (value < 0.0) {
+        value = -value;
+    }
+    if (value < 1.0) {
+        return ((a + 2.0) * value - (a + 3.0)) * value * value + 1.0;
+    }
+    if (value < 2.0) {
+        return (((value - 5.0) * value + 8.0) * value - 4.0) * a;
+    }
+    return 0.0;
+}
+
+double sinc_filter(double value)
+{
+    if (value == 0.0) {
+        return 1.0;
+    }
+    constexpr double pi = 3.1415926535897932384626433832795;
+    value *= pi;
+    return std::sin(value) / value;
+}
+
+double lanczos_filter(double value)
+{
+    if (-3.0 <= value && value < 3.0) {
+        return sinc_filter(value) * sinc_filter(value / 3.0);
+    }
+    return 0.0;
+}
+
+const ResampleFilterSpec* filter_spec_for_resample(int resample)
+{
+    static const ResampleFilterSpec box{0.5, box_filter};
+    static const ResampleFilterSpec bilinear{1.0, bilinear_filter};
+    static const ResampleFilterSpec hamming{1.0, hamming_filter};
+    static const ResampleFilterSpec bicubic{2.0, bicubic_filter};
+    static const ResampleFilterSpec lanczos{3.0, lanczos_filter};
+
+    switch (resample) {
+    case PILLOW_C_RESAMPLE_BOX:
+        return &box;
+    case PILLOW_C_RESAMPLE_BILINEAR:
+        return &bilinear;
+    case PILLOW_C_RESAMPLE_HAMMING:
+        return &hamming;
+    case PILLOW_C_RESAMPLE_BICUBIC:
+        return &bicubic;
+    case PILLOW_C_RESAMPLE_LANCZOS:
+        return &lanczos;
+    default:
+        return nullptr;
+    }
+}
+
+bool precompute_filter_coefficients(int in_size, int out_size, const ResampleFilterSpec& filter, ResampleCoefficients* coeffs)
 {
     if (in_size <= 0 || out_size <= 0 || !coeffs) {
         return false;
     }
 
-    constexpr double filter_support = 1.0;
     double filterscale = static_cast<double>(in_size) / out_size;
     if (filterscale < 1.0) {
         filterscale = 1.0;
     }
-    const double support = filter_support * filterscale;
+    const double support = filter.support * filterscale;
     const int kernel_size = static_cast<int>(std::ceil(support)) * 2 + 1;
     if (kernel_size <= 0) {
         return false;
@@ -667,10 +782,11 @@ bool precompute_bilinear_coefficients(int in_size, int out_size, ResampleCoeffic
 
     coeffs->kernel_size = kernel_size;
     coeffs->bounds.assign(static_cast<std::size_t>(out_size) * 2u, 0);
-    coeffs->weights.assign(static_cast<std::size_t>(out_size) * kernel_size, 0.0);
+    coeffs->weights.assign(static_cast<std::size_t>(out_size) * kernel_size, 0);
 
     const double scale = static_cast<double>(in_size) / out_size;
     const double ss = 1.0 / filterscale;
+    std::vector<double> normalized(static_cast<std::size_t>(kernel_size), 0.0);
     for (int out_index = 0; out_index < out_size; ++out_index) {
         const double center = (out_index + 0.5) * scale;
         int xmin = static_cast<int>(center - support + 0.5);
@@ -683,16 +799,25 @@ bool precompute_bilinear_coefficients(int in_size, int out_size, ResampleCoeffic
         }
         const int count = xmax - xmin;
         double sum = 0.0;
-        double* weights = coeffs->weights.data() + static_cast<std::size_t>(out_index) * kernel_size;
+        std::fill(normalized.begin(), normalized.end(), 0.0);
         for (int i = 0; i < count; ++i) {
-            const double weight = bilinear_filter((i + xmin - center + 0.5) * ss);
-            weights[i] = weight;
+            const double weight = filter.filter((i + xmin - center + 0.5) * ss);
+            normalized[static_cast<std::size_t>(i)] = weight;
             sum += weight;
         }
         if (sum != 0.0) {
             for (int i = 0; i < count; ++i) {
-                weights[i] /= sum;
+                normalized[static_cast<std::size_t>(i)] /= sum;
             }
+        }
+        std::int32_t* weights =
+            coeffs->weights.data() +
+            static_cast<std::size_t>(out_index) * kernel_size;
+        for (int i = 0; i < kernel_size; ++i) {
+            const double scaled = normalized[static_cast<std::size_t>(i)] * RESAMPLE_PRECISION_SCALE;
+            weights[i] = scaled < 0.0 ?
+                static_cast<std::int32_t>(-0.5 + scaled) :
+                static_cast<std::int32_t>(0.5 + scaled);
         }
         coeffs->bounds[static_cast<std::size_t>(out_index) * 2u] = xmin;
         coeffs->bounds[static_cast<std::size_t>(out_index) * 2u + 1u] = count;
@@ -700,7 +825,7 @@ bool precompute_bilinear_coefficients(int in_size, int out_size, ResampleCoeffic
     return true;
 }
 
-double source_sample_for_resize(const PillowCImage* source, int x, int y, int channel)
+std::uint8_t source_sample_for_resize(const PillowCImage* source, int x, int y, int channel)
 {
     const std::uint8_t* px =
         source->pixels.data() +
@@ -712,13 +837,7 @@ double source_sample_for_resize(const PillowCImage* source, int x, int y, int ch
     return px[channel];
 }
 
-std::uint8_t rounded_u8(double value)
-{
-    const int rounded = value >= 0.0 ? static_cast<int>(value + 0.5) : static_cast<int>(value - 0.5);
-    return clip_u8_int(rounded);
-}
-
-int resize_bilinear_into(const PillowCImage* source, int out_width, int out_height, PillowCImage* target)
+int resize_filter_into(const PillowCImage* source, int out_width, int out_height, int resample, PillowCImage* target)
 {
     if (!source || !target) {
         return PILLOW_C_NULL_POINTER;
@@ -731,10 +850,14 @@ int resize_bilinear_into(const PillowCImage* source, int out_width, int out_heig
     }
 
     try {
+        const ResampleFilterSpec* filter = filter_spec_for_resample(resample);
+        if (!filter) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
         ResampleCoefficients x_coeffs{};
         ResampleCoefficients y_coeffs{};
-        if (!precompute_bilinear_coefficients(source->width, out_width, &x_coeffs) ||
-            !precompute_bilinear_coefficients(source->height, out_height, &y_coeffs)) {
+        if (!precompute_filter_coefficients(source->width, out_width, *filter, &x_coeffs) ||
+            !precompute_filter_coefficients(source->height, out_height, *filter, &y_coeffs)) {
             return PILLOW_C_ALLOCATION_FAILED;
         }
 
@@ -748,13 +871,16 @@ int resize_bilinear_into(const PillowCImage* source, int out_width, int out_heig
             for (int out_x = 0; out_x < out_width; ++out_x) {
                 const int xmin = x_coeffs.bounds[static_cast<std::size_t>(out_x) * 2u];
                 const int count = x_coeffs.bounds[static_cast<std::size_t>(out_x) * 2u + 1u];
-                const double* weights = x_coeffs.weights.data() + static_cast<std::size_t>(out_x) * x_coeffs.kernel_size;
+                const std::int32_t* weights =
+                    x_coeffs.weights.data() +
+                    static_cast<std::size_t>(out_x) * x_coeffs.kernel_size;
                 for (int channel = 0; channel < source->channels; ++channel) {
-                    double sum = 0.0;
+                    std::int64_t sum = RESAMPLE_ROUNDING_BIAS;
                     for (int i = 0; i < count; ++i) {
                         sum += source_sample_for_resize(source, xmin + i, y, channel) * weights[i];
                     }
-                    temp[(static_cast<std::size_t>(y) * out_width + out_x) * source->channels + channel] = rounded_u8(sum);
+                    temp[(static_cast<std::size_t>(y) * out_width + out_x) * source->channels + channel] =
+                        clip_resample_u8(sum);
                 }
             }
         }
@@ -762,15 +888,17 @@ int resize_bilinear_into(const PillowCImage* source, int out_width, int out_heig
         for (int out_y = 0; out_y < out_height; ++out_y) {
             const int ymin = y_coeffs.bounds[static_cast<std::size_t>(out_y) * 2u];
             const int count = y_coeffs.bounds[static_cast<std::size_t>(out_y) * 2u + 1u];
-            const double* weights = y_coeffs.weights.data() + static_cast<std::size_t>(out_y) * y_coeffs.kernel_size;
+            const std::int32_t* weights =
+                y_coeffs.weights.data() +
+                static_cast<std::size_t>(out_y) * y_coeffs.kernel_size;
             for (int out_x = 0; out_x < out_width; ++out_x) {
-                double values[4] = {0.0, 0.0, 0.0, 0.0};
+                std::uint8_t values[4] = {0, 0, 0, 0};
                 for (int channel = 0; channel < source->channels; ++channel) {
-                    double sum = 0.0;
+                    std::int64_t sum = RESAMPLE_ROUNDING_BIAS;
                     for (int i = 0; i < count; ++i) {
                         sum += temp[(static_cast<std::size_t>(ymin + i) * out_width + out_x) * source->channels + channel] * weights[i];
                     }
-                    values[channel] = sum;
+                    values[channel] = clip_resample_u8(sum);
                 }
 
                 std::uint8_t* dst =
@@ -778,10 +906,10 @@ int resize_bilinear_into(const PillowCImage* source, int out_width, int out_heig
                     static_cast<std::size_t>(out_y) * target->stride +
                     static_cast<std::size_t>(out_x) * target->channels;
                 if (source->mode == PILLOW_C_MODE_RGBA) {
-                    const std::uint8_t premul_r = rounded_u8(values[0]);
-                    const std::uint8_t premul_g = rounded_u8(values[1]);
-                    const std::uint8_t premul_b = rounded_u8(values[2]);
-                    const std::uint8_t alpha = rounded_u8(values[3]);
+                    const std::uint8_t premul_r = values[0];
+                    const std::uint8_t premul_g = values[1];
+                    const std::uint8_t premul_b = values[2];
+                    const std::uint8_t alpha = values[3];
                     if (alpha == 0 || alpha == 255) {
                         dst[0] = premul_r;
                         dst[1] = premul_g;
@@ -794,7 +922,7 @@ int resize_bilinear_into(const PillowCImage* source, int out_width, int out_heig
                     dst[3] = alpha;
                 } else {
                     for (int channel = 0; channel < source->channels; ++channel) {
-                        dst[channel] = rounded_u8(values[channel]);
+                        dst[channel] = values[channel];
                     }
                 }
             }
@@ -817,32 +945,63 @@ int resize_nearest_into(const PillowCImage* source, int out_width, int out_heigh
         return PILLOW_C_MISMATCH;
     }
 
-    for (int y = 0; y < out_height; ++y) {
-        const int src_y = nearest_source_index(y, source->height, out_height);
-        for (int x = 0; x < out_width; ++x) {
-            const int src_x = nearest_source_index(x, source->width, out_width);
-            const std::size_t src_offset =
-                static_cast<std::size_t>(src_y) * source->stride +
-                static_cast<std::size_t>(src_x) * source->channels;
-            const std::size_t dst_offset =
-                static_cast<std::size_t>(y) * target->stride +
-                static_cast<std::size_t>(x) * target->channels;
-            std::memcpy(
-                target->pixels.data() + dst_offset,
-                source->pixels.data() + src_offset,
-                static_cast<std::size_t>(source->channels));
+    try {
+        std::vector<int> x_indices;
+        std::vector<int> y_indices;
+        if (!precompute_nearest_indices(source->width, out_width, &x_indices) ||
+            !precompute_nearest_indices(source->height, out_height, &y_indices)) {
+            return PILLOW_C_ALLOCATION_FAILED;
         }
+
+        for (int y = 0; y < out_height; ++y) {
+            const int src_y = y_indices[static_cast<std::size_t>(y)];
+            for (int x = 0; x < out_width; ++x) {
+                const int src_x = x_indices[static_cast<std::size_t>(x)];
+                const std::size_t src_offset =
+                    static_cast<std::size_t>(src_y) * source->stride +
+                    static_cast<std::size_t>(src_x) * source->channels;
+                const std::size_t dst_offset =
+                    static_cast<std::size_t>(y) * target->stride +
+                    static_cast<std::size_t>(x) * target->channels;
+                std::memcpy(
+                    target->pixels.data() + dst_offset,
+                    source->pixels.data() + src_offset,
+                    static_cast<std::size_t>(source->channels));
+            }
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
     }
-    return PILLOW_C_OK;
 }
 
 int resize_image_into(const PillowCImage* source, int out_width, int out_height, int resample, PillowCImage* target)
 {
+    const bool supported =
+        resample == PILLOW_C_RESAMPLE_NEAREST ||
+        filter_spec_for_resample(resample) != nullptr;
+    if (!supported) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (source && target &&
+        out_width == source->width &&
+        out_height == source->height &&
+        image_shape_matches(target, source)) {
+        if (!source->pixels.empty()) {
+            std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
+        }
+        return PILLOW_C_OK;
+    }
+
     switch (resample) {
     case PILLOW_C_RESAMPLE_NEAREST:
         return resize_nearest_into(source, out_width, out_height, target);
+    case PILLOW_C_RESAMPLE_BOX:
+    case PILLOW_C_RESAMPLE_HAMMING:
     case PILLOW_C_RESAMPLE_BILINEAR:
-        return resize_bilinear_into(source, out_width, out_height, target);
+    case PILLOW_C_RESAMPLE_BICUBIC:
+    case PILLOW_C_RESAMPLE_LANCZOS:
+        return resize_filter_into(source, out_width, out_height, resample, target);
     default:
         return PILLOW_C_INVALID_ARGUMENT;
     }
@@ -1914,7 +2073,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize(
     if (out_width <= 0 || out_height <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (resample != PILLOW_C_RESAMPLE_NEAREST && resample != PILLOW_C_RESAMPLE_BILINEAR) {
+    if (resample != PILLOW_C_RESAMPLE_NEAREST && !filter_spec_for_resample(resample)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 

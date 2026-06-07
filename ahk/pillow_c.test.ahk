@@ -1578,6 +1578,8 @@ PillowCTestImageResizeNearestMatchesPillowCenterSampling(*) {
     lBig := 0
     lSmall := 0
     lSmallSource := 0
+    lTall := 0
+    lTallSource := 0
     rgbOut := 0
     try {
         PillowCImageSetBytes(l, [1, 2, 3, 4])
@@ -1594,6 +1596,14 @@ PillowCTestImageResizeNearestMatchesPillowCenterSampling(*) {
             if lSmallSource
                 PillowCFreeImage(lSmallSource)
         }
+        lTallSource := PillowCCreateImageMode(1, 4, 1)
+        try {
+            PillowCImageSetBytes(lTallSource, [215, 194, 144, 49])
+            lTall := PillowCImageResize(lTallSource, 1, 6, 0)
+        } finally {
+            if lTallSource
+                PillowCFreeImage(lTallSource)
+        }
         rgbOut := PillowCImageResize(rgb, 3, 3, 0)
         AhkTest.AssertEqual([4, 4], [PillowCImageInt(lBig, "pillow_c_image_width"), PillowCImageInt(lBig, "pillow_c_image_height")])
         AhkTest.AssertEqual([
@@ -1603,6 +1613,7 @@ PillowCTestImageResizeNearestMatchesPillowCenterSampling(*) {
             3, 3, 4, 4,
         ], PillowCImageToArray(lBig, 16))
         AhkTest.AssertEqual([20, 40], PillowCImageToArray(lSmall, 2))
+        AhkTest.AssertEqual([215, 194, 194, 144, 144, 49], PillowCImageToArray(lTall, 6))
         AhkTest.AssertEqual([
             1, 2, 3, 10, 20, 30, 10, 20, 30,
             100, 110, 120, 200, 210, 220, 200, 210, 220,
@@ -1611,6 +1622,8 @@ PillowCTestImageResizeNearestMatchesPillowCenterSampling(*) {
     } finally {
         if rgbOut
             PillowCFreeImage(rgbOut)
+        if lTall
+            PillowCFreeImage(lTall)
         if lSmall
             PillowCFreeImage(lSmall)
         if lBig
@@ -1629,6 +1642,8 @@ PillowCTestImageResizeBilinearMatchesPillowFilterSampling(*) {
     lOut := 0
     lSmall := 0
     lSmallSource := 0
+    lTall := 0
+    lTallSource := 0
     rgbOut := 0
     rgbaOut := 0
     try {
@@ -1650,6 +1665,14 @@ PillowCTestImageResizeBilinearMatchesPillowFilterSampling(*) {
             if lSmallSource
                 PillowCFreeImage(lSmallSource)
         }
+        lTallSource := PillowCCreateImageMode(1, 2, 1)
+        try {
+            PillowCImageSetBytes(lTallSource, [113, 18])
+            lTall := PillowCImageResize(lTallSource, 1, 5, 2)
+        } finally {
+            if lTallSource
+                PillowCFreeImage(lTallSource)
+        }
         rgbOut := PillowCImageResize(rgb, 3, 3, 2)
         rgbaOut := PillowCImageResize(rgba, 4, 1, 2)
 
@@ -1659,6 +1682,7 @@ PillowCTestImageResizeBilinearMatchesPillowFilterSampling(*) {
             128, 192, 255,
         ], PillowCImageToArray(lOut, 9))
         AhkTest.AssertEqual([17, 33], PillowCImageToArray(lSmall, 2))
+        AhkTest.AssertEqual([113, 104, 66, 27, 18], PillowCImageToArray(lTall, 5))
         AhkTest.AssertEqual([
             0, 0, 0, 128, 0, 0, 255, 0, 0,
             0, 128, 0, 64, 64, 64, 128, 0, 128,
@@ -1675,6 +1699,8 @@ PillowCTestImageResizeBilinearMatchesPillowFilterSampling(*) {
             PillowCFreeImage(rgbaOut)
         if rgbOut
             PillowCFreeImage(rgbOut)
+        if lTall
+            PillowCFreeImage(lTall)
         if lSmall
             PillowCFreeImage(lSmall)
         if lOut
@@ -1686,6 +1712,69 @@ PillowCTestImageResizeBilinearMatchesPillowFilterSampling(*) {
 }
 
 AhkTest.Test("pillow_c image resize BILINEAR matches Pillow filter sampling", PillowCTestImageResizeBilinearMatchesPillowFilterSampling)
+
+PillowCTestImageResizeAdvancedFiltersMatchPillowSampling(*) {
+    l := PillowCCreateImageMode(3, 2, 1)
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    rgba := PillowCCreateImageMode(3, 1, 4)
+    rgbaIdentity := PillowCCreateImageMode(1, 1, 4)
+    outputs := []
+    try {
+        PillowCImageSetBytes(l, [0, 30, 80, 120, 180, 255])
+        PillowCImageSetBytes(rgb, [
+            0, 0, 0, 255, 0, 0, 0, 255, 0,
+            0, 0, 255, 255, 255, 0, 255, 0, 255,
+        ])
+        PillowCImageSetBytes(rgba, [
+            0, 0, 0, 0,
+            255, 100, 50, 128,
+            0, 200, 255, 255,
+        ])
+        PillowCImageSetBytes(rgbaIdentity, [141, 169, 37, 98])
+
+        cases := [
+            { Name: "BOX", Filter: 4,
+              L: [0, 0, 30, 80, 80, 120, 120, 180, 255, 255, 120, 120, 180, 255, 255],
+              RGB: [128, 0, 0, 0, 255, 0, 128, 0, 0, 0, 255, 0, 128, 128, 128, 255, 0, 255, 128, 128, 128, 255, 0, 255],
+              RGBA: [0, 0, 0, 0, 0, 0, 0, 0, 255, 99, 49, 128, 0, 200, 255, 255, 0, 200, 255, 255] },
+            { Name: "HAMMING", Filter: 5,
+              L: [0, 8, 30, 66, 80, 60, 73, 105, 150, 168, 120, 137, 180, 234, 255],
+              RGB: [71, 0, 0, 71, 184, 0, 71, 5, 14, 85, 175, 14, 71, 66, 170, 241, 80, 170, 71, 71, 184, 255, 71, 184],
+              RGBA: [0, 0, 0, 0, 255, 99, 49, 36, 255, 99, 49, 128, 41, 183, 222, 219, 0, 200, 255, 255] },
+            { Name: "BICUBIC", Filter: 3,
+              L: [0, 0, 20, 53, 73, 58, 73, 105, 148, 170, 123, 147, 190, 242, 255],
+              RGB: [100, 0, 0, 85, 172, 0, 97, 21, 32, 131, 152, 32, 91, 78, 124, 223, 113, 124, 88, 108, 170, 255, 93, 170],
+              RGBA: [0, 0, 0, 0, 255, 71, 0, 39, 255, 99, 49, 128, 60, 177, 206, 216, 0, 211, 255, 255] },
+            { Name: "LANCZOS", Filter: 1,
+              L: [0, 0, 11, 46, 63, 58, 69, 105, 152, 170, 130, 148, 199, 255, 255],
+              RGB: [110, 0, 0, 81, 178, 0, 103, 25, 34, 141, 153, 34, 92, 82, 114, 221, 121, 114, 85, 126, 174, 255, 96, 174],
+              RGBA: [0, 0, 5, 0, 255, 8, 0, 29, 255, 99, 49, 128, 62, 176, 205, 226, 0, 215, 255, 255] },
+        ]
+
+        for item in cases {
+            lOut := PillowCImageResize(l, 5, 3, item.Filter)
+            rgbOut := PillowCImageResize(rgb, 2, 4, item.Filter)
+            rgbaOut := PillowCImageResize(rgba, 5, 1, item.Filter)
+            outputs.Push(lOut, rgbOut, rgbaOut)
+            AhkTest.AssertEqual(item.L, PillowCImageToArray(lOut, 15), item.Name " L")
+            AhkTest.AssertEqual(item.RGB, PillowCImageToArray(rgbOut, 24), item.Name " RGB")
+            AhkTest.AssertEqual(item.RGBA, PillowCImageToArray(rgbaOut, 20), item.Name " RGBA")
+        }
+
+        identityOut := PillowCImageResize(rgbaIdentity, 1, 1, 1)
+        outputs.Push(identityOut)
+        AhkTest.AssertEqual([141, 169, 37, 98], PillowCImageToArray(identityOut, 4), "RGBA identity")
+    } finally {
+        for handle in outputs
+            PillowCFreeImage(handle)
+        PillowCFreeImage(rgbaIdentity)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image resize advanced filters match Pillow sampling", PillowCTestImageResizeAdvancedFiltersMatchPillowSampling)
 
 PillowCTestImageResizeNearestIntoReusesTargetHandle(*) {
     source := PillowCCreateImageMode(2, 2, 1)

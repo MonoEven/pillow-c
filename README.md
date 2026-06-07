@@ -40,10 +40,10 @@ img.Close()
 
 ## Test
 
-Tests use `ahktest` from [MonoEven/stdlib-ahk](https://github.com/MonoEven/stdlib-ahk). In the current local workspace, keep using the parent `visual_studio\tools` runner so AHK errors are captured instead of shown in blocking popups:
+Tests use `ahktest` from [MonoEven/stdlib-ahk](https://github.com/MonoEven/stdlib-ahk). In the current local workspace, run tests from the parent `visual_studio` directory with its `tools` runner so AHK errors are captured instead of shown in blocking popups:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File ..\..\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 20
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 20
 ```
 
 ## Docs
@@ -54,7 +54,7 @@ powershell -ExecutionPolicy Bypass -File ..\..\tools\run-ahktest.ps1 -Target .\t
 
 ## Current Surface
 
-The verified native surface currently covers mode-aware image handles, byte import/export, solid fill, data-pointer sharing, copy, blend, LUT point transforms, channel extraction, split, and merge, alpha insertion, core `L`/`RGB`/`RGBA` mode conversion, NEAREST and BILINEAR resize, RGBA alpha composite, crop, paste, transpose, and allocation-avoiding `*_into` variants.
+The verified native surface currently covers mode-aware image handles, byte import/export, solid fill, data-pointer sharing, copy, blend, LUT point transforms, channel extraction, split, and merge, alpha insertion, core `L`/`RGB`/`RGBA` mode conversion, Pillow-compatible resize filters, RGBA alpha composite, crop, paste, transpose, and allocation-avoiding `*_into` variants.
 
 The AHK facade is intentionally smaller and grows as the Python-like wrapper stabilizes.
 

@@ -96,7 +96,11 @@ Current resize support:
 
 ```text
 0 NEAREST
+1 LANCZOS
 2 BILINEAR
+3 BICUBIC
+4 BOX
+5 HAMMING
 ```
 
 ## Transpose Method IDs
