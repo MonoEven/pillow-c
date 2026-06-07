@@ -1408,11 +1408,15 @@ class Pillow {
                         "Int"
                     ))
                 } else {
+                    rawModeBytes := Pillow.Image.RawModeBuffer(modeName)
                     Pillow.CheckStatus(DllCall(
-                        Pillow.RequireDllPath() "\pillow_c_image_set_bytes",
+                        Pillow.RequireDllPath() "\pillow_c_image_set_raw_bytes",
                         "Ptr", image.Handle,
                         "Ptr", bytes,
                         "UPtr", bytes.Size,
+                        "Ptr", rawModeBytes,
+                        "Int", 0,
+                        "Int", 1,
                         "Int"
                     ))
                 }

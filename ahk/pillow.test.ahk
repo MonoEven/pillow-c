@@ -78,6 +78,24 @@ PillowTestImageFromBytesOwnsNativeCopy(*) {
 
 AhkTest.Test("Pillow Image.FromBytes copies caller bytes into native storage", PillowTestImageFromBytesOwnsNativeCopy)
 
+PillowTestImageFromBytesDefaultRawAllowsExtraBytes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    rgba := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([7, 8, 9, 10, 11, 12, 13, 14]))
+    la := Pillow.Image.FromBytes("LA", [1, 1], PillowTestBuffer([15, 16, 17, 18]))
+    try {
+        AhkTest.AssertEqual([1, 2, 3], PillowTestBufferToArray(rgb.ToBytes()))
+        AhkTest.AssertEqual([7, 8, 9, 10], PillowTestBufferToArray(rgba.ToBytes()))
+        AhkTest.AssertEqual([15, 16], PillowTestBufferToArray(la.ToBytes()))
+    } finally {
+        la.Close()
+        rgba.Close()
+        rgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBytes default raw decoder allows extra bytes", PillowTestImageFromBytesDefaultRawAllowsExtraBytes)
+
 PillowTestImageFromBytesSupportsRawModesAndStride(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     rgb := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([
@@ -101,6 +119,8 @@ PillowTestImageToBytesSupportsRawModes(*) {
     rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
     rgba := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60, 70, 80]))
     try {
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowTestBufferToArray(rgb.ToBytes("raw")))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80], PillowTestBufferToArray(rgba.ToBytes("raw")))
         AhkTest.AssertEqual([30, 20, 10, 60, 50, 40], PillowTestBufferToArray(rgb.ToBytes("raw", "BGR")))
         AhkTest.AssertEqual([10, 20, 30, 255, 40, 50, 60, 255], PillowTestBufferToArray(rgb.ToBytes("raw", "RGBX")))
         AhkTest.AssertEqual([30, 20, 10, 40, 70, 60, 50, 80], PillowTestBufferToArray(rgba.ToBytes("raw", "BGRA")))
