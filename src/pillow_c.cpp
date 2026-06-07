@@ -382,6 +382,30 @@ int apply_point_lut_into(const PillowCImage* source, const std::uint8_t* lut, st
     return PILLOW_C_OK;
 }
 
+int copy_channel_into(const PillowCImage* source, int channel_index, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (channel_index < 0 || channel_index >= source->channels) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_L, 1)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* src = source->pixels.data() + channel_index;
+    std::uint8_t* dst = target->pixels.data();
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    for (std::size_t i = 0; i < pixels; ++i) {
+        dst[i] = src[i * source->channels];
+    }
+    return PILLOW_C_OK;
+}
+
 } // namespace
 
 extern "C" __declspec(dllexport) int pillow_c_abi_version(
@@ -832,6 +856,14 @@ extern "C" __declspec(dllexport) int pillow_c_image_point_lut_into(
     return apply_point_lut_into(source, lut, lut_size, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_get_channel_into(
+    const PillowCImage* source,
+    int channel_index,
+    PillowCImage* target)
+{
+    return copy_channel_into(source, channel_index, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_alpha_composite_rgba_into(
     const PillowCImage* dst,
     const PillowCImage* src,
@@ -1174,6 +1206,39 @@ extern "C" __declspec(dllexport) int pillow_c_image_point_lut(
     try {
         auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
         const int status = apply_point_lut_into(source, lut, lut_size, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_get_channel(
+    const PillowCImage* source,
+    int channel_index,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (channel_index < 0 || channel_index >= source->channels) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            PILLOW_C_MODE_L,
+            1,
+            static_cast<std::size_t>(source->width),
+            std::vector<std::uint8_t>(static_cast<std::size_t>(source->width) * source->height)};
+        const int status = copy_channel_into(source, channel_index, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

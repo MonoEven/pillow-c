@@ -224,6 +224,29 @@ PillowTestImagePointUsesNativeLutOperation(*) {
 
 AhkTest.Test("Pillow Image.Point applies a Pillow-style LUT through native handles", PillowTestImagePointUsesNativeLutOperation)
 
+PillowTestImageGetChannelUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([1, 2, 3, 4, 10, 20, 30, 40]))
+    alpha := 0
+    green := 0
+    try {
+        alpha := source.GetChannel("A")
+        green := source.GetChannel(1)
+        AhkTest.AssertEqual("L", alpha.Mode)
+        AhkTest.AssertEqual([2, 1], alpha.Size)
+        AhkTest.AssertEqual([4, 40], PillowTestBufferToArray(alpha.ToBytes()))
+        AhkTest.AssertEqual([2, 20], PillowTestBufferToArray(green.ToBytes()))
+    } finally {
+        if IsObject(green)
+            green.Close()
+        if IsObject(alpha)
+            alpha.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetChannel extracts one channel through native handles", PillowTestImageGetChannelUsesNativeOperation)
+
 PillowTestImagePasteMutatesTargetThroughNativeHandleOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     target := Pillow.Image.FromBytes("RGB", [4, 3], PillowTestBuffer([

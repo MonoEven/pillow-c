@@ -333,6 +333,35 @@ class Pillow {
             return buf
         }
 
+        GetChannel(channel) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_get_channel",
+                "Ptr", this.RequireHandle(),
+                "Int", this.ChannelIndex(channel),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        ChannelIndex(channel) {
+            if !IsObject(channel) && channel is Integer {
+                if channel < 0 || channel >= this.Channels
+                    throw Error("band index out of range", -1)
+                return channel
+            }
+
+            name := channel ""
+            mode := this.Mode
+            names := mode = "L" ? ["L"] : mode = "RGB" ? ["R", "G", "B"] : mode = "RGBA" ? ["R", "G", "B", "A"] : []
+            for index, item in names {
+                if item = name
+                    return index - 1
+            }
+            throw Error('The image has no channel "' name '"', -1)
+        }
+
         Copy() {
             outHandle := 0
             Pillow.CheckStatus(DllCall(

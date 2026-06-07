@@ -318,6 +318,31 @@ PillowCImagePointLutInto(sourceHandle, lutValues, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageGetChannel(sourceHandle, channelIndex) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_get_channel",
+        "Ptr", sourceHandle,
+        "Int", channelIndex,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageGetChannelInto(sourceHandle, channelIndex, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_get_channel_into",
+        "Ptr", sourceHandle,
+        "Int", channelIndex,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageRgbToLInto(sourceHandle, targetHandle) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_rgb_to_l_into",
@@ -793,6 +818,78 @@ PillowCTestImagePointLutRejectsWrongLength(*) {
 }
 
 AhkTest.Test("pillow_c image point_lut rejects LUT lengths that do not match Pillow mode", PillowCTestImagePointLutRejectsWrongLength)
+
+PillowCTestImageGetChannelReturnsLImage(*) {
+    rgb := PillowCCreateImageMode(2, 1, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    r := 0
+    g := 0
+    a := 0
+    try {
+        PillowCImageSetBytes(rgb, [1, 2, 3, 10, 20, 30])
+        PillowCImageSetBytes(rgba, [1, 2, 3, 4, 10, 20, 30, 40])
+        r := PillowCImageGetChannel(rgb, 0)
+        g := PillowCImageGetChannel(rgb, 1)
+        a := PillowCImageGetChannel(rgba, 3)
+        AhkTest.AssertEqual(1, PillowCImageMode(r))
+        AhkTest.AssertEqual(1, PillowCImageInt(r, "pillow_c_image_channels"))
+        AhkTest.AssertEqual([2, 1], [PillowCImageInt(r, "pillow_c_image_width"), PillowCImageInt(r, "pillow_c_image_height")])
+        AhkTest.AssertEqual([1, 10], PillowCImageToArray(r, 2))
+        AhkTest.AssertEqual([2, 20], PillowCImageToArray(g, 2))
+        AhkTest.AssertEqual([4, 40], PillowCImageToArray(a, 2))
+    } finally {
+        if a
+            PillowCFreeImage(a)
+        if g
+            PillowCFreeImage(g)
+        if r
+            PillowCFreeImage(r)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c image get_channel returns an L image for one channel", PillowCTestImageGetChannelReturnsLImage)
+
+PillowCTestImageGetChannelIntoReusesTargetHandle(*) {
+    source := PillowCCreateImageMode(2, 1, 4)
+    target := PillowCCreateImageMode(2, 1, 1)
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4, 10, 20, 30, 40])
+        before := PillowCImageData(target).Ptr
+        PillowCImageGetChannelInto(source, 3, target)
+        after := PillowCImageData(target).Ptr
+        AhkTest.AssertEqual(before, after)
+        AhkTest.AssertEqual([4, 40], PillowCImageToArray(target, 2))
+    } finally {
+        PillowCFreeImage(target)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image get_channel_into reuses target handle storage", PillowCTestImageGetChannelIntoReusesTargetHandle)
+
+PillowCTestImageGetChannelRejectsOutOfRangeIndex(*) {
+    source := PillowCCreateImageMode(2, 1, 3)
+    outHandle := 0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_get_channel",
+            "Ptr", source,
+            "Int", 3,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image get_channel rejects out-of-range channel indexes", PillowCTestImageGetChannelRejectsOutOfRangeIndex)
 
 PillowCTestImageRgbToLHandleOperation(*) {
     source := PillowCCreateImage(8, 1, 3)
