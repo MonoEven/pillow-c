@@ -1227,6 +1227,31 @@ PillowCImageFilterRankInto(sourceHandle, size, rank, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageFilterMode(sourceHandle, size := 3) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_filter_mode",
+        "Ptr", sourceHandle,
+        "Int", size,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageFilterModeInto(sourceHandle, size, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_filter_mode_into",
+        "Ptr", sourceHandle,
+        "Int", size,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCAffineMatrix(values) {
     buf := Buffer(6 * 8, 0)
     for index, value in values
@@ -5753,6 +5778,131 @@ PillowCTestImageFilterRankRejectsInvalidArguments(*) {
 }
 
 AhkTest.Test("pillow_c image filter rank rejects invalid arguments", PillowCTestImageFilterRankRejectsInvalidArguments)
+
+PillowCTestImageFilterModeMatchesPillowLWindowRules(*) {
+    edge := PillowCCreateImageMode(3, 3, 1)
+    tie := PillowCCreateImageMode(3, 3, 1)
+    threshold := PillowCCreateImageMode(3, 3, 1)
+    identity := 0
+    negative := 0
+    size2 := 0
+    size4 := 0
+    tieOut := 0
+    thresholdOut := 0
+    try {
+        PillowCImageSetBytes(edge, [
+            0, 0, 0,
+            0, 0, 0,
+            1, 1, 1,
+        ])
+        PillowCImageSetBytes(tie, [
+            1, 1, 1,
+            2, 2, 2,
+            3, 4, 5,
+        ])
+        PillowCImageSetBytes(threshold, [
+            1, 1, 2,
+            2, 3, 4,
+            5, 6, 7,
+        ])
+
+        identity := PillowCImageFilterMode(edge, 1)
+        negative := PillowCImageFilterMode(edge, -3)
+        size2 := PillowCImageFilterMode(edge, 2)
+        size4 := PillowCImageFilterMode(edge, 4)
+        tieOut := PillowCImageFilterMode(tie, 3)
+        thresholdOut := PillowCImageFilterMode(threshold, 3)
+
+        AhkTest.AssertEqual([
+            0, 0, 0,
+            0, 0, 0,
+            1, 1, 1,
+        ], PillowCImageToArray(identity, 9))
+        AhkTest.AssertEqual(PillowCImageToArray(identity, 9), PillowCImageToArray(negative, 9))
+        AhkTest.AssertEqual([
+            0, 0, 0,
+            0, 0, 0,
+            1, 0, 1,
+        ], PillowCImageToArray(size2, 9))
+        AhkTest.AssertEqual([
+            0, 0, 0,
+            0, 0, 0,
+            0, 0, 0,
+        ], PillowCImageToArray(size4, 9))
+        AhkTest.AssertEqual([
+            1, 1, 1,
+            2, 1, 2,
+            3, 2, 5,
+        ], PillowCImageToArray(tieOut, 9))
+        AhkTest.AssertEqual([
+            1, 1, 2,
+            2, 3, 4,
+            5, 6, 7,
+        ], PillowCImageToArray(thresholdOut, 9))
+    } finally {
+        for handle in [thresholdOut, tieOut, size4, size2, negative, identity, threshold, tie, edge] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image filter mode matches Pillow L window rules", PillowCTestImageFilterModeMatchesPillowLWindowRules)
+
+PillowCTestImageFilterModeMatchesPillowRgbRgbaAndInto(*) {
+    rgb := PillowCCreateImageMode(3, 3, 3)
+    rgba := PillowCCreateImageMode(3, 3, 4)
+    rgbTarget := PillowCCreateImageMode(3, 3, 3)
+    wrongTarget := PillowCCreateImageMode(3, 3, 1)
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(rgb, [
+            0, 10, 200, 0, 20, 200, 0, 30, 100,
+            0, 40, 200, 9, 50, 100, 9, 60, 100,
+            1, 70, 200, 1, 80, 100, 1, 90, 100,
+        ])
+        PillowCImageSetBytes(rgba, [
+            0, 10, 200, 1, 0, 20, 200, 2, 0, 30, 100, 3,
+            0, 40, 200, 4, 9, 50, 100, 5, 9, 60, 100, 6,
+            1, 70, 200, 7, 1, 80, 100, 8, 1, 90, 100, 9,
+        ])
+        before := PillowCImageData(rgbTarget).Ptr
+
+        rgbOut := PillowCImageFilterMode(rgb, 3)
+        rgbaOut := PillowCImageFilterMode(rgba, 3)
+        PillowCImageFilterModeInto(rgb, 3, rgbTarget)
+
+        AhkTest.AssertEqual(before, PillowCImageData(rgbTarget).Ptr)
+        AhkTest.AssertEqual([
+            0, 10, 200, 0, 20, 100, 0, 30, 100,
+            0, 40, 200, 0, 50, 100, 9, 60, 100,
+            1, 70, 200, 1, 80, 100, 1, 90, 100,
+        ], PillowCImageToArray(rgbOut, 27))
+        AhkTest.AssertEqual(PillowCImageToArray(rgbOut, 27), PillowCImageToArray(rgbTarget, 27))
+        AhkTest.AssertEqual([
+            0, 10, 200, 1, 0, 20, 100, 2, 0, 30, 100, 3,
+            0, 40, 200, 4, 0, 50, 100, 5, 9, 60, 100, 6,
+            1, 70, 200, 7, 1, 80, 100, 8, 1, 90, 100, 9,
+        ], PillowCImageToArray(rgbaOut, 36))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_filter_mode_into",
+            "Ptr", rgb,
+            "Int", 3,
+            "Ptr", wrongTarget,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        for handle in [rgbaOut, rgbOut, wrongTarget, rgbTarget, rgba, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image filter mode matches Pillow RGB RGBA and _into", PillowCTestImageFilterModeMatchesPillowRgbRgbaAndInto)
 
 PillowCTestImageTransformAffineNearestMatchesPillow(*) {
     source := PillowCCreateImageMode(3, 2, 1)

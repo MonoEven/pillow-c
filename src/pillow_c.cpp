@@ -3601,6 +3601,74 @@ int filter_rank_image_into(const PillowCImage* source, int size, int rank, Pillo
     return PILLOW_C_OK;
 }
 
+int filter_mode_image_into(const PillowCImage* source, int size, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!image_shape_matches(target, source)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    std::vector<std::uint8_t> source_snapshot;
+    const std::uint8_t* source_data = source->pixels.data();
+    if (source == target) {
+        source_snapshot = source->pixels;
+        source_data = source_snapshot.data();
+    }
+
+    const int radius = size / 2;
+    for (int y = 0; y < source->height; ++y) {
+        for (int x = 0; x < source->width; ++x) {
+            const std::size_t dst_offset =
+                static_cast<std::size_t>(y) * target->stride +
+                static_cast<std::size_t>(x) * target->channels;
+            for (int channel = 0; channel < source->channels; ++channel) {
+                int histogram[256];
+                std::fill(histogram, histogram + 256, 0);
+
+                if (radius >= 0) {
+                    const int y0 = clamp_int(y - radius, 0, source->height - 1);
+                    const int y1 = clamp_int(y + radius, 0, source->height - 1);
+                    const int x0 = clamp_int(x - radius, 0, source->width - 1);
+                    const int x1 = clamp_int(x + radius, 0, source->width - 1);
+                    for (int yy = y0; yy <= y1; ++yy) {
+                        const std::size_t src_row = static_cast<std::size_t>(yy) * source->stride;
+                        for (int xx = x0; xx <= x1; ++xx) {
+                            const std::size_t src_offset =
+                                src_row +
+                                static_cast<std::size_t>(xx) * source->channels +
+                                static_cast<std::size_t>(channel);
+                            ++histogram[source_data[src_offset]];
+                        }
+                    }
+                }
+
+                int max_pixel = 0;
+                int max_count = histogram[0];
+                for (int value = 1; value < 256; ++value) {
+                    if (histogram[value] > max_count) {
+                        max_count = histogram[value];
+                        max_pixel = value;
+                    }
+                }
+
+                const std::size_t original_offset =
+                    static_cast<std::size_t>(y) * source->stride +
+                    static_cast<std::size_t>(x) * source->channels +
+                    static_cast<std::size_t>(channel);
+                target->pixels[dst_offset + static_cast<std::size_t>(channel)] =
+                    max_count > 2 ? static_cast<std::uint8_t>(max_pixel) : source_data[original_offset];
+            }
+        }
+    }
+
+    return PILLOW_C_OK;
+}
+
 int resize_image_box_into(
     const PillowCImage* source,
     int out_width,
@@ -4993,6 +5061,14 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_rank_into(
     PillowCImage* target)
 {
     return filter_rank_image_into(source, size, rank, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_mode_into(
+    const PillowCImage* source,
+    int size,
+    PillowCImage* target)
+{
+    return filter_mode_image_into(source, size, target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_transform_affine_into(
@@ -6563,6 +6639,36 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_rank(
             source->stride,
             std::vector<std::uint8_t>(source->pixels.size())};
         const int status = filter_rank_image_into(source, size, rank, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_mode(
+    const PillowCImage* source,
+    int size,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            source->mode,
+            source->channels,
+            source->stride,
+            std::vector<std::uint8_t>(source->pixels.size())};
+        const int status = filter_mode_image_into(source, size, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

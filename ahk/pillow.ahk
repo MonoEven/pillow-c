@@ -714,6 +714,30 @@ class Pillow {
             return Pillow.ImageFilter.RankFilter(size, size * size - 1, "Max")
         }
 
+        class ModeFilter {
+            __New(size := 3) {
+                if !(size is Integer)
+                    throw Error("Pillow.ImageFilter.ModeFilter size must be an integer", -1)
+                this.Name := "Mode"
+                this.Size := size
+            }
+
+            Apply(image) {
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("Pillow.ImageFilter.ModeFilter expects a Pillow.Image", -1)
+
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_filter_mode",
+                    "Ptr", image.RequireHandle(),
+                    "Int", this.Size,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return Pillow.WrapImageHandle(outHandle)
+            }
+        }
+
         static BLUR() {
             return Pillow.ImageFilter.BuiltinKernel("Blur", [5, 5], 16, 0, [
                 1, 1, 1, 1, 1,

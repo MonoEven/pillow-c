@@ -580,6 +580,125 @@ PillowTestImageFilterRankFiltersRejectInvalidArguments(*) {
 
 AhkTest.Test("Pillow ImageFilter rank filters reject invalid arguments", PillowTestImageFilterRankFiltersRejectInvalidArguments)
 
+PillowTestImageFilterModeFilterUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [3, 3], PillowTestBuffer([
+        0, 0, 0,
+        0, 0, 0,
+        1, 1, 1,
+    ]))
+    outputs := []
+    try {
+        cases := [
+            { Filter: Pillow.ImageFilter.ModeFilter(1), Name: "Mode", Bytes: [
+                0, 0, 0,
+                0, 0, 0,
+                1, 1, 1,
+            ] },
+            { Filter: Pillow.ImageFilter.ModeFilter(2), Name: "Mode", Bytes: [
+                0, 0, 0,
+                0, 0, 0,
+                1, 0, 1,
+            ] },
+            { Filter: Pillow.ImageFilter.ModeFilter(4), Name: "Mode", Bytes: [
+                0, 0, 0,
+                0, 0, 0,
+                0, 0, 0,
+            ] },
+        ]
+
+        for item in cases {
+            AhkTest.AssertEqual(item.Name, item.Filter.Name)
+            out := source.Filter(item.Filter)
+            outputs.Push(out)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(out.ToBytes()))
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter ModeFilter uses native path", PillowTestImageFilterModeFilterUsesNativePath)
+
+PillowTestImageFilterModeFilterSupportsRgbRgba(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [3, 3], PillowTestBuffer([
+        0, 10, 200, 0, 20, 200, 0, 30, 100,
+        0, 40, 200, 9, 50, 100, 9, 60, 100,
+        1, 70, 200, 1, 80, 100, 1, 90, 100,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [3, 3], PillowTestBuffer([
+        0, 10, 200, 1, 0, 20, 200, 2, 0, 30, 100, 3,
+        0, 40, 200, 4, 9, 50, 100, 5, 9, 60, 100, 6,
+        1, 70, 200, 7, 1, 80, 100, 8, 1, 90, 100, 9,
+    ]))
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        rgbOut := rgb.Filter(Pillow.ImageFilter.ModeFilter(3))
+        rgbaOut := rgba.Filter(Pillow.ImageFilter.ModeFilter(3))
+        AhkTest.AssertEqual([
+            0, 10, 200, 0, 20, 100, 0, 30, 100,
+            0, 40, 200, 0, 50, 100, 9, 60, 100,
+            1, 70, 200, 1, 80, 100, 1, 90, 100,
+        ], PillowTestBufferToArray(rgbOut.ToBytes()))
+        AhkTest.AssertEqual([
+            0, 10, 200, 1, 0, 20, 100, 2, 0, 30, 100, 3,
+            0, 40, 200, 4, 0, 50, 100, 5, 9, 60, 100, 6,
+            1, 70, 200, 7, 1, 80, 100, 8, 1, 90, 100, 9,
+        ], PillowTestBufferToArray(rgbaOut.ToBytes()))
+    } finally {
+        for image in [rgbaOut, rgbOut, rgba, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter ModeFilter supports RGB and RGBA", PillowTestImageFilterModeFilterSupportsRgbRgba)
+
+PillowTestImageFilterModeFilterKeepsSparseModesAndTies(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    threshold := Pillow.Image.FromBytes("L", [3, 3], PillowTestBuffer([
+        1, 1, 2,
+        2, 3, 4,
+        5, 6, 7,
+    ]))
+    tie := Pillow.Image.FromBytes("L", [3, 3], PillowTestBuffer([
+        1, 1, 1,
+        2, 2, 2,
+        3, 4, 5,
+    ]))
+    thresholdOut := 0
+    tieOut := 0
+    try {
+        thresholdOut := threshold.Filter(Pillow.ImageFilter.ModeFilter(3))
+        tieOut := tie.Filter(Pillow.ImageFilter.ModeFilter(3))
+
+        AhkTest.AssertEqual([
+            1, 1, 2,
+            2, 3, 4,
+            5, 6, 7,
+        ], PillowTestBufferToArray(thresholdOut.ToBytes()))
+        AhkTest.AssertEqual([
+            1, 1, 1,
+            2, 1, 2,
+            3, 2, 5,
+        ], PillowTestBufferToArray(tieOut.ToBytes()))
+    } finally {
+        for image in [tieOut, thresholdOut, tie, threshold] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter ModeFilter keeps sparse modes and ties", PillowTestImageFilterModeFilterKeepsSparseModesAndTies)
+
 PillowTestImageTransformAffineUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
