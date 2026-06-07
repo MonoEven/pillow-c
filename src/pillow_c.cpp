@@ -502,6 +502,84 @@ int solarize_image_into(const PillowCImage* source, double threshold, PillowCIma
     return apply_imageops_lut_into(source, lut, target);
 }
 
+int histogram_image(const PillowCImage* source, std::uint64_t* out_histogram, std::size_t out_count);
+
+int build_equalize_lut(const PillowCImage* source, std::vector<std::uint8_t>* out_lut)
+{
+    if (!source || !out_lut) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!supports_imageops_lut(source)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::vector<std::uint64_t> histogram(static_cast<std::size_t>(source->channels) * 256u);
+    int status = histogram_image(source, histogram.data(), histogram.size());
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+
+    out_lut->assign(static_cast<std::size_t>(source->channels) * 256u, 0);
+    for (int channel = 0; channel < source->channels; ++channel) {
+        const std::uint64_t* h = histogram.data() + static_cast<std::size_t>(channel) * 256u;
+        std::uint64_t nonzero_count = 0;
+        std::uint64_t total = 0;
+        std::uint64_t last_nonzero = 0;
+        for (int ix = 0; ix < 256; ++ix) {
+            if (h[ix] != 0) {
+                ++nonzero_count;
+                total += h[ix];
+                last_nonzero = h[ix];
+            }
+        }
+
+        std::uint8_t* lut = out_lut->data() + static_cast<std::size_t>(channel) * 256u;
+        if (nonzero_count <= 1) {
+            for (int ix = 0; ix < 256; ++ix) {
+                lut[ix] = static_cast<std::uint8_t>(ix);
+            }
+            continue;
+        }
+
+        const std::uint64_t step = (total - last_nonzero) / 255u;
+        if (step == 0) {
+            for (int ix = 0; ix < 256; ++ix) {
+                lut[ix] = static_cast<std::uint8_t>(ix);
+            }
+            continue;
+        }
+
+        std::uint64_t n = step / 2u;
+        for (int ix = 0; ix < 256; ++ix) {
+            lut[ix] = clip_u8_int(static_cast<int>(n / step));
+            n += h[ix];
+        }
+    }
+
+    return PILLOW_C_OK;
+}
+
+int equalize_image_into(const PillowCImage* source, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!image_shape_matches(target, source)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    try {
+        std::vector<std::uint8_t> lut;
+        const int status = build_equalize_lut(source, &lut);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        return apply_point_lut_into(source, lut.data(), lut.size(), target);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 int copy_channel_into(const PillowCImage* source, int channel_index, PillowCImage* target)
 {
     if (!source || !target) {
@@ -1766,6 +1844,13 @@ extern "C" __declspec(dllexport) int pillow_c_image_solarize_into(
     return solarize_image_into(source, threshold, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_equalize_into(
+    const PillowCImage* source,
+    PillowCImage* target)
+{
+    return equalize_image_into(source, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_autocontrast_into(
     const PillowCImage* source,
     double low_cutoff,
@@ -2313,6 +2398,32 @@ extern "C" __declspec(dllexport) int pillow_c_image_solarize(
     try {
         auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
         const int status = solarize_image_into(source, threshold, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_equalize(
+    const PillowCImage* source,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!supports_imageops_lut(source)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
+        const int status = equalize_image_into(source, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

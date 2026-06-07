@@ -438,6 +438,29 @@ PillowCImageSolarizeInto(sourceHandle, threshold, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageEqualize(sourceHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_equalize",
+        "Ptr", sourceHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageEqualizeInto(sourceHandle, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_equalize_into",
+        "Ptr", sourceHandle,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageGetChannel(sourceHandle, channelIndex) {
     outHandle := 0
     status := DllCall(
@@ -1251,6 +1274,142 @@ PillowCTestImageOpsLutTransformsRejectUnsupportedModes(*) {
 }
 
 AhkTest.Test("pillow_c image ImageOps LUT transforms reject modes Pillow _lut does not support", PillowCTestImageOpsLutTransformsRejectUnsupportedModes)
+
+PillowCTestImageEqualizeMatchesPillowLAndRgb(*) {
+    l := PillowCCreateImageMode(400, 1, 1)
+    rgb := PillowCCreateImageMode(400, 1, 3)
+    lOut := 0
+    rgbOut := 0
+    try {
+        lValues := []
+        rgbValues := []
+        loop 400 {
+            index := A_Index - 1
+            if index < 300 {
+                lValues.Push(0)
+                r := 0
+                g := 10
+            } else if index < 350 {
+                lValues.Push(128)
+                r := 128
+                g := 200
+            } else {
+                lValues.Push(255)
+                r := 255
+                g := 200
+            }
+
+            b := index < 100 ? 0 : index < 200 ? 64 : index < 300 ? 128 : 255
+            rgbValues.Push(r)
+            rgbValues.Push(g)
+            rgbValues.Push(b)
+        }
+        PillowCImageSetBytes(l, lValues)
+        PillowCImageSetBytes(rgb, rgbValues)
+
+        lOut := PillowCImageEqualize(l)
+        rgbOut := PillowCImageEqualize(rgb)
+
+        AhkTest.AssertEqual(0, PillowCImageToArray(lOut, 400)[1])
+        AhkTest.AssertEqual(0, PillowCImageToArray(lOut, 400)[300])
+        AhkTest.AssertEqual(255, PillowCImageToArray(lOut, 400)[301])
+        AhkTest.AssertEqual(255, PillowCImageToArray(lOut, 400)[400])
+
+        rgbData := PillowCImageToArray(rgbOut, 1200)
+        AhkTest.AssertEqual([0, 0, 0], [rgbData[1], rgbData[2], rgbData[3]])
+        AhkTest.AssertEqual([0, 0, 100], [rgbData[301], rgbData[302], rgbData[303]])
+        AhkTest.AssertEqual([0, 0, 200], [rgbData[601], rgbData[602], rgbData[603]])
+        AhkTest.AssertEqual([255, 255, 255], [rgbData[901], rgbData[902], rgbData[903]])
+        AhkTest.AssertEqual([255, 255, 255], [rgbData[1198], rgbData[1199], rgbData[1200]])
+    } finally {
+        if rgbOut
+            PillowCFreeImage(rgbOut)
+        if lOut
+            PillowCFreeImage(lOut)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image equalize matches Pillow for L and RGB histograms", PillowCTestImageEqualizeMatchesPillowLAndRgb)
+
+PillowCTestImageEqualizeIntoReusesTargetHandleStorage(*) {
+    source := PillowCCreateImageMode(400, 1, 1)
+    target := PillowCCreateImageMode(400, 1, 1)
+    try {
+        values := []
+        loop 400 {
+            index := A_Index - 1
+            values.Push(index < 300 ? 10 : 200)
+        }
+        PillowCImageSetBytes(source, values)
+
+        before := PillowCImageData(target).Ptr
+        PillowCImageEqualizeInto(source, target)
+        after := PillowCImageData(target).Ptr
+        AhkTest.AssertEqual(before, after)
+
+        data := PillowCImageToArray(target, 400)
+        AhkTest.AssertEqual(0, data[1])
+        AhkTest.AssertEqual(0, data[300])
+        AhkTest.AssertEqual(255, data[301])
+        AhkTest.AssertEqual(255, data[400])
+    } finally {
+        PillowCFreeImage(target)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image equalize_into reuses target handle storage", PillowCTestImageEqualizeIntoReusesTargetHandleStorage)
+
+PillowCTestImageEqualizeKeepsFlatAndEmptyImagesIdentity(*) {
+    flat := PillowCCreateImageMode(4, 1, 1)
+    empty := 0
+    flatOut := 0
+    emptyOut := 0
+    try {
+        PillowCImageSetBytes(flat, [10, 10, 10, 10])
+        empty := PillowCImageCrop(flat, 0, 0, 0, 1)
+        flatOut := PillowCImageEqualize(flat)
+        emptyOut := PillowCImageEqualize(empty)
+
+        AhkTest.AssertEqual([10, 10, 10, 10], PillowCImageToArray(flatOut, 4))
+        AhkTest.AssertEqual([], PillowCImageToArray(emptyOut, 0))
+        AhkTest.AssertEqual([0, 1], [PillowCImageInt(emptyOut, "pillow_c_image_width"), PillowCImageInt(emptyOut, "pillow_c_image_height")])
+    } finally {
+        if emptyOut
+            PillowCFreeImage(emptyOut)
+        if flatOut
+            PillowCFreeImage(flatOut)
+        if empty
+            PillowCFreeImage(empty)
+        PillowCFreeImage(flat)
+    }
+}
+
+AhkTest.Test("pillow_c image equalize keeps flat and empty images as Pillow identity", PillowCTestImageEqualizeKeepsFlatAndEmptyImagesIdentity)
+
+PillowCTestImageEqualizeRejectsUnsupportedModes(*) {
+    rgba := PillowCCreateImageMode(1, 1, 4)
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(rgba, [1, 2, 3, 4])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_equalize",
+            "Ptr", rgba,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(rgba)
+    }
+}
+
+AhkTest.Test("pillow_c image equalize rejects modes Pillow _lut does not support", PillowCTestImageEqualizeRejectsUnsupportedModes)
 
 PillowCTestImageHistogramMatchesPillowBands(*) {
     l := PillowCCreateImageMode(4, 1, 1)

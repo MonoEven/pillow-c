@@ -498,6 +498,78 @@ PillowTestImageOpsLutTransformsRejectBadWrapperParameters(*) {
 
 AhkTest.Test("Pillow ImageOps LUT transforms reject invalid wrapper parameters", PillowTestImageOpsLutTransformsRejectBadWrapperParameters)
 
+PillowTestImageOpsEqualizeUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    lValues := []
+    rgbValues := []
+    loop 400 {
+        index := A_Index - 1
+        if index < 300 {
+            lValues.Push(0)
+            r := 0
+            g := 10
+        } else if index < 350 {
+            lValues.Push(128)
+            r := 128
+            g := 200
+        } else {
+            lValues.Push(255)
+            r := 255
+            g := 200
+        }
+
+        b := index < 100 ? 0 : index < 200 ? 64 : index < 300 ? 128 : 255
+        rgbValues.Push(r)
+        rgbValues.Push(g)
+        rgbValues.Push(b)
+    }
+    l := Pillow.Image.FromBytes("L", [400, 1], PillowTestBuffer(lValues))
+    rgb := Pillow.Image.FromBytes("RGB", [400, 1], PillowTestBuffer(rgbValues))
+    lOut := 0
+    rgbOut := 0
+    try {
+        lOut := Pillow.ImageOps.Equalize(l)
+        rgbOut := Pillow.ImageOps.Equalize(rgb)
+
+        lData := PillowTestBufferToArray(lOut.ToBytes())
+        rgbData := PillowTestBufferToArray(rgbOut.ToBytes())
+        AhkTest.AssertEqual(0, lData[1])
+        AhkTest.AssertEqual(0, lData[300])
+        AhkTest.AssertEqual(255, lData[301])
+        AhkTest.AssertEqual(255, lData[400])
+        AhkTest.AssertEqual([0, 0, 0], [rgbData[1], rgbData[2], rgbData[3]])
+        AhkTest.AssertEqual([0, 0, 100], [rgbData[301], rgbData[302], rgbData[303]])
+        AhkTest.AssertEqual([0, 0, 200], [rgbData[601], rgbData[602], rgbData[603]])
+        AhkTest.AssertEqual([255, 255, 255], [rgbData[901], rgbData[902], rgbData[903]])
+    } finally {
+        if IsObject(rgbOut)
+            rgbOut.Close()
+        if IsObject(lOut)
+            lOut.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Equalize maps L and RGB histograms through native handles", PillowTestImageOpsEqualizeUsesNativeOperation)
+
+PillowTestImageOpsEqualizeRejectsUnsupportedMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgba := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
+    try {
+        try {
+            Pillow.ImageOps.Equalize(rgba)
+            AhkTest.Fail("Expected Equalize to reject RGBA")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+    } finally {
+        rgba.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Equalize rejects modes Pillow _lut does not support", PillowTestImageOpsEqualizeRejectsUnsupportedMode)
+
 PillowTestImageSplitUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([1, 2, 3, 4, 10, 20, 30, 40]))

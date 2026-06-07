@@ -61,6 +61,10 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static Equalize(image) {
+            return Pillow.ImageOps.NativeUnaryImageOp(image, "pillow_c_image_equalize")
+        }
+
         static Autocontrast(image, cutoff := 0, ignore := unset) {
             cuts := Pillow.ImageOps.CutoffPair(cutoff)
             ignorePtr := 0
