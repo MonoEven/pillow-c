@@ -932,6 +932,129 @@ class Pillow {
         }
     }
 
+    class ImageEnhance {
+        class _Enhance {
+            Enhance(factor) {
+                if !(factor is Number)
+                    throw Error("Pillow.ImageEnhance factor must be numeric", -1)
+                return Pillow.Image.Blend(this.Degenerate, this.Image, factor)
+            }
+        }
+
+        class Color extends Pillow.ImageEnhance._Enhance {
+            __New(image) {
+                Pillow.ImageEnhance.RequireImage(image, "Color")
+                this.Image := image
+                if image.Mode = "L" {
+                    this.Degenerate := image.Copy()
+                } else if image.Mode = "RGB" {
+                    this.Degenerate := image.Convert("L").Convert("RGB")
+                } else {
+                    throw Error("Pillow.ImageEnhance.Color currently supports L and RGB", -1)
+                }
+            }
+        }
+
+        class Contrast extends Pillow.ImageEnhance._Enhance {
+            __New(image) {
+                Pillow.ImageEnhance.RequireImage(image, "Contrast")
+                this.Image := image
+                gray := image.Mode = "L" ? image.Copy() : image.Convert("L")
+                try {
+                    mean := Pillow.ImageEnhance.GrayscaleMeanRounded(gray)
+                    degenerate := Pillow.Image.New("L", image.Size, mean)
+                    if image.Mode != "L" {
+                        converted := degenerate.Convert(image.Mode)
+                        degenerate.Close()
+                        degenerate := converted
+                    }
+                    if image.Mode = "RGBA" {
+                        alpha := image.GetChannel("A")
+                        try {
+                            withAlpha := degenerate.PutAlpha(alpha)
+                            degenerate.Close()
+                            degenerate := withAlpha
+                        } finally {
+                            alpha.Close()
+                        }
+                    }
+                    this.Degenerate := degenerate
+                } finally {
+                    gray.Close()
+                }
+            }
+        }
+
+        class Brightness extends Pillow.ImageEnhance._Enhance {
+            __New(image) {
+                Pillow.ImageEnhance.RequireImage(image, "Brightness")
+                this.Image := image
+                if image.Mode = "RGBA" {
+                    base := Pillow.Image.New("RGB", image.Size, [0, 0, 0])
+                    try {
+                        alpha := image.GetChannel("A")
+                        try {
+                            this.Degenerate := base.PutAlpha(alpha)
+                        } finally {
+                            alpha.Close()
+                        }
+                    } finally {
+                        base.Close()
+                    }
+                } else {
+                    this.Degenerate := Pillow.Image.New(image.Mode, image.Size, Pillow.ImageEnhance.ZeroColor(image))
+                }
+            }
+        }
+
+        class Sharpness extends Pillow.ImageEnhance._Enhance {
+            __New(image) {
+                Pillow.ImageEnhance.RequireImage(image, "Sharpness")
+                this.Image := image
+                degenerate := image.Filter(Pillow.ImageFilter.SMOOTH())
+                if image.Mode = "RGBA" {
+                    alpha := image.GetChannel("A")
+                    try {
+                        withAlpha := degenerate.PutAlpha(alpha)
+                        degenerate.Close()
+                        degenerate := withAlpha
+                    } finally {
+                        alpha.Close()
+                    }
+                }
+                this.Degenerate := degenerate
+            }
+        }
+
+        static RequireImage(image, operationName) {
+            if !(IsObject(image) && image is Pillow.Image)
+                throw Error("Pillow.ImageEnhance." operationName " expects a Pillow.Image", -1)
+        }
+
+        static GrayscaleMeanRounded(image) {
+            histogram := image.Histogram()
+            total := 0
+            weighted := 0
+            for index, count in histogram {
+                value := index - 1
+                total += count
+                weighted += value * count
+            }
+            if total = 0
+                return 0
+            return Floor(weighted / total + 0.5)
+        }
+
+        static ZeroColor(image) {
+            if image.Channels = 1
+                return 0
+            values := []
+            loop image.Channels
+                values.Push(0)
+            return values
+        }
+    }
+
     static Configure(options := unset) {
         if IsSet(options) && options.HasOwnProp("DllPath")
             Pillow.DllPath := options.DllPath

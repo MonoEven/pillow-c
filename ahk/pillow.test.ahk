@@ -2805,6 +2805,121 @@ PillowTestImageCompositeRejectsUnsupportedMask(*) {
 
 AhkTest.Test("Pillow Image.Composite rejects unsupported mask modes", PillowTestImageCompositeRejectsUnsupportedMask)
 
+PillowTestImageEnhanceBrightnessContrastColorUseNativeComposition(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([
+        10, 20, 30, 80, 40, 10, 130, 140, 150,
+        200, 190, 180, 20, 120, 220, 250, 240, 10,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [3, 2], PillowTestBuffer([
+        10, 20, 30, 40, 80, 40, 10, 70, 130, 140, 150, 100,
+        200, 190, 180, 130, 20, 120, 220, 160, 250, 240, 10, 190,
+    ]))
+    outputs := []
+    try {
+        cases := [
+            { Out: Pillow.ImageEnhance.Brightness(rgb).Enhance(0.5), Bytes: [
+                5, 10, 15, 40, 20, 5, 65, 70, 75,
+                100, 95, 90, 10, 60, 110, 125, 120, 5,
+            ] },
+            { Out: Pillow.ImageEnhance.Brightness(rgba).Enhance(2), Bytes: [
+                20, 40, 60, 40, 160, 80, 20, 70, 255, 255, 255, 100,
+                255, 255, 255, 130, 40, 240, 255, 160, 255, 255, 20, 190,
+            ] },
+            { Out: Pillow.ImageEnhance.Contrast(rgb).Enhance(0), Bytes: [
+                119, 119, 119, 119, 119, 119, 119, 119, 119,
+                119, 119, 119, 119, 119, 119, 119, 119, 119,
+            ] },
+            { Out: Pillow.ImageEnhance.Contrast(rgba).Enhance(2), Bytes: [
+                0, 0, 0, 40, 41, 0, 0, 70, 141, 161, 181, 100,
+                255, 255, 241, 130, 0, 121, 255, 160, 255, 255, 0, 190,
+            ] },
+            { Out: Pillow.ImageEnhance.Color(rgb).Enhance(0), Bytes: [
+                18, 18, 18, 49, 49, 49, 138, 138, 138,
+                192, 192, 192, 102, 102, 102, 217, 217, 217,
+            ] },
+            { Out: Pillow.ImageEnhance.Color(rgb).Enhance(-0.5), Bytes: [
+                22, 17, 12, 33, 53, 68, 142, 137, 132,
+                188, 193, 198, 143, 93, 43, 200, 205, 255,
+            ] },
+        ]
+        for item in cases {
+            outputs.Push(item.Out)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(item.Out.ToBytes()))
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        rgba.Close()
+        rgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageEnhance brightness contrast and color use native composition", PillowTestImageEnhanceBrightnessContrastColorUseNativeComposition)
+
+PillowTestImageEnhanceSharpnessUsesNativeFilterComposition(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [5, 5], PillowTestBuffer([
+        0, 20, 40, 60, 80,
+        30, 80, 120, 160, 200,
+        10, 70, 180, 220, 240,
+        50, 90, 130, 170, 210,
+        20, 60, 100, 140, 180,
+    ]))
+    smooth := 0
+    sharp := 0
+    try {
+        smooth := Pillow.ImageEnhance.Sharpness(source).Enhance(0)
+        sharp := Pillow.ImageEnhance.Sharpness(source).Enhance(2)
+        AhkTest.AssertEqual([
+            0, 20, 40, 60, 80,
+            30, 67, 110, 149, 200,
+            10, 80, 149, 193, 240,
+            50, 82, 129, 173, 210,
+            20, 60, 100, 140, 180,
+        ], PillowTestBufferToArray(smooth.ToBytes()))
+        AhkTest.AssertEqual([
+            0, 20, 40, 60, 80,
+            30, 93, 130, 171, 200,
+            10, 60, 211, 247, 240,
+            50, 98, 131, 167, 210,
+            20, 60, 100, 140, 180,
+        ], PillowTestBufferToArray(sharp.ToBytes()))
+    } finally {
+        for image in [sharp, smooth, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageEnhance sharpness uses native filter composition", PillowTestImageEnhanceSharpnessUsesNativeFilterComposition)
+
+PillowTestImageEnhanceRejectsInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.New("RGB", [1, 1], [10, 20, 30])
+    try {
+        try {
+            Pillow.ImageEnhance.Brightness("x")
+            AhkTest.Fail("Expected ImageEnhance constructor to reject non-image")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "Pillow.Image") > 0)
+        }
+        try {
+            Pillow.ImageEnhance.Brightness(source).Enhance("x")
+            AhkTest.Fail("Expected ImageEnhance.Enhance to reject non-numeric factor")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "factor") > 0)
+        }
+    } finally {
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageEnhance rejects invalid arguments", PillowTestImageEnhanceRejectsInvalidArguments)
+
 PillowTestImageChopsBlendAndCompositeUseNativeAliases(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 100, 110, 120]))
