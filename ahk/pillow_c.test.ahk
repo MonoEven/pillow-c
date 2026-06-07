@@ -1252,6 +1252,33 @@ PillowCImageFilterModeInto(sourceHandle, size, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageFilterBoxBlur(sourceHandle, xRadius, yRadius) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_filter_box_blur",
+        "Ptr", sourceHandle,
+        "Double", xRadius,
+        "Double", yRadius,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageFilterBoxBlurInto(sourceHandle, xRadius, yRadius, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_filter_box_blur_into",
+        "Ptr", sourceHandle,
+        "Double", xRadius,
+        "Double", yRadius,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCAffineMatrix(values) {
     buf := Buffer(6 * 8, 0)
     for index, value in values
@@ -5903,6 +5930,129 @@ PillowCTestImageFilterModeMatchesPillowRgbRgbaAndInto(*) {
 }
 
 AhkTest.Test("pillow_c image filter mode matches Pillow RGB RGBA and _into", PillowCTestImageFilterModeMatchesPillowRgbRgbaAndInto)
+
+PillowCTestImageFilterBoxBlurMatchesPillowLRadiusVariants(*) {
+    source := PillowCCreateImageMode(4, 3, 1)
+    radius0 := 0
+    r05 := 0
+    r1 := 0
+    r125 := 0
+    horizontal := 0
+    vertical := 0
+    mixed := 0
+    try {
+        PillowCImageSetBytes(source, [
+            0, 30, 80, 120,
+            160, 200, 220, 255,
+            10, 40, 90, 140,
+        ])
+
+        radius0 := PillowCImageFilterBoxBlur(source, 0, 0)
+        r05 := PillowCImageFilterBoxBlur(source, 0.5, 0.5)
+        r1 := PillowCImageFilterBoxBlur(source, 1, 1)
+        r125 := PillowCImageFilterBoxBlur(source, 1.25, 1.25)
+        horizontal := PillowCImageFilterBoxBlur(source, 1, 0)
+        vertical := PillowCImageFilterBoxBlur(source, 0, 1)
+        mixed := PillowCImageFilterBoxBlur(source, 1.5, 0.5)
+
+        AhkTest.AssertEqual([
+            0, 30, 80, 120,
+            160, 200, 220, 255,
+            10, 40, 90, 140,
+        ], PillowCImageToArray(radius0, 12))
+        AhkTest.AssertEqual([49, 75, 115, 144, 92, 118, 154, 183, 56, 83, 124, 158], PillowCImageToArray(r05, 12))
+        AhkTest.AssertEqual([64, 89, 126, 152, 68, 92, 131, 158, 71, 96, 135, 163], PillowCImageToArray(r1, 12))
+        AhkTest.AssertEqual([61, 85, 117, 143, 64, 88, 121, 148, 67, 91, 125, 153], PillowCImageToArray(r125, 12))
+        AhkTest.AssertEqual([10, 37, 77, 107, 173, 193, 225, 243, 20, 47, 90, 123], PillowCImageToArray(horizontal, 12))
+        AhkTest.AssertEqual([53, 87, 127, 165, 57, 90, 130, 172, 60, 93, 133, 178], PillowCImageToArray(vertical, 12))
+        AhkTest.AssertEqual([58, 82, 110, 134, 101, 123, 150, 173, 66, 90, 120, 146], PillowCImageToArray(mixed, 12))
+    } finally {
+        for handle in [mixed, vertical, horizontal, r125, r1, r05, radius0, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image filter box blur matches Pillow L radius variants", PillowCTestImageFilterBoxBlurMatchesPillowLRadiusVariants)
+
+PillowCTestImageFilterBoxBlurMatchesPillowRgbRgbaAndInto(*) {
+    rgb := PillowCCreateImageMode(4, 2, 3)
+    rgba := PillowCCreateImageMode(3, 2, 4)
+    rgbTarget := PillowCCreateImageMode(4, 2, 3)
+    wrongTarget := PillowCCreateImageMode(4, 2, 1)
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(rgb, [
+            1, 2, 3, 20, 30, 40, 60, 70, 80, 100, 110, 120,
+            130, 140, 150, 160, 170, 180, 200, 210, 220, 230, 240, 250,
+        ])
+        PillowCImageSetBytes(rgba, [
+            1, 2, 3, 4, 20, 30, 40, 50, 60, 70, 80, 90,
+            100, 110, 120, 130, 140, 150, 160, 170, 200, 210, 220, 230,
+        ])
+        before := PillowCImageData(rgbTarget).Ptr
+
+        rgbOut := PillowCImageFilterBoxBlur(rgb, 1.25, 0.5)
+        rgbaOut := PillowCImageFilterBoxBlur(rgba, 1.25, 0.5)
+        PillowCImageFilterBoxBlurInto(rgb, 1.25, 0.5, rgbTarget)
+
+        AhkTest.AssertEqual(before, PillowCImageData(rgbTarget).Ptr)
+        AhkTest.AssertEqual([
+            44, 50, 55, 64, 72, 80, 93, 102, 111, 116, 126, 136,
+            111, 119, 128, 132, 141, 151, 160, 170, 180, 183, 193, 203,
+        ], PillowCImageToArray(rgbOut, 24))
+        AhkTest.AssertEqual(PillowCImageToArray(rgbOut, 24), PillowCImageToArray(rgbTarget, 24))
+        AhkTest.AssertEqual([
+            38, 44, 49, 55, 58, 65, 73, 80, 77, 87, 96, 106,
+            92, 101, 109, 118, 117, 126, 136, 145, 143, 153, 163, 173,
+        ], PillowCImageToArray(rgbaOut, 24))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_filter_box_blur_into",
+            "Ptr", rgb,
+            "Double", 1.0,
+            "Double", 1.0,
+            "Ptr", wrongTarget,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        for handle in [rgbaOut, rgbOut, wrongTarget, rgbTarget, rgba, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image filter box blur matches Pillow RGB RGBA and _into", PillowCTestImageFilterBoxBlurMatchesPillowRgbRgbaAndInto)
+
+PillowCTestImageFilterBoxBlurRejectsInvalidRadius(*) {
+    source := PillowCCreateImageMode(1, 1, 1)
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(source, [5])
+        for radius in [-1.0, -0.5] {
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_filter_box_blur",
+                "Ptr", source,
+                "Double", radius,
+                "Double", 0.0,
+                "Ptr*", &outHandle,
+                "Int"
+            )
+            AhkTest.AssertEqual(-3, status)
+            AhkTest.AssertEqual(0, outHandle)
+        }
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image filter box blur rejects invalid radius", PillowCTestImageFilterBoxBlurRejectsInvalidRadius)
 
 PillowCTestImageTransformAffineNearestMatchesPillow(*) {
     source := PillowCCreateImageMode(3, 2, 1)

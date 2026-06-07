@@ -738,6 +738,34 @@ class Pillow {
             }
         }
 
+        class BoxBlur {
+            __New(radius) {
+                xy := Pillow.ImageFilter.RadiusPair(radius, "BoxBlur")
+                if xy[1] < 0 || xy[2] < 0
+                    throw Error("radius must be >= 0", -1)
+                this.Name := "BoxBlur"
+                this.Radius := radius
+                this.XRadius := xy[1]
+                this.YRadius := xy[2]
+            }
+
+            Apply(image) {
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("Pillow.ImageFilter.BoxBlur expects a Pillow.Image", -1)
+
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_filter_box_blur",
+                    "Ptr", image.RequireHandle(),
+                    "Double", this.XRadius,
+                    "Double", this.YRadius,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return Pillow.WrapImageHandle(outHandle)
+            }
+        }
+
         static BLUR() {
             return Pillow.ImageFilter.BuiltinKernel("Blur", [5, 5], 16, 0, [
                 1, 1, 1, 1, 1,
@@ -830,6 +858,19 @@ class Pillow {
                 total += value
             }
             return total
+        }
+
+        static RadiusPair(radius, operationName) {
+            if IsObject(radius) {
+                if radius.Length != 2
+                    throw Error("Pillow.ImageFilter." operationName " radius expects a number or [x, y]", -1)
+                if !(radius[1] is Number) || !(radius[2] is Number)
+                    throw Error("Pillow.ImageFilter." operationName " radius values must be numeric", -1)
+                return [radius[1], radius[2]]
+            }
+            if !(radius is Number)
+                throw Error("Pillow.ImageFilter." operationName " radius must be numeric", -1)
+            return [radius, radius]
         }
     }
 

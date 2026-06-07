@@ -699,6 +699,107 @@ PillowTestImageFilterModeFilterKeepsSparseModesAndTies(*) {
 
 AhkTest.Test("Pillow ImageFilter ModeFilter keeps sparse modes and ties", PillowTestImageFilterModeFilterKeepsSparseModesAndTies)
 
+PillowTestImageFilterBoxBlurUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
+        0, 30, 80, 120,
+        160, 200, 220, 255,
+        10, 40, 90, 140,
+    ]))
+    outputs := []
+    try {
+        cases := [
+            { Filter: Pillow.ImageFilter.BoxBlur(0), Name: "BoxBlur", Bytes: [
+                0, 30, 80, 120,
+                160, 200, 220, 255,
+                10, 40, 90, 140,
+            ] },
+            { Filter: Pillow.ImageFilter.BoxBlur(0.5), Name: "BoxBlur", Bytes: [
+                49, 75, 115, 144,
+                92, 118, 154, 183,
+                56, 83, 124, 158,
+            ] },
+            { Filter: Pillow.ImageFilter.BoxBlur(1), Name: "BoxBlur", Bytes: [
+                64, 89, 126, 152,
+                68, 92, 131, 158,
+                71, 96, 135, 163,
+            ] },
+            { Filter: Pillow.ImageFilter.BoxBlur([1.5, 0.5]), Name: "BoxBlur", Bytes: [
+                58, 82, 110, 134,
+                101, 123, 150, 173,
+                66, 90, 120, 146,
+            ] },
+        ]
+
+        for item in cases {
+            AhkTest.AssertEqual(item.Name, item.Filter.Name)
+            out := source.Filter(item.Filter)
+            outputs.Push(out)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(out.ToBytes()))
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter BoxBlur uses native path", PillowTestImageFilterBoxBlurUsesNativePath)
+
+PillowTestImageFilterBoxBlurSupportsRgbRgba(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [4, 2], PillowTestBuffer([
+        1, 2, 3, 20, 30, 40, 60, 70, 80, 100, 110, 120,
+        130, 140, 150, 160, 170, 180, 200, 210, 220, 230, 240, 250,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [3, 2], PillowTestBuffer([
+        1, 2, 3, 4, 20, 30, 40, 50, 60, 70, 80, 90,
+        100, 110, 120, 130, 140, 150, 160, 170, 200, 210, 220, 230,
+    ]))
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        rgbOut := rgb.Filter(Pillow.ImageFilter.BoxBlur([1.25, 0.5]))
+        rgbaOut := rgba.Filter(Pillow.ImageFilter.BoxBlur([1.25, 0.5]))
+        AhkTest.AssertEqual([
+            44, 50, 55, 64, 72, 80, 93, 102, 111, 116, 126, 136,
+            111, 119, 128, 132, 141, 151, 160, 170, 180, 183, 193, 203,
+        ], PillowTestBufferToArray(rgbOut.ToBytes()))
+        AhkTest.AssertEqual([
+            38, 44, 49, 55, 58, 65, 73, 80, 77, 87, 96, 106,
+            92, 101, 109, 118, 117, 126, 136, 145, 143, 153, 163, 173,
+        ], PillowTestBufferToArray(rgbaOut.ToBytes()))
+    } finally {
+        for image in [rgbaOut, rgbOut, rgba, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter BoxBlur supports RGB and RGBA", PillowTestImageFilterBoxBlurSupportsRgbRgba)
+
+PillowTestImageFilterBoxBlurRejectsInvalidRadius(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.New("L", [1, 1])
+    try {
+        for radius in [-1, [0, -0.5], [1], [1, 2, 3]] {
+            try {
+                source.Filter(Pillow.ImageFilter.BoxBlur(radius))
+                AhkTest.Fail("Expected BoxBlur to reject invalid radius")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, "radius") > 0 || InStr(err.Message, "BoxBlur") > 0)
+            }
+        }
+    } finally {
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter BoxBlur rejects invalid radius", PillowTestImageFilterBoxBlurRejectsInvalidRadius)
+
 PillowTestImageTransformAffineUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))

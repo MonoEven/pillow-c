@@ -3669,6 +3669,265 @@ int filter_mode_image_into(const PillowCImage* source, int size, PillowCImage* t
     return PILLOW_C_OK;
 }
 
+bool valid_box_blur_radius(double radius)
+{
+    return std::isfinite(radius) &&
+           radius >= 0.0 &&
+           radius <= static_cast<double>((INT_MAX - 1) / 2);
+}
+
+inline std::uint8_t box_blur_save_u8(std::uint32_t bulk)
+{
+    return static_cast<std::uint8_t>((bulk + (1u << 23)) >> 24);
+}
+
+void box_blur_horizontal_buffer(
+    const std::uint8_t* source_data,
+    std::uint8_t* target_data,
+    int width,
+    int height,
+    int channels,
+    std::size_t stride,
+    double radius_value)
+{
+    const float float_radius = static_cast<float>(radius_value);
+    const int radius = static_cast<int>(float_radius);
+    const std::uint32_t ww = static_cast<std::uint32_t>(
+        static_cast<float>(1u << 24) / (float_radius * 2.0f + 1.0f));
+    const std::uint32_t fw = ((1u << 24) - static_cast<std::uint32_t>(radius * 2 + 1) * ww) / 2u;
+    const int last_x = width - 1;
+    const int edge_a = std::min(radius + 1, width);
+    const int edge_b = std::max(width - radius - 1, 0);
+
+    for (int y = 0; y < height; ++y) {
+        const std::size_t row = static_cast<std::size_t>(y) * stride;
+        for (int channel = 0; channel < channels; ++channel) {
+            auto sample = [&](int x) -> std::uint32_t {
+                return source_data[
+                    row +
+                    static_cast<std::size_t>(x) * channels +
+                    static_cast<std::size_t>(channel)];
+            };
+            auto save = [&](int x, std::uint32_t bulk) {
+                target_data[
+                    row +
+                    static_cast<std::size_t>(x) * channels +
+                    static_cast<std::size_t>(channel)] = box_blur_save_u8(bulk);
+            };
+
+            std::uint32_t acc = sample(0) * static_cast<std::uint32_t>(radius + 1);
+            for (int x = 0; x < edge_a - 1; ++x) {
+                acc += sample(x);
+            }
+            acc += sample(last_x) * static_cast<std::uint32_t>(radius - edge_a + 1);
+
+            if (edge_a <= edge_b) {
+                for (int x = 0; x < edge_a; ++x) {
+                    acc -= sample(0);
+                    acc += sample(x + radius);
+                    const std::uint32_t bulk = acc * ww + (sample(0) + sample(x + radius + 1)) * fw;
+                    save(x, bulk);
+                }
+                for (int x = edge_a; x < edge_b; ++x) {
+                    acc -= sample(x - radius - 1);
+                    acc += sample(x + radius);
+                    const std::uint32_t bulk =
+                        acc * ww + (sample(x - radius - 1) + sample(x + radius + 1)) * fw;
+                    save(x, bulk);
+                }
+                for (int x = edge_b; x <= last_x; ++x) {
+                    acc -= sample(x - radius - 1);
+                    acc += sample(last_x);
+                    const std::uint32_t bulk =
+                        acc * ww + (sample(x - radius - 1) + sample(last_x)) * fw;
+                    save(x, bulk);
+                }
+            } else {
+                for (int x = 0; x < edge_b; ++x) {
+                    acc -= sample(0);
+                    acc += sample(x + radius);
+                    const std::uint32_t bulk = acc * ww + (sample(0) + sample(x + radius + 1)) * fw;
+                    save(x, bulk);
+                }
+                for (int x = edge_b; x < edge_a; ++x) {
+                    acc -= sample(0);
+                    acc += sample(last_x);
+                    const std::uint32_t bulk = acc * ww + (sample(0) + sample(last_x)) * fw;
+                    save(x, bulk);
+                }
+                for (int x = edge_a; x <= last_x; ++x) {
+                    acc -= sample(x - radius - 1);
+                    acc += sample(last_x);
+                    const std::uint32_t bulk =
+                        acc * ww + (sample(x - radius - 1) + sample(last_x)) * fw;
+                    save(x, bulk);
+                }
+            }
+        }
+    }
+}
+
+void box_blur_vertical_buffer(
+    const std::uint8_t* source_data,
+    std::uint8_t* target_data,
+    int width,
+    int height,
+    int channels,
+    std::size_t stride,
+    double radius_value)
+{
+    const float float_radius = static_cast<float>(radius_value);
+    const int radius = static_cast<int>(float_radius);
+    const std::uint32_t ww = static_cast<std::uint32_t>(
+        static_cast<float>(1u << 24) / (float_radius * 2.0f + 1.0f));
+    const std::uint32_t fw = ((1u << 24) - static_cast<std::uint32_t>(radius * 2 + 1) * ww) / 2u;
+    const int last_y = height - 1;
+    const int edge_a = std::min(radius + 1, height);
+    const int edge_b = std::max(height - radius - 1, 0);
+
+    for (int x = 0; x < width; ++x) {
+        const std::size_t column = static_cast<std::size_t>(x) * channels;
+        for (int channel = 0; channel < channels; ++channel) {
+            auto sample = [&](int y) -> std::uint32_t {
+                return source_data[
+                    static_cast<std::size_t>(y) * stride +
+                    column +
+                    static_cast<std::size_t>(channel)];
+            };
+            auto save = [&](int y, std::uint32_t bulk) {
+                target_data[
+                    static_cast<std::size_t>(y) * stride +
+                    column +
+                    static_cast<std::size_t>(channel)] = box_blur_save_u8(bulk);
+            };
+
+            std::uint32_t acc = sample(0) * static_cast<std::uint32_t>(radius + 1);
+            for (int y = 0; y < edge_a - 1; ++y) {
+                acc += sample(y);
+            }
+            acc += sample(last_y) * static_cast<std::uint32_t>(radius - edge_a + 1);
+
+            if (edge_a <= edge_b) {
+                for (int y = 0; y < edge_a; ++y) {
+                    acc -= sample(0);
+                    acc += sample(y + radius);
+                    const std::uint32_t bulk = acc * ww + (sample(0) + sample(y + radius + 1)) * fw;
+                    save(y, bulk);
+                }
+                for (int y = edge_a; y < edge_b; ++y) {
+                    acc -= sample(y - radius - 1);
+                    acc += sample(y + radius);
+                    const std::uint32_t bulk =
+                        acc * ww + (sample(y - radius - 1) + sample(y + radius + 1)) * fw;
+                    save(y, bulk);
+                }
+                for (int y = edge_b; y <= last_y; ++y) {
+                    acc -= sample(y - radius - 1);
+                    acc += sample(last_y);
+                    const std::uint32_t bulk =
+                        acc * ww + (sample(y - radius - 1) + sample(last_y)) * fw;
+                    save(y, bulk);
+                }
+            } else {
+                for (int y = 0; y < edge_b; ++y) {
+                    acc -= sample(0);
+                    acc += sample(y + radius);
+                    const std::uint32_t bulk = acc * ww + (sample(0) + sample(y + radius + 1)) * fw;
+                    save(y, bulk);
+                }
+                for (int y = edge_b; y < edge_a; ++y) {
+                    acc -= sample(0);
+                    acc += sample(last_y);
+                    const std::uint32_t bulk = acc * ww + (sample(0) + sample(last_y)) * fw;
+                    save(y, bulk);
+                }
+                for (int y = edge_a; y <= last_y; ++y) {
+                    acc -= sample(y - radius - 1);
+                    acc += sample(last_y);
+                    const std::uint32_t bulk =
+                        acc * ww + (sample(y - radius - 1) + sample(last_y)) * fw;
+                    save(y, bulk);
+                }
+            }
+        }
+    }
+}
+
+int filter_box_blur_image_into(
+    const PillowCImage* source,
+    double xradius,
+    double yradius,
+    PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!image_shape_matches(target, source)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (!valid_box_blur_radius(xradius) || !valid_box_blur_radius(yradius)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    std::vector<std::uint8_t> source_snapshot;
+    const std::uint8_t* source_data = source->pixels.data();
+    if (source == target) {
+        source_snapshot = source->pixels;
+        source_data = source_snapshot.data();
+    }
+
+    if (xradius == 0.0 && yradius == 0.0) {
+        std::memcpy(target->pixels.data(), source_data, source->pixels.size());
+        return PILLOW_C_OK;
+    }
+
+    try {
+        if (xradius != 0.0 && yradius != 0.0) {
+            std::vector<std::uint8_t> temp(source->pixels.size());
+            box_blur_horizontal_buffer(
+                source_data,
+                temp.data(),
+                source->width,
+                source->height,
+                source->channels,
+                source->stride,
+                xradius);
+            box_blur_vertical_buffer(
+                temp.data(),
+                target->pixels.data(),
+                source->width,
+                source->height,
+                source->channels,
+                source->stride,
+                yradius);
+        } else if (xradius != 0.0) {
+            box_blur_horizontal_buffer(
+                source_data,
+                target->pixels.data(),
+                source->width,
+                source->height,
+                source->channels,
+                source->stride,
+                xradius);
+        } else {
+            box_blur_vertical_buffer(
+                source_data,
+                target->pixels.data(),
+                source->width,
+                source->height,
+                source->channels,
+                source->stride,
+                yradius);
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 int resize_image_box_into(
     const PillowCImage* source,
     int out_width,
@@ -5069,6 +5328,15 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_mode_into(
     PillowCImage* target)
 {
     return filter_mode_image_into(source, size, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_box_blur_into(
+    const PillowCImage* source,
+    double xradius,
+    double yradius,
+    PillowCImage* target)
+{
+    return filter_box_blur_image_into(source, xradius, yradius, target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_transform_affine_into(
@@ -6669,6 +6937,40 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_mode(
             source->stride,
             std::vector<std::uint8_t>(source->pixels.size())};
         const int status = filter_mode_image_into(source, size, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_box_blur(
+    const PillowCImage* source,
+    double xradius,
+    double yradius,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!valid_box_blur_radius(xradius) || !valid_box_blur_radius(yradius)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            source->mode,
+            source->channels,
+            source->stride,
+            std::vector<std::uint8_t>(source->pixels.size())};
+        const int status = filter_box_blur_image_into(source, xradius, yradius, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;
