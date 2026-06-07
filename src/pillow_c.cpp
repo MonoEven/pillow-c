@@ -328,6 +328,34 @@ int copy_transpose_pixels_into(const PillowCImage* source, int method, PillowCIm
     return PILLOW_C_OK;
 }
 
+int fill_image_pixels(PillowCImage* image, const std::uint8_t* color, std::size_t color_size)
+{
+    if (!image || !color) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (color_size != static_cast<std::size_t>(image->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (image->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    if (image->channels == 1) {
+        std::memset(image->pixels.data(), color[0], image->pixels.size());
+        return PILLOW_C_OK;
+    }
+
+    std::uint8_t* data = image->pixels.data();
+    std::memcpy(data, color, color_size);
+    std::size_t filled = color_size;
+    while (filled < image->pixels.size()) {
+        const std::size_t copy_size = std::min(filled, image->pixels.size() - filled);
+        std::memcpy(data + filled, data, copy_size);
+        filled += copy_size;
+    }
+    return PILLOW_C_OK;
+}
+
 } // namespace
 
 extern "C" __declspec(dllexport) int pillow_c_abi_version(
@@ -984,6 +1012,14 @@ extern "C" __declspec(dllexport) int pillow_c_image_set_bytes(
     }
     std::memcpy(image->pixels.data(), data, size);
     return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_fill(
+    PillowCImage* image,
+    const std::uint8_t* color,
+    std::size_t color_size)
+{
+    return fill_image_pixels(image, color, color_size);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_get_bytes(

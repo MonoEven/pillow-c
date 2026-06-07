@@ -176,6 +176,18 @@ PillowCImageSetBytes(handle, values) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageFill(handle, values) {
+    color := PillowCBuffer(values)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_fill",
+        "Ptr", handle,
+        "Ptr", color,
+        "UPtr", values.Length,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageToArray(handle, expectedSize) {
     if expectedSize = 0
         return []
@@ -622,6 +634,53 @@ PillowCTestImageDataPointerSharesMemoryWithAhk(*) {
 }
 
 AhkTest.Test("pillow_c image data pointer shares handle memory with AHK", PillowCTestImageDataPointerSharesMemoryWithAhk)
+
+PillowCTestImageFillRepeatsModeSizedColor(*) {
+    l := PillowCCreateImageMode(4, 1, 1)
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    rgba := PillowCCreateImageMode(2, 2, 4)
+    try {
+        PillowCImageFill(l, [7])
+        AhkTest.AssertEqual([7, 7, 7, 7], PillowCImageToArray(l, 4))
+
+        PillowCImageFill(rgb, [10, 20, 30])
+        AhkTest.AssertEqual([
+            10, 20, 30, 10, 20, 30, 10, 20, 30,
+            10, 20, 30, 10, 20, 30, 10, 20, 30,
+        ], PillowCImageToArray(rgb, 18))
+
+        PillowCImageFill(rgba, [1, 2, 3, 4])
+        AhkTest.AssertEqual([
+            1, 2, 3, 4, 1, 2, 3, 4,
+            1, 2, 3, 4, 1, 2, 3, 4,
+        ], PillowCImageToArray(rgba, 16))
+    } finally {
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image fill repeats one mode-sized color across native storage", PillowCTestImageFillRepeatsModeSizedColor)
+
+PillowCTestImageFillRejectsWrongColorLength(*) {
+    image := PillowCCreateImageMode(2, 1, 3)
+    try {
+        color := PillowCBuffer([10, 20])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_fill",
+            "Ptr", image,
+            "Ptr", color,
+            "UPtr", color.Size,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+    } finally {
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image fill rejects colors that do not match channel count", PillowCTestImageFillRejectsWrongColorLength)
 
 PillowCTestImageRgbToLHandleOperation(*) {
     source := PillowCCreateImage(8, 1, 3)

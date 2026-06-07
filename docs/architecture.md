@@ -44,6 +44,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 
 - `Pillow.Image.New(...)`
 - `Pillow.Image.FromBytes(...)`
+- `image.Fill(...)`
 - `image.Crop(...)`
 - `image.Transpose(...)`
 - `image.Convert(...)`

@@ -126,7 +126,7 @@ class Pillow {
             this.Close()
         }
 
-        static New(modeName, size) {
+        static New(modeName, size, color := unset) {
             if size.Length != 2
                 throw Error("Pillow.Image.New expects size [width, height]", -1)
 
@@ -139,7 +139,16 @@ class Pillow {
                 "Ptr*", &handle,
                 "Int"
             ))
-            return Pillow.Image(handle)
+            image := Pillow.Image(handle)
+            if IsSet(color) {
+                try {
+                    image.Fill(color)
+                } catch {
+                    image.Close()
+                    throw
+                }
+            }
+            return image
         }
 
         static FromBytes(modeName, size, bytes) {
@@ -266,6 +275,36 @@ class Pillow {
                 "Int"
             ))
             return { Ptr: dataPtr, Size: size }
+        }
+
+        Fill(color) {
+            colorBytes := this.ColorBuffer(color)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_fill",
+                "Ptr", this.RequireHandle(),
+                "Ptr", colorBytes,
+                "UPtr", colorBytes.Size,
+                "Int"
+            ))
+            return this
+        }
+
+        ColorBuffer(color) {
+            channels := this.Channels
+            if IsObject(color) {
+                if color.Length != channels
+                    throw Error("Pillow color length must match image channels", -1)
+                buf := Buffer(channels, 0)
+                for index, value in color
+                    NumPut("UChar", value, buf, index - 1)
+                return buf
+            }
+
+            if channels != 1
+                throw Error("Scalar color is only valid for single-channel images", -1)
+            buf := Buffer(1, 0)
+            NumPut("UChar", color, buf, 0)
+            return buf
         }
 
         Copy() {

@@ -54,7 +54,7 @@ powershell -ExecutionPolicy Bypass -File ..\..\tools\run-ahktest.ps1 -Target .\t
 
 ## Current Surface
 
-The verified native surface currently covers mode-aware image handles, byte import/export, data-pointer sharing, copy, blend, RGB-to-L conversion, RGBA alpha composite, crop, paste, transpose, and allocation-avoiding `*_into` variants.
+The verified native surface currently covers mode-aware image handles, byte import/export, solid fill, data-pointer sharing, copy, blend, RGB-to-L conversion, RGBA alpha composite, crop, paste, transpose, and allocation-avoiding `*_into` variants.
 
 The AHK facade is intentionally smaller and grows as the Python-like wrapper stabilizes.
 

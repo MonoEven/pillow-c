@@ -44,6 +44,24 @@ PillowTestImageNewCreatesModeAwareNativeImage(*) {
 
 AhkTest.Test("Pillow Image.New creates a mode-aware native image", PillowTestImageNewCreatesModeAwareNativeImage)
 
+PillowTestImageNewWithColorUsesNativeFill(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.New("RGB", [3, 2], [10, 20, 30])
+    l := Pillow.Image.New("L", [4, 1], 7)
+    try {
+        AhkTest.AssertEqual([
+            10, 20, 30, 10, 20, 30, 10, 20, 30,
+            10, 20, 30, 10, 20, 30, 10, 20, 30,
+        ], PillowTestBufferToArray(rgb.ToBytes()))
+        AhkTest.AssertEqual([7, 7, 7, 7], PillowTestBufferToArray(l.ToBytes()))
+    } finally {
+        l.Close()
+        rgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.New fills a solid color through the native DLL", PillowTestImageNewWithColorUsesNativeFill)
+
 PillowTestImageFromBytesOwnsNativeCopy(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     data := PillowTestBuffer([10, 20, 30, 40, 50, 60])

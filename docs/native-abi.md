@@ -53,6 +53,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_size`
 - `pillow_c_image_data`
 - `pillow_c_image_set_bytes`
+- `pillow_c_image_fill`
 - `pillow_c_image_get_bytes`
 
 Image operations:
