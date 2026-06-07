@@ -48,13 +48,22 @@ PillowTestImageNewWithColorUsesNativeFill(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     rgb := Pillow.Image.New("RGB", [3, 2], [10, 20, 30])
     l := Pillow.Image.New("L", [4, 1], 7)
+    one := Pillow.Image.New("1", [4, 1], 256)
     try {
         AhkTest.AssertEqual([
             10, 20, 30, 10, 20, 30, 10, 20, 30,
             10, 20, 30, 10, 20, 30, 10, 20, 30,
         ], PillowTestBufferToArray(rgb.ToBytes()))
         AhkTest.AssertEqual([7, 7, 7, 7], PillowTestBufferToArray(l.ToBytes()))
+        AhkTest.AssertEqual([0xF0], PillowTestBufferToArray(one.ToBytes()))
+
+        one.Fill([256])
+        AhkTest.AssertEqual([0xF0], PillowTestBufferToArray(one.ToBytes()))
+
+        one.Fill([-1])
+        AhkTest.AssertEqual([0x00], PillowTestBufferToArray(one.ToBytes()))
     } finally {
+        one.Close()
         l.Close()
         rgb.Close()
     }
@@ -3439,6 +3448,28 @@ PillowTestImagePasteColorAcceptsModeOneMask(*) {
 }
 
 AhkTest.Test("Pillow Image.Paste color source accepts mode 1 masks", PillowTestImagePasteColorAcceptsModeOneMask)
+
+PillowTestImagePasteColorMatchesModeOneScalarSemantics(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    target := Pillow.Image.New("1", [4, 1], 0)
+    mask := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x50]))
+    try {
+        target.Paste(256, [0, 0, 4, 1], mask)
+        AhkTest.AssertEqual([0x50], PillowTestBufferToArray(target.ToBytes()))
+        AhkTest.AssertEqual(255, target.GetPixel([1, 0]))
+
+        target.Paste([256], [0, 0, 4, 1])
+        AhkTest.AssertEqual([0xF0], PillowTestBufferToArray(target.ToBytes()))
+
+        target.Paste([-1], [0, 0, 4, 1])
+        AhkTest.AssertEqual([0x00], PillowTestBufferToArray(target.ToBytes()))
+    } finally {
+        mask.Close()
+        target.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Paste color source matches mode 1 scalar semantics", PillowTestImagePasteColorMatchesModeOneScalarSemantics)
 
 PillowTestImagePasteColorRejectsTwoItemBox(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

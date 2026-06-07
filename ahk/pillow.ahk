@@ -1926,14 +1926,14 @@ class Pillow {
                     throw Error("Pillow color length must match image channels", -1)
                 buf := Buffer(channels, 0)
                 for index, value in color
-                    NumPut("UChar", value, buf, index - 1)
+                    NumPut("UChar", this.Mode = "1" ? Pillow.Image.ModeOnePixelValue(value) : value, buf, index - 1)
                 return buf
             }
 
             if channels != 1
                 throw Error("Scalar color is only valid for single-channel images", -1)
             buf := Buffer(1, 0)
-            NumPut("UChar", color, buf, 0)
+            NumPut("UChar", this.Mode = "1" ? Pillow.Image.ModeOnePixelValue(color) : color, buf, 0)
             return buf
         }
 
@@ -1945,7 +1945,7 @@ class Pillow {
                     if length != 1
                         throw Error("Pillow color must be int or single-element array", -1)
                     buf := Buffer(1, 0)
-                    NumPut("UChar", color[1], buf, 0)
+                    NumPut("UChar", this.Mode = "1" ? Pillow.Image.ModeOnePixelValue(color[1]) : color[1], buf, 0)
                     return buf
                 }
                 if channels = 2 {
@@ -1979,7 +1979,7 @@ class Pillow {
             }
 
             buf := Buffer(channels, 0)
-            NumPut("UChar", color, buf, 0)
+            NumPut("UChar", this.Mode = "1" ? Pillow.Image.ModeOnePixelValue(color) : color, buf, 0)
             return buf
         }
 
