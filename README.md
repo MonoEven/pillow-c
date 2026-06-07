@@ -40,7 +40,7 @@ img.Close()
 
 ## Test
 
-Tests use `ahktest` from [MonoEven/stdlib-ahk](https://github.com/MonoEven/stdlib-ahk). In the current local workspace, run tests from the parent `visual_studio` directory with its `tools` runner so AHK errors are captured instead of shown in blocking popups:
+Tests use `ahktest` from [MonoEven/stdlib-ahk](https://github.com/MonoEven/stdlib-ahk). In the current local workspace, run tests from the parent `visual_studio` directory with its `tools` runner so AHK errors are captured instead of shown in blocking popups. Every AHK test run should include `-TimeoutSeconds 120`:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 120
@@ -54,7 +54,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Tar
 
 ## Current Surface
 
-The verified native surface currently covers mode-aware image handles, byte import/export, solid fill, data-pointer sharing, copy, blend, composite, ImageChops helper/binary operations, histogram-backed ImageStat, extrema, ImageOps transforms, masked and preserve-tone autocontrast, L-to-RGB colorize, expand/contain/cover/fit/pad, LUT point transforms, channel extraction, split/merge, alpha insertion, core `L`/`LA`/`RGB`/`RGBA` mode conversion, Pillow-compatible resize filters, Python-like `ImageFilter.Kernel`, rank filters, `ModeFilter`, `BoxBlur`, `GaussianBlur`, and `UnsharpMask`, ImageEnhance facade composition including RGBA `Color`, AFFINE/EXTENT/PERSPECTIVE/QUAD/MESH transform dispatch, general NEAREST/BILINEAR/BICUBIC affine, perspective, quad, and mesh transforms, NEAREST/BILINEAR/BICUBIC affine rotate, RGBA alpha composite, crop, paste, transpose, and allocation-avoiding `*_into` variants.
+The verified native surface currently covers mode-aware image handles, byte import/export, solid fill, data-pointer sharing, copy, blend, composite, ImageChops helper/binary operations, histogram-backed ImageStat including native L-mask histograms, extrema, ImageOps transforms, masked and preserve-tone autocontrast, L-to-RGB colorize, expand/contain/cover/fit/pad, LUT point transforms, channel extraction, split/merge, alpha insertion, core `L`/`LA`/`RGB`/`RGBA` mode conversion, Pillow-compatible resize filters, Python-like `ImageFilter.Kernel`, rank filters, `ModeFilter`, `BoxBlur`, `GaussianBlur`, and `UnsharpMask`, ImageEnhance facade composition including RGBA `Color`, AFFINE/EXTENT/PERSPECTIVE/QUAD/MESH transform dispatch, general NEAREST/BILINEAR/BICUBIC affine, perspective, quad, and mesh transforms, NEAREST/BILINEAR/BICUBIC affine rotate, RGBA alpha composite, crop, paste, transpose, and allocation-avoiding `*_into` variants.
 
 The AHK facade is intentionally smaller and grows as the Python-like wrapper stabilizes.
 

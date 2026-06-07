@@ -61,6 +61,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_putpixel`
 - `pillow_c_image_get_bytes`
 - `pillow_c_image_histogram`
+- `pillow_c_image_histogram_masked`
 - `pillow_c_image_get_extrema`
 - `pillow_c_image_getbbox`
 - `pillow_c_image_getprojection`
@@ -178,7 +179,7 @@ Reusable target operations:
 
 `pillow_c_image_put_alpha_value` and `pillow_c_image_put_alpha_image` return `LA` for `L`/`LA` sources and `RGBA` for `RGB`/`RGBA` sources. The matching `_into` variants require the caller to provide that target mode and shape.
 
-`pillow_c_image_histogram` follows Pillow's 256-bin-per-band layout. For `LA`, Pillow 11.3.0 reports two bands where the second histogram repeats the luminance bins rather than the alpha bins; the native ABI mirrors that behavior so `ImageStat.Stat` matches Pillow.
+`pillow_c_image_histogram` follows Pillow's 256-bin-per-band layout. `pillow_c_image_histogram_masked` accepts a same-size L-mode mask; any nonzero mask byte includes that pixel once, and zero excludes it. A null mask falls back to the unmasked histogram path. For `LA`, Pillow 11.3.0 reports two bands where the second histogram repeats the luminance bins rather than the alpha bins; both native histogram exports mirror that behavior so `ImageStat.Stat` matches Pillow.
 
 `pillow_c_image_rotate` and `pillow_c_image_rotate_into` accept angle, resample, expand, optional center, optional translate, and optional fill color arguments. The current implementation supports `NEAREST`, `BILINEAR`, and `BICUBIC` rotate; unsupported resamplers return `-3`.
 

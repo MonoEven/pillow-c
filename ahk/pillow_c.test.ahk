@@ -269,6 +269,23 @@ PillowCImageHistogram(handle, expectedCount) {
     return values
 }
 
+PillowCImageHistogramMasked(handle, maskHandle, expectedCount) {
+    out := Buffer(expectedCount * 8, 0)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_histogram_masked",
+        "Ptr", handle,
+        "Ptr", maskHandle,
+        "Ptr", out,
+        "UPtr", expectedCount,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    values := []
+    loop expectedCount
+        values.Push(NumGet(out, (A_Index - 1) * 8, "Int64"))
+    return values
+}
+
 PillowCImageExtrema(handle, bandCount) {
     minBuf := Buffer(bandCount, 0)
     maxBuf := Buffer(bandCount, 0)
@@ -4037,6 +4054,59 @@ PillowCTestImageHistogramMatchesPillowBands(*) {
 }
 
 AhkTest.Test("pillow_c image histogram matches Pillow band layout", PillowCTestImageHistogramMatchesPillowBands)
+
+PillowCTestImageHistogramMaskedMatchesPillowMaskRules(*) {
+    l := PillowCCreateImageMode(4, 1, 1)
+    rgb := PillowCCreateImageMode(3, 1, 3)
+    la := PillowCCreateImageMode(2, 1, 2)
+    lMask := PillowCCreateImageMode(4, 1, 1)
+    rgbMask := PillowCCreateImageMode(3, 1, 1)
+    laMask := PillowCCreateImageMode(2, 1, 1)
+    try {
+        PillowCImageSetBytes(l, [0, 10, 20, 30])
+        PillowCImageSetBytes(lMask, [0, 128, 255, 64])
+        PillowCImageSetBytes(rgb, [
+            10, 20, 30,
+            40, 50, 60,
+            70, 80, 90,
+        ])
+        PillowCImageSetBytes(rgbMask, [0, 128, 255])
+        PillowCImageSetBytes(la, [10, 40, 200, 128])
+        PillowCImageSetBytes(laMask, [128, 255])
+
+        lHist := PillowCImageHistogramMasked(l, lMask, 256)
+        rgbHist := PillowCImageHistogramMasked(rgb, rgbMask, 768)
+        laHist := PillowCImageHistogramMasked(la, laMask, 512)
+
+        AhkTest.AssertEqual(1, lHist[11])
+        AhkTest.AssertEqual(1, lHist[21])
+        AhkTest.AssertEqual(1, lHist[31])
+        AhkTest.AssertEqual(3, SumArray(lHist))
+
+        AhkTest.AssertEqual(1, rgbHist[41])
+        AhkTest.AssertEqual(1, rgbHist[71])
+        AhkTest.AssertEqual(1, rgbHist[307])
+        AhkTest.AssertEqual(1, rgbHist[337])
+        AhkTest.AssertEqual(1, rgbHist[573])
+        AhkTest.AssertEqual(1, rgbHist[603])
+        AhkTest.AssertEqual(6, SumArray(rgbHist))
+
+        AhkTest.AssertEqual(1, laHist[11])
+        AhkTest.AssertEqual(1, laHist[201])
+        AhkTest.AssertEqual(1, laHist[267])
+        AhkTest.AssertEqual(1, laHist[457])
+        AhkTest.AssertEqual(4, SumArray(laHist))
+    } finally {
+        PillowCFreeImage(laMask)
+        PillowCFreeImage(rgbMask)
+        PillowCFreeImage(lMask)
+        PillowCFreeImage(la)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image histogram_masked matches Pillow L mask rules", PillowCTestImageHistogramMaskedMatchesPillowMaskRules)
 
 PillowCTestImageGetExtremaMatchesPillowBands(*) {
     l := PillowCCreateImageMode(4, 1, 1)

@@ -1062,12 +1062,11 @@ class Pillow {
     class ImageStat {
         class Stat {
             __New(imageOrList, mask := unset) {
-                if IsSet(mask)
-                    throw Error("Pillow.ImageStat.Stat mask requires native masked histogram support", -1)
-
                 if IsObject(imageOrList) && imageOrList is Pillow.Image {
-                    this.Histogram := imageOrList.Histogram()
+                    this.Histogram := IsSet(mask) ? imageOrList.Histogram(mask) : imageOrList.Histogram()
                 } else if IsObject(imageOrList) {
+                    if IsSet(mask)
+                        throw Error("Pillow.ImageStat.Stat mask requires image input", -1)
                     this.Histogram := imageOrList
                 } else {
                     throw TypeError("first argument must be image or list", -1)
@@ -1751,16 +1750,29 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
-        Histogram() {
+        Histogram(mask := unset) {
             count := this.Channels * 256
             out := Buffer(count * 8, 0)
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_histogram",
-                "Ptr", this.RequireHandle(),
-                "Ptr", out,
-                "UPtr", count,
-                "Int"
-            ))
+            if IsSet(mask) {
+                if !(IsObject(mask) && mask is Pillow.Image)
+                    throw Error("Pillow.Image.Histogram mask expects a Pillow.Image", -1)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_histogram_masked",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", mask.RequireHandle(),
+                    "Ptr", out,
+                    "UPtr", count,
+                    "Int"
+                ))
+            } else {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_histogram",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", out,
+                    "UPtr", count,
+                    "Int"
+                ))
+            }
             values := []
             loop count
                 values.Push(NumGet(out, (A_Index - 1) * 8, "Int64"))

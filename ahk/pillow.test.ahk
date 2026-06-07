@@ -2067,10 +2067,25 @@ PillowTestImageStatComputesPillowStatisticsFromNativeHistogram(*) {
 
 AhkTest.Test("Pillow ImageStat.Stat computes Pillow statistics from native histograms", PillowTestImageStatComputesPillowStatisticsFromNativeHistogram)
 
-PillowTestImageStatAcceptsHistogramListAndRejectsMaskForNow(*) {
+PillowTestImageStatAcceptsHistogramListAndNativeMask(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([0, 10, 10]))
-    mask := Pillow.Image.New("L", [3, 1], 255)
+    l := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 10, 20, 30]))
+    lMask := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 128, 255, 64]))
+    rgb := Pillow.Image.FromBytes("RGB", [3, 1], PillowTestBuffer([
+        10, 20, 30,
+        40, 50, 60,
+        70, 80, 90,
+    ]))
+    rgbMask := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([0, 128, 255]))
+    la := Pillow.Image.FromBytes("LA", [2, 1], PillowTestBuffer([10, 40, 200, 128]))
+    laMask := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([128, 255]))
+    rgbaMask := Pillow.Image.FromBytes("RGBA", [4, 1], PillowTestBuffer([
+        0, 0, 0, 0,
+        0, 0, 0, 255,
+        0, 0, 0, 255,
+        0, 0, 0, 255,
+    ]))
     try {
         stat := Pillow.ImageStat.Stat(source.Histogram())
         AhkTest.AssertEqual([[0, 10]], stat.Extrema)
@@ -2078,19 +2093,56 @@ PillowTestImageStatAcceptsHistogramListAndRejectsMaskForNow(*) {
         AhkTest.AssertEqual([20.0], stat.Sum)
         AhkTest.AssertEqual([10], stat.Median)
 
+        lStat := Pillow.ImageStat.Stat(l, lMask)
+        rgbStat := Pillow.ImageStat.Stat(rgb, rgbMask)
+        laStat := Pillow.ImageStat.Stat(la, laMask)
+
+        AhkTest.AssertEqual([[10, 30]], lStat.Extrema)
+        AhkTest.AssertEqual([3], lStat.Count)
+        AhkTest.AssertEqual([60.0], lStat.Sum)
+        AhkTest.AssertEqual([1400.0], lStat.Sum2)
+        PillowTestAssertFloatArrayClose([20.0], lStat.Mean)
+        AhkTest.AssertEqual([20], lStat.Median)
+        PillowTestAssertFloatArrayClose([21.602468994692867], lStat.Rms)
+        PillowTestAssertFloatArrayClose([66.66666666666667], lStat.Var)
+        PillowTestAssertFloatArrayClose([8.16496580927726], lStat.StdDev)
+
+        AhkTest.AssertEqual([[40, 70], [50, 80], [60, 90]], rgbStat.Extrema)
+        AhkTest.AssertEqual([2, 2, 2], rgbStat.Count)
+        AhkTest.AssertEqual([110.0, 130.0, 150.0], rgbStat.Sum)
+        AhkTest.AssertEqual([6500.0, 8900.0, 11700.0], rgbStat.Sum2)
+        PillowTestAssertFloatArrayClose([55.0, 65.0, 75.0], rgbStat.Mean)
+        AhkTest.AssertEqual([70, 80, 90], rgbStat.Median)
+        PillowTestAssertFloatArrayClose([57.0087712549569, 66.70832032063167, 76.48529270389177], rgbStat.Rms)
+        PillowTestAssertFloatArrayClose([225.0, 225.0, 225.0], rgbStat.Var)
+        PillowTestAssertFloatArrayClose([15.0, 15.0, 15.0], rgbStat.StdDev)
+
+        AhkTest.AssertEqual([[10, 200], [10, 200]], laStat.Extrema)
+        AhkTest.AssertEqual([2, 2], laStat.Count)
+        AhkTest.AssertEqual([210.0, 210.0], laStat.Sum)
+        AhkTest.AssertEqual([40100.0, 40100.0], laStat.Sum2)
+        PillowTestAssertFloatArrayClose([105.0, 105.0], laStat.Mean)
+        AhkTest.AssertEqual([200, 200], laStat.Median)
+
         try {
-            Pillow.ImageStat.Stat(source, mask)
-            AhkTest.Fail("Expected ImageStat.Stat mask support to require native masked histogram")
+            Pillow.ImageStat.Stat(l, rgbaMask)
+            AhkTest.Fail("Expected ImageStat.Stat to reject non-L masks")
         } catch Error as err {
-            AhkTest.AssertTrue(InStr(err.Message, "mask") > 0)
+            AhkTest.AssertTrue(InStr(err.Message, "mask") > 0 || InStr(err.Message, "mismatch") > 0)
         }
     } finally {
-        mask.Close()
+        rgbaMask.Close()
+        laMask.Close()
+        la.Close()
+        rgbMask.Close()
+        rgb.Close()
+        lMask.Close()
+        l.Close()
         source.Close()
     }
 }
 
-AhkTest.Test("Pillow ImageStat.Stat accepts histogram lists and rejects masks until native coverage exists", PillowTestImageStatAcceptsHistogramListAndRejectsMaskForNow)
+AhkTest.Test("Pillow ImageStat.Stat accepts histogram lists and native masks", PillowTestImageStatAcceptsHistogramListAndNativeMask)
 
 PillowTestImageGetExtremaUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

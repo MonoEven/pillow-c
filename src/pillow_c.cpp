@@ -1571,6 +1571,17 @@ int histogram_image_masked(
     const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
     const std::uint8_t* data = source->pixels.data();
     const std::uint8_t* mask_data = mask->pixels.data();
+    if (source->mode == PILLOW_C_MODE_LA && source->channels == 2) {
+        for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
+            if (mask_data[pixel] == 0) {
+                continue;
+            }
+            const std::uint8_t value = data[pixel * 2u];
+            ++out_histogram[value];
+            ++out_histogram[256u + value];
+        }
+        return PILLOW_C_OK;
+    }
     for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
         if (mask_data[pixel] == 0) {
             continue;
@@ -5940,6 +5951,15 @@ extern "C" __declspec(dllexport) int pillow_c_image_histogram(
     std::size_t out_count)
 {
     return histogram_image(image, out_histogram, out_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_histogram_masked(
+    const PillowCImage* image,
+    const PillowCImage* mask,
+    std::uint64_t* out_histogram,
+    std::size_t out_count)
+{
+    return histogram_image_masked(image, mask, out_histogram, out_count);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_get_extrema(
