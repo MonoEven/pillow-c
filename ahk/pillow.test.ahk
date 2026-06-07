@@ -683,6 +683,55 @@ PillowTestImageGetExtremaUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.GetExtrema returns Pillow-style extrema through native handles", PillowTestImageGetExtremaUsesNativeOperation)
 
+PillowTestImageOpsGrayscaleConvertsCoreModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 200, 100, 50]))
+    rgba := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([10, 20, 30, 40, 200, 100, 50, 128]))
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        rgbOut := Pillow.ImageOps.Grayscale(rgb)
+        rgbaOut := Pillow.ImageOps.Grayscale(rgba)
+
+        AhkTest.AssertEqual("L", rgbOut.Mode)
+        AhkTest.AssertEqual([2, 1], rgbOut.Size)
+        AhkTest.AssertEqual([18, 124], PillowTestBufferToArray(rgbOut.ToBytes()))
+        AhkTest.AssertEqual("L", rgbaOut.Mode)
+        AhkTest.AssertEqual([2, 1], rgbaOut.Size)
+        AhkTest.AssertEqual([18, 124], PillowTestBufferToArray(rgbaOut.ToBytes()))
+    } finally {
+        for item in [rgbaOut, rgbOut, rgba, rgb] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Grayscale converts RGB and RGBA through native handles", PillowTestImageOpsGrayscaleConvertsCoreModes)
+
+PillowTestImageOpsGrayscaleReturnsIndependentLCopy(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([1, 128, 255]))
+    out := 0
+    try {
+        out := Pillow.ImageOps.Grayscale(source)
+        data := source.DataPointer()
+        NumPut("UChar", 99, data.Ptr, 0)
+
+        AhkTest.AssertEqual("L", out.Mode)
+        AhkTest.AssertEqual([3, 1], out.Size)
+        AhkTest.AssertEqual([1, 128, 255], PillowTestBufferToArray(out.ToBytes()))
+        AhkTest.AssertEqual([99, 128, 255], PillowTestBufferToArray(source.ToBytes()))
+    } finally {
+        for item in [out, source] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Grayscale returns an independent L copy", PillowTestImageOpsGrayscaleReturnsIndependentLCopy)
+
 PillowTestImageOpsAutocontrastUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([10, 20, 30, 40]))

@@ -27,6 +27,11 @@ class Pillow {
             return Pillow.ImageOps.NativeUnaryImageOp(image, "pillow_c_image_invert")
         }
 
+        static Grayscale(image) {
+            Pillow.ImageOps.RequireImageHandle(image, "Grayscale")
+            return image.Convert("L")
+        }
+
         static Posterize(image, bits) {
             if !(bits is Integer)
                 throw Error("Pillow.ImageOps.Posterize bits must be an integer", -1)
