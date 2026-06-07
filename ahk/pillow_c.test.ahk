@@ -5699,6 +5699,37 @@ PillowCTestImageConvertModeCoversLAMode(*) {
 
 AhkTest.Test("pillow_c image convert_mode covers Pillow LA mode", PillowCTestImageConvertModeCoversLAMode)
 
+PillowCTestImageConvertModeCoversModeOneSource(*) {
+    source := PillowCCreateImageMode(4, 1, 5)
+    outputs := []
+    try {
+        PillowCImageSetRawBytes(source, [0x50], "1")
+        cases := [
+            { Mode: 1, Size: 4, Bytes: [0, 255, 0, 255] },
+            { Mode: 2, Size: 8, Bytes: [0, 255, 255, 255, 0, 255, 255, 255] },
+            { Mode: 3, Size: 12, Bytes: [
+                0, 0, 0, 255, 255, 255, 0, 0, 0, 255, 255, 255,
+            ] },
+            { Mode: 4, Size: 16, Bytes: [
+                0, 0, 0, 255, 255, 255, 255, 255,
+                0, 0, 0, 255, 255, 255, 255, 255,
+            ] },
+        ]
+        for item in cases {
+            out := PillowCImageConvertMode(source, item.Mode)
+            outputs.Push(out)
+            AhkTest.AssertEqual(item.Mode, PillowCImageMode(out))
+            AhkTest.AssertEqual(item.Bytes, PillowCImageToArray(out, item.Size))
+        }
+    } finally {
+        for handle in outputs
+            PillowCFreeImage(handle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image convert_mode covers mode 1 source", PillowCTestImageConvertModeCoversModeOneSource)
+
 PillowCTestImageConvertModeIntoReusesTargetHandle(*) {
     source := PillowCCreateImageMode(2, 1, 3)
     target := PillowCCreateImageMode(2, 1, 4)

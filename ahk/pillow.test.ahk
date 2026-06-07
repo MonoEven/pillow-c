@@ -2029,6 +2029,38 @@ PillowTestImageConvertLaModeUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.Convert supports LA mode through native handles", PillowTestImageConvertLaModeUsesNativeOperation)
 
+PillowTestImageConvertModeOneToCoreModesUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x50]))
+    outputs := []
+    try {
+        cases := [
+            { Out: source.Convert("L"), Mode: "L", Bytes: [0, 255, 0, 255] },
+            { Out: source.Convert("LA"), Mode: "LA", Bytes: [0, 255, 255, 255, 0, 255, 255, 255] },
+            { Out: source.Convert("RGB"), Mode: "RGB", Bytes: [
+                0, 0, 0, 255, 255, 255, 0, 0, 0, 255, 255, 255,
+            ] },
+            { Out: source.Convert("RGBA"), Mode: "RGBA", Bytes: [
+                0, 0, 0, 255, 255, 255, 255, 255,
+                0, 0, 0, 255, 255, 255, 255, 255,
+            ] },
+        ]
+        for item in cases {
+            outputs.Push(item.Out)
+            AhkTest.AssertEqual(item.Mode, item.Out.Mode)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(item.Out.ToBytes()))
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Convert supports mode 1 to core modes", PillowTestImageConvertModeOneToCoreModesUsesNativeOperation)
+
 PillowTestMakeInvertLut(channelCount) {
     lut := []
     loop channelCount {

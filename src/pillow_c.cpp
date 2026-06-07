@@ -2136,6 +2136,46 @@ int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowC
         return PILLOW_C_OK;
     }
 
+    if (source->mode == PILLOW_C_MODE_1 && target_mode == PILLOW_C_MODE_L) {
+        for (std::size_t i = 0; i < pixels; ++i) {
+            target->pixels[i] = source->pixels[i] == 0 ? 0u : 255u;
+        }
+        return PILLOW_C_OK;
+    }
+
+    if (source->mode == PILLOW_C_MODE_1 && target_mode == PILLOW_C_MODE_LA) {
+        for (std::size_t i = 0; i < pixels; ++i) {
+            const std::uint8_t value = source->pixels[i] == 0 ? 0u : 255u;
+            std::uint8_t* dst = target->pixels.data() + i * 2;
+            dst[0] = value;
+            dst[1] = 255;
+        }
+        return PILLOW_C_OK;
+    }
+
+    if (source->mode == PILLOW_C_MODE_1 && target_mode == PILLOW_C_MODE_RGB) {
+        for (std::size_t i = 0; i < pixels; ++i) {
+            const std::uint8_t value = source->pixels[i] == 0 ? 0u : 255u;
+            std::uint8_t* dst = target->pixels.data() + i * 3;
+            dst[0] = value;
+            dst[1] = value;
+            dst[2] = value;
+        }
+        return PILLOW_C_OK;
+    }
+
+    if (source->mode == PILLOW_C_MODE_1 && target_mode == PILLOW_C_MODE_RGBA) {
+        for (std::size_t i = 0; i < pixels; ++i) {
+            const std::uint8_t value = source->pixels[i] == 0 ? 0u : 255u;
+            std::uint8_t* dst = target->pixels.data() + i * 4;
+            dst[0] = value;
+            dst[1] = value;
+            dst[2] = value;
+            dst[3] = 255;
+        }
+        return PILLOW_C_OK;
+    }
+
     if (target_mode == PILLOW_C_MODE_L && (source->mode == PILLOW_C_MODE_RGB || source->mode == PILLOW_C_MODE_RGBA)) {
         for (std::size_t i = 0; i < pixels; ++i) {
             const std::uint8_t* px = source->pixels.data() + i * source->channels;
