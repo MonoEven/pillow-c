@@ -1177,6 +1177,20 @@ PillowCQuadCorners(values) {
     return buf
 }
 
+PillowCMeshBoxes(values) {
+    buf := Buffer(values.Length * 4, 0)
+    for index, value in values
+        NumPut("Int", value, buf, (index - 1) * 4)
+    return buf
+}
+
+PillowCMeshQuads(values) {
+    buf := Buffer(values.Length * 8, 0)
+    for index, value in values
+        NumPut("Double", value, buf, (index - 1) * 8)
+    return buf
+}
+
 PillowCImageTransformAffine(sourceHandle, width, height, matrixValues, resample := 0, fillValues := 0) {
     matrix := PillowCAffineMatrix(matrixValues)
     fill := IsObject(fillValues) ? PillowCBuffer(fillValues) : 0
@@ -1240,6 +1254,30 @@ PillowCImageTransformQuad(sourceHandle, width, height, cornerValues, resample :=
     return outHandle
 }
 
+PillowCImageTransformMesh(sourceHandle, width, height, boxValues, quadValues, resample := 0, fillValues := 0) {
+    boxes := PillowCMeshBoxes(boxValues)
+    quads := PillowCMeshQuads(quadValues)
+    fill := IsObject(fillValues) ? PillowCBuffer(fillValues) : 0
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_transform_mesh",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Ptr", boxes,
+        "Ptr", quads,
+        "UPtr", boxValues.Length // 4,
+        "Int", resample,
+        "Ptr", IsObject(fill) ? fill.Ptr : 0,
+        "UPtr", IsObject(fill) ? fill.Size : 0,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageTransformAffineInto(sourceHandle, width, height, matrixValues, targetHandle, resample := 0, fillValues := 0) {
     matrix := PillowCAffineMatrix(matrixValues)
     fill := IsObject(fillValues) ? PillowCBuffer(fillValues) : 0
@@ -1285,6 +1323,27 @@ PillowCImageTransformQuadInto(sourceHandle, width, height, cornerValues, targetH
         "Int", width,
         "Int", height,
         "Ptr", corners,
+        "Int", resample,
+        "Ptr", IsObject(fill) ? fill.Ptr : 0,
+        "UPtr", IsObject(fill) ? fill.Size : 0,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageTransformMeshInto(sourceHandle, width, height, boxValues, quadValues, targetHandle, resample := 0, fillValues := 0) {
+    boxes := PillowCMeshBoxes(boxValues)
+    quads := PillowCMeshQuads(quadValues)
+    fill := IsObject(fillValues) ? PillowCBuffer(fillValues) : 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_transform_mesh_into",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Ptr", boxes,
+        "Ptr", quads,
+        "UPtr", boxValues.Length // 4,
         "Int", resample,
         "Ptr", IsObject(fill) ? fill.Ptr : 0,
         "UPtr", IsObject(fill) ? fill.Size : 0,
@@ -5559,6 +5618,137 @@ PillowCTestImageTransformQuadRejectsUnsupportedResampleAndTargetShape(*) {
 }
 
 AhkTest.Test("pillow_c image transform QUAD rejects unsupported resample and target shape", PillowCTestImageTransformQuadRejectsUnsupportedResampleAndTargetShape)
+
+PillowCTestImageTransformMeshMatchesPillow(*) {
+    l := PillowCCreateImageMode(4, 3, 1)
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    nearest := 0
+    bilinear := 0
+    emptyOut := 0
+    rgbOut := 0
+    target := PillowCCreateImageMode(5, 3, 1)
+    try {
+        PillowCImageSetBytes(l, [
+            1, 2, 3, 4,
+            5, 6, 7, 8,
+            9, 10, 11, 12,
+        ])
+        PillowCImageSetBytes(rgb, [
+            1, 2, 3,
+            10, 20, 30,
+            40, 50, 60,
+            70, 80, 90,
+            100, 110, 120,
+            130, 140, 150,
+        ])
+        PillowCImageSetBytes(target, [
+            1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1,
+        ])
+
+        boxes := [0, 0, 3, 2, 3, 1, 5, 3]
+        quads := [
+            0.0, 0.0, 0.0, 3.0, 4.0, 3.0, 4.0, 0.0,
+            0.0, 0.0, 0.0, 3.0, 4.0, 3.0, 4.0, 0.0,
+        ]
+        nearest := PillowCImageTransformMesh(l, 5, 3, boxes, quads, 0, [99])
+        bilinear := PillowCImageTransformMesh(l, 5, 3, boxes, quads, 2, [99])
+        PillowCImageTransformMeshInto(l, 5, 3, boxes, quads, target, 2, [99])
+        emptyOut := PillowCImageTransformMesh(l, 3, 2, [], [], 0, [55])
+        rgbOut := PillowCImageTransformMesh(
+            rgb,
+            4,
+            3,
+            [0, 0, 2, 2, 2, 1, 4, 3],
+            [
+                0.0, 0.0, 0.0, 2.0, 3.0, 2.0, 3.0, 0.0,
+                0.0, 0.0, 0.0, 2.0, 3.0, 2.0, 3.0, 0.0,
+            ],
+            2,
+            [9, 0, 0])
+
+        AhkTest.AssertEqual([
+            1, 3, 4, 99, 99,
+            9, 11, 12, 2, 4,
+            99, 99, 99, 10, 12,
+        ], PillowCImageToArray(nearest, 15))
+        AhkTest.AssertEqual([
+            2, 3, 4, 99, 99,
+            8, 9, 10, 2, 4,
+            99, 99, 99, 8, 10,
+        ], PillowCImageToArray(bilinear, 15))
+        AhkTest.AssertEqual([
+            2, 3, 4, 99, 99,
+            8, 9, 10, 2, 4,
+            99, 99, 99, 8, 10,
+        ], PillowCImageToArray(target, 15))
+        AhkTest.AssertEqual([55, 55, 55, 55, 55, 55], PillowCImageToArray(emptyOut, 6))
+        AhkTest.AssertEqual([
+            3, 6, 9, 32, 42, 52, 9, 0, 0, 9, 0, 0,
+            77, 87, 97, 122, 132, 142, 3, 6, 9, 32, 42, 52,
+            9, 0, 0, 9, 0, 0, 77, 87, 97, 122, 132, 142,
+        ], PillowCImageToArray(rgbOut, 36))
+    } finally {
+        for handle in [target, rgbOut, emptyOut, bilinear, nearest, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image transform MESH matches Pillow", PillowCTestImageTransformMeshMatchesPillow)
+
+PillowCTestImageTransformMeshRejectsUnsupportedResampleAndTargetShape(*) {
+    source := PillowCCreateImageMode(3, 2, 1)
+    wrongTarget := PillowCCreateImageMode(2, 2, 1)
+    boxes := PillowCMeshBoxes([0, 0, 3, 2])
+    quads := PillowCMeshQuads([0.0, 0.0, 0.0, 2.0, 3.0, 2.0, 3.0, 0.0])
+    fill := PillowCBuffer([0])
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4, 5, 6])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_transform_mesh",
+            "Ptr", source,
+            "Int", 3,
+            "Int", 2,
+            "Ptr", boxes,
+            "Ptr", quads,
+            "UPtr", 1,
+            "Int", 4,
+            "Ptr", fill,
+            "UPtr", fill.Size,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_transform_mesh_into",
+            "Ptr", source,
+            "Int", 3,
+            "Int", 2,
+            "Ptr", boxes,
+            "Ptr", quads,
+            "UPtr", 1,
+            "Int", 0,
+            "Ptr", fill,
+            "UPtr", fill.Size,
+            "Ptr", wrongTarget,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(wrongTarget)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image transform MESH rejects unsupported resample and target shape", PillowCTestImageTransformMeshRejectsUnsupportedResampleAndTargetShape)
 
 PillowCTestImageRotateNearestMatchesPillowGeometry(*) {
     l := PillowCCreateImageMode(3, 2, 1)

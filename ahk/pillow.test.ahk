@@ -426,15 +426,48 @@ PillowTestImageTransformQuadUsesPythonLikeEntryPoint(*) {
 
 AhkTest.Test("Pillow Image.Transform QUAD uses Python-like entry point", PillowTestImageTransformQuadUsesPythonLikeEntryPoint)
 
+PillowTestImageTransformMeshUsesPythonLikeEntryPoint(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
+        1, 2, 3, 4,
+        5, 6, 7, 8,
+        9, 10, 11, 12,
+    ]))
+    out := 0
+    emptyOut := 0
+    try {
+        mesh := [
+            [[0, 0, 3, 2], [0.0, 0.0, 0.0, 3.0, 4.0, 3.0, 4.0, 0.0]],
+            [[3, 1, 5, 3], [0.0, 0.0, 0.0, 3.0, 4.0, 3.0, 4.0, 0.0]],
+        ]
+        out := source.Transform([5, 3], Pillow.Transform.MESH, mesh, Pillow.Resampling.BILINEAR, 99)
+        emptyOut := source.Transform([3, 2], Pillow.Transform.MESH, [], Pillow.Resampling.NEAREST, 55)
+
+        AhkTest.AssertEqual([
+            2, 3, 4, 99, 99,
+            8, 9, 10, 2, 4,
+            99, 99, 99, 8, 10,
+        ], PillowTestBufferToArray(out.ToBytes()))
+        AhkTest.AssertEqual([55, 55, 55, 55, 55, 55], PillowTestBufferToArray(emptyOut.ToBytes()))
+    } finally {
+        for image in [emptyOut, out, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Transform MESH uses Python-like entry point", PillowTestImageTransformMeshUsesPythonLikeEntryPoint)
+
 PillowTestImageTransformRejectsUnsupportedMethods(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
     try {
         try {
-            source.Transform([3, 2], Pillow.Transform.MESH, [[0, 0, 3, 2], [0, 0, 0, 2, 3, 2, 3, 0]], Pillow.Resampling.NEAREST)
-            AhkTest.Fail("Expected unsupported transform method to throw")
+            source.Transform([3, 2], 99, [], Pillow.Resampling.NEAREST)
+            AhkTest.Fail("Expected unknown transform method to throw")
         } catch as err {
-            AhkTest.AssertTrue(InStr(err.Message, "AFFINE, EXTENT, PERSPECTIVE, and QUAD only") > 0)
+            AhkTest.AssertTrue(InStr(err.Message, "unknown transformation method") > 0)
         }
     } finally {
         source.Close()

@@ -1364,7 +1364,9 @@ class Pillow {
                 return this.TransformPerspective(size, data, IsSet(resample) ? resample : unset, IsSet(fillcolor) ? fillcolor : unset)
             if method == Pillow.Transform.QUAD
                 return this.TransformQuad(size, data, IsSet(resample) ? resample : unset, IsSet(fillcolor) ? fillcolor : unset)
-            throw Error("Pillow.Image.Transform currently supports Pillow.Transform.AFFINE, EXTENT, PERSPECTIVE, and QUAD only", -1)
+            if method == Pillow.Transform.MESH
+                return this.TransformMesh(size, data, IsSet(resample) ? resample : unset, IsSet(fillcolor) ? fillcolor : unset)
+            throw Error("unknown transformation method", -1)
         }
 
         TransformExtent(size, extent, resample := unset, fillcolor := unset) {
@@ -1441,6 +1443,59 @@ class Pillow {
                 "Int", size[1],
                 "Int", size[2],
                 "Ptr", cornerBuffer,
+                "Int", resample,
+                "Ptr", IsObject(fill) ? fill.Ptr : 0,
+                "UPtr", IsObject(fill) ? fill.Size : 0,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        TransformMesh(size, mesh, resample := unset, fillcolor := unset) {
+            if size.Length != 2
+                throw Error("Pillow.Image.Transform MESH expects size [width, height]", -1)
+            if !IsObject(mesh)
+                throw Error("Pillow.Image.Transform MESH expects an array of [box, quad] entries", -1)
+            if !IsSet(resample)
+                resample := Pillow.Resampling.NEAREST
+
+            meshCount := mesh.Length
+            boxes := Buffer(meshCount * 4 * 4, 0)
+            quads := Buffer(meshCount * 8 * 8, 0)
+            for meshIndex, entry in mesh {
+                if !IsObject(entry) || entry.Length != 2
+                    throw Error("Pillow.Image.Transform MESH entries must be [box, quad]", -1)
+                box := entry[1]
+                quad := entry[2]
+                if !IsObject(box) || box.Length != 4
+                    throw Error("Pillow.Image.Transform MESH box must have 4 values", -1)
+                if !IsObject(quad) || quad.Length < 8
+                    throw Error("Pillow.Image.Transform MESH quad must have at least 8 values", -1)
+                loop 4 {
+                    value := box[A_Index]
+                    if !(value is Integer)
+                        throw Error("Pillow.Image.Transform MESH box values must be integers", -1)
+                    NumPut("Int", value, boxes, ((meshIndex - 1) * 4 + A_Index - 1) * 4)
+                }
+                loop 8 {
+                    value := quad[A_Index]
+                    if !(value is Number)
+                        throw Error("Pillow.Image.Transform MESH quad values must be numeric", -1)
+                    NumPut("Double", value, quads, ((meshIndex - 1) * 8 + A_Index - 1) * 8)
+                }
+            }
+            fill := IsSet(fillcolor) ? this.TransformFillBuffer(fillcolor) : 0
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_transform_mesh",
+                "Ptr", this.RequireHandle(),
+                "Int", size[1],
+                "Int", size[2],
+                "Ptr", boxes,
+                "Ptr", quads,
+                "UPtr", meshCount,
                 "Int", resample,
                 "Ptr", IsObject(fill) ? fill.Ptr : 0,
                 "UPtr", IsObject(fill) ? fill.Size : 0,

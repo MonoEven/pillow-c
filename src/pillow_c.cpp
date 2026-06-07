@@ -2849,6 +2849,151 @@ int quad_transform_image_into(
         });
 }
 
+int fill_image_storage_with_color(PillowCImage* target, const std::uint8_t* fill)
+{
+    if (!target || !fill) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+    const std::size_t pixel_bytes = static_cast<std::size_t>(target->channels);
+    for (int y = 0; y < target->height; ++y) {
+        std::uint8_t* row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+        for (int x = 0; x < target->width; ++x) {
+            std::memcpy(row + static_cast<std::size_t>(x) * pixel_bytes, fill, pixel_bytes);
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int mesh_transform_image_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    const int* boxes,
+    const double* quads,
+    std::size_t mesh_count,
+    int resample,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    if (!source || !target || (mesh_count > 0 && (!boxes || !quads))) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!supported_affine_transform_resample(resample) || out_width < 0 || out_height < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (mesh_count > static_cast<std::size_t>(-1) / 8 || mesh_count > static_cast<std::size_t>(-1) / 4) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::uint8_t fill[4]{0, 0, 0, 0};
+    int status = normalize_transform_fill(source, fill_color, fill_color_size, fill);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    status = fill_image_storage_with_color(target, fill);
+    if (status != PILLOW_C_OK || target->pixels.empty()) {
+        return status;
+    }
+
+    for (std::size_t mesh_index = 0; mesh_index < mesh_count; ++mesh_index) {
+        const int* box = boxes + mesh_index * 4;
+        const double* quad = quads + mesh_index * 8;
+        const int left = box[0];
+        const int top = box[1];
+        const int right = box[2];
+        const int bottom = box[3];
+        if (right <= left || bottom <= top) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        for (int i = 0; i < 8; ++i) {
+            if (!std::isfinite(quad[i])) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+        }
+
+        const double box_width = static_cast<double>(right - left);
+        const double box_height = static_cast<double>(bottom - top);
+        const double x0 = quad[0];
+        const double y0 = quad[1];
+        const double sw_x = quad[2];
+        const double sw_y = quad[3];
+        const double se_x = quad[4];
+        const double se_y = quad[5];
+        const double ne_x = quad[6];
+        const double ne_y = quad[7];
+        const double as = 1.0 / box_width;
+        const double at = 1.0 / box_height;
+        const QuadGeometry geometry{
+            x0,
+            (ne_x - x0) * as,
+            (sw_x - x0) * at,
+            (se_x - sw_x - ne_x + x0) * as * at,
+            y0,
+            (ne_y - y0) * as,
+            (sw_y - y0) * at,
+            (se_y - sw_y - ne_y + y0) * as * at,
+            right - left,
+            bottom - top};
+
+        const int start_y = std::max(top, 0);
+        const int end_y = std::min(bottom, target->height);
+        const int start_x = std::max(left, 0);
+        const int end_x = std::min(right, target->width);
+        const std::size_t pixel_bytes = static_cast<std::size_t>(source->channels);
+        for (int dst_y = start_y; dst_y < end_y; ++dst_y) {
+            std::uint8_t* dst_row = target->pixels.data() + static_cast<std::size_t>(dst_y) * target->stride;
+            for (int dst_x = start_x; dst_x < end_x; ++dst_x) {
+                double source_x = 0.0;
+                double source_y = 0.0;
+                quad_transform_point(
+                    geometry,
+                    static_cast<double>(dst_x - left) + 0.5,
+                    static_cast<double>(dst_y - top) + 0.5,
+                    &source_x,
+                    &source_y);
+                std::uint8_t* dst = dst_row + static_cast<std::size_t>(dst_x) * pixel_bytes;
+                if (!std::isfinite(source_x) || !std::isfinite(source_y)) {
+                    write_transform_values(source, fill, dst);
+                    continue;
+                }
+                if (resample == PILLOW_C_RESAMPLE_NEAREST) {
+                    const int src_x = source_x < 0.0 ? -1 : static_cast<int>(source_x);
+                    const int src_y = source_y < 0.0 ? -1 : static_cast<int>(source_y);
+                    if (src_x < 0 || src_y < 0 || src_x >= source->width || src_y >= source->height) {
+                        std::memcpy(dst, fill, pixel_bytes);
+                        continue;
+                    }
+                    const std::uint8_t* src =
+                        source->pixels.data() +
+                        static_cast<std::size_t>(src_y) * source->stride +
+                        static_cast<std::size_t>(src_x) * pixel_bytes;
+                    std::memcpy(dst, src, pixel_bytes);
+                    continue;
+                }
+                if (source_x < 0.0 || source_y < 0.0 || source_x >= source->width || source_y >= source->height) {
+                    write_transform_values(source, fill, dst);
+                    continue;
+                }
+                std::uint8_t values[4]{0, 0, 0, 0};
+                for (int channel = 0; channel < source->channels; ++channel) {
+                    values[channel] = resample == PILLOW_C_RESAMPLE_BILINEAR
+                        ? bilinear_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA)
+                        : bicubic_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA);
+                }
+                write_transform_values(source, values, dst);
+            }
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 bool precompute_nearest_indices_for_box(
     int src_size,
     int dst_size,
@@ -4730,6 +4875,31 @@ extern "C" __declspec(dllexport) int pillow_c_image_transform_quad_into(
         target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_transform_mesh_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    const int* boxes,
+    const double* quads,
+    std::size_t mesh_count,
+    int resample,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    return mesh_transform_image_into(
+        source,
+        out_width,
+        out_height,
+        boxes,
+        quads,
+        mesh_count,
+        resample,
+        fill_color,
+        fill_color_size,
+        target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_rotate_into(
     const PillowCImage* source,
     double angle,
@@ -6288,6 +6458,65 @@ extern "C" __declspec(dllexport) int pillow_c_image_transform_quad(
             out_width,
             out_height,
             corners,
+            resample,
+            fill_color,
+            fill_color_size,
+            image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_transform_mesh(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    const int* boxes,
+    const double* quads,
+    std::size_t mesh_count,
+    int resample,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image || (mesh_count > 0 && (!boxes || !quads))) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!supported_affine_transform_resample(resample) || out_width < 0 || out_height < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (mesh_count > static_cast<std::size_t>(-1) / 8 || mesh_count > static_cast<std::size_t>(-1) / 4) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(out_width, out_height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = mesh_transform_image_into(
+            source,
+            out_width,
+            out_height,
+            boxes,
+            quads,
+            mesh_count,
             resample,
             fill_color,
             fill_color_size,
