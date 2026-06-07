@@ -1279,6 +1279,33 @@ PillowCImageFilterBoxBlurInto(sourceHandle, xRadius, yRadius, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageFilterGaussianBlur(sourceHandle, xRadius, yRadius) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_filter_gaussian_blur",
+        "Ptr", sourceHandle,
+        "Double", xRadius,
+        "Double", yRadius,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageFilterGaussianBlurInto(sourceHandle, xRadius, yRadius, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_filter_gaussian_blur_into",
+        "Ptr", sourceHandle,
+        "Double", xRadius,
+        "Double", yRadius,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCAffineMatrix(values) {
     buf := Buffer(6 * 8, 0)
     for index, value in values
@@ -6053,6 +6080,132 @@ PillowCTestImageFilterBoxBlurRejectsInvalidRadius(*) {
 }
 
 AhkTest.Test("pillow_c image filter box blur rejects invalid radius", PillowCTestImageFilterBoxBlurRejectsInvalidRadius)
+
+PillowCTestImageFilterGaussianBlurMatchesPillowLRadiusVariants(*) {
+    source := PillowCCreateImageMode(4, 3, 1)
+    radius0 := 0
+    r05 := 0
+    r1 := 0
+    r125 := 0
+    horizontal := 0
+    vertical := 0
+    mixed := 0
+    r2 := 0
+    try {
+        PillowCImageSetBytes(source, [
+            0, 30, 80, 120,
+            160, 200, 220, 255,
+            10, 40, 90, 140,
+        ])
+
+        radius0 := PillowCImageFilterGaussianBlur(source, 0, 0)
+        r05 := PillowCImageFilterGaussianBlur(source, 0.5, 0.5)
+        r1 := PillowCImageFilterGaussianBlur(source, 1, 1)
+        r125 := PillowCImageFilterGaussianBlur(source, 1.25, 1.25)
+        horizontal := PillowCImageFilterGaussianBlur(source, 1, 0)
+        vertical := PillowCImageFilterGaussianBlur(source, 0, 1)
+        mixed := PillowCImageFilterGaussianBlur(source, 1.5, 0.5)
+        r2 := PillowCImageFilterGaussianBlur(source, 2, 2)
+
+        AhkTest.AssertEqual([
+            0, 30, 80, 120,
+            160, 200, 220, 255,
+            10, 40, 90, 140,
+        ], PillowCImageToArray(radius0, 12))
+        AhkTest.AssertEqual([21, 51, 95, 129, 131, 163, 191, 224, 30, 60, 104, 147], PillowCImageToArray(r05, 12))
+        AhkTest.AssertEqual([62, 84, 118, 143, 85, 106, 139, 164, 67, 91, 126, 153], PillowCImageToArray(r1, 12))
+        AhkTest.AssertEqual([76, 96, 123, 143, 79, 99, 127, 147, 80, 100, 129, 149], PillowCImageToArray(r125, 12))
+        AhkTest.AssertEqual([14, 38, 74, 102, 176, 196, 221, 240, 24, 49, 88, 119], PillowCImageToArray(horizontal, 12))
+        AhkTest.AssertEqual([47, 79, 121, 160, 69, 103, 141, 182, 53, 86, 127, 172], PillowCImageToArray(vertical, 12))
+        AhkTest.AssertEqual([46, 62, 86, 103, 153, 167, 187, 201, 54, 73, 98, 116], PillowCImageToArray(mixed, 12))
+        AhkTest.AssertEqual([82, 94, 109, 121, 83, 95, 110, 122, 84, 96, 111, 123], PillowCImageToArray(r2, 12))
+    } finally {
+        for handle in [r2, mixed, vertical, horizontal, r125, r1, r05, radius0, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image filter GaussianBlur matches Pillow L radius variants", PillowCTestImageFilterGaussianBlurMatchesPillowLRadiusVariants)
+
+PillowCTestImageFilterGaussianBlurMatchesPillowRgbRgbaAndInto(*) {
+    rgb := PillowCCreateImageMode(4, 2, 3)
+    rgba := PillowCCreateImageMode(3, 2, 4)
+    rgbTarget := PillowCCreateImageMode(4, 2, 3)
+    wrongTarget := PillowCCreateImageMode(4, 2, 1)
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(rgb, [
+            1, 2, 3, 20, 30, 40, 60, 70, 80, 100, 110, 120,
+            130, 140, 150, 160, 170, 180, 200, 210, 220, 230, 240, 250,
+        ])
+        PillowCImageSetBytes(rgba, [
+            1, 2, 3, 4, 20, 30, 40, 50, 60, 70, 80, 90,
+            100, 110, 120, 130, 140, 150, 160, 170, 200, 210, 220, 230,
+        ])
+        before := PillowCImageData(rgbTarget).Ptr
+
+        rgbOut := PillowCImageFilterGaussianBlur(rgb, 1.25, 0.5)
+        rgbaOut := PillowCImageFilterGaussianBlur(rgba, 1.25, 0.5)
+        PillowCImageFilterGaussianBlurInto(rgb, 1.25, 0.5, rgbTarget)
+
+        AhkTest.AssertEqual(before, PillowCImageData(rgbTarget).Ptr)
+        AhkTest.AssertEqual([
+            32, 36, 43, 48, 55, 63, 73, 82, 91, 92, 102, 112,
+            134, 144, 153, 152, 162, 172, 176, 186, 196, 194, 204, 214,
+        ], PillowCImageToArray(rgbOut, 24))
+        AhkTest.AssertEqual(PillowCImageToArray(rgbOut, 24), PillowCImageToArray(rgbTarget, 24))
+        AhkTest.AssertEqual([
+            28, 33, 39, 44, 41, 48, 55, 63, 54, 63, 72, 81,
+            113, 123, 132, 142, 132, 142, 152, 161, 152, 162, 172, 182,
+        ], PillowCImageToArray(rgbaOut, 24))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_filter_gaussian_blur_into",
+            "Ptr", rgb,
+            "Double", 1.0,
+            "Double", 1.0,
+            "Ptr", wrongTarget,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        for handle in [rgbaOut, rgbOut, wrongTarget, rgbTarget, rgba, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image filter GaussianBlur matches Pillow RGB RGBA and _into", PillowCTestImageFilterGaussianBlurMatchesPillowRgbRgbaAndInto)
+
+PillowCTestImageFilterGaussianBlurRejectsOutOfRangeRadius(*) {
+    source := PillowCCreateImageMode(1, 1, 1)
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(source, [5])
+        for radius in [1.0e300, -1.0e300] {
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_filter_gaussian_blur",
+                "Ptr", source,
+                "Double", radius,
+                "Double", 0.0,
+                "Ptr*", &outHandle,
+                "Int"
+            )
+            AhkTest.AssertEqual(-3, status)
+            AhkTest.AssertEqual(0, outHandle)
+        }
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image filter GaussianBlur rejects out-of-range radius", PillowCTestImageFilterGaussianBlurRejectsOutOfRangeRadius)
 
 PillowCTestImageTransformAffineNearestMatchesPillow(*) {
     source := PillowCCreateImageMode(3, 2, 1)

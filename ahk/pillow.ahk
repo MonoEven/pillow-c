@@ -766,6 +766,32 @@ class Pillow {
             }
         }
 
+        class GaussianBlur {
+            __New(radius := 2) {
+                xy := Pillow.ImageFilter.RadiusPair(radius, "GaussianBlur")
+                this.Name := "GaussianBlur"
+                this.Radius := radius
+                this.XRadius := xy[1]
+                this.YRadius := xy[2]
+            }
+
+            Apply(image) {
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("Pillow.ImageFilter.GaussianBlur expects a Pillow.Image", -1)
+
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_filter_gaussian_blur",
+                    "Ptr", image.RequireHandle(),
+                    "Double", this.XRadius,
+                    "Double", this.YRadius,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return Pillow.WrapImageHandle(outHandle)
+            }
+        }
+
         static BLUR() {
             return Pillow.ImageFilter.BuiltinKernel("Blur", [5, 5], 16, 0, [
                 1, 1, 1, 1, 1,

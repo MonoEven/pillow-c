@@ -3676,6 +3676,18 @@ bool valid_box_blur_radius(double radius)
            radius <= static_cast<double>((INT_MAX - 1) / 2);
 }
 
+double gaussian_blur_radius(double radius, int passes)
+{
+    const float float_radius = static_cast<float>(radius);
+    const float sigma2 = float_radius * float_radius / static_cast<float>(passes);
+    const float length = std::sqrt(12.0f * sigma2 + 1.0f);
+    const float floor_radius = std::floor((length - 1.0f) / 2.0f);
+    float alpha = (2.0f * floor_radius + 1.0f) *
+                  (floor_radius * (floor_radius + 1.0f) - 3.0f * sigma2);
+    alpha /= 6.0f * (sigma2 - (floor_radius + 1.0f) * (floor_radius + 1.0f));
+    return static_cast<double>(floor_radius + alpha);
+}
+
 inline std::uint8_t box_blur_save_u8(std::uint32_t bulk)
 {
     return static_cast<std::uint8_t>((bulk + (1u << 23)) >> 24);
@@ -3853,10 +3865,11 @@ void box_blur_vertical_buffer(
     }
 }
 
-int filter_box_blur_image_into(
+int filter_box_blur_passes_image_into(
     const PillowCImage* source,
     double xradius,
     double yradius,
+    int passes,
     PillowCImage* target)
 {
     if (!source || !target) {
@@ -3866,6 +3879,9 @@ int filter_box_blur_image_into(
         return PILLOW_C_MISMATCH;
     }
     if (!valid_box_blur_radius(xradius) || !valid_box_blur_radius(yradius)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (passes <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
     if (source->pixels.empty()) {
@@ -3885,47 +3901,109 @@ int filter_box_blur_image_into(
     }
 
     try {
-        if (xradius != 0.0 && yradius != 0.0) {
-            std::vector<std::uint8_t> temp(source->pixels.size());
-            box_blur_horizontal_buffer(
-                source_data,
-                temp.data(),
-                source->width,
-                source->height,
-                source->channels,
-                source->stride,
-                xradius);
-            box_blur_vertical_buffer(
-                temp.data(),
-                target->pixels.data(),
-                source->width,
-                source->height,
-                source->channels,
-                source->stride,
-                yradius);
-        } else if (xradius != 0.0) {
-            box_blur_horizontal_buffer(
-                source_data,
-                target->pixels.data(),
-                source->width,
-                source->height,
-                source->channels,
-                source->stride,
-                xradius);
-        } else {
-            box_blur_vertical_buffer(
-                source_data,
-                target->pixels.data(),
-                source->width,
-                source->height,
-                source->channels,
-                source->stride,
-                yradius);
+        if (passes == 1) {
+            if (xradius != 0.0 && yradius != 0.0) {
+                std::vector<std::uint8_t> temp(source->pixels.size());
+                box_blur_horizontal_buffer(
+                    source_data,
+                    temp.data(),
+                    source->width,
+                    source->height,
+                    source->channels,
+                    source->stride,
+                    xradius);
+                box_blur_vertical_buffer(
+                    temp.data(),
+                    target->pixels.data(),
+                    source->width,
+                    source->height,
+                    source->channels,
+                    source->stride,
+                    yradius);
+            } else if (xradius != 0.0) {
+                box_blur_horizontal_buffer(
+                    source_data,
+                    target->pixels.data(),
+                    source->width,
+                    source->height,
+                    source->channels,
+                    source->stride,
+                    xradius);
+            } else {
+                box_blur_vertical_buffer(
+                    source_data,
+                    target->pixels.data(),
+                    source->width,
+                    source->height,
+                    source->channels,
+                    source->stride,
+                    yradius);
+            }
+            return PILLOW_C_OK;
         }
+
+        const std::size_t byte_count = source->pixels.size();
+        std::vector<std::uint8_t> temp_a(byte_count);
+        std::vector<std::uint8_t> temp_b(byte_count);
+        const std::uint8_t* current = source_data;
+        std::uint8_t* next = temp_a.data();
+        bool next_is_a = true;
+
+        for (int pass = 0; pass < passes && xradius != 0.0; ++pass) {
+            box_blur_horizontal_buffer(
+                current,
+                next,
+                source->width,
+                source->height,
+                source->channels,
+                source->stride,
+                xradius);
+            current = next;
+            next = next_is_a ? temp_b.data() : temp_a.data();
+            next_is_a = !next_is_a;
+        }
+        for (int pass = 0; pass < passes && yradius != 0.0; ++pass) {
+            box_blur_vertical_buffer(
+                current,
+                next,
+                source->width,
+                source->height,
+                source->channels,
+                source->stride,
+                yradius);
+            current = next;
+            next = next_is_a ? temp_b.data() : temp_a.data();
+            next_is_a = !next_is_a;
+        }
+        std::memcpy(target->pixels.data(), current, byte_count);
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int filter_box_blur_image_into(
+    const PillowCImage* source,
+    double xradius,
+    double yradius,
+    PillowCImage* target)
+{
+    return filter_box_blur_passes_image_into(source, xradius, yradius, 1, target);
+}
+
+int filter_gaussian_blur_image_into(
+    const PillowCImage* source,
+    double xradius,
+    double yradius,
+    PillowCImage* target)
+{
+    constexpr int passes = 3;
+    if (!std::isfinite(xradius) || !std::isfinite(yradius)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const double xbox_radius = gaussian_blur_radius(xradius, passes);
+    const double ybox_radius = gaussian_blur_radius(yradius, passes);
+    return filter_box_blur_passes_image_into(source, xbox_radius, ybox_radius, passes, target);
 }
 
 int resize_image_box_into(
@@ -5337,6 +5415,15 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_box_blur_into(
     PillowCImage* target)
 {
     return filter_box_blur_image_into(source, xradius, yradius, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_gaussian_blur_into(
+    const PillowCImage* source,
+    double xradius,
+    double yradius,
+    PillowCImage* target)
+{
+    return filter_gaussian_blur_image_into(source, xradius, yradius, target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_transform_affine_into(
@@ -6971,6 +7058,40 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_box_blur(
             source->stride,
             std::vector<std::uint8_t>(source->pixels.size())};
         const int status = filter_box_blur_image_into(source, xradius, yradius, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_gaussian_blur(
+    const PillowCImage* source,
+    double xradius,
+    double yradius,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!std::isfinite(xradius) || !std::isfinite(yradius)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            source->mode,
+            source->channels,
+            source->stride,
+            std::vector<std::uint8_t>(source->pixels.size())};
+        const int status = filter_gaussian_blur_image_into(source, xradius, yradius, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

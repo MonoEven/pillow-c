@@ -800,6 +800,112 @@ PillowTestImageFilterBoxBlurRejectsInvalidRadius(*) {
 
 AhkTest.Test("Pillow ImageFilter BoxBlur rejects invalid radius", PillowTestImageFilterBoxBlurRejectsInvalidRadius)
 
+PillowTestImageFilterGaussianBlurUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
+        0, 30, 80, 120,
+        160, 200, 220, 255,
+        10, 40, 90, 140,
+    ]))
+    outputs := []
+    try {
+        cases := [
+            { Filter: Pillow.ImageFilter.GaussianBlur(0), Name: "GaussianBlur", Bytes: [
+                0, 30, 80, 120,
+                160, 200, 220, 255,
+                10, 40, 90, 140,
+            ] },
+            { Filter: Pillow.ImageFilter.GaussianBlur(0.5), Name: "GaussianBlur", Bytes: [
+                21, 51, 95, 129,
+                131, 163, 191, 224,
+                30, 60, 104, 147,
+            ] },
+            { Filter: Pillow.ImageFilter.GaussianBlur(1), Name: "GaussianBlur", Bytes: [
+                62, 84, 118, 143,
+                85, 106, 139, 164,
+                67, 91, 126, 153,
+            ] },
+            { Filter: Pillow.ImageFilter.GaussianBlur([1.5, 0.5]), Name: "GaussianBlur", Bytes: [
+                46, 62, 86, 103,
+                153, 167, 187, 201,
+                54, 73, 98, 116,
+            ] },
+            { Filter: Pillow.ImageFilter.GaussianBlur(), Name: "GaussianBlur", Bytes: [
+                82, 94, 109, 121,
+                83, 95, 110, 122,
+                84, 96, 111, 123,
+            ] },
+        ]
+
+        for item in cases {
+            AhkTest.AssertEqual(item.Name, item.Filter.Name)
+            out := source.Filter(item.Filter)
+            outputs.Push(out)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(out.ToBytes()))
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter GaussianBlur uses native path", PillowTestImageFilterGaussianBlurUsesNativePath)
+
+PillowTestImageFilterGaussianBlurSupportsRgbRgba(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [4, 2], PillowTestBuffer([
+        1, 2, 3, 20, 30, 40, 60, 70, 80, 100, 110, 120,
+        130, 140, 150, 160, 170, 180, 200, 210, 220, 230, 240, 250,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [3, 2], PillowTestBuffer([
+        1, 2, 3, 4, 20, 30, 40, 50, 60, 70, 80, 90,
+        100, 110, 120, 130, 140, 150, 160, 170, 200, 210, 220, 230,
+    ]))
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        rgbOut := rgb.Filter(Pillow.ImageFilter.GaussianBlur([1.25, 0.5]))
+        rgbaOut := rgba.Filter(Pillow.ImageFilter.GaussianBlur([1.25, 0.5]))
+        AhkTest.AssertEqual([
+            32, 36, 43, 48, 55, 63, 73, 82, 91, 92, 102, 112,
+            134, 144, 153, 152, 162, 172, 176, 186, 196, 194, 204, 214,
+        ], PillowTestBufferToArray(rgbOut.ToBytes()))
+        AhkTest.AssertEqual([
+            28, 33, 39, 44, 41, 48, 55, 63, 54, 63, 72, 81,
+            113, 123, 132, 142, 132, 142, 152, 161, 152, 162, 172, 182,
+        ], PillowTestBufferToArray(rgbaOut.ToBytes()))
+    } finally {
+        for image in [rgbaOut, rgbOut, rgba, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter GaussianBlur supports RGB and RGBA", PillowTestImageFilterGaussianBlurSupportsRgbRgba)
+
+PillowTestImageFilterGaussianBlurRejectsInvalidRadiusShape(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.New("L", [1, 1])
+    try {
+        for radius in [[1], [1, 2, 3], "x"] {
+            try {
+                source.Filter(Pillow.ImageFilter.GaussianBlur(radius))
+                AhkTest.Fail("Expected GaussianBlur to reject invalid radius")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, "radius") > 0)
+            }
+        }
+    } finally {
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter GaussianBlur rejects invalid radius shape", PillowTestImageFilterGaussianBlurRejectsInvalidRadiusShape)
+
 PillowTestImageTransformAffineUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
