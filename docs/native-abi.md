@@ -200,9 +200,11 @@ Reusable target operations:
 
 `pillow_c_image_logical_and`, `pillow_c_image_logical_or`, `pillow_c_image_logical_xor`, and their `_into` variants implement Pillow `ImageChops.logical_*` for mode `1` images only. They return `-3` for other modes, use overlapping output dimensions for mismatched sizes, and allow empty width or height outputs.
 
-`pillow_c_image_paste_masked` mutates the target in place, clips the source rectangle to the target bounds, converts the source to the target mode when needed, and blends through a same-size source mask. Mask modes `L`, `LA`, and `RGBA` are accepted; `LA` and `RGBA` use their alpha band.
+`pillow_c_image_composite` and `pillow_c_image_composite_into` blend through mask modes `1`, `L`, `LA`, and `RGBA`; `LA` and `RGBA` use their alpha band.
 
-`pillow_c_image_paste_color` mutates the target in place by filling a four-coordinate rectangle with a caller-packed target-mode color. The optional mask must match the unclipped rectangle size and may use `L`, `LA`, or `RGBA`; masked calls clip the destination rectangle and sample the matching mask offset after clipping. The AHK facade owns Pillow-style scalar/tuple color parsing before making this single native call.
+`pillow_c_image_paste_masked` mutates the target in place, clips the source rectangle to the target bounds, converts the source to the target mode when needed, and blends through a same-size source mask. Mask modes `1`, `L`, `LA`, and `RGBA` are accepted; `LA` and `RGBA` use their alpha band.
+
+`pillow_c_image_paste_color` mutates the target in place by filling a four-coordinate rectangle with a caller-packed target-mode color. The optional mask must match the unclipped rectangle size and may use `1`, `L`, `LA`, or `RGBA`; masked calls clip the destination rectangle and sample the matching mask offset after clipping. The AHK facade owns Pillow-style scalar/tuple color parsing before making this single native call.
 
 `pillow_c_image_autocontrast` and `pillow_c_image_autocontrast_into` accept an optional L-mode mask handle after the ignore list arguments, followed by a `preserve_tone` integer flag. A null mask keeps full-image histogram behavior.
 

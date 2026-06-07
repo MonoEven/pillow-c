@@ -2295,6 +2295,30 @@ PillowCTestImageCompositeUsesLaMaskAlpha(*) {
 
 AhkTest.Test("pillow_c image composite uses LA mask alpha", PillowCTestImageCompositeUsesLaMaskAlpha)
 
+PillowCTestImageCompositeUsesModeOneMaskAlpha(*) {
+    left := PillowCCreateImageMode(3, 1, 1)
+    right := PillowCCreateImageMode(3, 1, 1)
+    mask := PillowCCreateImageMode(3, 1, 5)
+    out := 0
+    try {
+        PillowCImageSetBytes(left, [10, 20, 30])
+        PillowCImageSetBytes(right, [100, 110, 120])
+        PillowCImageSetRawBytes(mask, [0xA0], "1")
+
+        out := PillowCImageComposite(left, right, mask)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(out))
+        AhkTest.AssertEqual([10, 110, 30], PillowCImageToArray(out, 3))
+    } finally {
+        for handle in [out, mask, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image composite uses mode 1 mask alpha", PillowCTestImageCompositeUsesModeOneMaskAlpha)
+
 PillowCTestImageCompositeUsesTargetSizeAndClipsSource(*) {
     left := PillowCCreateImageMode(1, 1, 3)
     right := PillowCCreateImageMode(2, 1, 3)
@@ -8738,6 +8762,27 @@ PillowCTestImagePasteMaskedConvertsSourceToTargetMode(*) {
 
 AhkTest.Test("pillow_c image paste_masked converts source to target mode", PillowCTestImagePasteMaskedConvertsSourceToTargetMode)
 
+PillowCTestImagePasteMaskedAcceptsModeOneMask(*) {
+    target := PillowCCreateImageMode(4, 1, 1)
+    source := PillowCCreateImageMode(2, 1, 1)
+    mask := PillowCCreateImageMode(2, 1, 5)
+    try {
+        PillowCImageSetBytes(target, [1, 2, 3, 4])
+        PillowCImageSetBytes(source, [9, 8])
+        PillowCImageSetRawBytes(mask, [0x80], "1")
+
+        PillowCImagePasteMasked(target, source, 1, 0, mask)
+
+        AhkTest.AssertEqual([1, 9, 3, 4], PillowCImageToArray(target, 4))
+    } finally {
+        PillowCFreeImage(mask)
+        PillowCFreeImage(source)
+        PillowCFreeImage(target)
+    }
+}
+
+AhkTest.Test("pillow_c image paste_masked accepts mode 1 masks", PillowCTestImagePasteMaskedAcceptsModeOneMask)
+
 PillowCTestImagePasteColorFillsRectangleAndClipsLikePillow(*) {
     target := PillowCCreateImageMode(4, 3, 3)
     clippedTarget := PillowCCreateImageMode(4, 3, 3)
@@ -8794,6 +8839,28 @@ PillowCTestImagePasteColorUsesMaskAlpha(*) {
 }
 
 AhkTest.Test("pillow_c image paste_color blends through masks", PillowCTestImagePasteColorUsesMaskAlpha)
+
+PillowCTestImagePasteColorAcceptsModeOneMask(*) {
+    target := PillowCCreateImageMode(4, 1, 3)
+    mask := PillowCCreateImageMode(2, 1, 5)
+    try {
+        PillowCImageSetBytes(target, [
+            1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4,
+        ])
+        PillowCImageSetRawBytes(mask, [0x80], "1")
+
+        PillowCImagePasteColor(target, [9, 8, 7], 1, 0, 3, 1, mask)
+
+        AhkTest.AssertEqual([
+            1, 1, 1, 9, 8, 7, 3, 3, 3, 4, 4, 4,
+        ], PillowCImageToArray(target, 12))
+    } finally {
+        PillowCFreeImage(mask)
+        PillowCFreeImage(target)
+    }
+}
+
+AhkTest.Test("pillow_c image paste_color accepts mode 1 masks", PillowCTestImagePasteColorAcceptsModeOneMask)
 
 PillowCTestImagePasteRejectsChannelMismatch(*) {
     target := PillowCCreateImage(2, 2, 3)

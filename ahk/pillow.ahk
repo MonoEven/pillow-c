@@ -1497,7 +1497,7 @@ class Pillow {
         static Composite(image1, image2, mask) {
             if !(IsObject(mask) && mask is Pillow.Image)
                 throw Error("bad transparency mask", -1)
-            if !(mask.Mode = "L" || mask.Mode = "RGBA")
+            if !(mask.Mode = "1" || mask.Mode = "L" || mask.Mode = "LA" || mask.Mode = "RGBA")
                 throw Error("bad transparency mask", -1)
 
             outHandle := 0

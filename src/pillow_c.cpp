@@ -533,7 +533,8 @@ bool images_match(const PillowCImage* left, const PillowCImage* right)
 bool supported_composite_mask(const PillowCImage* mask)
 {
     return mask &&
-           ((mask->mode == PILLOW_C_MODE_L && mask->channels == 1) ||
+           ((mask->mode == PILLOW_C_MODE_1 && mask->channels == 1) ||
+            (mask->mode == PILLOW_C_MODE_L && mask->channels == 1) ||
             (mask->mode == PILLOW_C_MODE_LA && mask->channels == 2) ||
             (mask->mode == PILLOW_C_MODE_RGBA && mask->channels == 4));
 }

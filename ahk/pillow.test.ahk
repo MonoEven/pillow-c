@@ -3321,6 +3321,23 @@ PillowTestImagePasteUsesMaskAndConvertsSourceMode(*) {
 
 AhkTest.Test("Pillow Image.Paste uses mask and converts source mode", PillowTestImagePasteUsesMaskAndConvertsSourceMode)
 
+PillowTestImagePasteAcceptsModeOneMask(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    target := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([1, 2, 3, 4]))
+    source := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([9, 8]))
+    mask := Pillow.Image.FromBytes("1", [2, 1], PillowTestBuffer([0x80]))
+    try {
+        target.Paste(source, [1, 0], mask)
+        AhkTest.AssertEqual([1, 9, 3, 4], PillowTestBufferToArray(target.ToBytes()))
+    } finally {
+        mask.Close()
+        source.Close()
+        target.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Paste accepts mode 1 masks", PillowTestImagePasteAcceptsModeOneMask)
+
 PillowTestImagePasteAcceptsColorSources(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     target := Pillow.Image.FromBytes("RGB", [4, 3], PillowTestBuffer([
@@ -3345,6 +3362,25 @@ PillowTestImagePasteAcceptsColorSources(*) {
 }
 
 AhkTest.Test("Pillow Image.Paste accepts color sources through native path", PillowTestImagePasteAcceptsColorSources)
+
+PillowTestImagePasteColorAcceptsModeOneMask(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    target := Pillow.Image.FromBytes("RGB", [4, 1], PillowTestBuffer([
+        1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4,
+    ]))
+    mask := Pillow.Image.FromBytes("1", [2, 1], PillowTestBuffer([0x80]))
+    try {
+        target.Paste([9, 8, 7], [1, 0, 3, 1], mask)
+        AhkTest.AssertEqual([
+            1, 1, 1, 9, 8, 7, 3, 3, 3, 4, 4, 4,
+        ], PillowTestBufferToArray(target.ToBytes()))
+    } finally {
+        mask.Close()
+        target.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Paste color source accepts mode 1 masks", PillowTestImagePasteColorAcceptsModeOneMask)
 
 PillowTestImagePasteColorRejectsTwoItemBox(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -3426,6 +3462,30 @@ PillowTestImageCompositeUsesRgbaMaskAndClipsSource(*) {
 }
 
 AhkTest.Test("Pillow Image.Composite uses RGBA mask alpha and target size", PillowTestImageCompositeUsesRgbaMaskAndClipsSource)
+
+PillowTestImageCompositeUsesModeOneAndLaMasks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([10, 20, 30]))
+    right := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([100, 110, 120]))
+    oneMask := Pillow.Image.FromBytes("1", [3, 1], PillowTestBuffer([0xA0]))
+    laMask := Pillow.Image.FromBytes("LA", [3, 1], PillowTestBuffer([9, 255, 9, 0, 9, 128]))
+    oneOut := 0
+    laOut := 0
+    try {
+        oneOut := Pillow.Image.Composite(left, right, oneMask)
+        laOut := Pillow.Image.Composite(left, right, laMask)
+
+        AhkTest.AssertEqual([10, 110, 30], PillowTestBufferToArray(oneOut.ToBytes()))
+        AhkTest.AssertEqual([10, 110, 75], PillowTestBufferToArray(laOut.ToBytes()))
+    } finally {
+        for item in [laOut, oneOut, laMask, oneMask, right, left] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Composite accepts mode 1 and LA masks", PillowTestImageCompositeUsesModeOneAndLaMasks)
 
 PillowTestImageCompositeConvertsSourceToTargetMode(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
