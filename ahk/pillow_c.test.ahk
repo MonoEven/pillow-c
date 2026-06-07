@@ -343,6 +343,34 @@ PillowCImageScreen(leftHandle, rightHandle) {
     return outHandle
 }
 
+PillowCImageAddModulo(leftHandle, rightHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_add_modulo",
+        "Ptr", leftHandle,
+        "Ptr", rightHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageSubtractModulo(leftHandle, rightHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_subtract_modulo",
+        "Ptr", leftHandle,
+        "Ptr", rightHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageCopyInto(sourceHandle, targetHandle) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_copy_into",
@@ -1501,6 +1529,159 @@ PillowCTestImageScreenRejectsModeMismatch(*) {
 }
 
 AhkTest.Test("pillow_c image screen rejects mode mismatch", PillowCTestImageScreenRejectsModeMismatch)
+
+PillowCTestImageAddAndSubtractModuloMatchPillowModes(*) {
+    l1 := PillowCCreateImageMode(4, 1, 1)
+    l2 := PillowCCreateImageMode(4, 1, 1)
+    rgb1 := PillowCCreateImageMode(2, 1, 3)
+    rgb2 := PillowCCreateImageMode(2, 1, 3)
+    rgba1 := PillowCCreateImageMode(2, 1, 4)
+    rgba2 := PillowCCreateImageMode(2, 1, 4)
+    lAdd := 0
+    rgbAdd := 0
+    rgbaAdd := 0
+    lSub := 0
+    rgbSub := 0
+    rgbaSub := 0
+    try {
+        PillowCImageSetBytes(l1, [0, 40, 200, 255])
+        PillowCImageSetBytes(l2, [255, 10, 220, 128])
+        PillowCImageSetBytes(rgb1, [1, 50, 200, 255, 0, 80])
+        PillowCImageSetBytes(rgb2, [4, 20, 100, 15, 200, 90])
+        PillowCImageSetBytes(rgba1, [1, 50, 200, 255, 20, 30, 40, 0])
+        PillowCImageSetBytes(rgba2, [4, 20, 100, 15, 200, 90, 50, 255])
+
+        lAdd := PillowCImageAddModulo(l1, l2)
+        rgbAdd := PillowCImageAddModulo(rgb1, rgb2)
+        rgbaAdd := PillowCImageAddModulo(rgba1, rgba2)
+        lSub := PillowCImageSubtractModulo(l1, l2)
+        rgbSub := PillowCImageSubtractModulo(rgb1, rgb2)
+        rgbaSub := PillowCImageSubtractModulo(rgba1, rgba2)
+
+        AhkTest.AssertEqual([255, 50, 164, 127], PillowCImageToArray(lAdd, 4))
+        AhkTest.AssertEqual([5, 70, 44, 14, 200, 170], PillowCImageToArray(rgbAdd, 6))
+        AhkTest.AssertEqual([5, 70, 44, 14, 220, 120, 90, 255], PillowCImageToArray(rgbaAdd, 8))
+        AhkTest.AssertEqual([1, 30, 236, 127], PillowCImageToArray(lSub, 4))
+        AhkTest.AssertEqual([253, 30, 100, 240, 56, 246], PillowCImageToArray(rgbSub, 6))
+        AhkTest.AssertEqual([253, 30, 100, 240, 76, 196, 246, 1], PillowCImageToArray(rgbaSub, 8))
+    } finally {
+        for handle in [rgbaSub, rgbSub, lSub, rgbaAdd, rgbAdd, lAdd, rgba2, rgba1, rgb2, rgb1, l2, l1] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image add_modulo and subtract_modulo match Pillow modes", PillowCTestImageAddAndSubtractModuloMatchPillowModes)
+
+PillowCTestImageModuloOpsUseOverlappingAndEmptyOutputSize(*) {
+    left := PillowCCreateImageMode(4, 1, 1)
+    right := PillowCCreateImageMode(2, 1, 1)
+    empty := 0
+    addOverlap := 0
+    subOverlap := 0
+    addEmpty := 0
+    subEmpty := 0
+    try {
+        PillowCImageSetBytes(left, [0, 40, 200, 255])
+        PillowCImageSetBytes(right, [255, 10])
+        empty := PillowCImageCrop(left, 1, 0, 1, 1)
+        addOverlap := PillowCImageAddModulo(left, right)
+        subOverlap := PillowCImageSubtractModulo(left, right)
+        addEmpty := PillowCImageAddModulo(empty, left)
+        subEmpty := PillowCImageSubtractModulo(empty, left)
+
+        AhkTest.AssertEqual([2, 1], [PillowCImageInt(addOverlap, "pillow_c_image_width"), PillowCImageInt(addOverlap, "pillow_c_image_height")])
+        AhkTest.AssertEqual([255, 50], PillowCImageToArray(addOverlap, 2))
+        AhkTest.AssertEqual([1, 30], PillowCImageToArray(subOverlap, 2))
+        AhkTest.AssertEqual([0, 1], [PillowCImageInt(addEmpty, "pillow_c_image_width"), PillowCImageInt(addEmpty, "pillow_c_image_height")])
+        AhkTest.AssertEqual([], PillowCImageToArray(addEmpty, 0))
+        AhkTest.AssertEqual([], PillowCImageToArray(subEmpty, 0))
+    } finally {
+        for handle in [subEmpty, addEmpty, subOverlap, addOverlap, empty, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image modulo ops use overlapping and empty output size like Pillow", PillowCTestImageModuloOpsUseOverlappingAndEmptyOutputSize)
+
+PillowCTestImageModuloOpsIntoReuseTargetHandle(*) {
+    left := PillowCCreateImageMode(4, 1, 1)
+    right := PillowCCreateImageMode(2, 1, 1)
+    addTarget := PillowCCreateImageMode(2, 1, 1)
+    subTarget := PillowCCreateImageMode(2, 1, 1)
+    try {
+        PillowCImageSetBytes(left, [0, 40, 200, 255])
+        PillowCImageSetBytes(right, [255, 10])
+        addBefore := PillowCImageData(addTarget).Ptr
+        subBefore := PillowCImageData(subTarget).Ptr
+
+        addStatus := DllCall(
+            PillowCDllPath() "\pillow_c_image_add_modulo_into",
+            "Ptr", left,
+            "Ptr", right,
+            "Ptr", addTarget,
+            "Int"
+        )
+        subStatus := DllCall(
+            PillowCDllPath() "\pillow_c_image_subtract_modulo_into",
+            "Ptr", left,
+            "Ptr", right,
+            "Ptr", subTarget,
+            "Int"
+        )
+        PillowCAssertStatus(addStatus)
+        PillowCAssertStatus(subStatus)
+
+        AhkTest.AssertEqual(addBefore, PillowCImageData(addTarget).Ptr)
+        AhkTest.AssertEqual(subBefore, PillowCImageData(subTarget).Ptr)
+        AhkTest.AssertEqual([255, 50], PillowCImageToArray(addTarget, 2))
+        AhkTest.AssertEqual([1, 30], PillowCImageToArray(subTarget, 2))
+    } finally {
+        for handle in [subTarget, addTarget, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image modulo ops _into reuse overlapping target storage", PillowCTestImageModuloOpsIntoReuseTargetHandle)
+
+PillowCTestImageModuloOpsRejectModeMismatch(*) {
+    left := PillowCCreateImageMode(1, 1, 1)
+    right := PillowCCreateImageMode(1, 1, 3)
+    outHandle := 0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_add_modulo",
+            "Ptr", left,
+            "Ptr", right,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_subtract_modulo",
+            "Ptr", left,
+            "Ptr", right,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(right)
+        PillowCFreeImage(left)
+    }
+}
+
+AhkTest.Test("pillow_c image modulo ops reject mode mismatch", PillowCTestImageModuloOpsRejectModeMismatch)
 
 PillowCTestImageDataPointerSharesMemoryWithAhk(*) {
     image := PillowCCreateImage(2, 1, 3)

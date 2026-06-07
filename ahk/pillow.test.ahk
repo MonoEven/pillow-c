@@ -1211,6 +1211,88 @@ PillowTestImageChopsScreenRejectsModeMismatch(*) {
 
 AhkTest.Test("Pillow ImageChops.Screen rejects mode mismatch", PillowTestImageChopsScreenRejectsModeMismatch)
 
+PillowTestImageChopsModuloOpsUseNativeHandles(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 50, 200, 255, 0, 80]))
+    right := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([4, 20, 100, 15, 200, 90]))
+    addOut := 0
+    subOut := 0
+    try {
+        addOut := Pillow.ImageChops.AddModulo(left, right)
+        subOut := Pillow.ImageChops.SubtractModulo(left, right)
+
+        AhkTest.AssertEqual("RGB", addOut.Mode)
+        AhkTest.AssertEqual([2, 1], addOut.Size)
+        AhkTest.AssertEqual([5, 70, 44, 14, 200, 170], PillowTestBufferToArray(addOut.ToBytes()))
+        AhkTest.AssertEqual([253, 30, 100, 240, 56, 246], PillowTestBufferToArray(subOut.ToBytes()))
+    } finally {
+        for image in [subOut, addOut, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops modulo ops compute wrapped pixels through native handles", PillowTestImageChopsModuloOpsUseNativeHandles)
+
+PillowTestImageChopsModuloOpsUseOverlappingAndEmptyOutputSize(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 40, 200, 255]))
+    right := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([255, 10]))
+    empty := 0
+    addOverlap := 0
+    subOverlap := 0
+    addEmpty := 0
+    subEmpty := 0
+    try {
+        empty := left.Crop([1, 0, 1, 1])
+        addOverlap := Pillow.ImageChops.AddModulo(left, right)
+        subOverlap := Pillow.ImageChops.SubtractModulo(left, right)
+        addEmpty := Pillow.ImageChops.AddModulo(empty, left)
+        subEmpty := Pillow.ImageChops.SubtractModulo(empty, left)
+
+        AhkTest.AssertEqual([2, 1], addOverlap.Size)
+        AhkTest.AssertEqual([255, 50], PillowTestBufferToArray(addOverlap.ToBytes()))
+        AhkTest.AssertEqual([1, 30], PillowTestBufferToArray(subOverlap.ToBytes()))
+        AhkTest.AssertEqual([0, 1], addEmpty.Size)
+        AhkTest.AssertEqual([], PillowTestBufferToArray(addEmpty.ToBytes()))
+        AhkTest.AssertEqual([], PillowTestBufferToArray(subEmpty.ToBytes()))
+    } finally {
+        for image in [subEmpty, addEmpty, subOverlap, addOverlap, empty, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops modulo ops return overlapping and empty output sizes", PillowTestImageChopsModuloOpsUseOverlappingAndEmptyOutputSize)
+
+PillowTestImageChopsModuloOpsRejectModeMismatch(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([1]))
+    right := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    try {
+        try {
+            Pillow.ImageChops.AddModulo(left, right)
+            AhkTest.Fail("Expected ImageChops.AddModulo to reject mode mismatch")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "mismatch") > 0)
+        }
+
+        try {
+            Pillow.ImageChops.SubtractModulo(left, right)
+            AhkTest.Fail("Expected ImageChops.SubtractModulo to reject mode mismatch")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "mismatch") > 0)
+        }
+    } finally {
+        right.Close()
+        left.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageChops modulo ops reject mode mismatch", PillowTestImageChopsModuloOpsRejectModeMismatch)
+
 PillowTestImageAlphaCompositeStaticUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     dst := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([

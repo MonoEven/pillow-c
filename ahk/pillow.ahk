@@ -312,6 +312,30 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static AddModulo(left, right) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_add_modulo",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "AddModulo"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "AddModulo"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static SubtractModulo(left, right) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_subtract_modulo",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "SubtractModulo"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "SubtractModulo"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static RequireImageHandle(image, operationName) {
             if !(IsObject(image) && image is Pillow.Image)
                 throw Error("Pillow.ImageChops." operationName " expects a Pillow.Image", -1)
