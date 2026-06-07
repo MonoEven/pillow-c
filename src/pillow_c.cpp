@@ -306,6 +306,16 @@ int positive_mod(int value, int modulus)
     return result;
 }
 
+int floor_div_int(int numerator, int denominator)
+{
+    int quotient = numerator / denominator;
+    const int remainder = numerator % denominator;
+    if (remainder != 0 && ((remainder < 0) != (denominator < 0))) {
+        quotient -= 1;
+    }
+    return quotient;
+}
+
 int validate_chops_binary_target(
     const PillowCImage* left,
     const PillowCImage* right,
@@ -951,6 +961,92 @@ int solarize_image_into(const PillowCImage* source, double threshold, PillowCIma
             : static_cast<std::uint8_t>(255 - ix);
     }
     return apply_imageops_lut_into(source, lut, target);
+}
+
+bool valid_colorize_points(bool has_mid, int blackpoint, int whitepoint, int midpoint)
+{
+    if (has_mid) {
+        return 0 <= blackpoint &&
+               blackpoint <= midpoint &&
+               midpoint <= whitepoint &&
+               whitepoint <= 255;
+    }
+    return 0 <= blackpoint &&
+           blackpoint <= whitepoint &&
+           whitepoint <= 255;
+}
+
+void fill_colorize_segment(
+    std::uint8_t* lut,
+    int start,
+    int end,
+    const std::uint8_t* left,
+    const std::uint8_t* right)
+{
+    const int length = end - start;
+    for (int i = 0; i < length; ++i) {
+        for (int channel = 0; channel < 3; ++channel) {
+            const int delta = static_cast<int>(right[channel]) - static_cast<int>(left[channel]);
+            const int value = static_cast<int>(left[channel]) + floor_div_int(i * delta, length);
+            lut[static_cast<std::size_t>(channel) * 256u + static_cast<std::size_t>(start + i)] =
+                static_cast<std::uint8_t>(value);
+        }
+    }
+}
+
+int colorize_image_into(
+    const PillowCImage* source,
+    const std::uint8_t* black,
+    const std::uint8_t* white,
+    bool has_mid,
+    const std::uint8_t* mid,
+    int blackpoint,
+    int whitepoint,
+    int midpoint,
+    PillowCImage* target)
+{
+    if (!source || !black || !white || !target || (has_mid && !mid)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (source->mode != PILLOW_C_MODE_L || source->channels != 1 ||
+        !valid_colorize_points(has_mid, blackpoint, whitepoint, midpoint)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_RGB, 3)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    std::uint8_t lut[3 * 256];
+    for (int ix = 0; ix < blackpoint; ++ix) {
+        for (int channel = 0; channel < 3; ++channel) {
+            lut[static_cast<std::size_t>(channel) * 256u + static_cast<std::size_t>(ix)] = black[channel];
+        }
+    }
+    if (has_mid) {
+        fill_colorize_segment(lut, blackpoint, midpoint, black, mid);
+        fill_colorize_segment(lut, midpoint, whitepoint, mid, white);
+    } else {
+        fill_colorize_segment(lut, blackpoint, whitepoint, black, white);
+    }
+    for (int ix = whitepoint; ix < 256; ++ix) {
+        for (int channel = 0; channel < 3; ++channel) {
+            lut[static_cast<std::size_t>(channel) * 256u + static_cast<std::size_t>(ix)] = white[channel];
+        }
+    }
+
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+    const std::uint8_t* src = source->pixels.data();
+    std::uint8_t* dst = target->pixels.data();
+    const std::size_t pixel_count = static_cast<std::size_t>(source->width) * source->height;
+    for (std::size_t index = 0; index < pixel_count; ++index) {
+        const std::uint8_t value = src[index];
+        dst[index * 3u] = lut[value];
+        dst[index * 3u + 1u] = lut[256u + value];
+        dst[index * 3u + 2u] = lut[512u + value];
+    }
+    return PILLOW_C_OK;
 }
 
 int histogram_image(const PillowCImage* source, std::uint64_t* out_histogram, std::size_t out_count);
@@ -3266,6 +3362,29 @@ extern "C" __declspec(dllexport) int pillow_c_image_solarize_into(
     return solarize_image_into(source, threshold, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_colorize_into(
+    const PillowCImage* source,
+    const std::uint8_t* black,
+    const std::uint8_t* white,
+    int has_mid,
+    const std::uint8_t* mid,
+    int blackpoint,
+    int whitepoint,
+    int midpoint,
+    PillowCImage* target)
+{
+    return colorize_image_into(
+        source,
+        black,
+        white,
+        has_mid != 0,
+        mid,
+        blackpoint,
+        whitepoint,
+        midpoint,
+        target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_equalize_into(
     const PillowCImage* source,
     PillowCImage* target)
@@ -4494,6 +4613,61 @@ extern "C" __declspec(dllexport) int pillow_c_image_solarize(
     try {
         auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
         const int status = solarize_image_into(source, threshold, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_colorize(
+    const PillowCImage* source,
+    const std::uint8_t* black,
+    const std::uint8_t* white,
+    int has_mid,
+    const std::uint8_t* mid,
+    int blackpoint,
+    int whitepoint,
+    int midpoint,
+    PillowCImage** out_image)
+{
+    if (!source || !black || !white || !out_image || (has_mid != 0 && !mid)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (source->mode != PILLOW_C_MODE_L || source->channels != 1 ||
+        !valid_colorize_points(has_mid != 0, blackpoint, whitepoint, midpoint)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(source->width, source->height, 3, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            PILLOW_C_MODE_RGB,
+            3,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = colorize_image_into(
+            source,
+            black,
+            white,
+            has_mid != 0,
+            mid,
+            blackpoint,
+            whitepoint,
+            midpoint,
+            image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

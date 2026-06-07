@@ -76,6 +76,40 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static Colorize(image, black, white, mid := unset, blackpoint := 0, whitepoint := 255, midpoint := 127) {
+            Pillow.ImageOps.RequireImageHandle(image, "Colorize")
+            if image.Mode != "L"
+                throw Error("Pillow.ImageOps.Colorize expects an L image", -1)
+            blackColor := Pillow.ImageOps.RgbColorBuffer(black, "Colorize")
+            whiteColor := Pillow.ImageOps.RgbColorBuffer(white, "Colorize")
+            hasMid := IsSet(mid)
+            midColor := hasMid ? Pillow.ImageOps.RgbColorBuffer(mid, "Colorize") : 0
+            if !(blackpoint is Integer) || !(whitepoint is Integer) || !(midpoint is Integer)
+                throw Error("Pillow.ImageOps.Colorize points must be integers", -1)
+            if hasMid {
+                if !(0 <= blackpoint && blackpoint <= midpoint && midpoint <= whitepoint && whitepoint <= 255)
+                    throw Error("Pillow.ImageOps.Colorize points must satisfy blackpoint <= midpoint <= whitepoint", -1)
+            } else if !(0 <= blackpoint && blackpoint <= whitepoint && whitepoint <= 255) {
+                throw Error("Pillow.ImageOps.Colorize points must satisfy blackpoint <= whitepoint", -1)
+            }
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_colorize",
+                "Ptr", image.RequireHandle(),
+                "Ptr", blackColor,
+                "Ptr", whiteColor,
+                "Int", hasMid,
+                "Ptr", hasMid ? midColor.Ptr : 0,
+                "Int", blackpoint,
+                "Int", whitepoint,
+                "Int", midpoint,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static Equalize(image) {
             return Pillow.ImageOps.NativeUnaryImageOp(image, "pillow_c_image_equalize")
         }
@@ -276,6 +310,15 @@ class Pillow {
             }
 
             NumPut("UChar", fill, buf, 0)
+            return buf
+        }
+
+        static RgbColorBuffer(color, operationName) {
+            if !IsObject(color) || color.Length != 3
+                throw Error("Pillow.ImageOps." operationName " color expects [r, g, b]", -1)
+            buf := Buffer(3, 0)
+            loop 3
+                NumPut("UChar", color[A_Index], buf, A_Index - 1)
             return buf
         }
 

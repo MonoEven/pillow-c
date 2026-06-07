@@ -1138,6 +1138,69 @@ PillowTestImageOpsLutTransformsRejectBadWrapperParameters(*) {
 
 AhkTest.Test("Pillow ImageOps LUT transforms reject invalid wrapper parameters", PillowTestImageOpsLutTransformsRejectBadWrapperParameters)
 
+PillowTestImageOpsColorizeUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 64, 128, 192, 255]))
+    out := 0
+    midOut := 0
+    try {
+        out := Pillow.ImageOps.Colorize(image, [10, 20, 30], [110, 120, 130])
+        midOut := Pillow.ImageOps.Colorize(image, [0, 0, 0], [255, 255, 255], [255, 0, 0])
+
+        AhkTest.AssertEqual("RGB", out.Mode)
+        AhkTest.AssertEqual([5, 1], out.Size)
+        AhkTest.AssertEqual([10, 20, 30, 35, 45, 55, 60, 70, 80, 85, 95, 105, 110, 120, 130], PillowTestBufferToArray(out.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 0, 128, 0, 0, 255, 1, 1, 255, 129, 129, 255, 255, 255], PillowTestBufferToArray(midOut.ToBytes()))
+    } finally {
+        if IsObject(midOut)
+            midOut.Close()
+        if IsObject(out)
+            out.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Colorize maps L images through native handles", PillowTestImageOpsColorizeUsesNativeOperation)
+
+PillowTestImageOpsColorizeAcceptsPointParametersAndRejectsInvalidInputs(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 64, 128, 192, 255]))
+    rgb := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    out := 0
+    try {
+        out := Pillow.ImageOps.Colorize(image, [0, 0, 0], [255, 255, 255], [0, 255, 0], 32, 224, 128)
+        AhkTest.AssertEqual([0, 0, 0, 0, 85, 0, 0, 255, 0, 170, 255, 170, 255, 255, 255], PillowTestBufferToArray(out.ToBytes()))
+
+        try {
+            Pillow.ImageOps.Colorize(rgb, [0, 0, 0], [255, 255, 255])
+            AhkTest.Fail("Expected Colorize to reject non-L source mode")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "Colorize") > 0)
+        }
+
+        try {
+            Pillow.ImageOps.Colorize(image, [0, 0], [255, 255, 255])
+            AhkTest.Fail("Expected Colorize to reject short RGB color")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "color") > 0)
+        }
+
+        try {
+            Pillow.ImageOps.Colorize(image, [0, 0, 0], [255, 255, 255], [128, 128, 128], 100, 200, 50)
+            AhkTest.Fail("Expected Colorize to reject invalid point ordering")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "point") > 0)
+        }
+    } finally {
+        if IsObject(out)
+            out.Close()
+        rgb.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Colorize accepts points and rejects invalid inputs", PillowTestImageOpsColorizeAcceptsPointParametersAndRejectsInvalidInputs)
+
 PillowTestImageOpsEqualizeUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     lValues := []

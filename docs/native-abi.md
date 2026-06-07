@@ -87,6 +87,7 @@ Image operations:
 - `pillow_c_image_invert`
 - `pillow_c_image_posterize`
 - `pillow_c_image_solarize`
+- `pillow_c_image_colorize`
 - `pillow_c_image_equalize`
 - `pillow_c_image_autocontrast`
 - `pillow_c_image_get_channel`
@@ -131,6 +132,7 @@ Reusable target operations:
 - `pillow_c_image_invert_into`
 - `pillow_c_image_posterize_into`
 - `pillow_c_image_solarize_into`
+- `pillow_c_image_colorize_into`
 - `pillow_c_image_equalize_into`
 - `pillow_c_image_autocontrast_into`
 - `pillow_c_image_get_channel_into`

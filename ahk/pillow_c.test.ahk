@@ -825,6 +825,49 @@ PillowCImageSolarizeInto(sourceHandle, threshold, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageColorize(sourceHandle, black, white, hasMid := false, mid := unset, blackpoint := 0, whitepoint := 255, midpoint := 127) {
+    blackColor := PillowCBuffer(black)
+    whiteColor := PillowCBuffer(white)
+    midColor := hasMid ? PillowCBuffer(mid) : 0
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_colorize",
+        "Ptr", sourceHandle,
+        "Ptr", blackColor,
+        "Ptr", whiteColor,
+        "Int", hasMid,
+        "Ptr", hasMid ? midColor.Ptr : 0,
+        "Int", blackpoint,
+        "Int", whitepoint,
+        "Int", midpoint,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageColorizeInto(sourceHandle, black, white, targetHandle, hasMid := false, mid := unset, blackpoint := 0, whitepoint := 255, midpoint := 127) {
+    blackColor := PillowCBuffer(black)
+    whiteColor := PillowCBuffer(white)
+    midColor := hasMid ? PillowCBuffer(mid) : 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_colorize_into",
+        "Ptr", sourceHandle,
+        "Ptr", blackColor,
+        "Ptr", whiteColor,
+        "Int", hasMid,
+        "Ptr", hasMid ? midColor.Ptr : 0,
+        "Int", blackpoint,
+        "Int", whitepoint,
+        "Int", midpoint,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageEqualize(sourceHandle) {
     outHandle := 0
     status := DllCall(
@@ -3232,6 +3275,94 @@ PillowCTestImageOpsLutTransformsHandlePosterizeAndSolarizeEdges(*) {
 }
 
 AhkTest.Test("pillow_c image posterize and solarize cover Pillow edge parameters", PillowCTestImageOpsLutTransformsHandlePosterizeAndSolarizeEdges)
+
+PillowCTestImageColorizeMatchesPillowLMapping(*) {
+    source := PillowCCreateImageMode(5, 1, 1)
+    out := 0
+    midOut := 0
+    pointsOut := 0
+    try {
+        PillowCImageSetBytes(source, [0, 64, 128, 192, 255])
+        out := PillowCImageColorize(source, [10, 20, 30], [110, 120, 130])
+        midOut := PillowCImageColorize(source, [0, 0, 0], [255, 255, 255], true, [255, 0, 0])
+        pointsOut := PillowCImageColorize(source, [0, 0, 0], [255, 255, 255], true, [0, 255, 0], 32, 224, 128)
+
+        AhkTest.AssertEqual(3, PillowCImageMode(out))
+        AhkTest.AssertEqual([10, 20, 30, 35, 45, 55, 60, 70, 80, 85, 95, 105, 110, 120, 130], PillowCImageToArray(out, 15))
+        AhkTest.AssertEqual([0, 0, 0, 128, 0, 0, 255, 1, 1, 255, 129, 129, 255, 255, 255], PillowCImageToArray(midOut, 15))
+        AhkTest.AssertEqual([0, 0, 0, 0, 85, 0, 0, 255, 0, 170, 255, 170, 255, 255, 255], PillowCImageToArray(pointsOut, 15))
+    } finally {
+        for handle in [pointsOut, midOut, out, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image colorize maps L pixels through Pillow color wedges", PillowCTestImageColorizeMatchesPillowLMapping)
+
+PillowCTestImageColorizeIntoReusesTargetStorageAndHandlesEmpty(*) {
+    source := PillowCCreateImageMode(3, 1, 1)
+    target := PillowCCreateImageMode(3, 1, 3)
+    emptySource := PillowCCreateImageMode(1, 2, 1)
+    emptyTargetSource := PillowCCreateImageMode(1, 2, 3)
+    empty := 0
+    emptyTarget := 0
+    try {
+        PillowCImageSetBytes(source, [0, 128, 255])
+        before := PillowCImageData(target).Ptr
+        PillowCImageColorizeInto(source, [1, 2, 3], [17, 18, 19], target)
+        after := PillowCImageData(target).Ptr
+
+        empty := PillowCImageCrop(emptySource, 0, 0, 0, 2)
+        emptyTarget := PillowCImageCrop(emptyTargetSource, 0, 0, 0, 2)
+        PillowCImageColorizeInto(empty, [0, 0, 0], [255, 255, 255], emptyTarget)
+
+        AhkTest.AssertEqual(before, after)
+        AhkTest.AssertEqual([1, 2, 3, 9, 10, 11, 17, 18, 19], PillowCImageToArray(target, 9))
+        AhkTest.AssertEqual([], PillowCImageToArray(emptyTarget, 0))
+    } finally {
+        PillowCFreeImage(emptyTarget)
+        PillowCFreeImage(empty)
+        PillowCFreeImage(emptyTargetSource)
+        PillowCFreeImage(emptySource)
+        PillowCFreeImage(target)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image colorize_into reuses target storage and handles empty images", PillowCTestImageColorizeIntoReusesTargetStorageAndHandlesEmpty)
+
+PillowCTestImageColorizeRejectsInvalidArguments(*) {
+    l := PillowCCreateImageMode(1, 1, 1)
+    rgb := PillowCCreateImageMode(1, 1, 3)
+    targetL := PillowCCreateImageMode(1, 1, 1)
+    outHandle := 0
+    try {
+        black := PillowCBuffer([0, 0, 0])
+        white := PillowCBuffer([255, 255, 255])
+        mid := PillowCBuffer([128, 128, 128])
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_colorize", "Ptr", rgb, "Ptr", black, "Ptr", white, "Int", false, "Ptr", 0, "Int", 0, "Int", 255, "Int", 127, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_colorize", "Ptr", l, "Ptr", black, "Ptr", white, "Int", true, "Ptr", mid, "Int", 100, "Int", 200, "Int", 50, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_colorize_into", "Ptr", l, "Ptr", black, "Ptr", white, "Int", false, "Ptr", 0, "Int", 0, "Int", 255, "Int", 127, "Ptr", targetL, "Int")
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(targetL)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image colorize rejects unsupported modes points and target shapes", PillowCTestImageColorizeRejectsInvalidArguments)
 
 PillowCTestImageOpsLutTransformsRejectUnsupportedModes(*) {
     rgba := PillowCCreateImageMode(1, 1, 4)
