@@ -320,15 +320,47 @@ PillowTestImageTransformAffinePythonLikeEntryPoint(*) {
 
 AhkTest.Test("Pillow Image.Transform AFFINE uses Python-like entry point", PillowTestImageTransformAffinePythonLikeEntryPoint)
 
+PillowTestImageTransformExtentUsesPythonLikeEntryPoint(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
+        1, 2, 3, 4,
+        5, 6, 7, 8,
+        9, 10, 11, 12,
+    ]))
+    nearest := 0
+    bilinear := 0
+    filled := 0
+    try {
+        nearest := source.Transform([2, 2], Pillow.Transform.EXTENT, [1.0, 0.0, 4.0, 3.0])
+        bilinear := source.Transform([3, 2], Pillow.Transform.EXTENT, [0.5, 0.5, 3.5, 2.5], Pillow.Resampling.BILINEAR, 8)
+        filled := source.Transform([4, 3], Pillow.Transform.EXTENT, [-1.0, -1.0, 3.0, 2.0], Pillow.Resampling.NEAREST, 99)
+
+        AhkTest.AssertEqual([2, 4, 10, 12], PillowTestBufferToArray(nearest.ToBytes()))
+        AhkTest.AssertEqual([3, 4, 5, 7, 8, 9], PillowTestBufferToArray(bilinear.ToBytes()))
+        AhkTest.AssertEqual([
+            99, 99, 99, 99,
+            99, 1, 2, 3,
+            99, 5, 6, 7,
+        ], PillowTestBufferToArray(filled.ToBytes()))
+    } finally {
+        for image in [filled, bilinear, nearest, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Transform EXTENT uses Python-like entry point", PillowTestImageTransformExtentUsesPythonLikeEntryPoint)
+
 PillowTestImageTransformRejectsUnsupportedMethods(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
     try {
         try {
-            source.Transform([3, 2], Pillow.Transform.EXTENT, [0, 0, 3, 2], Pillow.Resampling.NEAREST)
+            source.Transform([3, 2], Pillow.Transform.PERSPECTIVE, [1, 0, 0, 0, 1, 0, 0, 0], Pillow.Resampling.NEAREST)
             AhkTest.Fail("Expected unsupported transform method to throw")
         } catch as err {
-            AhkTest.AssertTrue(InStr(err.Message, "AFFINE only") > 0)
+            AhkTest.AssertTrue(InStr(err.Message, "AFFINE and EXTENT only") > 0)
         }
     } finally {
         source.Close()

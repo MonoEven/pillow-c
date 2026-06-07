@@ -1358,7 +1358,28 @@ class Pillow {
         Transform(size, method, data, resample := unset, fillcolor := unset) {
             if method == Pillow.Transform.AFFINE
                 return this.TransformAffine(size, data, IsSet(resample) ? resample : unset, IsSet(fillcolor) ? fillcolor : unset)
-            throw Error("Pillow.Image.Transform currently supports Pillow.Transform.AFFINE only", -1)
+            if method == Pillow.Transform.EXTENT
+                return this.TransformExtent(size, data, IsSet(resample) ? resample : unset, IsSet(fillcolor) ? fillcolor : unset)
+            throw Error("Pillow.Image.Transform currently supports Pillow.Transform.AFFINE and EXTENT only", -1)
+        }
+
+        TransformExtent(size, extent, resample := unset, fillcolor := unset) {
+            if size.Length != 2
+                throw Error("Pillow.Image.Transform EXTENT expects size [width, height]", -1)
+            if extent.Length != 4
+                throw Error("Pillow.Image.Transform EXTENT expects a 4-value extent", -1)
+            if !IsSet(resample)
+                resample := Pillow.Resampling.NEAREST
+            for index, value in extent {
+                if !(value is Number)
+                    throw Error("Pillow.Image.Transform EXTENT values must be numeric", -1)
+            }
+
+            matrix := [
+                (extent[3] - extent[1]) / size[1], 0.0, extent[1],
+                0.0, (extent[4] - extent[2]) / size[2], extent[2],
+            ]
+            return this.TransformAffine(size, matrix, resample, IsSet(fillcolor) ? fillcolor : unset)
         }
 
         TransformAffine(size, matrix, resample := unset, fillcolor := unset) {
