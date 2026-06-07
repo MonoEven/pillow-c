@@ -1469,6 +1469,29 @@ PillowTestImageRotateNearestUsesNativeAffinePath(*) {
 
 AhkTest.Test("Pillow Image.Rotate NEAREST uses native affine path", PillowTestImageRotateNearestUsesNativeAffinePath)
 
+PillowTestImageRotateAndTransformFillColorMatchModeOneSemantics(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("1", [2, 1], PillowTestBuffer([0x80]))
+    rotated := 0
+    transformed := 0
+    try {
+        rotated := source.Rotate(45, Pillow.Resampling.NEAREST, true, , , 256)
+        transformed := source.TransformAffine([4, 3], [1, 0, -1, 0, 1, -1], Pillow.Resampling.NEAREST, [256])
+
+        AhkTest.AssertEqual("1", rotated.Mode)
+        AhkTest.AssertEqual([4, 3], rotated.Size)
+        AhkTest.AssertEqual([0xF0, 0xD0, 0xF0], PillowTestBufferToArray(rotated.ToBytes()))
+        AhkTest.AssertEqual([0xF0, 0xD0, 0xF0], PillowTestBufferToArray(transformed.ToBytes()))
+    } finally {
+        for image in [transformed, rotated, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Rotate and Transform fillcolor match mode 1 semantics", PillowTestImageRotateAndTransformFillColorMatchModeOneSemantics)
+
 PillowTestImageRotateBilinearUsesNativeAffinePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
@@ -1728,6 +1751,25 @@ PillowTestImageOpsPadParsesColorAndCenteringLikePillow(*) {
 }
 
 AhkTest.Test("Pillow ImageOps.Pad parses color and centering like Pillow", PillowTestImageOpsPadParsesColorAndCenteringLikePillow)
+
+PillowTestImageOpsPadFillColorMatchesModeOneSemantics(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("1", [2, 1], PillowTestBuffer([0x80]))
+    padded := 0
+    try {
+        padded := Pillow.ImageOps.Pad(source, [4, 3], Pillow.Resampling.NEAREST, 256)
+
+        AhkTest.AssertEqual("1", padded.Mode)
+        AhkTest.AssertEqual([4, 3], padded.Size)
+        AhkTest.AssertEqual([0xC0, 0xC0, 0xF0], PillowTestBufferToArray(padded.ToBytes()))
+    } finally {
+        if IsObject(padded)
+            padded.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Pad fill color matches mode 1 semantics", PillowTestImageOpsPadFillColorMatchesModeOneSemantics)
 
 PillowTestImageOpsPadRejectsInvalidParameters(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -3183,6 +3225,25 @@ PillowTestImageOpsExpandParsesBorderAndFillLikePillow(*) {
 }
 
 AhkTest.Test("Pillow ImageOps.Expand parses border and fill shortcuts", PillowTestImageOpsExpandParsesBorderAndFillLikePillow)
+
+PillowTestImageOpsExpandFillColorMatchesModeOneSemantics(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("1", [2, 1], PillowTestBuffer([0x80]))
+    expanded := 0
+    try {
+        expanded := Pillow.ImageOps.Expand(source, 1, [256])
+
+        AhkTest.AssertEqual("1", expanded.Mode)
+        AhkTest.AssertEqual([4, 3], expanded.Size)
+        AhkTest.AssertEqual([0xF0, 0xD0, 0xF0], PillowTestBufferToArray(expanded.ToBytes()))
+    } finally {
+        if IsObject(expanded)
+            expanded.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Expand fill color matches mode 1 semantics", PillowTestImageOpsExpandFillColorMatchesModeOneSemantics)
 
 PillowTestImageOpsExpandRejectsInvalidWrapperParameters(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
