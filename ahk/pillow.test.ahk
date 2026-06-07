@@ -1211,6 +1211,110 @@ PillowTestImageChopsScreenRejectsModeMismatch(*) {
 
 AhkTest.Test("Pillow ImageChops.Screen rejects mode mismatch", PillowTestImageChopsScreenRejectsModeMismatch)
 
+PillowTestImageChopsAddAndSubtractUseNativeHandles(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 50, 200, 255, 0, 80]))
+    right := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([4, 20, 100, 15, 200, 90]))
+    addOut := 0
+    subOut := 0
+    try {
+        addOut := Pillow.ImageChops.Add(left, right)
+        subOut := Pillow.ImageChops.Subtract(left, right)
+
+        AhkTest.AssertEqual("RGB", addOut.Mode)
+        AhkTest.AssertEqual([2, 1], addOut.Size)
+        AhkTest.AssertEqual([5, 70, 255, 255, 200, 170], PillowTestBufferToArray(addOut.ToBytes()))
+        AhkTest.AssertEqual([0, 30, 100, 240, 0, 0], PillowTestBufferToArray(subOut.ToBytes()))
+    } finally {
+        for image in [subOut, addOut, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops add and subtract compute clipped pixels through native handles", PillowTestImageChopsAddAndSubtractUseNativeHandles)
+
+PillowTestImageChopsAddAndSubtractAcceptScaleAndOffset(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 40, 200, 255]))
+    right := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([255, 10, 220, 128]))
+    addOut := 0
+    subOut := 0
+    try {
+        addOut := Pillow.ImageChops.Add(left, right, 2.0, 10.0)
+        subOut := Pillow.ImageChops.Subtract(left, right, 2.0, 10.0)
+
+        AhkTest.AssertEqual([137, 35, 220, 201], PillowTestBufferToArray(addOut.ToBytes()))
+        AhkTest.AssertEqual([0, 25, 0, 73], PillowTestBufferToArray(subOut.ToBytes()))
+    } finally {
+        for image in [subOut, addOut, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops add and subtract accept scale and offset", PillowTestImageChopsAddAndSubtractAcceptScaleAndOffset)
+
+PillowTestImageChopsAddAndSubtractUseOverlappingAndEmptyOutputSize(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 40, 200, 255]))
+    right := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([255, 10]))
+    empty := 0
+    addOverlap := 0
+    subOverlap := 0
+    addEmpty := 0
+    subEmpty := 0
+    try {
+        empty := left.Crop([1, 0, 1, 1])
+        addOverlap := Pillow.ImageChops.Add(left, right)
+        subOverlap := Pillow.ImageChops.Subtract(left, right)
+        addEmpty := Pillow.ImageChops.Add(empty, left)
+        subEmpty := Pillow.ImageChops.Subtract(empty, left)
+
+        AhkTest.AssertEqual([2, 1], addOverlap.Size)
+        AhkTest.AssertEqual([255, 50], PillowTestBufferToArray(addOverlap.ToBytes()))
+        AhkTest.AssertEqual([0, 30], PillowTestBufferToArray(subOverlap.ToBytes()))
+        AhkTest.AssertEqual([0, 1], addEmpty.Size)
+        AhkTest.AssertEqual([], PillowTestBufferToArray(addEmpty.ToBytes()))
+        AhkTest.AssertEqual([], PillowTestBufferToArray(subEmpty.ToBytes()))
+    } finally {
+        for image in [subEmpty, addEmpty, subOverlap, addOverlap, empty, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops add and subtract return overlapping and empty output sizes", PillowTestImageChopsAddAndSubtractUseOverlappingAndEmptyOutputSize)
+
+PillowTestImageChopsAddAndSubtractRejectModeMismatch(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([1]))
+    right := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    try {
+        try {
+            Pillow.ImageChops.Add(left, right)
+            AhkTest.Fail("Expected ImageChops.Add to reject mode mismatch")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "mismatch") > 0)
+        }
+
+        try {
+            Pillow.ImageChops.Subtract(left, right)
+            AhkTest.Fail("Expected ImageChops.Subtract to reject mode mismatch")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "mismatch") > 0)
+        }
+    } finally {
+        right.Close()
+        left.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageChops add and subtract reject mode mismatch", PillowTestImageChopsAddAndSubtractRejectModeMismatch)
+
 PillowTestImageChopsModuloOpsUseNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 50, 200, 255, 0, 80]))

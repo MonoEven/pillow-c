@@ -312,6 +312,44 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static Add(left, right, scale := 1.0, offset := 0) {
+            if !(scale is Number)
+                throw Error("Pillow.ImageChops.Add scale must be numeric", -1)
+            if !(offset is Number)
+                throw Error("Pillow.ImageChops.Add offset must be numeric", -1)
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_add",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Add"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Add"),
+                "Double", scale,
+                "Double", offset,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static Subtract(left, right, scale := 1.0, offset := 0) {
+            if !(scale is Number)
+                throw Error("Pillow.ImageChops.Subtract scale must be numeric", -1)
+            if !(offset is Number)
+                throw Error("Pillow.ImageChops.Subtract offset must be numeric", -1)
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_subtract",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Subtract"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Subtract"),
+                "Double", scale,
+                "Double", offset,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static AddModulo(left, right) {
             outHandle := 0
             Pillow.CheckStatus(DllCall(

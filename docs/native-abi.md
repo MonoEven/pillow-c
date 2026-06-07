@@ -65,6 +65,8 @@ Image operations:
 - `pillow_c_image_difference`
 - `pillow_c_image_multiply`
 - `pillow_c_image_screen`
+- `pillow_c_image_add`
+- `pillow_c_image_subtract`
 - `pillow_c_image_add_modulo`
 - `pillow_c_image_subtract_modulo`
 - `pillow_c_image_point_lut`
@@ -98,6 +100,8 @@ Reusable target operations:
 - `pillow_c_image_difference_into`
 - `pillow_c_image_multiply_into`
 - `pillow_c_image_screen_into`
+- `pillow_c_image_add_into`
+- `pillow_c_image_subtract_into`
 - `pillow_c_image_add_modulo_into`
 - `pillow_c_image_subtract_modulo_into`
 - `pillow_c_image_point_lut_into`
