@@ -1529,6 +1529,14 @@ int histogram_image(const PillowCImage* source, std::uint64_t* out_histogram, st
     std::fill(out_histogram, out_histogram + out_count, 0);
     const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
     const std::uint8_t* data = source->pixels.data();
+    if (source->mode == PILLOW_C_MODE_LA && source->channels == 2) {
+        for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
+            const std::uint8_t value = data[pixel * 2u];
+            ++out_histogram[value];
+            ++out_histogram[256u + value];
+        }
+        return PILLOW_C_OK;
+    }
     for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
         const std::uint8_t* src = data + pixel * source->channels;
         for (int channel = 0; channel < source->channels; ++channel) {

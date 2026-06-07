@@ -109,6 +109,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `Pillow.ImageEnhance.Contrast(...).Enhance(...)`
 - `Pillow.ImageEnhance.Brightness(...).Enhance(...)`
 - `Pillow.ImageEnhance.Sharpness(...).Enhance(...)`
+- `Pillow.ImageStat.Stat(...)`
 - `image.GetChannel(...)`
 - `image.Split(...)`
 - `image.PutAlpha(...)`
@@ -125,7 +126,9 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 
 AHK owns ergonomics and lifetime. The DLL owns image bytes and transformations.
 
-Core `L`, `LA`, `RGB`, and `RGBA` conversions, histogram/extrema/bounding-box/projection/color-count scans, fixed-LUT and histogram-derived `ImageOps` transforms for supported `L`/`RGB` modes, `ImageOps.colorize` L-to-RGB mapping, `Image.eval`/`Image.point` LUT mapping, `Image.Filter(ImageFilter.Kernel(...))`, `Image.Filter(ImageFilter.RankFilter(...))`, `Image.Filter(ImageFilter.ModeFilter(...))`, `Image.Filter(ImageFilter.BoxBlur(...))`, `Image.Filter(ImageFilter.GaussianBlur(...))`, `Image.Filter(ImageFilter.UnsharpMask(...))`, ImageEnhance composition over native blend/convert/filter/stat operations, `ImageOps.crop`/`ImageOps.expand`, scaled, proportional, fitted, and padded `ImageOps` resize helpers, current `ImageChops` helpers and binary operations, mask compositing, masked and preserve-tone autocontrast histograms, L-band split, L-band merge, Python-like AFFINE/EXTENT/PERSPECTIVE/QUAD/MESH transform dispatch, general NEAREST/BILINEAR/BICUBIC affine, perspective, quad, and mesh transforms, NEAREST/BILINEAR/BICUBIC affine rotate, and all current Pillow resize filters are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
+Core `L`, `LA`, `RGB`, and `RGBA` conversions, histogram/extrema/bounding-box/projection/color-count scans, histogram-backed `ImageStat.Stat` properties, fixed-LUT and histogram-derived `ImageOps` transforms for supported `L`/`RGB` modes, `ImageOps.colorize` L-to-RGB mapping, `Image.eval`/`Image.point` LUT mapping, `Image.Filter(ImageFilter.Kernel(...))`, `Image.Filter(ImageFilter.RankFilter(...))`, `Image.Filter(ImageFilter.ModeFilter(...))`, `Image.Filter(ImageFilter.BoxBlur(...))`, `Image.Filter(ImageFilter.GaussianBlur(...))`, `Image.Filter(ImageFilter.UnsharpMask(...))`, ImageEnhance composition over native blend/convert/filter/stat operations, `ImageOps.crop`/`ImageOps.expand`, scaled, proportional, fitted, and padded `ImageOps` resize helpers, current `ImageChops` helpers and binary operations, mask compositing, masked and preserve-tone autocontrast histograms, L-band split, L-band merge, Python-like AFFINE/EXTENT/PERSPECTIVE/QUAD/MESH transform dispatch, general NEAREST/BILINEAR/BICUBIC affine, perspective, quad, and mesh transforms, NEAREST/BILINEAR/BICUBIC affine rotate, and all current Pillow resize filters are single native operations so the wrapper does not fall back to per-pixel AHK loops as mode coverage grows.
+
+`ImageStat.Stat` currently supports image inputs and precomputed histogram lists without masks. Its properties follow Pillow's histogram-derived formulas for `extrema`, `count`, `sum`, `sum2`, `mean`, `median`, `rms`, `var`, and `stddev`. Masked statistics should be added only after exposing native masked histogram coverage to the facade.
 
 `ImageOps.autocontrast` currently implements the common histogram/LUT path with `cutoff`, `ignore`, L-mode masks, and Pillow's `preserve_tone` mode for supported `L`/`RGB` images.
 

@@ -1059,6 +1059,187 @@ class Pillow {
         }
     }
 
+    class ImageStat {
+        class Stat {
+            __New(imageOrList, mask := unset) {
+                if IsSet(mask)
+                    throw Error("Pillow.ImageStat.Stat mask requires native masked histogram support", -1)
+
+                if IsObject(imageOrList) && imageOrList is Pillow.Image {
+                    this.Histogram := imageOrList.Histogram()
+                } else if IsObject(imageOrList) {
+                    this.Histogram := imageOrList
+                } else {
+                    throw TypeError("first argument must be image or list", -1)
+                }
+                if Mod(this.Histogram.Length, 256) != 0
+                    throw Error("Pillow.ImageStat.Stat histogram length must be a multiple of 256", -1)
+                this.Bands := this.Histogram.Length // 256
+            }
+
+            Extrema {
+                get {
+                    if !this.HasOwnProp("_Extrema") {
+                        values := []
+                        loop this.Bands {
+                            base := (A_Index - 1) * 256
+                            low := 255
+                            high := 0
+                            loop 256 {
+                                value := A_Index - 1
+                                if this.Histogram[base + A_Index] {
+                                    low := value
+                                    break
+                                }
+                            }
+                            loop 256 {
+                                value := 256 - A_Index
+                                if this.Histogram[base + value + 1] {
+                                    high := value
+                                    break
+                                }
+                            }
+                            values.Push([low, high])
+                        }
+                        this._Extrema := values
+                    }
+                    return this._Extrema
+                }
+            }
+
+            Count {
+                get {
+                    if !this.HasOwnProp("_Count") {
+                        values := []
+                        loop this.Bands {
+                            base := (A_Index - 1) * 256
+                            total := 0
+                            loop 256
+                                total += this.Histogram[base + A_Index]
+                            values.Push(total)
+                        }
+                        this._Count := values
+                    }
+                    return this._Count
+                }
+            }
+
+            Sum {
+                get {
+                    if !this.HasOwnProp("_Sum") {
+                        values := []
+                        loop this.Bands {
+                            base := (A_Index - 1) * 256
+                            total := 0.0
+                            loop 256 {
+                                level := A_Index - 1
+                                total += level * this.Histogram[base + A_Index]
+                            }
+                            values.Push(total)
+                        }
+                        this._Sum := values
+                    }
+                    return this._Sum
+                }
+            }
+
+            Sum2 {
+                get {
+                    if !this.HasOwnProp("_Sum2") {
+                        values := []
+                        loop this.Bands {
+                            base := (A_Index - 1) * 256
+                            total := 0.0
+                            loop 256 {
+                                level := A_Index - 1
+                                total += level * level * this.Histogram[base + A_Index]
+                            }
+                            values.Push(total)
+                        }
+                        this._Sum2 := values
+                    }
+                    return this._Sum2
+                }
+            }
+
+            Mean {
+                get {
+                    if !this.HasOwnProp("_Mean") {
+                        values := []
+                        loop this.Bands
+                            values.Push(this.Sum[A_Index] / this.Count[A_Index])
+                        this._Mean := values
+                    }
+                    return this._Mean
+                }
+            }
+
+            Median {
+                get {
+                    if !this.HasOwnProp("_Median") {
+                        values := []
+                        loop this.Bands {
+                            band := A_Index
+                            base := (band - 1) * 256
+                            total := 0
+                            half := this.Count[band] // 2
+                            median := 255
+                            loop 256 {
+                                value := A_Index - 1
+                                total += this.Histogram[base + A_Index]
+                                if total > half {
+                                    median := value
+                                    break
+                                }
+                            }
+                            values.Push(median)
+                        }
+                        this._Median := values
+                    }
+                    return this._Median
+                }
+            }
+
+            Rms {
+                get {
+                    if !this.HasOwnProp("_Rms") {
+                        values := []
+                        loop this.Bands
+                            values.Push(Sqrt(this.Sum2[A_Index] / this.Count[A_Index]))
+                        this._Rms := values
+                    }
+                    return this._Rms
+                }
+            }
+
+            Var {
+                get {
+                    if !this.HasOwnProp("_Var") {
+                        values := []
+                        loop this.Bands {
+                            count := this.Count[A_Index]
+                            values.Push((this.Sum2[A_Index] - (this.Sum[A_Index] ** 2.0) / count) / count)
+                        }
+                        this._Var := values
+                    }
+                    return this._Var
+                }
+            }
+
+            StdDev {
+                get {
+                    if !this.HasOwnProp("_StdDev") {
+                        values := []
+                        loop this.Bands
+                            values.Push(Sqrt(this.Var[A_Index]))
+                        this._StdDev := values
+                    }
+                    return this._StdDev
+                }
+            }
+        }
+    }
+
     static Configure(options := unset) {
         if IsSet(options) && options.HasOwnProp("DllPath")
             Pillow.DllPath := options.DllPath

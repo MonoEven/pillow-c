@@ -178,6 +178,8 @@ Reusable target operations:
 
 `pillow_c_image_put_alpha_value` and `pillow_c_image_put_alpha_image` return `LA` for `L`/`LA` sources and `RGBA` for `RGB`/`RGBA` sources. The matching `_into` variants require the caller to provide that target mode and shape.
 
+`pillow_c_image_histogram` follows Pillow's 256-bin-per-band layout. For `LA`, Pillow 11.3.0 reports two bands where the second histogram repeats the luminance bins rather than the alpha bins; the native ABI mirrors that behavior so `ImageStat.Stat` matches Pillow.
+
 `pillow_c_image_rotate` and `pillow_c_image_rotate_into` accept angle, resample, expand, optional center, optional translate, and optional fill color arguments. The current implementation supports `NEAREST`, `BILINEAR`, and `BICUBIC` rotate; unsupported resamplers return `-3`.
 
 `pillow_c_image_filter_kernel` and `pillow_c_image_filter_kernel_into` accept kernel width, kernel height, a pointer to double coefficients, coefficient count, scale, and offset. The current implementation supports Pillow's `(3, 3)` and `(5, 5)` kernel sizes for `L`, `RGB`, and `RGBA`. Border pixels are copied unchanged, coefficients are applied with Pillow's vertical kernel flip, and filtered values use half-up rounding and byte clipping. Unsupported kernel sizes return `-3`; coefficient count mismatches return `-2`.
