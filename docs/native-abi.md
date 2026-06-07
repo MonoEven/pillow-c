@@ -62,6 +62,7 @@ Image operations:
 - `pillow_c_image_blend`
 - `pillow_c_image_point_lut`
 - `pillow_c_image_get_channel`
+- `pillow_c_image_split_bands`
 - `pillow_c_image_put_alpha_value`
 - `pillow_c_image_put_alpha_image`
 - `pillow_c_image_convert_mode`

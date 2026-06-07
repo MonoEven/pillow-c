@@ -596,6 +596,17 @@ int merge_bands_into(int target_mode, const PillowCImage* const* bands, std::siz
     return PILLOW_C_OK;
 }
 
+void free_image_array(PillowCImage** images, std::size_t count)
+{
+    if (!images) {
+        return;
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        delete images[i];
+        images[i] = nullptr;
+    }
+}
+
 } // namespace
 
 extern "C" __declspec(dllexport) int pillow_c_abi_version(
@@ -1085,6 +1096,51 @@ extern "C" __declspec(dllexport) int pillow_c_image_merge_bands_into(
     PillowCImage* target)
 {
     return merge_bands_into(target_mode, bands, band_count, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_split_bands(
+    const PillowCImage* source,
+    PillowCImage** out_bands,
+    std::size_t out_count)
+{
+    if (!source || !out_bands) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    for (std::size_t i = 0; i < out_count; ++i) {
+        out_bands[i] = nullptr;
+    }
+    if (out_count != static_cast<std::size_t>(source->channels)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(source->width, source->height, 1, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        for (std::size_t channel = 0; channel < out_count; ++channel) {
+            auto* image = new PillowCImage{
+                source->width,
+                source->height,
+                PILLOW_C_MODE_L,
+                1,
+                stride,
+                std::vector<std::uint8_t>(size)};
+            const int status = copy_channel_into(source, static_cast<int>(channel), image);
+            if (status != PILLOW_C_OK) {
+                delete image;
+                free_image_array(out_bands, channel);
+                return status;
+            }
+            out_bands[channel] = image;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        free_image_array(out_bands, out_count);
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_alpha_composite_rgba_into(

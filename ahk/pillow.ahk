@@ -371,6 +371,22 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        Split() {
+            bandCount := this.Channels
+            outHandles := Buffer(bandCount * A_PtrSize, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_split_bands",
+                "Ptr", this.RequireHandle(),
+                "Ptr", outHandles,
+                "UPtr", bandCount,
+                "Int"
+            ))
+            bands := []
+            loop bandCount
+                bands.Push(Pillow.WrapImageHandle(NumGet(outHandles, (A_Index - 1) * A_PtrSize, "Ptr")))
+            return bands
+        }
+
         ChannelIndex(channel) {
             if !IsObject(channel) && channel is Integer {
                 if channel < 0 || channel >= this.Channels

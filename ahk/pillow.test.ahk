@@ -272,6 +272,27 @@ PillowTestImageGetChannelUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.GetChannel extracts one channel through native handles", PillowTestImageGetChannelUsesNativeOperation)
 
+PillowTestImageSplitUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([1, 2, 3, 4, 10, 20, 30, 40]))
+    bands := []
+    try {
+        bands := source.Split()
+        AhkTest.AssertEqual(4, bands.Length)
+        AhkTest.AssertEqual("L", bands[1].Mode)
+        AhkTest.AssertEqual([1, 10], PillowTestBufferToArray(bands[1].ToBytes()))
+        AhkTest.AssertEqual([2, 20], PillowTestBufferToArray(bands[2].ToBytes()))
+        AhkTest.AssertEqual([3, 30], PillowTestBufferToArray(bands[3].ToBytes()))
+        AhkTest.AssertEqual([4, 40], PillowTestBufferToArray(bands[4].ToBytes()))
+    } finally {
+        for band in bands
+            band.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Split returns all L bands through one native call", PillowTestImageSplitUsesNativeOperation)
+
 PillowTestImageMergeStaticUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     r := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([1, 2]))
