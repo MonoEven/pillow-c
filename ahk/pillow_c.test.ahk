@@ -343,6 +343,34 @@ PillowCImageScreen(leftHandle, rightHandle) {
     return outHandle
 }
 
+PillowCImageLighter(leftHandle, rightHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_lighter",
+        "Ptr", leftHandle,
+        "Ptr", rightHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageDarker(leftHandle, rightHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_darker",
+        "Ptr", leftHandle,
+        "Ptr", rightHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageAdd(leftHandle, rightHandle, scale := 1.0, offset := 0.0) {
     outHandle := 0
     status := DllCall(
@@ -1561,6 +1589,159 @@ PillowCTestImageScreenRejectsModeMismatch(*) {
 }
 
 AhkTest.Test("pillow_c image screen rejects mode mismatch", PillowCTestImageScreenRejectsModeMismatch)
+
+PillowCTestImageLighterAndDarkerMatchPillowModes(*) {
+    l1 := PillowCCreateImageMode(4, 1, 1)
+    l2 := PillowCCreateImageMode(4, 1, 1)
+    rgb1 := PillowCCreateImageMode(2, 1, 3)
+    rgb2 := PillowCCreateImageMode(2, 1, 3)
+    rgba1 := PillowCCreateImageMode(2, 1, 4)
+    rgba2 := PillowCCreateImageMode(2, 1, 4)
+    lLight := 0
+    rgbLight := 0
+    rgbaLight := 0
+    lDark := 0
+    rgbDark := 0
+    rgbaDark := 0
+    try {
+        PillowCImageSetBytes(l1, [0, 40, 200, 255])
+        PillowCImageSetBytes(l2, [255, 10, 220, 128])
+        PillowCImageSetBytes(rgb1, [1, 50, 200, 255, 0, 80])
+        PillowCImageSetBytes(rgb2, [4, 20, 100, 15, 200, 90])
+        PillowCImageSetBytes(rgba1, [1, 50, 200, 255, 20, 30, 40, 0])
+        PillowCImageSetBytes(rgba2, [4, 20, 100, 15, 200, 90, 50, 255])
+
+        lLight := PillowCImageLighter(l1, l2)
+        rgbLight := PillowCImageLighter(rgb1, rgb2)
+        rgbaLight := PillowCImageLighter(rgba1, rgba2)
+        lDark := PillowCImageDarker(l1, l2)
+        rgbDark := PillowCImageDarker(rgb1, rgb2)
+        rgbaDark := PillowCImageDarker(rgba1, rgba2)
+
+        AhkTest.AssertEqual([255, 40, 220, 255], PillowCImageToArray(lLight, 4))
+        AhkTest.AssertEqual([4, 50, 200, 255, 200, 90], PillowCImageToArray(rgbLight, 6))
+        AhkTest.AssertEqual([4, 50, 200, 255, 200, 90, 50, 255], PillowCImageToArray(rgbaLight, 8))
+        AhkTest.AssertEqual([0, 10, 200, 128], PillowCImageToArray(lDark, 4))
+        AhkTest.AssertEqual([1, 20, 100, 15, 0, 80], PillowCImageToArray(rgbDark, 6))
+        AhkTest.AssertEqual([1, 20, 100, 15, 20, 30, 40, 0], PillowCImageToArray(rgbaDark, 8))
+    } finally {
+        for handle in [rgbaDark, rgbDark, lDark, rgbaLight, rgbLight, lLight, rgba2, rgba1, rgb2, rgb1, l2, l1] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image lighter and darker match Pillow modes", PillowCTestImageLighterAndDarkerMatchPillowModes)
+
+PillowCTestImageLighterAndDarkerUseOverlappingAndEmptyOutputSize(*) {
+    left := PillowCCreateImageMode(4, 1, 1)
+    right := PillowCCreateImageMode(2, 1, 1)
+    empty := 0
+    lightOverlap := 0
+    darkOverlap := 0
+    lightEmpty := 0
+    darkEmpty := 0
+    try {
+        PillowCImageSetBytes(left, [0, 40, 200, 255])
+        PillowCImageSetBytes(right, [255, 10])
+        empty := PillowCImageCrop(left, 1, 0, 1, 1)
+        lightOverlap := PillowCImageLighter(left, right)
+        darkOverlap := PillowCImageDarker(left, right)
+        lightEmpty := PillowCImageLighter(empty, left)
+        darkEmpty := PillowCImageDarker(empty, left)
+
+        AhkTest.AssertEqual([2, 1], [PillowCImageInt(lightOverlap, "pillow_c_image_width"), PillowCImageInt(lightOverlap, "pillow_c_image_height")])
+        AhkTest.AssertEqual([255, 40], PillowCImageToArray(lightOverlap, 2))
+        AhkTest.AssertEqual([0, 10], PillowCImageToArray(darkOverlap, 2))
+        AhkTest.AssertEqual([0, 1], [PillowCImageInt(lightEmpty, "pillow_c_image_width"), PillowCImageInt(lightEmpty, "pillow_c_image_height")])
+        AhkTest.AssertEqual([], PillowCImageToArray(lightEmpty, 0))
+        AhkTest.AssertEqual([], PillowCImageToArray(darkEmpty, 0))
+    } finally {
+        for handle in [darkEmpty, lightEmpty, darkOverlap, lightOverlap, empty, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image lighter and darker use overlapping and empty output size like Pillow", PillowCTestImageLighterAndDarkerUseOverlappingAndEmptyOutputSize)
+
+PillowCTestImageLighterAndDarkerIntoReuseTargetHandle(*) {
+    left := PillowCCreateImageMode(4, 1, 1)
+    right := PillowCCreateImageMode(2, 1, 1)
+    lightTarget := PillowCCreateImageMode(2, 1, 1)
+    darkTarget := PillowCCreateImageMode(2, 1, 1)
+    try {
+        PillowCImageSetBytes(left, [0, 40, 200, 255])
+        PillowCImageSetBytes(right, [255, 10])
+        lightBefore := PillowCImageData(lightTarget).Ptr
+        darkBefore := PillowCImageData(darkTarget).Ptr
+
+        lightStatus := DllCall(
+            PillowCDllPath() "\pillow_c_image_lighter_into",
+            "Ptr", left,
+            "Ptr", right,
+            "Ptr", lightTarget,
+            "Int"
+        )
+        darkStatus := DllCall(
+            PillowCDllPath() "\pillow_c_image_darker_into",
+            "Ptr", left,
+            "Ptr", right,
+            "Ptr", darkTarget,
+            "Int"
+        )
+        PillowCAssertStatus(lightStatus)
+        PillowCAssertStatus(darkStatus)
+
+        AhkTest.AssertEqual(lightBefore, PillowCImageData(lightTarget).Ptr)
+        AhkTest.AssertEqual(darkBefore, PillowCImageData(darkTarget).Ptr)
+        AhkTest.AssertEqual([255, 40], PillowCImageToArray(lightTarget, 2))
+        AhkTest.AssertEqual([0, 10], PillowCImageToArray(darkTarget, 2))
+    } finally {
+        for handle in [darkTarget, lightTarget, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image lighter and darker _into reuse overlapping target storage", PillowCTestImageLighterAndDarkerIntoReuseTargetHandle)
+
+PillowCTestImageLighterAndDarkerRejectModeMismatch(*) {
+    left := PillowCCreateImageMode(1, 1, 1)
+    right := PillowCCreateImageMode(1, 1, 3)
+    outHandle := 0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_lighter",
+            "Ptr", left,
+            "Ptr", right,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_darker",
+            "Ptr", left,
+            "Ptr", right,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(right)
+        PillowCFreeImage(left)
+    }
+}
+
+AhkTest.Test("pillow_c image lighter and darker reject mode mismatch", PillowCTestImageLighterAndDarkerRejectModeMismatch)
 
 PillowCTestImageAddAndSubtractClampLikePillowModes(*) {
     l1 := PillowCCreateImageMode(4, 1, 1)

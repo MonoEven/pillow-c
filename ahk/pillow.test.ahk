@@ -1211,6 +1211,88 @@ PillowTestImageChopsScreenRejectsModeMismatch(*) {
 
 AhkTest.Test("Pillow ImageChops.Screen rejects mode mismatch", PillowTestImageChopsScreenRejectsModeMismatch)
 
+PillowTestImageChopsLighterAndDarkerUseNativeHandles(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 50, 200, 255, 0, 80]))
+    right := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([4, 20, 100, 15, 200, 90]))
+    lightOut := 0
+    darkOut := 0
+    try {
+        lightOut := Pillow.ImageChops.Lighter(left, right)
+        darkOut := Pillow.ImageChops.Darker(left, right)
+
+        AhkTest.AssertEqual("RGB", lightOut.Mode)
+        AhkTest.AssertEqual([2, 1], lightOut.Size)
+        AhkTest.AssertEqual([4, 50, 200, 255, 200, 90], PillowTestBufferToArray(lightOut.ToBytes()))
+        AhkTest.AssertEqual([1, 20, 100, 15, 0, 80], PillowTestBufferToArray(darkOut.ToBytes()))
+    } finally {
+        for image in [darkOut, lightOut, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops lighter and darker compute extrema through native handles", PillowTestImageChopsLighterAndDarkerUseNativeHandles)
+
+PillowTestImageChopsLighterAndDarkerUseOverlappingAndEmptyOutputSize(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 40, 200, 255]))
+    right := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([255, 10]))
+    empty := 0
+    lightOverlap := 0
+    darkOverlap := 0
+    lightEmpty := 0
+    darkEmpty := 0
+    try {
+        empty := left.Crop([1, 0, 1, 1])
+        lightOverlap := Pillow.ImageChops.Lighter(left, right)
+        darkOverlap := Pillow.ImageChops.Darker(left, right)
+        lightEmpty := Pillow.ImageChops.Lighter(empty, left)
+        darkEmpty := Pillow.ImageChops.Darker(empty, left)
+
+        AhkTest.AssertEqual([2, 1], lightOverlap.Size)
+        AhkTest.AssertEqual([255, 40], PillowTestBufferToArray(lightOverlap.ToBytes()))
+        AhkTest.AssertEqual([0, 10], PillowTestBufferToArray(darkOverlap.ToBytes()))
+        AhkTest.AssertEqual([0, 1], lightEmpty.Size)
+        AhkTest.AssertEqual([], PillowTestBufferToArray(lightEmpty.ToBytes()))
+        AhkTest.AssertEqual([], PillowTestBufferToArray(darkEmpty.ToBytes()))
+    } finally {
+        for image in [darkEmpty, lightEmpty, darkOverlap, lightOverlap, empty, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops lighter and darker return overlapping and empty output sizes", PillowTestImageChopsLighterAndDarkerUseOverlappingAndEmptyOutputSize)
+
+PillowTestImageChopsLighterAndDarkerRejectModeMismatch(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([1]))
+    right := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    try {
+        try {
+            Pillow.ImageChops.Lighter(left, right)
+            AhkTest.Fail("Expected ImageChops.Lighter to reject mode mismatch")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "mismatch") > 0)
+        }
+
+        try {
+            Pillow.ImageChops.Darker(left, right)
+            AhkTest.Fail("Expected ImageChops.Darker to reject mode mismatch")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "mismatch") > 0)
+        }
+    } finally {
+        right.Close()
+        left.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageChops lighter and darker reject mode mismatch", PillowTestImageChopsLighterAndDarkerRejectModeMismatch)
+
 PillowTestImageChopsAddAndSubtractUseNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 50, 200, 255, 0, 80]))

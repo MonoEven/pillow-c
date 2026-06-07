@@ -312,6 +312,30 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static Lighter(left, right) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_lighter",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Lighter"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Lighter"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static Darker(left, right) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_darker",
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Darker"),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Darker"),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static Add(left, right, scale := 1.0, offset := 0) {
             if !(scale is Number)
                 throw Error("Pillow.ImageChops.Add scale must be numeric", -1)
