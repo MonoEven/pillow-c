@@ -23,10 +23,45 @@ class Pillow {
     }
 
     class ImageOps {
-        static Autocontrast(image, cutoff := 0, ignore := unset) {
-            if !(IsObject(image) && image is Pillow.Image)
-                throw Error("Pillow.ImageOps.Autocontrast expects a Pillow.Image", -1)
+        static Invert(image) {
+            return Pillow.ImageOps.NativeUnaryImageOp(image, "pillow_c_image_invert")
+        }
 
+        static Posterize(image, bits) {
+            if !(bits is Integer)
+                throw Error("Pillow.ImageOps.Posterize bits must be an integer", -1)
+            if bits > 8
+                throw Error("Pillow.ImageOps.Posterize bits must be 8 or less", -1)
+            if bits < -31
+                throw Error("Pillow.ImageOps.Posterize bits is out of native range", -1)
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_posterize",
+                "Ptr", Pillow.ImageOps.RequireImageHandle(image, "Posterize"),
+                "Int", bits,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static Solarize(image, threshold := 128) {
+            if !(threshold is Number)
+                throw Error("Pillow.ImageOps.Solarize threshold must be numeric", -1)
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_solarize",
+                "Ptr", Pillow.ImageOps.RequireImageHandle(image, "Solarize"),
+                "Double", threshold,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static Autocontrast(image, cutoff := 0, ignore := unset) {
             cuts := Pillow.ImageOps.CutoffPair(cutoff)
             ignorePtr := 0
             ignoreCount := 0
@@ -40,7 +75,7 @@ class Pillow {
             outHandle := 0
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_autocontrast",
-                "Ptr", image.RequireHandle(),
+                "Ptr", Pillow.ImageOps.RequireImageHandle(image, "Autocontrast"),
                 "Double", cuts[1],
                 "Double", cuts[2],
                 "Ptr", ignorePtr,
@@ -49,6 +84,23 @@ class Pillow {
                 "Int"
             ))
             return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static NativeUnaryImageOp(image, exportName) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\" exportName,
+                "Ptr", Pillow.ImageOps.RequireImageHandle(image, exportName),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static RequireImageHandle(image, operationName) {
+            if !(IsObject(image) && image is Pillow.Image)
+                throw Error("Pillow.ImageOps." operationName " expects a Pillow.Image", -1)
+            return image.RequireHandle()
         }
 
         static CutoffPair(cutoff) {

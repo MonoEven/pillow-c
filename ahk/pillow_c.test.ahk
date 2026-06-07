@@ -365,6 +365,79 @@ PillowCImagePointLutInto(sourceHandle, lutValues, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageInvert(sourceHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_invert",
+        "Ptr", sourceHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageInvertInto(sourceHandle, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_invert_into",
+        "Ptr", sourceHandle,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImagePosterize(sourceHandle, bits) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_posterize",
+        "Ptr", sourceHandle,
+        "Int", bits,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImagePosterizeInto(sourceHandle, bits, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_posterize_into",
+        "Ptr", sourceHandle,
+        "Int", bits,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageSolarize(sourceHandle, threshold := 128.0) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_solarize",
+        "Ptr", sourceHandle,
+        "Double", threshold,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageSolarizeInto(sourceHandle, threshold, targetHandle) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_solarize_into",
+        "Ptr", sourceHandle,
+        "Double", threshold,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageGetChannel(sourceHandle, channelIndex) {
     outHandle := 0
     status := DllCall(
@@ -1033,6 +1106,151 @@ PillowCTestImagePointLutRejectsWrongLength(*) {
 }
 
 AhkTest.Test("pillow_c image point_lut rejects LUT lengths that do not match Pillow mode", PillowCTestImagePointLutRejectsWrongLength)
+
+PillowCTestImageOpsLutTransformsMatchPillowLAndRgb(*) {
+    l := PillowCCreateImageMode(5, 1, 1)
+    rgb := PillowCCreateImageMode(3, 1, 3)
+    lInvert := 0
+    rgbInvert := 0
+    lPosterize := 0
+    rgbPosterize := 0
+    lSolarize := 0
+    rgbSolarize := 0
+    try {
+        PillowCImageSetBytes(l, [0, 1, 127, 128, 255])
+        PillowCImageSetBytes(rgb, [
+            0, 1, 2,
+            127, 128, 129,
+            253, 254, 255,
+        ])
+
+        lInvert := PillowCImageInvert(l)
+        rgbInvert := PillowCImageInvert(rgb)
+        lPosterize := PillowCImagePosterize(l, 4)
+        rgbPosterize := PillowCImagePosterize(rgb, 4)
+        lSolarize := PillowCImageSolarize(l, 128.0)
+        rgbSolarize := PillowCImageSolarize(rgb, 128.0)
+
+        AhkTest.AssertEqual([255, 254, 128, 127, 0], PillowCImageToArray(lInvert, 5))
+        AhkTest.AssertEqual([255, 254, 253, 128, 127, 126, 2, 1, 0], PillowCImageToArray(rgbInvert, 9))
+        AhkTest.AssertEqual([0, 0, 112, 128, 240], PillowCImageToArray(lPosterize, 5))
+        AhkTest.AssertEqual([0, 0, 0, 112, 128, 128, 240, 240, 240], PillowCImageToArray(rgbPosterize, 9))
+        AhkTest.AssertEqual([0, 1, 127, 127, 0], PillowCImageToArray(lSolarize, 5))
+        AhkTest.AssertEqual([0, 1, 2, 127, 127, 126, 2, 1, 0], PillowCImageToArray(rgbSolarize, 9))
+    } finally {
+        for handle in [rgbSolarize, lSolarize, rgbPosterize, lPosterize, rgbInvert, lInvert] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image ImageOps LUT transforms match Pillow for L and RGB", PillowCTestImageOpsLutTransformsMatchPillowLAndRgb)
+
+PillowCTestImageOpsLutTransformsIntoReuseTargetHandleStorage(*) {
+    source := PillowCCreateImageMode(5, 1, 1)
+    invertTarget := PillowCCreateImageMode(5, 1, 1)
+    posterizeTarget := PillowCCreateImageMode(5, 1, 1)
+    solarizeTarget := PillowCCreateImageMode(5, 1, 1)
+    try {
+        PillowCImageSetBytes(source, [0, 1, 127, 128, 255])
+
+        invertBefore := PillowCImageData(invertTarget).Ptr
+        PillowCImageInvertInto(source, invertTarget)
+        AhkTest.AssertEqual(invertBefore, PillowCImageData(invertTarget).Ptr)
+        AhkTest.AssertEqual([255, 254, 128, 127, 0], PillowCImageToArray(invertTarget, 5))
+
+        posterizeBefore := PillowCImageData(posterizeTarget).Ptr
+        PillowCImagePosterizeInto(source, 4, posterizeTarget)
+        AhkTest.AssertEqual(posterizeBefore, PillowCImageData(posterizeTarget).Ptr)
+        AhkTest.AssertEqual([0, 0, 112, 128, 240], PillowCImageToArray(posterizeTarget, 5))
+
+        solarizeBefore := PillowCImageData(solarizeTarget).Ptr
+        PillowCImageSolarizeInto(source, 128.0, solarizeTarget)
+        AhkTest.AssertEqual(solarizeBefore, PillowCImageData(solarizeTarget).Ptr)
+        AhkTest.AssertEqual([0, 1, 127, 127, 0], PillowCImageToArray(solarizeTarget, 5))
+    } finally {
+        PillowCFreeImage(solarizeTarget)
+        PillowCFreeImage(posterizeTarget)
+        PillowCFreeImage(invertTarget)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image ImageOps LUT transform _into calls reuse target handle storage", PillowCTestImageOpsLutTransformsIntoReuseTargetHandleStorage)
+
+PillowCTestImageOpsLutTransformsHandlePosterizeAndSolarizeEdges(*) {
+    source := PillowCCreateImageMode(5, 1, 1)
+    posterizeZero := 0
+    posterizeEight := 0
+    solarizeLow := 0
+    solarizeHigh := 0
+    try {
+        PillowCImageSetBytes(source, [0, 1, 127, 128, 255])
+        posterizeZero := PillowCImagePosterize(source, 0)
+        posterizeEight := PillowCImagePosterize(source, 8)
+        solarizeLow := PillowCImageSolarize(source, 0.0)
+        solarizeHigh := PillowCImageSolarize(source, 256.0)
+
+        AhkTest.AssertEqual([0, 0, 0, 0, 0], PillowCImageToArray(posterizeZero, 5))
+        AhkTest.AssertEqual([0, 1, 127, 128, 255], PillowCImageToArray(posterizeEight, 5))
+        AhkTest.AssertEqual([255, 254, 128, 127, 0], PillowCImageToArray(solarizeLow, 5))
+        AhkTest.AssertEqual([0, 1, 127, 128, 255], PillowCImageToArray(solarizeHigh, 5))
+    } finally {
+        for handle in [solarizeHigh, solarizeLow, posterizeEight, posterizeZero] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image posterize and solarize cover Pillow edge parameters", PillowCTestImageOpsLutTransformsHandlePosterizeAndSolarizeEdges)
+
+PillowCTestImageOpsLutTransformsRejectUnsupportedModes(*) {
+    rgba := PillowCCreateImageMode(1, 1, 4)
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(rgba, [1, 2, 3, 4])
+        for exportName in ["pillow_c_image_invert", "pillow_c_image_posterize", "pillow_c_image_solarize"] {
+            outHandle := 0
+            if exportName = "pillow_c_image_posterize" {
+                status := DllCall(
+                    PillowCDllPath() "\" exportName,
+                    "Ptr", rgba,
+                    "Int", 4,
+                    "Ptr*", &outHandle,
+                    "Int"
+                )
+            } else if exportName = "pillow_c_image_solarize" {
+                status := DllCall(
+                    PillowCDllPath() "\" exportName,
+                    "Ptr", rgba,
+                    "Double", 128.0,
+                    "Ptr*", &outHandle,
+                    "Int"
+                )
+            } else {
+                status := DllCall(
+                    PillowCDllPath() "\" exportName,
+                    "Ptr", rgba,
+                    "Ptr*", &outHandle,
+                    "Int"
+                )
+            }
+            AhkTest.AssertEqual(-3, status)
+            AhkTest.AssertEqual(0, outHandle)
+        }
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(rgba)
+    }
+}
+
+AhkTest.Test("pillow_c image ImageOps LUT transforms reject modes Pillow _lut does not support", PillowCTestImageOpsLutTransformsRejectUnsupportedModes)
 
 PillowCTestImageHistogramMatchesPillowBands(*) {
     l := PillowCCreateImageMode(4, 1, 1)

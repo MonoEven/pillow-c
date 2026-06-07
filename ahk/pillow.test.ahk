@@ -434,6 +434,70 @@ PillowTestImageOpsAutocontrastAppliesCutoffAndIgnore(*) {
 
 AhkTest.Test("Pillow ImageOps.Autocontrast accepts Pillow-style cutoff and ignore options", PillowTestImageOpsAutocontrastAppliesCutoffAndIgnore)
 
+PillowTestImageOpsLutTransformsUseNativeOperations(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 1, 127, 128, 255]))
+    rgb := Pillow.Image.FromBytes("RGB", [3, 1], PillowTestBuffer([
+        0, 1, 2,
+        127, 128, 129,
+        253, 254, 255,
+    ]))
+    lInvert := 0
+    rgbInvert := 0
+    lPosterize := 0
+    rgbPosterize := 0
+    lSolarize := 0
+    rgbSolarize := 0
+    try {
+        lInvert := Pillow.ImageOps.Invert(l)
+        rgbInvert := Pillow.ImageOps.Invert(rgb)
+        lPosterize := Pillow.ImageOps.Posterize(l, 4)
+        rgbPosterize := Pillow.ImageOps.Posterize(rgb, 4)
+        lSolarize := Pillow.ImageOps.Solarize(l, 128)
+        rgbSolarize := Pillow.ImageOps.Solarize(rgb)
+
+        AhkTest.AssertEqual([255, 254, 128, 127, 0], PillowTestBufferToArray(lInvert.ToBytes()))
+        AhkTest.AssertEqual([255, 254, 253, 128, 127, 126, 2, 1, 0], PillowTestBufferToArray(rgbInvert.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 112, 128, 240], PillowTestBufferToArray(lPosterize.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 0, 112, 128, 128, 240, 240, 240], PillowTestBufferToArray(rgbPosterize.ToBytes()))
+        AhkTest.AssertEqual([0, 1, 127, 127, 0], PillowTestBufferToArray(lSolarize.ToBytes()))
+        AhkTest.AssertEqual([0, 1, 2, 127, 127, 126, 2, 1, 0], PillowTestBufferToArray(rgbSolarize.ToBytes()))
+    } finally {
+        for image in [rgbSolarize, lSolarize, rgbPosterize, lPosterize, rgbInvert, lInvert] {
+            if IsObject(image)
+                image.Close()
+        }
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps LUT transforms map L and RGB images through native handles", PillowTestImageOpsLutTransformsUseNativeOperations)
+
+PillowTestImageOpsLutTransformsRejectBadWrapperParameters(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([128]))
+    try {
+        try {
+            Pillow.ImageOps.Posterize(image, 9)
+            AhkTest.Fail("Expected Posterize to reject bits above 8")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "bits") > 0)
+        }
+
+        try {
+            Pillow.ImageOps.Solarize(image, "128")
+            AhkTest.Fail("Expected Solarize to reject a non-numeric threshold")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "threshold") > 0)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps LUT transforms reject invalid wrapper parameters", PillowTestImageOpsLutTransformsRejectBadWrapperParameters)
+
 PillowTestImageSplitUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([1, 2, 3, 4, 10, 20, 30, 40]))
