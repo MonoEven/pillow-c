@@ -48,6 +48,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `image.Crop(...)`
 - `image.Transpose(...)`
 - `image.Convert(...)`
+- `image.Point(...)`
 - static helpers such as `Pillow.Image.Blend(...)`
 
 AHK owns ergonomics and lifetime. The DLL owns image bytes and transformations.

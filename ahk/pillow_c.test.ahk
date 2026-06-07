@@ -289,6 +289,35 @@ PillowCImageRgbToL(sourceHandle) {
     return outHandle
 }
 
+PillowCImagePointLut(sourceHandle, lutValues) {
+    lut := PillowCBuffer(lutValues)
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_point_lut",
+        "Ptr", sourceHandle,
+        "Ptr", lut,
+        "UPtr", lut.Size,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImagePointLutInto(sourceHandle, lutValues, targetHandle) {
+    lut := PillowCBuffer(lutValues)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_point_lut_into",
+        "Ptr", sourceHandle,
+        "Ptr", lut,
+        "UPtr", lut.Size,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageRgbToLInto(sourceHandle, targetHandle) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_rgb_to_l_into",
@@ -681,6 +710,89 @@ PillowCTestImageFillRejectsWrongColorLength(*) {
 }
 
 AhkTest.Test("pillow_c image fill rejects colors that do not match channel count", PillowCTestImageFillRejectsWrongColorLength)
+
+PillowCMakeInvertLut(channelCount) {
+    lut := []
+    loop channelCount {
+        loop 256
+            lut.Push(256 - A_Index)
+    }
+    return lut
+}
+
+PillowCTestImagePointLutAppliesPerChannelTables(*) {
+    l := PillowCCreateImageMode(4, 1, 1)
+    rgb := PillowCCreateImageMode(2, 1, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    lOut := 0
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(l, [0, 1, 2, 255])
+        PillowCImageSetBytes(rgb, [0, 1, 2, 10, 20, 30])
+        PillowCImageSetBytes(rgba, [0, 1, 2, 3, 10, 20, 30, 40])
+        lOut := PillowCImagePointLut(l, PillowCMakeInvertLut(1))
+        rgbOut := PillowCImagePointLut(rgb, PillowCMakeInvertLut(3))
+        rgbaOut := PillowCImagePointLut(rgba, PillowCMakeInvertLut(4))
+        AhkTest.AssertEqual([255, 254, 253, 0], PillowCImageToArray(lOut, 4))
+        AhkTest.AssertEqual([255, 254, 253, 245, 235, 225], PillowCImageToArray(rgbOut, 6))
+        AhkTest.AssertEqual([255, 254, 253, 252, 245, 235, 225, 215], PillowCImageToArray(rgbaOut, 8))
+    } finally {
+        if rgbaOut
+            PillowCFreeImage(rgbaOut)
+        if rgbOut
+            PillowCFreeImage(rgbOut)
+        if lOut
+            PillowCFreeImage(lOut)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image point_lut applies per-channel Pillow LUT tables", PillowCTestImagePointLutAppliesPerChannelTables)
+
+PillowCTestImagePointLutIntoReusesTargetHandle(*) {
+    source := PillowCCreateImageMode(2, 1, 3)
+    target := PillowCCreateImageMode(2, 1, 3)
+    try {
+        PillowCImageSetBytes(source, [0, 1, 2, 10, 20, 30])
+        before := PillowCImageData(target).Ptr
+        PillowCImagePointLutInto(source, PillowCMakeInvertLut(3), target)
+        after := PillowCImageData(target).Ptr
+        AhkTest.AssertEqual(before, after)
+        AhkTest.AssertEqual([255, 254, 253, 245, 235, 225], PillowCImageToArray(target, 6))
+    } finally {
+        PillowCFreeImage(target)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image point_lut_into reuses target handle storage", PillowCTestImagePointLutIntoReusesTargetHandle)
+
+PillowCTestImagePointLutRejectsWrongLength(*) {
+    source := PillowCCreateImageMode(2, 1, 3)
+    outHandle := 0
+    try {
+        lut := PillowCBuffer(PillowCMakeInvertLut(1))
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_point_lut",
+            "Ptr", source,
+            "Ptr", lut,
+            "UPtr", lut.Size,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image point_lut rejects LUT lengths that do not match Pillow mode", PillowCTestImagePointLutRejectsWrongLength)
 
 PillowCTestImageRgbToLHandleOperation(*) {
     source := PillowCCreateImage(8, 1, 3)

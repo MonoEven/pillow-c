@@ -356,6 +356,32 @@ int fill_image_pixels(PillowCImage* image, const std::uint8_t* color, std::size_
     return PILLOW_C_OK;
 }
 
+int apply_point_lut_into(const PillowCImage* source, const std::uint8_t* lut, std::size_t lut_size, PillowCImage* target)
+{
+    if (!source || !lut || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (lut_size != static_cast<std::size_t>(source->channels) * 256u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (!image_shape_matches(target, source)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* src = source->pixels.data();
+    std::uint8_t* dst = target->pixels.data();
+    const std::size_t count = source->pixels.size();
+    const int channels = source->channels;
+    for (std::size_t i = 0; i < count; ++i) {
+        const std::size_t channel = static_cast<std::size_t>(i % channels);
+        dst[i] = lut[channel * 256u + src[i]];
+    }
+    return PILLOW_C_OK;
+}
+
 } // namespace
 
 extern "C" __declspec(dllexport) int pillow_c_abi_version(
@@ -797,6 +823,15 @@ extern "C" __declspec(dllexport) int pillow_c_image_rgb_to_l_into(
         static_cast<std::size_t>(source->width) * source->height);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_point_lut_into(
+    const PillowCImage* source,
+    const std::uint8_t* lut,
+    std::size_t lut_size,
+    PillowCImage* target)
+{
+    return apply_point_lut_into(source, lut, lut_size, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_alpha_composite_rgba_into(
     const PillowCImage* dst,
     const PillowCImage* src,
@@ -1111,6 +1146,34 @@ extern "C" __declspec(dllexport) int pillow_c_image_rgb_to_l(
             source->pixels.data(),
             image->pixels.data(),
             static_cast<std::size_t>(source->width) * source->height);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_point_lut(
+    const PillowCImage* source,
+    const std::uint8_t* lut,
+    std::size_t lut_size,
+    PillowCImage** out_image)
+{
+    if (!source || !lut || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (lut_size != static_cast<std::size_t>(source->channels) * 256u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    try {
+        auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
+        const int status = apply_point_lut_into(source, lut, lut_size, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

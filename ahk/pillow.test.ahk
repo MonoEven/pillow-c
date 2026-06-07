@@ -197,6 +197,33 @@ PillowTestImageConvertRgbToLUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Convert converts RGB to L through native handles", PillowTestImageConvertRgbToLUsesNativeHandleOperation)
 
+PillowTestMakeInvertLut(channelCount) {
+    lut := []
+    loop channelCount {
+        loop 256
+            lut.Push(256 - A_Index)
+    }
+    return lut
+}
+
+PillowTestImagePointUsesNativeLutOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([0, 1, 2, 10, 20, 30]))
+    pointed := 0
+    try {
+        pointed := source.Point(PillowTestMakeInvertLut(3))
+        AhkTest.AssertEqual("RGB", pointed.Mode)
+        AhkTest.AssertEqual([2, 1], pointed.Size)
+        AhkTest.AssertEqual([255, 254, 253, 245, 235, 225], PillowTestBufferToArray(pointed.ToBytes()))
+    } finally {
+        if IsObject(pointed)
+            pointed.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Point applies a Pillow-style LUT through native handles", PillowTestImagePointUsesNativeLutOperation)
+
 PillowTestImagePasteMutatesTargetThroughNativeHandleOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     target := Pillow.Image.FromBytes("RGB", [4, 3], PillowTestBuffer([
