@@ -715,6 +715,145 @@ int extrema_image(
     return PILLOW_C_OK;
 }
 
+bool autocontrast_supported_mode(const PillowCImage* source)
+{
+    return source && (source->mode == PILLOW_C_MODE_L || source->mode == PILLOW_C_MODE_RGB);
+}
+
+int apply_histogram_end_cut(std::uint64_t* histogram, long double cut, bool from_high)
+{
+    if (!histogram) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    for (int step = 0; step < 256; ++step) {
+        const int ix = from_high ? 255 - step : step;
+        const long double current = static_cast<long double>(histogram[ix]);
+        if (cut > current) {
+            cut -= current;
+            histogram[ix] = 0;
+        } else {
+            const long double next = current - cut;
+            if (next < 0.0L || next > static_cast<long double>(std::numeric_limits<std::uint64_t>::max())) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            histogram[ix] = static_cast<std::uint64_t>(next);
+            cut = 0.0L;
+        }
+        if (cut <= 0.0L) {
+            break;
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int build_autocontrast_lut(
+    const PillowCImage* source,
+    double low_cutoff,
+    double high_cutoff,
+    const std::uint8_t* ignore_values,
+    std::size_t ignore_count,
+    std::vector<std::uint8_t>* out_lut)
+{
+    if (!source || !out_lut) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!autocontrast_supported_mode(source) || !std::isfinite(low_cutoff) || !std::isfinite(high_cutoff)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (ignore_count > 0 && !ignore_values) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    std::vector<std::uint64_t> histogram(static_cast<std::size_t>(source->channels) * 256u);
+    int status = histogram_image(source, histogram.data(), histogram.size());
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+
+    out_lut->assign(static_cast<std::size_t>(source->channels) * 256u, 0);
+    for (int channel = 0; channel < source->channels; ++channel) {
+        std::uint64_t* h = histogram.data() + static_cast<std::size_t>(channel) * 256u;
+        for (std::size_t i = 0; i < ignore_count; ++i) {
+            h[ignore_values[i]] = 0;
+        }
+        if (low_cutoff != 0.0 || high_cutoff != 0.0) {
+            std::uint64_t total = 0;
+            for (int ix = 0; ix < 256; ++ix) {
+                total += h[ix];
+            }
+            const long double total_value = static_cast<long double>(total);
+            const long double low_cut = std::floor(total_value * static_cast<long double>(low_cutoff) / 100.0L);
+            const long double high_cut = std::floor(total_value * static_cast<long double>(high_cutoff) / 100.0L);
+            status = apply_histogram_end_cut(h, low_cut, false);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = apply_histogram_end_cut(h, high_cut, true);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        int lo = 255;
+        int hi = 0;
+        for (int ix = 0; ix < 256; ++ix) {
+            if (h[ix] != 0) {
+                lo = ix;
+                break;
+            }
+        }
+        for (int ix = 255; ix >= 0; --ix) {
+            if (h[ix] != 0) {
+                hi = ix;
+                break;
+            }
+        }
+
+        std::uint8_t* lut = out_lut->data() + static_cast<std::size_t>(channel) * 256u;
+        if (hi <= lo) {
+            for (int ix = 0; ix < 256; ++ix) {
+                lut[ix] = static_cast<std::uint8_t>(ix);
+            }
+        } else {
+            const double scale = 255.0 / static_cast<double>(hi - lo);
+            const double offset = -lo * scale;
+            for (int ix = 0; ix < 256; ++ix) {
+                const int value = static_cast<int>(ix * scale + offset);
+                lut[ix] = clip_u8_int(value);
+            }
+        }
+    }
+
+    return PILLOW_C_OK;
+}
+
+int autocontrast_image_into(
+    const PillowCImage* source,
+    double low_cutoff,
+    double high_cutoff,
+    const std::uint8_t* ignore_values,
+    std::size_t ignore_count,
+    PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!image_shape_matches(target, source)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    try {
+        std::vector<std::uint8_t> lut;
+        const int status = build_autocontrast_lut(source, low_cutoff, high_cutoff, ignore_values, ignore_count, &lut);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        return apply_point_lut_into(source, lut.data(), lut.size(), target);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 bool precompute_nearest_indices(int src_size, int dst_size, std::vector<int>* indices)
 {
     if (src_size <= 0 || dst_size <= 0 || !indices) {
@@ -1534,6 +1673,17 @@ extern "C" __declspec(dllexport) int pillow_c_image_point_lut_into(
     return apply_point_lut_into(source, lut, lut_size, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_autocontrast_into(
+    const PillowCImage* source,
+    double low_cutoff,
+    double high_cutoff,
+    const std::uint8_t* ignore_values,
+    std::size_t ignore_count,
+    PillowCImage* target)
+{
+    return autocontrast_image_into(source, low_cutoff, high_cutoff, ignore_values, ignore_count, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_get_channel_into(
     const PillowCImage* source,
     int channel_index,
@@ -1990,6 +2140,36 @@ extern "C" __declspec(dllexport) int pillow_c_image_point_lut(
     try {
         auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
         const int status = apply_point_lut_into(source, lut, lut_size, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_autocontrast(
+    const PillowCImage* source,
+    double low_cutoff,
+    double high_cutoff,
+    const std::uint8_t* ignore_values,
+    std::size_t ignore_count,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!autocontrast_supported_mode(source)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
+        const int status = autocontrast_image_into(source, low_cutoff, high_cutoff, ignore_values, ignore_count, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

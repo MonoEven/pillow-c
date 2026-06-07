@@ -22,6 +22,66 @@ class Pillow {
         static LANCZOS := 1
     }
 
+    class ImageOps {
+        static Autocontrast(image, cutoff := 0, ignore := unset) {
+            if !(IsObject(image) && image is Pillow.Image)
+                throw Error("Pillow.ImageOps.Autocontrast expects a Pillow.Image", -1)
+
+            cuts := Pillow.ImageOps.CutoffPair(cutoff)
+            ignorePtr := 0
+            ignoreCount := 0
+            ignoreBuffer := 0
+            if IsSet(ignore) {
+                ignoreBuffer := Pillow.ImageOps.IgnoreBuffer(ignore)
+                ignorePtr := ignoreBuffer.Ptr
+                ignoreCount := ignoreBuffer.Size
+            }
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_autocontrast",
+                "Ptr", image.RequireHandle(),
+                "Double", cuts[1],
+                "Double", cuts[2],
+                "Ptr", ignorePtr,
+                "UPtr", ignoreCount,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static CutoffPair(cutoff) {
+            if IsObject(cutoff) {
+                if cutoff.Length != 2
+                    throw Error("Pillow.ImageOps.Autocontrast cutoff expects a number or [low, high]", -1)
+                return [cutoff[1], cutoff[2]]
+            }
+            return [cutoff, cutoff]
+        }
+
+        static IgnoreBuffer(ignore) {
+            if IsObject(ignore) {
+                buf := Buffer(ignore.Length, 0)
+                for index, value in ignore
+                    NumPut("UChar", Pillow.ImageOps.NormalizeIgnoreValue(value), buf, index - 1)
+                return buf
+            }
+
+            buf := Buffer(1, 0)
+            NumPut("UChar", Pillow.ImageOps.NormalizeIgnoreValue(ignore), buf, 0)
+            return buf
+        }
+
+        static NormalizeIgnoreValue(value) {
+            if !(value is Integer)
+                throw Error("Pillow.ImageOps.Autocontrast ignore values must be integers", -1)
+            if value < -256 || value > 255
+                throw Error("Pillow.ImageOps.Autocontrast ignore index out of range", -1)
+            return value < 0 ? value + 256 : value
+        }
+    }
+
     static Configure(options := unset) {
         if IsSet(options) && options.HasOwnProp("DllPath")
             Pillow.DllPath := options.DllPath

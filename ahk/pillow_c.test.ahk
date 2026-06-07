@@ -593,6 +593,37 @@ PillowCImageResizeInto(sourceHandle, width, height, resample, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageAutocontrast(sourceHandle, lowCutoff := 0.0, highCutoff := 0.0, ignoreCount := 0, ignoreValues := 0) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_autocontrast",
+        "Ptr", sourceHandle,
+        "Double", lowCutoff,
+        "Double", highCutoff,
+        "Ptr", ignoreValues,
+        "UPtr", ignoreCount,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageAutocontrastInto(sourceHandle, lowCutoff, highCutoff, targetHandle, ignoreCount := 0, ignoreValues := 0) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_autocontrast_into",
+        "Ptr", sourceHandle,
+        "Double", lowCutoff,
+        "Double", highCutoff,
+        "Ptr", ignoreValues,
+        "UPtr", ignoreCount,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImagePaste(targetHandle, sourceHandle, left, top) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_paste",
@@ -1091,6 +1122,117 @@ PillowCTestImageGetExtremaMatchesPillowBands(*) {
 }
 
 AhkTest.Test("pillow_c image get_extrema matches Pillow band extrema", PillowCTestImageGetExtremaMatchesPillowBands)
+
+PillowCTestImageAutocontrastMatchesPillowLAndRgb(*) {
+    l := PillowCCreateImageMode(4, 1, 1)
+    rgb := PillowCCreateImageMode(3, 1, 3)
+    lOut := 0
+    rgbOut := 0
+    try {
+        PillowCImageSetBytes(l, [10, 20, 30, 40])
+        PillowCImageSetBytes(rgb, [
+            10, 50, 100,
+            20, 60, 150,
+            30, 70, 200,
+        ])
+        lOut := PillowCImageAutocontrast(l)
+        rgbOut := PillowCImageAutocontrast(rgb)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(lOut))
+        AhkTest.AssertEqual(3, PillowCImageMode(rgbOut))
+        AhkTest.AssertEqual([0, 85, 170, 255], PillowCImageToArray(lOut, 4))
+        AhkTest.AssertEqual([0, 0, 0, 127, 127, 127, 255, 255, 254], PillowCImageToArray(rgbOut, 9))
+    } finally {
+        if rgbOut
+            PillowCFreeImage(rgbOut)
+        if lOut
+            PillowCFreeImage(lOut)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image autocontrast matches Pillow for L and RGB", PillowCTestImageAutocontrastMatchesPillowLAndRgb)
+
+PillowCTestImageAutocontrastAppliesCutoffAndIgnore(*) {
+    cutoff := PillowCCreateImageMode(10, 1, 1)
+    ignoreScalar := PillowCCreateImageMode(5, 1, 1)
+    ignoreList := PillowCCreateImageMode(5, 1, 1)
+    cutoffOut := 0
+    scalarOut := 0
+    listOut := 0
+    try {
+        PillowCImageSetBytes(cutoff, [0, 0, 10, 20, 30, 40, 50, 60, 255, 255])
+        PillowCImageSetBytes(ignoreScalar, [0, 10, 20, 30, 255])
+        PillowCImageSetBytes(ignoreList, [0, 10, 20, 30, 255])
+
+        ignoreZero := PillowCBuffer([0])
+        ignoreEdges := PillowCBuffer([0, 255])
+        cutoffOut := PillowCImageAutocontrast(cutoff, 20.0, 20.0)
+        scalarOut := PillowCImageAutocontrast(ignoreScalar, 0.0, 0.0, 1, ignoreZero)
+        listOut := PillowCImageAutocontrast(ignoreList, 0.0, 0.0, 2, ignoreEdges)
+
+        AhkTest.AssertEqual([0, 0, 0, 51, 102, 153, 203, 255, 255, 255], PillowCImageToArray(cutoffOut, 10))
+        AhkTest.AssertEqual([0, 0, 10, 20, 255], PillowCImageToArray(scalarOut, 5))
+        AhkTest.AssertEqual([0, 0, 127, 255, 255], PillowCImageToArray(listOut, 5))
+    } finally {
+        if listOut
+            PillowCFreeImage(listOut)
+        if scalarOut
+            PillowCFreeImage(scalarOut)
+        if cutoffOut
+            PillowCFreeImage(cutoffOut)
+        PillowCFreeImage(ignoreList)
+        PillowCFreeImage(ignoreScalar)
+        PillowCFreeImage(cutoff)
+    }
+}
+
+AhkTest.Test("pillow_c image autocontrast applies Pillow cutoff and ignore rules", PillowCTestImageAutocontrastAppliesCutoffAndIgnore)
+
+PillowCTestImageAutocontrastIntoReusesTargetHandleStorage(*) {
+    source := PillowCCreateImageMode(4, 1, 1)
+    target := PillowCCreateImageMode(4, 1, 1)
+    try {
+        PillowCImageSetBytes(source, [10, 20, 30, 40])
+        before := PillowCImageData(target).Ptr
+        PillowCImageAutocontrastInto(source, 0.0, 0.0, target)
+        after := PillowCImageData(target).Ptr
+        AhkTest.AssertEqual(before, after)
+        AhkTest.AssertEqual([0, 85, 170, 255], PillowCImageToArray(target, 4))
+    } finally {
+        PillowCFreeImage(target)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image autocontrast_into reuses target handle storage", PillowCTestImageAutocontrastIntoReusesTargetHandleStorage)
+
+PillowCTestImageAutocontrastRejectsUnsupportedModes(*) {
+    rgba := PillowCCreateImageMode(1, 1, 4)
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(rgba, [10, 20, 30, 40])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_autocontrast",
+            "Ptr", rgba,
+            "Double", 0.0,
+            "Double", 0.0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(rgba)
+    }
+}
+
+AhkTest.Test("pillow_c image autocontrast rejects modes Pillow ImageOps._lut does not support", PillowCTestImageAutocontrastRejectsUnsupportedModes)
 
 PillowCTestImageGetChannelReturnsLImage(*) {
     rgb := PillowCCreateImageMode(2, 1, 3)

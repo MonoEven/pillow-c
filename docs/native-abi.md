@@ -63,6 +63,7 @@ Image operations:
 - `pillow_c_image_copy`
 - `pillow_c_image_blend`
 - `pillow_c_image_point_lut`
+- `pillow_c_image_autocontrast`
 - `pillow_c_image_get_channel`
 - `pillow_c_image_split_bands`
 - `pillow_c_image_put_alpha_value`
@@ -81,6 +82,7 @@ Reusable target operations:
 - `pillow_c_image_copy_into`
 - `pillow_c_image_blend_into`
 - `pillow_c_image_point_lut_into`
+- `pillow_c_image_autocontrast_into`
 - `pillow_c_image_get_channel_into`
 - `pillow_c_image_put_alpha_value_into`
 - `pillow_c_image_put_alpha_image_into`

@@ -382,6 +382,58 @@ PillowTestImageGetExtremaUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.GetExtrema returns Pillow-style extrema through native handles", PillowTestImageGetExtremaUsesNativeOperation)
 
+PillowTestImageOpsAutocontrastUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([10, 20, 30, 40]))
+    rgb := Pillow.Image.FromBytes("RGB", [3, 1], PillowTestBuffer([
+        10, 50, 100,
+        20, 60, 150,
+        30, 70, 200,
+    ]))
+    lOut := 0
+    rgbOut := 0
+    try {
+        lOut := Pillow.ImageOps.Autocontrast(l)
+        rgbOut := Pillow.ImageOps.Autocontrast(rgb)
+        AhkTest.AssertEqual("L", lOut.Mode)
+        AhkTest.AssertEqual("RGB", rgbOut.Mode)
+        AhkTest.AssertEqual([0, 85, 170, 255], PillowTestBufferToArray(lOut.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 0, 127, 127, 127, 255, 255, 254], PillowTestBufferToArray(rgbOut.ToBytes()))
+    } finally {
+        if IsObject(rgbOut)
+            rgbOut.Close()
+        if IsObject(lOut)
+            lOut.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Autocontrast maps L and RGB images through native handles", PillowTestImageOpsAutocontrastUsesNativeOperation)
+
+PillowTestImageOpsAutocontrastAppliesCutoffAndIgnore(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    cutoff := Pillow.Image.FromBytes("L", [10, 1], PillowTestBuffer([0, 0, 10, 20, 30, 40, 50, 60, 255, 255]))
+    ignored := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 10, 20, 30, 255]))
+    cutoffOut := 0
+    ignoredOut := 0
+    try {
+        cutoffOut := Pillow.ImageOps.Autocontrast(cutoff, [20, 20])
+        ignoredOut := Pillow.ImageOps.Autocontrast(ignored, 0, [0, 255])
+        AhkTest.AssertEqual([0, 0, 0, 51, 102, 153, 203, 255, 255, 255], PillowTestBufferToArray(cutoffOut.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 127, 255, 255], PillowTestBufferToArray(ignoredOut.ToBytes()))
+    } finally {
+        if IsObject(ignoredOut)
+            ignoredOut.Close()
+        if IsObject(cutoffOut)
+            cutoffOut.Close()
+        ignored.Close()
+        cutoff.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Autocontrast accepts Pillow-style cutoff and ignore options", PillowTestImageOpsAutocontrastAppliesCutoffAndIgnore)
+
 PillowTestImageSplitUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([1, 2, 3, 4, 10, 20, 30, 40]))
