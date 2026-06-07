@@ -4451,7 +4451,8 @@ int reduce_image_into(
     if (xscale <= 0 || yscale <= 0 || !valid_reduce_box(source, left, top, right, bottom)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (source->mode != PILLOW_C_MODE_L && source->mode != PILLOW_C_MODE_RGB) {
+    if (source->mode != PILLOW_C_MODE_L && source->mode != PILLOW_C_MODE_LA &&
+        source->mode != PILLOW_C_MODE_RGB && source->mode != PILLOW_C_MODE_RGBA) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
@@ -4473,17 +4474,50 @@ int reduce_image_into(
             const int x1 = std::min(x0 + xscale, right);
             const auto count = static_cast<std::uint32_t>((x1 - x0) * (y1 - y0));
             std::uint8_t* dst = dst_row + static_cast<std::size_t>(out_x) * source->channels;
-            for (int channel = 0; channel < source->channels; ++channel) {
-                std::uint64_t sum = 0;
+            if (source->mode == PILLOW_C_MODE_LA || source->mode == PILLOW_C_MODE_RGBA) {
+                const int alpha_channel = source->channels - 1;
+                std::uint64_t alpha_sum = 0;
                 for (int y = y0; y < y1; ++y) {
                     const std::uint8_t* src_row =
                         source->pixels.data() + static_cast<std::size_t>(y) * source->stride;
                     for (int x = x0; x < x1; ++x) {
-                        sum += src_row[static_cast<std::size_t>(x) * source->channels +
-                                       static_cast<std::size_t>(channel)];
+                        alpha_sum += src_row[static_cast<std::size_t>(x) * source->channels +
+                                             static_cast<std::size_t>(alpha_channel)];
                     }
                 }
-                dst[channel] = reduce_average_u8(sum, count);
+                const std::uint8_t alpha = reduce_average_u8(alpha_sum, count);
+                dst[alpha_channel] = alpha;
+                for (int channel = 0; channel < alpha_channel; ++channel) {
+                    std::uint64_t premultiplied_sum = 0;
+                    for (int y = y0; y < y1; ++y) {
+                        const std::uint8_t* src_row =
+                            source->pixels.data() + static_cast<std::size_t>(y) * source->stride;
+                        for (int x = x0; x < x1; ++x) {
+                            const std::uint8_t* src =
+                                src_row + static_cast<std::size_t>(x) * source->channels;
+                            premultiplied_sum += mul_div_255(src[channel], src[alpha_channel]);
+                        }
+                    }
+                    const std::uint8_t premultiplied = reduce_average_u8(premultiplied_sum, count);
+                    if (alpha == 0 || alpha == 255) {
+                        dst[channel] = premultiplied;
+                    } else {
+                        dst[channel] = clip_u8_int(255 * static_cast<int>(premultiplied) / alpha);
+                    }
+                }
+            } else {
+                for (int channel = 0; channel < source->channels; ++channel) {
+                    std::uint64_t sum = 0;
+                    for (int y = y0; y < y1; ++y) {
+                        const std::uint8_t* src_row =
+                            source->pixels.data() + static_cast<std::size_t>(y) * source->stride;
+                        for (int x = x0; x < x1; ++x) {
+                            sum += src_row[static_cast<std::size_t>(x) * source->channels +
+                                           static_cast<std::size_t>(channel)];
+                        }
+                    }
+                    dst[channel] = reduce_average_u8(sum, count);
+                }
             }
         }
     }
@@ -7470,7 +7504,8 @@ extern "C" __declspec(dllexport) int pillow_c_image_reduce(
     if (xscale <= 0 || yscale <= 0 || !valid_reduce_box(source, left, top, right, bottom)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (source->mode != PILLOW_C_MODE_L && source->mode != PILLOW_C_MODE_RGB) {
+    if (source->mode != PILLOW_C_MODE_L && source->mode != PILLOW_C_MODE_LA &&
+        source->mode != PILLOW_C_MODE_RGB && source->mode != PILLOW_C_MODE_RGBA) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 

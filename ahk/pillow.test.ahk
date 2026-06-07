@@ -280,15 +280,27 @@ PillowTestImageReduceUsesNativeOperation(*) {
         10, 20, 30, 40, 50, 60, 70, 80, 90,
         100, 110, 120, 130, 140, 150, 160, 170, 180,
     ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [2, 2], PillowTestBuffer([
+        10, 20, 30, 0, 100, 110, 120, 128,
+        200, 210, 220, 255, 50, 60, 70, 64,
+    ]))
+    la := Pillow.Image.FromBytes("LA", [3, 2], PillowTestBuffer([
+        10, 0, 100, 128, 200, 255,
+        50, 64, 30, 32, 240, 200,
+    ]))
     lReduced := 0
     lTuple := 0
     lBox := 0
     rgbReduced := 0
+    rgbaReduced := 0
+    laReduced := 0
     try {
         lReduced := l.Reduce(2)
         lTuple := l.Reduce([2, 3])
         lBox := l.Reduce(2, [1, 0, 5, 3])
         rgbReduced := rgb.Reduce(2)
+        rgbaReduced := rgba.Reduce(2)
+        laReduced := la.Reduce([2, 1])
 
         AhkTest.AssertEqual("L", lReduced.Mode)
         AhkTest.AssertEqual([3, 2], lReduced.Size)
@@ -300,8 +312,14 @@ PillowTestImageReduceUsesNativeOperation(*) {
         AhkTest.AssertEqual("RGB", rgbReduced.Mode)
         AhkTest.AssertEqual([2, 1], rgbReduced.Size)
         AhkTest.AssertEqual([70, 80, 90, 115, 125, 135], PillowTestBufferToArray(rgbReduced.ToBytes()))
+        AhkTest.AssertEqual("RGBA", rgbaReduced.Mode)
+        AhkTest.AssertEqual([1, 1], rgbaReduced.Size)
+        AhkTest.AssertEqual([150, 159, 170, 112], PillowTestBufferToArray(rgbaReduced.ToBytes()))
+        AhkTest.AssertEqual("LA", laReduced.Mode)
+        AhkTest.AssertEqual([2, 2], laReduced.Size)
+        AhkTest.AssertEqual([99, 64, 200, 255, 47, 48, 239, 200], PillowTestBufferToArray(laReduced.ToBytes()))
     } finally {
-        for image in [rgbReduced, lBox, lTuple, lReduced, rgb, l] {
+        for image in [laReduced, rgbaReduced, rgbReduced, lBox, lTuple, lReduced, la, rgba, rgb, l] {
             if IsObject(image)
                 image.Close()
         }

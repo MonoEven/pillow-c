@@ -137,7 +137,7 @@ Core `L`, `LA`, `RGB`, and `RGBA` conversions, histogram/extrema/entropy/boundin
 
 Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes. `NEAREST` uses Pillow's affine-scale coordinate progression. `BOX`, `BILINEAR`, `HAMMING`, `BICUBIC`, and `LANCZOS` use separable two-pass filtering with Pillow-style fixed-point coefficient normalization. Non-NEAREST `RGBA` resize uses premultiplied color internally and preserves identity resizes as byte copies.
 
-`Image.reduce` currently supports native integer block downsampling for `L` and `RGB` facade coverage, including Pillow-style output-size ceiling, optional box regions, and allocation-avoiding `_into` calls. RGBA/LA premultiplied alpha reduce should be locked with separate tests before claiming full alpha-mode parity.
+`Image.reduce` supports native integer block downsampling for `L`, `LA`, `RGB`, and `RGBA`, including Pillow-style output-size ceiling, optional box regions, and allocation-avoiding `_into` calls. `LA` and `RGBA` reduce through Pillow's premultiplied-alpha semantics before converting back to the public mode.
 
 `ImageFilter.Kernel` currently supports Pillow's 3x3 and 5x5 kernel path for `L`, `RGB`, and `RGBA`. Native filtering copies border pixels unchanged, applies Pillow's vertical kernel flip, and uses Pillow-style half-up rounding before clipping. Pillow's fixed-kernel built-ins `BLUR`, `CONTOUR`, `DETAIL`, `EDGE_ENHANCE`, `EDGE_ENHANCE_MORE`, `EMBOSS`, `FIND_EDGES`, `SHARPEN`, `SMOOTH`, and `SMOOTH_MORE` reuse the same native kernel path.
 

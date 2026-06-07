@@ -5993,6 +5993,54 @@ PillowCTestImageReduceSupportsBoxFactorTupleAndInto(*) {
 
 AhkTest.Test("pillow_c image reduce supports box factor tuple and _into", PillowCTestImageReduceSupportsBoxFactorTupleAndInto)
 
+PillowCTestImageReduceMatchesPillowAlphaModes(*) {
+    rgba := PillowCCreateImageMode(2, 2, 4)
+    rgbaWide := PillowCCreateImageMode(3, 2, 4)
+    la := PillowCCreateImageMode(3, 2, 2)
+    rgbaOut := 0
+    wideOut := 0
+    boxOut := 0
+    laOut := 0
+    try {
+        PillowCImageSetBytes(rgba, [
+            10, 20, 30, 0, 100, 110, 120, 128,
+            200, 210, 220, 255, 50, 60, 70, 64,
+        ])
+        PillowCImageSetBytes(rgbaWide, [
+            10, 20, 30, 0, 100, 110, 120, 128, 200, 210, 220, 255,
+            50, 60, 70, 64, 30, 40, 50, 32, 240, 230, 220, 200,
+        ])
+        PillowCImageSetBytes(la, [
+            10, 0, 100, 128, 200, 255,
+            50, 64, 30, 32, 240, 200,
+        ])
+
+        rgbaOut := PillowCImageReduce(rgba, 2, 2, 0, 0, 2, 2)
+        wideOut := PillowCImageReduce(rgbaWide, 2, 2, 0, 0, 3, 2)
+        boxOut := PillowCImageReduce(rgbaWide, 2, 2, 1, 0, 3, 2)
+        laOut := PillowCImageReduce(la, 2, 1, 0, 0, 3, 2)
+
+        AhkTest.AssertEqual([150, 159, 170, 112], PillowCImageToArray(rgbaOut, 4))
+        AhkTest.AssertEqual([77, 86, 95, 56, 216, 218, 220, 228], PillowCImageToArray(wideOut, 8))
+        AhkTest.AssertEqual([183, 187, 190, 154], PillowCImageToArray(boxOut, 4))
+        AhkTest.AssertEqual([99, 64, 200, 255, 47, 48, 239, 200], PillowCImageToArray(laOut, 8))
+    } finally {
+        if laOut
+            PillowCFreeImage(laOut)
+        if boxOut
+            PillowCFreeImage(boxOut)
+        if wideOut
+            PillowCFreeImage(wideOut)
+        if rgbaOut
+            PillowCFreeImage(rgbaOut)
+        PillowCFreeImage(la)
+        PillowCFreeImage(rgbaWide)
+        PillowCFreeImage(rgba)
+    }
+}
+
+AhkTest.Test("pillow_c image reduce matches Pillow alpha modes", PillowCTestImageReduceMatchesPillowAlphaModes)
+
 PillowCTestImageReduceRejectsInvalidArguments(*) {
     source := PillowCCreateImageMode(2, 2, 1)
     target := PillowCCreateImageMode(2, 1, 1)
