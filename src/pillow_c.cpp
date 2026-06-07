@@ -1461,6 +1461,81 @@ int resize_image_into(const PillowCImage* source, int out_width, int out_height,
     }
 }
 
+int python_round_to_int(double value)
+{
+    const double floor_value = std::floor(value);
+    const double fraction = value - floor_value;
+    if (fraction < 0.5) {
+        return static_cast<int>(floor_value);
+    }
+    if (fraction > 0.5) {
+        return static_cast<int>(floor_value + 1.0);
+    }
+    const auto floor_int = static_cast<std::int64_t>(floor_value);
+    return static_cast<int>((floor_int % 2 == 0) ? floor_int : floor_int + 1);
+}
+
+int proportional_resize_size(
+    const PillowCImage* source,
+    int requested_width,
+    int requested_height,
+    bool cover,
+    int* out_width,
+    int* out_height)
+{
+    if (!source || !out_width || !out_height) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (requested_height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    int width = requested_width;
+    int height = requested_height;
+    const double image_ratio = static_cast<double>(source->width) / source->height;
+    const double destination_ratio = static_cast<double>(requested_width) / requested_height;
+
+    if (image_ratio != destination_ratio) {
+        if ((!cover && image_ratio > destination_ratio) || (cover && image_ratio < destination_ratio)) {
+            const int new_height = python_round_to_int(
+                static_cast<double>(source->height) / source->width * requested_width);
+            if (new_height != requested_height) {
+                height = new_height;
+            }
+        } else {
+            const int new_width = python_round_to_int(
+                static_cast<double>(source->width) / source->height * requested_height);
+            if (new_width != requested_width) {
+                width = new_width;
+            }
+        }
+    }
+
+    if (width <= 0 || height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    *out_width = width;
+    *out_height = height;
+    return PILLOW_C_OK;
+}
+
+int proportional_resize_into(
+    const PillowCImage* source,
+    int requested_width,
+    int requested_height,
+    int resample,
+    bool cover,
+    PillowCImage* target)
+{
+    int out_width = 0;
+    int out_height = 0;
+    const int status = proportional_resize_size(source, requested_width, requested_height, cover, &out_width, &out_height);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return resize_image_into(source, out_width, out_height, resample, target);
+}
+
 void free_image_array(PillowCImage** images, std::size_t count)
 {
     if (!images) {
@@ -2778,6 +2853,75 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize(
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int proportional_resize_allocating(
+    const PillowCImage* source,
+    int requested_width,
+    int requested_height,
+    int resample,
+    bool cover,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    int out_width = 0;
+    int out_height = 0;
+    int status = proportional_resize_size(source, requested_width, requested_height, cover, &out_width, &out_height);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (resample != PILLOW_C_RESAMPLE_NEAREST && !filter_spec_for_resample(resample)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size(out_width, out_height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        status = resize_image_into(source, out_width, out_height, resample, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_contain(
+    const PillowCImage* source,
+    int requested_width,
+    int requested_height,
+    int resample,
+    PillowCImage** out_image)
+{
+    return proportional_resize_allocating(source, requested_width, requested_height, resample, false, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_cover(
+    const PillowCImage* source,
+    int requested_width,
+    int requested_height,
+    int resample,
+    PillowCImage** out_image)
+{
+    return proportional_resize_allocating(source, requested_width, requested_height, resample, true, out_image);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_merge_bands(

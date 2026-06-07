@@ -85,6 +85,14 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static Contain(image, size, method := unset) {
+            return Pillow.ImageOps.NativeProportionalResize(image, size, IsSet(method) ? method : Pillow.Resampling.BICUBIC, "pillow_c_image_contain")
+        }
+
+        static Cover(image, size, method := unset) {
+            return Pillow.ImageOps.NativeProportionalResize(image, size, IsSet(method) ? method : Pillow.Resampling.BICUBIC, "pillow_c_image_cover")
+        }
+
         static Autocontrast(image, cutoff := 0, ignore := unset) {
             cuts := Pillow.ImageOps.CutoffPair(cutoff)
             ignorePtr := 0
@@ -104,6 +112,22 @@ class Pillow {
                 "Double", cuts[2],
                 "Ptr", ignorePtr,
                 "UPtr", ignoreCount,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static NativeProportionalResize(image, size, method, exportName) {
+            if !IsObject(size) || size.Length != 2
+                throw Error("Pillow.ImageOps proportional resize expects size [width, height]", -1)
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\" exportName,
+                "Ptr", Pillow.ImageOps.RequireImageHandle(image, exportName),
+                "Int", size[1],
+                "Int", size[2],
+                "Int", method,
                 "Ptr*", &outHandle,
                 "Int"
             ))

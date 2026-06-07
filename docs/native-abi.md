@@ -79,6 +79,8 @@ Image operations:
 - `pillow_c_image_crop`
 - `pillow_c_image_expand`
 - `pillow_c_image_resize`
+- `pillow_c_image_contain`
+- `pillow_c_image_cover`
 - `pillow_c_image_paste`
 - `pillow_c_image_transpose`
 

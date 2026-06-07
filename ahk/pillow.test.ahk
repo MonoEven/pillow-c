@@ -218,6 +218,59 @@ PillowTestImageResizeBicubicUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Resize BICUBIC resizes through native handles", PillowTestImageResizeBicubicUsesNativeHandleOperation)
 
+PillowTestImageOpsContainAndCoverUseNativeResizeGeometry(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 2], PillowTestBuffer([0, 40, 80, 120, 160, 200, 220, 255]))
+    containTall := 0
+    coverSquare := 0
+    try {
+        containTall := Pillow.ImageOps.Contain(source, [4, 4], Pillow.Resampling.NEAREST)
+        coverSquare := Pillow.ImageOps.Cover(source, [4, 4], Pillow.Resampling.NEAREST)
+
+        AhkTest.AssertEqual([4, 2], containTall.Size)
+        AhkTest.AssertEqual([0, 40, 80, 120, 160, 200, 220, 255], PillowTestBufferToArray(containTall.ToBytes()))
+        AhkTest.AssertEqual([8, 4], coverSquare.Size)
+        AhkTest.AssertEqual([
+            0, 0, 40, 40, 80, 80, 120, 120,
+            0, 0, 40, 40, 80, 80, 120, 120,
+            160, 160, 200, 200, 220, 220, 255, 255,
+            160, 160, 200, 200, 220, 220, 255, 255,
+        ], PillowTestBufferToArray(coverSquare.ToBytes()))
+    } finally {
+        if IsObject(coverSquare)
+            coverSquare.Close()
+        if IsObject(containTall)
+            containTall.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Contain and Cover use native proportional resize geometry", PillowTestImageOpsContainAndCoverUseNativeResizeGeometry)
+
+PillowTestImageOpsContainAndCoverRejectInvalidSize(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [4, 2], PillowTestBuffer([0, 40, 80, 120, 160, 200, 220, 255]))
+    try {
+        try {
+            Pillow.ImageOps.Contain(image, [1, 1], Pillow.Resampling.NEAREST)
+            AhkTest.Fail("Expected Contain to reject zero computed height")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+
+        try {
+            Pillow.ImageOps.Cover(image, [4, 0], Pillow.Resampling.NEAREST)
+            AhkTest.Fail("Expected Cover to reject zero requested height")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Contain and Cover reject invalid requested sizes", PillowTestImageOpsContainAndCoverRejectInvalidSize)
+
 PillowTestImageTransposeUsesPillowConstants(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([

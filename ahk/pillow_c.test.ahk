@@ -726,6 +726,38 @@ PillowCImageResizeInto(sourceHandle, width, height, resample, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageContain(sourceHandle, width, height, resample) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_contain",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Int", resample,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageCover(sourceHandle, width, height, resample) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_cover",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Int", resample,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageAutocontrast(sourceHandle, lowCutoff := 0.0, highCutoff := 0.0, ignoreCount := 0, ignoreValues := 0) {
     outHandle := 0
     status := DllCall(
@@ -2695,6 +2727,131 @@ PillowCTestImageResizeRejectsUnsupportedResampleAndInvalidSize(*) {
 }
 
 AhkTest.Test("pillow_c image resize rejects unsupported resample and invalid output size", PillowCTestImageResizeRejectsUnsupportedResampleAndInvalidSize)
+
+PillowCTestImageContainAndCoverNearestMatchPillowGeometry(*) {
+    source := PillowCCreateImageMode(4, 2, 1)
+    containTall := 0
+    containWide := 0
+    coverSquare := 0
+    coverWide := 0
+    try {
+        PillowCImageSetBytes(source, [0, 40, 80, 120, 160, 200, 220, 255])
+        containTall := PillowCImageContain(source, 4, 4, 0)
+        containWide := PillowCImageContain(source, 2, 4, 0)
+        coverSquare := PillowCImageCover(source, 4, 4, 0)
+        coverWide := PillowCImageCover(source, 6, 2, 0)
+
+        AhkTest.AssertEqual([4, 2], [PillowCImageInt(containTall, "pillow_c_image_width"), PillowCImageInt(containTall, "pillow_c_image_height")])
+        AhkTest.AssertEqual([0, 40, 80, 120, 160, 200, 220, 255], PillowCImageToArray(containTall, 8))
+        AhkTest.AssertEqual([2, 1], [PillowCImageInt(containWide, "pillow_c_image_width"), PillowCImageInt(containWide, "pillow_c_image_height")])
+        AhkTest.AssertEqual([200, 255], PillowCImageToArray(containWide, 2))
+
+        AhkTest.AssertEqual([8, 4], [PillowCImageInt(coverSquare, "pillow_c_image_width"), PillowCImageInt(coverSquare, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            0, 0, 40, 40, 80, 80, 120, 120,
+            0, 0, 40, 40, 80, 80, 120, 120,
+            160, 160, 200, 200, 220, 220, 255, 255,
+            160, 160, 200, 200, 220, 220, 255, 255,
+        ], PillowCImageToArray(coverSquare, 32))
+
+        AhkTest.AssertEqual([6, 3], [PillowCImageInt(coverWide, "pillow_c_image_width"), PillowCImageInt(coverWide, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            0, 40, 40, 80, 80, 120,
+            160, 200, 200, 220, 220, 255,
+            160, 200, 200, 220, 220, 255,
+        ], PillowCImageToArray(coverWide, 18))
+    } finally {
+        for handle in [coverWide, coverSquare, containWide, containTall] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image contain and cover NEAREST match Pillow geometry", PillowCTestImageContainAndCoverNearestMatchPillowGeometry)
+
+PillowCTestImageContainAndCoverBilinearMatchPillowResizeResults(*) {
+    source := PillowCCreateImageMode(3, 2, 3)
+    containSquare := 0
+    coverSquare := 0
+    coverWide := 0
+    try {
+        PillowCImageSetBytes(source, [
+            1, 2, 3, 20, 30, 40, 60, 70, 80,
+            100, 110, 120, 150, 160, 170, 200, 210, 220,
+        ])
+        containSquare := PillowCImageContain(source, 4, 4, 2)
+        coverSquare := PillowCImageCover(source, 4, 4, 2)
+        coverWide := PillowCImageCover(source, 5, 2, 2)
+
+        AhkTest.AssertEqual([4, 3], [PillowCImageInt(containSquare, "pillow_c_image_width"), PillowCImageInt(containSquare, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            1, 2, 3, 13, 20, 26, 35, 45, 55, 60, 70, 80,
+            51, 56, 62, 72, 81, 89, 102, 112, 122, 130, 140, 150,
+            100, 110, 120, 131, 141, 151, 169, 179, 189, 200, 210, 220,
+        ], PillowCImageToArray(containSquare, 36))
+
+        AhkTest.AssertEqual([6, 4], [PillowCImageInt(coverSquare, "pillow_c_image_width"), PillowCImageInt(coverSquare, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            1, 2, 3, 6, 9, 12, 15, 23, 31, 30, 40, 50, 50, 60, 70, 60, 70, 80,
+            26, 29, 32, 33, 38, 42, 46, 54, 63, 63, 73, 83, 85, 95, 105, 95, 105, 115,
+            75, 83, 91, 86, 95, 103, 107, 117, 126, 130, 140, 150, 154, 164, 174, 165, 175, 185,
+            100, 110, 120, 113, 123, 133, 138, 148, 158, 163, 173, 183, 188, 198, 208, 200, 210, 220,
+        ], PillowCImageToArray(coverSquare, 72))
+
+        AhkTest.AssertEqual([5, 3], [PillowCImageInt(coverWide, "pillow_c_image_width"), PillowCImageInt(coverWide, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            1, 2, 3, 9, 13, 18, 20, 30, 40, 44, 54, 64, 60, 70, 80,
+            51, 56, 62, 65, 72, 79, 85, 95, 105, 112, 122, 132, 130, 140, 150,
+            100, 110, 120, 120, 130, 140, 150, 160, 170, 180, 190, 200, 200, 210, 220,
+        ], PillowCImageToArray(coverWide, 45))
+    } finally {
+        for handle in [coverWide, coverSquare, containSquare] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image contain and cover BILINEAR match Pillow resize results", PillowCTestImageContainAndCoverBilinearMatchPillowResizeResults)
+
+PillowCTestImageContainAndCoverRejectInvalidRequestedSize(*) {
+    source := PillowCCreateImageMode(4, 2, 1)
+    outHandle := 0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_contain",
+            "Ptr", source,
+            "Int", 1,
+            "Int", 1,
+            "Int", 0,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_cover",
+            "Ptr", source,
+            "Int", 4,
+            "Int", 0,
+            "Int", 0,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image contain and cover reject invalid requested sizes", PillowCTestImageContainAndCoverRejectInvalidRequestedSize)
 
 PillowCTestImagePasteInsidePoint(*) {
     target := PillowCCreateImage(4, 3, 3)
