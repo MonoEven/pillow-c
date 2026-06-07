@@ -76,6 +76,19 @@ struct PerspectiveGeometry {
     int height;
 };
 
+struct QuadGeometry {
+    double x0;
+    double x1;
+    double x2;
+    double x3;
+    double y0;
+    double y1;
+    double y2;
+    double y3;
+    int width;
+    int height;
+};
+
 struct ColorCountEntry {
     std::uint64_t count;
     std::uint8_t color[4];
@@ -1918,6 +1931,12 @@ bool perspective_transform_point(const PerspectiveGeometry& geometry, double x, 
     return true;
 }
 
+void quad_transform_point(const QuadGeometry& geometry, double x, double y, double* out_x, double* out_y)
+{
+    *out_x = geometry.x0 + geometry.x1 * x + geometry.x2 * y + geometry.x3 * x * y;
+    *out_y = geometry.y0 + geometry.y1 * x + geometry.y2 * y + geometry.y3 * x * y;
+}
+
 int normalize_angle_degrees(double angle, double* out_angle)
 {
     if (!std::isfinite(angle) || !out_angle) {
@@ -2606,26 +2625,22 @@ bool supported_affine_transform_resample(int resample)
            resample == PILLOW_C_RESAMPLE_BICUBIC;
 }
 
-int affine_transform_image_into(
+template <typename MapPoint>
+int transform_with_mapper_into(
     const PillowCImage* source,
     int out_width,
     int out_height,
-    const double* matrix,
     int resample,
     const std::uint8_t* fill_color,
     std::size_t fill_color_size,
-    PillowCImage* target)
+    PillowCImage* target,
+    MapPoint map_point)
 {
-    if (!source || !matrix || !target) {
+    if (!source || !target) {
         return PILLOW_C_NULL_POINTER;
     }
     if (!supported_affine_transform_resample(resample) || out_width < 0 || out_height < 0) {
         return PILLOW_C_INVALID_ARGUMENT;
-    }
-    for (int i = 0; i < 6; ++i) {
-        if (!std::isfinite(matrix[i])) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
     }
     if (!image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {
         return PILLOW_C_MISMATCH;
@@ -2640,111 +2655,13 @@ int affine_transform_image_into(
         return PILLOW_C_OK;
     }
 
-    const AffineGeometry geometry{
-        matrix[0],
-        matrix[1],
-        matrix[2],
-        matrix[3],
-        matrix[4],
-        matrix[5],
-        out_width,
-        out_height};
     const std::size_t pixel_bytes = static_cast<std::size_t>(source->channels);
     for (int dst_y = 0; dst_y < target->height; ++dst_y) {
         std::uint8_t* dst_row = target->pixels.data() + static_cast<std::size_t>(dst_y) * target->stride;
         for (int dst_x = 0; dst_x < target->width; ++dst_x) {
             double source_x = 0.0;
             double source_y = 0.0;
-            affine_transform_point(
-                geometry,
-                static_cast<double>(dst_x) + 0.5,
-                static_cast<double>(dst_y) + 0.5,
-                &source_x,
-                &source_y);
-            std::uint8_t* dst = dst_row + static_cast<std::size_t>(dst_x) * pixel_bytes;
-            if (resample == PILLOW_C_RESAMPLE_NEAREST) {
-                const int src_x = source_x < 0.0 ? -1 : static_cast<int>(source_x);
-                const int src_y = source_y < 0.0 ? -1 : static_cast<int>(source_y);
-                if (src_x < 0 || src_y < 0 || src_x >= source->width || src_y >= source->height) {
-                    std::memcpy(dst, fill, pixel_bytes);
-                    continue;
-                }
-                const std::uint8_t* src =
-                    source->pixels.data() +
-                    static_cast<std::size_t>(src_y) * source->stride +
-                    static_cast<std::size_t>(src_x) * pixel_bytes;
-                std::memcpy(dst, src, pixel_bytes);
-                continue;
-            }
-            if (source_x < 0.0 || source_y < 0.0 || source_x >= source->width || source_y >= source->height) {
-                write_transform_values(source, fill, dst);
-                continue;
-            }
-            std::uint8_t values[4]{0, 0, 0, 0};
-            for (int channel = 0; channel < source->channels; ++channel) {
-                values[channel] = resample == PILLOW_C_RESAMPLE_BILINEAR
-                    ? bilinear_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA)
-                    : bicubic_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA);
-            }
-            write_transform_values(source, values, dst);
-        }
-    }
-    return PILLOW_C_OK;
-}
-
-int perspective_transform_image_into(
-    const PillowCImage* source,
-    int out_width,
-    int out_height,
-    const double* coefficients,
-    int resample,
-    const std::uint8_t* fill_color,
-    std::size_t fill_color_size,
-    PillowCImage* target)
-{
-    if (!source || !coefficients || !target) {
-        return PILLOW_C_NULL_POINTER;
-    }
-    if (!supported_affine_transform_resample(resample) || out_width < 0 || out_height < 0) {
-        return PILLOW_C_INVALID_ARGUMENT;
-    }
-    for (int i = 0; i < 8; ++i) {
-        if (!std::isfinite(coefficients[i])) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
-    }
-    if (!image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {
-        return PILLOW_C_MISMATCH;
-    }
-
-    std::uint8_t fill[4]{0, 0, 0, 0};
-    int status = normalize_transform_fill(source, fill_color, fill_color_size, fill);
-    if (status != PILLOW_C_OK) {
-        return status;
-    }
-    if (target->pixels.empty()) {
-        return PILLOW_C_OK;
-    }
-
-    const PerspectiveGeometry geometry{
-        coefficients[0],
-        coefficients[1],
-        coefficients[2],
-        coefficients[3],
-        coefficients[4],
-        coefficients[5],
-        coefficients[6],
-        coefficients[7],
-        out_width,
-        out_height};
-    const std::size_t pixel_bytes = static_cast<std::size_t>(source->channels);
-    for (int dst_y = 0; dst_y < target->height; ++dst_y) {
-        std::uint8_t* dst_row = target->pixels.data() + static_cast<std::size_t>(dst_y) * target->stride;
-        for (int dst_x = 0; dst_x < target->width; ++dst_x) {
-            double source_x = 0.0;
-            double source_y = 0.0;
-            const bool valid_point = perspective_transform_point(
-                geometry,
+            const bool valid_point = map_point(
                 static_cast<double>(dst_x) + 0.5,
                 static_cast<double>(dst_y) + 0.5,
                 &source_x,
@@ -2782,6 +2699,154 @@ int perspective_transform_image_into(
         }
     }
     return PILLOW_C_OK;
+}
+
+int affine_transform_image_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    const double* matrix,
+    int resample,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    if (!source || !matrix || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    for (int i = 0; i < 6; ++i) {
+        if (!std::isfinite(matrix[i])) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+
+    const AffineGeometry geometry{
+        matrix[0],
+        matrix[1],
+        matrix[2],
+        matrix[3],
+        matrix[4],
+        matrix[5],
+        out_width,
+        out_height};
+    return transform_with_mapper_into(
+        source,
+        out_width,
+        out_height,
+        resample,
+        fill_color,
+        fill_color_size,
+        target,
+        [&geometry](double x, double y, double* out_x, double* out_y) -> bool {
+            affine_transform_point(
+                geometry,
+                x,
+                y,
+                out_x,
+                out_y);
+            return true;
+        });
+}
+
+int perspective_transform_image_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    const double* coefficients,
+    int resample,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    if (!source || !coefficients || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    for (int i = 0; i < 8; ++i) {
+        if (!std::isfinite(coefficients[i])) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+
+    const PerspectiveGeometry geometry{
+        coefficients[0],
+        coefficients[1],
+        coefficients[2],
+        coefficients[3],
+        coefficients[4],
+        coefficients[5],
+        coefficients[6],
+        coefficients[7],
+        out_width,
+        out_height};
+    return transform_with_mapper_into(
+        source,
+        out_width,
+        out_height,
+        resample,
+        fill_color,
+        fill_color_size,
+        target,
+        [&geometry](double x, double y, double* out_x, double* out_y) -> bool {
+            return perspective_transform_point(geometry, x, y, out_x, out_y);
+        });
+}
+
+int quad_transform_image_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    const double* corners,
+    int resample,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    if (!source || !corners || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_width <= 0 || out_height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    for (int i = 0; i < 8; ++i) {
+        if (!std::isfinite(corners[i])) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+
+    const double x0 = corners[0];
+    const double y0 = corners[1];
+    const double sw_x = corners[2];
+    const double sw_y = corners[3];
+    const double se_x = corners[4];
+    const double se_y = corners[5];
+    const double ne_x = corners[6];
+    const double ne_y = corners[7];
+    const double as = 1.0 / static_cast<double>(out_width);
+    const double at = 1.0 / static_cast<double>(out_height);
+    const QuadGeometry geometry{
+        x0,
+        (ne_x - x0) * as,
+        (sw_x - x0) * at,
+        (se_x - sw_x - ne_x + x0) * as * at,
+        y0,
+        (ne_y - y0) * as,
+        (sw_y - y0) * at,
+        (se_y - sw_y - ne_y + y0) * as * at,
+        out_width,
+        out_height};
+
+    return transform_with_mapper_into(
+        source,
+        out_width,
+        out_height,
+        resample,
+        fill_color,
+        fill_color_size,
+        target,
+        [&geometry](double x, double y, double* out_x, double* out_y) -> bool {
+            quad_transform_point(geometry, x, y, out_x, out_y);
+            return std::isfinite(*out_x) && std::isfinite(*out_y);
+        });
 }
 
 bool precompute_nearest_indices_for_box(
@@ -4644,6 +4709,27 @@ extern "C" __declspec(dllexport) int pillow_c_image_transform_perspective_into(
         target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_transform_quad_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    const double* corners,
+    int resample,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    return quad_transform_image_into(
+        source,
+        out_width,
+        out_height,
+        corners,
+        resample,
+        fill_color,
+        fill_color_size,
+        target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_rotate_into(
     const PillowCImage* source,
     double angle,
@@ -6145,6 +6231,63 @@ extern "C" __declspec(dllexport) int pillow_c_image_transform_perspective(
             out_width,
             out_height,
             coefficients,
+            resample,
+            fill_color,
+            fill_color_size,
+            image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_transform_quad(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    const double* corners,
+    int resample,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage** out_image)
+{
+    if (!source || !corners || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!supported_affine_transform_resample(resample) || out_width <= 0 || out_height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    for (int i = 0; i < 8; ++i) {
+        if (!std::isfinite(corners[i])) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(out_width, out_height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = quad_transform_image_into(
+            source,
+            out_width,
+            out_height,
+            corners,
             resample,
             fill_color,
             fill_color_size,

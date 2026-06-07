@@ -1362,7 +1362,9 @@ class Pillow {
                 return this.TransformExtent(size, data, IsSet(resample) ? resample : unset, IsSet(fillcolor) ? fillcolor : unset)
             if method == Pillow.Transform.PERSPECTIVE
                 return this.TransformPerspective(size, data, IsSet(resample) ? resample : unset, IsSet(fillcolor) ? fillcolor : unset)
-            throw Error("Pillow.Image.Transform currently supports Pillow.Transform.AFFINE, EXTENT, and PERSPECTIVE only", -1)
+            if method == Pillow.Transform.QUAD
+                return this.TransformQuad(size, data, IsSet(resample) ? resample : unset, IsSet(fillcolor) ? fillcolor : unset)
+            throw Error("Pillow.Image.Transform currently supports Pillow.Transform.AFFINE, EXTENT, PERSPECTIVE, and QUAD only", -1)
         }
 
         TransformExtent(size, extent, resample := unset, fillcolor := unset) {
@@ -1407,6 +1409,38 @@ class Pillow {
                 "Int", size[1],
                 "Int", size[2],
                 "Ptr", coefficientBuffer,
+                "Int", resample,
+                "Ptr", IsObject(fill) ? fill.Ptr : 0,
+                "UPtr", IsObject(fill) ? fill.Size : 0,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        TransformQuad(size, corners, resample := unset, fillcolor := unset) {
+            if size.Length != 2
+                throw Error("Pillow.Image.Transform QUAD expects size [width, height]", -1)
+            if corners.Length < 8
+                throw Error("Pillow.Image.Transform QUAD expects at least 8 corner values", -1)
+            if !IsSet(resample)
+                resample := Pillow.Resampling.NEAREST
+            cornerBuffer := Buffer(8 * 8, 0)
+            loop 8 {
+                value := corners[A_Index]
+                if !(value is Number)
+                    throw Error("Pillow.Image.Transform QUAD corner values must be numeric", -1)
+                NumPut("Double", value, cornerBuffer, (A_Index - 1) * 8)
+            }
+            fill := IsSet(fillcolor) ? this.TransformFillBuffer(fillcolor) : 0
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_transform_quad",
+                "Ptr", this.RequireHandle(),
+                "Int", size[1],
+                "Int", size[2],
+                "Ptr", cornerBuffer,
                 "Int", resample,
                 "Ptr", IsObject(fill) ? fill.Ptr : 0,
                 "UPtr", IsObject(fill) ? fill.Size : 0,

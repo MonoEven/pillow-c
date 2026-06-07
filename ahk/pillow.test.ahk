@@ -389,15 +389,52 @@ PillowTestImageTransformPerspectiveUsesPythonLikeEntryPoint(*) {
 
 AhkTest.Test("Pillow Image.Transform PERSPECTIVE uses Python-like entry point", PillowTestImageTransformPerspectiveUsesPythonLikeEntryPoint)
 
+PillowTestImageTransformQuadUsesPythonLikeEntryPoint(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
+        1, 2, 3, 4,
+        5, 6, 7, 8,
+        9, 10, 11, 12,
+    ]))
+    rgb := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([
+        1, 2, 3,
+        10, 20, 30,
+        40, 50, 60,
+        70, 80, 90,
+        100, 110, 120,
+        130, 140, 150,
+    ]))
+    nearest := 0
+    bicubic := 0
+    try {
+        nearest := source.Transform([3, 2], Pillow.Transform.QUAD, [0.0, 0.0, 0.0, 3.0, 4.0, 3.0, 4.0, 0.0], Pillow.Resampling.NEAREST, 8)
+        bicubic := rgb.Transform([4, 3], Pillow.Transform.QUAD, [0.0, 0.0, 0.25, 1.8, 2.75, 1.7, 2.5, 0.25], Pillow.Resampling.BICUBIC, [9, 0, 0])
+
+        AhkTest.AssertEqual([1, 3, 4, 9, 11, 12], PillowTestBufferToArray(nearest.ToBytes()))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 3, 7, 18, 29, 29, 40, 50,
+            28, 32, 37, 36, 44, 52, 58, 68, 79, 76, 86, 97,
+            70, 80, 90, 83, 93, 103, 110, 120, 130, 123, 133, 143,
+        ], PillowTestBufferToArray(bicubic.ToBytes()))
+    } finally {
+        for image in [bicubic, nearest, rgb, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Transform QUAD uses Python-like entry point", PillowTestImageTransformQuadUsesPythonLikeEntryPoint)
+
 PillowTestImageTransformRejectsUnsupportedMethods(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
     try {
         try {
-            source.Transform([3, 2], Pillow.Transform.QUAD, [0, 0, 0, 2, 3, 2, 3, 0], Pillow.Resampling.NEAREST)
+            source.Transform([3, 2], Pillow.Transform.MESH, [[0, 0, 3, 2], [0, 0, 0, 2, 3, 2, 3, 0]], Pillow.Resampling.NEAREST)
             AhkTest.Fail("Expected unsupported transform method to throw")
         } catch as err {
-            AhkTest.AssertTrue(InStr(err.Message, "AFFINE, EXTENT, and PERSPECTIVE only") > 0)
+            AhkTest.AssertTrue(InStr(err.Message, "AFFINE, EXTENT, PERSPECTIVE, and QUAD only") > 0)
         }
     } finally {
         source.Close()
