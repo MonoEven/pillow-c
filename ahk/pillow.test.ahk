@@ -269,6 +269,40 @@ PillowTestImageResizeBicubicUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Resize BICUBIC resizes through native handles", PillowTestImageResizeBicubicUsesNativeHandleOperation)
 
+PillowTestImageTransformAffineUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    rgb := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([
+        1, 2, 3,
+        10, 20, 30,
+        40, 50, 60,
+        70, 80, 90,
+        100, 110, 120,
+        130, 140, 150,
+    ]))
+    nearest := 0
+    bicubic := 0
+    try {
+        nearest := source.TransformAffine([3, 2], [1.0, 0.0, -1.0, 0.0, 1.0, 0.0], Pillow.Resampling.NEAREST, 8)
+        bicubic := rgb.TransformAffine([4, 3], [0.75, 0.0, 0.0, 0.0, 0.75, 0.0], Pillow.Resampling.BICUBIC, [9, 0, 0])
+
+        AhkTest.AssertEqual([8, 1, 2, 8, 4, 5], PillowTestBufferToArray(nearest.ToBytes()))
+        AhkTest.AssertEqual([4, 3], bicubic.Size)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 6, 13, 25, 36, 34, 44, 54,
+            42, 48, 54, 53, 62, 71, 80, 91, 101, 99, 109, 119,
+            76, 88, 99, 96, 106, 117, 129, 139, 148, 146, 156, 166,
+        ], PillowTestBufferToArray(bicubic.ToBytes()))
+    } finally {
+        for image in [bicubic, nearest, rgb, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.TransformAffine uses native affine path", PillowTestImageTransformAffineUsesNativePath)
+
 PillowTestImageRotateNearestUsesNativeAffinePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))

@@ -1347,6 +1347,37 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        TransformAffine(size, matrix, resample := unset, fillcolor := unset) {
+            if size.Length != 2
+                throw Error("Pillow.Image.TransformAffine expects size [width, height]", -1)
+            if matrix.Length != 6
+                throw Error("Pillow.Image.TransformAffine expects a 6-value affine matrix", -1)
+            if !IsSet(resample)
+                resample := Pillow.Resampling.NEAREST
+            matrixBuffer := Buffer(6 * 8, 0)
+            for index, value in matrix {
+                if !(value is Number)
+                    throw Error("Pillow.Image.TransformAffine matrix values must be numeric", -1)
+                NumPut("Double", value, matrixBuffer, (index - 1) * 8)
+            }
+            fill := IsSet(fillcolor) ? this.TransformFillBuffer(fillcolor) : 0
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_transform_affine",
+                "Ptr", this.RequireHandle(),
+                "Int", size[1],
+                "Int", size[2],
+                "Ptr", matrixBuffer,
+                "Int", resample,
+                "Ptr", IsObject(fill) ? fill.Ptr : 0,
+                "UPtr", IsObject(fill) ? fill.Size : 0,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         Rotate(angle, resample := unset, expand := false, center := unset, translate := unset, fillcolor := unset) {
             if !(angle is Number)
                 throw Error("Pillow.Image.Rotate angle must be numeric", -1)

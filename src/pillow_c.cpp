@@ -2570,6 +2570,99 @@ int rotate_image_into(
     return PILLOW_C_INVALID_ARGUMENT;
 }
 
+bool supported_affine_transform_resample(int resample)
+{
+    return resample == PILLOW_C_RESAMPLE_NEAREST ||
+           resample == PILLOW_C_RESAMPLE_BILINEAR ||
+           resample == PILLOW_C_RESAMPLE_BICUBIC;
+}
+
+int affine_transform_image_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    const double* matrix,
+    int resample,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    if (!source || !matrix || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!supported_affine_transform_resample(resample) || out_width < 0 || out_height < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    for (int i = 0; i < 6; ++i) {
+        if (!std::isfinite(matrix[i])) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    if (!image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    std::uint8_t fill[4]{0, 0, 0, 0};
+    int status = normalize_transform_fill(source, fill_color, fill_color_size, fill);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const AffineGeometry geometry{
+        matrix[0],
+        matrix[1],
+        matrix[2],
+        matrix[3],
+        matrix[4],
+        matrix[5],
+        out_width,
+        out_height};
+    const std::size_t pixel_bytes = static_cast<std::size_t>(source->channels);
+    for (int dst_y = 0; dst_y < target->height; ++dst_y) {
+        std::uint8_t* dst_row = target->pixels.data() + static_cast<std::size_t>(dst_y) * target->stride;
+        for (int dst_x = 0; dst_x < target->width; ++dst_x) {
+            double source_x = 0.0;
+            double source_y = 0.0;
+            affine_transform_point(
+                geometry,
+                static_cast<double>(dst_x) + 0.5,
+                static_cast<double>(dst_y) + 0.5,
+                &source_x,
+                &source_y);
+            std::uint8_t* dst = dst_row + static_cast<std::size_t>(dst_x) * pixel_bytes;
+            if (resample == PILLOW_C_RESAMPLE_NEAREST) {
+                const int src_x = source_x < 0.0 ? -1 : static_cast<int>(source_x);
+                const int src_y = source_y < 0.0 ? -1 : static_cast<int>(source_y);
+                if (src_x < 0 || src_y < 0 || src_x >= source->width || src_y >= source->height) {
+                    std::memcpy(dst, fill, pixel_bytes);
+                    continue;
+                }
+                const std::uint8_t* src =
+                    source->pixels.data() +
+                    static_cast<std::size_t>(src_y) * source->stride +
+                    static_cast<std::size_t>(src_x) * pixel_bytes;
+                std::memcpy(dst, src, pixel_bytes);
+                continue;
+            }
+            if (source_x < 0.0 || source_y < 0.0 || source_x >= source->width || source_y >= source->height) {
+                write_transform_values(source, fill, dst);
+                continue;
+            }
+            std::uint8_t values[4]{0, 0, 0, 0};
+            for (int channel = 0; channel < source->channels; ++channel) {
+                values[channel] = resample == PILLOW_C_RESAMPLE_BILINEAR
+                    ? bilinear_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA)
+                    : bicubic_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA);
+            }
+            write_transform_values(source, values, dst);
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 bool precompute_nearest_indices_for_box(
     int src_size,
     int dst_size,
@@ -4388,6 +4481,27 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize_into(
     return resize_image_into(source, out_width, out_height, resample, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_transform_affine_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    const double* matrix,
+    int resample,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage* target)
+{
+    return affine_transform_image_into(
+        source,
+        out_width,
+        out_height,
+        matrix,
+        resample,
+        fill_color,
+        fill_color_size,
+        target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_rotate_into(
     const PillowCImage* source,
     double angle,
@@ -5779,6 +5893,63 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = resize_image_into(source, out_width, out_height, resample, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_transform_affine(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    const double* matrix,
+    int resample,
+    const std::uint8_t* fill_color,
+    std::size_t fill_color_size,
+    PillowCImage** out_image)
+{
+    if (!source || !matrix || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!supported_affine_transform_resample(resample) || out_width < 0 || out_height < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    for (int i = 0; i < 6; ++i) {
+        if (!std::isfinite(matrix[i])) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(out_width, out_height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = affine_transform_image_into(
+            source,
+            out_width,
+            out_height,
+            matrix,
+            resample,
+            fill_color,
+            fill_color_size,
+            image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

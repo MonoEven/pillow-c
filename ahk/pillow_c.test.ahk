@@ -1156,6 +1156,52 @@ PillowCImageResizeInto(sourceHandle, width, height, resample, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCAffineMatrix(values) {
+    buf := Buffer(6 * 8, 0)
+    for index, value in values
+        NumPut("Double", value, buf, (index - 1) * 8)
+    return buf
+}
+
+PillowCImageTransformAffine(sourceHandle, width, height, matrixValues, resample := 0, fillValues := 0) {
+    matrix := PillowCAffineMatrix(matrixValues)
+    fill := IsObject(fillValues) ? PillowCBuffer(fillValues) : 0
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_transform_affine",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Ptr", matrix,
+        "Int", resample,
+        "Ptr", IsObject(fill) ? fill.Ptr : 0,
+        "UPtr", IsObject(fill) ? fill.Size : 0,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageTransformAffineInto(sourceHandle, width, height, matrixValues, targetHandle, resample := 0, fillValues := 0) {
+    matrix := PillowCAffineMatrix(matrixValues)
+    fill := IsObject(fillValues) ? PillowCBuffer(fillValues) : 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_transform_affine_into",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Ptr", matrix,
+        "Int", resample,
+        "Ptr", IsObject(fill) ? fill.Ptr : 0,
+        "UPtr", IsObject(fill) ? fill.Size : 0,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageRotate(sourceHandle, angle, resample := 0, expand := false, centerX := 0.0, centerY := 0.0, hasCenter := false, translateX := 0.0, translateY := 0.0, hasTranslate := false, fillValues := 0) {
     fill := IsObject(fillValues) ? PillowCBuffer(fillValues) : 0
     outHandle := 0
@@ -5118,6 +5164,125 @@ PillowCTestImageResizeRejectsUnsupportedResampleAndInvalidSize(*) {
 }
 
 AhkTest.Test("pillow_c image resize rejects unsupported resample and invalid output size", PillowCTestImageResizeRejectsUnsupportedResampleAndInvalidSize)
+
+PillowCTestImageTransformAffineNearestMatchesPillow(*) {
+    source := PillowCCreateImageMode(3, 2, 1)
+    out := 0
+    target := PillowCCreateImageMode(3, 2, 1)
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4, 5, 6])
+        PillowCImageSetBytes(target, [99, 99, 99, 99, 99, 99])
+
+        out := PillowCImageTransformAffine(source, 3, 2, [1.0, 0.0, -1.0, 0.0, 1.0, 0.0], 0, [8])
+        PillowCImageTransformAffineInto(source, 3, 2, [1.0, 0.0, -1.0, 0.0, 1.0, 0.0], target, 0, [8])
+
+        AhkTest.AssertEqual([8, 1, 2, 8, 4, 5], PillowCImageToArray(out, 6))
+        AhkTest.AssertEqual([8, 1, 2, 8, 4, 5], PillowCImageToArray(target, 6))
+    } finally {
+        for handle in [target, out, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image transform AFFINE NEAREST matches Pillow", PillowCTestImageTransformAffineNearestMatchesPillow)
+
+PillowCTestImageTransformAffineFilteredResamplersMatchPillow(*) {
+    l := PillowCCreateImageMode(3, 2, 1)
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    rgba := PillowCCreateImageMode(2, 2, 4)
+    lOut := 0
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(l, [1, 2, 3, 4, 5, 6])
+        PillowCImageSetBytes(rgb, [
+            1, 2, 3,
+            10, 20, 30,
+            40, 50, 60,
+            70, 80, 90,
+            100, 110, 120,
+            130, 140, 150,
+        ])
+        PillowCImageSetBytes(rgba, [
+            1, 2, 3, 4,
+            10, 20, 30, 40,
+            50, 60, 70, 80,
+            90, 100, 110, 120,
+        ])
+
+        lOut := PillowCImageTransformAffine(l, 3, 2, [1.0, 0.0, -0.5, 0.0, 1.0, 0.0], 2, [8])
+        rgbOut := PillowCImageTransformAffine(rgb, 4, 3, [0.75, 0.0, 0.0, 0.0, 0.75, 0.0], 3, [9, 0, 0])
+        rgbaOut := PillowCImageTransformAffine(rgba, 4, 4, [1.0, 0.0, -1.0, 0.0, 1.0, -1.0], 2, [9, 0, 0, 128])
+
+        AhkTest.AssertEqual([1, 1, 2, 4, 4, 5], PillowCImageToArray(lOut, 6))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 6, 13, 25, 36, 34, 44, 54,
+            42, 48, 54, 53, 62, 71, 80, 91, 101, 99, 109, 119,
+            76, 88, 99, 96, 106, 117, 129, 139, 148, 146, 156, 166,
+        ], PillowCImageToArray(rgbOut, 36))
+        AhkTest.AssertEqual([
+            17, 0, 0, 128, 17, 0, 0, 128, 17, 0, 0, 128, 17, 0, 0, 128,
+            17, 0, 0, 128, 0, 0, 0, 4, 12, 19, 31, 40, 17, 0, 0, 128,
+            17, 0, 0, 128, 51, 60, 70, 80, 89, 99, 110, 120, 17, 0, 0, 128,
+            17, 0, 0, 128, 17, 0, 0, 128, 17, 0, 0, 128, 17, 0, 0, 128,
+        ], PillowCImageToArray(rgbaOut, 64))
+    } finally {
+        for handle in [rgbaOut, rgbOut, lOut, rgba, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image transform AFFINE filtered resamplers match Pillow", PillowCTestImageTransformAffineFilteredResamplersMatchPillow)
+
+PillowCTestImageTransformAffineRejectsUnsupportedResampleAndTargetShape(*) {
+    source := PillowCCreateImageMode(3, 2, 1)
+    wrongTarget := PillowCCreateImageMode(2, 2, 1)
+    matrix := PillowCAffineMatrix([1.0, 0.0, 0.0, 0.0, 1.0, 0.0])
+    fill := PillowCBuffer([0])
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(source, [1, 2, 3, 4, 5, 6])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_transform_affine",
+            "Ptr", source,
+            "Int", 3,
+            "Int", 2,
+            "Ptr", matrix,
+            "Int", 4,
+            "Ptr", fill,
+            "UPtr", fill.Size,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_transform_affine_into",
+            "Ptr", source,
+            "Int", 3,
+            "Int", 2,
+            "Ptr", matrix,
+            "Int", 0,
+            "Ptr", fill,
+            "UPtr", fill.Size,
+            "Ptr", wrongTarget,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(wrongTarget)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image transform AFFINE rejects unsupported resample and target shape", PillowCTestImageTransformAffineRejectsUnsupportedResampleAndTargetShape)
 
 PillowCTestImageRotateNearestMatchesPillowGeometry(*) {
     l := PillowCCreateImageMode(3, 2, 1)
