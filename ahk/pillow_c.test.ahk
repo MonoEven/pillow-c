@@ -315,6 +315,20 @@ PillowCImageDifference(leftHandle, rightHandle) {
     return outHandle
 }
 
+PillowCImageMultiply(leftHandle, rightHandle) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_multiply",
+        "Ptr", leftHandle,
+        "Ptr", rightHandle,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageCopyInto(sourceHandle, targetHandle) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_copy_into",
@@ -1241,6 +1255,122 @@ PillowCTestImageDifferenceRejectsModeMismatch(*) {
 }
 
 AhkTest.Test("pillow_c image difference rejects mode mismatch", PillowCTestImageDifferenceRejectsModeMismatch)
+
+PillowCTestImageMultiplyMatchesPillowModes(*) {
+    l1 := PillowCCreateImageMode(4, 1, 1)
+    l2 := PillowCCreateImageMode(4, 1, 1)
+    rgb1 := PillowCCreateImageMode(2, 1, 3)
+    rgb2 := PillowCCreateImageMode(2, 1, 3)
+    rgba1 := PillowCCreateImageMode(2, 1, 4)
+    rgba2 := PillowCCreateImageMode(2, 1, 4)
+    lOut := 0
+    rgbOut := 0
+    rgbaOut := 0
+    try {
+        PillowCImageSetBytes(l1, [0, 40, 200, 255])
+        PillowCImageSetBytes(l2, [255, 10, 220, 128])
+        PillowCImageSetBytes(rgb1, [1, 50, 200, 255, 0, 80])
+        PillowCImageSetBytes(rgb2, [4, 20, 100, 15, 200, 90])
+        PillowCImageSetBytes(rgba1, [1, 50, 200, 255, 20, 30, 40, 0])
+        PillowCImageSetBytes(rgba2, [4, 20, 100, 15, 200, 90, 50, 255])
+
+        lOut := PillowCImageMultiply(l1, l2)
+        rgbOut := PillowCImageMultiply(rgb1, rgb2)
+        rgbaOut := PillowCImageMultiply(rgba1, rgba2)
+
+        AhkTest.AssertEqual([0, 1, 172, 128], PillowCImageToArray(lOut, 4))
+        AhkTest.AssertEqual([0, 3, 78, 15, 0, 28], PillowCImageToArray(rgbOut, 6))
+        AhkTest.AssertEqual([0, 3, 78, 15, 15, 10, 7, 0], PillowCImageToArray(rgbaOut, 8))
+    } finally {
+        for handle in [rgbaOut, rgbOut, lOut, rgba2, rgba1, rgb2, rgb1, l2, l1] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image multiply matches Pillow L RGB RGBA modes", PillowCTestImageMultiplyMatchesPillowModes)
+
+PillowCTestImageMultiplyUsesOverlappingAndEmptyOutputSize(*) {
+    left := PillowCCreateImageMode(4, 1, 1)
+    right := PillowCCreateImageMode(2, 1, 1)
+    empty := 0
+    overlap := 0
+    emptyOut := 0
+    try {
+        PillowCImageSetBytes(left, [0, 40, 200, 255])
+        PillowCImageSetBytes(right, [255, 10])
+        empty := PillowCImageCrop(left, 1, 0, 1, 1)
+        overlap := PillowCImageMultiply(left, right)
+        emptyOut := PillowCImageMultiply(empty, left)
+
+        AhkTest.AssertEqual([2, 1], [PillowCImageInt(overlap, "pillow_c_image_width"), PillowCImageInt(overlap, "pillow_c_image_height")])
+        AhkTest.AssertEqual([0, 1], PillowCImageToArray(overlap, 2))
+        AhkTest.AssertEqual([0, 1], [PillowCImageInt(emptyOut, "pillow_c_image_width"), PillowCImageInt(emptyOut, "pillow_c_image_height")])
+        AhkTest.AssertEqual([], PillowCImageToArray(emptyOut, 0))
+    } finally {
+        for handle in [emptyOut, overlap, empty, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image multiply uses overlapping and empty output size like Pillow", PillowCTestImageMultiplyUsesOverlappingAndEmptyOutputSize)
+
+PillowCTestImageMultiplyIntoReusesTargetHandle(*) {
+    left := PillowCCreateImageMode(4, 1, 1)
+    right := PillowCCreateImageMode(2, 1, 1)
+    target := PillowCCreateImageMode(2, 1, 1)
+    try {
+        PillowCImageSetBytes(left, [0, 40, 200, 255])
+        PillowCImageSetBytes(right, [255, 10])
+        before := PillowCImageData(target).Ptr
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_multiply_into",
+            "Ptr", left,
+            "Ptr", right,
+            "Ptr", target,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        after := PillowCImageData(target).Ptr
+
+        AhkTest.AssertEqual(before, after)
+        AhkTest.AssertEqual([0, 1], PillowCImageToArray(target, 2))
+    } finally {
+        for handle in [target, right, left] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image multiply_into reuses overlapping target storage", PillowCTestImageMultiplyIntoReusesTargetHandle)
+
+PillowCTestImageMultiplyRejectsModeMismatch(*) {
+    left := PillowCCreateImageMode(1, 1, 1)
+    right := PillowCCreateImageMode(1, 1, 3)
+    outHandle := 0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_multiply",
+            "Ptr", left,
+            "Ptr", right,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(right)
+        PillowCFreeImage(left)
+    }
+}
+
+AhkTest.Test("pillow_c image multiply rejects mode mismatch", PillowCTestImageMultiplyRejectsModeMismatch)
 
 PillowCTestImageDataPointerSharesMemoryWithAhk(*) {
     image := PillowCCreateImage(2, 1, 3)
