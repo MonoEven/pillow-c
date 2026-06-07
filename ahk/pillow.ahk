@@ -118,7 +118,18 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
-        static Equalize(image) {
+        static Equalize(image, mask := unset) {
+            if IsSet(mask) {
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_equalize_masked",
+                    "Ptr", Pillow.ImageOps.RequireImageHandle(image, "Equalize"),
+                    "Ptr", Pillow.ImageOps.RequireImageHandle(mask, "Equalize mask"),
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return Pillow.WrapImageHandle(outHandle)
+            }
             return Pillow.ImageOps.NativeUnaryImageOp(image, "pillow_c_image_equalize")
         }
 

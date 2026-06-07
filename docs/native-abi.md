@@ -93,6 +93,7 @@ Image operations:
 - `pillow_c_image_solarize`
 - `pillow_c_image_colorize`
 - `pillow_c_image_equalize`
+- `pillow_c_image_equalize_masked`
 - `pillow_c_image_autocontrast`
 - `pillow_c_image_get_channel`
 - `pillow_c_image_split_bands`
@@ -149,6 +150,7 @@ Reusable target operations:
 - `pillow_c_image_solarize_into`
 - `pillow_c_image_colorize_into`
 - `pillow_c_image_equalize_into`
+- `pillow_c_image_equalize_masked_into`
 - `pillow_c_image_autocontrast_into`
 - `pillow_c_image_get_channel_into`
 - `pillow_c_image_put_alpha_value_into`
@@ -172,6 +174,8 @@ Reusable target operations:
 - `pillow_c_image_transform_mesh_into`
 - `pillow_c_image_rotate_into`
 - `pillow_c_image_transpose_into`
+
+`pillow_c_image_equalize_masked` and `pillow_c_image_equalize_masked_into` accept a same-size L-mode mask handle after the source handle. A null mask keeps full-image histogram behavior.
 
 `pillow_c_image_autocontrast` and `pillow_c_image_autocontrast_into` accept an optional L-mode mask handle after the ignore list arguments, followed by a `preserve_tone` integer flag. A null mask keeps full-image histogram behavior.
 

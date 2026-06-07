@@ -2624,6 +2624,63 @@ PillowTestImageOpsEqualizeUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow ImageOps.Equalize maps L and RGB histograms through native handles", PillowTestImageOpsEqualizeUsesNativeOperation)
 
+PillowFacadeTestAppendEqualizeMaskGroup(fixture, count, lValue, r, g, b, maskValue) {
+    loop count {
+        fixture.L.Push(lValue)
+        fixture.RGB.Push(r)
+        fixture.RGB.Push(g)
+        fixture.RGB.Push(b)
+        fixture.Mask.Push(maskValue)
+    }
+}
+
+PillowFacadeTestEqualizeMaskFixture() {
+    fixture := { L: [], RGB: [], Mask: [] }
+    PillowFacadeTestAppendEqualizeMaskGroup(fixture, 300, 0, 0, 10, 20, 0)
+    PillowFacadeTestAppendEqualizeMaskGroup(fixture, 10, 0, 0, 10, 20, 255)
+    PillowFacadeTestAppendEqualizeMaskGroup(fixture, 300, 64, 64, 70, 80, 128)
+    PillowFacadeTestAppendEqualizeMaskGroup(fixture, 300, 128, 128, 130, 140, 255)
+    PillowFacadeTestAppendEqualizeMaskGroup(fixture, 100, 255, 255, 250, 240, 64)
+    return fixture
+}
+
+PillowTestImageOpsEqualizeUsesMaskHistogram(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    fixture := PillowFacadeTestEqualizeMaskFixture()
+    l := Pillow.Image.FromBytes("L", [1010, 1], PillowTestBuffer(fixture.L))
+    rgb := Pillow.Image.FromBytes("RGB", [1010, 1], PillowTestBuffer(fixture.RGB))
+    mask := Pillow.Image.FromBytes("L", [1010, 1], PillowTestBuffer(fixture.Mask))
+    lOut := 0
+    rgbOut := 0
+    try {
+        try {
+            lOut := Pillow.ImageOps.Equalize(l, mask)
+            rgbOut := Pillow.ImageOps.Equalize(rgb, mask)
+        } catch Error as err {
+            AhkTest.Fail("Expected ImageOps.Equalize to accept mask: " err.Message)
+        }
+
+        lData := PillowTestBufferToArray(lOut.ToBytes())
+        rgbData := PillowTestBufferToArray(rgbOut.ToBytes())
+
+        AhkTest.AssertEqual([0, 0, 5, 155, 255], [lData[1], lData[301], lData[311], lData[611], lData[911]])
+        AhkTest.AssertEqual([0, 0, 0], [rgbData[1], rgbData[2], rgbData[3]])
+        AhkTest.AssertEqual([5, 5, 5], [rgbData[931], rgbData[932], rgbData[933]])
+        AhkTest.AssertEqual([155, 155, 155], [rgbData[1831], rgbData[1832], rgbData[1833]])
+        AhkTest.AssertEqual([255, 255, 255], [rgbData[2731], rgbData[2732], rgbData[2733]])
+    } finally {
+        if IsObject(rgbOut)
+            rgbOut.Close()
+        if IsObject(lOut)
+            lOut.Close()
+        mask.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Equalize uses mask histogram", PillowTestImageOpsEqualizeUsesMaskHistogram)
+
 PillowTestImageOpsEqualizeRejectsUnsupportedMode(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     rgba := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 4]))

@@ -908,6 +908,39 @@ PillowCImageEqualizeInto(sourceHandle, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageEqualizeMasked(sourceHandle, maskHandle) {
+    outHandle := 0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_equalize_masked",
+            "Ptr", sourceHandle,
+            "Ptr", maskHandle,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+    } catch Error as err {
+        AhkTest.Fail("Expected pillow_c_image_equalize_masked export: " err.Message)
+    }
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageEqualizeMaskedInto(sourceHandle, maskHandle, targetHandle) {
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_equalize_masked_into",
+            "Ptr", sourceHandle,
+            "Ptr", maskHandle,
+            "Ptr", targetHandle,
+            "Int"
+        )
+    } catch Error as err {
+        AhkTest.Fail("Expected pillow_c_image_equalize_masked_into export: " err.Message)
+    }
+    PillowCAssertStatus(status)
+}
+
 PillowCImageGetChannel(sourceHandle, channelIndex) {
     outHandle := 0
     status := DllCall(
@@ -3920,6 +3953,70 @@ PillowCTestImageEqualizeMatchesPillowLAndRgb(*) {
 }
 
 AhkTest.Test("pillow_c image equalize matches Pillow for L and RGB histograms", PillowCTestImageEqualizeMatchesPillowLAndRgb)
+
+PillowCTestAppendEqualizeMaskGroup(fixture, count, lValue, r, g, b, maskValue) {
+    loop count {
+        fixture.L.Push(lValue)
+        fixture.RGB.Push(r)
+        fixture.RGB.Push(g)
+        fixture.RGB.Push(b)
+        fixture.Mask.Push(maskValue)
+    }
+}
+
+PillowCTestEqualizeMaskFixture() {
+    fixture := { L: [], RGB: [], Mask: [] }
+    PillowCTestAppendEqualizeMaskGroup(fixture, 300, 0, 0, 10, 20, 0)
+    PillowCTestAppendEqualizeMaskGroup(fixture, 10, 0, 0, 10, 20, 255)
+    PillowCTestAppendEqualizeMaskGroup(fixture, 300, 64, 64, 70, 80, 128)
+    PillowCTestAppendEqualizeMaskGroup(fixture, 300, 128, 128, 130, 140, 255)
+    PillowCTestAppendEqualizeMaskGroup(fixture, 100, 255, 255, 250, 240, 64)
+    return fixture
+}
+
+PillowCTestImageEqualizeUsesMaskHistogram(*) {
+    fixture := PillowCTestEqualizeMaskFixture()
+    l := PillowCCreateImageMode(1010, 1, 1)
+    rgb := PillowCCreateImageMode(1010, 1, 3)
+    mask := PillowCCreateImageMode(1010, 1, 1)
+    lTarget := PillowCCreateImageMode(1010, 1, 1)
+    lOut := 0
+    rgbOut := 0
+    try {
+        PillowCImageSetBytes(l, fixture.L)
+        PillowCImageSetBytes(rgb, fixture.RGB)
+        PillowCImageSetBytes(mask, fixture.Mask)
+
+        lOut := PillowCImageEqualizeMasked(l, mask)
+        rgbOut := PillowCImageEqualizeMasked(rgb, mask)
+        before := PillowCImageData(lTarget).Ptr
+        PillowCImageEqualizeMaskedInto(l, mask, lTarget)
+        after := PillowCImageData(lTarget).Ptr
+
+        lData := PillowCImageToArray(lOut, 1010)
+        rgbData := PillowCImageToArray(rgbOut, 3030)
+        targetData := PillowCImageToArray(lTarget, 1010)
+
+        AhkTest.AssertEqual(before, after)
+        AhkTest.AssertEqual([0, 0, 5, 155, 255], [lData[1], lData[301], lData[311], lData[611], lData[911]])
+        AhkTest.AssertEqual([0, 0, 5, 155, 255], [targetData[1], targetData[301], targetData[311], targetData[611], targetData[911]])
+        AhkTest.AssertEqual([0, 0, 0], [rgbData[1], rgbData[2], rgbData[3]])
+        AhkTest.AssertEqual([5, 5, 5], [rgbData[931], rgbData[932], rgbData[933]])
+        AhkTest.AssertEqual([155, 155, 155], [rgbData[1831], rgbData[1832], rgbData[1833]])
+        AhkTest.AssertEqual([255, 255, 255], [rgbData[2731], rgbData[2732], rgbData[2733]])
+    } finally {
+        if rgbOut
+            PillowCFreeImage(rgbOut)
+        if lOut
+            PillowCFreeImage(lOut)
+        PillowCFreeImage(lTarget)
+        PillowCFreeImage(mask)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image equalize uses mask histogram", PillowCTestImageEqualizeUsesMaskHistogram)
 
 PillowCTestImageEqualizeIntoReusesTargetHandleStorage(*) {
     source := PillowCCreateImageMode(400, 1, 1)

@@ -1154,8 +1154,16 @@ int colorize_image_into(
 }
 
 int histogram_image(const PillowCImage* source, std::uint64_t* out_histogram, std::size_t out_count);
+int histogram_image_masked(
+    const PillowCImage* source,
+    const PillowCImage* mask,
+    std::uint64_t* out_histogram,
+    std::size_t out_count);
 
-int build_equalize_lut(const PillowCImage* source, std::vector<std::uint8_t>* out_lut)
+int build_equalize_lut(
+    const PillowCImage* source,
+    const PillowCImage* mask,
+    std::vector<std::uint8_t>* out_lut)
 {
     if (!source || !out_lut) {
         return PILLOW_C_NULL_POINTER;
@@ -1165,7 +1173,7 @@ int build_equalize_lut(const PillowCImage* source, std::vector<std::uint8_t>* ou
     }
 
     std::vector<std::uint64_t> histogram(static_cast<std::size_t>(source->channels) * 256u);
-    int status = histogram_image(source, histogram.data(), histogram.size());
+    int status = histogram_image_masked(source, mask, histogram.data(), histogram.size());
     if (status != PILLOW_C_OK) {
         return status;
     }
@@ -1210,7 +1218,7 @@ int build_equalize_lut(const PillowCImage* source, std::vector<std::uint8_t>* ou
     return PILLOW_C_OK;
 }
 
-int equalize_image_into(const PillowCImage* source, PillowCImage* target)
+int equalize_image_masked_into(const PillowCImage* source, const PillowCImage* mask, PillowCImage* target)
 {
     if (!source || !target) {
         return PILLOW_C_NULL_POINTER;
@@ -1221,7 +1229,7 @@ int equalize_image_into(const PillowCImage* source, PillowCImage* target)
 
     try {
         std::vector<std::uint8_t> lut;
-        const int status = build_equalize_lut(source, &lut);
+        const int status = build_equalize_lut(source, mask, &lut);
         if (status != PILLOW_C_OK) {
             return status;
         }
@@ -1229,6 +1237,11 @@ int equalize_image_into(const PillowCImage* source, PillowCImage* target)
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int equalize_image_into(const PillowCImage* source, PillowCImage* target)
+{
+    return equalize_image_masked_into(source, nullptr, target);
 }
 
 int copy_channel_into(const PillowCImage* source, int channel_index, PillowCImage* target)
@@ -5377,6 +5390,14 @@ extern "C" __declspec(dllexport) int pillow_c_image_equalize_into(
     return equalize_image_into(source, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_equalize_masked_into(
+    const PillowCImage* source,
+    const PillowCImage* mask,
+    PillowCImage* target)
+{
+    return equalize_image_masked_into(source, mask, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_autocontrast_into(
     const PillowCImage* source,
     double low_cutoff,
@@ -6867,6 +6888,33 @@ extern "C" __declspec(dllexport) int pillow_c_image_equalize(
     try {
         auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
         const int status = equalize_image_into(source, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_equalize_masked(
+    const PillowCImage* source,
+    const PillowCImage* mask,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!supports_imageops_lut(source)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
+        const int status = equalize_image_masked_into(source, mask, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;
