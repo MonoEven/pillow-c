@@ -52,6 +52,8 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `image.Point(...)`
 - `Pillow.ImageOps.Invert(...)`
 - `Pillow.ImageOps.Grayscale(...)`
+- `Pillow.ImageOps.Mirror(...)`
+- `Pillow.ImageOps.Flip(...)`
 - `Pillow.ImageOps.Posterize(...)`
 - `Pillow.ImageOps.Solarize(...)`
 - `Pillow.ImageOps.Equalize(...)`

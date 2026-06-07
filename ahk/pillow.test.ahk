@@ -445,6 +445,55 @@ PillowTestImageTransposeUsesPillowConstants(*) {
 
 AhkTest.Test("Pillow Image.Transpose accepts Pillow transpose constants", PillowTestImageTransposeUsesPillowConstants)
 
+PillowTestImageOpsMirrorAndFlipUseNativeTranspose(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    mirrored := 0
+    flipped := 0
+    try {
+        mirrored := Pillow.ImageOps.Mirror(source)
+        flipped := Pillow.ImageOps.Flip(source)
+
+        AhkTest.AssertEqual("L", mirrored.Mode)
+        AhkTest.AssertEqual([3, 2], mirrored.Size)
+        AhkTest.AssertEqual([3, 2, 1, 6, 5, 4], PillowTestBufferToArray(mirrored.ToBytes()))
+        AhkTest.AssertEqual("L", flipped.Mode)
+        AhkTest.AssertEqual([3, 2], flipped.Size)
+        AhkTest.AssertEqual([4, 5, 6, 1, 2, 3], PillowTestBufferToArray(flipped.ToBytes()))
+    } finally {
+        for item in [flipped, mirrored, source] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Mirror and Flip reuse native transpose", PillowTestImageOpsMirrorAndFlipUseNativeTranspose)
+
+PillowTestImageOpsMirrorAndFlipSupportRgba(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGBA", [2, 2], PillowTestBuffer([
+        1, 2, 3, 4, 5, 6, 7, 8,
+        9, 10, 11, 12, 13, 14, 15, 16,
+    ]))
+    mirrored := 0
+    flipped := 0
+    try {
+        mirrored := Pillow.ImageOps.Mirror(source)
+        flipped := Pillow.ImageOps.Flip(source)
+
+        AhkTest.AssertEqual([5, 6, 7, 8, 1, 2, 3, 4, 13, 14, 15, 16, 9, 10, 11, 12], PillowTestBufferToArray(mirrored.ToBytes()))
+        AhkTest.AssertEqual([9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 4, 5, 6, 7, 8], PillowTestBufferToArray(flipped.ToBytes()))
+    } finally {
+        for item in [flipped, mirrored, source] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Mirror and Flip support RGBA", PillowTestImageOpsMirrorAndFlipSupportRgba)
+
 PillowTestImageConvertRgbToLUsesNativeHandleOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [4, 1], PillowTestBuffer([

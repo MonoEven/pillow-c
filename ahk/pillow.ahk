@@ -32,6 +32,16 @@ class Pillow {
             return image.Convert("L")
         }
 
+        static Mirror(image) {
+            Pillow.ImageOps.RequireImageHandle(image, "Mirror")
+            return image.Transpose(Pillow.Transpose.FLIP_LEFT_RIGHT)
+        }
+
+        static Flip(image) {
+            Pillow.ImageOps.RequireImageHandle(image, "Flip")
+            return image.Transpose(Pillow.Transpose.FLIP_TOP_BOTTOM)
+        }
+
         static Posterize(image, bits) {
             if !(bits is Integer)
                 throw Error("Pillow.ImageOps.Posterize bits must be an integer", -1)
