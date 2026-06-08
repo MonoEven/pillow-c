@@ -2275,6 +2275,63 @@ PillowTestImageConvertModeOneToCoreModesUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.Convert supports mode 1 to core modes", PillowTestImageConvertModeOneToCoreModesUsesNativeOperation)
 
+PillowTestImageConvertCmykUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    cmyk := Pillow.Image.FromBytes("CMYK", [8, 1], PillowTestBuffer([
+        0, 0, 0, 0,
+        0, 0, 0, 255,
+        255, 0, 0, 0,
+        0, 255, 0, 0,
+        0, 0, 255, 0,
+        10, 20, 30, 40,
+        200, 100, 50, 128,
+        255, 255, 255, 255,
+    ]))
+    rgb := Pillow.Image.FromBytes("RGB", [4, 1], PillowTestBuffer([0, 0, 0, 255, 255, 255, 10, 20, 30, 200, 100, 50]))
+    rgba := Pillow.Image.FromBytes("RGBA", [4, 1], PillowTestBuffer([0, 0, 0, 0, 255, 255, 255, 128, 10, 20, 30, 255, 200, 100, 50, 64]))
+    l := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 10, 128, 255]))
+    la := Pillow.Image.FromBytes("LA", [4, 1], PillowTestBuffer([0, 0, 10, 64, 128, 128, 255, 255]))
+    one := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x50]))
+    outputs := []
+    try {
+        cases := [
+            { Out: cmyk.Convert("RGB"), Mode: "RGB", Bytes: [
+                255, 255, 255, 0, 0, 0, 0, 255, 255, 255, 0, 255,
+                255, 255, 0, 207, 198, 190, 27, 77, 102, 0, 0, 0,
+            ] },
+            { Out: cmyk.Convert("RGBA"), Mode: "RGBA", Bytes: [
+                255, 255, 255, 255, 0, 0, 0, 255, 0, 255, 255, 255, 255, 0, 255, 255,
+                255, 255, 0, 255, 207, 198, 190, 255, 27, 77, 102, 255, 0, 0, 0, 255,
+            ] },
+            { Out: cmyk.Convert("L"), Mode: "L", Bytes: [255, 0, 179, 105, 226, 200, 65, 0] },
+            { Out: cmyk.Convert("LA"), Mode: "LA", Bytes: [255, 255, 0, 255, 179, 255, 105, 255, 226, 255, 200, 255, 65, 255, 0, 255] },
+            { Out: rgb.Convert("CMYK"), Mode: "CMYK", Bytes: [255, 255, 255, 0, 0, 0, 0, 0, 245, 235, 225, 0, 55, 155, 205, 0] },
+            { Out: rgba.Convert("CMYK"), Mode: "CMYK", Bytes: [255, 255, 255, 0, 0, 0, 0, 0, 245, 235, 225, 0, 55, 155, 205, 0] },
+            { Out: l.Convert("CMYK"), Mode: "CMYK", Bytes: [0, 0, 0, 255, 0, 0, 0, 245, 0, 0, 0, 127, 0, 0, 0, 0] },
+            { Out: la.Convert("CMYK"), Mode: "CMYK", Bytes: [0, 0, 0, 255, 0, 0, 0, 245, 0, 0, 0, 127, 0, 0, 0, 0] },
+            { Out: one.Convert("CMYK"), Mode: "CMYK", Bytes: [0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0] },
+        ]
+        for item in cases {
+            outputs.Push(item.Out)
+            AhkTest.AssertEqual(item.Mode, item.Out.Mode)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(item.Out.ToBytes()))
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        one.Close()
+        la.Close()
+        l.Close()
+        rgba.Close()
+        rgb.Close()
+        cmyk.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Convert supports CMYK through native handles", PillowTestImageConvertCmykUsesNativeOperation)
+
 PillowTestImageConvertToModeOneDitherNoneUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.FromBytes("L", [8, 1], PillowTestBuffer([0, 32, 64, 96, 128, 160, 192, 255]))
@@ -2291,6 +2348,12 @@ PillowTestImageConvertToModeOneDitherNoneUsesNativeOperation(*) {
         128, 128, 127, 0, 127, 128, 128, 255, 128, 127, 128, 1, 129, 127, 127, 128,
         127, 129, 127, 255, 127, 127, 129, 0, 255, 255, 255, 64, 0, 0, 0, 255,
     ]))
+    cmyk := Pillow.Image.FromBytes("CMYK", [8, 2], PillowTestBuffer([
+        0, 0, 0, 255, 0, 0, 0, 224, 0, 0, 0, 192, 0, 0, 0, 160,
+        0, 0, 0, 128, 0, 0, 0, 96, 0, 0, 0, 64, 0, 0, 0, 32,
+        0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 80, 0, 0, 0, 120,
+        0, 0, 0, 160, 0, 0, 0, 200, 0, 0, 0, 240, 0, 0, 0, 255,
+    ]))
     outputs := []
     try {
         cases := [
@@ -2299,6 +2362,7 @@ PillowTestImageConvertToModeOneDitherNoneUsesNativeOperation(*) {
             { Out: rgbThreshold.Convert("1", Pillow.Dither.NONE), Bytes: [0x00, 0xA0] },
             { Out: la.Convert("1", Pillow.Dither.NONE), Bytes: [0x50] },
             { Out: rgbaThreshold.Convert("1", Pillow.Dither.NONE), Bytes: [0x00, 0xA0] },
+            { Out: cmyk.Convert("1", Pillow.Dither.NONE), Bytes: [0x07, 0xF0] },
         ]
         for item in cases {
             outputs.Push(item.Out)
@@ -2317,6 +2381,7 @@ PillowTestImageConvertToModeOneDitherNoneUsesNativeOperation(*) {
             if IsObject(image)
                 image.Close()
         }
+        cmyk.Close()
         rgbaThreshold.Close()
         la.Close()
         rgbThreshold.Close()
@@ -2338,6 +2403,12 @@ PillowTestImageConvertToModeOneFloydSteinbergUsesNativeOperation(*) {
         0, 0, 0, 0, 80, 80, 80, 255, 140, 140, 140, 1, 255, 255, 255, 128,
         40, 40, 40, 255, 120, 120, 120, 0, 180, 180, 180, 255, 220, 220, 220, 7,
     ]))
+    cmyk := Pillow.Image.FromBytes("CMYK", [8, 2], PillowTestBuffer([
+        0, 0, 0, 255, 0, 0, 0, 224, 0, 0, 0, 192, 0, 0, 0, 160,
+        0, 0, 0, 128, 0, 0, 0, 96, 0, 0, 0, 64, 0, 0, 0, 32,
+        0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 80, 0, 0, 0, 120,
+        0, 0, 0, 160, 0, 0, 0, 200, 0, 0, 0, 240, 0, 0, 0, 255,
+    ]))
     outputs := []
     try {
         cases := [
@@ -2346,6 +2417,8 @@ PillowTestImageConvertToModeOneFloydSteinbergUsesNativeOperation(*) {
             { Out: rgb.Convert("1"), Bytes: [0x50, 0xA0] },
             { Out: rgba.Convert("1"), Bytes: [0x30, 0x50] },
             { Out: rgba.Convert("1", Pillow.Dither.FLOYDSTEINBERG), Bytes: [0x30, 0x50] },
+            { Out: cmyk.Convert("1"), Bytes: [0x0B, 0xF0] },
+            { Out: cmyk.Convert("1", Pillow.Dither.FLOYDSTEINBERG), Bytes: [0x0B, 0xF0] },
         ]
         for item in cases {
             outputs.Push(item.Out)
@@ -2357,6 +2430,7 @@ PillowTestImageConvertToModeOneFloydSteinbergUsesNativeOperation(*) {
             if IsObject(image)
                 image.Close()
         }
+        cmyk.Close()
         rgba.Close()
         rgb.Close()
         l.Close()

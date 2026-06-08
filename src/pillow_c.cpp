@@ -271,6 +271,21 @@ inline int rgb_luma_1000(const std::uint8_t* px)
            static_cast<int>(px[2]) * 114;
 }
 
+inline void cmyk_to_rgb_u8(const std::uint8_t* cmyk, std::uint8_t* rgb)
+{
+    const std::uint8_t inverse_k = static_cast<std::uint8_t>(255u - cmyk[3]);
+    rgb[0] = mul_div_255(static_cast<std::uint8_t>(255u - cmyk[0]), inverse_k);
+    rgb[1] = mul_div_255(static_cast<std::uint8_t>(255u - cmyk[1]), inverse_k);
+    rgb[2] = mul_div_255(static_cast<std::uint8_t>(255u - cmyk[2]), inverse_k);
+}
+
+inline std::uint8_t cmyk_luma_u8(const std::uint8_t* cmyk)
+{
+    std::uint8_t rgb[3];
+    cmyk_to_rgb_u8(cmyk, rgb);
+    return rgb_luma_u8(rgb);
+}
+
 bool valid_image_shape(int width, int height, int channels)
 {
     return width > 0 && height > 0 && channels > 0 && channels <= 4;
@@ -2286,6 +2301,12 @@ int convert_palette_image_into(const PillowCImage* source, int target_mode, Pill
             dst[3] = 255;
         } else if (target_mode == PILLOW_C_MODE_L) {
             target->pixels[i] = rgb_luma_u8(rgb);
+        } else if (target_mode == PILLOW_C_MODE_CMYK) {
+            std::uint8_t* dst = target->pixels.data() + i * 4u;
+            dst[0] = static_cast<std::uint8_t>(255u - rgb[0]);
+            dst[1] = static_cast<std::uint8_t>(255u - rgb[1]);
+            dst[2] = static_cast<std::uint8_t>(255u - rgb[2]);
+            dst[3] = 0;
         } else {
             return PILLOW_C_INVALID_ARGUMENT;
         }
@@ -2323,6 +2344,74 @@ int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowC
     const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
     if (source->mode == PILLOW_C_MODE_P) {
         return convert_palette_image_into(source, target_mode, target);
+    }
+
+    if (source->mode == PILLOW_C_MODE_CMYK) {
+        for (std::size_t i = 0; i < pixels; ++i) {
+            const std::uint8_t* src = source->pixels.data() + i * 4u;
+            std::uint8_t rgb[3];
+            cmyk_to_rgb_u8(src, rgb);
+            if (target_mode == PILLOW_C_MODE_RGB) {
+                std::uint8_t* dst = target->pixels.data() + i * 3u;
+                dst[0] = rgb[0];
+                dst[1] = rgb[1];
+                dst[2] = rgb[2];
+            } else if (target_mode == PILLOW_C_MODE_RGBA) {
+                std::uint8_t* dst = target->pixels.data() + i * 4u;
+                dst[0] = rgb[0];
+                dst[1] = rgb[1];
+                dst[2] = rgb[2];
+                dst[3] = 255;
+            } else if (target_mode == PILLOW_C_MODE_L) {
+                target->pixels[i] = rgb_luma_u8(rgb);
+            } else if (target_mode == PILLOW_C_MODE_LA) {
+                std::uint8_t* dst = target->pixels.data() + i * 2u;
+                dst[0] = rgb_luma_u8(rgb);
+                dst[1] = 255;
+            } else {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+        }
+        return PILLOW_C_OK;
+    }
+
+    if (target_mode == PILLOW_C_MODE_CMYK) {
+        for (std::size_t i = 0; i < pixels; ++i) {
+            std::uint8_t* dst = target->pixels.data() + i * 4u;
+            if (source->mode == PILLOW_C_MODE_1) {
+                const std::uint8_t value = source->pixels[i] == 0 ? 0u : 255u;
+                dst[0] = 0;
+                dst[1] = 0;
+                dst[2] = 0;
+                dst[3] = static_cast<std::uint8_t>(255u - value);
+            } else if (source->mode == PILLOW_C_MODE_L) {
+                dst[0] = 0;
+                dst[1] = 0;
+                dst[2] = 0;
+                dst[3] = static_cast<std::uint8_t>(255u - source->pixels[i]);
+            } else if (source->mode == PILLOW_C_MODE_LA) {
+                const std::uint8_t* src = source->pixels.data() + i * 2u;
+                dst[0] = 0;
+                dst[1] = 0;
+                dst[2] = 0;
+                dst[3] = static_cast<std::uint8_t>(255u - src[0]);
+            } else if (source->mode == PILLOW_C_MODE_RGB) {
+                const std::uint8_t* src = source->pixels.data() + i * 3u;
+                dst[0] = static_cast<std::uint8_t>(255u - src[0]);
+                dst[1] = static_cast<std::uint8_t>(255u - src[1]);
+                dst[2] = static_cast<std::uint8_t>(255u - src[2]);
+                dst[3] = 0;
+            } else if (source->mode == PILLOW_C_MODE_RGBA) {
+                const std::uint8_t* src = source->pixels.data() + i * 4u;
+                dst[0] = static_cast<std::uint8_t>(255u - src[0]);
+                dst[1] = static_cast<std::uint8_t>(255u - src[1]);
+                dst[2] = static_cast<std::uint8_t>(255u - src[2]);
+                dst[3] = 0;
+            } else {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+        }
+        return PILLOW_C_OK;
     }
 
     if (target_mode == PILLOW_C_MODE_L && source->mode == PILLOW_C_MODE_LA) {
@@ -2496,7 +2585,8 @@ int convert_image_to_mode1_floyd_steinberg_into(const PillowCImage* source, Pill
     if (source->mode != PILLOW_C_MODE_L &&
         source->mode != PILLOW_C_MODE_LA &&
         source->mode != PILLOW_C_MODE_RGB &&
-        source->mode != PILLOW_C_MODE_RGBA) {
+        source->mode != PILLOW_C_MODE_RGBA &&
+        source->mode != PILLOW_C_MODE_CMYK) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
@@ -2512,6 +2602,8 @@ int convert_image_to_mode1_floyd_steinberg_into(const PillowCImage* source, Pill
                 int value = 0;
                 if (source->mode == PILLOW_C_MODE_L || source->mode == PILLOW_C_MODE_LA) {
                     value = src[static_cast<std::size_t>(x) * source->channels];
+                } else if (source->mode == PILLOW_C_MODE_CMYK) {
+                    value = cmyk_luma_u8(src + static_cast<std::size_t>(x) * source->channels);
                 } else {
                     value = rgb_luma_1000(src + static_cast<std::size_t>(x) * source->channels) / 1000;
                 }
@@ -2584,6 +2676,12 @@ int convert_image_mode_dither_into(const PillowCImage* source, int target_mode, 
     if (source->mode == PILLOW_C_MODE_RGBA) {
         for (std::size_t i = 0; i < pixels; ++i) {
             dst[i] = rgb_luma_1000(src + i * 4u) >= 128000 ? 255u : 0u;
+        }
+        return PILLOW_C_OK;
+    }
+    if (source->mode == PILLOW_C_MODE_CMYK) {
+        for (std::size_t i = 0; i < pixels; ++i) {
+            dst[i] = cmyk_luma_u8(src + i * 4u) >= 128u ? 255u : 0u;
         }
         return PILLOW_C_OK;
     }

@@ -6034,12 +6034,85 @@ PillowCTestImageConvertModeCoversModeOneSource(*) {
 
 AhkTest.Test("pillow_c image convert_mode covers mode 1 source", PillowCTestImageConvertModeCoversModeOneSource)
 
+PillowCTestImageConvertModeCoversCmykMode(*) {
+    cmyk := PillowCCreateImageMode(8, 1, 7)
+    rgb := PillowCCreateImageMode(4, 1, 3)
+    rgba := PillowCCreateImageMode(4, 1, 4)
+    l := PillowCCreateImageMode(4, 1, 1)
+    la := PillowCCreateImageMode(4, 1, 2)
+    one := PillowCCreateImageMode(4, 1, 5)
+    p := PillowCCreateImageMode(4, 1, 6)
+    outputs := []
+    try {
+        PillowCImageSetBytes(cmyk, [
+            0, 0, 0, 0,
+            0, 0, 0, 255,
+            255, 0, 0, 0,
+            0, 255, 0, 0,
+            0, 0, 255, 0,
+            10, 20, 30, 40,
+            200, 100, 50, 128,
+            255, 255, 255, 255,
+        ])
+        PillowCImageSetBytes(rgb, [0, 0, 0, 255, 255, 255, 10, 20, 30, 200, 100, 50])
+        PillowCImageSetBytes(rgba, [0, 0, 0, 0, 255, 255, 255, 128, 10, 20, 30, 255, 200, 100, 50, 64])
+        PillowCImageSetBytes(l, [0, 10, 128, 255])
+        PillowCImageSetBytes(la, [0, 0, 10, 64, 128, 128, 255, 255])
+        PillowCImageSetRawBytes(one, [0x50], "1")
+        PillowCImageSetBytes(p, [0, 1, 2, 3])
+        PillowCImagePutPaletteRgb(p, [
+            0, 0, 0,
+            10, 20, 30,
+            200, 100, 50,
+            255, 255, 255,
+        ])
+
+        cases := [
+            { Source: cmyk, Mode: 3, Size: 24, Bytes: [
+                255, 255, 255, 0, 0, 0, 0, 255, 255, 255, 0, 255,
+                255, 255, 0, 207, 198, 190, 27, 77, 102, 0, 0, 0,
+            ] },
+            { Source: cmyk, Mode: 4, Size: 32, Bytes: [
+                255, 255, 255, 255, 0, 0, 0, 255, 0, 255, 255, 255, 255, 0, 255, 255,
+                255, 255, 0, 255, 207, 198, 190, 255, 27, 77, 102, 255, 0, 0, 0, 255,
+            ] },
+            { Source: cmyk, Mode: 1, Size: 8, Bytes: [255, 0, 179, 105, 226, 200, 65, 0] },
+            { Source: cmyk, Mode: 2, Size: 16, Bytes: [255, 255, 0, 255, 179, 255, 105, 255, 226, 255, 200, 255, 65, 255, 0, 255] },
+            { Source: rgb, Mode: 7, Size: 16, Bytes: [255, 255, 255, 0, 0, 0, 0, 0, 245, 235, 225, 0, 55, 155, 205, 0] },
+            { Source: rgba, Mode: 7, Size: 16, Bytes: [255, 255, 255, 0, 0, 0, 0, 0, 245, 235, 225, 0, 55, 155, 205, 0] },
+            { Source: l, Mode: 7, Size: 16, Bytes: [0, 0, 0, 255, 0, 0, 0, 245, 0, 0, 0, 127, 0, 0, 0, 0] },
+            { Source: la, Mode: 7, Size: 16, Bytes: [0, 0, 0, 255, 0, 0, 0, 245, 0, 0, 0, 127, 0, 0, 0, 0] },
+            { Source: one, Mode: 7, Size: 16, Bytes: [0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0] },
+            { Source: p, Mode: 7, Size: 16, Bytes: [255, 255, 255, 0, 245, 235, 225, 0, 55, 155, 205, 0, 0, 0, 0, 0] },
+        ]
+        for item in cases {
+            out := PillowCImageConvertMode(item.Source, item.Mode)
+            outputs.Push(out)
+            AhkTest.AssertEqual(item.Mode, PillowCImageMode(out))
+            AhkTest.AssertEqual(item.Bytes, PillowCImageToArray(out, item.Size))
+        }
+    } finally {
+        for handle in outputs
+            PillowCFreeImage(handle)
+        PillowCFreeImage(p)
+        PillowCFreeImage(one)
+        PillowCFreeImage(la)
+        PillowCFreeImage(l)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(cmyk)
+    }
+}
+
+AhkTest.Test("pillow_c image convert_mode covers CMYK mode", PillowCTestImageConvertModeCoversCmykMode)
+
 PillowCTestImageConvertModeDitherNoneCoversModeOneTarget(*) {
     l := PillowCCreateImageMode(8, 1, 1)
     rgb := PillowCCreateImageMode(4, 2, 3)
     rgbThreshold := PillowCCreateImageMode(4, 2, 3)
     la := PillowCCreateImageMode(4, 1, 2)
     rgbaThreshold := PillowCCreateImageMode(4, 2, 4)
+    cmyk := PillowCCreateImageMode(8, 2, 7)
     outputs := []
     try {
         PillowCImageSetBytes(l, [0, 32, 64, 96, 128, 160, 192, 255])
@@ -6056,6 +6129,12 @@ PillowCTestImageConvertModeDitherNoneCoversModeOneTarget(*) {
             128, 128, 127, 0, 127, 128, 128, 255, 128, 127, 128, 1, 129, 127, 127, 128,
             127, 129, 127, 255, 127, 127, 129, 0, 255, 255, 255, 64, 0, 0, 0, 255,
         ])
+        PillowCImageSetBytes(cmyk, [
+            0, 0, 0, 255, 0, 0, 0, 224, 0, 0, 0, 192, 0, 0, 0, 160,
+            0, 0, 0, 128, 0, 0, 0, 96, 0, 0, 0, 64, 0, 0, 0, 32,
+            0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 80, 0, 0, 0, 120,
+            0, 0, 0, 160, 0, 0, 0, 200, 0, 0, 0, 240, 0, 0, 0, 255,
+        ])
 
         cases := [
             { Source: l, Size: 8, Bytes: [0, 0, 0, 0, 255, 255, 255, 255] },
@@ -6063,6 +6142,7 @@ PillowCTestImageConvertModeDitherNoneCoversModeOneTarget(*) {
             { Source: rgbThreshold, Size: 8, Bytes: [0, 0, 0, 0, 255, 0, 255, 0] },
             { Source: la, Size: 4, Bytes: [0, 255, 0, 255] },
             { Source: rgbaThreshold, Size: 8, Bytes: [0, 0, 0, 0, 255, 0, 255, 0] },
+            { Source: cmyk, Size: 16, Bytes: [0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0] },
         ]
         for item in cases {
             out := PillowCImageConvertModeDither(item.Source, 5, 0)
@@ -6073,6 +6153,7 @@ PillowCTestImageConvertModeDitherNoneCoversModeOneTarget(*) {
     } finally {
         for handle in outputs
             PillowCFreeImage(handle)
+        PillowCFreeImage(cmyk)
         PillowCFreeImage(rgbaThreshold)
         PillowCFreeImage(la)
         PillowCFreeImage(rgbThreshold)
@@ -6087,6 +6168,7 @@ PillowCTestImageConvertModeDitherFloydSteinbergCoversModeOneTarget(*) {
     l := PillowCCreateImageMode(8, 1, 1)
     rgb := PillowCCreateImageMode(4, 2, 3)
     rgba := PillowCCreateImageMode(4, 2, 4)
+    cmyk := PillowCCreateImageMode(8, 2, 7)
     outputs := []
     try {
         PillowCImageSetBytes(l, [0, 32, 64, 96, 128, 160, 192, 255])
@@ -6098,11 +6180,18 @@ PillowCTestImageConvertModeDitherFloydSteinbergCoversModeOneTarget(*) {
             0, 0, 0, 0, 80, 80, 80, 255, 140, 140, 140, 1, 255, 255, 255, 128,
             40, 40, 40, 255, 120, 120, 120, 0, 180, 180, 180, 255, 220, 220, 220, 7,
         ])
+        PillowCImageSetBytes(cmyk, [
+            0, 0, 0, 255, 0, 0, 0, 224, 0, 0, 0, 192, 0, 0, 0, 160,
+            0, 0, 0, 128, 0, 0, 0, 96, 0, 0, 0, 64, 0, 0, 0, 32,
+            0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 80, 0, 0, 0, 120,
+            0, 0, 0, 160, 0, 0, 0, 200, 0, 0, 0, 240, 0, 0, 0, 255,
+        ])
 
         cases := [
             { Source: l, Size: 8, Bytes: [0, 0, 0, 255, 0, 255, 255, 255] },
             { Source: rgb, Size: 8, Bytes: [0, 255, 0, 255, 255, 0, 255, 0] },
             { Source: rgba, Size: 8, Bytes: [0, 0, 255, 255, 0, 255, 0, 255] },
+            { Source: cmyk, Size: 16, Bytes: [0, 0, 0, 0, 255, 0, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0] },
         ]
         for item in cases {
             out := PillowCImageConvertModeDither(item.Source, 5, 3)
@@ -6113,6 +6202,7 @@ PillowCTestImageConvertModeDitherFloydSteinbergCoversModeOneTarget(*) {
     } finally {
         for handle in outputs
             PillowCFreeImage(handle)
+        PillowCFreeImage(cmyk)
         PillowCFreeImage(rgba)
         PillowCFreeImage(rgb)
         PillowCFreeImage(l)

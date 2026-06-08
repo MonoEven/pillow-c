@@ -218,7 +218,7 @@ Reusable target operations:
 
 `pillow_c_image_autocontrast` and `pillow_c_image_autocontrast_into` accept an optional mode `1` or `L` mask handle after the ignore list arguments, followed by a `preserve_tone` integer flag. A null mask keeps full-image histogram behavior.
 
-`pillow_c_image_convert_mode` and `pillow_c_image_convert_mode_into` cover the verified `L`/`LA`/`RGB`/`RGBA` conversion matrix. `LA` preserves alpha as the second band; RGB-derived conversions use Pillow's 8-bit luma coefficients.
+`pillow_c_image_convert_mode` and `pillow_c_image_convert_mode_into` cover the verified `1`/`L`/`LA`/`RGB`/`RGBA`/`P`/`CMYK` conversion paths used by the facade, excluding quantizing targets such as `CMYK -> P`. `LA` preserves alpha as the second band; alpha is ignored for `RGBA`/`LA -> CMYK`, matching Pillow. `CMYK -> RGB` uses Pillow's black-channel-scaled RGB conversion before luma or alpha insertion, and `P -> CMYK` converts through the handle palette.
 
 `pillow_c_image_put_alpha_value` and `pillow_c_image_put_alpha_image` return `LA` for `L`/`LA` sources and `RGBA` for `RGB`/`RGBA` sources. The matching `_into` variants require the caller to provide that target mode and shape.
 
