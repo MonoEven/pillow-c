@@ -6815,6 +6815,30 @@ PillowTestImagePasteUsesMaskAndConvertsSourceMode(*) {
 
 AhkTest.Test("Pillow Image.Paste uses mask and converts source mode", PillowTestImagePasteUsesMaskAndConvertsSourceMode)
 
+PillowTestImagePasteAcceptsMaskAsSecondArgument(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    target := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([0, 0, 0, 0, 0, 0]))
+    source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    mask := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([0, 128, 255, 255, 0, 128]))
+    try {
+        target.Paste(source, mask)
+        AhkTest.AssertEqual([0, 10, 30, 40, 0, 30], PillowTestBufferToArray(target.ToBytes()))
+
+        try {
+            target.Paste(source, mask, mask)
+            AhkTest.Fail("Expected Image.Paste to reject mask-as-box with a third argument")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "second argument as mask") > 0 || InStr(err.Message, "third argument") > 0)
+        }
+    } finally {
+        mask.Close()
+        source.Close()
+        target.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Paste accepts mask as second argument", PillowTestImagePasteAcceptsMaskAsSecondArgument)
+
 PillowTestImagePasteAcceptsModeOneMask(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     target := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([1, 2, 3, 4]))

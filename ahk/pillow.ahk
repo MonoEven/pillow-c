@@ -3632,7 +3632,13 @@ class Pillow {
         }
 
         Paste(source, box, mask := unset) {
-            if box.Length < 2
+            if IsObject(box) && box is Pillow.Image {
+                if IsSet(mask)
+                    throw Error("If using second argument as mask, third argument must be None", -1)
+                mask := box
+                box := [0, 0]
+            }
+            if !IsObject(box) || box.Length < 2
                 throw Error("Pillow.Image.Paste expects box [left, top]", -1)
 
             if !(IsObject(source) && source is Pillow.Image) {
