@@ -2794,6 +2794,42 @@ PillowTestImageCopyReturnsIndependentNativeHandle(*) {
 
 AhkTest.Test("Pillow Image.Copy returns an independent native image", PillowTestImageCopyReturnsIndependentNativeHandle)
 
+PillowTestImageInfoUsesIndependentMapMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    created := Pillow.Image.New("RGB", [1, 1])
+    source := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    savedPath := PillowTestTempPngPath("info")
+    opened := 0
+    copied := 0
+    try {
+        AhkTest.AssertEqual(0, created.Info.Count)
+
+        source.Save(savedPath, "PNG")
+        opened := Pillow.Image.Open(savedPath)
+        AhkTest.AssertEqual(0, opened.Info.Count)
+
+        opened.Info["author"] := "ahk"
+        opened.Info["dpi"] := [72, 72]
+        copied := opened.Copy()
+
+        AhkTest.AssertEqual("ahk", copied.Info["author"])
+        AhkTest.AssertEqual([72, 72], copied.Info["dpi"])
+
+        copied.Info["author"] := "copy"
+        copied.Info["extra"] := 1
+        AhkTest.AssertEqual("ahk", opened.Info["author"])
+        AhkTest.AssertTrue(!opened.Info.Has("extra"))
+    } finally {
+        for item in [copied, opened, source, created] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(savedPath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Info exposes copyable metadata map", PillowTestImageInfoUsesIndependentMapMetadata)
+
 PillowTestImageGetAndPutPixelUseNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([1, 2, 3, 4]))

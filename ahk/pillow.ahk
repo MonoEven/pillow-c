@@ -2018,6 +2018,7 @@ class Pillow {
         __New(handle) {
             this.Handle := handle
             this.Format := ""
+            this.Info := Map()
         }
 
         __Delete() {
@@ -3269,7 +3270,16 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            image := Pillow.WrapImageHandle(outHandle)
+            image.Info := Pillow.Image.CopyInfo(this.Info)
+            return image
+        }
+
+        static CopyInfo(info) {
+            copied := Map()
+            for key, value in info
+                copied[key] := value
+            return copied
         }
 
         Crop(box := unset) {
