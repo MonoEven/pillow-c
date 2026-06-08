@@ -714,6 +714,67 @@ PillowTestImageOpenSaveGifRejectsUnsupportedInputs(*) {
 
 AhkTest.Test("Pillow Image.Open and Save GIF reject unsupported inputs", PillowTestImageOpenSaveGifRejectsUnsupportedInputs)
 
+PillowTestImageDrawRectangleMutatesImageThroughNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.New("L", [6, 5])
+    rgb := Pillow.Image.New("RGB", [4, 3])
+    try {
+        draw := Pillow.ImageDraw.Draw(l)
+        returned := draw.Rectangle([1, 1, 4, 3], 7, 9, 2)
+        AhkTest.AssertEqual(draw, returned)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            0, 9, 9, 9, 9, 0,
+            0, 9, 9, 9, 9, 0,
+            0, 9, 9, 9, 9, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(l.ToBytes()))
+
+        Pillow.ImageDraw.Draw(rgb).Rectangle([1, 0, 3, 2], [10, 20, 30], [90, 80, 70], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 90, 80, 70, 90, 80, 70, 90, 80, 70,
+            0, 0, 0, 90, 80, 70, 10, 20, 30, 90, 80, 70,
+            0, 0, 0, 90, 80, 70, 90, 80, 70, 90, 80, 70,
+        ], PillowTestBufferToArray(rgb.ToBytes()))
+    } finally {
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Rectangle mutates images through native path", PillowTestImageDrawRectangleMutatesImageThroughNativePath)
+
+PillowTestImageDrawRectangleClipsAndRejectsInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [6, 5])
+    try {
+        draw := Pillow.ImageDraw.Draw(image)
+        draw.Rectangle([-1, -1, 2, 2], 7, 9)
+        AhkTest.AssertEqual([
+            7, 7, 9, 0, 0, 0,
+            7, 7, 9, 0, 0, 0,
+            9, 9, 9, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(image.ToBytes()))
+
+        before := PillowTestBufferToArray(image.ToBytes())
+        draw.Rectangle([0, 0, 5, 4], unset, 3, 0)
+        AhkTest.AssertEqual(before, PillowTestBufferToArray(image.ToBytes()))
+
+        try {
+            draw.Rectangle([2, 2, 1, 1], unset, 9)
+            AhkTest.Fail("Expected ImageDraw.Rectangle to reject reversed coordinates")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Rectangle clips and rejects invalid arguments", PillowTestImageDrawRectangleClipsAndRejectsInvalidArguments)
+
 PillowTestImageCmykFoundationUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer([0, 10, 20, 30, 255, 128, 64, 0]))

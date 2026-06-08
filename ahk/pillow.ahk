@@ -1131,6 +1131,59 @@ class Pillow {
         }
     }
 
+    class ImageDraw {
+        static Draw(image) {
+            return Pillow.ImageDraw.DrawHandle(image)
+        }
+
+        class DrawHandle {
+            __New(image) {
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("Pillow.ImageDraw.Draw expects a Pillow.Image", -1)
+                this.Image := image
+            }
+
+            Rectangle(box, fill := unset, outline := unset, width := 1) {
+                if !IsObject(box) || box.Length != 4
+                    throw Error("Pillow.ImageDraw.Rectangle expects box [left, top, right, bottom]", -1)
+
+                fillPtr := 0
+                fillSize := 0
+                fillBuffer := 0
+                if IsSet(fill) {
+                    fillBuffer := this.Image.PasteColorBuffer(fill)
+                    fillPtr := fillBuffer.Ptr
+                    fillSize := fillBuffer.Size
+                }
+
+                outlinePtr := 0
+                outlineSize := 0
+                outlineBuffer := 0
+                if IsSet(outline) {
+                    outlineBuffer := this.Image.PasteColorBuffer(outline)
+                    outlinePtr := outlineBuffer.Ptr
+                    outlineSize := outlineBuffer.Size
+                }
+
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_draw_rectangle",
+                    "Ptr", this.Image.RequireHandle(),
+                    "Int", box[1],
+                    "Int", box[2],
+                    "Int", box[3],
+                    "Int", box[4],
+                    "Ptr", fillPtr,
+                    "UPtr", fillSize,
+                    "Ptr", outlinePtr,
+                    "UPtr", outlineSize,
+                    "Int", width,
+                    "Int"
+                ))
+                return this
+            }
+        }
+    }
+
     class ImageStat {
         class Stat {
             __New(imageOrList, mask := unset) {

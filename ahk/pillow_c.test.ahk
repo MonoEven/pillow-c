@@ -419,6 +419,40 @@ PillowCImageSaveGif(handle, path) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageDrawRectangle(handle, box, fill := unset, outline := unset, width := 1) {
+    fillPtr := 0
+    fillSize := 0
+    fillBuffer := 0
+    if IsSet(fill) {
+        fillBuffer := PillowCBuffer(fill)
+        fillPtr := fillBuffer.Ptr
+        fillSize := fillBuffer.Size
+    }
+    outlinePtr := 0
+    outlineSize := 0
+    outlineBuffer := 0
+    if IsSet(outline) {
+        outlineBuffer := PillowCBuffer(outline)
+        outlinePtr := outlineBuffer.Ptr
+        outlineSize := outlineBuffer.Size
+    }
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_rectangle",
+        "Ptr", handle,
+        "Int", box[1],
+        "Int", box[2],
+        "Int", box[3],
+        "Int", box[4],
+        "Ptr", fillPtr,
+        "UPtr", fillSize,
+        "Ptr", outlinePtr,
+        "UPtr", outlineSize,
+        "Int", width,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCFreeImage(handle) {
     return DllCall(PillowCDllPath() "\pillow_c_image_free", "Ptr", handle, "Int")
 }
@@ -3553,6 +3587,85 @@ PillowCTestImageCopyIntoReusesTargetHandle(*) {
 }
 
 AhkTest.Test("pillow_c image copy_into reuses target handle storage", PillowCTestImageCopyIntoReusesTargetHandle)
+
+PillowCTestImageDrawRectangleMatchesPillowFillOutlineWidth(*) {
+    l := PillowCCreateImageMode(6, 5, 1)
+    rgb := PillowCCreateImageMode(4, 3, 3)
+    rgba := PillowCCreateImageMode(4, 3, 4)
+    try {
+        PillowCImageDrawRectangle(l, [1, 1, 4, 3], [7], [9], 2)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            0, 9, 9, 9, 9, 0,
+            0, 9, 9, 9, 9, 0,
+            0, 9, 9, 9, 9, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(l, 30))
+
+        PillowCImageDrawRectangle(rgb, [1, 0, 3, 2], [10, 20, 30], [90, 80, 70], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 90, 80, 70, 90, 80, 70, 90, 80, 70,
+            0, 0, 0, 90, 80, 70, 10, 20, 30, 90, 80, 70,
+            0, 0, 0, 90, 80, 70, 90, 80, 70, 90, 80, 70,
+        ], PillowCImageToArray(rgb, 36))
+
+        PillowCImageDrawRectangle(rgba, [1, 0, 3, 2], [10, 20, 30, 40], [90, 80, 70, 128], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 90, 80, 70, 128, 90, 80, 70, 128, 90, 80, 70, 128,
+            0, 0, 0, 0, 90, 80, 70, 128, 10, 20, 30, 40, 90, 80, 70, 128,
+            0, 0, 0, 0, 90, 80, 70, 128, 90, 80, 70, 128, 90, 80, 70, 128,
+        ], PillowCImageToArray(rgba, 48))
+    } finally {
+        for handle in [rgba, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_rectangle matches Pillow fill outline and width", PillowCTestImageDrawRectangleMatchesPillowFillOutlineWidth)
+
+PillowCTestImageDrawRectangleClipsAndRejectsInvalidArguments(*) {
+    clipped := PillowCCreateImageMode(6, 5, 1)
+    reversed := PillowCCreateImageMode(3, 3, 1)
+    try {
+        PillowCImageDrawRectangle(clipped, [-1, -1, 2, 2], [7], [9], 1)
+        AhkTest.AssertEqual([
+            7, 7, 9, 0, 0, 0,
+            7, 7, 9, 0, 0, 0,
+            9, 9, 9, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(clipped, 30))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_rectangle",
+            "Ptr", reversed,
+            "Int", 2,
+            "Int", 2,
+            "Int", 1,
+            "Int", 1,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", PillowCBuffer([9]),
+            "UPtr", 1,
+            "Int", 1,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        PillowCImageSetBytes(reversed, [1, 2, 3, 4, 5, 6, 7, 8, 9])
+        PillowCImageDrawRectangle(reversed, [0, 0, 2, 2], unset, [7], 0)
+        AhkTest.AssertEqual([1, 2, 3, 4, 5, 6, 7, 8, 9], PillowCImageToArray(reversed, 9))
+    } finally {
+        for handle in [reversed, clipped] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_rectangle clips and rejects invalid arguments", PillowCTestImageDrawRectangleClipsAndRejectsInvalidArguments)
 
 PillowCTestImageBlendOperatesOnNativeHandles(*) {
     left := PillowCCreateImage(2, 1, 3)

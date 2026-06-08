@@ -3656,6 +3656,184 @@ int fill_image_pixels(PillowCImage* image, const std::uint8_t* color, std::size_
     return PILLOW_C_OK;
 }
 
+void fill_horizontal_span(
+    PillowCImage* image,
+    std::int64_t left,
+    std::int64_t top,
+    std::int64_t right_exclusive,
+    const std::uint8_t* color)
+{
+    if (left < 0) {
+        left = 0;
+    }
+    if (right_exclusive > image->width) {
+        right_exclusive = image->width;
+    }
+    if (top < 0 || top >= image->height || right_exclusive <= left) {
+        return;
+    }
+
+    const int clipped_left = static_cast<int>(left);
+    const int clipped_top = static_cast<int>(top);
+    const int clipped_right = static_cast<int>(right_exclusive);
+    std::uint8_t* dst =
+        image->pixels.data() +
+        static_cast<std::size_t>(clipped_top) * image->stride +
+        static_cast<std::size_t>(clipped_left) * image->channels;
+    const std::size_t color_size = static_cast<std::size_t>(image->channels);
+    const int pixel_count = clipped_right - clipped_left;
+    if (image->channels == 1) {
+        std::memset(dst, color[0], static_cast<std::size_t>(pixel_count));
+        return;
+    }
+
+    std::memcpy(dst, color, color_size);
+    std::size_t filled = color_size;
+    const std::size_t total = static_cast<std::size_t>(pixel_count) * color_size;
+    while (filled < total) {
+        const std::size_t copy_size = std::min(filled, total - filled);
+        std::memcpy(dst + filled, dst, copy_size);
+        filled += copy_size;
+    }
+}
+
+void fill_rectangle_region(
+    PillowCImage* image,
+    std::int64_t left,
+    std::int64_t top,
+    std::int64_t right_exclusive,
+    std::int64_t bottom_exclusive,
+    const std::uint8_t* color)
+{
+    if (left < 0) {
+        left = 0;
+    }
+    if (top < 0) {
+        top = 0;
+    }
+    if (right_exclusive > image->width) {
+        right_exclusive = image->width;
+    }
+    if (bottom_exclusive > image->height) {
+        bottom_exclusive = image->height;
+    }
+    if (right_exclusive <= left || bottom_exclusive <= top) {
+        return;
+    }
+
+    const int clipped_left = static_cast<int>(left);
+    const int clipped_top = static_cast<int>(top);
+    const int clipped_right = static_cast<int>(right_exclusive);
+    const int clipped_bottom = static_cast<int>(bottom_exclusive);
+
+    fill_horizontal_span(image, clipped_left, clipped_top, clipped_right, color);
+    if (image->channels == 1) {
+        for (int y = clipped_top + 1; y < clipped_bottom; ++y) {
+            std::uint8_t* dst = image->pixels.data() + static_cast<std::size_t>(y) * image->stride + clipped_left;
+            std::memset(dst, color[0], static_cast<std::size_t>(clipped_right - clipped_left));
+        }
+        return;
+    }
+
+    const std::size_t row_bytes = static_cast<std::size_t>(clipped_right - clipped_left) * image->channels;
+    const std::uint8_t* first_row =
+        image->pixels.data() +
+        static_cast<std::size_t>(clipped_top) * image->stride +
+        static_cast<std::size_t>(clipped_left) * image->channels;
+    for (int y = clipped_top + 1; y < clipped_bottom; ++y) {
+        std::uint8_t* dst =
+            image->pixels.data() +
+            static_cast<std::size_t>(y) * image->stride +
+            static_cast<std::size_t>(clipped_left) * image->channels;
+        std::memcpy(dst, first_row, row_bytes);
+    }
+}
+
+void fill_vertical_span(
+    PillowCImage* image,
+    std::int64_t x,
+    std::int64_t top,
+    std::int64_t bottom_exclusive,
+    const std::uint8_t* color)
+{
+    if (x < 0 || x >= image->width) {
+        return;
+    }
+    if (top < 0) {
+        top = 0;
+    }
+    if (bottom_exclusive > image->height) {
+        bottom_exclusive = image->height;
+    }
+    if (bottom_exclusive <= top) {
+        return;
+    }
+
+    const int clipped_x = static_cast<int>(x);
+    const int clipped_top = static_cast<int>(top);
+    const int clipped_bottom = static_cast<int>(bottom_exclusive);
+    const std::size_t color_size = static_cast<std::size_t>(image->channels);
+    for (int y = clipped_top; y < clipped_bottom; ++y) {
+        std::uint8_t* dst =
+            image->pixels.data() +
+            static_cast<std::size_t>(y) * image->stride +
+            static_cast<std::size_t>(clipped_x) * image->channels;
+        std::memcpy(dst, color, color_size);
+    }
+}
+
+int draw_rectangle_image(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((fill_size > 0 && !fill) || (outline_size > 0 && !outline)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const std::size_t channels = static_cast<std::size_t>(image->channels);
+    if ((fill_size != 0 && fill_size != channels) || (outline_size != 0 && outline_size != channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if ((fill && fill_size == 0) || (outline && outline_size == 0)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (right < left || bottom < top) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const std::int64_t x0 = left;
+    const std::int64_t y0 = top;
+    const std::int64_t x1 = right;
+    const std::int64_t y1 = bottom;
+    if (fill_size != 0) {
+        fill_rectangle_region(image, x0, y0, x1 + 1, y1 + 1, fill);
+    }
+    if (outline_size == 0 || width <= 0) {
+        return PILLOW_C_OK;
+    }
+
+    for (int inset = 0; inset < width; ++inset) {
+        fill_horizontal_span(image, x0, y0 + inset, x1 + 1, outline);
+        fill_horizontal_span(image, x0, y1 - inset, x1 + 1, outline);
+        fill_vertical_span(image, x1 - inset, y0 + width, y1 - width + 2, outline);
+        fill_vertical_span(image, x0 + inset, y0 + width, y1 - width + 2, outline);
+    }
+    return PILLOW_C_OK;
+}
+
 int composite_image_into(
     const PillowCImage* source,
     const PillowCImage* target_source,
@@ -10130,6 +10308,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_putpixel(
     std::size_t color_size)
 {
     return put_pixel_image(image, x, y, color, color_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_draw_rectangle(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width)
+{
+    return draw_rectangle_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_get_bytes(
