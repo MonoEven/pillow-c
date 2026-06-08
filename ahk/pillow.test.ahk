@@ -469,6 +469,33 @@ PillowTestImageSaveAndOpenPngUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Save and Image.Open support PNG through native path", PillowTestImageSaveAndOpenPngUsesNativePath)
 
+PillowTestImageOpenTracksFileFormatMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    savedPath := PillowTestTempPngPath("format")
+    opened := 0
+    copied := 0
+    created := 0
+    try {
+        image.Save(savedPath, "PNG")
+        opened := Pillow.Image.Open(savedPath)
+        copied := opened.Copy()
+        created := Pillow.Image.New("RGB", [1, 1])
+
+        AhkTest.AssertEqual("PNG", opened.Format)
+        AhkTest.AssertEqual("", copied.Format)
+        AhkTest.AssertEqual("", created.Format)
+    } finally {
+        for item in [created, copied, opened, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(savedPath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open tracks file format metadata", PillowTestImageOpenTracksFileFormatMetadata)
+
 PillowTestImageOpenSavePngRejectsUnsupportedInputs(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("CMYK", [1, 1], PillowTestBuffer([1, 2, 3, 4]))

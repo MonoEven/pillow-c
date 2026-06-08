@@ -2017,6 +2017,7 @@ class Pillow {
 
         __New(handle) {
             this.Handle := handle
+            this.Format := ""
         }
 
         __Delete() {
@@ -2110,7 +2111,9 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            image := Pillow.WrapImageHandle(outHandle)
+            image.Format := format
+            return image
         }
 
         static New(modeName, size, color := unset) {
