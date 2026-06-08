@@ -3938,6 +3938,7 @@ int rotate_nearest_into(
         if (!source->pixels.empty()) {
             std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
         }
+        copy_palette_if_same_mode(source, target);
         return PILLOW_C_OK;
     }
 
@@ -4850,6 +4851,10 @@ bool valid_resize_box(const PillowCImage* source, double left, double top, doubl
            std::isfinite(top) &&
            std::isfinite(right) &&
            std::isfinite(bottom) &&
+           left >= 0.0 &&
+           top >= 0.0 &&
+           right <= static_cast<double>(source->width) &&
+           bottom <= static_cast<double>(source->height) &&
            right > left &&
            bottom > top;
 }
@@ -5719,21 +5724,29 @@ int resize_image_box_into(
         if (!source->pixels.empty()) {
             std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
         }
+        copy_palette_if_same_mode(source, target);
         return PILLOW_C_OK;
     }
 
+    int status = PILLOW_C_OK;
     switch (resample) {
     case PILLOW_C_RESAMPLE_NEAREST:
-        return resize_nearest_box_into(source, out_width, out_height, box_left, box_top, box_right, box_bottom, target);
+        status = resize_nearest_box_into(source, out_width, out_height, box_left, box_top, box_right, box_bottom, target);
+        break;
     case PILLOW_C_RESAMPLE_BOX:
     case PILLOW_C_RESAMPLE_HAMMING:
     case PILLOW_C_RESAMPLE_BILINEAR:
     case PILLOW_C_RESAMPLE_BICUBIC:
     case PILLOW_C_RESAMPLE_LANCZOS:
-        return resize_filter_box_into(source, out_width, out_height, resample, box_left, box_top, box_right, box_bottom, target);
+        status = resize_filter_box_into(source, out_width, out_height, resample, box_left, box_top, box_right, box_bottom, target);
+        break;
     default:
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    if (status == PILLOW_C_OK) {
+        copy_palette_if_same_mode(source, target);
+    }
+    return status;
 }
 
 bool valid_reduce_box(const PillowCImage* source, int left, int top, int right, int bottom)
@@ -7460,6 +7473,20 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize_into(
     PillowCImage* target)
 {
     return resize_image_into(source, out_width, out_height, resample, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_resize_box_into(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    int resample,
+    double box_left,
+    double box_top,
+    double box_right,
+    double box_bottom,
+    PillowCImage* target)
+{
+    return resize_image_box_into(source, out_width, out_height, resample, box_left, box_top, box_right, box_bottom, target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_reduce_into(
@@ -9391,6 +9418,54 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = resize_image_into(source, out_width, out_height, resample, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_resize_box(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    int resample,
+    double box_left,
+    double box_top,
+    double box_right,
+    double box_bottom,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (out_width <= 0 || out_height <= 0 || !valid_resize_box(source, box_left, box_top, box_right, box_bottom)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (resample != PILLOW_C_RESAMPLE_NEAREST && !filter_spec_for_resample(resample)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size(out_width, out_height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            out_width,
+            out_height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = resize_image_box_into(source, out_width, out_height, resample, box_left, box_top, box_right, box_bottom, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

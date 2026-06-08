@@ -778,6 +778,53 @@ PillowTestImageResizeBicubicUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Resize BICUBIC resizes through native handles", PillowTestImageResizeBicubicUsesNativeHandleOperation)
 
+PillowTestImageResizeBoxUsesNativeSampling(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [3, 3], PillowTestBuffer([
+        0, 0, 0, 50, 0, 0, 100, 0, 0,
+        0, 50, 0, 50, 50, 0, 100, 50, 0,
+        0, 100, 0, 50, 100, 0, 100, 100, 0,
+    ]))
+    p := Pillow.Image.FromBytes("P", [4, 3], PillowTestBuffer([
+        0, 1, 2, 3,
+        1, 2, 3, 0,
+        2, 3, 0, 1,
+    ]))
+    palette := [
+        0, 0, 0,
+        10, 20, 30,
+        200, 100, 50,
+        255, 255, 255,
+    ]
+    rgbOut := 0
+    pOut := 0
+    pIdentity := 0
+    try {
+        p.PutPalette(palette)
+
+        rgbOut := rgb.Resize([2, 2], Pillow.Resampling.BILINEAR, [0.5, 0.5, 2.5, 2.5])
+        pOut := p.Resize([2, 2], Pillow.Resampling.NEAREST, [1.0, 0.0, 4.0, 3.0])
+        pIdentity := p.Resize([4, 3], Pillow.Resampling.NEAREST, [0.0, 0.0, 4.0, 3.0])
+
+        AhkTest.AssertEqual("RGB", rgbOut.Mode)
+        AhkTest.AssertEqual([2, 2], rgbOut.Size)
+        AhkTest.AssertEqual([25, 25, 0, 75, 25, 0, 25, 75, 0, 75, 75, 0], PillowTestBufferToArray(rgbOut.ToBytes()))
+
+        AhkTest.AssertEqual("P", pOut.Mode)
+        AhkTest.AssertEqual([2, 2], pOut.Size)
+        AhkTest.AssertEqual([1, 3, 3, 1], PillowTestBufferToArray(pOut.ToBytes()))
+        AhkTest.AssertEqual(palette, pOut.GetPalette())
+        AhkTest.AssertEqual(palette, pIdentity.GetPalette())
+    } finally {
+        for image in [pIdentity, pOut, rgbOut, p, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Resize supports native box sampling", PillowTestImageResizeBoxUsesNativeSampling)
+
 PillowTestImageReduceUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.FromBytes("L", [5, 3], PillowTestBuffer([

@@ -2489,22 +2489,44 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
-        Resize(size, resample := unset) {
+        Resize(size, resample := unset, box := unset) {
             if size.Length != 2
                 throw Error("Pillow.Image.Resize expects size [width, height]", -1)
             if !IsSet(resample)
                 resample := Pillow.Resampling.NEAREST
 
             outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_resize",
-                "Ptr", this.RequireHandle(),
-                "Int", size[1],
-                "Int", size[2],
-                "Int", resample,
-                "Ptr*", &outHandle,
-                "Int"
-            ))
+            if IsSet(box) {
+                if !IsObject(box) || box.Length != 4
+                    throw Error("Pillow.Image.Resize box expects [left, top, right, bottom]", -1)
+                for value in box {
+                    if !(value is Number)
+                        throw Error("Pillow.Image.Resize box coordinates must be numeric", -1)
+                }
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_resize_box",
+                    "Ptr", this.RequireHandle(),
+                    "Int", size[1],
+                    "Int", size[2],
+                    "Int", resample,
+                    "Double", box[1],
+                    "Double", box[2],
+                    "Double", box[3],
+                    "Double", box[4],
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+            } else {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_resize",
+                    "Ptr", this.RequireHandle(),
+                    "Int", size[1],
+                    "Int", size[2],
+                    "Int", resample,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+            }
             return Pillow.WrapImageHandle(outHandle)
         }
 
