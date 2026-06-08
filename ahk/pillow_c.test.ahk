@@ -5957,6 +5957,52 @@ PillowCTestPaletteModeConvertsThroughNativePalette(*) {
 
 AhkTest.Test("pillow_c P mode converts through native RGB palette", PillowCTestPaletteModeConvertsThroughNativePalette)
 
+PillowCTestPaletteModePreservesPaletteThroughNativeOperations(*) {
+    source := PillowCCreateImageMode(4, 2, 6)
+    outputs := []
+    palette := [
+        0, 0, 0,
+        10, 20, 30,
+        200, 100, 50,
+        255, 255, 255,
+    ]
+    try {
+        PillowCImageSetBytes(source, [0, 1, 2, 3, 3, 2, 1, 0])
+        PillowCImagePutPaletteRgb(source, palette)
+
+        cropped := PillowCImageCrop(source, 1, 0, 4, 2)
+        transposed := PillowCImageTranspose(source, 2)
+        resized := PillowCImageResize(source, 2, 4, 0)
+        outputs.Push(cropped)
+        outputs.Push(transposed)
+        outputs.Push(resized)
+
+        AhkTest.AssertEqual(6, PillowCImageInt(cropped, "pillow_c_image_mode"))
+        AhkTest.AssertEqual(6, PillowCImageInt(transposed, "pillow_c_image_mode"))
+        AhkTest.AssertEqual(6, PillowCImageInt(resized, "pillow_c_image_mode"))
+        AhkTest.AssertEqual(palette, PillowCImageGetPaletteRgb(cropped))
+        AhkTest.AssertEqual(palette, PillowCImageGetPaletteRgb(transposed))
+        AhkTest.AssertEqual(palette, PillowCImageGetPaletteRgb(resized))
+
+        croppedRgb := PillowCImageConvertMode(cropped, 3)
+        transposedRgb := PillowCImageConvertMode(transposed, 3)
+        resizedRgb := PillowCImageConvertMode(resized, 3)
+        outputs.Push(croppedRgb)
+        outputs.Push(transposedRgb)
+        outputs.Push(resizedRgb)
+
+        AhkTest.AssertEqual([10, 20, 30, 200, 100, 50, 255, 255, 255, 200, 100, 50, 10, 20, 30, 0, 0, 0], PillowCImageToArray(croppedRgb, 18))
+        AhkTest.AssertEqual([255, 255, 255, 0, 0, 0, 200, 100, 50, 10, 20, 30, 10, 20, 30, 200, 100, 50, 0, 0, 0, 255, 255, 255], PillowCImageToArray(transposedRgb, 24))
+        AhkTest.AssertEqual([10, 20, 30, 255, 255, 255, 10, 20, 30, 255, 255, 255, 200, 100, 50, 0, 0, 0, 200, 100, 50, 0, 0, 0], PillowCImageToArray(resizedRgb, 24))
+    } finally {
+        for handle in outputs
+            PillowCFreeImage(handle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c P mode preserves palette through native operations", PillowCTestPaletteModePreservesPaletteThroughNativeOperations)
+
 PillowCTestImageConvertModeIntoReusesTargetHandle(*) {
     source := PillowCCreateImageMode(2, 1, 3)
     target := PillowCCreateImageMode(2, 1, 4)

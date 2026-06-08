@@ -207,6 +207,54 @@ PillowTestPaletteModeUsesNativePaletteForConversion(*) {
 
 AhkTest.Test("Pillow P mode uses native palette for conversion", PillowTestPaletteModeUsesNativePaletteForConversion)
 
+PillowTestPaletteModePreservesPaletteThroughNativeOperations(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    palette := [
+        0, 0, 0,
+        10, 20, 30,
+        200, 100, 50,
+        255, 255, 255,
+    ]
+    image := Pillow.Image.FromBytes("P", [4, 2], PillowTestBuffer([0, 1, 2, 3, 3, 2, 1, 0]))
+    outputs := []
+    try {
+        image.PutPalette(palette)
+
+        cropped := image.Crop([1, 0, 4, 2])
+        transposed := image.Transpose(Pillow.Transpose.ROTATE_90)
+        resized := image.Resize([2, 4], Pillow.Resampling.NEAREST)
+        outputs.Push(cropped)
+        outputs.Push(transposed)
+        outputs.Push(resized)
+
+        AhkTest.AssertEqual("P", cropped.Mode)
+        AhkTest.AssertEqual("P", transposed.Mode)
+        AhkTest.AssertEqual("P", resized.Mode)
+        AhkTest.AssertEqual(palette, cropped.GetPalette())
+        AhkTest.AssertEqual(palette, transposed.GetPalette())
+        AhkTest.AssertEqual(palette, resized.GetPalette())
+
+        croppedRgb := cropped.Convert("RGB")
+        transposedRgb := transposed.Convert("RGB")
+        resizedRgb := resized.Convert("RGB")
+        outputs.Push(croppedRgb)
+        outputs.Push(transposedRgb)
+        outputs.Push(resizedRgb)
+
+        AhkTest.AssertEqual([10, 20, 30, 200, 100, 50, 255, 255, 255, 200, 100, 50, 10, 20, 30, 0, 0, 0], PillowTestBufferToArray(croppedRgb.ToBytes()))
+        AhkTest.AssertEqual([255, 255, 255, 0, 0, 0, 200, 100, 50, 10, 20, 30, 10, 20, 30, 200, 100, 50, 0, 0, 0, 255, 255, 255], PillowTestBufferToArray(transposedRgb.ToBytes()))
+        AhkTest.AssertEqual([10, 20, 30, 255, 255, 255, 10, 20, 30, 255, 255, 255, 200, 100, 50, 0, 0, 0, 200, 100, 50, 0, 0, 0], PillowTestBufferToArray(resizedRgb.ToBytes()))
+    } finally {
+        for item in outputs {
+            if IsObject(item)
+                item.Close()
+        }
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow P mode preserves palette through native operations", PillowTestPaletteModePreservesPaletteThroughNativeOperations)
+
 PillowTestImageDataPointerSharesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [3, 1])

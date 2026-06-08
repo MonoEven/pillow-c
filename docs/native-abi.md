@@ -23,6 +23,7 @@ Current mode IDs:
 3 RGB
 4 RGBA
 5 1
+6 P
 ```
 
 `pillow_c_mode_from_string`, `pillow_c_mode_name`, `pillow_c_image_create_mode`, and `pillow_c_image_mode` keep handles mode-aware. Channel count is storage layout; mode is wrapper-visible Pillow semantics.
@@ -30,6 +31,8 @@ Current mode IDs:
 The legacy `pillow_c_image_create(width, height, channels, ...)` maps channel count `1`, `2`, `3`, and `4` to `L`, `LA`, `RGB`, and `RGBA`.
 
 Mode `1` uses one unpacked byte per pixel internally for native operations and data-pointer sharing. `pillow_c_image_set_raw_bytes` and `pillow_c_image_get_raw_bytes` expose Pillow's external bit-packed row format for raw mode `1`.
+
+Mode `P` uses one palette index byte per pixel internally. RGB palette metadata lives on the image handle and is exposed through `pillow_c_image_put_palette_rgb` and `pillow_c_image_get_palette_rgb`. Same-mode copy/reorder/resize paths preserve that palette so later conversion still resolves indexes like Pillow.
 
 ## Export Groups
 
@@ -59,6 +62,8 @@ Image lifecycle and metadata:
 - `pillow_c_image_size`
 - `pillow_c_image_data`
 - `pillow_c_image_set_bytes`
+- `pillow_c_image_put_palette_rgb`
+- `pillow_c_image_get_palette_rgb`
 - `pillow_c_image_set_raw_bytes`
 - `pillow_c_image_put_data`
 - `pillow_c_image_fill`

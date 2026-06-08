@@ -616,6 +616,13 @@ bool image_shape_matches(const PillowCImage* left, const PillowCImage* right)
            left->pixels.size() == right->pixels.size();
 }
 
+void copy_palette_if_same_mode(const PillowCImage* source, PillowCImage* target)
+{
+    if (source && target && source->mode == target->mode) {
+        target->palette_rgb = source->palette_rgb;
+    }
+}
+
 void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::uint8_t* dst, int target_mode)
 {
     switch (target_mode) {
@@ -1079,6 +1086,7 @@ int copy_crop_pixels_into(
         }
     }
 
+    copy_palette_if_same_mode(source, target);
     return PILLOW_C_OK;
 }
 
@@ -1537,6 +1545,7 @@ int copy_transpose_pixels_into(const PillowCImage* source, int method, PillowCIm
         }
     }
 
+    copy_palette_if_same_mode(source, target);
     return PILLOW_C_OK;
 }
 
@@ -4614,21 +4623,29 @@ int resize_image_into(const PillowCImage* source, int out_width, int out_height,
         if (!source->pixels.empty()) {
             std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
         }
+        copy_palette_if_same_mode(source, target);
         return PILLOW_C_OK;
     }
 
+    int status = PILLOW_C_OK;
     switch (resample) {
     case PILLOW_C_RESAMPLE_NEAREST:
-        return resize_nearest_into(source, out_width, out_height, target);
+        status = resize_nearest_into(source, out_width, out_height, target);
+        break;
     case PILLOW_C_RESAMPLE_BOX:
     case PILLOW_C_RESAMPLE_HAMMING:
     case PILLOW_C_RESAMPLE_BILINEAR:
     case PILLOW_C_RESAMPLE_BICUBIC:
     case PILLOW_C_RESAMPLE_LANCZOS:
-        return resize_filter_into(source, out_width, out_height, resample, target);
+        status = resize_filter_into(source, out_width, out_height, resample, target);
+        break;
     default:
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    if (status == PILLOW_C_OK) {
+        copy_palette_if_same_mode(source, target);
+    }
+    return status;
 }
 
 bool supported_kernel_size(int kernel_width, int kernel_height)
@@ -5966,6 +5983,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_crop(
             }
         }
 
+        copy_palette_if_same_mode(source, image);
         *out_image = image;
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
@@ -7132,6 +7150,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_transpose(
             }
         }
 
+        copy_palette_if_same_mode(source, image);
         *out_image = image;
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
