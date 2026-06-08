@@ -3185,18 +3185,26 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
-        Crop(box) {
-            if box.Length != 4
+        Crop(box := unset) {
+            if !IsSet(box)
+                return this.Copy()
+            if !IsObject(box) || box.Length != 4
                 throw Error("Pillow.Image.Crop expects box [left, top, right, bottom]", -1)
+            cropBox := []
+            for value in box {
+                if !(value is Number)
+                    throw Error("Pillow.Image.Crop box coordinates must be numeric", -1)
+                cropBox.Push(Pillow.Image.RoundHalfEven(value))
+            }
 
             outHandle := 0
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_crop",
                 "Ptr", this.RequireHandle(),
-                "Int", box[1],
-                "Int", box[2],
-                "Int", box[3],
-                "Int", box[4],
+                "Int", cropBox[1],
+                "Int", cropBox[2],
+                "Int", cropBox[3],
+                "Int", cropBox[4],
                 "Ptr*", &outHandle,
                 "Int"
             ))

@@ -2643,6 +2643,41 @@ PillowTestImageCropUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Crop returns a native cropped image", PillowTestImageCropUsesNativeHandleOperation)
 
+PillowTestImageCropSupportsDefaultAndFloatBoxes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [5, 3], PillowTestBuffer([
+        0, 1, 2, 3, 4,
+        5, 6, 7, 8, 9,
+        10, 11, 12, 13, 14,
+    ]))
+    copy := 0
+    halfEven := 0
+    rounded := 0
+    try {
+        copy := source.Crop()
+        halfEven := source.Crop([0.5, 0.5, 3.5, 2.5])
+        rounded := source.Crop([1.2, 0.8, 4.6, 2.2])
+
+        AhkTest.AssertEqual("L", copy.Mode)
+        AhkTest.AssertEqual([5, 3], copy.Size)
+        AhkTest.AssertEqual(PillowTestBufferToArray(source.ToBytes()), PillowTestBufferToArray(copy.ToBytes()))
+        source.PutPixel([0, 0], 99)
+        AhkTest.AssertEqual(0, copy.GetPixel([0, 0]))
+
+        AhkTest.AssertEqual([4, 2], halfEven.Size)
+        AhkTest.AssertEqual([0, 1, 2, 3, 5, 6, 7, 8], PillowTestBufferToArray(halfEven.ToBytes()))
+        AhkTest.AssertEqual([4, 1], rounded.Size)
+        AhkTest.AssertEqual([6, 7, 8, 9], PillowTestBufferToArray(rounded.ToBytes()))
+    } finally {
+        for image in [rounded, halfEven, copy, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Crop supports default and float boxes", PillowTestImageCropSupportsDefaultAndFloatBoxes)
+
 PillowTestImageResizeNearestUsesNativeHandleOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([
