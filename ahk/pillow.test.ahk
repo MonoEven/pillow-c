@@ -21,6 +21,35 @@ PillowTestBufferToArray(buf) {
     return values
 }
 
+PillowTestWriteFileBytes(path, values) {
+    buf := PillowTestBuffer(values)
+    file := FileOpen(path, "w")
+    try {
+        file.RawWrite(buf, buf.Size)
+    } finally {
+        file.Close()
+    }
+}
+
+PillowTestReadFileBytes(path) {
+    file := FileOpen(path, "r")
+    try {
+        buf := Buffer(file.Length, 0)
+        file.RawRead(buf, buf.Size)
+        return PillowTestBufferToArray(buf)
+    } finally {
+        file.Close()
+    }
+}
+
+PillowTestTempBmpPath(name) {
+    return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) ".bmp"
+}
+
+PillowTestDeleteFile(path) {
+    try FileDelete path
+}
+
 AhkTest.Test("Pillow facade exposes native ABI version", (*) => (
     Pillow.Configure({ DllPath: PillowTestDllPath() }),
     AhkTest.AssertEqual([0, 1, 0], Pillow.AbiVersion())
@@ -192,6 +221,80 @@ PillowTestImageFromBytesOwnsNativeCopy(*) {
 }
 
 AhkTest.Test("Pillow Image.FromBytes copies caller bytes into native storage", PillowTestImageFromBytesOwnsNativeCopy)
+
+PillowTestImageSaveAndOpenBmpUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([
+        10, 20, 30, 40, 50, 60,
+        70, 80, 90, 100, 110, 120
+    ]))
+    savedPath := PillowTestTempBmpPath("save-open")
+    oraclePath := PillowTestTempBmpPath("oracle-open")
+    loaded := 0
+    try {
+        image.Save(savedPath, "BMP")
+        AhkTest.AssertEqual([
+            66, 77, 70, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0,
+            40, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 1, 0, 24, 0,
+            0, 0, 0, 0, 16, 0, 0, 0, 196, 14, 0, 0, 196, 14, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            90, 80, 70, 120, 110, 100, 0, 0,
+            30, 20, 10, 60, 50, 40, 0, 0
+        ], PillowTestReadFileBytes(savedPath))
+
+        PillowTestWriteFileBytes(oraclePath, PillowTestReadFileBytes(savedPath))
+        loaded := Pillow.Image.Open(oraclePath)
+
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([2, 2], loaded.Size)
+        AhkTest.AssertEqual([
+            10, 20, 30, 40, 50, 60,
+            70, 80, 90, 100, 110, 120
+        ], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(oraclePath)
+        PillowTestDeleteFile(savedPath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save and Image.Open support BMP through native path", PillowTestImageSaveAndOpenBmpUsesNativePath)
+
+PillowTestImageOpenSaveBmpRejectsUnsupportedInputs(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("CMYK", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
+    badPath := PillowTestTempBmpPath("bad")
+    try {
+        try {
+            image.Save(badPath, "PNG")
+            AhkTest.Fail("Expected Image.Save to reject unsupported format")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "BMP") > 0)
+        }
+
+        try {
+            image.Save(badPath, "BMP")
+            AhkTest.Fail("Expected Image.Save to reject unsupported CMYK BMP")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+
+        PillowTestWriteFileBytes(badPath, [1, 2, 3, 4])
+        try {
+            Pillow.Image.Open(badPath)
+            AhkTest.Fail("Expected Image.Open to reject invalid BMP")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+    } finally {
+        PillowTestDeleteFile(badPath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Open and Save BMP reject unsupported inputs", PillowTestImageOpenSaveBmpRejectsUnsupportedInputs)
 
 PillowTestImageCmykFoundationUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

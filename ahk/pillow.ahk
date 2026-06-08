@@ -1474,6 +1474,25 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static Open(path, formats := unset) {
+            if !(path is String)
+                throw Error("Pillow.Image.Open expects a file path", -1)
+            if IsSet(formats) {
+                if !IsObject(formats) || formats.Length != 1 || StrUpper(formats[1]) != "BMP"
+                    throw Error("Pillow.Image.Open currently supports only BMP", -1)
+            }
+
+            pathBytes := Pillow.Image.Utf8Buffer(path)
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_open_bmp",
+                "Ptr", pathBytes,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static New(modeName, size, color := unset) {
             if size.Length != 2
                 throw Error("Pillow.Image.New expects size [width, height]", -1)
@@ -1686,6 +1705,12 @@ class Pillow {
             return buf
         }
 
+        static Utf8Buffer(value) {
+            buf := Buffer(StrPut(value, "UTF-8"), 0)
+            StrPut(value, buf, "UTF-8")
+            return buf
+        }
+
         static HandleArray(images) {
             buf := Buffer(images.Length * A_PtrSize, 0)
             for index, image in images {
@@ -1799,6 +1824,24 @@ class Pillow {
                 "Int"
             ))
             return out
+        }
+
+        Save(path, format := unset) {
+            if !(path is String)
+                throw Error("Pillow.Image.Save expects a file path", -1)
+            if IsSet(format) {
+                if StrUpper(format) != "BMP"
+                    throw Error("Pillow.Image.Save currently supports only BMP", -1)
+            } else if !RegExMatch(path, "i)\.bmp$")
+                throw Error("Pillow.Image.Save requires format BMP or a .bmp path", -1)
+
+            pathBytes := Pillow.Image.Utf8Buffer(path)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_save_bmp",
+                "Ptr", this.RequireHandle(),
+                "Ptr", pathBytes,
+                "Int"
+            ))
         }
 
         DataPointer() {
