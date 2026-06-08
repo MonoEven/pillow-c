@@ -1730,6 +1730,8 @@ class Pillow {
                 return "PNG"
             if RegExMatch(path, "i)\.jpe?g$")
                 return "JPEG"
+            if RegExMatch(path, "i)\.tiff?$")
+                return "TIFF"
             throw Error("Pillow image file format is unsupported", -1)
         }
 
@@ -1737,7 +1739,9 @@ class Pillow {
             name := StrUpper(format)
             if name = "JPG"
                 return "JPEG"
-            if name = "BMP" || name = "PNG" || name = "JPEG"
+            if name = "TIF"
+                return "TIFF"
+            if name = "BMP" || name = "PNG" || name = "JPEG" || name = "TIFF"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }

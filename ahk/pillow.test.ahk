@@ -67,6 +67,10 @@ PillowTestTempJpegPath(name) {
     return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) ".jpg"
 }
 
+PillowTestTempTiffPath(name) {
+    return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) ".tiff"
+}
+
 PillowTestDeleteFile(path) {
     try FileDelete path
 }
@@ -289,7 +293,7 @@ PillowTestImageOpenSaveBmpRejectsUnsupportedInputs(*) {
     badPath := PillowTestTempBmpPath("bad")
     try {
         try {
-            image.Save(badPath, "TIFF")
+            image.Save(badPath, "NO_SUCH_FORMAT")
             AhkTest.Fail("Expected Image.Save to reject unsupported format")
         } catch Error as err {
             AhkTest.AssertTrue(InStr(err.Message, "unsupported") > 0)
@@ -571,6 +575,75 @@ PillowTestImageOpenSaveJpegRejectsUnsupportedInputs(*) {
 }
 
 AhkTest.Test("Pillow Image.Open and Save JPEG reject unsupported inputs", PillowTestImageOpenSaveJpegRejectsUnsupportedInputs)
+
+PillowTestImageSaveAndOpenTiffUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([10, 40, 70, 100]))
+    rgb := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([
+        10, 20, 30, 40, 50, 60,
+        70, 80, 90, 100, 110, 120
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60, 70, 80]))
+    lPath := PillowTestTempTiffPath("save-l")
+    rgbPath := A_Temp "\pillow-ahk-save-rgb-" A_TickCount "-" Random(1, 1000000) ".tif"
+    rgbaPath := PillowTestTempTiffPath("save-rgba")
+    loadedL := 0
+    loadedRgb := 0
+    loadedRgba := 0
+    try {
+        l.Save(lPath, "TIFF")
+        rgb.Save(rgbPath, "TIF")
+        rgba.Save(rgbaPath)
+        for path in [lPath, rgbPath, rgbaPath]
+            AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+
+        loadedL := Pillow.Image.Open(lPath)
+        loadedRgb := Pillow.Image.Open(rgbPath)
+        loadedRgba := Pillow.Image.Open(rgbaPath, ["TIFF"])
+        AhkTest.AssertEqual("L", loadedL.Mode)
+        AhkTest.AssertEqual([10, 40, 70, 100], PillowTestBufferToArray(loadedL.ToBytes()))
+        AhkTest.AssertEqual("RGB", loadedRgb.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120], PillowTestBufferToArray(loadedRgb.ToBytes()))
+        AhkTest.AssertEqual("RGBA", loadedRgba.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80], PillowTestBufferToArray(loadedRgba.ToBytes()))
+    } finally {
+        for image in [loadedRgba, loadedRgb, loadedL, rgba, rgb, l] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [rgbaPath, rgbPath, lPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save and Image.Open support TIFF through native path", PillowTestImageSaveAndOpenTiffUsesNativePath)
+
+PillowTestImageOpenSaveTiffRejectsUnsupportedInputs(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("CMYK", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
+    badPath := PillowTestTempTiffPath("bad")
+    try {
+        try {
+            image.Save(badPath, "TIFF")
+            AhkTest.Fail("Expected Image.Save to reject unsupported CMYK TIFF")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+
+        PillowTestWriteFileBytes(badPath, [1, 2, 3, 4])
+        try {
+            Pillow.Image.Open(badPath, ["TIFF"])
+            AhkTest.Fail("Expected Image.Open to reject invalid TIFF")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+    } finally {
+        PillowTestDeleteFile(badPath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Open and Save TIFF reject unsupported inputs", PillowTestImageOpenSaveTiffRejectsUnsupportedInputs)
 
 PillowTestImageCmykFoundationUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

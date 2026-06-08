@@ -76,6 +76,8 @@ Image lifecycle and metadata:
 - `pillow_c_image_save_png`
 - `pillow_c_image_open_jpeg`
 - `pillow_c_image_save_jpeg`
+- `pillow_c_image_open_tiff`
+- `pillow_c_image_save_tiff`
 - `pillow_c_image_linear_gradient`
 - `pillow_c_image_radial_gradient`
 - `pillow_c_image_effect_mandelbrot`
@@ -235,6 +237,8 @@ Reusable target operations:
 `pillow_c_image_open_png` and `pillow_c_image_save_png` keep PNG decode/encode inside the DLL. The current PNG path supports `L`, `LA`, `P`, `RGB`, and `RGBA` image handles. Native open converts supported source PNG pixel formats into the DLL's row-major public modes and preserves short RGB palettes for `P`. Native save writes valid PNG files from those modes after any required RGB/BGR channel packing inside C++; `LA` and `P` saves use native PNG chunk writing so they reopen with Pillow-style mode and palette semantics.
 
 `pillow_c_image_open_jpeg` and `pillow_c_image_save_jpeg` keep JPEG decode/encode inside the DLL through WIC. The current JPEG path supports lossy `L` and `RGB` image handles. Native open probes the JPEG frame component count before decoding so one-component JPEGs reopen as `L` and three-component JPEGs reopen as public RGB byte order. Native save accepts `L` and `RGB`, packs RGB to WIC's BGR encoder format inside C++, and rejects alpha, palette, and CMYK modes with `-3`.
+
+`pillow_c_image_open_tiff` and `pillow_c_image_save_tiff` keep TIFF decode/encode inside the DLL through WIC. The current TIFF path supports lossless `L`, `RGB`, and `RGBA` image handles. Native open converts supported TIFF pixel formats into the DLL's public row-major byte order. Native save packs RGB/RGBA to WIC's BGR/BGRA encoder formats inside C++ and rejects palette, LA, mode `1`, and CMYK modes with `-3`.
 
 `pillow_c_image_linear_gradient` and `pillow_c_image_linear_gradient_into` implement Pillow's fixed-size top-to-bottom `256x256` `Image.linear_gradient` generator for modes `1`, `L`, and `P`. Internal storage writes the row value `0..255` across each row; mode `1` still uses the existing raw encoder when callers request Pillow's bit-packed external bytes. Unsupported modes return `-3`, and `_into` target shape or mode mismatches return `-5`.
 

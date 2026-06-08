@@ -66,6 +66,10 @@ PillowCTempJpegPath(name) {
     return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) ".jpg"
 }
 
+PillowCTempTiffPath(name) {
+    return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) ".tiff"
+}
+
 PillowCDeleteFile(path) {
     try FileDelete path
 }
@@ -354,6 +358,31 @@ PillowCImageSaveJpeg(handle, path) {
     pathBytes := PillowCUtf8Buffer(path)
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_save_jpeg",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageOpenTiff(path) {
+    handle := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_open_tiff",
+        "Ptr", pathBytes,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
+PillowCImageSaveTiff(handle, path) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_tiff",
         "Ptr", handle,
         "Ptr", pathBytes,
         "Int"
@@ -3194,6 +3223,155 @@ PillowCTestImageJpegRejectsUnsupportedModesAndInvalidFiles(*) {
 }
 
 AhkTest.Test("pillow_c JPEG IO rejects unsupported modes and invalid files", PillowCTestImageJpegRejectsUnsupportedModesAndInvalidFiles)
+
+PillowCTestImageOpenTiffReadsPillowCoreModes(*) {
+    lPath := PillowCTempTiffPath("open-l")
+    rgbPath := PillowCTempTiffPath("open-rgb")
+    rgbaPath := PillowCTempTiffPath("open-rgba")
+    l := 0
+    rgb := 0
+    rgba := 0
+    try {
+        PillowCWriteFileBytes(lPath, [
+            73, 73, 42, 0, 8, 0, 0, 0, 9, 0, 0, 1, 4, 0, 1, 0,
+            0, 0, 2, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 2, 0,
+            0, 0, 2, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0, 3, 1,
+            3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
+            0, 0, 1, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 122, 0,
+            0, 0, 22, 1, 4, 0, 1, 0, 0, 0, 2, 0, 0, 0, 23, 1,
+            4, 0, 1, 0, 0, 0, 4, 0, 0, 0, 28, 1, 3, 0, 1, 0,
+            0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 40, 70, 100
+        ])
+        PillowCWriteFileBytes(rgbPath, [
+            73, 73, 42, 0, 8, 0, 0, 0, 10, 0, 0, 1, 4, 0, 1, 0,
+            0, 0, 2, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 2, 0,
+            0, 0, 2, 1, 3, 0, 3, 0, 0, 0, 134, 0, 0, 0, 3, 1,
+            3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
+            0, 0, 2, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 140, 0,
+            0, 0, 21, 1, 3, 0, 1, 0, 0, 0, 3, 0, 0, 0, 22, 1,
+            4, 0, 1, 0, 0, 0, 2, 0, 0, 0, 23, 1, 4, 0, 1, 0,
+            0, 0, 12, 0, 0, 0, 28, 1, 3, 0, 1, 0, 0, 0, 1, 0,
+            0, 0, 0, 0, 0, 0, 8, 0, 8, 0, 8, 0, 10, 20, 30, 40,
+            50, 60, 70, 80, 90, 100, 110, 120
+        ])
+        PillowCWriteFileBytes(rgbaPath, [
+            73, 73, 42, 0, 8, 0, 0, 0, 11, 0, 0, 1, 4, 0, 1, 0,
+            0, 0, 2, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+            0, 0, 2, 1, 3, 0, 4, 0, 0, 0, 146, 0, 0, 0, 3, 1,
+            3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
+            0, 0, 2, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 154, 0,
+            0, 0, 21, 1, 3, 0, 1, 0, 0, 0, 4, 0, 0, 0, 22, 1,
+            4, 0, 1, 0, 0, 0, 1, 0, 0, 0, 23, 1, 4, 0, 1, 0,
+            0, 0, 8, 0, 0, 0, 28, 1, 3, 0, 1, 0, 0, 0, 1, 0,
+            0, 0, 82, 1, 3, 0, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0,
+            0, 0, 8, 0, 8, 0, 8, 0, 8, 0, 10, 20, 30, 40, 50, 60,
+            70, 80
+        ])
+
+        l := PillowCImageOpenTiff(lPath)
+        rgb := PillowCImageOpenTiff(rgbPath)
+        rgba := PillowCImageOpenTiff(rgbaPath)
+        AhkTest.AssertEqual(1, PillowCImageMode(l))
+        AhkTest.AssertEqual([10, 40, 70, 100], PillowCImageToArray(l, 4))
+        AhkTest.AssertEqual(3, PillowCImageMode(rgb))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120], PillowCImageToArray(rgb, 12))
+        AhkTest.AssertEqual(4, PillowCImageMode(rgba))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80], PillowCImageToArray(rgba, 8))
+    } finally {
+        for handle in [rgba, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        for path in [rgbaPath, rgbPath, lPath]
+            PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_tiff reads Pillow L RGB and RGBA TIFFs", PillowCTestImageOpenTiffReadsPillowCoreModes)
+
+PillowCTestImageSaveTiffRoundTripsCoreModes(*) {
+    l := PillowCCreateImageMode(2, 2, 1)
+    rgb := PillowCCreateImageMode(2, 2, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    lPath := PillowCTempTiffPath("save-l")
+    rgbPath := PillowCTempTiffPath("save-rgb")
+    rgbaPath := PillowCTempTiffPath("save-rgba")
+    lLoaded := 0
+    rgbLoaded := 0
+    rgbaLoaded := 0
+    try {
+        PillowCImageSetBytes(l, [10, 40, 70, 100])
+        PillowCImageSetBytes(rgb, [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120])
+        PillowCImageSetBytes(rgba, [10, 20, 30, 40, 50, 60, 70, 80])
+        PillowCImageSaveTiff(l, lPath)
+        PillowCImageSaveTiff(rgb, rgbPath)
+        PillowCImageSaveTiff(rgba, rgbaPath)
+        for path in [lPath, rgbPath, rgbaPath]
+            AhkTest.AssertEqual([73, 73, 42, 0], PillowCArraySlice(PillowCReadFileBytes(path), 1, 4))
+
+        lLoaded := PillowCImageOpenTiff(lPath)
+        rgbLoaded := PillowCImageOpenTiff(rgbPath)
+        rgbaLoaded := PillowCImageOpenTiff(rgbaPath)
+        AhkTest.AssertEqual(1, PillowCImageMode(lLoaded))
+        AhkTest.AssertEqual([10, 40, 70, 100], PillowCImageToArray(lLoaded, 4))
+        AhkTest.AssertEqual(3, PillowCImageMode(rgbLoaded))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120], PillowCImageToArray(rgbLoaded, 12))
+        AhkTest.AssertEqual(4, PillowCImageMode(rgbaLoaded))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80], PillowCImageToArray(rgbaLoaded, 8))
+    } finally {
+        for handle in [rgbaLoaded, rgbLoaded, lLoaded, rgba, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        for path in [rgbaPath, rgbPath, lPath]
+            PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_tiff round-trips L RGB and RGBA modes", PillowCTestImageSaveTiffRoundTripsCoreModes)
+
+PillowCTestImageTiffRejectsUnsupportedModesAndInvalidFiles(*) {
+    cmyk := PillowCCreateImageMode(1, 1, 7)
+    badPath := PillowCTempTiffPath("bad")
+    missingPath := PillowCTempTiffPath("missing")
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(cmyk, [1, 2, 3, 4])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_tiff",
+            "Ptr", cmyk,
+            "Ptr", PillowCUtf8Buffer(badPath),
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        PillowCWriteFileBytes(badPath, [1, 2, 3, 4])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_open_tiff",
+            "Ptr", PillowCUtf8Buffer(badPath),
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_open_tiff",
+            "Ptr", PillowCUtf8Buffer(missingPath),
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCDeleteFile(badPath)
+        PillowCFreeImage(cmyk)
+    }
+}
+
+AhkTest.Test("pillow_c TIFF IO rejects unsupported modes and invalid files", PillowCTestImageTiffRejectsUnsupportedModesAndInvalidFiles)
 
 PillowCTestImageCopyIsIndependent(*) {
     source := PillowCCreateImage(2, 1, 3)
