@@ -8168,6 +8168,79 @@ PillowCTestImageFilterUnsharpMaskRejectsOutOfRangeRadius(*) {
 
 AhkTest.Test("pillow_c image filter UnsharpMask rejects out-of-range radius", PillowCTestImageFilterUnsharpMaskRejectsOutOfRangeRadius)
 
+PillowCTestImageFilterCmykMatchesPillow(*) {
+    cmyk := PillowCCreateImageMode(4, 3, 7)
+    modeSource := PillowCCreateImageMode(3, 3, 7)
+    boxTarget := PillowCCreateImageMode(4, 3, 7)
+    kernelOut := 0
+    medianOut := 0
+    modeOut := 0
+    boxOut := 0
+    gaussianOut := 0
+    unsharpOut := 0
+    try {
+        PillowCImageSetBytes(cmyk, [
+            1, 2, 3, 4, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130,
+            130, 140, 150, 160, 160, 170, 180, 190, 200, 210, 220, 230, 230, 240, 250, 255,
+            5, 15, 25, 35, 35, 45, 55, 65, 65, 75, 85, 95, 95, 105, 115, 125,
+        ])
+        PillowCImageSetBytes(modeSource, [
+            0, 10, 200, 5, 0, 20, 200, 5, 0, 30, 100, 7,
+            0, 40, 200, 5, 9, 50, 100, 5, 9, 60, 100, 7,
+            1, 70, 200, 9, 1, 80, 100, 9, 1, 90, 100, 9,
+        ])
+        before := PillowCImageData(boxTarget).Ptr
+
+        kernelOut := PillowCImageFilterKernel(cmyk, 3, 3, [0, -1, 0, -1, 5, -1, 0, -1, 0], 1.0, 0.0)
+        medianOut := PillowCImageFilterRank(cmyk, 3, 4)
+        modeOut := PillowCImageFilterMode(modeSource, 3)
+        boxOut := PillowCImageFilterBoxBlur(cmyk, 1.25, 0.5)
+        gaussianOut := PillowCImageFilterGaussianBlur(cmyk, 1.25, 0.5)
+        unsharpOut := PillowCImageFilterUnsharpMask(cmyk, 1.25, 200, 0)
+        PillowCImageFilterBoxBlurInto(cmyk, 1.25, 0.5, boxTarget)
+
+        AhkTest.AssertEqual(before, PillowCImageData(boxTarget).Ptr)
+        AhkTest.AssertEqual([
+            1, 2, 3, 4, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130,
+            130, 140, 150, 160, 255, 255, 255, 255, 255, 255, 255, 255, 230, 240, 250, 255,
+            5, 15, 25, 35, 35, 45, 55, 65, 65, 75, 85, 95, 95, 105, 115, 125,
+        ], PillowCImageToArray(kernelOut, 48))
+        AhkTest.AssertEqual([
+            20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 100, 110, 120, 130,
+            20, 30, 40, 50, 60, 70, 80, 90, 95, 105, 115, 125, 100, 110, 120, 130,
+            35, 45, 55, 65, 65, 75, 85, 95, 95, 105, 115, 125, 95, 105, 115, 125,
+        ], PillowCImageToArray(medianOut, 48))
+        AhkTest.AssertEqual([
+            0, 10, 200, 5, 0, 20, 100, 5, 0, 30, 100, 7,
+            0, 40, 200, 5, 0, 50, 100, 5, 9, 60, 100, 7,
+            1, 70, 200, 9, 1, 80, 100, 9, 1, 90, 100, 9,
+        ], PillowCImageToArray(modeOut, 36))
+        AhkTest.AssertEqual([
+            44, 50, 55, 61, 64, 72, 80, 87, 93, 102, 111, 121, 116, 126, 136, 146,
+            79, 88, 96, 105, 100, 109, 118, 127, 128, 137, 147, 156, 149, 159, 169, 178,
+            50, 60, 70, 80, 69, 79, 89, 99, 96, 106, 116, 125, 116, 126, 136, 145,
+        ], PillowCImageToArray(boxOut, 48))
+        AhkTest.AssertEqual(PillowCImageToArray(boxOut, 48), PillowCImageToArray(boxTarget, 48))
+        AhkTest.AssertEqual([
+            31, 36, 42, 48, 47, 54, 63, 69, 72, 81, 90, 99, 91, 101, 111, 120,
+            122, 131, 140, 150, 139, 148, 158, 167, 163, 172, 182, 191, 180, 190, 200, 208,
+            38, 48, 58, 68, 53, 63, 73, 83, 75, 85, 95, 105, 91, 101, 111, 120,
+        ], PillowCImageToArray(gaussianOut, 48))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 58, 68, 78, 92,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 19, 43, 53, 63, 75,
+        ], PillowCImageToArray(unsharpOut, 48))
+    } finally {
+        for handle in [unsharpOut, gaussianOut, boxOut, modeOut, medianOut, kernelOut, boxTarget, modeSource, cmyk] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image filters match Pillow CMYK", PillowCTestImageFilterCmykMatchesPillow)
+
 PillowCTestImageTransformAffineNearestMatchesPillow(*) {
     source := PillowCCreateImageMode(3, 2, 1)
     out := 0
