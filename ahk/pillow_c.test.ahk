@@ -1460,6 +1460,23 @@ PillowCImagePointLut(sourceHandle, lutValues) {
     return outHandle
 }
 
+PillowCImagePointLutMode(sourceHandle, lutValues, targetMode) {
+    lut := PillowCBuffer(lutValues)
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_point_lut_mode",
+        "Ptr", sourceHandle,
+        "Ptr", lut,
+        "UPtr", lut.Size,
+        "Int", targetMode,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImagePointLutInto(sourceHandle, lutValues, targetHandle) {
     lut := PillowCBuffer(lutValues)
     status := DllCall(
@@ -1467,6 +1484,20 @@ PillowCImagePointLutInto(sourceHandle, lutValues, targetHandle) {
         "Ptr", sourceHandle,
         "Ptr", lut,
         "UPtr", lut.Size,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImagePointLutModeInto(sourceHandle, lutValues, targetMode, targetHandle) {
+    lut := PillowCBuffer(lutValues)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_point_lut_mode_into",
+        "Ptr", sourceHandle,
+        "Ptr", lut,
+        "UPtr", lut.Size,
+        "Int", targetMode,
         "Ptr", targetHandle,
         "Int"
     )
@@ -7403,6 +7434,15 @@ PillowCMakeInvertLut(channelCount) {
     return lut
 }
 
+PillowCMakeIdentityLut(channelCount) {
+    lut := []
+    loop channelCount {
+        loop 256
+            lut.Push(A_Index - 1)
+    }
+    return lut
+}
+
 PillowCConstantArray(count, value) {
     items := []
     loop count
@@ -7454,6 +7494,49 @@ PillowCTestImagePointLutAppliesPerChannelTables(*) {
 }
 
 AhkTest.Test("pillow_c image point_lut applies per-channel Pillow LUT tables", PillowCTestImagePointLutAppliesPerChannelTables)
+
+PillowCTestImagePointLutModeConvertsSingleBandModes(*) {
+    l := PillowCCreateImageMode(6, 1, 1)
+    p := PillowCCreateImageMode(6, 1, 6)
+    one := PillowCCreateImageMode(4, 1, 5)
+    lOut := 0
+    pOut := 0
+    oneOut := 0
+    lToP := 0
+    lTarget := PillowCCreateImageMode(6, 1, 5)
+    try {
+        PillowCImageSetBytes(l, [0, 1, 127, 128, 129, 255])
+        PillowCImageSetBytes(p, [0, 1, 2, 3, 4, 5])
+        PillowCImageSetRawBytes(one, [0x50], "1")
+        lOut := PillowCImagePointLutMode(l, PillowCMakeIdentityLut(1), 5)
+        pOut := PillowCImagePointLutMode(p, PillowCMakeInvertLut(1), 5)
+        oneOut := PillowCImagePointLutMode(one, PillowCMakeIdentityLut(1), 1)
+        lToP := PillowCImagePointLutMode(l, PillowCMakeIdentityLut(1), 6)
+        before := PillowCImageData(lTarget).Ptr
+        PillowCImagePointLutModeInto(l, PillowCMakeIdentityLut(1), 5, lTarget)
+
+        AhkTest.AssertEqual(5, PillowCImageMode(lOut))
+        AhkTest.AssertEqual([0, 1, 127, 128, 129, 255], PillowCImageToArray(lOut, 6))
+        AhkTest.AssertEqual([0x7C], PillowCImageGetRawBytes(lOut, "1"))
+        AhkTest.AssertEqual(5, PillowCImageMode(pOut))
+        AhkTest.AssertEqual([255, 254, 253, 252, 251, 250], PillowCImageToArray(pOut, 6))
+        AhkTest.AssertEqual([0xFC], PillowCImageGetRawBytes(pOut, "1"))
+        AhkTest.AssertEqual(1, PillowCImageMode(oneOut))
+        AhkTest.AssertEqual([0, 255, 0, 255], PillowCImageToArray(oneOut, 4))
+        AhkTest.AssertEqual(6, PillowCImageMode(lToP))
+        AhkTest.AssertEqual([0, 1, 127, 128, 129, 255], PillowCImageToArray(lToP, 6))
+        AhkTest.AssertEqual([], PillowCImageGetPaletteRgb(lToP))
+        AhkTest.AssertEqual(before, PillowCImageData(lTarget).Ptr)
+        AhkTest.AssertEqual(PillowCImageToArray(lOut, 6), PillowCImageToArray(lTarget, 6))
+    } finally {
+        for handle in [lTarget, lToP, oneOut, pOut, lOut, one, p, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image point_lut_mode converts single-band modes", PillowCTestImagePointLutModeConvertsSingleBandModes)
 
 PillowCTestImagePointLutIntoReusesTargetHandle(*) {
     source := PillowCCreateImageMode(2, 1, 3)

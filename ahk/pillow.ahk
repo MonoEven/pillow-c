@@ -2864,19 +2864,31 @@ class Pillow {
             return buf
         }
 
-        Point(lut) {
+        Point(lut, modeName := unset) {
             if lut is Func
                 lut := this.CallablePointLut(lut)
             lutBytes := this.LutBuffer(lut)
             outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_point_lut",
-                "Ptr", this.RequireHandle(),
-                "Ptr", lutBytes,
-                "UPtr", lutBytes.Size,
-                "Ptr*", &outHandle,
-                "Int"
-            ))
+            if IsSet(modeName) {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_point_lut_mode",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", lutBytes,
+                    "UPtr", lutBytes.Size,
+                    "Int", Pillow.ModeId(modeName),
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+            } else {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_point_lut",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", lutBytes,
+                    "UPtr", lutBytes.Size,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+            }
             return Pillow.WrapImageHandle(outHandle)
         }
 

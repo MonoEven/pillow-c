@@ -5026,6 +5026,15 @@ PillowTestMakeInvertLut(channelCount) {
     return lut
 }
 
+PillowTestMakeIdentityLut(channelCount) {
+    lut := []
+    loop channelCount {
+        loop 256
+            lut.Push(A_Index - 1)
+    }
+    return lut
+}
+
 PillowTestConstantArray(count, value) {
     items := []
     loop count
@@ -5089,6 +5098,55 @@ PillowTestImagePointAcceptsCallableFunction(*) {
 }
 
 AhkTest.Test("Pillow Image.Point accepts callable functions", PillowTestImagePointAcceptsCallableFunction)
+
+PillowTestImagePointSupportsTargetModeForSingleBandImages(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [6, 1], PillowTestBuffer([0, 1, 127, 128, 129, 255]))
+    p := Pillow.Image.FromBytes("P", [6, 1], PillowTestBuffer([0, 1, 2, 3, 4, 5]))
+    one := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x50]))
+    outputs := []
+    try {
+        p.PutPalette([
+            0, 0, 0,
+            10, 20, 30,
+            40, 50, 60,
+            70, 80, 90,
+            100, 110, 120,
+            130, 140, 150,
+        ])
+        lToOne := l.Point(PillowTestMakeIdentityLut(1), "1")
+        pToOne := p.Point(PillowTestMakeInvertLut(1), "1")
+        oneToL := one.Point(PillowTestMakeIdentityLut(1), "L")
+        lToP := l.Point(PillowTestMakeIdentityLut(1), "P")
+        callableToOne := l.Point((value) => value, "1")
+        outputs.Push(lToOne)
+        outputs.Push(pToOne)
+        outputs.Push(oneToL)
+        outputs.Push(lToP)
+        outputs.Push(callableToOne)
+
+        AhkTest.AssertEqual("1", lToOne.Mode)
+        AhkTest.AssertEqual([0x7C], PillowTestBufferToArray(lToOne.ToBytes()))
+        AhkTest.AssertEqual("1", pToOne.Mode)
+        AhkTest.AssertEqual([0xFC], PillowTestBufferToArray(pToOne.ToBytes()))
+        AhkTest.AssertEqual("L", oneToL.Mode)
+        AhkTest.AssertEqual([0, 255, 0, 255], PillowTestBufferToArray(oneToL.ToBytes()))
+        AhkTest.AssertEqual("P", lToP.Mode)
+        AhkTest.AssertEqual([0, 1, 127, 128, 129, 255], PillowTestBufferToArray(lToP.ToBytes()))
+        AhkTest.AssertEqual([], lToP.GetPalette())
+        AhkTest.AssertEqual([0x7C], PillowTestBufferToArray(callableToOne.ToBytes()))
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        one.Close()
+        p.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Point supports target mode for single-band images", PillowTestImagePointSupportsTargetModeForSingleBandImages)
 
 PillowTestImageEvalBuildsSharedLutForAllBands(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

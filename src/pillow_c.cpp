@@ -852,6 +852,13 @@ void copy_palette_if_same_mode(const PillowCImage* source, PillowCImage* target)
     }
 }
 
+void copy_palette_if_point_preserves_core_palette(const PillowCImage* source, PillowCImage* target)
+{
+    if (source && target && source->mode == PILLOW_C_MODE_P && source->channels == 1) {
+        target->palette_rgb = source->palette_rgb;
+    }
+}
+
 bool supports_gradient_mode(int mode)
 {
     return mode == PILLOW_C_MODE_1 || mode == PILLOW_C_MODE_L || mode == PILLOW_C_MODE_P;
@@ -6077,6 +6084,7 @@ int apply_point_lut_into(const PillowCImage* source, const std::uint8_t* lut, st
     }
     if (source->pixels.empty()) {
         copy_palette_if_same_mode(source, target);
+        copy_palette_if_point_preserves_core_palette(source, target);
         return PILLOW_C_OK;
     }
 
@@ -6089,6 +6097,64 @@ int apply_point_lut_into(const PillowCImage* source, const std::uint8_t* lut, st
         dst[i] = lut[channel * 256u + src[i]];
     }
     copy_palette_if_same_mode(source, target);
+    return PILLOW_C_OK;
+}
+
+bool point_lut_target_mode_supported(const PillowCImage* source, int target_mode)
+{
+    if (!source) {
+        return false;
+    }
+    if (target_mode == source->mode) {
+        return true;
+    }
+    return source->channels == 1 &&
+           (target_mode == PILLOW_C_MODE_1 || target_mode == PILLOW_C_MODE_L || target_mode == PILLOW_C_MODE_P);
+}
+
+int point_lut_target_channels(const PillowCImage* source, int target_mode)
+{
+    if (!point_lut_target_mode_supported(source, target_mode)) {
+        return 0;
+    }
+    return target_mode == source->mode ? source->channels : 1;
+}
+
+int apply_point_lut_mode_into(
+    const PillowCImage* source,
+    const std::uint8_t* lut,
+    std::size_t lut_size,
+    int target_mode,
+    PillowCImage* target)
+{
+    if (!source || !lut || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const int target_channels = point_lut_target_channels(source, target_mode);
+    if (target_channels == 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (lut_size != static_cast<std::size_t>(source->channels) * 256u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (!image_shape_matches(target, source->width, source->height, target_mode, target_channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (source->pixels.empty()) {
+        copy_palette_if_same_mode(source, target);
+        return PILLOW_C_OK;
+    }
+    if (target_mode == source->mode) {
+        return apply_point_lut_into(source, lut, lut_size, target);
+    }
+
+    const std::uint8_t* src = source->pixels.data();
+    std::uint8_t* dst = target->pixels.data();
+    const std::size_t count = source->pixels.size();
+    for (std::size_t i = 0; i < count; ++i) {
+        dst[i] = lut[src[i]];
+    }
+    copy_palette_if_point_preserves_core_palette(source, target);
     return PILLOW_C_OK;
 }
 
@@ -11931,6 +11997,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_point_lut_into(
     return apply_point_lut_into(source, lut, lut_size, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_point_lut_mode_into(
+    const PillowCImage* source,
+    const std::uint8_t* lut,
+    std::size_t lut_size,
+    int target_mode,
+    PillowCImage* target)
+{
+    return apply_point_lut_mode_into(source, lut, lut_size, target_mode, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_invert_into(
     const PillowCImage* source,
     PillowCImage* target)
@@ -13931,6 +14007,51 @@ extern "C" __declspec(dllexport) int pillow_c_image_point_lut(
     try {
         auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
         const int status = apply_point_lut_into(source, lut, lut_size, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_point_lut_mode(
+    const PillowCImage* source,
+    const std::uint8_t* lut,
+    std::size_t lut_size,
+    int target_mode,
+    PillowCImage** out_image)
+{
+    if (!source || !lut || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    const int target_channels = point_lut_target_channels(source, target_mode);
+    if (target_channels == 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (lut_size != static_cast<std::size_t>(source->channels) * 256u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(source->width, source->height, target_channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            target_mode,
+            target_channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = apply_point_lut_mode_into(source, lut, lut_size, target_mode, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

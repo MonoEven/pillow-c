@@ -134,6 +134,7 @@ Image operations:
 - `pillow_c_image_logical_xor`
 - `pillow_c_image_offset`
 - `pillow_c_image_point_lut`
+- `pillow_c_image_point_lut_mode`
 - `pillow_c_image_invert`
 - `pillow_c_image_posterize`
 - `pillow_c_image_solarize`
@@ -205,6 +206,7 @@ Reusable target operations:
 - `pillow_c_image_logical_xor_into`
 - `pillow_c_image_offset_into`
 - `pillow_c_image_point_lut_into`
+- `pillow_c_image_point_lut_mode_into`
 - `pillow_c_image_invert_into`
 - `pillow_c_image_posterize_into`
 - `pillow_c_image_solarize_into`
@@ -241,6 +243,8 @@ Reusable target operations:
 - `pillow_c_image_transpose_into`
 
 `pillow_c_image_equalize` and `pillow_c_image_equalize_into` implement Pillow's `ImageOps.equalize` for `L` and `RGB`; mode `P` sources are converted through their RGB palette first and produce an `RGB` target. `pillow_c_image_equalize_masked` and `pillow_c_image_equalize_masked_into` accept a same-size mode `1` or `L` mask handle after the source handle. A null mask keeps full-image histogram behavior.
+
+`pillow_c_image_point_lut_mode` and `pillow_c_image_point_lut_mode_into` extend the point LUT path with a target mode. The current native target-mode path accepts single-band `1`, `L`, and `P` sources targeting `1`, `L`, or `P`; same-mode calls reuse `pillow_c_image_point_lut` behavior. LUT length remains `source_channels * 256`, `_into` targets must already match the output shape and mode, `P -> P` preserves the RGB palette, and `P -> 1/L` keeps the core palette metadata like Pillow 11.3.0.
 
 `pillow_c_image_put_data` accepts already-packed mode-sized pixel bytes plus a pixel count, writes that prefix into the image in row-major order, and leaves any remaining pixels unchanged. The AHK facade owns Python-like `putdata` value coercion before making this single native call.
 
