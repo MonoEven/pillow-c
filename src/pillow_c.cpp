@@ -5071,6 +5071,288 @@ int draw_pieslice_image(
     return PILLOW_C_OK;
 }
 
+void fill_rounded_rectangle_bar(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const std::uint8_t* color)
+{
+    fill_rectangle_region(
+        image,
+        left,
+        top,
+        static_cast<std::int64_t>(right) + 1,
+        static_cast<std::int64_t>(bottom) + 1,
+        color);
+}
+
+int draw_rounded_rectangle_part(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    double start,
+    double end,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    int width,
+    bool fill)
+{
+    return fill
+        ? draw_pieslice_image(image, left, top, right, bottom, start, end, color, color_size, nullptr, 0, 1)
+        : draw_arc_image(image, left, top, right, bottom, start, end, color, color_size, width);
+}
+
+bool rounded_rectangle_colors_match(
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size)
+{
+    return fill_size != 0 &&
+        outline_size == fill_size &&
+        std::memcmp(fill, outline, fill_size) == 0;
+}
+
+int draw_rounded_rectangle_image(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    double radius,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width,
+    int corners_mask)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((fill_size > 0 && !fill) || (outline_size > 0 && !outline)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const std::size_t channels = static_cast<std::size_t>(image->channels);
+    if ((fill_size != 0 && fill_size != channels) || (outline_size != 0 && outline_size != channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if ((fill && fill_size == 0) || (outline && outline_size == 0)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (right < left || bottom < top || !std::isfinite(radius) || radius < 0.0 || corners_mask < 0 || corners_mask > 15) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const bool corners[4] = {
+        (corners_mask & 1) != 0,
+        (corners_mask & 2) != 0,
+        (corners_mask & 4) != 0,
+        (corners_mask & 8) != 0,
+    };
+    const bool any_corners = corners_mask != 0;
+    const bool all_corners = corners_mask == 15;
+
+    double diameter = radius * 2.0;
+    bool full_x = false;
+    bool full_y = false;
+    if (all_corners) {
+        full_x = diameter >= static_cast<double>(right - left - 1);
+        if (full_x) {
+            diameter = static_cast<double>(right - left);
+        }
+        full_y = diameter >= static_cast<double>(bottom - top - 1);
+        if (full_y) {
+            diameter = static_cast<double>(bottom - top);
+        }
+        if (full_x && full_y) {
+            return draw_ellipse_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
+        }
+    }
+
+    if (diameter == 0.0 || !any_corners) {
+        return draw_rectangle_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
+    }
+
+    const int d = static_cast<int>(std::floor(diameter));
+    const int r = static_cast<int>(std::floor(diameter / 2.0));
+
+    if (fill_size != 0) {
+        if (full_x) {
+            int status = draw_rounded_rectangle_part(
+                image, left, top, left + d, top + d, 180.0, 360.0, fill, fill_size, 1, true);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = draw_rounded_rectangle_part(
+                image, left, bottom - d, left + d, bottom, 0.0, 180.0, fill, fill_size, 1, true);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            fill_rounded_rectangle_bar(image, left, top + r + 1, right, bottom - r - 1, fill);
+        } else if (full_y) {
+            int status = draw_rounded_rectangle_part(
+                image, left, top, left + d, top + d, 90.0, 270.0, fill, fill_size, 1, true);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = draw_rounded_rectangle_part(
+                image, right - d, top, right, top + d, 270.0, 90.0, fill, fill_size, 1, true);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            if (right - r - 1 > left + r + 1) {
+                fill_rounded_rectangle_bar(image, left + r + 1, top, right - r - 1, bottom, fill);
+            }
+        } else {
+            int status = PILLOW_C_OK;
+            if (corners[0]) {
+                status = draw_rounded_rectangle_part(
+                    image, left, top, left + d, top + d, 180.0, 270.0, fill, fill_size, 1, true);
+            }
+            if (status == PILLOW_C_OK && corners[1]) {
+                status = draw_rounded_rectangle_part(
+                    image, right - d, top, right, top + d, 270.0, 360.0, fill, fill_size, 1, true);
+            }
+            if (status == PILLOW_C_OK && corners[2]) {
+                status = draw_rounded_rectangle_part(
+                    image, right - d, bottom - d, right, bottom, 0.0, 90.0, fill, fill_size, 1, true);
+            }
+            if (status == PILLOW_C_OK && corners[3]) {
+                status = draw_rounded_rectangle_part(
+                    image, left, bottom - d, left + d, bottom, 90.0, 180.0, fill, fill_size, 1, true);
+            }
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            if (right - r - 1 > left + r + 1) {
+                fill_rounded_rectangle_bar(image, left + r + 1, top, right - r - 1, bottom, fill);
+            }
+
+            int side_top = top;
+            int side_bottom = bottom;
+            if (corners[0]) {
+                side_top += r + 1;
+            }
+            if (corners[3]) {
+                side_bottom -= r + 1;
+            }
+            fill_rounded_rectangle_bar(image, left, side_top, left + r, side_bottom, fill);
+
+            side_top = top;
+            side_bottom = bottom;
+            if (corners[1]) {
+                side_top += r + 1;
+            }
+            if (corners[2]) {
+                side_bottom -= r + 1;
+            }
+            fill_rounded_rectangle_bar(image, right - r, side_top, right, side_bottom, fill);
+        }
+    }
+
+    if (outline_size == 0 || width == 0 || rounded_rectangle_colors_match(fill, fill_size, outline, outline_size)) {
+        return PILLOW_C_OK;
+    }
+
+    if (full_x) {
+        int status = draw_rounded_rectangle_part(
+            image, left, top, left + d, top + d, 180.0, 360.0, outline, outline_size, width, false);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = draw_rounded_rectangle_part(
+            image, left, bottom - d, left + d, bottom, 0.0, 180.0, outline, outline_size, width, false);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    } else if (full_y) {
+        int status = draw_rounded_rectangle_part(
+            image, left, top, left + d, top + d, 90.0, 270.0, outline, outline_size, width, false);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = draw_rounded_rectangle_part(
+            image, right - d, top, right, top + d, 270.0, 90.0, outline, outline_size, width, false);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    } else {
+        int status = PILLOW_C_OK;
+        if (corners[0]) {
+            status = draw_rounded_rectangle_part(
+                image, left, top, left + d, top + d, 180.0, 270.0, outline, outline_size, width, false);
+        }
+        if (status == PILLOW_C_OK && corners[1]) {
+            status = draw_rounded_rectangle_part(
+                image, right - d, top, right, top + d, 270.0, 360.0, outline, outline_size, width, false);
+        }
+        if (status == PILLOW_C_OK && corners[2]) {
+            status = draw_rounded_rectangle_part(
+                image, right - d, bottom - d, right, bottom, 0.0, 90.0, outline, outline_size, width, false);
+        }
+        if (status == PILLOW_C_OK && corners[3]) {
+            status = draw_rounded_rectangle_part(
+                image, left, bottom - d, left + d, bottom, 90.0, 180.0, outline, outline_size, width, false);
+        }
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+
+    if (!full_x) {
+        int edge_left = left;
+        int edge_right = right;
+        if (corners[0]) {
+            edge_left += r + 1;
+        }
+        if (corners[1]) {
+            edge_right -= r + 1;
+        }
+        fill_rounded_rectangle_bar(image, edge_left, top, edge_right, top + width - 1, outline);
+
+        edge_left = left;
+        edge_right = right;
+        if (corners[3]) {
+            edge_left += r + 1;
+        }
+        if (corners[2]) {
+            edge_right -= r + 1;
+        }
+        fill_rounded_rectangle_bar(image, edge_left, bottom - width + 1, edge_right, bottom, outline);
+    }
+    if (!full_y) {
+        int edge_top = top;
+        int edge_bottom = bottom;
+        if (corners[0]) {
+            edge_top += r + 1;
+        }
+        if (corners[3]) {
+            edge_bottom -= r + 1;
+        }
+        fill_rounded_rectangle_bar(image, left, edge_top, left + width - 1, edge_bottom, outline);
+
+        edge_top = top;
+        edge_bottom = bottom;
+        if (corners[1]) {
+            edge_top += r + 1;
+        }
+        if (corners[2]) {
+            edge_bottom -= r + 1;
+        }
+        fill_rounded_rectangle_bar(image, right - width + 1, edge_top, right, edge_bottom, outline);
+    }
+
+    return PILLOW_C_OK;
+}
+
 int composite_image_into(
     const PillowCImage* source,
     const PillowCImage* target_source,
@@ -11624,6 +11906,35 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_pieslice(
     int width)
 {
     return draw_pieslice_image(image, left, top, right, bottom, start, end, fill, fill_size, outline, outline_size, width);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_draw_rounded_rectangle(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    double radius,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width,
+    int corners_mask)
+{
+    return draw_rounded_rectangle_image(
+        image,
+        left,
+        top,
+        right,
+        bottom,
+        radius,
+        fill,
+        fill_size,
+        outline,
+        outline_size,
+        width,
+        corners_mask);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_line(

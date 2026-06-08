@@ -91,6 +91,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_draw_arc`
 - `pillow_c_image_draw_chord`
 - `pillow_c_image_draw_pieslice`
+- `pillow_c_image_draw_rounded_rectangle`
 - `pillow_c_image_draw_line`
 - `pillow_c_image_draw_points`
 - `pillow_c_image_draw_polygon`
@@ -243,6 +244,8 @@ Reusable target operations:
 `pillow_c_image_draw_chord` mutates one image handle in place for Pillow `ImageDraw.chord` calls. It accepts inclusive integer bounding-box coordinates, start/end angles in degrees, optional caller-packed fill and outline colors, and an outline width. The implementation follows Pillow 11.3.0's `ImagingDrawChord` path: angles are normalized, full-circle chords delegate to the native ellipse path, fill uses the chord clip tree with Pillow's full-width fill rule, and outline draws the chord line plus clipped ellipse boundary. Equal start/end angles and `width == 0` outlines are no-ops; reversed coordinates return `-3`.
 
 `pillow_c_image_draw_pieslice` mutates one image handle in place for Pillow `ImageDraw.pieslice` calls. It accepts inclusive integer bounding-box coordinates, start/end angles in degrees, optional caller-packed fill and outline colors, and an outline width. The implementation follows Pillow 11.3.0's `ImagingDrawPieslice` path: angles are normalized, full-circle pieslices delegate to the native ellipse path, fill uses the pie clip tree, and outline draws both radial sides, the center join ellipse, and the clipped curved boundary. Equal start/end angles and `width == 0` outlines are no-ops; reversed coordinates return `-3`.
+
+`pillow_c_image_draw_rounded_rectangle` mutates one image handle in place for Pillow `ImageDraw.rounded_rectangle` calls. It accepts inclusive integer bounding-box coordinates, a finite non-negative radius, optional caller-packed fill and outline colors, an outline width, and a corners bitmask in top-left, top-right, bottom-right, bottom-left order. The implementation follows Pillow 11.3.0's wrapper composition: radius-zero and no-corner cases delegate to rectangle, fully joined all-corner cases delegate to ellipse, and ordinary rounded rectangles draw native pieslice/arc corner spans plus native rectangle bars in one DLL call. Reversed coordinates and invalid masks return `-3`; drawing is clipped to image bounds.
 
 `pillow_c_image_draw_line` mutates one image handle in place for ordinary Pillow `ImageDraw.line` calls. It accepts a pointer to packed `int x, y` pairs, a point count, a caller-packed color, and a width. The current verified path supports `width <= 1` Bresenham-style segments with the final endpoint draw, plus `width > 1` segment filling through Pillow's wide-line quadrilateral rules. Multi-segment wide lines draw each segment separately like Pillow's C core, clipped to image bounds. Curved `joint="curve"` handling is intentionally a wrapper/native future surface.
 

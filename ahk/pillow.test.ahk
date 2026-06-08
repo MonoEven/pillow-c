@@ -1196,6 +1196,146 @@ PillowTestImageDrawPiesliceClipsAndRejectsInvalidArguments(*) {
 
 AhkTest.Test("Pillow ImageDraw.Pieslice clips and rejects invalid arguments", PillowTestImageDrawPiesliceClipsAndRejectsInvalidArguments)
 
+PillowTestImageDrawRoundedRectangleMutatesImagesThroughNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.New("L", [8, 7])
+    wide := Pillow.Image.New("L", [8, 7])
+    fullY := Pillow.Image.New("L", [9, 6])
+    rgb := Pillow.Image.New("RGB", [6, 5])
+    try {
+        draw := Pillow.ImageDraw.Draw(l)
+        returned := draw.RoundedRectangle([1, 1, 6, 5], 2, 7, 9, 1)
+        AhkTest.AssertEqual(draw, returned)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 9, 9, 9, 9, 0, 0,
+            0, 9, 7, 7, 7, 7, 9, 0,
+            0, 9, 7, 7, 7, 7, 9, 0,
+            0, 9, 7, 7, 7, 7, 9, 0,
+            0, 0, 9, 9, 9, 9, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(l.ToBytes()))
+
+        Pillow.ImageDraw.Draw(wide).RoundedRectangle([1, 1, 6, 5], 2, unset, 8, 2)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 8, 8, 8, 8, 0, 0,
+            0, 8, 8, 8, 8, 8, 8, 0,
+            0, 8, 8, 0, 0, 8, 8, 0,
+            0, 8, 8, 8, 8, 8, 8, 0,
+            0, 0, 8, 8, 8, 8, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(wide.ToBytes()))
+
+        Pillow.ImageDraw.Draw(fullY).RoundedRectangle([1, 1, 7, 4], 2, 5, 8, 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 8, 8, 8, 8, 8, 0, 0,
+            0, 8, 5, 5, 5, 5, 5, 8, 0,
+            0, 8, 5, 5, 5, 5, 5, 8, 0,
+            0, 0, 8, 8, 8, 8, 8, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(fullY.ToBytes()))
+
+        Pillow.ImageDraw.Draw(rgb).RoundedRectangle([0, 0, 5, 4], 2, [10, 20, 30], [90, 80, 70], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 90, 80, 70, 90, 80, 70, 90, 80, 70, 90, 80, 70, 0, 0, 0,
+            90, 80, 70, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 90, 80, 70,
+            90, 80, 70, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 90, 80, 70,
+            90, 80, 70, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 90, 80, 70,
+            0, 0, 0, 90, 80, 70, 90, 80, 70, 90, 80, 70, 90, 80, 70, 0, 0, 0,
+        ], PillowTestBufferToArray(rgb.ToBytes()))
+    } finally {
+        rgb.Close()
+        fullY.Close()
+        wide.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.RoundedRectangle mutates images through native path", PillowTestImageDrawRoundedRectangleMutatesImagesThroughNativePath)
+
+PillowTestImageDrawRoundedRectangleSupportsCornersAndFallbacks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    partial := Pillow.Image.New("L", [8, 7])
+    radiusZero := Pillow.Image.New("L", [6, 5])
+    fullEllipse := Pillow.Image.New("L", [7, 7])
+    try {
+        Pillow.ImageDraw.Draw(partial).RoundedRectangle([1, 1, 6, 5], 2, 5, 8, 1, [true, false, true, false])
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 8, 8, 8, 8, 8, 0,
+            0, 8, 5, 5, 5, 5, 8, 0,
+            0, 8, 5, 5, 5, 5, 8, 0,
+            0, 8, 5, 5, 5, 5, 8, 0,
+            0, 8, 8, 8, 8, 8, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(partial.ToBytes()))
+
+        Pillow.ImageDraw.Draw(radiusZero).RoundedRectangle([1, 1, 4, 3], 0, 6, 9, 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            0, 9, 9, 9, 9, 0,
+            0, 9, 6, 6, 9, 0,
+            0, 9, 9, 9, 9, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(radiusZero.ToBytes()))
+
+        Pillow.ImageDraw.Draw(fullEllipse).RoundedRectangle([1, 1, 5, 5], 4, 7, 9, 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 9, 9, 9, 0, 0,
+            0, 9, 7, 7, 7, 9, 0,
+            0, 9, 7, 7, 7, 9, 0,
+            0, 9, 7, 7, 7, 9, 0,
+            0, 0, 9, 9, 9, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(fullEllipse.ToBytes()))
+    } finally {
+        fullEllipse.Close()
+        radiusZero.Close()
+        partial.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.RoundedRectangle supports corners and fallbacks", PillowTestImageDrawRoundedRectangleSupportsCornersAndFallbacks)
+
+PillowTestImageDrawRoundedRectangleClipsAndRejectsInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [6, 5])
+    try {
+        draw := Pillow.ImageDraw.Draw(image)
+        draw.RoundedRectangle([-2, -1, 4, 3], 2, 5, 8, 1)
+        AhkTest.AssertEqual([
+            5, 0, 5, 5, 8, 0,
+            5, 0, 5, 5, 8, 0,
+            5, 0, 5, 5, 8, 0,
+            8, 8, 8, 8, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(image.ToBytes()))
+
+        for args in [
+            [[2, 2, 1, 1], 2, 9, "invalid argument"],
+            [[0, 0, 3, 3], "r", 9, "radius"],
+            [[0, 0, 3, 3], 2, 9, "corners"],
+        ] {
+            try {
+                if args[4] = "corners"
+                    draw.RoundedRectangle(args[1], args[2], args[3], unset, 1, [true, false])
+                else
+                    draw.RoundedRectangle(args[1], args[2], args[3])
+                AhkTest.Fail("Expected ImageDraw.RoundedRectangle to reject invalid arguments")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, args[4]) > 0)
+            }
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.RoundedRectangle clips and rejects invalid arguments", PillowTestImageDrawRoundedRectangleClipsAndRejectsInvalidArguments)
+
 PillowTestImageDrawLineMutatesImageThroughNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.New("L", [6, 5])

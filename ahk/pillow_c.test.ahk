@@ -578,6 +578,42 @@ PillowCImageDrawPieslice(handle, box, start, end, fill := unset, outline := unse
     PillowCAssertStatus(status)
 }
 
+PillowCImageDrawRoundedRectangle(handle, box, radius := 0, fill := unset, outline := unset, width := 1, cornersMask := 15) {
+    fillPtr := 0
+    fillSize := 0
+    fillBuffer := 0
+    if IsSet(fill) {
+        fillBuffer := PillowCBuffer(fill)
+        fillPtr := fillBuffer.Ptr
+        fillSize := fillBuffer.Size
+    }
+    outlinePtr := 0
+    outlineSize := 0
+    outlineBuffer := 0
+    if IsSet(outline) {
+        outlineBuffer := PillowCBuffer(outline)
+        outlinePtr := outlineBuffer.Ptr
+        outlineSize := outlineBuffer.Size
+    }
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_rounded_rectangle",
+        "Ptr", handle,
+        "Int", box[1],
+        "Int", box[2],
+        "Int", box[3],
+        "Int", box[4],
+        "Double", radius,
+        "Ptr", fillPtr,
+        "UPtr", fillSize,
+        "Ptr", outlinePtr,
+        "UPtr", outlineSize,
+        "Int", width,
+        "Int", cornersMask,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageDrawLine(handle, points, fill, width := 0) {
     pointBuffer := PillowCIntBuffer(points)
     fillBuffer := PillowCBuffer(fill)
@@ -4257,6 +4293,136 @@ PillowCTestImageDrawPiesliceClipsAndRejectsInvalidArguments(*) {
 }
 
 AhkTest.Test("pillow_c image draw_pieslice clips and rejects invalid arguments", PillowCTestImageDrawPiesliceClipsAndRejectsInvalidArguments)
+
+PillowCTestImageDrawRoundedRectangleMatchesPillowFillOutlineAndCorners(*) {
+    fillOutline := PillowCCreateImageMode(8, 7, 1)
+    outlineWide := PillowCCreateImageMode(8, 7, 1)
+    partial := PillowCCreateImageMode(8, 7, 1)
+    fullY := PillowCCreateImageMode(9, 6, 1)
+    rgb := PillowCCreateImageMode(6, 5, 3)
+    try {
+        PillowCImageDrawRoundedRectangle(fillOutline, [1, 1, 6, 5], 2, [7], [9], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 9, 9, 9, 9, 0, 0,
+            0, 9, 7, 7, 7, 7, 9, 0,
+            0, 9, 7, 7, 7, 7, 9, 0,
+            0, 9, 7, 7, 7, 7, 9, 0,
+            0, 0, 9, 9, 9, 9, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(fillOutline, 56))
+
+        PillowCImageDrawRoundedRectangle(outlineWide, [1, 1, 6, 5], 2, unset, [8], 2)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 8, 8, 8, 8, 0, 0,
+            0, 8, 8, 8, 8, 8, 8, 0,
+            0, 8, 8, 0, 0, 8, 8, 0,
+            0, 8, 8, 8, 8, 8, 8, 0,
+            0, 0, 8, 8, 8, 8, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(outlineWide, 56))
+
+        PillowCImageDrawRoundedRectangle(partial, [1, 1, 6, 5], 2, [5], [8], 1, 5)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 8, 8, 8, 8, 8, 0,
+            0, 8, 5, 5, 5, 5, 8, 0,
+            0, 8, 5, 5, 5, 5, 8, 0,
+            0, 8, 5, 5, 5, 5, 8, 0,
+            0, 8, 8, 8, 8, 8, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(partial, 56))
+
+        PillowCImageDrawRoundedRectangle(fullY, [1, 1, 7, 4], 2, [5], [8], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 8, 8, 8, 8, 8, 0, 0,
+            0, 8, 5, 5, 5, 5, 5, 8, 0,
+            0, 8, 5, 5, 5, 5, 5, 8, 0,
+            0, 0, 8, 8, 8, 8, 8, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(fullY, 54))
+
+        PillowCImageDrawRoundedRectangle(rgb, [0, 0, 5, 4], 2, [10, 20, 30], [90, 80, 70], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 90, 80, 70, 90, 80, 70, 90, 80, 70, 90, 80, 70, 0, 0, 0,
+            90, 80, 70, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 90, 80, 70,
+            90, 80, 70, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 90, 80, 70,
+            90, 80, 70, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 90, 80, 70,
+            0, 0, 0, 90, 80, 70, 90, 80, 70, 90, 80, 70, 90, 80, 70, 0, 0, 0,
+        ], PillowCImageToArray(rgb, 90))
+    } finally {
+        for handle in [rgb, fullY, partial, outlineWide, fillOutline] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_rounded_rectangle matches Pillow fill outline and corners", PillowCTestImageDrawRoundedRectangleMatchesPillowFillOutlineAndCorners)
+
+PillowCTestImageDrawRoundedRectangleFallbacksClippingAndRejectsInvalidArguments(*) {
+    radiusZero := PillowCCreateImageMode(6, 5, 1)
+    fullEllipse := PillowCCreateImageMode(7, 7, 1)
+    clipped := PillowCCreateImageMode(6, 5, 1)
+    reversed := PillowCCreateImageMode(3, 3, 1)
+    try {
+        PillowCImageDrawRoundedRectangle(radiusZero, [1, 1, 4, 3], 0, [6], [9], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            0, 9, 9, 9, 9, 0,
+            0, 9, 6, 6, 9, 0,
+            0, 9, 9, 9, 9, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(radiusZero, 30))
+
+        PillowCImageDrawRoundedRectangle(fullEllipse, [1, 1, 5, 5], 4, [7], [9], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 9, 9, 9, 0, 0,
+            0, 9, 7, 7, 7, 9, 0,
+            0, 9, 7, 7, 7, 9, 0,
+            0, 9, 7, 7, 7, 9, 0,
+            0, 0, 9, 9, 9, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(fullEllipse, 49))
+
+        PillowCImageDrawRoundedRectangle(clipped, [-2, -1, 4, 3], 2, [5], [8], 1)
+        AhkTest.AssertEqual([
+            5, 0, 5, 5, 8, 0,
+            5, 0, 5, 5, 8, 0,
+            5, 0, 5, 5, 8, 0,
+            8, 8, 8, 8, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(clipped, 30))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_rounded_rectangle",
+            "Ptr", reversed,
+            "Int", 2,
+            "Int", 2,
+            "Int", 1,
+            "Int", 1,
+            "Double", 2,
+            "Ptr", PillowCBuffer([7]),
+            "UPtr", 1,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Int", 1,
+            "Int", 15,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+    } finally {
+        for handle in [reversed, clipped, fullEllipse, radiusZero] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_rounded_rectangle fallbacks clipping and rejects invalid arguments", PillowCTestImageDrawRoundedRectangleFallbacksClippingAndRejectsInvalidArguments)
 
 PillowCTestImageDrawLineMatchesPillowWidthZeroAndOne(*) {
     horizontal := PillowCCreateImageMode(6, 4, 1)
