@@ -2686,7 +2686,7 @@ class Pillow {
             targetMode := Pillow.ModeId(modeName)
             if targetMode = 5 {
                 if !IsSet(dither)
-                    throw Error("Pillow.Image.Convert to mode 1 requires explicit dither until Floyd-Steinberg is implemented", -1)
+                    dither := Pillow.Dither.FLOYDSTEINBERG
                 outHandle := 0
                 Pillow.CheckStatus(DllCall(
                     Pillow.RequireDllPath() "\pillow_c_image_convert_mode_dither",

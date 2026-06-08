@@ -259,6 +259,13 @@ inline std::uint8_t rgb_luma_u8(const std::uint8_t* px)
          0x8000) >> 16);
 }
 
+inline int rgb_luma_1000(const std::uint8_t* px)
+{
+    return static_cast<int>(px[0]) * 299 +
+           static_cast<int>(px[1]) * 587 +
+           static_cast<int>(px[2]) * 114;
+}
+
 bool valid_image_shape(int width, int height, int channels)
 {
     return width > 0 && height > 0 && channels > 0 && channels <= 4;
@@ -2286,6 +2293,60 @@ int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowC
     return PILLOW_C_INVALID_ARGUMENT;
 }
 
+int convert_image_to_mode1_floyd_steinberg_into(const PillowCImage* source, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_1, 1)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+    if (source->mode != PILLOW_C_MODE_L &&
+        source->mode != PILLOW_C_MODE_LA &&
+        source->mode != PILLOW_C_MODE_RGB &&
+        source->mode != PILLOW_C_MODE_RGBA) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        std::vector<int> errors(static_cast<std::size_t>(source->width) + 1u);
+        for (int y = 0; y < source->height; ++y) {
+            int l = 0;
+            int l0 = 0;
+            int l1 = 0;
+            std::uint8_t* dst = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+            const std::uint8_t* src = source->pixels.data() + static_cast<std::size_t>(y) * source->stride;
+            for (int x = 0; x < source->width; ++x) {
+                int value = 0;
+                if (source->mode == PILLOW_C_MODE_L || source->mode == PILLOW_C_MODE_LA) {
+                    value = src[static_cast<std::size_t>(x) * source->channels];
+                } else {
+                    value = rgb_luma_1000(src + static_cast<std::size_t>(x) * source->channels) / 1000;
+                }
+                l = clip_u8_int(value + (l + errors[static_cast<std::size_t>(x) + 1u]) / 16);
+                dst[x] = (l > 128) ? 255u : 0u;
+
+                l -= static_cast<int>(dst[x]);
+                const int l2 = l;
+                const int d2 = l + l;
+                l += d2;
+                errors[static_cast<std::size_t>(x)] = l + l0;
+                l += d2;
+                l0 = l + l1;
+                l1 = l2;
+                l += d2;
+            }
+            errors[static_cast<std::size_t>(source->width)] = l0;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 int convert_image_mode_dither_into(const PillowCImage* source, int target_mode, int dither, PillowCImage* target)
 {
     if (!source || !target) {
@@ -2294,7 +2355,7 @@ int convert_image_mode_dither_into(const PillowCImage* source, int target_mode, 
     if (target_mode != PILLOW_C_MODE_1) {
         return convert_image_mode_into(source, target_mode, target);
     }
-    if (dither != 0) {
+    if (dither != 0 && dither != 3) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
     if (source->mode == PILLOW_C_MODE_1) {
@@ -2305,6 +2366,9 @@ int convert_image_mode_dither_into(const PillowCImage* source, int target_mode, 
     }
     if (source->pixels.empty()) {
         return PILLOW_C_OK;
+    }
+    if (dither == 3) {
+        return convert_image_to_mode1_floyd_steinberg_into(source, target);
     }
 
     const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
@@ -2324,13 +2388,13 @@ int convert_image_mode_dither_into(const PillowCImage* source, int target_mode, 
     }
     if (source->mode == PILLOW_C_MODE_RGB) {
         for (std::size_t i = 0; i < pixels; ++i) {
-            dst[i] = rgb_luma_u8(src + i * 3u) >= 128u ? 255u : 0u;
+            dst[i] = rgb_luma_1000(src + i * 3u) >= 128000 ? 255u : 0u;
         }
         return PILLOW_C_OK;
     }
     if (source->mode == PILLOW_C_MODE_RGBA) {
         for (std::size_t i = 0; i < pixels; ++i) {
-            dst[i] = rgb_luma_u8(src + i * 4u) >= 128u ? 255u : 0u;
+            dst[i] = rgb_luma_1000(src + i * 4u) >= 128000 ? 255u : 0u;
         }
         return PILLOW_C_OK;
     }

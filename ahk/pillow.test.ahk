@@ -2068,13 +2068,23 @@ PillowTestImageConvertToModeOneDitherNoneUsesNativeOperation(*) {
         0, 0, 0, 32, 32, 32, 64, 64, 64, 96, 96, 96,
         128, 128, 128, 160, 160, 160, 192, 192, 192, 224, 224, 224,
     ]))
+    rgbThreshold := Pillow.Image.FromBytes("RGB", [4, 2], PillowTestBuffer([
+        128, 128, 127, 127, 128, 128, 128, 127, 128, 129, 127, 127,
+        127, 129, 127, 127, 127, 129, 255, 255, 255, 0, 0, 0,
+    ]))
     la := Pillow.Image.FromBytes("LA", [4, 1], PillowTestBuffer([0, 0, 255, 128, 127, 255, 128, 255]))
+    rgbaThreshold := Pillow.Image.FromBytes("RGBA", [4, 2], PillowTestBuffer([
+        128, 128, 127, 0, 127, 128, 128, 255, 128, 127, 128, 1, 129, 127, 127, 128,
+        127, 129, 127, 255, 127, 127, 129, 0, 255, 255, 255, 64, 0, 0, 0, 255,
+    ]))
     outputs := []
     try {
         cases := [
             { Out: l.Convert("1", Pillow.Dither.NONE), Bytes: [0x0F] },
             { Out: rgb.Convert("1", Pillow.Dither.NONE), Bytes: [0x00, 0xF0] },
+            { Out: rgbThreshold.Convert("1", Pillow.Dither.NONE), Bytes: [0x00, 0xA0] },
             { Out: la.Convert("1", Pillow.Dither.NONE), Bytes: [0x50] },
+            { Out: rgbaThreshold.Convert("1", Pillow.Dither.NONE), Bytes: [0x00, 0xA0] },
         ]
         for item in cases {
             outputs.Push(item.Out)
@@ -2093,13 +2103,53 @@ PillowTestImageConvertToModeOneDitherNoneUsesNativeOperation(*) {
             if IsObject(image)
                 image.Close()
         }
+        rgbaThreshold.Close()
         la.Close()
+        rgbThreshold.Close()
         rgb.Close()
         l.Close()
     }
 }
 
 AhkTest.Test("Pillow Image.Convert to mode 1 supports dither NONE", PillowTestImageConvertToModeOneDitherNoneUsesNativeOperation)
+
+PillowTestImageConvertToModeOneFloydSteinbergUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [8, 1], PillowTestBuffer([0, 32, 64, 96, 128, 160, 192, 255]))
+    rgb := Pillow.Image.FromBytes("RGB", [4, 2], PillowTestBuffer([
+        128, 128, 127, 127, 128, 128, 128, 127, 128, 129, 127, 127,
+        127, 129, 127, 127, 127, 129, 255, 255, 255, 0, 0, 0,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [4, 2], PillowTestBuffer([
+        0, 0, 0, 0, 80, 80, 80, 255, 140, 140, 140, 1, 255, 255, 255, 128,
+        40, 40, 40, 255, 120, 120, 120, 0, 180, 180, 180, 255, 220, 220, 220, 7,
+    ]))
+    outputs := []
+    try {
+        cases := [
+            { Out: l.Convert("1"), Bytes: [0x17] },
+            { Out: l.Convert("1", Pillow.Dither.FLOYDSTEINBERG), Bytes: [0x17] },
+            { Out: rgb.Convert("1"), Bytes: [0x50, 0xA0] },
+            { Out: rgba.Convert("1"), Bytes: [0x30, 0x50] },
+            { Out: rgba.Convert("1", Pillow.Dither.FLOYDSTEINBERG), Bytes: [0x30, 0x50] },
+        ]
+        for item in cases {
+            outputs.Push(item.Out)
+            AhkTest.AssertEqual("1", item.Out.Mode)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(item.Out.ToBytes()))
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        rgba.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Convert to mode 1 supports Floyd-Steinberg dither", PillowTestImageConvertToModeOneFloydSteinbergUsesNativeOperation)
 
 PillowTestMakeInvertLut(channelCount) {
     lut := []
