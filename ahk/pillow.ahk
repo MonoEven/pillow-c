@@ -3537,7 +3537,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         TransformQuad(size, corners, resample := unset, fillcolor := unset) {
