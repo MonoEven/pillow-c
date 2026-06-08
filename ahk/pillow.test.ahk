@@ -3407,6 +3407,39 @@ PillowTestImageFilterKernelUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Filter applies ImageFilter.Kernel through native path", PillowTestImageFilterKernelUsesNativePath)
 
+PillowTestImageFilterCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [3, 3], PillowTestBuffer([
+        0, 1, 2,
+        3, 4, 5,
+        6, 7, 8,
+    ]))
+    filtered := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        filtered := source.Filter(Pillow.ImageFilter.Kernel([3, 3], [
+            0, 0, 0,
+            0, 1, 0,
+            0, 0, 0,
+        ]))
+
+        AhkTest.AssertEqual("", filtered.Format)
+        AhkTest.AssertEqual("ahk", filtered.Info["author"])
+
+        filtered.Info["author"] := "filter"
+        filtered.Info["extra"] := 1
+        AhkTest.AssertEqual("ahk", source.Info["author"])
+        AhkTest.AssertTrue(!source.Info.Has("extra"))
+    } finally {
+        if IsObject(filtered)
+            filtered.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Filter copies info metadata", PillowTestImageFilterCopiesInfoMetadata)
+
 PillowTestImageFilterKernelRejectsInvalidWrapperArguments(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.New("L", [3, 3])

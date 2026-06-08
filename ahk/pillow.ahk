@@ -3466,8 +3466,12 @@ class Pillow {
         }
 
         Filter(filter) {
-            if IsObject(filter) && HasMethod(filter, "Apply")
-                return filter.Apply(this)
+            if IsObject(filter) && HasMethod(filter, "Apply") {
+                image := filter.Apply(this)
+                if IsObject(image) && image is Pillow.Image
+                    image.Info := Pillow.Image.CopyInfo(this.Info)
+                return image
+            }
             throw Error("Pillow.Image.Filter expects an ImageFilter object", -1)
         }
 
