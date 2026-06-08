@@ -1215,6 +1215,11 @@ class Pillow {
                 return this
             }
 
+            RegularPolygon(boundingCircle, nSides, rotation := 0, fill := unset, outline := unset, width := 1) {
+                points := Pillow.ImageDraw.RegularPolygonVertices(boundingCircle, nSides, rotation)
+                return this.Polygon(points, IsSet(fill) ? fill : unset, IsSet(outline) ? outline : unset, width)
+            }
+
             Polygon(xy, fill := unset, outline := unset, width := 1) {
                 points := Pillow.ImageDraw.FlattenPoints(xy, "Polygon")
 
@@ -1250,6 +1255,65 @@ class Pillow {
                 ))
                 return this
             }
+        }
+
+        static RegularPolygonVertices(boundingCircle, nSides, rotation) {
+            if !(nSides is Integer)
+                throw Error("Pillow.ImageDraw.RegularPolygon n_sides should be an int", -1)
+            if nSides < 3
+                throw Error("Pillow.ImageDraw.RegularPolygon n_sides should be an int > 2", -1)
+
+            if !IsObject(boundingCircle)
+                throw Error("Pillow.ImageDraw.RegularPolygon bounding_circle should be a sequence", -1)
+
+            if boundingCircle.Length = 3 {
+                for value in boundingCircle {
+                    if !(value is Number)
+                        throw Error("Pillow.ImageDraw.RegularPolygon bounding_circle should only contain numeric data", -1)
+                }
+                centroidX := boundingCircle[1]
+                centroidY := boundingCircle[2]
+                radius := boundingCircle[3]
+            } else if boundingCircle.Length = 2 && IsObject(boundingCircle[1]) {
+                center := boundingCircle[1]
+                for value in center {
+                    if !(value is Number)
+                        throw Error("Pillow.ImageDraw.RegularPolygon bounding_circle should only contain numeric data", -1)
+                }
+                if !(boundingCircle[2] is Number)
+                    throw Error("Pillow.ImageDraw.RegularPolygon bounding_circle should only contain numeric data", -1)
+                if center.Length != 2
+                    throw Error("Pillow.ImageDraw.RegularPolygon bounding_circle centre should contain 2D coordinates (e.g. (x, y))", -1)
+                centroidX := center[1]
+                centroidY := center[2]
+                radius := boundingCircle[2]
+            } else {
+                throw Error("Pillow.ImageDraw.RegularPolygon bounding_circle should contain 2D coordinates and a radius (e.g. (x, y, r) or ((x, y), r) )", -1)
+            }
+
+            if radius <= 0
+                throw Error("Pillow.ImageDraw.RegularPolygon bounding_circle radius should be > 0", -1)
+            if !(rotation is Number)
+                throw Error("Pillow.ImageDraw.RegularPolygon rotation should be an int or float", -1)
+
+            points := []
+            degrees := 360 / nSides
+            angle := (270 - 0.5 * degrees) + rotation
+            loop nSides {
+                points.Push(Pillow.ImageDraw.RegularPolygonVertex(centroidX, centroidY, radius, angle))
+                angle += degrees
+                if angle > 360
+                    angle -= 360
+            }
+            return points
+        }
+
+        static RegularPolygonVertex(centroidX, centroidY, radius, angle) {
+            radians := (360 - angle) * 3.141592653589793 / 180
+            return [
+                Round(radius * Cos(radians) + centroidX, 2) + 0.0,
+                Round(radius * Sin(radians) + centroidY, 2) + 0.0,
+            ]
         }
 
         static FlattenPoints(xy, operationName, minPoints := 2) {

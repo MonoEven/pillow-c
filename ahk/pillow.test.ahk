@@ -1045,6 +1045,92 @@ PillowTestImageDrawPolygonClipsAndRejectsInvalidArguments(*) {
 
 AhkTest.Test("Pillow ImageDraw.Polygon clips and rejects invalid arguments", PillowTestImageDrawPolygonClipsAndRejectsInvalidArguments)
 
+PillowTestImageDrawRegularPolygonUsesNativePolygonPath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    triangle := Pillow.Image.New("L", [9, 9])
+    square := Pillow.Image.New("L", [9, 9])
+    pentagon := Pillow.Image.New("L", [9, 9])
+    try {
+        draw := Pillow.ImageDraw.Draw(triangle)
+        returned := draw.RegularPolygon([4, 4, 3], 3, 0, 7, 9)
+        AhkTest.AssertEqual(draw, returned)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 9, 0, 0, 0, 0,
+            0, 0, 0, 9, 9, 0, 0, 0, 0,
+            0, 0, 9, 7, 7, 9, 0, 0, 0,
+            0, 0, 9, 7, 7, 9, 0, 0, 0,
+            0, 9, 9, 9, 9, 9, 9, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(triangle.ToBytes()))
+
+        Pillow.ImageDraw.Draw(square).RegularPolygon([[4, 4], 3], 4, 45, 7, 9)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 9, 0, 0, 0, 0,
+            0, 0, 0, 9, 7, 9, 0, 0, 0,
+            0, 0, 9, 7, 7, 7, 9, 0, 0,
+            0, 9, 7, 7, 7, 7, 7, 9, 0,
+            0, 0, 9, 7, 7, 7, 9, 0, 0,
+            0, 0, 0, 9, 7, 9, 0, 0, 0,
+            0, 0, 0, 0, 9, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(square.ToBytes()))
+
+        Pillow.ImageDraw.Draw(pentagon).RegularPolygon([4, 4, 3], 5, 18, 6)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 6, 0, 0, 0, 0, 0,
+            0, 0, 6, 6, 6, 6, 6, 0, 0,
+            0, 0, 6, 6, 6, 6, 6, 0, 0,
+            0, 6, 6, 6, 6, 6, 6, 0, 0,
+            0, 0, 6, 6, 6, 6, 6, 0, 0,
+            0, 0, 0, 6, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(pentagon.ToBytes()))
+    } finally {
+        pentagon.Close()
+        square.Close()
+        triangle.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.RegularPolygon uses native polygon path", PillowTestImageDrawRegularPolygonUsesNativePolygonPath)
+
+PillowTestImageDrawRegularPolygonRejectsInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [5, 5])
+    try {
+        draw := Pillow.ImageDraw.Draw(image)
+        for args in [
+            [[4, 4, 3], 2, "n_sides"],
+            [[4, 4, 0], 3, "radius"],
+            ["x", 3, "sequence"],
+            [[4, "x", 3], 3, "numeric"],
+            [[[4, 4, 4], 3], 3, "2D"],
+            [[4, 4, 3], 3.5, "n_sides"],
+            [[4, 4, 3], 3, "rotation", "bad"],
+        ] {
+            try {
+                if args.Length = 4
+                    draw.RegularPolygon(args[1], args[2], args[4], 1)
+                else
+                    draw.RegularPolygon(args[1], args[2], 0, 1)
+                AhkTest.Fail("Expected RegularPolygon to reject invalid arguments")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, args[3]) > 0)
+            }
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.RegularPolygon rejects invalid arguments", PillowTestImageDrawRegularPolygonRejectsInvalidArguments)
+
 PillowTestImageCmykFoundationUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer([0, 10, 20, 30, 255, 128, 64, 0]))
