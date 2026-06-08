@@ -6673,6 +6673,61 @@ int convert_palette_image_into(const PillowCImage* source, int target_mode, Pill
     return PILLOW_C_OK;
 }
 
+int nearest_palette_index_rgb(const PillowCImage* palette, std::uint8_t r, std::uint8_t g, std::uint8_t b)
+{
+    const std::size_t color_count = std::min<std::size_t>(palette->palette_rgb.size() / 3u, 256u);
+    int best_index = 0;
+    int best_distance = std::numeric_limits<int>::max();
+    for (std::size_t index = 0; index < color_count; ++index) {
+        const std::size_t offset = index * 3u;
+        const int dr = static_cast<int>(r) - static_cast<int>(palette->palette_rgb[offset + 0u]);
+        const int dg = static_cast<int>(g) - static_cast<int>(palette->palette_rgb[offset + 1u]);
+        const int db = static_cast<int>(b) - static_cast<int>(palette->palette_rgb[offset + 2u]);
+        const int distance = dr * dr + dg * dg + db * db;
+        if (distance < best_distance) {
+            best_distance = distance;
+            best_index = static_cast<int>(index);
+        }
+    }
+    return best_index;
+}
+
+int quantize_palette_image_into(const PillowCImage* source, const PillowCImage* palette, PillowCImage* target)
+{
+    if (!source || !palette || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (palette->mode != PILLOW_C_MODE_P || palette->channels != 1 ||
+        palette->palette_rgb.empty() || palette->palette_rgb.size() > 768u ||
+        palette->palette_rgb.size() % 3u != 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!((source->mode == PILLOW_C_MODE_RGB && source->channels == 3) ||
+          (source->mode == PILLOW_C_MODE_L && source->channels == 1))) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_P, 1)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    target->palette_rgb = palette->palette_rgb;
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    if (source->mode == PILLOW_C_MODE_L) {
+        std::memcpy(target->pixels.data(), source->pixels.data(), pixels);
+        return PILLOW_C_OK;
+    }
+
+    for (std::size_t i = 0; i < pixels; ++i) {
+        const std::uint8_t* src = source->pixels.data() + i * 3u;
+        target->pixels[i] = static_cast<std::uint8_t>(nearest_palette_index_rgb(palette, src[0], src[1], src[2]));
+    }
+    return PILLOW_C_OK;
+}
+
 int remap_palette_image_into(
     const PillowCImage* source,
     const int* dest_map,
@@ -12135,6 +12190,14 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_matrix_into(
     return convert_matrix_image_into(source, target_mode, matrix, matrix_count, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_quantize_palette_into(
+    const PillowCImage* source,
+    const PillowCImage* palette,
+    PillowCImage* target)
+{
+    return quantize_palette_image_into(source, palette, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_merge_bands_into(
     int target_mode,
     const PillowCImage* const* bands,
@@ -14499,6 +14562,41 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_mode_dither(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = convert_image_mode_dither_into(source, target_mode, dither, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_quantize_palette(
+    const PillowCImage* source,
+    const PillowCImage* palette,
+    PillowCImage** out_image)
+{
+    if (!source || !palette || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(source->width, source->height, 1, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            PILLOW_C_MODE_P,
+            1,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = quantize_palette_image_into(source, palette, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

@@ -2465,6 +2465,44 @@ PillowTestPaletteModePreservesPaletteThroughPointOperations(*) {
 
 AhkTest.Test("Pillow P mode preserves palette through point operations", PillowTestPaletteModePreservesPaletteThroughPointOperations)
 
+PillowTestImageQuantizeUsesReferencePalette(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    palette := Pillow.Image.New("P", [1, 1])
+    rgb := Pillow.Image.FromBytes("RGB", [4, 1], PillowTestBuffer([
+        250, 10, 10,
+        10, 240, 20,
+        1, 2, 3,
+        0, 0, 250,
+    ]))
+    l := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 100, 200, 255]))
+    rgbOut := 0
+    lOut := 0
+    try {
+        palette.PutPalette([
+            0, 0, 0,
+            255, 0, 0,
+            0, 255, 0,
+            0, 0, 255,
+        ])
+
+        rgbOut := rgb.Quantize(256, unset, 0, palette, Pillow.Dither.NONE)
+        lOut := l.Quantize(256, unset, 0, palette, Pillow.Dither.NONE)
+
+        AhkTest.AssertEqual("P", rgbOut.Mode)
+        AhkTest.AssertEqual([1, 2, 0, 3], PillowTestBufferToArray(rgbOut.ToBytes()))
+        AhkTest.AssertEqual(palette.GetPalette(), rgbOut.GetPalette())
+        AhkTest.AssertEqual([0, 100, 200, 255], PillowTestBufferToArray(lOut.ToBytes()))
+        AhkTest.AssertEqual(palette.GetPalette(), lOut.GetPalette())
+    } finally {
+        for image in [lOut, rgbOut, l, rgb, palette] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Quantize uses a reference palette", PillowTestImageQuantizeUsesReferencePalette)
+
 PillowTestImageDataPointerSharesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [3, 1])
