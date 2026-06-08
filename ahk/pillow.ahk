@@ -1586,6 +1586,18 @@ class Pillow {
             return value
         }
 
+        static ByteBuffer(values, operationName) {
+            if !IsObject(values)
+                throw Error(operationName " expects an array of byte values", -1)
+            buf := Buffer(values.Length, 0)
+            for index, value in values {
+                if !(value is Integer) || value < 0 || value > 255
+                    throw Error(operationName " byte values must be integers in range 0..255", -1)
+                NumPut("UChar", value, buf, index - 1)
+            }
+            return buf
+        }
+
         static RawModeBuffer(rawmode) {
             buf := Buffer(StrPut(rawmode, "UTF-8"), 0)
             StrPut(rawmode, buf, "UTF-8")
@@ -1764,6 +1776,53 @@ class Pillow {
                 "Int"
             ))
             return out
+        }
+
+        PutPalette(data, rawmode := "RGB") {
+            if this.Mode != "P"
+                throw Error("illegal image mode", -1)
+            if rawmode != "RGB"
+                throw Error("Pillow.Image.PutPalette currently supports only RGB palettes", -1)
+            palette := Pillow.Image.ByteBuffer(data, "Pillow.Image.PutPalette")
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_put_palette_rgb",
+                "Ptr", this.RequireHandle(),
+                "Ptr", palette,
+                "UPtr", palette.Size,
+                "Int"
+            ))
+            return this
+        }
+
+        GetPalette(rawmode := "RGB") {
+            if this.Mode != "P"
+                throw Error("illegal image mode", -1)
+            if rawmode != "RGB"
+                throw Error("Pillow.Image.GetPalette currently supports only RGB palettes", -1)
+            required := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_get_palette_rgb",
+                "Ptr", this.RequireHandle(),
+                "Ptr", 0,
+                "UPtr", 0,
+                "UPtr*", &required,
+                "Int"
+            ))
+            if required = 0
+                return []
+            out := Buffer(required, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_get_palette_rgb",
+                "Ptr", this.RequireHandle(),
+                "Ptr", out,
+                "UPtr", out.Size,
+                "UPtr*", &required,
+                "Int"
+            ))
+            values := []
+            loop out.Size
+                values.Push(NumGet(out, A_Index - 1, "UChar"))
+            return values
         }
 
         PutData(data, scale := 1.0, offset := 0.0) {
@@ -2256,6 +2315,8 @@ class Pillow {
             mode := this.Mode
             if mode = "1"
                 return ["1"]
+            if mode = "P"
+                return ["P"]
             if mode = "L"
                 return ["L"]
             if mode = "LA"

@@ -164,6 +164,49 @@ PillowTestModeOneFromAndToBytesUsePillowBitPacking(*) {
 
 AhkTest.Test("Pillow mode 1 FromBytes and ToBytes use Pillow bit packing", PillowTestModeOneFromAndToBytesUsePillowBitPacking)
 
+PillowTestPaletteModeUsesNativePaletteForConversion(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("P", [4, 1], PillowTestBuffer([0, 1, 2, 3]))
+    outputs := []
+    try {
+        image.PutPalette([
+            0, 0, 0,
+            10, 20, 30,
+            200, 100, 50,
+            255, 255, 255,
+        ])
+
+        AhkTest.AssertEqual("P", image.Mode)
+        AhkTest.AssertEqual(["P"], image.GetBands())
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertEqual([
+            0, 0, 0,
+            10, 20, 30,
+            200, 100, 50,
+            255, 255, 255,
+        ], image.GetPalette())
+
+        rgb := image.Convert("RGB")
+        rgba := image.Convert("RGBA")
+        l := image.Convert("L")
+        outputs.Push(rgb)
+        outputs.Push(rgba)
+        outputs.Push(l)
+
+        AhkTest.AssertEqual([0, 0, 0, 10, 20, 30, 200, 100, 50, 255, 255, 255], PillowTestBufferToArray(rgb.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 0, 255, 10, 20, 30, 255, 200, 100, 50, 255, 255, 255, 255, 255], PillowTestBufferToArray(rgba.ToBytes()))
+        AhkTest.AssertEqual([0, 18, 124, 255], PillowTestBufferToArray(l.ToBytes()))
+    } finally {
+        for item in outputs {
+            if IsObject(item)
+                item.Close()
+        }
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow P mode uses native palette for conversion", PillowTestPaletteModeUsesNativePaletteForConversion)
+
 PillowTestImageDataPointerSharesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [3, 1])

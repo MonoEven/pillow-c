@@ -1162,6 +1162,44 @@ PillowCImageConvertModeInto(sourceHandle, mode, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImagePutPaletteRgb(sourceHandle, values) {
+    data := PillowCBuffer(values)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_put_palette_rgb",
+        "Ptr", sourceHandle,
+        "Ptr", data,
+        "UPtr", data.Size,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageGetPaletteRgb(sourceHandle) {
+    required := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_get_palette_rgb",
+        "Ptr", sourceHandle,
+        "Ptr", 0,
+        "UPtr", 0,
+        "UPtr*", &required,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    out := Buffer(required, 0)
+    if required = 0
+        return []
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_get_palette_rgb",
+        "Ptr", sourceHandle,
+        "Ptr", out,
+        "UPtr", out.Size,
+        "UPtr*", &required,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return PillowCBufferToArray(out)
+}
+
 PillowCImageHandleArray(handles) {
     buf := Buffer(handles.Length * A_PtrSize, 0)
     for index, handle in handles
@@ -2003,7 +2041,8 @@ AhkTest.Test("pillow_c maps core Pillow mode names to native mode ids", (*) => (
     AhkTest.AssertEqual(1, PillowCModeFromString("L")),
     AhkTest.AssertEqual(2, PillowCModeFromString("LA")),
     AhkTest.AssertEqual(3, PillowCModeFromString("RGB")),
-    AhkTest.AssertEqual(4, PillowCModeFromString("RGBA"))
+    AhkTest.AssertEqual(4, PillowCModeFromString("RGBA")),
+    AhkTest.AssertEqual(6, PillowCModeFromString("P"))
 ))
 
 AhkTest.Test("pillow_c maps native mode ids back to Pillow mode names", (*) => (
@@ -2012,6 +2051,7 @@ AhkTest.Test("pillow_c maps native mode ids back to Pillow mode names", (*) => (
     la := PillowCModeName(2),
     rgb := PillowCModeName(3),
     rgba := PillowCModeName(4),
+    p := PillowCModeName(6),
     AhkTest.AssertEqual("1", one.Text),
     AhkTest.AssertEqual(2, one.Required),
     AhkTest.AssertEqual("L", l.Text),
@@ -2021,7 +2061,9 @@ AhkTest.Test("pillow_c maps native mode ids back to Pillow mode names", (*) => (
     AhkTest.AssertEqual("RGB", rgb.Text),
     AhkTest.AssertEqual(4, rgb.Required),
     AhkTest.AssertEqual("RGBA", rgba.Text),
-    AhkTest.AssertEqual(5, rgba.Required)
+    AhkTest.AssertEqual(5, rgba.Required),
+    AhkTest.AssertEqual("P", p.Text),
+    AhkTest.AssertEqual(2, p.Required)
 ))
 
 AhkTest.Test("pillow_c_blend_u8 matches Pillow L alpha 0.25", (*) =>
@@ -2176,6 +2218,31 @@ PillowCTestImageCopyIsIndependent(*) {
 }
 
 AhkTest.Test("pillow_c image copy is independent", PillowCTestImageCopyIsIndependent)
+
+PillowCTestImageCopyPreservesPalette(*) {
+    source := PillowCCreateImageMode(2, 1, 6)
+    copied := 0
+    try {
+        PillowCImageSetBytes(source, [1, 0])
+        PillowCImagePutPaletteRgb(source, [0, 0, 0, 10, 20, 30])
+        status := DllCall(PillowCDllPath() "\pillow_c_image_copy", "Ptr", source, "Ptr*", &copied, "Int")
+        PillowCAssertStatus(status)
+        PillowCImagePutPaletteRgb(source, [0, 0, 0, 40, 50, 60])
+        AhkTest.AssertEqual([0, 0, 0, 10, 20, 30], PillowCImageGetPaletteRgb(copied))
+        rgb := PillowCImageConvertMode(copied, 3)
+        try {
+            AhkTest.AssertEqual([10, 20, 30, 0, 0, 0], PillowCImageToArray(rgb, 6))
+        } finally {
+            PillowCFreeImage(rgb)
+        }
+    } finally {
+        if copied
+            PillowCFreeImage(copied)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image copy preserves P palette", PillowCTestImageCopyPreservesPalette)
 
 PillowCTestImageCopyIntoReusesTargetHandle(*) {
     source := PillowCCreateImage(2, 1, 3)
@@ -5851,6 +5918,44 @@ PillowCTestImageConvertModeDitherFloydSteinbergCoversModeOneTarget(*) {
 }
 
 AhkTest.Test("pillow_c image convert_mode_dither Floyd-Steinberg covers mode 1 target", PillowCTestImageConvertModeDitherFloydSteinbergCoversModeOneTarget)
+
+PillowCTestPaletteModeConvertsThroughNativePalette(*) {
+    source := PillowCCreateImageMode(4, 1, 6)
+    outputs := []
+    try {
+        PillowCImageSetBytes(source, [0, 1, 2, 3])
+        PillowCImagePutPaletteRgb(source, [
+            0, 0, 0,
+            10, 20, 30,
+            200, 100, 50,
+            255, 255, 255,
+        ])
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowCImageToArray(source, 4))
+        AhkTest.AssertEqual([
+            0, 0, 0,
+            10, 20, 30,
+            200, 100, 50,
+            255, 255, 255,
+        ], PillowCImageGetPaletteRgb(source))
+
+        rgb := PillowCImageConvertMode(source, 3)
+        rgba := PillowCImageConvertMode(source, 4)
+        l := PillowCImageConvertMode(source, 1)
+        outputs.Push(rgb)
+        outputs.Push(rgba)
+        outputs.Push(l)
+
+        AhkTest.AssertEqual([0, 0, 0, 10, 20, 30, 200, 100, 50, 255, 255, 255], PillowCImageToArray(rgb, 12))
+        AhkTest.AssertEqual([0, 0, 0, 255, 10, 20, 30, 255, 200, 100, 50, 255, 255, 255, 255, 255], PillowCImageToArray(rgba, 16))
+        AhkTest.AssertEqual([0, 18, 124, 255], PillowCImageToArray(l, 4))
+    } finally {
+        for handle in outputs
+            PillowCFreeImage(handle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c P mode converts through native RGB palette", PillowCTestPaletteModeConvertsThroughNativePalette)
 
 PillowCTestImageConvertModeIntoReusesTargetHandle(*) {
     source := PillowCCreateImageMode(2, 1, 3)

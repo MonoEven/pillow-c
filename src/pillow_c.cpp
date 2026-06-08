@@ -22,6 +22,7 @@ constexpr int PILLOW_C_MODE_LA = 2;
 constexpr int PILLOW_C_MODE_RGB = 3;
 constexpr int PILLOW_C_MODE_RGBA = 4;
 constexpr int PILLOW_C_MODE_1 = 5;
+constexpr int PILLOW_C_MODE_P = 6;
 
 constexpr int PILLOW_C_RESAMPLE_NEAREST = 0;
 constexpr int PILLOW_C_RESAMPLE_LANCZOS = 1;
@@ -41,6 +42,7 @@ struct PillowCImage {
     int channels;
     std::size_t stride;
     std::vector<std::uint8_t> pixels;
+    std::vector<std::uint8_t> palette_rgb;
 };
 
 struct ResampleCoefficients {
@@ -99,6 +101,7 @@ struct ColorCountEntry {
 enum class RawCodecKind {
     Unsupported,
     One,
+    P,
     L,
     LA,
     RGB,
@@ -281,6 +284,8 @@ int channels_for_mode(int mode)
     switch (mode) {
     case PILLOW_C_MODE_1:
         return 1;
+    case PILLOW_C_MODE_P:
+        return 1;
     case PILLOW_C_MODE_L:
         return 1;
     case PILLOW_C_MODE_LA:
@@ -315,6 +320,8 @@ const char* mode_name(int mode)
     switch (mode) {
     case PILLOW_C_MODE_1:
         return "1";
+    case PILLOW_C_MODE_P:
+        return "P";
     case PILLOW_C_MODE_L:
         return "L";
     case PILLOW_C_MODE_LA:
@@ -338,6 +345,11 @@ RawCodecSpec raw_decode_spec(int target_mode, const char* raw_mode)
     case PILLOW_C_MODE_1:
         if (std::strcmp(raw_mode, "1") == 0) {
             return {RawCodecKind::One, 0};
+        }
+        break;
+    case PILLOW_C_MODE_P:
+        if (std::strcmp(raw_mode, "P") == 0) {
+            return {RawCodecKind::P, 1};
         }
         break;
     case PILLOW_C_MODE_L:
@@ -401,6 +413,11 @@ RawCodecSpec raw_encode_spec(int source_mode, const char* raw_mode)
     case PILLOW_C_MODE_1:
         if (std::strcmp(raw_mode, "1") == 0) {
             return {RawCodecKind::One, 0};
+        }
+        break;
+    case PILLOW_C_MODE_P:
+        if (std::strcmp(raw_mode, "P") == 0) {
+            return {RawCodecKind::P, 1};
         }
         break;
     case PILLOW_C_MODE_L:
@@ -602,6 +619,9 @@ bool image_shape_matches(const PillowCImage* left, const PillowCImage* right)
 void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::uint8_t* dst, int target_mode)
 {
     switch (target_mode) {
+    case PILLOW_C_MODE_P:
+        dst[0] = src[0];
+        return;
     case PILLOW_C_MODE_L:
         dst[0] = src[0];
         return;
@@ -757,6 +777,9 @@ int get_mode1_raw_bytes_image(
 void encode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::uint8_t* dst, int source_mode)
 {
     switch (source_mode) {
+    case PILLOW_C_MODE_P:
+        dst[0] = src[0];
+        return;
     case PILLOW_C_MODE_L:
         dst[0] = src[0];
         return;
@@ -2112,6 +2135,63 @@ int put_alpha_image_into(const PillowCImage* source, const PillowCImage* alpha, 
     return PILLOW_C_OK;
 }
 
+void palette_rgb_at(const PillowCImage* source, std::uint8_t index, std::uint8_t* out_rgb)
+{
+    const std::size_t offset = static_cast<std::size_t>(index) * 3u;
+    if (source && offset + 2u < source->palette_rgb.size()) {
+        out_rgb[0] = source->palette_rgb[offset];
+        out_rgb[1] = source->palette_rgb[offset + 1u];
+        out_rgb[2] = source->palette_rgb[offset + 2u];
+        return;
+    }
+    out_rgb[0] = 0;
+    out_rgb[1] = 0;
+    out_rgb[2] = 0;
+}
+
+int convert_palette_image_into(const PillowCImage* source, int target_mode, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (source->mode != PILLOW_C_MODE_P || source->channels != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int target_channels = channels_for_mode(target_mode);
+    if (target_channels == 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, source->width, source->height, target_mode, target_channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    for (std::size_t i = 0; i < pixels; ++i) {
+        std::uint8_t rgb[3]{};
+        palette_rgb_at(source, source->pixels[i], rgb);
+        if (target_mode == PILLOW_C_MODE_RGB) {
+            std::uint8_t* dst = target->pixels.data() + i * 3u;
+            dst[0] = rgb[0];
+            dst[1] = rgb[1];
+            dst[2] = rgb[2];
+        } else if (target_mode == PILLOW_C_MODE_RGBA) {
+            std::uint8_t* dst = target->pixels.data() + i * 4u;
+            dst[0] = rgb[0];
+            dst[1] = rgb[1];
+            dst[2] = rgb[2];
+            dst[3] = 255;
+        } else if (target_mode == PILLOW_C_MODE_L) {
+            target->pixels[i] = rgb_luma_u8(rgb);
+        } else {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowCImage* target)
 {
     if (!source || !target) {
@@ -2129,13 +2209,21 @@ int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowC
         if (!source->pixels.empty()) {
             std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
         }
+        target->palette_rgb = source->palette_rgb;
         return PILLOW_C_OK;
     }
     if (source->pixels.empty()) {
+        if (source->mode == target_mode) {
+            target->palette_rgb = source->palette_rgb;
+        }
         return PILLOW_C_OK;
     }
 
     const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    if (source->mode == PILLOW_C_MODE_P) {
+        return convert_palette_image_into(source, target_mode, target);
+    }
+
     if (target_mode == PILLOW_C_MODE_L && source->mode == PILLOW_C_MODE_LA) {
         for (std::size_t i = 0; i < pixels; ++i) {
             target->pixels[i] = source->pixels[i * 2];
@@ -5611,6 +5699,10 @@ extern "C" __declspec(dllexport) int pillow_c_mode_from_string(
         *out_mode = PILLOW_C_MODE_RGBA;
         return PILLOW_C_OK;
     }
+    if (std::strcmp(mode_name_text, "P") == 0) {
+        *out_mode = PILLOW_C_MODE_P;
+        return PILLOW_C_OK;
+    }
     *out_mode = 0;
     return PILLOW_C_INVALID_ARGUMENT;
 }
@@ -6014,6 +6106,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_copy_into(
     if (!source->pixels.empty()) {
         std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
     }
+    target->palette_rgb = source->palette_rgb;
     return PILLOW_C_OK;
 }
 
@@ -7137,6 +7230,52 @@ extern "C" __declspec(dllexport) int pillow_c_image_set_bytes(
     return PILLOW_C_OK;
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_put_palette_rgb(
+    PillowCImage* image,
+    const std::uint8_t* data,
+    std::size_t size)
+{
+    if (!image || (!data && size > 0)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_P || image->channels != 1 || size % 3u != 0 || size > 768u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    try {
+        image->palette_rgb.assign(data, data + size);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_get_palette_rgb(
+    const PillowCImage* image,
+    std::uint8_t* out,
+    std::size_t out_size,
+    std::size_t* out_required)
+{
+    if (!image || !out_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_P || image->channels != 1) {
+        *out_required = 0;
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t required = image->palette_rgb.size();
+    *out_required = required;
+    if (!out) {
+        return PILLOW_C_OK;
+    }
+    if (out_size < required) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (required > 0) {
+        std::memcpy(out, image->palette_rgb.data(), required);
+    }
+    return PILLOW_C_OK;
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_set_raw_bytes(
     PillowCImage* image,
     const std::uint8_t* data,
@@ -7301,7 +7440,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_copy(
     }
     *out_image = nullptr;
     try {
-        auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, source->pixels};
+        auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, source->pixels, source->palette_rgb};
         *out_image = image;
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
