@@ -4551,6 +4551,34 @@ PillowTestImageRotateNearestUsesNativeAffinePath(*) {
 
 AhkTest.Test("Pillow Image.Rotate NEAREST uses native affine path", PillowTestImageRotateNearestUsesNativeAffinePath)
 
+PillowTestImageRotateCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([
+        10, 20,
+        30, 40,
+    ]))
+    rotated := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        rotated := source.Rotate(45, Pillow.Resampling.NEAREST)
+
+        AhkTest.AssertEqual("", rotated.Format)
+        AhkTest.AssertEqual("ahk", rotated.Info["author"])
+
+        rotated.Info["author"] := "rotate"
+        rotated.Info["extra"] := 1
+        AhkTest.AssertEqual("ahk", source.Info["author"])
+        AhkTest.AssertTrue(!source.Info.Has("extra"))
+    } finally {
+        if IsObject(rotated)
+            rotated.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Rotate copies info metadata", PillowTestImageRotateCopiesInfoMetadata)
+
 PillowTestImageRotateAndTransformFillColorMatchModeOneSemantics(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("1", [2, 1], PillowTestBuffer([0x80]))

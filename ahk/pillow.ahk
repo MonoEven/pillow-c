@@ -3699,7 +3699,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         AlphaComposite(image, dest := unset, source := unset) {
