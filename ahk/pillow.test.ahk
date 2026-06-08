@@ -926,6 +926,96 @@ PillowTestImageDrawCircleRejectsInvalidArguments(*) {
 
 AhkTest.Test("Pillow ImageDraw.Circle rejects invalid arguments", PillowTestImageDrawCircleRejectsInvalidArguments)
 
+PillowTestImageDrawArcMutatesImagesThroughNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.New("L", [7, 7])
+    wide := Pillow.Image.New("L", [7, 7])
+    rgb := Pillow.Image.New("RGB", [5, 4])
+    try {
+        draw := Pillow.ImageDraw.Draw(l)
+        returned := draw.Arc([1, 1, 5, 5], 0, 90, 7, 1)
+        AhkTest.AssertEqual(draw, returned)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 7, 0,
+            0, 0, 0, 0, 0, 7, 0,
+            0, 0, 0, 7, 7, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(l.ToBytes()))
+
+        Pillow.ImageDraw.Draw(wide).Arc([1, 1, 5, 5], 0, 270, 8, 2)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 8, 8, 0, 0, 0,
+            0, 8, 8, 8, 0, 0, 0,
+            0, 8, 8, 0, 8, 8, 0,
+            0, 8, 8, 8, 8, 8, 0,
+            0, 0, 8, 8, 8, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(wide.ToBytes()))
+
+        Pillow.ImageDraw.Draw(rgb).Arc([0, 0, 4, 3], 0, 180, [10, 20, 30], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 20, 30,
+            0, 0, 0, 10, 20, 30, 10, 20, 30, 10, 20, 30, 0, 0, 0,
+        ], PillowTestBufferToArray(rgb.ToBytes()))
+    } finally {
+        rgb.Close()
+        wide.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Arc mutates images through native path", PillowTestImageDrawArcMutatesImagesThroughNativePath)
+
+PillowTestImageDrawArcClipsAndRejectsInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [6, 5])
+    widthZero := Pillow.Image.New("L", [4, 4])
+    try {
+        draw := Pillow.ImageDraw.Draw(image)
+        draw.Arc([-2, -1, 3, 3], 0, 270, 6, 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 6, 0, 0,
+            0, 0, 0, 6, 0, 0,
+            6, 6, 6, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(image.ToBytes()))
+
+        Pillow.ImageDraw.Draw(widthZero).Arc([0, 0, 3, 3], 0, 360, 5, 0)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+        ], PillowTestBufferToArray(widthZero.ToBytes()))
+
+        try {
+            draw.Arc([2, 2, 1, 1], 0, 90, 9)
+            AhkTest.Fail("Expected ImageDraw.Arc to reject reversed coordinates")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+
+        try {
+            draw.Arc([0, 0, 3, 3], "start", 90, 9)
+            AhkTest.Fail("Expected ImageDraw.Arc to reject non-numeric angles")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "angles") > 0)
+        }
+    } finally {
+        widthZero.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Arc clips and rejects invalid arguments", PillowTestImageDrawArcClipsAndRejectsInvalidArguments)
+
 PillowTestImageDrawLineMutatesImageThroughNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.New("L", [6, 5])

@@ -1237,6 +1237,30 @@ class Pillow {
                 ], IsSet(fill) ? fill : unset, IsSet(outline) ? outline : unset, width)
             }
 
+            Arc(box, start, end, fill := unset, width := 1) {
+                if !IsObject(box) || box.Length != 4
+                    throw Error("Pillow.ImageDraw.Arc expects box [left, top, right, bottom]", -1)
+                if !(start is Number) || !(end is Number)
+                    throw Error("Pillow.ImageDraw.Arc angles must be numeric", -1)
+
+                color := this.Image.PasteColorBuffer(IsSet(fill) ? fill : 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_draw_arc",
+                    "Ptr", this.Image.RequireHandle(),
+                    "Int", box[1],
+                    "Int", box[2],
+                    "Int", box[3],
+                    "Int", box[4],
+                    "Double", start,
+                    "Double", end,
+                    "Ptr", color,
+                    "UPtr", color.Size,
+                    "Int", width,
+                    "Int"
+                ))
+                return this
+            }
+
             Line(xy, fill := unset, width := 0, joint := unset) {
                 if IsSet(joint) && joint != "" && joint != 0
                     throw Error("Pillow.ImageDraw.Line joint is not supported yet", -1)

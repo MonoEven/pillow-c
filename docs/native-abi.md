@@ -88,6 +88,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_putpixel`
 - `pillow_c_image_draw_rectangle`
 - `pillow_c_image_draw_ellipse`
+- `pillow_c_image_draw_arc`
 - `pillow_c_image_draw_line`
 - `pillow_c_image_draw_points`
 - `pillow_c_image_draw_polygon`
@@ -234,6 +235,8 @@ Reusable target operations:
 `pillow_c_image_draw_rectangle` mutates one image handle in place for the first ImageDraw native primitive. It accepts inclusive integer coordinates, optional caller-packed fill and outline colors, and an outline width. The behavior follows Pillow 11.3.0's `ImageDraw.rectangle`: fill is applied first, outline is skipped when `width <= 0`, `right < left` or `bottom < top` returns `-3`, and drawing is clipped to the image bounds. The AHK facade owns Pillow-style scalar/tuple color packing before making this single native call.
 
 `pillow_c_image_draw_ellipse` mutates one image handle in place for Pillow `ImageDraw.ellipse` calls. It accepts inclusive integer bounding-box coordinates, optional caller-packed fill and outline colors, and an outline width. The implementation follows Pillow 11.3.0's `ellipseNew` integer span generator: fill is applied first with the native full-width ellipse rule, outline is skipped when `width == 0`, reversed coordinates return `-3`, and drawing is clipped to the image bounds.
+
+`pillow_c_image_draw_arc` mutates one image handle in place for Pillow `ImageDraw.arc` calls. It accepts inclusive integer bounding-box coordinates, start/end angles in degrees, a caller-packed stroke color, and a width. The implementation follows Pillow 11.3.0's `ImagingDrawArc` and `arcNew` paths: angles are normalized before drawing, full-circle arcs reuse the native ellipse outline path, equal start/end angles are a no-op, and ordinary arcs use the Pillow clip-ellipse half-plane tree over integer ellipse spans. Reversed coordinates return `-3`, `width <= 0` is a no-op, and drawing is clipped to the image bounds.
 
 `pillow_c_image_draw_line` mutates one image handle in place for ordinary Pillow `ImageDraw.line` calls. It accepts a pointer to packed `int x, y` pairs, a point count, a caller-packed color, and a width. The current verified path supports `width <= 1` Bresenham-style segments with the final endpoint draw, plus `width > 1` segment filling through Pillow's wide-line quadrilateral rules. Multi-segment wide lines draw each segment separately like Pillow's C core, clipped to image bounds. Curved `joint="curve"` handling is intentionally a wrapper/native future surface.
 

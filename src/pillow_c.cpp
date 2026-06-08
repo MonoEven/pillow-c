@@ -41,6 +41,7 @@ constexpr int PILLOW_C_RESAMPLE_BOX = 4;
 constexpr int PILLOW_C_RESAMPLE_HAMMING = 5;
 
 constexpr int PILLOW_C_GRADIENT_SIZE = 256;
+constexpr double PILLOW_C_PI = 3.1415926535897932384626433832795;
 constexpr double PILLOW_C_SQRT2 = 1.4142135623730950488;
 
 constexpr int RESAMPLE_PRECISION_BITS = 32 - 8 - 2;
@@ -145,6 +146,35 @@ struct EllipseState {
     int bufcnt;
     bool finished;
     bool leftmost;
+};
+
+enum class ClipNodeType {
+    And,
+    Or,
+    Clip,
+};
+
+struct ClipNode {
+    ClipNodeType type = ClipNodeType::Clip;
+    double a = 0.0;
+    double b = 0.0;
+    double c = 0.0;
+    int left = -1;
+    int right = -1;
+};
+
+struct ClipEvent {
+    std::int32_t x;
+    int type;
+};
+
+struct ClipEllipseState {
+    EllipseState ellipse;
+    int root = -1;
+    ClipNode nodes[7];
+    int node_count = 0;
+    std::vector<ClipEvent> events;
+    std::int32_t y = 0;
 };
 
 enum class RawCodecKind {
@@ -3976,6 +4006,228 @@ void draw_ellipse_spans(
     }
 }
 
+int clip_node(ClipEllipseState* state, ClipNodeType type)
+{
+    const int index = state->node_count++;
+    state->nodes[index].type = type;
+    state->nodes[index].a = 0.0;
+    state->nodes[index].b = 0.0;
+    state->nodes[index].c = 0.0;
+    state->nodes[index].left = -1;
+    state->nodes[index].right = -1;
+    return index;
+}
+
+void clip_tree_transpose(ClipEllipseState* state, int node_index)
+{
+    if (node_index < 0) {
+        return;
+    }
+    ClipNode& node = state->nodes[node_index];
+    if (node.type == ClipNodeType::Clip) {
+        std::swap(node.a, node.b);
+    } else {
+        clip_tree_transpose(state, node.left);
+        clip_tree_transpose(state, node.right);
+    }
+}
+
+bool clip_tree_do_clip(
+    const ClipEllipseState* state,
+    int node_index,
+    std::int32_t x0,
+    std::int32_t y,
+    std::int32_t x1,
+    std::vector<ClipEvent>* out_events)
+{
+    if (node_index < 0) {
+        out_events->push_back({x0, 1});
+        out_events->push_back({x1, -1});
+        return true;
+    }
+
+    const ClipNode& node = state->nodes[node_index];
+    if (node.type == ClipNodeType::Clip) {
+        constexpr double eps = 1e-9;
+        const double a = node.a;
+        const double b = node.b;
+        const double c = node.c;
+        if (std::fabs(a) < eps) {
+            if (b * y + c < -eps) {
+                x0 = 1;
+                x1 = 0;
+            }
+        } else {
+            const double ix = -(b * y + c) / a;
+            if (a * x0 + b * y + c < eps) {
+                x0 = static_cast<std::int32_t>(std::lround(std::fmax(x0, ix)));
+            }
+            if (a * x1 + b * y + c < eps) {
+                x1 = static_cast<std::int32_t>(std::lround(std::fmin(x1, ix)));
+            }
+        }
+        if (x0 <= x1) {
+            out_events->push_back({x0, 1});
+            out_events->push_back({x1, -1});
+        }
+        return true;
+    }
+
+    std::vector<ClipEvent> left_events;
+    std::vector<ClipEvent> right_events;
+    try {
+        left_events.reserve(8);
+        right_events.reserve(8);
+    } catch (const std::bad_alloc&) {
+        return false;
+    }
+    if (!clip_tree_do_clip(state, node.left, x0, y, x1, &left_events) ||
+        !clip_tree_do_clip(state, node.right, x0, y, x1, &right_events)) {
+        return false;
+    }
+
+    std::size_t left_index = 0;
+    std::size_t right_index = 0;
+    int left_depth = 0;
+    int right_depth = 0;
+    bool has_tail = false;
+    int tail_type = 0;
+
+    while (left_index < left_events.size() || right_index < right_events.size()) {
+        ClipEvent event{};
+        if (right_index >= right_events.size() ||
+            (left_index < left_events.size() &&
+             (left_events[left_index].x < right_events[right_index].x ||
+              (left_events[left_index].x == right_events[right_index].x &&
+               left_events[left_index].type > right_events[right_index].type)))) {
+            event = left_events[left_index++];
+            left_depth += event.type;
+        } else {
+            event = right_events[right_index++];
+            right_depth += event.type;
+        }
+
+        const bool take_or =
+            node.type == ClipNodeType::Or &&
+            ((event.type == 1 && (!has_tail || tail_type == -1)) ||
+             (event.type == -1 && left_depth == 0 && right_depth == 0));
+        const bool take_and =
+            node.type == ClipNodeType::And &&
+            ((event.type == 1 && (!has_tail || tail_type == -1) && left_depth > 0 && right_depth > 0) ||
+             (event.type == -1 && has_tail && tail_type == 1 && (left_depth == 0 || right_depth == 0)));
+
+        if (take_or || take_and) {
+            out_events->push_back(event);
+            has_tail = true;
+            tail_type = event.type;
+        }
+    }
+
+    return true;
+}
+
+void normalize_arc_angles(double* start, double* end)
+{
+    if (*end - *start >= 360.0) {
+        *start = 0.0;
+        *end = 360.0;
+        return;
+    }
+
+    *start = std::fmod(*start < 0.0 ? 360.0 - std::fmod(-*start, 360.0) : *start, 360.0);
+    *end = *start + std::fmod(*end < *start ? 360.0 - std::fmod(*start - *end, 360.0) : *end - *start, 360.0);
+}
+
+void arc_init(ClipEllipseState* state, std::int32_t a, std::int32_t b, std::int32_t width, double start, double end)
+{
+    if (a < b) {
+        arc_init(state, b, a, width, 90.0 - end, 90.0 - start);
+        ellipse_init(&state->ellipse, a, b, width);
+        clip_tree_transpose(state, state->root);
+        return;
+    }
+
+    ellipse_init(&state->ellipse, a, b, width);
+    state->root = -1;
+    state->node_count = 0;
+    state->events.clear();
+    normalize_arc_angles(&start, &end);
+
+    if (end == start + 360.0) {
+        return;
+    }
+
+    const int left_clip = clip_node(state, ClipNodeType::Clip);
+    const int right_clip = clip_node(state, ClipNodeType::Clip);
+    ClipNode& left = state->nodes[left_clip];
+    ClipNode& right = state->nodes[right_clip];
+    left.a = -a * std::sin(start * PILLOW_C_PI / 180.0);
+    left.b = b * std::cos(start * PILLOW_C_PI / 180.0);
+    left.c = (static_cast<double>(a) * a - static_cast<double>(b) * b) * std::sin(start * PILLOW_C_PI / 90.0) / 2.0;
+    right.a = a * std::sin(end * PILLOW_C_PI / 180.0);
+    right.b = -b * std::cos(end * PILLOW_C_PI / 180.0);
+    right.c = (static_cast<double>(b) * b - static_cast<double>(a) * a) * std::sin(end * PILLOW_C_PI / 90.0) / 2.0;
+
+    if (std::fmod(start, 180.0) == 0.0 || std::fmod(end, 180.0) == 0.0) {
+        state->root = clip_node(state, end - start < 180.0 ? ClipNodeType::And : ClipNodeType::Or);
+        state->nodes[state->root].left = left_clip;
+        state->nodes[state->root].right = right_clip;
+    } else if ((static_cast<int>(start / 180.0) + static_cast<int>(end / 180.0)) % 2 == 1) {
+        state->root = clip_node(state, ClipNodeType::Or);
+        const int left_and = clip_node(state, ClipNodeType::And);
+        const int left_half = clip_node(state, ClipNodeType::Clip);
+        const int right_and = clip_node(state, ClipNodeType::And);
+        const int right_half = clip_node(state, ClipNodeType::Clip);
+        state->nodes[state->root].left = left_and;
+        state->nodes[state->root].right = right_and;
+        state->nodes[left_and].left = left_half;
+        state->nodes[left_and].right = left_clip;
+        state->nodes[right_and].left = right_half;
+        state->nodes[right_and].right = right_clip;
+        state->nodes[left_half].b = static_cast<int>(start / 180.0) % 2 == 0 ? 1.0 : -1.0;
+        state->nodes[right_half].b = static_cast<int>(end / 180.0) % 2 == 0 ? 1.0 : -1.0;
+    } else {
+        state->root = clip_node(state, end - start < 180.0 ? ClipNodeType::And : ClipNodeType::Or);
+        const int combined = clip_node(state, end - start < 180.0 ? ClipNodeType::And : ClipNodeType::Or);
+        const int half = clip_node(state, ClipNodeType::Clip);
+        state->nodes[state->root].left = combined;
+        state->nodes[state->root].right = half;
+        state->nodes[combined].left = left_clip;
+        state->nodes[combined].right = right_clip;
+        state->nodes[half].b = end < 180.0 || end > 540.0 ? 1.0 : -1.0;
+    }
+}
+
+int clip_ellipse_next(ClipEllipseState* state, std::int32_t* out_x0, std::int32_t* out_y, std::int32_t* out_x1)
+{
+    std::int32_t x0 = 0;
+    std::int32_t y = 0;
+    std::int32_t x1 = 0;
+    while (state->events.empty() && ellipse_next(&state->ellipse, &x0, &y, &x1)) {
+        try {
+            if (!clip_tree_do_clip(state, state->root, x0, y, x1, &state->events)) {
+                return PILLOW_C_ALLOCATION_FAILED;
+            }
+        } catch (const std::bad_alloc&) {
+            return PILLOW_C_ALLOCATION_FAILED;
+        }
+        state->y = y;
+    }
+
+    if (!state->events.empty()) {
+        *out_y = state->y;
+        const ClipEvent left = state->events.front();
+        state->events.erase(state->events.begin());
+        const ClipEvent right = state->events.front();
+        state->events.erase(state->events.begin());
+        *out_x0 = left.x;
+        *out_x1 = right.x;
+        return PILLOW_C_OK;
+    }
+
+    return PILLOW_C_INVALID_LENGTH;
+}
+
 int round_up_away_from_zero(float value)
 {
     return value >= 0.0f
@@ -4476,6 +4728,69 @@ int draw_ellipse_image(
         draw_ellipse_spans(image, left, top, right, bottom, outline, width);
     }
     return PILLOW_C_OK;
+}
+
+int draw_arc_image(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    double start,
+    double end,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    int width)
+{
+    if (!image || !color) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (color_size != static_cast<std::size_t>(image->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (right < left || bottom < top || !std::isfinite(start) || !std::isfinite(end)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->pixels.empty() || width <= 0) {
+        return PILLOW_C_OK;
+    }
+
+    normalize_arc_angles(&start, &end);
+    if (start + 360.0 == end) {
+        return draw_ellipse_image(image, left, top, right, bottom, nullptr, 0, color, color_size, width);
+    }
+    if (start == end) {
+        return PILLOW_C_OK;
+    }
+
+    const int a = right - left;
+    const int b = bottom - top;
+    ClipEllipseState state{};
+    try {
+        state.events.reserve(8);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    arc_init(&state, a, b, width, start, end);
+
+    std::int32_t x0 = 0;
+    std::int32_t y = 0;
+    std::int32_t x1 = 0;
+    while (true) {
+        const int next_status = clip_ellipse_next(&state, &x0, &y, &x1);
+        if (next_status == PILLOW_C_INVALID_LENGTH) {
+            return PILLOW_C_OK;
+        }
+        if (next_status != PILLOW_C_OK) {
+            return next_status;
+        }
+        fill_horizontal_span(
+            image,
+            static_cast<std::int64_t>(left) + (static_cast<std::int64_t>(x0) + a) / 2,
+            static_cast<std::int64_t>(top) + (static_cast<std::int64_t>(y) + b) / 2,
+            static_cast<std::int64_t>(left) + (static_cast<std::int64_t>(x1) + a) / 2 + 1,
+            color);
+    }
 }
 
 int composite_image_into(
@@ -10982,6 +11297,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_ellipse(
     int width)
 {
     return draw_ellipse_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_draw_arc(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    double start,
+    double end,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    int width)
+{
+    return draw_arc_image(image, left, top, right, bottom, start, end, color, color_size, width);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_line(

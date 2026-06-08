@@ -487,6 +487,25 @@ PillowCImageDrawEllipse(handle, box, fill := unset, outline := unset, width := 1
     PillowCAssertStatus(status)
 }
 
+PillowCImageDrawArc(handle, box, start, end, fill, width := 1) {
+    fillBuffer := PillowCBuffer(fill)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_arc",
+        "Ptr", handle,
+        "Int", box[1],
+        "Int", box[2],
+        "Int", box[3],
+        "Int", box[4],
+        "Double", start,
+        "Double", end,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int", width,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageDrawLine(handle, points, fill, width := 0) {
     pointBuffer := PillowCIntBuffer(points)
     fillBuffer := PillowCBuffer(fill)
@@ -3853,6 +3872,109 @@ PillowCTestImageDrawEllipseClipsAndRejectsInvalidArguments(*) {
 }
 
 AhkTest.Test("pillow_c image draw_ellipse clips and rejects invalid arguments", PillowCTestImageDrawEllipseClipsAndRejectsInvalidArguments)
+
+PillowCTestImageDrawArcMatchesPillowAnglesWidthAndRgb(*) {
+    quarter := PillowCCreateImageMode(7, 7, 1)
+    wide := PillowCCreateImageMode(7, 7, 1)
+    wrap := PillowCCreateImageMode(7, 7, 1)
+    rgb := PillowCCreateImageMode(5, 4, 3)
+    try {
+        PillowCImageDrawArc(quarter, [1, 1, 5, 5], 0, 90, [7], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 7, 0,
+            0, 0, 0, 0, 0, 7, 0,
+            0, 0, 0, 7, 7, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(quarter, 49))
+
+        PillowCImageDrawArc(wide, [1, 1, 5, 5], 0, 270, [8], 2)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 8, 8, 0, 0, 0,
+            0, 8, 8, 8, 0, 0, 0,
+            0, 8, 8, 0, 8, 8, 0,
+            0, 8, 8, 8, 8, 8, 0,
+            0, 0, 8, 8, 8, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(wide, 49))
+
+        PillowCImageDrawArc(wrap, [1, 1, 5, 5], 300, 60, [9], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 9, 0, 0,
+            0, 0, 0, 0, 0, 9, 0,
+            0, 0, 0, 0, 0, 9, 0,
+            0, 0, 0, 0, 0, 9, 0,
+            0, 0, 0, 0, 9, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(wrap, 49))
+
+        PillowCImageDrawArc(rgb, [0, 0, 4, 3], 0, 180, [10, 20, 30], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 20, 30,
+            0, 0, 0, 10, 20, 30, 10, 20, 30, 10, 20, 30, 0, 0, 0,
+        ], PillowCImageToArray(rgb, 60))
+    } finally {
+        for handle in [rgb, wrap, wide, quarter] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_arc matches Pillow angles width and RGB", PillowCTestImageDrawArcMatchesPillowAnglesWidthAndRgb)
+
+PillowCTestImageDrawArcClipsAndRejectsInvalidArguments(*) {
+    clipped := PillowCCreateImageMode(6, 5, 1)
+    widthZero := PillowCCreateImageMode(4, 4, 1)
+    reversed := PillowCCreateImageMode(3, 3, 1)
+    try {
+        PillowCImageDrawArc(clipped, [-2, -1, 3, 3], 0, 270, [6], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 6, 0, 0,
+            0, 0, 0, 6, 0, 0,
+            6, 6, 6, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(clipped, 30))
+
+        PillowCImageDrawArc(widthZero, [0, 0, 3, 3], 0, 360, [5], 0)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+        ], PillowCImageToArray(widthZero, 16))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_arc",
+            "Ptr", reversed,
+            "Int", 2,
+            "Int", 2,
+            "Int", 1,
+            "Int", 1,
+            "Double", 0,
+            "Double", 90,
+            "Ptr", PillowCBuffer([9]),
+            "UPtr", 1,
+            "Int", 1,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+    } finally {
+        for handle in [reversed, widthZero, clipped] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_arc clips and rejects invalid arguments", PillowCTestImageDrawArcClipsAndRejectsInvalidArguments)
 
 PillowCTestImageDrawLineMatchesPillowWidthZeroAndOne(*) {
     horizontal := PillowCCreateImageMode(6, 4, 1)
