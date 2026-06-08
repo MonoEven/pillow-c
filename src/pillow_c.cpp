@@ -2286,6 +2286,57 @@ int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowC
     return PILLOW_C_INVALID_ARGUMENT;
 }
 
+int convert_image_mode_dither_into(const PillowCImage* source, int target_mode, int dither, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (target_mode != PILLOW_C_MODE_1) {
+        return convert_image_mode_into(source, target_mode, target);
+    }
+    if (dither != 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (source->mode == PILLOW_C_MODE_1) {
+        return convert_image_mode_into(source, target_mode, target);
+    }
+    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_1, 1)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    const std::uint8_t* src = source->pixels.data();
+    std::uint8_t* dst = target->pixels.data();
+    if (source->mode == PILLOW_C_MODE_L) {
+        for (std::size_t i = 0; i < pixels; ++i) {
+            dst[i] = src[i] >= 128u ? 255u : 0u;
+        }
+        return PILLOW_C_OK;
+    }
+    if (source->mode == PILLOW_C_MODE_LA) {
+        for (std::size_t i = 0; i < pixels; ++i) {
+            dst[i] = src[i * 2u] >= 128u ? 255u : 0u;
+        }
+        return PILLOW_C_OK;
+    }
+    if (source->mode == PILLOW_C_MODE_RGB) {
+        for (std::size_t i = 0; i < pixels; ++i) {
+            dst[i] = rgb_luma_u8(src + i * 3u) >= 128u ? 255u : 0u;
+        }
+        return PILLOW_C_OK;
+    }
+    if (source->mode == PILLOW_C_MODE_RGBA) {
+        for (std::size_t i = 0; i < pixels; ++i) {
+            dst[i] = rgb_luma_u8(src + i * 4u) >= 128u ? 255u : 0u;
+        }
+        return PILLOW_C_OK;
+    }
+    return PILLOW_C_INVALID_ARGUMENT;
+}
+
 int merge_bands_into(int target_mode, const PillowCImage* const* bands, std::size_t band_count, PillowCImage* target)
 {
     if (!bands || !target) {
@@ -6520,6 +6571,15 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_mode_into(
     return convert_image_mode_into(source, target_mode, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_convert_mode_dither_into(
+    const PillowCImage* source,
+    int target_mode,
+    int dither,
+    PillowCImage* target)
+{
+    return convert_image_mode_dither_into(source, target_mode, dither, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_merge_bands_into(
     int target_mode,
     const PillowCImage* const* bands,
@@ -8355,6 +8415,47 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_mode(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = convert_image_mode_into(source, target_mode, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_convert_mode_dither(
+    const PillowCImage* source,
+    int target_mode,
+    int dither,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    const int target_channels = channels_for_mode(target_mode);
+    if (target_channels == 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(source->width, source->height, target_channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            target_mode,
+            target_channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = convert_image_mode_dither_into(source, target_mode, dither, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

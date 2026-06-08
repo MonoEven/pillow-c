@@ -2061,6 +2061,46 @@ PillowTestImageConvertModeOneToCoreModesUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.Convert supports mode 1 to core modes", PillowTestImageConvertModeOneToCoreModesUsesNativeOperation)
 
+PillowTestImageConvertToModeOneDitherNoneUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [8, 1], PillowTestBuffer([0, 32, 64, 96, 128, 160, 192, 255]))
+    rgb := Pillow.Image.FromBytes("RGB", [4, 2], PillowTestBuffer([
+        0, 0, 0, 32, 32, 32, 64, 64, 64, 96, 96, 96,
+        128, 128, 128, 160, 160, 160, 192, 192, 192, 224, 224, 224,
+    ]))
+    la := Pillow.Image.FromBytes("LA", [4, 1], PillowTestBuffer([0, 0, 255, 128, 127, 255, 128, 255]))
+    outputs := []
+    try {
+        cases := [
+            { Out: l.Convert("1", Pillow.Dither.NONE), Bytes: [0x0F] },
+            { Out: rgb.Convert("1", Pillow.Dither.NONE), Bytes: [0x00, 0xF0] },
+            { Out: la.Convert("1", Pillow.Dither.NONE), Bytes: [0x50] },
+        ]
+        for item in cases {
+            outputs.Push(item.Out)
+            AhkTest.AssertEqual("1", item.Out.Mode)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(item.Out.ToBytes()))
+        }
+
+        try {
+            l.Convert("1")
+            AhkTest.Fail("Expected default Convert('1') to reject until Floyd-Steinberg is implemented")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "dither") > 0 || InStr(err.Message, "Floyd") > 0)
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        la.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Convert to mode 1 supports dither NONE", PillowTestImageConvertToModeOneDitherNoneUsesNativeOperation)
+
 PillowTestMakeInvertLut(channelCount) {
     lut := []
     loop channelCount {

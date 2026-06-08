@@ -1136,6 +1136,21 @@ PillowCImageConvertMode(sourceHandle, mode) {
     return outHandle
 }
 
+PillowCImageConvertModeDither(sourceHandle, mode, dither) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_convert_mode_dither",
+        "Ptr", sourceHandle,
+        "Int", mode,
+        "Int", dither,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageConvertModeInto(sourceHandle, mode, targetHandle) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_convert_mode_into",
@@ -5749,6 +5764,41 @@ PillowCTestImageConvertModeCoversModeOneSource(*) {
 }
 
 AhkTest.Test("pillow_c image convert_mode covers mode 1 source", PillowCTestImageConvertModeCoversModeOneSource)
+
+PillowCTestImageConvertModeDitherNoneCoversModeOneTarget(*) {
+    l := PillowCCreateImageMode(8, 1, 1)
+    rgb := PillowCCreateImageMode(4, 2, 3)
+    la := PillowCCreateImageMode(4, 1, 2)
+    outputs := []
+    try {
+        PillowCImageSetBytes(l, [0, 32, 64, 96, 128, 160, 192, 255])
+        PillowCImageSetBytes(rgb, [
+            0, 0, 0, 32, 32, 32, 64, 64, 64, 96, 96, 96,
+            128, 128, 128, 160, 160, 160, 192, 192, 192, 224, 224, 224,
+        ])
+        PillowCImageSetBytes(la, [0, 0, 255, 128, 127, 255, 128, 255])
+
+        cases := [
+            { Source: l, Size: 8, Bytes: [0, 0, 0, 0, 255, 255, 255, 255] },
+            { Source: rgb, Size: 8, Bytes: [0, 0, 0, 0, 255, 255, 255, 255] },
+            { Source: la, Size: 4, Bytes: [0, 255, 0, 255] },
+        ]
+        for item in cases {
+            out := PillowCImageConvertModeDither(item.Source, 5, 0)
+            outputs.Push(out)
+            AhkTest.AssertEqual(5, PillowCImageMode(out))
+            AhkTest.AssertEqual(item.Bytes, PillowCImageToArray(out, item.Size))
+        }
+    } finally {
+        for handle in outputs
+            PillowCFreeImage(handle)
+        PillowCFreeImage(la)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image convert_mode_dither NONE covers mode 1 target", PillowCTestImageConvertModeDitherNoneCoversModeOneTarget)
 
 PillowCTestImageConvertModeIntoReusesTargetHandle(*) {
     source := PillowCCreateImageMode(2, 1, 3)

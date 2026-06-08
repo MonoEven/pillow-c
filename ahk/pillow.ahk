@@ -30,6 +30,11 @@ class Pillow {
         static LANCZOS := 1
     }
 
+    class Dither {
+        static NONE := 0
+        static FLOYDSTEINBERG := 3
+    }
+
     class ImageOps {
         static Invert(image) {
             return Pillow.ImageOps.NativeUnaryImageOp(image, "pillow_c_image_invert")
@@ -2677,12 +2682,29 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
-        Convert(modeName) {
+        Convert(modeName, dither := unset) {
+            targetMode := Pillow.ModeId(modeName)
+            if targetMode = 5 {
+                if !IsSet(dither)
+                    throw Error("Pillow.Image.Convert to mode 1 requires explicit dither until Floyd-Steinberg is implemented", -1)
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_convert_mode_dither",
+                    "Ptr", this.RequireHandle(),
+                    "Int", targetMode,
+                    "Int", dither,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return Pillow.WrapImageHandle(outHandle)
+            }
+            if IsSet(dither)
+                throw Error("Pillow.Image.Convert dither is currently supported only for mode 1", -1)
             outHandle := 0
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_convert_mode",
                 "Ptr", this.RequireHandle(),
-                "Int", Pillow.ModeId(modeName),
+                "Int", targetMode,
                 "Ptr*", &outHandle,
                 "Int"
             ))
