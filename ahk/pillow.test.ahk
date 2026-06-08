@@ -775,6 +775,75 @@ PillowTestImageDrawRectangleClipsAndRejectsInvalidArguments(*) {
 
 AhkTest.Test("Pillow ImageDraw.Rectangle clips and rejects invalid arguments", PillowTestImageDrawRectangleClipsAndRejectsInvalidArguments)
 
+PillowTestImageDrawEllipseMutatesImagesThroughNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.New("L", [7, 6])
+    rgb := Pillow.Image.New("RGB", [5, 4])
+    try {
+        draw := Pillow.ImageDraw.Draw(l)
+        returned := draw.Ellipse([1, 1, 5, 4], 7, 9, 2)
+        AhkTest.AssertEqual(draw, returned)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 9, 9, 9, 0, 0,
+            0, 9, 9, 9, 9, 9, 0,
+            0, 9, 9, 9, 9, 9, 0,
+            0, 0, 9, 9, 9, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(l.ToBytes()))
+
+        Pillow.ImageDraw.Draw(rgb).Ellipse([0, 0, 4, 3], [10, 20, 30], [90, 80, 70], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 90, 80, 70, 90, 80, 70, 90, 80, 70, 0, 0, 0,
+            90, 80, 70, 10, 20, 30, 10, 20, 30, 10, 20, 30, 90, 80, 70,
+            90, 80, 70, 10, 20, 30, 10, 20, 30, 10, 20, 30, 90, 80, 70,
+            0, 0, 0, 90, 80, 70, 90, 80, 70, 90, 80, 70, 0, 0, 0,
+        ], PillowTestBufferToArray(rgb.ToBytes()))
+    } finally {
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Ellipse mutates images through native path", PillowTestImageDrawEllipseMutatesImagesThroughNativePath)
+
+PillowTestImageDrawEllipseClipsAndRejectsInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [6, 5])
+    widthZero := Pillow.Image.New("L", [4, 4])
+    try {
+        draw := Pillow.ImageDraw.Draw(image)
+        draw.Ellipse([-2, -1, 3, 3], 6)
+        AhkTest.AssertEqual([
+            6, 6, 6, 6, 0, 0,
+            6, 6, 6, 6, 0, 0,
+            6, 6, 6, 6, 0, 0,
+            6, 6, 6, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(image.ToBytes()))
+
+        Pillow.ImageDraw.Draw(widthZero).Ellipse([0, 0, 3, 3], unset, 5, 0)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+        ], PillowTestBufferToArray(widthZero.ToBytes()))
+
+        try {
+            draw.Ellipse([2, 2, 1, 1], unset, 9)
+            AhkTest.Fail("Expected ImageDraw.Ellipse to reject reversed coordinates")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+    } finally {
+        widthZero.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Ellipse clips and rejects invalid arguments", PillowTestImageDrawEllipseClipsAndRejectsInvalidArguments)
+
 PillowTestImageDrawLineMutatesImageThroughNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.New("L", [6, 5])

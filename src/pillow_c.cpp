@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <climits>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <new>
@@ -117,6 +118,33 @@ struct PolygonEdge {
     int xmax;
     int ymax;
     float dx;
+};
+
+struct QuarterState {
+    std::int32_t a;
+    std::int32_t b;
+    std::int32_t cx;
+    std::int32_t cy;
+    std::int32_t ex;
+    std::int32_t ey;
+    std::int64_t a2;
+    std::int64_t b2;
+    std::int64_t a2b2;
+    bool finished;
+};
+
+struct EllipseState {
+    QuarterState outer;
+    QuarterState inner;
+    std::int32_t py;
+    std::int32_t pl;
+    std::int32_t pr;
+    std::int32_t cy[4];
+    std::int32_t cl[4];
+    std::int32_t cr[4];
+    int bufcnt;
+    bool finished;
+    bool leftmost;
 };
 
 enum class RawCodecKind {
@@ -3792,6 +3820,162 @@ void fill_vertical_span(
     }
 }
 
+void quarter_init(QuarterState* state, std::int32_t a, std::int32_t b)
+{
+    if (a < 0 || b < 0) {
+        state->finished = true;
+        return;
+    }
+    state->a = a;
+    state->b = b;
+    state->cx = a;
+    state->cy = b % 2;
+    state->ex = a % 2;
+    state->ey = b;
+    state->a2 = static_cast<std::int64_t>(a) * a;
+    state->b2 = static_cast<std::int64_t>(b) * b;
+    state->a2b2 = state->a2 * state->b2;
+    state->finished = false;
+}
+
+std::int64_t quarter_delta(const QuarterState* state, std::int64_t x, std::int64_t y)
+{
+    return std::llabs(state->a2 * y * y + state->b2 * x * x - state->a2b2);
+}
+
+bool quarter_next(QuarterState* state, std::int32_t* out_x, std::int32_t* out_y)
+{
+    if (state->finished) {
+        return false;
+    }
+    *out_x = state->cx;
+    *out_y = state->cy;
+    if (state->cx == state->ex && state->cy == state->ey) {
+        state->finished = true;
+        return true;
+    }
+
+    std::int32_t nx = state->cx;
+    std::int32_t ny = state->cy + 2;
+    std::int64_t ndelta = quarter_delta(state, nx, ny);
+    if (nx > 1) {
+        std::int64_t new_delta = quarter_delta(state, state->cx - 2, state->cy + 2);
+        if (ndelta > new_delta) {
+            nx = state->cx - 2;
+            ny = state->cy + 2;
+            ndelta = new_delta;
+        }
+        new_delta = quarter_delta(state, state->cx - 2, state->cy);
+        if (ndelta > new_delta) {
+            nx = state->cx - 2;
+            ny = state->cy;
+        }
+    }
+    state->cx = nx;
+    state->cy = ny;
+    return true;
+}
+
+void ellipse_init(EllipseState* state, std::int32_t a, std::int32_t b, std::int32_t width)
+{
+    state->bufcnt = 0;
+    state->leftmost = (a % 2) != 0;
+    quarter_init(&state->outer, a, b);
+    if (width < 1 || !quarter_next(&state->outer, &state->pr, &state->py)) {
+        state->finished = true;
+        return;
+    }
+    state->finished = false;
+    quarter_init(&state->inner, a - 2 * (width - 1), b - 2 * (width - 1));
+    state->pl = state->leftmost ? 1 : 0;
+}
+
+bool ellipse_next(EllipseState* state, std::int32_t* out_x0, std::int32_t* out_y, std::int32_t* out_x1)
+{
+    if (state->bufcnt == 0) {
+        if (state->finished) {
+            return false;
+        }
+
+        const std::int32_t y = state->py;
+        std::int32_t l = state->pl;
+        const std::int32_t r = state->pr;
+        std::int32_t cx = 0;
+        std::int32_t cy = 0;
+        bool has_next = false;
+
+        while ((has_next = quarter_next(&state->outer, &cx, &cy)) && cy <= y) {
+        }
+        if (!has_next) {
+            state->finished = true;
+        } else {
+            state->pr = cx;
+            state->py = cy;
+        }
+
+        while ((has_next = quarter_next(&state->inner, &cx, &cy)) && cy <= y) {
+            l = cx;
+        }
+        state->pl = has_next ? cx : (state->leftmost ? 1 : 0);
+
+        if ((l > 0 || l < r) && y > 0) {
+            state->cl[state->bufcnt] = l == 0 ? 2 : l;
+            state->cy[state->bufcnt] = y;
+            state->cr[state->bufcnt] = r;
+            ++state->bufcnt;
+        }
+        if (y > 0) {
+            state->cl[state->bufcnt] = -r;
+            state->cy[state->bufcnt] = y;
+            state->cr[state->bufcnt] = -l;
+            ++state->bufcnt;
+        }
+        if (l > 0 || l < r) {
+            state->cl[state->bufcnt] = l == 0 ? 2 : l;
+            state->cy[state->bufcnt] = -y;
+            state->cr[state->bufcnt] = r;
+            ++state->bufcnt;
+        }
+        state->cl[state->bufcnt] = -r;
+        state->cy[state->bufcnt] = -y;
+        state->cr[state->bufcnt] = -l;
+        ++state->bufcnt;
+    }
+
+    --state->bufcnt;
+    *out_x0 = state->cl[state->bufcnt];
+    *out_y = state->cy[state->bufcnt];
+    *out_x1 = state->cr[state->bufcnt];
+    return true;
+}
+
+void draw_ellipse_spans(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const std::uint8_t* color,
+    int width)
+{
+    const int a = right - left;
+    const int b = bottom - top;
+    EllipseState state{};
+    ellipse_init(&state, a, b, width);
+
+    std::int32_t x0 = 0;
+    std::int32_t y = 0;
+    std::int32_t x1 = 0;
+    while (ellipse_next(&state, &x0, &y, &x1)) {
+        fill_horizontal_span(
+            image,
+            static_cast<std::int64_t>(left) + (static_cast<std::int64_t>(x0) + a) / 2,
+            static_cast<std::int64_t>(top) + (static_cast<std::int64_t>(y) + b) / 2,
+            static_cast<std::int64_t>(left) + (static_cast<std::int64_t>(x1) + a) / 2 + 1,
+            color);
+    }
+}
+
 int round_up_away_from_zero(float value)
 {
     return value >= 0.0f
@@ -4247,6 +4431,49 @@ int draw_rectangle_image(
         fill_horizontal_span(image, x0, y1 - inset, x1 + 1, outline);
         fill_vertical_span(image, x1 - inset, y0 + width, y1 - width + 2, outline);
         fill_vertical_span(image, x0 + inset, y0 + width, y1 - width + 2, outline);
+    }
+    return PILLOW_C_OK;
+}
+
+int draw_ellipse_image(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((fill_size > 0 && !fill) || (outline_size > 0 && !outline)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const std::size_t channels = static_cast<std::size_t>(image->channels);
+    if ((fill_size != 0 && fill_size != channels) || (outline_size != 0 && outline_size != channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if ((fill && fill_size == 0) || (outline && outline_size == 0)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (right < left || bottom < top) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const int span_width = right - left;
+    const int span_height = bottom - top;
+    if (fill_size != 0) {
+        draw_ellipse_spans(image, left, top, right, bottom, fill, span_width + span_height);
+    }
+    if (outline_size != 0 && width != 0) {
+        draw_ellipse_spans(image, left, top, right, bottom, outline, width);
     }
     return PILLOW_C_OK;
 }
@@ -10740,6 +10967,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_rectangle(
     int width)
 {
     return draw_rectangle_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_draw_ellipse(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width)
+{
+    return draw_ellipse_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_line(
