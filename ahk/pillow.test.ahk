@@ -1336,6 +1336,89 @@ PillowTestImageDrawRoundedRectangleClipsAndRejectsInvalidArguments(*) {
 
 AhkTest.Test("Pillow ImageDraw.RoundedRectangle clips and rejects invalid arguments", PillowTestImageDrawRoundedRectangleClipsAndRejectsInvalidArguments)
 
+PillowTestImageDrawBitmapMutatesImagesThroughNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    oneTarget := Pillow.Image.New("L", [6, 5])
+    oneMask := Pillow.Image.FromBytes("1", [3, 2], PillowTestBuffer([0x40, 0xA0]))
+    rgbTarget := Pillow.Image.New("RGB", [5, 4], [100, 100, 100])
+    rgbaMask := Pillow.Image.FromBytes("RGBA", [3, 2], PillowTestBuffer([
+        0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 255,
+        0, 0, 0, 128, 0, 0, 0, 0, 0, 0, 0, 255,
+    ]))
+    rgbaTarget := Pillow.Image.New("RGBA", [4, 3], [1, 2, 3, 4])
+    lMask := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([0, 64, 128, 255]))
+    try {
+        draw := Pillow.ImageDraw.Draw(oneTarget)
+        returned := draw.Bitmap([2, 1], oneMask, 7)
+        AhkTest.AssertEqual(draw, returned)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 7, 0, 0,
+            0, 0, 7, 0, 7, 0,
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(oneTarget.ToBytes()))
+
+        Pillow.ImageDraw.Draw(rgbTarget).Bitmap([-1, 1], rgbaMask, [10, 20, 30])
+        AhkTest.AssertEqual([
+            100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100,
+            77, 80, 82, 10, 20, 30, 100, 100, 100, 100, 100, 100, 100, 100, 100,
+            100, 100, 100, 10, 20, 30, 100, 100, 100, 100, 100, 100, 100, 100, 100,
+            100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100,
+        ], PillowTestBufferToArray(rgbTarget.ToBytes()))
+
+        Pillow.ImageDraw.Draw(rgbaTarget).Bitmap([1, 1], lMask, [10, 20, 30, 200])
+        AhkTest.AssertEqual([
+            1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+            1, 2, 3, 4, 1, 2, 3, 4, 3, 7, 10, 53, 1, 2, 3, 4,
+            1, 2, 3, 4, 6, 11, 17, 102, 10, 20, 30, 200, 1, 2, 3, 4,
+        ], PillowTestBufferToArray(rgbaTarget.ToBytes()))
+    } finally {
+        lMask.Close()
+        rgbaTarget.Close()
+        rgbaMask.Close()
+        rgbTarget.Close()
+        oneMask.Close()
+        oneTarget.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Bitmap mutates images through native path", PillowTestImageDrawBitmapMutatesImagesThroughNativePath)
+
+PillowTestImageDrawBitmapRejectsInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    target := Pillow.Image.New("L", [4, 3])
+    rgbMask := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([
+        0, 0, 0, 1, 0, 0,
+        0, 0, 1, 255, 255, 255,
+    ]))
+    try {
+        draw := Pillow.ImageDraw.Draw(target)
+        for args in [
+            ["xy", "xy"],
+            ["bitmap", [0, 0]],
+            ["mask", [0, 0]],
+        ] {
+            try {
+                if args[1] = "xy"
+                    draw.Bitmap(args[2], target, 7)
+                else if args[1] = "bitmap"
+                    draw.Bitmap(args[2], "not image", 7)
+                else
+                    draw.Bitmap(args[2], rgbMask, 7)
+                AhkTest.Fail("Expected ImageDraw.Bitmap to reject invalid arguments")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, args[1]) > 0 || InStr(err.Message, "invalid argument") > 0)
+            }
+        }
+    } finally {
+        rgbMask.Close()
+        target.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Bitmap rejects invalid arguments", PillowTestImageDrawBitmapRejectsInvalidArguments)
+
 PillowTestImageDrawLineMutatesImageThroughNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.New("L", [6, 5])

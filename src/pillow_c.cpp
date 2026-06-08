@@ -774,6 +774,14 @@ bool supported_statistics_mask(const PillowCImage* mask)
             (mask->mode == PILLOW_C_MODE_L && mask->channels == 1));
 }
 
+bool supported_bitmap_mask(const PillowCImage* mask)
+{
+    return mask &&
+           ((mask->mode == PILLOW_C_MODE_1 && mask->channels == 1) ||
+            (mask->mode == PILLOW_C_MODE_L && mask->channels == 1) ||
+            (mask->mode == PILLOW_C_MODE_RGBA && mask->channels == 4));
+}
+
 std::uint8_t mask_alpha_at(const PillowCImage* mask, const std::uint8_t* mask_row, int x)
 {
     if (mask->channels == 1) {
@@ -5348,6 +5356,82 @@ int draw_rounded_rectangle_image(
             edge_bottom -= r + 1;
         }
         fill_rounded_rectangle_bar(image, right - width + 1, edge_top, right, edge_bottom, outline);
+    }
+
+    return PILLOW_C_OK;
+}
+
+int draw_bitmap_image(
+    PillowCImage* image,
+    int left,
+    int top,
+    const PillowCImage* mask,
+    const std::uint8_t* color,
+    std::size_t color_size)
+{
+    if (!image || !mask || !color) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (color_size != static_cast<std::size_t>(image->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (!supported_bitmap_mask(mask)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->pixels.empty() || mask->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    const std::int64_t dst_left_i64 = left < 0 ? 0 : left;
+    const std::int64_t dst_top_i64 = top < 0 ? 0 : top;
+    const std::int64_t mask_right_i64 = static_cast<std::int64_t>(left) + mask->width;
+    const std::int64_t mask_bottom_i64 = static_cast<std::int64_t>(top) + mask->height;
+    const std::int64_t dst_right_i64 = mask_right_i64 > image->width ? image->width : mask_right_i64;
+    const std::int64_t dst_bottom_i64 = mask_bottom_i64 > image->height ? image->height : mask_bottom_i64;
+    if (dst_right_i64 <= dst_left_i64 || dst_bottom_i64 <= dst_top_i64) {
+        return PILLOW_C_OK;
+    }
+
+    const int dst_left = static_cast<int>(dst_left_i64);
+    const int dst_top = static_cast<int>(dst_top_i64);
+    const int dst_right = static_cast<int>(dst_right_i64);
+    const int dst_bottom = static_cast<int>(dst_bottom_i64);
+    const int src_left = dst_left - left;
+    const int src_top = dst_top - top;
+    const int channels = image->channels;
+
+    for (int y = 0; y < dst_bottom - dst_top; ++y) {
+        const std::uint8_t* mask_row =
+            mask->pixels.data() +
+            static_cast<std::size_t>(src_top + y) * mask->stride +
+            static_cast<std::size_t>(src_left) * mask->channels;
+        std::uint8_t* dst_row =
+            image->pixels.data() +
+            static_cast<std::size_t>(dst_top + y) * image->stride +
+            static_cast<std::size_t>(dst_left) * image->channels;
+
+        for (int x = 0; x < dst_right - dst_left; ++x) {
+            const std::uint8_t alpha = mask_alpha_at(mask, mask_row, x);
+            if (alpha == 0) {
+                continue;
+            }
+
+            const std::size_t pixel_offset = static_cast<std::size_t>(x) * channels;
+            if (alpha == 255) {
+                std::memcpy(dst_row + pixel_offset, color, color_size);
+                continue;
+            }
+
+            for (int channel = 0; channel < channels; ++channel) {
+                const std::uint8_t dst = dst_row[pixel_offset + channel];
+                const std::uint8_t src = color[channel];
+                const std::uint32_t blended =
+                    static_cast<std::uint32_t>(dst) * (255u - alpha) +
+                    static_cast<std::uint32_t>(src) * alpha +
+                    128u;
+                dst_row[pixel_offset + channel] = static_cast<std::uint8_t>(shift_for_div255(blended));
+            }
+        }
     }
 
     return PILLOW_C_OK;
@@ -11935,6 +12019,17 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_rounded_rectangle(
         outline_size,
         width,
         corners_mask);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_draw_bitmap(
+    PillowCImage* image,
+    int left,
+    int top,
+    const PillowCImage* mask,
+    const std::uint8_t* color,
+    std::size_t color_size)
+{
+    return draw_bitmap_image(image, left, top, mask, color, color_size);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_line(

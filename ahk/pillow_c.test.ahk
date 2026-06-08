@@ -614,6 +614,21 @@ PillowCImageDrawRoundedRectangle(handle, box, radius := 0, fill := unset, outlin
     PillowCAssertStatus(status)
 }
 
+PillowCImageDrawBitmap(handle, xy, mask, fill) {
+    fillBuffer := PillowCBuffer(fill)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_bitmap",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", mask,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageDrawLine(handle, points, fill, width := 0) {
     pointBuffer := PillowCIntBuffer(points)
     fillBuffer := PillowCBuffer(fill)
@@ -4423,6 +4438,95 @@ PillowCTestImageDrawRoundedRectangleFallbacksClippingAndRejectsInvalidArguments(
 }
 
 AhkTest.Test("pillow_c image draw_rounded_rectangle fallbacks clipping and rejects invalid arguments", PillowCTestImageDrawRoundedRectangleFallbacksClippingAndRejectsInvalidArguments)
+
+PillowCTestImageDrawBitmapMatchesPillowMaskModesAndClipping(*) {
+    oneTarget := PillowCCreateImageMode(6, 5, 1)
+    oneMask := PillowCCreateImageMode(3, 2, 5)
+    rgbTarget := PillowCCreateImageMode(5, 4, 3)
+    rgbaMask := PillowCCreateImageMode(3, 2, 4)
+    rgbaTarget := PillowCCreateImageMode(4, 3, 4)
+    lMask := PillowCCreateImageMode(2, 2, 1)
+    try {
+        PillowCImageSetBytes(oneMask, [0, 255, 0, 255, 0, 255])
+        PillowCImageDrawBitmap(oneTarget, [2, 1], oneMask, [7])
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 7, 0, 0,
+            0, 0, 7, 0, 7, 0,
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(oneTarget, 30))
+
+        PillowCImageFill(rgbTarget, [100, 100, 100])
+        PillowCImageSetBytes(rgbaMask, [
+            0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 255,
+            0, 0, 0, 128, 0, 0, 0, 0, 0, 0, 0, 255,
+        ])
+        PillowCImageDrawBitmap(rgbTarget, [-1, 1], rgbaMask, [10, 20, 30])
+        AhkTest.AssertEqual([
+            100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100,
+            77, 80, 82, 10, 20, 30, 100, 100, 100, 100, 100, 100, 100, 100, 100,
+            100, 100, 100, 10, 20, 30, 100, 100, 100, 100, 100, 100, 100, 100, 100,
+            100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100,
+        ], PillowCImageToArray(rgbTarget, 60))
+
+        PillowCImageFill(rgbaTarget, [1, 2, 3, 4])
+        PillowCImageSetBytes(lMask, [0, 64, 128, 255])
+        PillowCImageDrawBitmap(rgbaTarget, [1, 1], lMask, [10, 20, 30, 200])
+        AhkTest.AssertEqual([
+            1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
+            1, 2, 3, 4, 1, 2, 3, 4, 3, 7, 10, 53, 1, 2, 3, 4,
+            1, 2, 3, 4, 6, 11, 17, 102, 10, 20, 30, 200, 1, 2, 3, 4,
+        ], PillowCImageToArray(rgbaTarget, 48))
+    } finally {
+        for handle in [lMask, rgbaTarget, rgbaMask, rgbTarget, oneMask, oneTarget] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_bitmap matches Pillow mask modes and clipping", PillowCTestImageDrawBitmapMatchesPillowMaskModesAndClipping)
+
+PillowCTestImageDrawBitmapRejectsInvalidArguments(*) {
+    target := PillowCCreateImageMode(4, 3, 1)
+    rgbMask := PillowCCreateImageMode(2, 2, 3)
+    wrongTarget := PillowCCreateImageMode(4, 3, 3)
+    mask := PillowCCreateImageMode(2, 2, 1)
+    try {
+        PillowCImageSetBytes(rgbMask, [0, 0, 0, 1, 0, 0, 0, 0, 1, 255, 255, 255])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_bitmap",
+            "Ptr", target,
+            "Int", 1,
+            "Int", 1,
+            "Ptr", rgbMask,
+            "Ptr", PillowCBuffer([7]),
+            "UPtr", 1,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_bitmap",
+            "Ptr", wrongTarget,
+            "Int", 1,
+            "Int", 1,
+            "Ptr", mask,
+            "Ptr", PillowCBuffer([7]),
+            "UPtr", 1,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+    } finally {
+        for handle in [mask, wrongTarget, rgbMask, target] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_bitmap rejects invalid arguments", PillowCTestImageDrawBitmapRejectsInvalidArguments)
 
 PillowCTestImageDrawLineMatchesPillowWidthZeroAndOne(*) {
     horizontal := PillowCCreateImageMode(6, 4, 1)

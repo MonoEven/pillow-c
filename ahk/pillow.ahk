@@ -1401,6 +1401,30 @@ class Pillow {
                 return this
             }
 
+            Bitmap(xy, bitmap, fill := unset) {
+                if !IsObject(xy) || xy.Length != 2
+                    throw Error("Pillow.ImageDraw.Bitmap xy expects [x, y]", -1)
+                if !(xy[1] is Number) || !(xy[2] is Number)
+                    throw Error("Pillow.ImageDraw.Bitmap xy coordinates must be numeric", -1)
+                if !(IsObject(bitmap) && bitmap is Pillow.Image)
+                    throw Error("Pillow.ImageDraw.Bitmap bitmap expects a Pillow.Image", -1)
+                if !IsSet(fill)
+                    return this
+
+                color := this.Image.PasteColorBuffer(fill)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_draw_bitmap",
+                    "Ptr", this.Image.RequireHandle(),
+                    "Int", xy[1],
+                    "Int", xy[2],
+                    "Ptr", bitmap.RequireHandle(),
+                    "Ptr", color,
+                    "UPtr", color.Size,
+                    "Int"
+                ))
+                return this
+            }
+
             Line(xy, fill := unset, width := 0, joint := unset) {
                 if IsSet(joint) && joint != "" && joint != 0
                     throw Error("Pillow.ImageDraw.Line joint is not supported yet", -1)
