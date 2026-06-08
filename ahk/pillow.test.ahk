@@ -269,6 +269,47 @@ PillowTestPaletteModePreservesPaletteThroughNativeOperations(*) {
 
 AhkTest.Test("Pillow P mode preserves palette through native operations", PillowTestPaletteModePreservesPaletteThroughNativeOperations)
 
+PillowTestPaletteModePreservesPaletteThroughGeometryOperations(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    palette := [
+        0, 0, 0,
+        10, 20, 30,
+        200, 100, 50,
+        255, 255, 255,
+    ]
+    image := Pillow.Image.FromBytes("P", [2, 2], PillowTestBuffer([0, 1, 2, 3]))
+    outputs := []
+    try {
+        image.PutPalette(palette)
+
+        transformed := image.TransformAffine([2, 2], [1, 0, -1, 0, 1, 0], Pillow.Resampling.NEAREST, 3)
+        rotated := image.Rotate(45, Pillow.Resampling.NEAREST, true, , , 3)
+        outputs.Push(transformed)
+        outputs.Push(rotated)
+
+        AhkTest.AssertEqual("P", transformed.Mode)
+        AhkTest.AssertEqual("P", rotated.Mode)
+        AhkTest.AssertEqual(palette, transformed.GetPalette())
+        AhkTest.AssertEqual(palette, rotated.GetPalette())
+
+        transformedRgb := transformed.Convert("RGB")
+        rotatedRgb := rotated.Convert("RGB")
+        outputs.Push(transformedRgb)
+        outputs.Push(rotatedRgb)
+
+        AhkTest.AssertEqual([255, 255, 255, 0, 0, 0, 255, 255, 255, 200, 100, 50], PillowTestBufferToArray(transformedRgb.ToBytes()))
+        AhkTest.AssertEqual([255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 20, 30, 255, 255, 255, 255, 255, 255, 255, 255, 255, 200, 100, 50, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255], PillowTestBufferToArray(rotatedRgb.ToBytes()))
+    } finally {
+        for item in outputs {
+            if IsObject(item)
+                item.Close()
+        }
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow P mode preserves palette through geometry operations", PillowTestPaletteModePreservesPaletteThroughGeometryOperations)
+
 PillowTestImageDataPointerSharesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [3, 1])

@@ -6017,6 +6017,45 @@ PillowCTestPaletteModePreservesPaletteThroughNativeOperations(*) {
 
 AhkTest.Test("pillow_c P mode preserves palette through native operations", PillowCTestPaletteModePreservesPaletteThroughNativeOperations)
 
+PillowCTestPaletteModePreservesPaletteThroughGeometryOperations(*) {
+    source := PillowCCreateImageMode(2, 2, 6)
+    outputs := []
+    palette := [
+        0, 0, 0,
+        10, 20, 30,
+        200, 100, 50,
+        255, 255, 255,
+    ]
+    try {
+        PillowCImageSetBytes(source, [0, 1, 2, 3])
+        PillowCImagePutPaletteRgb(source, palette)
+
+        transformed := PillowCImageTransformAffine(source, 2, 2, [1, 0, -1, 0, 1, 0], 0, [3])
+        rotated := PillowCImageRotate(source, 45, 0, true, 0.0, 0.0, false, 0.0, 0.0, false, [3])
+        outputs.Push(transformed)
+        outputs.Push(rotated)
+
+        AhkTest.AssertEqual(6, PillowCImageInt(transformed, "pillow_c_image_mode"))
+        AhkTest.AssertEqual(6, PillowCImageInt(rotated, "pillow_c_image_mode"))
+        AhkTest.AssertEqual(palette, PillowCImageGetPaletteRgb(transformed))
+        AhkTest.AssertEqual(palette, PillowCImageGetPaletteRgb(rotated))
+
+        transformedRgb := PillowCImageConvertMode(transformed, 3)
+        rotatedRgb := PillowCImageConvertMode(rotated, 3)
+        outputs.Push(transformedRgb)
+        outputs.Push(rotatedRgb)
+
+        AhkTest.AssertEqual([255, 255, 255, 0, 0, 0, 255, 255, 255, 200, 100, 50], PillowCImageToArray(transformedRgb, 12))
+        AhkTest.AssertEqual([255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 10, 20, 30, 255, 255, 255, 255, 255, 255, 255, 255, 255, 200, 100, 50, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255], PillowCImageToArray(rotatedRgb, 48))
+    } finally {
+        for handle in outputs
+            PillowCFreeImage(handle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c P mode preserves palette through geometry operations", PillowCTestPaletteModePreservesPaletteThroughGeometryOperations)
+
 PillowCTestImageConvertModeIntoReusesTargetHandle(*) {
     source := PillowCCreateImageMode(2, 1, 3)
     target := PillowCCreateImageMode(2, 1, 4)

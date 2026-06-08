@@ -3777,8 +3777,37 @@ int rotate_image_into(
     std::size_t fill_color_size,
     PillowCImage* target)
 {
+    int status = PILLOW_C_INVALID_ARGUMENT;
     if (resample == PILLOW_C_RESAMPLE_NEAREST) {
-        return rotate_nearest_into(
+        status = rotate_nearest_into(
+            source,
+            angle,
+            expand,
+            center_x,
+            center_y,
+            has_center,
+            translate_x,
+            translate_y,
+            has_translate,
+            fill_color,
+            fill_color_size,
+            target);
+    } else if (resample == PILLOW_C_RESAMPLE_BILINEAR) {
+        status = rotate_bilinear_into(
+            source,
+            angle,
+            expand,
+            center_x,
+            center_y,
+            has_center,
+            translate_x,
+            translate_y,
+            has_translate,
+            fill_color,
+            fill_color_size,
+            target);
+    } else if (resample == PILLOW_C_RESAMPLE_BICUBIC) {
+        status = rotate_bicubic_into(
             source,
             angle,
             expand,
@@ -3792,37 +3821,10 @@ int rotate_image_into(
             fill_color_size,
             target);
     }
-    if (resample == PILLOW_C_RESAMPLE_BILINEAR) {
-        return rotate_bilinear_into(
-            source,
-            angle,
-            expand,
-            center_x,
-            center_y,
-            has_center,
-            translate_x,
-            translate_y,
-            has_translate,
-            fill_color,
-            fill_color_size,
-            target);
+    if (status == PILLOW_C_OK) {
+        copy_palette_if_same_mode(source, target);
     }
-    if (resample == PILLOW_C_RESAMPLE_BICUBIC) {
-        return rotate_bicubic_into(
-            source,
-            angle,
-            expand,
-            center_x,
-            center_y,
-            has_center,
-            translate_x,
-            translate_y,
-            has_translate,
-            fill_color,
-            fill_color_size,
-            target);
-    }
-    return PILLOW_C_INVALID_ARGUMENT;
+    return status;
 }
 
 bool supported_affine_transform_resample(int resample)
@@ -3859,6 +3861,7 @@ int transform_with_mapper_into(
         return status;
     }
     if (target->pixels.empty()) {
+        copy_palette_if_same_mode(source, target);
         return PILLOW_C_OK;
     }
 
@@ -3905,6 +3908,7 @@ int transform_with_mapper_into(
             write_transform_values(source, values, dst);
         }
     }
+    copy_palette_if_same_mode(source, target);
     return PILLOW_C_OK;
 }
 
@@ -4198,6 +4202,7 @@ int mesh_transform_image_into(
             }
         }
     }
+    copy_palette_if_same_mode(source, target);
     return PILLOW_C_OK;
 }
 
