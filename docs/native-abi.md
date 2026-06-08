@@ -162,6 +162,7 @@ Image operations:
 - `pillow_c_image_filter_box_blur`
 - `pillow_c_image_filter_gaussian_blur`
 - `pillow_c_image_filter_unsharp_mask`
+- `pillow_c_image_filter_color_3d_lut`
 - `pillow_c_image_transform_affine`
 - `pillow_c_image_transform_perspective`
 - `pillow_c_image_transform_quad`
@@ -229,6 +230,7 @@ Reusable target operations:
 - `pillow_c_image_filter_box_blur_into`
 - `pillow_c_image_filter_gaussian_blur_into`
 - `pillow_c_image_filter_unsharp_mask_into`
+- `pillow_c_image_filter_color_3d_lut_into`
 - `pillow_c_image_transform_affine_into`
 - `pillow_c_image_transform_perspective_into`
 - `pillow_c_image_transform_quad_into`
@@ -329,6 +331,8 @@ The non-logical `ImageChops` binary operations (`difference`, `multiply`, `scree
 `pillow_c_image_filter_gaussian_blur` and `pillow_c_image_filter_gaussian_blur_into` accept `xradius` and `yradius` doubles. The current implementation supports finite radii for `L`, `LA`, `RGB`, `RGBA`, and `CMYK`, including fractional radii and single-axis blurs. It mirrors Pillow's default three-pass Gaussian approximation by transforming each requested radius into a BoxBlur radius, running all horizontal passes before vertical passes, and returning a byte copy when both effective radii are zero. Non-finite or out-of-range radii return `-3`.
 
 `pillow_c_image_filter_unsharp_mask` and `pillow_c_image_filter_unsharp_mask_into` accept a scalar `radius` double plus integer `percent` and `threshold`. The current implementation supports finite radii for `L`, `LA`, `RGB`, `RGBA`, and `CMYK`. It reuses native GaussianBlur, then applies Pillow's per-channel `abs(original - blurred) > threshold` condition and `original + (original - blurred) * percent / 100` sharpening with byte clipping. Non-finite or out-of-range radii return `-3`.
+
+`pillow_c_image_filter_color_3d_lut` and `pillow_c_image_filter_color_3d_lut_into` accept a target mode id, table channel count, three LUT dimensions, a pointer to double table values, and a table value count. The table uses Pillow's flattened order: channels change first, then the first, second, and third dimensions. The native path prepares table values into Pillow-compatible signed 16-bit fixed-point values and applies trilinear interpolation over the source image's first three bands. Source images must have at least three bands; table channels must be 3 or 4; target modes must have at least that many bands; and a 3-channel table preserves the source fourth band for 4-band targets such as `RGBA` and `CMYK`. Invalid mode or size arguments return `-3`, table length mismatches return `-2`, and `_into` target shape or mode mismatches return `-5`.
 
 `pillow_c_image_transform_affine` and `pillow_c_image_transform_affine_into` accept output width, output height, a pointer to six doubles `(a, b, c, d, e, f)`, resample, and optional fill color arguments. The matrix follows Pillow `Image.transform(..., Transform.AFFINE, matrix, ...)` destination-to-source coordinates. The current implementation supports `NEAREST`, `BILINEAR`, and `BICUBIC`, with CMYK covered by the same channel-generic path and `LA`/`RGBA` filtered transforms using premultiplied color sampling; transform-only unsupported resamplers return `-3`.
 

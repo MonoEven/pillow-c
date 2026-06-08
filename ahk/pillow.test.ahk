@@ -7973,3 +7973,116 @@ PillowTestImageAlphaCompositeMutatesThroughNativePath(*) {
 }
 
 AhkTest.Test("Pillow Image.AlphaComposite mutates through native path", PillowTestImageAlphaCompositeMutatesThroughNativePath)
+
+PillowTestColor3DLutIdentityTable3() {
+    table := []
+    loop 2 {
+        b := A_Index - 1
+        loop 2 {
+            g := A_Index - 1
+            loop 2 {
+                r := A_Index - 1
+                table.Push(r)
+                table.Push(g)
+                table.Push(b)
+            }
+        }
+    }
+    return table
+}
+
+PillowTestColor3DLutTupleTable4() {
+    table := []
+    loop 2 {
+        b := A_Index - 1
+        loop 2 {
+            g := A_Index - 1
+            loop 2 {
+                r := A_Index - 1
+                table.Push([1 - r, g * 0.5, b * 0.25, (r + g + b) / 3.0])
+            }
+        }
+    }
+    return table
+}
+
+PillowTestImageFilterColor3DLUTUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([
+        0, 0, 0, 127, 64, 32, 255, 255, 255,
+        32, 200, 128, 240, 10, 80, 90, 120, 250,
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [2, 2], PillowTestBuffer([
+        0, 0, 0, 10, 128, 64, 32, 40,
+        255, 255, 255, 90, 32, 200, 128, 160,
+    ]))
+    outputs := []
+    try {
+        identity := Pillow.ImageFilter.Color3DLUT(2, PillowTestColor3DLutIdentityTable3())
+        table4 := Pillow.ImageFilter.Color3DLUT([2, 2, 2], PillowTestColor3DLutTupleTable4(), 4, "RGBA")
+        rgb3 := rgb.Filter(identity)
+        rgba3 := rgba.Filter(identity)
+        rgba4 := rgba.Filter(table4)
+        rgbToRgba4 := rgb.Filter(table4)
+        rgbaToRgb3 := rgba.Filter(Pillow.ImageFilter.Color3DLUT(2, PillowTestColor3DLutIdentityTable3(), 3, "RGB"))
+        outputs.Push(rgb3)
+        outputs.Push(rgba3)
+        outputs.Push(rgba4)
+        outputs.Push(rgbToRgba4)
+        outputs.Push(rgbaToRgb3)
+
+        AhkTest.AssertEqual("Color 3D LUT", identity.Name)
+        AhkTest.AssertEqual([2, 2, 2], identity.Size)
+        AhkTest.AssertEqual(3, identity.Channels)
+        AhkTest.AssertEqual("", identity.TargetMode)
+        AhkTest.AssertEqual("RGB", rgb3.Mode)
+        AhkTest.AssertEqual(PillowTestBufferToArray(rgb.ToBytes()), PillowTestBufferToArray(rgb3.ToBytes()))
+        AhkTest.AssertEqual("RGBA", rgba3.Mode)
+        AhkTest.AssertEqual(PillowTestBufferToArray(rgba.ToBytes()), PillowTestBufferToArray(rgba3.ToBytes()))
+        AhkTest.AssertEqual([255, 0, 0, 0, 127, 32, 8, 75, 0, 127, 64, 255, 223, 100, 32, 120], PillowTestBufferToArray(rgba4.ToBytes()))
+        AhkTest.AssertEqual([255, 0, 0, 0, 128, 32, 8, 74, 0, 127, 64, 255, 223, 100, 32, 120, 15, 5, 20, 110, 165, 60, 62, 153], PillowTestBufferToArray(rgbToRgba4.ToBytes()))
+        AhkTest.AssertEqual("RGB", rgbaToRgb3.Mode)
+        AhkTest.AssertEqual([0, 0, 0, 128, 64, 32, 255, 255, 255, 32, 200, 128], PillowTestBufferToArray(rgbaToRgb3.ToBytes()))
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        rgba.Close()
+        rgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter.Color3DLUT uses native path", PillowTestImageFilterColor3DLUTUsesNativePath)
+
+PillowTestImageFilterColor3DLUTRejectsInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.New("L", [1, 1])
+    try {
+        cases := [
+            (*) => Pillow.ImageFilter.Color3DLUT([1], [0, 0, 0], 3),
+            (*) => Pillow.ImageFilter.Color3DLUT(2, [0, 0, 0], 1),
+            (*) => Pillow.ImageFilter.Color3DLUT(2, [[0, 0]], 3),
+            (*) => Pillow.ImageFilter.Color3DLUT(2, [0, 0, 0], 3),
+        ]
+        for factory in cases {
+            try {
+                factory.Call()
+                AhkTest.Fail("Expected Color3DLUT constructor to reject invalid input")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, "Color3DLUT") > 0 || InStr(err.Message, "table") > 0 || InStr(err.Message, "Size") > 0)
+            }
+        }
+
+        try {
+            source.Filter(Pillow.ImageFilter.Color3DLUT(2, PillowTestColor3DLutIdentityTable3()))
+            AhkTest.Fail("Expected Color3DLUT to reject L source image")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0 || InStr(err.Message, "wrong mode") > 0)
+        }
+    } finally {
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter.Color3DLUT rejects invalid arguments", PillowTestImageFilterColor3DLUTRejectsInvalidArguments)

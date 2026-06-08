@@ -894,6 +894,83 @@ class Pillow {
             }
         }
 
+        class Color3DLUT {
+            __New(size, table, channels := 3, targetMode := "") {
+                if !(channels is Integer) || !(channels = 3 || channels = 4)
+                    throw Error("Pillow.ImageFilter.Color3DLUT supports only 3 or 4 output channels", -1)
+                this.Name := "Color 3D LUT"
+                this.Size := Pillow.ImageFilter.Color3DLUT.CheckSize(size)
+                this.Channels := channels
+                this.TargetMode := targetMode
+                this.Table := Pillow.ImageFilter.Color3DLUT.FlattenTable(table, channels)
+                expected := channels * this.Size[1] * this.Size[2] * this.Size[3]
+                if this.Table.Length != expected
+                    throw Error("Pillow.ImageFilter.Color3DLUT table has wrong length", -1)
+            }
+
+            Apply(image) {
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("Pillow.ImageFilter.Color3DLUT expects a Pillow.Image", -1)
+
+                targetMode := this.TargetMode = "" ? image.Mode : this.TargetMode
+                tableBuffer := Buffer(this.Table.Length * 8, 0)
+                for index, value in this.Table {
+                    if !(value is Number)
+                        throw Error("Pillow.ImageFilter.Color3DLUT table values must be numeric", -1)
+                    NumPut("Double", value, tableBuffer, (index - 1) * 8)
+                }
+
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_filter_color_3d_lut",
+                    "Ptr", image.RequireHandle(),
+                    "Int", Pillow.ModeId(targetMode),
+                    "Int", this.Channels,
+                    "Int", this.Size[1],
+                    "Int", this.Size[2],
+                    "Int", this.Size[3],
+                    "Ptr", tableBuffer,
+                    "UPtr", this.Table.Length,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return Pillow.WrapImageHandle(outHandle)
+            }
+
+            static CheckSize(size) {
+                if IsObject(size) {
+                    if size.Length != 3
+                        throw Error("Pillow.ImageFilter.Color3DLUT Size should be an integer or [x, y, z]", -1)
+                    checked := [size[1], size[2], size[3]]
+                } else {
+                    checked := [size, size, size]
+                }
+                for value in checked {
+                    if !(value is Integer)
+                        throw Error("Pillow.ImageFilter.Color3DLUT size values must be integers", -1)
+                    if value < 2 || value > 65
+                        throw Error("Pillow.ImageFilter.Color3DLUT size should be in [2, 65] range", -1)
+                }
+                return checked
+            }
+
+            static FlattenTable(table, channels) {
+                if !IsObject(table)
+                    throw Error("Pillow.ImageFilter.Color3DLUT expects a table array", -1)
+                flat := []
+                if table.Length > 0 && IsObject(table[1]) {
+                    for pixel in table {
+                        if !IsObject(pixel) || pixel.Length != channels
+                            throw Error("Pillow.ImageFilter.Color3DLUT table tuple length must match channels", -1)
+                        for value in pixel
+                            flat.Push(value)
+                    }
+                    return flat
+                }
+                return table.Clone()
+            }
+        }
+
         static BLUR() {
             return Pillow.ImageFilter.BuiltinKernel("Blur", [5, 5], 16, 0, [
                 1, 1, 1, 1, 1,

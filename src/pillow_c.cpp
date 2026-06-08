@@ -48,6 +48,12 @@ constexpr int RESAMPLE_PRECISION_BITS = 32 - 8 - 2;
 constexpr int RESAMPLE_PRECISION_SCALE = 1 << RESAMPLE_PRECISION_BITS;
 constexpr int RESAMPLE_ROUNDING_BIAS = 1 << (RESAMPLE_PRECISION_BITS - 1);
 
+constexpr int COLOR_LUT_PRECISION_BITS = 16 - 8 - 2;
+constexpr int COLOR_LUT_PRECISION_ROUNDING = 1 << (COLOR_LUT_PRECISION_BITS - 1);
+constexpr int COLOR_LUT_SCALE_BITS = 32 - 8 - 6;
+constexpr int COLOR_LUT_SCALE_MASK = (1 << COLOR_LUT_SCALE_BITS) - 1;
+constexpr int COLOR_LUT_SHIFT_BITS = 16 - 1;
+
 struct PillowCImage {
     int width;
     int height;
@@ -9831,6 +9837,265 @@ int filter_unsharp_mask_image_into(
     }
 }
 
+bool valid_color_lut_mode_target(const PillowCImage* source, int target_mode, int table_channels)
+{
+    if (!source || source->channels < 3 || table_channels < 3 || table_channels > 4) {
+        return false;
+    }
+    const int target_channels = channels_for_mode(target_mode);
+    if (target_channels < table_channels) {
+        return false;
+    }
+    if (target_channels > table_channels && target_channels > source->channels) {
+        return false;
+    }
+    return true;
+}
+
+bool valid_color_lut_size(int size_1d, int size_2d, int size_3d)
+{
+    return size_1d >= 2 && size_1d <= 65 &&
+           size_2d >= 2 && size_2d <= 65 &&
+           size_3d >= 2 && size_3d <= 65;
+}
+
+bool checked_color_lut_table_count(
+    int table_channels,
+    int size_1d,
+    int size_2d,
+    int size_3d,
+    std::size_t* out_count)
+{
+    if (!out_count || table_channels < 3 || table_channels > 4 || !valid_color_lut_size(size_1d, size_2d, size_3d)) {
+        return false;
+    }
+    std::size_t count = static_cast<std::size_t>(table_channels);
+    count *= static_cast<std::size_t>(size_1d);
+    count *= static_cast<std::size_t>(size_2d);
+    count *= static_cast<std::size_t>(size_3d);
+    *out_count = count;
+    return true;
+}
+
+std::int16_t prepare_color_lut_value(double value)
+{
+    constexpr double high_limit =
+        (static_cast<double>(0x7fff) - 0.5) /
+        static_cast<double>(255 << COLOR_LUT_PRECISION_BITS);
+    constexpr double low_limit =
+        (static_cast<double>(-0x8000) + 0.5) /
+        static_cast<double>(255 << COLOR_LUT_PRECISION_BITS);
+    if (value >= high_limit) {
+        return static_cast<std::int16_t>(0x7fff);
+    }
+    if (value <= low_limit) {
+        return static_cast<std::int16_t>(-0x8000);
+    }
+    const double scaled = value * static_cast<double>(255 << COLOR_LUT_PRECISION_BITS);
+    return static_cast<std::int16_t>(scaled < 0.0 ? scaled - 0.5 : scaled + 0.5);
+}
+
+int prepare_color_lut_table(
+    const double* table,
+    std::size_t table_count,
+    std::vector<std::int16_t>* out_table)
+{
+    if (!table || !out_table) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    try {
+        out_table->resize(table_count);
+        for (std::size_t index = 0; index < table_count; ++index) {
+            if (!std::isfinite(table[index])) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            (*out_table)[index] = prepare_color_lut_value(table[index]);
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+inline std::uint8_t clip_color_lut_u8(int value)
+{
+    const int shifted = (value + COLOR_LUT_PRECISION_ROUNDING) >> COLOR_LUT_PRECISION_BITS;
+    if (shifted <= 0) {
+        return 0;
+    }
+    if (shifted >= 256) {
+        return 255;
+    }
+    return static_cast<std::uint8_t>(shifted);
+}
+
+template <int Channels>
+void color_lut_interpolate(
+    std::int16_t* out,
+    const std::int16_t* left,
+    const std::int16_t* right,
+    std::int16_t shift)
+{
+    for (int channel = 0; channel < Channels; ++channel) {
+        out[channel] = static_cast<std::int16_t>(
+            (left[channel] * ((1 << COLOR_LUT_SHIFT_BITS) - shift) + right[channel] * shift) >>
+            COLOR_LUT_SHIFT_BITS);
+    }
+}
+
+inline int color_lut_table_index_3d(int index_1d, int index_2d, int index_3d, int size_1d, int size_1d_2d)
+{
+    return index_1d + index_2d * size_1d + index_3d * size_1d_2d;
+}
+
+template <int TableChannels>
+void color_lut_filter_pixel(
+    const std::uint8_t* source_pixel,
+    const std::int16_t* table,
+    int size_1d,
+    int size_1d_2d,
+    std::uint32_t scale_1d,
+    std::uint32_t scale_2d,
+    std::uint32_t scale_3d,
+    std::uint8_t* target_pixel)
+{
+    const std::uint32_t index_1d = static_cast<std::uint32_t>(source_pixel[0]) * scale_1d;
+    const std::uint32_t index_2d = static_cast<std::uint32_t>(source_pixel[1]) * scale_2d;
+    const std::uint32_t index_3d = static_cast<std::uint32_t>(source_pixel[2]) * scale_3d;
+    const auto shift_1d = static_cast<std::int16_t>(
+        (COLOR_LUT_SCALE_MASK & index_1d) >> (COLOR_LUT_SCALE_BITS - COLOR_LUT_SHIFT_BITS));
+    const auto shift_2d = static_cast<std::int16_t>(
+        (COLOR_LUT_SCALE_MASK & index_2d) >> (COLOR_LUT_SCALE_BITS - COLOR_LUT_SHIFT_BITS));
+    const auto shift_3d = static_cast<std::int16_t>(
+        (COLOR_LUT_SCALE_MASK & index_3d) >> (COLOR_LUT_SCALE_BITS - COLOR_LUT_SHIFT_BITS));
+    const int idx = TableChannels * color_lut_table_index_3d(
+        static_cast<int>(index_1d >> COLOR_LUT_SCALE_BITS),
+        static_cast<int>(index_2d >> COLOR_LUT_SCALE_BITS),
+        static_cast<int>(index_3d >> COLOR_LUT_SCALE_BITS),
+        size_1d,
+        size_1d_2d);
+
+    std::int16_t result[4] = {0, 0, 0, 0};
+    std::int16_t left[4] = {0, 0, 0, 0};
+    std::int16_t right[4] = {0, 0, 0, 0};
+    std::int16_t left_left[4] = {0, 0, 0, 0};
+    std::int16_t left_right[4] = {0, 0, 0, 0};
+    std::int16_t right_left[4] = {0, 0, 0, 0};
+    std::int16_t right_right[4] = {0, 0, 0, 0};
+
+    color_lut_interpolate<TableChannels>(left_left, &table[idx], &table[idx + TableChannels], shift_1d);
+    color_lut_interpolate<TableChannels>(
+        left_right,
+        &table[idx + size_1d * TableChannels],
+        &table[idx + size_1d * TableChannels + TableChannels],
+        shift_1d);
+    color_lut_interpolate<TableChannels>(left, left_left, left_right, shift_2d);
+    color_lut_interpolate<TableChannels>(
+        right_left,
+        &table[idx + size_1d_2d * TableChannels],
+        &table[idx + size_1d_2d * TableChannels + TableChannels],
+        shift_1d);
+    color_lut_interpolate<TableChannels>(
+        right_right,
+        &table[idx + size_1d_2d * TableChannels + size_1d * TableChannels],
+        &table[idx + size_1d_2d * TableChannels + size_1d * TableChannels + TableChannels],
+        shift_1d);
+    color_lut_interpolate<TableChannels>(right, right_left, right_right, shift_2d);
+    color_lut_interpolate<TableChannels>(result, left, right, shift_3d);
+
+    for (int channel = 0; channel < TableChannels; ++channel) {
+        target_pixel[channel] = clip_color_lut_u8(result[channel]);
+    }
+}
+
+int filter_color_3d_lut_image_into(
+    const PillowCImage* source,
+    int target_mode,
+    int table_channels,
+    int size_1d,
+    int size_2d,
+    int size_3d,
+    const double* table,
+    std::size_t table_count,
+    PillowCImage* target)
+{
+    if (!source || !table || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    std::size_t expected_count = 0;
+    if (!checked_color_lut_table_count(table_channels, size_1d, size_2d, size_3d, &expected_count)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (table_count != expected_count) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (!valid_color_lut_mode_target(source, target_mode, table_channels)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int target_channels = channels_for_mode(target_mode);
+    if (!image_shape_matches(target, source->width, source->height, target_mode, target_channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    std::vector<std::int16_t> prepared_table;
+    const int prepare_status = prepare_color_lut_table(table, table_count, &prepared_table);
+    if (prepare_status != PILLOW_C_OK) {
+        return prepare_status;
+    }
+
+    std::vector<std::uint8_t> source_snapshot;
+    const std::uint8_t* source_data = source->pixels.data();
+    if (source == target) {
+        source_snapshot = source->pixels;
+        source_data = source_snapshot.data();
+    }
+
+    const std::uint32_t scale_1d = static_cast<std::uint32_t>(
+        static_cast<double>(size_1d - 1) / 255.0 * static_cast<double>(1 << COLOR_LUT_SCALE_BITS));
+    const std::uint32_t scale_2d = static_cast<std::uint32_t>(
+        static_cast<double>(size_2d - 1) / 255.0 * static_cast<double>(1 << COLOR_LUT_SCALE_BITS));
+    const std::uint32_t scale_3d = static_cast<std::uint32_t>(
+        static_cast<double>(size_3d - 1) / 255.0 * static_cast<double>(1 << COLOR_LUT_SCALE_BITS));
+    const int size_1d_2d = size_1d * size_2d;
+
+    for (int y = 0; y < source->height; ++y) {
+        const std::size_t source_row = static_cast<std::size_t>(y) * source->stride;
+        const std::size_t target_row = static_cast<std::size_t>(y) * target->stride;
+        for (int x = 0; x < source->width; ++x) {
+            const auto* source_pixel =
+                source_data + source_row + static_cast<std::size_t>(x) * source->channels;
+            auto* target_pixel =
+                target->pixels.data() + target_row + static_cast<std::size_t>(x) * target_channels;
+
+            if (table_channels == 3) {
+                color_lut_filter_pixel<3>(
+                    source_pixel,
+                    prepared_table.data(),
+                    size_1d,
+                    size_1d_2d,
+                    scale_1d,
+                    scale_2d,
+                    scale_3d,
+                    target_pixel);
+                if (target_channels > 3) {
+                    target_pixel[3] = source_pixel[3];
+                }
+            } else {
+                color_lut_filter_pixel<4>(
+                    source_pixel,
+                    prepared_table.data(),
+                    size_1d,
+                    size_1d_2d,
+                    scale_1d,
+                    scale_2d,
+                    scale_3d,
+                    target_pixel);
+            }
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 int resize_image_box_into(
     const PillowCImage* source,
     int out_width,
@@ -11981,6 +12246,29 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_unsharp_mask_into(
     PillowCImage* target)
 {
     return filter_unsharp_mask_image_into(source, radius, percent, threshold, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_color_3d_lut_into(
+    const PillowCImage* source,
+    int target_mode,
+    int table_channels,
+    int size_1d,
+    int size_2d,
+    int size_3d,
+    const double* table,
+    std::size_t table_count,
+    PillowCImage* target)
+{
+    return filter_color_3d_lut_image_into(
+        source,
+        target_mode,
+        table_channels,
+        size_1d,
+        size_2d,
+        size_3d,
+        table,
+        table_count,
+        target);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_transform_affine_into(
@@ -14404,6 +14692,68 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_unsharp_mask(
             source->stride,
             std::vector<std::uint8_t>(source->pixels.size())};
         const int status = filter_unsharp_mask_image_into(source, radius, percent, threshold, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_filter_color_3d_lut(
+    const PillowCImage* source,
+    int target_mode,
+    int table_channels,
+    int size_1d,
+    int size_2d,
+    int size_3d,
+    const double* table,
+    std::size_t table_count,
+    PillowCImage** out_image)
+{
+    if (!source || !table || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    std::size_t expected_count = 0;
+    if (!checked_color_lut_table_count(table_channels, size_1d, size_2d, size_3d, &expected_count)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (table_count != expected_count) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (!valid_color_lut_mode_target(source, target_mode, table_channels)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const int target_channels = channels_for_mode(target_mode);
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(source->width, source->height, target_channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            target_mode,
+            target_channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = filter_color_3d_lut_image_into(
+            source,
+            target_mode,
+            table_channels,
+            size_1d,
+            size_2d,
+            size_3d,
+            table,
+            table_count,
+            image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

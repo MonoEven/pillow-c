@@ -2309,6 +2309,45 @@ PillowCImageFilterUnsharpMaskInto(sourceHandle, radius, percent, threshold, targ
     PillowCAssertStatus(status)
 }
 
+PillowCImageFilterColor3DLut(sourceHandle, targetMode, tableChannels, size, tableValues) {
+    table := PillowCDoubleBuffer(tableValues)
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_filter_color_3d_lut",
+        "Ptr", sourceHandle,
+        "Int", targetMode,
+        "Int", tableChannels,
+        "Int", size[1],
+        "Int", size[2],
+        "Int", size[3],
+        "Ptr", table,
+        "UPtr", tableValues.Length,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageFilterColor3DLutInto(sourceHandle, targetMode, tableChannels, size, tableValues, targetHandle) {
+    table := PillowCDoubleBuffer(tableValues)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_filter_color_3d_lut_into",
+        "Ptr", sourceHandle,
+        "Int", targetMode,
+        "Int", tableChannels,
+        "Int", size[1],
+        "Int", size[2],
+        "Int", size[3],
+        "Ptr", table,
+        "UPtr", tableValues.Length,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCAffineMatrix(values) {
     buf := Buffer(6 * 8, 0)
     for index, value in values
@@ -13435,3 +13474,156 @@ PillowCTestImageIntoRejectsShapeMismatch(*) {
 }
 
 AhkTest.Test("pillow_c image into operations reject target shape mismatch", PillowCTestImageIntoRejectsShapeMismatch)
+
+PillowCColor3DLutIdentityTable3() {
+    table := []
+    loop 2 {
+        b := A_Index - 1
+        loop 2 {
+            g := A_Index - 1
+            loop 2 {
+                r := A_Index - 1
+                table.Push(r)
+                table.Push(g)
+                table.Push(b)
+            }
+        }
+    }
+    return table
+}
+
+PillowCColor3DLutTable4() {
+    table := []
+    loop 2 {
+        b := A_Index - 1
+        loop 2 {
+            g := A_Index - 1
+            loop 2 {
+                r := A_Index - 1
+                table.Push(1 - r)
+                table.Push(g * 0.5)
+                table.Push(b * 0.25)
+                table.Push((r + g + b) / 3.0)
+            }
+        }
+    }
+    return table
+}
+
+PillowCTestImageFilterColor3DLutMatchesPillowRgbRgbaAndCmyk(*) {
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    rgba := PillowCCreateImageMode(2, 2, 4)
+    cmyk := PillowCCreateImageMode(2, 1, 7)
+    rgbaTarget := PillowCCreateImageMode(2, 2, 4)
+    rgb3 := 0
+    rgba3 := 0
+    rgba4 := 0
+    rgbToRgba4 := 0
+    rgbaToRgb3 := 0
+    cmyk3 := 0
+    try {
+        PillowCImageSetBytes(rgb, [
+            0, 0, 0, 127, 64, 32, 255, 255, 255,
+            32, 200, 128, 240, 10, 80, 90, 120, 250,
+        ])
+        PillowCImageSetBytes(rgba, [
+            0, 0, 0, 10, 128, 64, 32, 40,
+            255, 255, 255, 90, 32, 200, 128, 160,
+        ])
+        PillowCImageSetBytes(cmyk, [
+            255, 127, 0, 33,
+            55, 215, 175, 77,
+        ])
+        PillowCImageSetBytes(rgbaTarget, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
+
+        table3 := PillowCColor3DLutIdentityTable3()
+        table4 := PillowCColor3DLutTable4()
+        rgb3 := PillowCImageFilterColor3DLut(rgb, 3, 3, [2, 2, 2], table3)
+        rgba3 := PillowCImageFilterColor3DLut(rgba, 4, 3, [2, 2, 2], table3)
+        rgba4 := PillowCImageFilterColor3DLut(rgba, 4, 4, [2, 2, 2], table4)
+        rgbToRgba4 := PillowCImageFilterColor3DLut(rgb, 4, 4, [2, 2, 2], table4)
+        rgbaToRgb3 := PillowCImageFilterColor3DLut(rgba, 3, 3, [2, 2, 2], table3)
+        cmyk3 := PillowCImageFilterColor3DLut(cmyk, 7, 3, [2, 2, 2], table3)
+        before := PillowCImageData(rgbaTarget).Ptr
+        PillowCImageFilterColor3DLutInto(rgba, 4, 4, [2, 2, 2], table4, rgbaTarget)
+
+        AhkTest.AssertEqual(3, PillowCImageMode(rgb3))
+        AhkTest.AssertEqual([0, 0, 0, 127, 64, 32, 255, 255, 255, 32, 200, 128, 240, 10, 80, 90, 120, 250], PillowCImageToArray(rgb3, 18))
+        AhkTest.AssertEqual(4, PillowCImageMode(rgba3))
+        AhkTest.AssertEqual([0, 0, 0, 10, 128, 64, 32, 40, 255, 255, 255, 90, 32, 200, 128, 160], PillowCImageToArray(rgba3, 16))
+        AhkTest.AssertEqual([255, 0, 0, 0, 127, 32, 8, 75, 0, 127, 64, 255, 223, 100, 32, 120], PillowCImageToArray(rgba4, 16))
+        AhkTest.AssertEqual([255, 0, 0, 0, 128, 32, 8, 74, 0, 127, 64, 255, 223, 100, 32, 120, 15, 5, 20, 110, 165, 60, 62, 153], PillowCImageToArray(rgbToRgba4, 24))
+        AhkTest.AssertEqual(3, PillowCImageMode(rgbaToRgb3))
+        AhkTest.AssertEqual([0, 0, 0, 128, 64, 32, 255, 255, 255, 32, 200, 128], PillowCImageToArray(rgbaToRgb3, 12))
+        AhkTest.AssertEqual(7, PillowCImageMode(cmyk3))
+        AhkTest.AssertEqual([255, 127, 0, 33, 55, 215, 175, 77], PillowCImageToArray(cmyk3, 8))
+        AhkTest.AssertEqual(before, PillowCImageData(rgbaTarget).Ptr)
+        AhkTest.AssertEqual(PillowCImageToArray(rgba4, 16), PillowCImageToArray(rgbaTarget, 16))
+    } finally {
+        for handle in [cmyk3, rgbaToRgb3, rgbToRgba4, rgba4, rgba3, rgb3, rgbaTarget, cmyk, rgba, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image filter Color3DLUT matches Pillow RGB RGBA and CMYK", PillowCTestImageFilterColor3DLutMatchesPillowRgbRgbaAndCmyk)
+
+PillowCTestImageFilterColor3DLutRejectsInvalidArguments(*) {
+    rgb := PillowCCreateImageMode(1, 1, 3)
+    l := PillowCCreateImageMode(1, 1, 1)
+    wrongTarget := PillowCCreateImageMode(1, 1, 3)
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(rgb, [1, 2, 3])
+        table3 := PillowCColor3DLutIdentityTable3()
+        cases := [
+            { Source: rgb, TargetMode: 3, Channels: 2, Size: [2, 2, 2], Table: table3, Status: -3 },
+            { Source: rgb, TargetMode: 3, Channels: 3, Size: [1, 2, 2], Table: table3, Status: -3 },
+            { Source: rgb, TargetMode: 3, Channels: 3, Size: [2, 2, 2], Table: [0, 0, 0], Status: -2 },
+            { Source: rgb, TargetMode: 4, Channels: 3, Size: [2, 2, 2], Table: table3, Status: -3 },
+            { Source: l, TargetMode: 1, Channels: 3, Size: [2, 2, 2], Table: table3, Status: -3 },
+        ]
+        for item in cases {
+            table := PillowCDoubleBuffer(item.Table)
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_filter_color_3d_lut",
+                "Ptr", item.Source,
+                "Int", item.TargetMode,
+                "Int", item.Channels,
+                "Int", item.Size[1],
+                "Int", item.Size[2],
+                "Int", item.Size[3],
+                "Ptr", table,
+                "UPtr", item.Table.Length,
+                "Ptr*", &outHandle,
+                "Int"
+            )
+            AhkTest.AssertEqual(item.Status, status)
+            AhkTest.AssertEqual(0, outHandle)
+        }
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_filter_color_3d_lut_into",
+            "Ptr", rgb,
+            "Int", 4,
+            "Int", 4,
+            "Int", 2,
+            "Int", 2,
+            "Int", 2,
+            "Ptr", PillowCDoubleBuffer(PillowCColor3DLutTable4()),
+            "UPtr", 32,
+            "Ptr", wrongTarget,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(wrongTarget)
+        PillowCFreeImage(l)
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c image filter Color3DLUT rejects invalid arguments", PillowCTestImageFilterColor3DLutRejectsInvalidArguments)
