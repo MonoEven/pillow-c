@@ -1477,15 +1477,12 @@ class Pillow {
         static Open(path, formats := unset) {
             if !(path is String)
                 throw Error("Pillow.Image.Open expects a file path", -1)
-            if IsSet(formats) {
-                if !IsObject(formats) || formats.Length != 1 || StrUpper(formats[1]) != "BMP"
-                    throw Error("Pillow.Image.Open currently supports only BMP", -1)
-            }
+            format := Pillow.Image.ResolveOpenFormat(path, IsSet(formats) ? formats : unset)
 
             pathBytes := Pillow.Image.Utf8Buffer(path)
             outHandle := 0
             Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_open_bmp",
+                Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
                 "Ptr", pathBytes,
                 "Ptr*", &outHandle,
                 "Int"
@@ -1711,6 +1708,36 @@ class Pillow {
             return buf
         }
 
+        static ResolveOpenFormat(path, formats := unset) {
+            if IsSet(formats) {
+                if !IsObject(formats) || formats.Length != 1
+                    throw Error("Pillow.Image.Open currently supports one explicit format", -1)
+                return Pillow.Image.NormalizeFileFormat(formats[1])
+            }
+            return Pillow.Image.FormatFromPath(path)
+        }
+
+        static ResolveSaveFormat(path, format := unset) {
+            if IsSet(format)
+                return Pillow.Image.NormalizeFileFormat(format)
+            return Pillow.Image.FormatFromPath(path)
+        }
+
+        static FormatFromPath(path) {
+            if RegExMatch(path, "i)\.bmp$")
+                return "BMP"
+            if RegExMatch(path, "i)\.png$")
+                return "PNG"
+            throw Error("Pillow image file format is unsupported", -1)
+        }
+
+        static NormalizeFileFormat(format) {
+            name := StrUpper(format)
+            if name = "BMP" || name = "PNG"
+                return name
+            throw Error("Pillow image file format is unsupported", -1)
+        }
+
         static HandleArray(images) {
             buf := Buffer(images.Length * A_PtrSize, 0)
             for index, image in images {
@@ -1829,15 +1856,11 @@ class Pillow {
         Save(path, format := unset) {
             if !(path is String)
                 throw Error("Pillow.Image.Save expects a file path", -1)
-            if IsSet(format) {
-                if StrUpper(format) != "BMP"
-                    throw Error("Pillow.Image.Save currently supports only BMP", -1)
-            } else if !RegExMatch(path, "i)\.bmp$")
-                throw Error("Pillow.Image.Save requires format BMP or a .bmp path", -1)
+            resolvedFormat := Pillow.Image.ResolveSaveFormat(path, IsSet(format) ? format : unset)
 
             pathBytes := Pillow.Image.Utf8Buffer(path)
             Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_save_bmp",
+                Pillow.RequireDllPath() "\pillow_c_image_save_" StrLower(resolvedFormat),
                 "Ptr", this.RequireHandle(),
                 "Ptr", pathBytes,
                 "Int"

@@ -13,6 +13,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <wincodec.h>
 
 namespace {
 
@@ -129,6 +130,67 @@ enum class RawCodecKind {
 struct RawCodecSpec {
     RawCodecKind kind;
     int bytes_per_pixel;
+};
+
+template <typename T>
+struct ComPtr {
+    T* ptr = nullptr;
+
+    ComPtr() = default;
+    ComPtr(const ComPtr&) = delete;
+    ComPtr& operator=(const ComPtr&) = delete;
+
+    ~ComPtr()
+    {
+        reset();
+    }
+
+    T** put()
+    {
+        reset();
+        return &ptr;
+    }
+
+    void reset(T* value = nullptr)
+    {
+        if (ptr) {
+            ptr->Release();
+        }
+        ptr = value;
+    }
+
+    T* get() const
+    {
+        return ptr;
+    }
+
+    T* operator->() const
+    {
+        return ptr;
+    }
+};
+
+struct ComInitScope {
+    HRESULT hr;
+    bool initialized;
+
+    ComInitScope()
+        : hr(CoInitializeEx(nullptr, COINIT_MULTITHREADED)),
+          initialized(SUCCEEDED(hr))
+    {
+    }
+
+    ~ComInitScope()
+    {
+        if (initialized) {
+            CoUninitialize();
+        }
+    }
+
+    bool usable() const
+    {
+        return SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE;
+    }
 };
 
 inline std::uint32_t shift_for_div255(std::uint32_t value)
@@ -1054,6 +1116,307 @@ int save_bmp_image(const PillowCImage* image, const char* path)
         }
 
         if (!write_binary_file(path, out)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int create_wic_factory(ComPtr<IWICImagingFactory>* factory)
+{
+    if (!factory) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const HRESULT hr = CoCreateInstance(
+        CLSID_WICImagingFactory,
+        nullptr,
+        CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(factory->put()));
+    return SUCCEEDED(hr) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+}
+
+int wic_format_to_mode(const WICPixelFormatGUID& format, int* mode, int* channels, WICPixelFormatGUID* target_format)
+{
+    if (!mode || !channels || !target_format) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (IsEqualGUID(format, GUID_WICPixelFormat8bppGray)) {
+        *mode = PILLOW_C_MODE_L;
+        *channels = 1;
+        *target_format = GUID_WICPixelFormat8bppGray;
+        return PILLOW_C_OK;
+    }
+    if (IsEqualGUID(format, GUID_WICPixelFormat24bppRGB)) {
+        *mode = PILLOW_C_MODE_RGB;
+        *channels = 3;
+        *target_format = GUID_WICPixelFormat24bppRGB;
+        return PILLOW_C_OK;
+    }
+    if (IsEqualGUID(format, GUID_WICPixelFormat32bppRGBA)) {
+        *mode = PILLOW_C_MODE_RGBA;
+        *channels = 4;
+        *target_format = GUID_WICPixelFormat32bppRGBA;
+        return PILLOW_C_OK;
+    }
+    if (IsEqualGUID(format, GUID_WICPixelFormat32bppBGRA) ||
+        IsEqualGUID(format, GUID_WICPixelFormat32bppPBGRA) ||
+        IsEqualGUID(format, GUID_WICPixelFormat32bppPRGBA)) {
+        *mode = PILLOW_C_MODE_RGBA;
+        *channels = 4;
+        *target_format = GUID_WICPixelFormat32bppRGBA;
+        return PILLOW_C_OK;
+    }
+    *mode = PILLOW_C_MODE_RGB;
+    *channels = 3;
+    *target_format = GUID_WICPixelFormat24bppRGB;
+    return PILLOW_C_OK;
+}
+
+int open_png_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<wchar_t> wide_path;
+        if (!utf8_path_to_wide(path, &wide_path)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ComInitScope com;
+        if (!com.usable()) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ComPtr<IWICImagingFactory> factory;
+        int status = create_wic_factory(&factory);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        ComPtr<IWICBitmapDecoder> decoder;
+        HRESULT hr = factory->CreateDecoderFromFilename(
+            wide_path.data(),
+            nullptr,
+            GENERIC_READ,
+            WICDecodeMetadataCacheOnDemand,
+            decoder.put());
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        GUID container = {};
+        if (FAILED(decoder->GetContainerFormat(&container)) || !IsEqualGUID(container, GUID_ContainerFormatPng)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        ComPtr<IWICBitmapFrameDecode> frame;
+        hr = decoder->GetFrame(0, frame.put());
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        UINT width_u = 0;
+        UINT height_u = 0;
+        hr = frame->GetSize(&width_u, &height_u);
+        if (FAILED(hr) || width_u > static_cast<UINT>(std::numeric_limits<int>::max()) ||
+            height_u > static_cast<UINT>(std::numeric_limits<int>::max())) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const int width = static_cast<int>(width_u);
+        const int height = static_cast<int>(height_u);
+        if (width <= 0 || height <= 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        WICPixelFormatGUID source_format = {};
+        hr = frame->GetPixelFormat(&source_format);
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        int mode = 0;
+        int channels = 0;
+        WICPixelFormatGUID target_format = {};
+        status = wic_format_to_mode(source_format, &mode, &channels, &target_format);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::size_t stride = 0;
+        std::size_t size = 0;
+        if (!checked_image_size(width, height, channels, &stride, &size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        ComPtr<IWICBitmapSource> source;
+        if (IsEqualGUID(source_format, target_format)) {
+            source.reset(frame.get());
+            source.get()->AddRef();
+        } else {
+            ComPtr<IWICFormatConverter> converter;
+            hr = factory->CreateFormatConverter(converter.put());
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            hr = converter->Initialize(
+                frame.get(),
+                target_format,
+                WICBitmapDitherTypeNone,
+                nullptr,
+                0.0,
+                WICBitmapPaletteTypeMedianCut);
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            source.reset(converter.get());
+            source.get()->AddRef();
+        }
+
+        auto* image = new PillowCImage{
+            width,
+            height,
+            mode,
+            channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        hr = source->CopyPixels(
+            nullptr,
+            static_cast<UINT>(stride),
+            static_cast<UINT>(image->pixels.size()),
+            image->pixels.data());
+        if (FAILED(hr)) {
+            delete image;
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int png_mode_format(const PillowCImage* image, WICPixelFormatGUID* format)
+{
+    if (!image || !format) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode == PILLOW_C_MODE_L && image->channels == 1) {
+        *format = GUID_WICPixelFormat8bppGray;
+        return PILLOW_C_OK;
+    }
+    if (image->mode == PILLOW_C_MODE_RGB && image->channels == 3) {
+        *format = GUID_WICPixelFormat24bppBGR;
+        return PILLOW_C_OK;
+    }
+    if (image->mode == PILLOW_C_MODE_RGBA && image->channels == 4) {
+        *format = GUID_WICPixelFormat32bppBGRA;
+        return PILLOW_C_OK;
+    }
+    return PILLOW_C_INVALID_ARGUMENT;
+}
+
+int save_png_image(const PillowCImage* image, const char* path)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    WICPixelFormatGUID format = {};
+    int status = png_mode_format(image, &format);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+
+    try {
+        std::vector<wchar_t> wide_path;
+        if (!utf8_path_to_wide(path, &wide_path)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ComInitScope com;
+        if (!com.usable()) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ComPtr<IWICImagingFactory> factory;
+        status = create_wic_factory(&factory);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        ComPtr<IWICStream> stream;
+        HRESULT hr = factory->CreateStream(stream.put());
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        hr = stream->InitializeFromFilename(wide_path.data(), GENERIC_WRITE);
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        ComPtr<IWICBitmapEncoder> encoder;
+        hr = factory->CreateEncoder(GUID_ContainerFormatPng, nullptr, encoder.put());
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        hr = encoder->Initialize(stream.get(), WICBitmapEncoderNoCache);
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        ComPtr<IWICBitmapFrameEncode> frame;
+        hr = encoder->CreateNewFrame(frame.put(), nullptr);
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        hr = frame->Initialize(nullptr);
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        hr = frame->SetSize(static_cast<UINT>(image->width), static_cast<UINT>(image->height));
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        WICPixelFormatGUID encoder_format = format;
+        hr = frame->SetPixelFormat(&encoder_format);
+        if (FAILED(hr) || !IsEqualGUID(encoder_format, format)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::vector<std::uint8_t> encoded_pixels;
+        const std::uint8_t* write_data = image->pixels.data();
+        if (image->mode == PILLOW_C_MODE_RGB || image->mode == PILLOW_C_MODE_RGBA) {
+            encoded_pixels.assign(image->pixels.size(), std::uint8_t{0});
+            const std::size_t channels = static_cast<std::size_t>(image->channels);
+            for (int y = 0; y < image->height; ++y) {
+                const std::uint8_t* src_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+                std::uint8_t* dst_row = encoded_pixels.data() + static_cast<std::size_t>(y) * image->stride;
+                for (int x = 0; x < image->width; ++x) {
+                    const std::size_t offset = static_cast<std::size_t>(x) * channels;
+                    dst_row[offset + 0u] = src_row[offset + 2u];
+                    dst_row[offset + 1u] = src_row[offset + 1u];
+                    dst_row[offset + 2u] = src_row[offset + 0u];
+                    if (channels == 4u) {
+                        dst_row[offset + 3u] = src_row[offset + 3u];
+                    }
+                }
+            }
+            write_data = encoded_pixels.data();
+        }
+        hr = frame->WritePixels(
+            static_cast<UINT>(image->height),
+            static_cast<UINT>(image->stride),
+            static_cast<UINT>(image->pixels.size()),
+            const_cast<BYTE*>(write_data));
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        hr = frame->Commit();
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        hr = encoder->Commit();
+        if (FAILED(hr)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
         return PILLOW_C_OK;
@@ -7010,6 +7373,20 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_bmp(
     const char* path)
 {
     return save_bmp_image(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_png(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_png_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png(
+    const PillowCImage* image,
+    const char* path)
+{
+    return save_png_image(image, path);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_crop(

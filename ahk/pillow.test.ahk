@@ -21,6 +21,13 @@ PillowTestBufferToArray(buf) {
     return values
 }
 
+PillowTestArraySlice(values, firstIndex, lastIndex) {
+    out := []
+    loop lastIndex - firstIndex + 1
+        out.Push(values[firstIndex + A_Index - 1])
+    return out
+}
+
 PillowTestWriteFileBytes(path, values) {
     buf := PillowTestBuffer(values)
     file := FileOpen(path, "w")
@@ -44,6 +51,10 @@ PillowTestReadFileBytes(path) {
 
 PillowTestTempBmpPath(name) {
     return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) ".bmp"
+}
+
+PillowTestTempPngPath(name) {
+    return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) ".png"
 }
 
 PillowTestDeleteFile(path) {
@@ -268,10 +279,10 @@ PillowTestImageOpenSaveBmpRejectsUnsupportedInputs(*) {
     badPath := PillowTestTempBmpPath("bad")
     try {
         try {
-            image.Save(badPath, "PNG")
+            image.Save(badPath, "TIFF")
             AhkTest.Fail("Expected Image.Save to reject unsupported format")
         } catch Error as err {
-            AhkTest.AssertTrue(InStr(err.Message, "BMP") > 0)
+            AhkTest.AssertTrue(InStr(err.Message, "unsupported") > 0)
         }
 
         try {
@@ -295,6 +306,87 @@ PillowTestImageOpenSaveBmpRejectsUnsupportedInputs(*) {
 }
 
 AhkTest.Test("Pillow Image.Open and Save BMP reject unsupported inputs", PillowTestImageOpenSaveBmpRejectsUnsupportedInputs)
+
+PillowTestImageSaveAndOpenPngUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([
+        10, 20, 30, 40, 50, 60,
+        70, 80, 90, 100, 110, 120
+    ]))
+    rgba := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([
+        10, 20, 30, 40, 50, 60, 70, 80
+    ]))
+    savedPath := PillowTestTempPngPath("save-open")
+    oraclePath := PillowTestTempPngPath("oracle-open")
+    loaded := 0
+    loadedRgba := 0
+    try {
+        rgb.Save(savedPath, "PNG")
+        AhkTest.AssertEqual([137, 80, 78, 71, 13, 10, 26, 10], PillowTestArraySlice(PillowTestReadFileBytes(savedPath), 1, 8))
+        loaded := Pillow.Image.Open(savedPath)
+
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([2, 2], loaded.Size)
+        AhkTest.AssertEqual([
+            10, 20, 30, 40, 50, 60,
+            70, 80, 90, 100, 110, 120
+        ], PillowTestBufferToArray(loaded.ToBytes()))
+
+        PillowTestWriteFileBytes(oraclePath, [
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 2, 0, 0, 0, 1, 8, 6, 0, 0, 0, 244, 34, 127, 138,
+            0, 0, 0, 14, 73, 68, 65, 84, 120, 156, 99, 228, 18, 145, 211,
+            0, 1, 0, 3, 250, 1, 6, 247, 12, 146, 55, 0, 0, 0, 0,
+            73, 69, 78, 68, 174, 66, 96, 130
+        ])
+        loadedRgba := Pillow.Image.Open(oraclePath, ["PNG"])
+        AhkTest.AssertEqual("RGBA", loadedRgba.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80], PillowTestBufferToArray(loadedRgba.ToBytes()))
+
+        rgba.Save(savedPath)
+        if IsObject(loadedRgba)
+            loadedRgba.Close()
+        loadedRgba := Pillow.Image.Open(savedPath)
+        AhkTest.AssertEqual("RGBA", loadedRgba.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80], PillowTestBufferToArray(loadedRgba.ToBytes()))
+    } finally {
+        for image in [loadedRgba, loaded, rgba, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(oraclePath)
+        PillowTestDeleteFile(savedPath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save and Image.Open support PNG through native path", PillowTestImageSaveAndOpenPngUsesNativePath)
+
+PillowTestImageOpenSavePngRejectsUnsupportedInputs(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("CMYK", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
+    badPath := PillowTestTempPngPath("bad")
+    try {
+        try {
+            image.Save(badPath, "PNG")
+            AhkTest.Fail("Expected Image.Save to reject unsupported CMYK PNG")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+
+        PillowTestWriteFileBytes(badPath, [1, 2, 3, 4])
+        try {
+            Pillow.Image.Open(badPath, ["PNG"])
+            AhkTest.Fail("Expected Image.Open to reject invalid PNG")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+    } finally {
+        PillowTestDeleteFile(badPath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Open and Save PNG reject unsupported inputs", PillowTestImageOpenSavePngRejectsUnsupportedInputs)
 
 PillowTestImageCmykFoundationUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
