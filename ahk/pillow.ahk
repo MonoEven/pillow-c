@@ -3622,7 +3622,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         TransformAffine(size, matrix, resample := unset, fillcolor := unset) {
