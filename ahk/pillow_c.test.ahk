@@ -1515,6 +1515,27 @@ PillowCImageResizeBox(sourceHandle, width, height, resample, box) {
     return outHandle
 }
 
+PillowCImageResizeReducingGap(sourceHandle, width, height, resample, box, reducingGap) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_resize_reducing_gap",
+        "Ptr", sourceHandle,
+        "Int", width,
+        "Int", height,
+        "Int", resample,
+        "Double", box[1],
+        "Double", box[2],
+        "Double", box[3],
+        "Double", box[4],
+        "Double", reducingGap,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageResizeBoxInto(sourceHandle, width, height, resample, box, targetHandle) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_resize_box_into",
@@ -7401,6 +7422,99 @@ PillowCTestImageResizeBoxMatchesPillowSampling(*) {
 }
 
 AhkTest.Test("pillow_c image resize_box matches Pillow sampling", PillowCTestImageResizeBoxMatchesPillowSampling)
+
+PillowCTestImageResizeReducingGapMatchesPillowTwoStepSampling(*) {
+    l := PillowCCreateImageMode(8, 8, 1)
+    rgb := PillowCCreateImageMode(8, 6, 3)
+    p := PillowCCreateImageMode(8, 4, 6)
+    lOut := 0
+    rgbOut := 0
+    pOut := 0
+    outHandle := 0
+    try {
+        lBytes := []
+        loop 8 {
+            y := A_Index - 1
+            loop 8 {
+                x := A_Index - 1
+                lBytes.Push(y * 20 + x * 3)
+            }
+        }
+        PillowCImageSetBytes(l, lBytes)
+
+        rgbBytes := []
+        loop 6 {
+            y := A_Index - 1
+            loop 8 {
+                x := A_Index - 1
+                rgbBytes.Push(x * 30)
+                rgbBytes.Push(y * 35)
+                rgbBytes.Push(Mod(x * 11 + y * 17, 256))
+            }
+        }
+        PillowCImageSetBytes(rgb, rgbBytes)
+
+        pBytes := []
+        loop 4 {
+            y := A_Index - 1
+            loop 8 {
+                x := A_Index - 1
+                pBytes.Push(Mod(x + y, 4))
+            }
+        }
+        PillowCImageSetBytes(p, pBytes)
+        PillowCImagePutPaletteRgb(p, [
+            0, 0, 0,
+            10, 20, 30,
+            200, 100, 50,
+            255, 255, 255,
+        ])
+
+        lOut := PillowCImageResizeReducingGap(l, 2, 2, 2, [0.0, 0.0, 8.0, 8.0], 2.0)
+        AhkTest.AssertEqual([45, 55, 107, 117], PillowCImageToArray(lOut, 4))
+
+        rgbOut := PillowCImageResizeReducingGap(rgb, 2, 2, 3, [1.0, 0.0, 7.0, 6.0], 1.5)
+        AhkTest.AssertEqual([
+            54, 40, 39, 156, 40, 77,
+            54, 136, 85, 156, 136, 123,
+        ], PillowCImageToArray(rgbOut, 12))
+
+        pOut := PillowCImageResizeReducingGap(p, 2, 2, 3, [0.0, 0.0, 8.0, 4.0], 1.1)
+        AhkTest.AssertEqual([3, 3, 1, 1], PillowCImageToArray(pOut, 4))
+        AhkTest.AssertEqual([
+            0, 0, 0,
+            10, 20, 30,
+            200, 100, 50,
+            255, 255, 255,
+        ], PillowCImageGetPaletteRgb(pOut))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_resize_reducing_gap",
+            "Ptr", l,
+            "Int", 2,
+            "Int", 2,
+            "Int", 2,
+            "Double", 0.0,
+            "Double", 0.0,
+            "Double", 8.0,
+            "Double", 8.0,
+            "Double", 0.9,
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        for image in [pOut, rgbOut, lOut, p, rgb, l] {
+            if image
+                PillowCFreeImage(image)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image resize reducing_gap matches Pillow two-step sampling", PillowCTestImageResizeReducingGapMatchesPillowTwoStepSampling)
 
 PillowCTestImageResizeAdvancedFiltersMatchPillowSampling(*) {
     l := PillowCCreateImageMode(3, 2, 1)

@@ -2489,14 +2489,41 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
-        Resize(size, resample := unset, box := unset) {
+        Resize(size, resample := unset, box := unset, reducingGap := unset) {
             if size.Length != 2
                 throw Error("Pillow.Image.Resize expects size [width, height]", -1)
             if !IsSet(resample)
                 resample := Pillow.Resampling.NEAREST
 
             outHandle := 0
-            if IsSet(box) {
+            if IsSet(reducingGap) {
+                if !(reducingGap is Number) || reducingGap < 1.0
+                    throw Error("Pillow.Image.Resize reducingGap must be 1.0 or greater", -1)
+                if IsSet(box) {
+                    if !IsObject(box) || box.Length != 4
+                        throw Error("Pillow.Image.Resize box expects [left, top, right, bottom]", -1)
+                    for value in box {
+                        if !(value is Number)
+                            throw Error("Pillow.Image.Resize box coordinates must be numeric", -1)
+                    }
+                } else {
+                    box := [0.0, 0.0, this.Width + 0.0, this.Height + 0.0]
+                }
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_resize_reducing_gap",
+                    "Ptr", this.RequireHandle(),
+                    "Int", size[1],
+                    "Int", size[2],
+                    "Int", resample,
+                    "Double", box[1],
+                    "Double", box[2],
+                    "Double", box[3],
+                    "Double", box[4],
+                    "Double", reducingGap,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+            } else if IsSet(box) {
                 if !IsObject(box) || box.Length != 4
                     throw Error("Pillow.Image.Resize box expects [left, top, right, bottom]", -1)
                 for value in box {

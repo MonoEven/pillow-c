@@ -825,6 +825,32 @@ PillowTestImageResizeBoxUsesNativeSampling(*) {
 
 AhkTest.Test("Pillow Image.Resize supports native box sampling", PillowTestImageResizeBoxUsesNativeSampling)
 
+PillowTestImageResizeReducingGapUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    lBytes := []
+    loop 8 {
+        y := A_Index - 1
+        loop 8 {
+            x := A_Index - 1
+            lBytes.Push(y * 20 + x * 3)
+        }
+    }
+    source := Pillow.Image.FromBytes("L", [8, 8], PillowTestBuffer(lBytes))
+    resized := 0
+    try {
+        resized := source.Resize([2, 2], Pillow.Resampling.BILINEAR, , 2.0)
+        AhkTest.AssertEqual("L", resized.Mode)
+        AhkTest.AssertEqual([2, 2], resized.Size)
+        AhkTest.AssertEqual([45, 55, 107, 117], PillowTestBufferToArray(resized.ToBytes()))
+    } finally {
+        if IsObject(resized)
+            resized.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Resize supports native reducing_gap", PillowTestImageResizeReducingGapUsesNativePath)
+
 PillowTestImageReduceUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.FromBytes("L", [5, 3], PillowTestBuffer([
