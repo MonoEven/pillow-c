@@ -4838,8 +4838,10 @@ std::uint8_t source_sample_for_resize(const PillowCImage* source, int x, int y, 
         source->pixels.data() +
         static_cast<std::size_t>(y) * source->stride +
         static_cast<std::size_t>(x) * source->channels;
-    if (source->mode == PILLOW_C_MODE_RGBA && channel < 3) {
-        return mul_div_255(px[channel], px[3]);
+    const bool alpha_mode = source->mode == PILLOW_C_MODE_LA || source->mode == PILLOW_C_MODE_RGBA;
+    const int alpha_channel = source->channels - 1;
+    if (alpha_mode && channel < alpha_channel) {
+        return mul_div_255(px[channel], px[alpha_channel]);
     }
     return px[channel];
 }
@@ -4939,21 +4941,16 @@ int resize_filter_box_into(
                     target->pixels.data() +
                     static_cast<std::size_t>(out_y) * target->stride +
                     static_cast<std::size_t>(out_x) * target->channels;
-                if (source->mode == PILLOW_C_MODE_RGBA) {
-                    const std::uint8_t premul_r = values[0];
-                    const std::uint8_t premul_g = values[1];
-                    const std::uint8_t premul_b = values[2];
-                    const std::uint8_t alpha = values[3];
-                    if (alpha == 0 || alpha == 255) {
-                        dst[0] = premul_r;
-                        dst[1] = premul_g;
-                        dst[2] = premul_b;
-                    } else {
-                        dst[0] = clip_u8_int(255 * premul_r / alpha);
-                        dst[1] = clip_u8_int(255 * premul_g / alpha);
-                        dst[2] = clip_u8_int(255 * premul_b / alpha);
+                if (source->mode == PILLOW_C_MODE_LA || source->mode == PILLOW_C_MODE_RGBA) {
+                    const int alpha_channel = source->channels - 1;
+                    const std::uint8_t alpha = values[alpha_channel];
+                    for (int channel = 0; channel < alpha_channel; ++channel) {
+                        const std::uint8_t premultiplied = values[channel];
+                        dst[channel] = (alpha == 0 || alpha == 255)
+                            ? premultiplied
+                            : clip_u8_int(255 * static_cast<int>(premultiplied) / alpha);
                     }
-                    dst[3] = alpha;
+                    dst[alpha_channel] = alpha;
                 } else {
                     for (int channel = 0; channel < source->channels; ++channel) {
                         dst[channel] = values[channel];

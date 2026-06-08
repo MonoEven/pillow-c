@@ -737,9 +737,15 @@ AhkTest.Test("Pillow Image.Resize NEAREST resizes through native handles", Pillo
 PillowTestImageResizeBilinearUsesNativeHandleOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([0, 64, 128, 255]))
+    la := Pillow.Image.FromBytes("LA", [2, 2], PillowTestBuffer([
+        10, 0, 200, 128,
+        50, 255, 250, 64,
+    ]))
     resized := 0
+    laResized := 0
     try {
         resized := source.Resize([3, 3], Pillow.Resampling.BILINEAR)
+        laResized := la.Resize([3, 3], Pillow.Resampling.BILINEAR)
         AhkTest.AssertEqual("L", resized.Mode)
         AhkTest.AssertEqual([3, 3], resized.Size)
         AhkTest.AssertEqual([
@@ -747,9 +753,18 @@ PillowTestImageResizeBilinearUsesNativeHandleOperation(*) {
             64, 112, 160,
             128, 192, 255,
         ], PillowTestBufferToArray(resized.ToBytes()))
+        AhkTest.AssertEqual("LA", laResized.Mode)
+        AhkTest.AssertEqual([
+            0, 0, 199, 64, 199, 128,
+            49, 128, 122, 112, 217, 96,
+            50, 255, 90, 160, 251, 64,
+        ], PillowTestBufferToArray(laResized.ToBytes()))
     } finally {
+        if IsObject(laResized)
+            laResized.Close()
         if IsObject(resized)
             resized.Close()
+        la.Close()
         source.Close()
     }
 }
