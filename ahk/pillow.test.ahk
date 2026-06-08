@@ -2543,6 +2543,15 @@ PillowTestImageQuantizeCoversExactUniqueColors(*) {
 
 AhkTest.Test("Pillow Image.Quantize covers exact unique colors", PillowTestImageQuantizeCoversExactUniqueColors)
 
+PillowTestImageQuantizeExposesPillowConstants(*) {
+    AhkTest.AssertEqual(0, Pillow.Quantize.MEDIANCUT)
+    AhkTest.AssertEqual(1, Pillow.Quantize.MAXCOVERAGE)
+    AhkTest.AssertEqual(2, Pillow.Quantize.FASTOCTREE)
+    AhkTest.AssertEqual(3, Pillow.Quantize.LIBIMAGEQUANT)
+}
+
+AhkTest.Test("Pillow Image.Quantize exposes Pillow method constants", PillowTestImageQuantizeExposesPillowConstants)
+
 PillowTestImageDataPointerSharesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [3, 1])

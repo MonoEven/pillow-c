@@ -35,6 +35,13 @@ class Pillow {
         static FLOYDSTEINBERG := 3
     }
 
+    class Quantize {
+        static MEDIANCUT := 0
+        static MAXCOVERAGE := 1
+        static FASTOCTREE := 2
+        static LIBIMAGEQUANT := 3
+    }
+
     class ImageOps {
         static Invert(image) {
             return Pillow.ImageOps.NativeUnaryImageOp(image, "pillow_c_image_invert")
