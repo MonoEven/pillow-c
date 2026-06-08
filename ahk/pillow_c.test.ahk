@@ -1837,6 +1837,20 @@ PillowCImageQuantizePalette(sourceHandle, paletteHandle) {
     return outHandle
 }
 
+PillowCImageQuantize(sourceHandle, colors) {
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_quantize",
+        "Ptr", sourceHandle,
+        "Int", colors,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageRemapPalette(sourceHandle, destMap, sourcePalette := unset) {
     map := PillowCIntBuffer(destMap)
     palette := IsSet(sourcePalette) ? PillowCBuffer(sourcePalette) : 0
@@ -9661,6 +9675,49 @@ PillowCTestImageQuantizePaletteMatchesPillowReferencePalette(*) {
 }
 
 AhkTest.Test("pillow_c image quantize_palette matches Pillow reference palette", PillowCTestImageQuantizePaletteMatchesPillowReferencePalette)
+
+PillowCTestImageQuantizeExactColorsMatchesPillow(*) {
+    rgb := PillowCCreateImageMode(4, 1, 3)
+    l := PillowCCreateImageMode(4, 1, 1)
+    rgbOut := 0
+    lOut := 0
+    try {
+        PillowCImageSetBytes(rgb, [
+            255, 0, 0,
+            0, 255, 0,
+            0, 0, 255,
+            0, 0, 0,
+        ])
+        PillowCImageSetBytes(l, [0, 100, 200, 255])
+
+        rgbOut := PillowCImageQuantize(rgb, 4)
+        lOut := PillowCImageQuantize(l, 4)
+
+        AhkTest.AssertEqual(6, PillowCImageMode(rgbOut))
+        AhkTest.AssertEqual([1, 0, 2, 3], PillowCImageToArray(rgbOut, 4))
+        AhkTest.AssertEqual([
+            0, 255, 0,
+            255, 0, 0,
+            0, 0, 255,
+            0, 0, 0,
+        ], PillowCImageGetPaletteRgb(rgbOut))
+        AhkTest.AssertEqual(6, PillowCImageMode(lOut))
+        AhkTest.AssertEqual([3, 2, 1, 0], PillowCImageToArray(lOut, 4))
+        AhkTest.AssertEqual([
+            255, 255, 255,
+            200, 200, 200,
+            100, 100, 100,
+            0, 0, 0,
+        ], PillowCImageGetPaletteRgb(lOut))
+    } finally {
+        for handle in [lOut, rgbOut, l, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image quantize covers exact unique colors", PillowCTestImageQuantizeExactColorsMatchesPillow)
 
 PillowCTestImageRemapPaletteMatchesPillowPAndL(*) {
     p := PillowCCreateImageMode(4, 1, 6)

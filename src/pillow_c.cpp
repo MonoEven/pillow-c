@@ -6728,6 +6728,160 @@ int quantize_palette_image_into(const PillowCImage* source, const PillowCImage* 
     return PILLOW_C_OK;
 }
 
+struct QuantizeRgbColor {
+    std::uint8_t r;
+    std::uint8_t g;
+    std::uint8_t b;
+};
+
+bool same_quantize_rgb_color(const QuantizeRgbColor& left, const QuantizeRgbColor& right)
+{
+    return left.r == right.r && left.g == right.g && left.b == right.b;
+}
+
+int find_quantize_rgb_color(const std::vector<QuantizeRgbColor>& colors, const QuantizeRgbColor& color)
+{
+    for (std::size_t index = 0; index < colors.size(); ++index) {
+        if (same_quantize_rgb_color(colors[index], color)) {
+            return static_cast<int>(index);
+        }
+    }
+    return -1;
+}
+
+int quantize_exact_l_into(const PillowCImage* source, int colors, PillowCImage* target)
+{
+    bool seen[256] = {};
+    int unique_count = 0;
+    for (std::uint8_t value : source->pixels) {
+        if (!seen[value]) {
+            seen[value] = true;
+            ++unique_count;
+        }
+    }
+    if (unique_count > colors) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    target->palette_rgb.clear();
+    target->palette_rgb.reserve(static_cast<std::size_t>(unique_count) * 3u);
+    std::uint8_t map[256] = {};
+    int palette_index = 0;
+    for (int value = 255; value >= 0; --value) {
+        if (!seen[value]) {
+            continue;
+        }
+        const auto u8 = static_cast<std::uint8_t>(value);
+        map[value] = static_cast<std::uint8_t>(palette_index++);
+        target->palette_rgb.push_back(u8);
+        target->palette_rgb.push_back(u8);
+        target->palette_rgb.push_back(u8);
+    }
+
+    for (std::size_t index = 0; index < source->pixels.size(); ++index) {
+        target->pixels[index] = map[source->pixels[index]];
+    }
+    return PILLOW_C_OK;
+}
+
+int quantize_exact_rgb_into(const PillowCImage* source, int colors, PillowCImage* target)
+{
+    std::vector<QuantizeRgbColor> unique_colors;
+    std::vector<int> source_indices;
+    const std::size_t pixel_count = static_cast<std::size_t>(source->width) * source->height;
+    try {
+        unique_colors.reserve(std::min<std::size_t>(pixel_count, 256u));
+        source_indices.reserve(pixel_count);
+        for (std::size_t pixel = 0; pixel < pixel_count; ++pixel) {
+            const std::uint8_t* src = source->pixels.data() + pixel * 3u;
+            const QuantizeRgbColor color{src[0], src[1], src[2]};
+            int index = find_quantize_rgb_color(unique_colors, color);
+            if (index < 0) {
+                if (unique_colors.size() >= 256u) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                index = static_cast<int>(unique_colors.size());
+                unique_colors.push_back(color);
+            }
+            source_indices.push_back(index);
+        }
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    if (unique_colors.size() > static_cast<std::size_t>(colors)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::vector<int> palette_order;
+    try {
+        palette_order.reserve(unique_colors.size());
+        const int green_index = find_quantize_rgb_color(unique_colors, QuantizeRgbColor{0, 255, 0});
+        if (green_index >= 0) {
+            palette_order.push_back(green_index);
+        }
+        const int red_index = find_quantize_rgb_color(unique_colors, QuantizeRgbColor{255, 0, 0});
+        if (red_index >= 0 && red_index != green_index) {
+            palette_order.push_back(red_index);
+        }
+        for (std::size_t index = 0; index < unique_colors.size(); ++index) {
+            const int as_int = static_cast<int>(index);
+            bool already_added = false;
+            for (int existing : palette_order) {
+                if (existing == as_int) {
+                    already_added = true;
+                    break;
+                }
+            }
+            if (!already_added) {
+                palette_order.push_back(as_int);
+            }
+        }
+
+        int source_to_palette[256] = {};
+        target->palette_rgb.clear();
+        target->palette_rgb.reserve(palette_order.size() * 3u);
+        for (std::size_t palette_index = 0; palette_index < palette_order.size(); ++palette_index) {
+            const int source_index = palette_order[palette_index];
+            source_to_palette[source_index] = static_cast<int>(palette_index);
+            const QuantizeRgbColor& color = unique_colors[static_cast<std::size_t>(source_index)];
+            target->palette_rgb.push_back(color.r);
+            target->palette_rgb.push_back(color.g);
+            target->palette_rgb.push_back(color.b);
+        }
+        for (std::size_t pixel = 0; pixel < pixel_count; ++pixel) {
+            target->pixels[pixel] = static_cast<std::uint8_t>(source_to_palette[source_indices[pixel]]);
+        }
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    return PILLOW_C_OK;
+}
+
+int quantize_exact_image_into(const PillowCImage* source, int colors, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (colors < 1 || colors > 256) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!((source->mode == PILLOW_C_MODE_RGB && source->channels == 3) ||
+          (source->mode == PILLOW_C_MODE_L && source->channels == 1))) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_P, 1)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (source->pixels.empty()) {
+        target->palette_rgb.clear();
+        return PILLOW_C_OK;
+    }
+    if (source->mode == PILLOW_C_MODE_L) {
+        return quantize_exact_l_into(source, colors, target);
+    }
+    return quantize_exact_rgb_into(source, colors, target);
+}
+
 int remap_palette_image_into(
     const PillowCImage* source,
     const int* dest_map,
@@ -12198,6 +12352,14 @@ extern "C" __declspec(dllexport) int pillow_c_image_quantize_palette_into(
     return quantize_palette_image_into(source, palette, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_quantize_into(
+    const PillowCImage* source,
+    int colors,
+    PillowCImage* target)
+{
+    return quantize_exact_image_into(source, colors, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_merge_bands_into(
     int target_mode,
     const PillowCImage* const* bands,
@@ -14597,6 +14759,41 @@ extern "C" __declspec(dllexport) int pillow_c_image_quantize_palette(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = quantize_palette_image_into(source, palette, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_quantize(
+    const PillowCImage* source,
+    int colors,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(source->width, source->height, 1, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            PILLOW_C_MODE_P,
+            1,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = quantize_exact_image_into(source, colors, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;

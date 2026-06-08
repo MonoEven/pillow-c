@@ -2628,6 +2628,10 @@ class Pillow {
         }
 
         Quantize(colors := 256, method := unset, kmeans := 0, palette := unset, dither := unset) {
+            if !(colors is Integer) || colors < 1 || colors > 256
+                throw Error("bad number of colors", -1)
+            if !(kmeans is Integer) || kmeans < 0
+                throw Error("kmeans must not be negative", -1)
             if IsSet(palette) {
                 if !(palette is Pillow.Image)
                     throw Error("bad mode for palette image", -1)
@@ -2646,7 +2650,20 @@ class Pillow {
                 ))
                 return Pillow.WrapImageHandle(outHandle)
             }
-            throw Error("Pillow.Image.Quantize currently requires a reference palette", -1)
+            if IsSet(method) && method != 0
+                throw Error("quantization error", -1)
+            if !(this.Mode = "RGB" || this.Mode = "L")
+                throw Error("Pillow.Image.Quantize currently supports exact RGB/L images", -1)
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_quantize",
+                "Ptr", this.RequireHandle(),
+                "Int", colors,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
         }
 
         PutData(data, scale := 1.0, offset := 0.0) {

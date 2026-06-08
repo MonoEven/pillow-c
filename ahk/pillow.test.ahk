@@ -2503,6 +2503,46 @@ PillowTestImageQuantizeUsesReferencePalette(*) {
 
 AhkTest.Test("Pillow Image.Quantize uses a reference palette", PillowTestImageQuantizeUsesReferencePalette)
 
+PillowTestImageQuantizeCoversExactUniqueColors(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [4, 1], PillowTestBuffer([
+        255, 0, 0,
+        0, 255, 0,
+        0, 0, 255,
+        0, 0, 0,
+    ]))
+    l := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 100, 200, 255]))
+    rgbOut := 0
+    lOut := 0
+    try {
+        rgbOut := rgb.Quantize(4, unset, 0, unset, Pillow.Dither.NONE)
+        lOut := l.Quantize(4, unset, 0, unset, Pillow.Dither.NONE)
+
+        AhkTest.AssertEqual("P", rgbOut.Mode)
+        AhkTest.AssertEqual([1, 0, 2, 3], PillowTestBufferToArray(rgbOut.ToBytes()))
+        AhkTest.AssertEqual([
+            0, 255, 0,
+            255, 0, 0,
+            0, 0, 255,
+            0, 0, 0,
+        ], rgbOut.GetPalette())
+        AhkTest.AssertEqual([3, 2, 1, 0], PillowTestBufferToArray(lOut.ToBytes()))
+        AhkTest.AssertEqual([
+            255, 255, 255,
+            200, 200, 200,
+            100, 100, 100,
+            0, 0, 0,
+        ], lOut.GetPalette())
+    } finally {
+        for image in [lOut, rgbOut, l, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Quantize covers exact unique colors", PillowTestImageQuantizeCoversExactUniqueColors)
+
 PillowTestImageDataPointerSharesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [3, 1])
