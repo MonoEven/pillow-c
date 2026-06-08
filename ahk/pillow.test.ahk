@@ -2537,6 +2537,26 @@ PillowTestImageTellReturnsBaseFrameIndex(*) {
 
 AhkTest.Test("Pillow Image.Tell returns the base frame index", PillowTestImageTellReturnsBaseFrameIndex)
 
+PillowTestImageSeekMatchesBaseSingleFrameSemantics(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    try {
+        AhkTest.AssertEqual("", image.Seek(0))
+        AhkTest.AssertEqual(0, image.Tell())
+
+        try {
+            image.Seek(1)
+            AhkTest.Fail("Expected Image.Seek to reject non-zero frames on base images")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "no more images in file") > 0)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Seek matches base single-frame semantics", PillowTestImageSeekMatchesBaseSingleFrameSemantics)
+
 PillowTestImagePutDataBulkWritesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.New("L", [4, 1])

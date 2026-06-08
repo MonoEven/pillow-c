@@ -2389,6 +2389,12 @@ class Pillow {
             return 0
         }
 
+        Seek(frame) {
+            this.RequireHandle()
+            if frame != 0
+                throw Error("no more images in file", -1)
+        }
+
         Mode {
             get {
                 mode := 0
