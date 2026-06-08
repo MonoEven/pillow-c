@@ -7208,6 +7208,47 @@ PillowCTestImageReduceMatchesPillowAlphaModes(*) {
 
 AhkTest.Test("pillow_c image reduce matches Pillow alpha modes", PillowCTestImageReduceMatchesPillowAlphaModes)
 
+PillowCTestImageReduceMatchesPillowCmyk(*) {
+    cmyk := PillowCCreateImageMode(4, 4, 7)
+    target := PillowCCreateImageMode(2, 2, 7)
+    factor2 := 0
+    factorTuple := 0
+    boxFactor := 0
+    try {
+        PillowCImageSetBytes(cmyk, [
+            0, 0, 0, 0, 20, 40, 60, 80, 100, 50, 25, 125, 255, 128, 64, 32,
+            10, 200, 30, 40, 200, 10, 220, 0, 40, 50, 60, 70, 80, 90, 100, 110,
+            120, 130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 230, 240, 250, 5, 15,
+            25, 35, 45, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175,
+        ])
+
+        factor2 := PillowCImageReduce(cmyk, 2, 2, 0, 0, 4, 4)
+        factorTuple := PillowCImageReduce(cmyk, 2, 1, 0, 0, 4, 4)
+        boxFactor := PillowCImageReduce(cmyk, 2, 2, 1, 1, 4, 4)
+        before := PillowCImageData(target).Ptr
+        PillowCImageReduceInto(cmyk, 2, 2, 0, 0, 4, 4, target)
+
+        AhkTest.AssertEqual(7, PillowCImageMode(factor2))
+        AhkTest.AssertEqual([2, 2], [PillowCImageInt(factor2, "pillow_c_image_width"), PillowCImageInt(factor2, "pillow_c_image_height")])
+        AhkTest.AssertEqual([58, 63, 78, 30, 119, 80, 62, 84, 93, 103, 113, 123, 173, 183, 129, 139], PillowCImageToArray(factor2, 16))
+        AhkTest.AssertEqual([10, 20, 30, 40, 178, 89, 45, 79, 105, 105, 125, 20, 60, 70, 80, 90, 140, 150, 160, 170, 220, 230, 113, 123, 45, 55, 65, 75, 125, 135, 145, 155], PillowCImageToArray(factorTuple, 32))
+        AhkTest.AssertEqual([150, 110, 170, 123, 160, 170, 53, 63, 85, 95, 105, 115, 145, 155, 165, 175], PillowCImageToArray(boxFactor, 16))
+        AhkTest.AssertEqual(before, PillowCImageData(target).Ptr)
+        AhkTest.AssertEqual([58, 63, 78, 30, 119, 80, 62, 84, 93, 103, 113, 123, 173, 183, 129, 139], PillowCImageToArray(target, 16))
+    } finally {
+        if boxFactor
+            PillowCFreeImage(boxFactor)
+        if factorTuple
+            PillowCFreeImage(factorTuple)
+        if factor2
+            PillowCFreeImage(factor2)
+        PillowCFreeImage(target)
+        PillowCFreeImage(cmyk)
+    }
+}
+
+AhkTest.Test("pillow_c image reduce matches Pillow CMYK", PillowCTestImageReduceMatchesPillowCmyk)
+
 PillowCTestImageReduceRejectsInvalidArguments(*) {
     source := PillowCCreateImageMode(2, 2, 1)
     target := PillowCCreateImageMode(2, 1, 1)

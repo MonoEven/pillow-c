@@ -644,12 +644,21 @@ PillowTestImageReduceUsesNativeOperation(*) {
         10, 0, 100, 128, 200, 255,
         50, 64, 30, 32, 240, 200,
     ]))
+    cmyk := Pillow.Image.FromBytes("CMYK", [4, 4], PillowTestBuffer([
+        0, 0, 0, 0, 20, 40, 60, 80, 100, 50, 25, 125, 255, 128, 64, 32,
+        10, 200, 30, 40, 200, 10, 220, 0, 40, 50, 60, 70, 80, 90, 100, 110,
+        120, 130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 230, 240, 250, 5, 15,
+        25, 35, 45, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175,
+    ]))
     lReduced := 0
     lTuple := 0
     lBox := 0
     rgbReduced := 0
     rgbaReduced := 0
     laReduced := 0
+    cmykReduced := 0
+    cmykTuple := 0
+    cmykBox := 0
     try {
         lReduced := l.Reduce(2)
         lTuple := l.Reduce([2, 3])
@@ -657,6 +666,9 @@ PillowTestImageReduceUsesNativeOperation(*) {
         rgbReduced := rgb.Reduce(2)
         rgbaReduced := rgba.Reduce(2)
         laReduced := la.Reduce([2, 1])
+        cmykReduced := cmyk.Reduce(2)
+        cmykTuple := cmyk.Reduce([2, 1])
+        cmykBox := cmyk.Reduce(2, [1, 1, 4, 4])
 
         AhkTest.AssertEqual("L", lReduced.Mode)
         AhkTest.AssertEqual([3, 2], lReduced.Size)
@@ -674,8 +686,15 @@ PillowTestImageReduceUsesNativeOperation(*) {
         AhkTest.AssertEqual("LA", laReduced.Mode)
         AhkTest.AssertEqual([2, 2], laReduced.Size)
         AhkTest.AssertEqual([99, 64, 200, 255, 47, 48, 239, 200], PillowTestBufferToArray(laReduced.ToBytes()))
+        AhkTest.AssertEqual("CMYK", cmykReduced.Mode)
+        AhkTest.AssertEqual([2, 2], cmykReduced.Size)
+        AhkTest.AssertEqual([58, 63, 78, 30, 119, 80, 62, 84, 93, 103, 113, 123, 173, 183, 129, 139], PillowTestBufferToArray(cmykReduced.ToBytes()))
+        AhkTest.AssertEqual([2, 4], cmykTuple.Size)
+        AhkTest.AssertEqual([10, 20, 30, 40, 178, 89, 45, 79, 105, 105, 125, 20, 60, 70, 80, 90, 140, 150, 160, 170, 220, 230, 113, 123, 45, 55, 65, 75, 125, 135, 145, 155], PillowTestBufferToArray(cmykTuple.ToBytes()))
+        AhkTest.AssertEqual([2, 2], cmykBox.Size)
+        AhkTest.AssertEqual([150, 110, 170, 123, 160, 170, 53, 63, 85, 95, 105, 115, 145, 155, 165, 175], PillowTestBufferToArray(cmykBox.ToBytes()))
     } finally {
-        for image in [laReduced, rgbaReduced, rgbReduced, lBox, lTuple, lReduced, la, rgba, rgb, l] {
+        for image in [cmykBox, cmykTuple, cmykReduced, laReduced, rgbaReduced, rgbReduced, lBox, lTuple, lReduced, cmyk, la, rgba, rgb, l] {
             if IsObject(image)
                 image.Close()
         }

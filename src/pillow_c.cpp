@@ -5508,6 +5508,16 @@ bool valid_reduce_box(const PillowCImage* source, int left, int top, int right, 
            bottom > top;
 }
 
+bool supports_reduce_mode(const PillowCImage* source)
+{
+    return source &&
+           (source->mode == PILLOW_C_MODE_L ||
+            source->mode == PILLOW_C_MODE_LA ||
+            source->mode == PILLOW_C_MODE_RGB ||
+            source->mode == PILLOW_C_MODE_RGBA ||
+            source->mode == PILLOW_C_MODE_CMYK);
+}
+
 int reduce_output_width(int left, int right, int xscale)
 {
     return ceil_div_int(right - left, xscale);
@@ -5534,8 +5544,7 @@ int reduce_image_into(
     if (xscale <= 0 || yscale <= 0 || !valid_reduce_box(source, left, top, right, bottom)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (source->mode != PILLOW_C_MODE_L && source->mode != PILLOW_C_MODE_LA &&
-        source->mode != PILLOW_C_MODE_RGB && source->mode != PILLOW_C_MODE_RGBA) {
+    if (!supports_reduce_mode(source)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
@@ -8977,8 +8986,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_reduce(
     if (xscale <= 0 || yscale <= 0 || !valid_reduce_box(source, left, top, right, bottom)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (source->mode != PILLOW_C_MODE_L && source->mode != PILLOW_C_MODE_LA &&
-        source->mode != PILLOW_C_MODE_RGB && source->mode != PILLOW_C_MODE_RGBA) {
+    if (!supports_reduce_mode(source)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
