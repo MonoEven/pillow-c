@@ -2909,6 +2909,31 @@ PillowTestImageCropUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Crop returns a native cropped image", PillowTestImageCropUsesNativeHandleOperation)
 
+PillowTestImageCropCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    cropped := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        cropped := source.Crop([0, 0, 1, 1])
+
+        AhkTest.AssertEqual("", cropped.Format)
+        AhkTest.AssertEqual("ahk", cropped.Info["author"])
+
+        cropped.Info["author"] := "crop"
+        cropped.Info["extra"] := 1
+        AhkTest.AssertEqual("ahk", source.Info["author"])
+        AhkTest.AssertTrue(!source.Info.Has("extra"))
+    } finally {
+        if IsObject(cropped)
+            cropped.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Crop copies info metadata", PillowTestImageCropCopiesInfoMetadata)
+
 PillowTestImageCropSupportsDefaultAndFloatBoxes(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [5, 3], PillowTestBuffer([

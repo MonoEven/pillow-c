@@ -3270,7 +3270,11 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            image := Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
+        }
+
+        WrapDerivedHandle(handle) {
+            image := Pillow.WrapImageHandle(handle)
             image.Info := Pillow.Image.CopyInfo(this.Info)
             return image
         }
@@ -3305,7 +3309,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         Resize(size, resample := unset, box := unset, reducingGap := unset) {
