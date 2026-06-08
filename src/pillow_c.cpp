@@ -1479,7 +1479,11 @@ int expand_image_into(
     if (status != PILLOW_C_OK) {
         return status;
     }
-    return paste_image_pixels_into(target, source, left, top);
+    status = paste_image_pixels_into(target, source, left, top);
+    if (status == PILLOW_C_OK) {
+        copy_palette_if_same_mode(source, target);
+    }
+    return status;
 }
 
 int copy_transpose_pixels_into(const PillowCImage* source, int method, PillowCImage* target)
@@ -1562,6 +1566,7 @@ int offset_image_into(
         return PILLOW_C_MISMATCH;
     }
     if (target->pixels.empty()) {
+        copy_palette_if_same_mode(source, target);
         return PILLOW_C_OK;
     }
 
@@ -1569,6 +1574,7 @@ int offset_image_into(
     const int height = source->height;
     const int channels = source->channels;
     if (width <= 0 || height <= 0) {
+        copy_palette_if_same_mode(source, target);
         return PILLOW_C_OK;
     }
 
@@ -1587,6 +1593,7 @@ int offset_image_into(
                 pixel_bytes);
         }
     }
+    copy_palette_if_same_mode(source, target);
     return PILLOW_C_OK;
 }
 
