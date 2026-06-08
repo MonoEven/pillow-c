@@ -3920,6 +3920,124 @@ void fill_vertical_span(
     }
 }
 
+double color_diff_1norm(const std::uint8_t* left, const std::uint8_t* right, int channels)
+{
+    double diff = 0.0;
+    for (int channel = 0; channel < channels; ++channel) {
+        diff += std::abs(static_cast<int>(left[channel]) - static_cast<int>(right[channel]));
+    }
+    return diff;
+}
+
+bool pixel_color_equal(const std::uint8_t* left, const std::uint8_t* right, int channels)
+{
+    return std::memcmp(left, right, static_cast<std::size_t>(channels)) == 0;
+}
+
+int draw_floodfill_image(
+    PillowCImage* image,
+    int seed_x,
+    int seed_y,
+    const std::uint8_t* value,
+    std::size_t value_size,
+    const std::uint8_t* border,
+    std::size_t border_size,
+    double thresh)
+{
+    if (!image || !value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const std::size_t channels = static_cast<std::size_t>(image->channels);
+    if (value_size != channels || (border_size != 0 && border_size != channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_OK;
+    }
+
+    std::size_t seed_offset = 0;
+    const int seed_status = image_pixel_offset(image, seed_x, seed_y, &seed_offset);
+    if (seed_status == PILLOW_C_INVALID_ARGUMENT) {
+        return PILLOW_C_OK;
+    }
+    if (seed_status != PILLOW_C_OK) {
+        return seed_status;
+    }
+
+    try {
+        std::vector<std::uint8_t> background(channels);
+        std::memcpy(background.data(), image->pixels.data() + seed_offset, channels);
+        if (color_diff_1norm(value, background.data(), image->channels) <= thresh) {
+            return PILLOW_C_OK;
+        }
+
+        std::vector<std::uint8_t> seen(static_cast<std::size_t>(image->width) * static_cast<std::size_t>(image->height), 0);
+        std::vector<int> edge;
+        std::vector<int> next_edge;
+        edge.reserve(64);
+        next_edge.reserve(64);
+
+        int normalized_seed_x = 0;
+        int normalized_seed_y = 0;
+        if (normalize_coordinate(seed_x, image->width, &normalized_seed_x) != PILLOW_C_OK ||
+            normalize_coordinate(seed_y, image->height, &normalized_seed_y) != PILLOW_C_OK) {
+            return PILLOW_C_OK;
+        }
+
+        std::memcpy(image->pixels.data() + seed_offset, value, channels);
+        edge.push_back(normalized_seed_y * image->width + normalized_seed_x);
+
+        while (!edge.empty()) {
+            next_edge.clear();
+            for (const int index : edge) {
+                const int x = index % image->width;
+                const int y = index / image->width;
+                const int neighbors[4][2] = {
+                    {x + 1, y},
+                    {x - 1, y},
+                    {x, y + 1},
+                    {x, y - 1},
+                };
+
+                for (const auto& neighbor : neighbors) {
+                    const int nx = neighbor[0];
+                    const int ny = neighbor[1];
+                    if (nx < 0 || ny < 0 || nx >= image->width || ny >= image->height) {
+                        continue;
+                    }
+                    const int neighbor_index = ny * image->width + nx;
+                    std::uint8_t& visited = seen[static_cast<std::size_t>(neighbor_index)];
+                    if (visited) {
+                        continue;
+                    }
+                    visited = 1;
+
+                    std::uint8_t* pixel =
+                        image->pixels.data() +
+                        static_cast<std::size_t>(ny) * image->stride +
+                        static_cast<std::size_t>(nx) * channels;
+                    bool should_fill = false;
+                    if (border) {
+                        should_fill =
+                            !pixel_color_equal(pixel, value, image->channels) &&
+                            !pixel_color_equal(pixel, border, image->channels);
+                    } else {
+                        should_fill = color_diff_1norm(pixel, background.data(), image->channels) <= thresh;
+                    }
+                    if (should_fill) {
+                        std::memcpy(pixel, value, channels);
+                        next_edge.push_back(neighbor_index);
+                    }
+                }
+            }
+            edge.swap(next_edge);
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 void quarter_init(QuarterState* state, std::int32_t a, std::int32_t b)
 {
     if (a < 0 || b < 0) {
@@ -12374,6 +12492,19 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_bitmap(
     std::size_t color_size)
 {
     return draw_bitmap_image(image, left, top, mask, color, color_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_draw_floodfill(
+    PillowCImage* image,
+    int seed_x,
+    int seed_y,
+    const std::uint8_t* value,
+    std::size_t value_size,
+    const std::uint8_t* border,
+    std::size_t border_size,
+    double thresh)
+{
+    return draw_floodfill_image(image, seed_x, seed_y, value, value_size, border, border_size, thresh);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_line(

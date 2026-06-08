@@ -1136,6 +1136,41 @@ class Pillow {
             return Pillow.ImageDraw.DrawHandle(image)
         }
 
+        static Floodfill(image, xy, value, border := unset, thresh := 0.0) {
+            if !(IsObject(image) && image is Pillow.Image)
+                throw Error("Pillow.ImageDraw.Floodfill image expects a Pillow.Image", -1)
+            if !IsObject(xy) || xy.Length != 2
+                throw Error("Pillow.ImageDraw.Floodfill xy expects [x, y]", -1)
+            if !(xy[1] is Number) || !(xy[2] is Number)
+                throw Error("Pillow.ImageDraw.Floodfill xy coordinates must be numeric", -1)
+            if !(thresh is Number)
+                throw Error("Pillow.ImageDraw.Floodfill thresh must be numeric", -1)
+
+            valueBuffer := image.PasteColorBuffer(value)
+            borderPtr := 0
+            borderSize := 0
+            borderBuffer := 0
+            if IsSet(border) {
+                borderBuffer := image.PasteColorBuffer(border)
+                borderPtr := borderBuffer.Ptr
+                borderSize := borderBuffer.Size
+            }
+
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_draw_floodfill",
+                "Ptr", image.RequireHandle(),
+                "Int", xy[1],
+                "Int", xy[2],
+                "Ptr", valueBuffer,
+                "UPtr", valueBuffer.Size,
+                "Ptr", borderPtr,
+                "UPtr", borderSize,
+                "Double", thresh,
+                "Int"
+            ))
+            return image
+        }
+
         class DrawHandle {
             __New(image) {
                 if !(IsObject(image) && image is Pillow.Image)

@@ -1455,6 +1455,105 @@ PillowTestImageDrawBitmapRejectsInvalidArguments(*) {
 
 AhkTest.Test("Pillow ImageDraw.Bitmap rejects invalid arguments", PillowTestImageDrawBitmapRejectsInvalidArguments)
 
+PillowTestImageDrawFloodfillMutatesImagesThroughNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    noBorder := Pillow.Image.FromBytes("L", [5, 4], PillowTestBuffer([
+        1, 1, 9, 9, 9,
+        1, 2, 2, 9, 9,
+        1, 2, 3, 3, 9,
+        1, 1, 3, 9, 9,
+    ]))
+    threshold := Pillow.Image.FromBytes("L", [5, 3], PillowTestBuffer([
+        10, 11, 14, 20, 20,
+        9, 12, 13, 21, 20,
+        8, 30, 13, 22, 20,
+    ]))
+    border := Pillow.Image.FromBytes("L", [5, 4], PillowTestBuffer([
+        1, 1, 1, 1, 1,
+        1, 2, 2, 8, 1,
+        1, 2, 3, 8, 1,
+        1, 1, 1, 1, 1,
+    ]))
+    rgb := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([
+        10, 20, 30, 11, 21, 31, 100, 0, 0,
+        9, 19, 29, 50, 50, 50, 100, 0, 0,
+    ]))
+    try {
+        returned := Pillow.ImageDraw.Floodfill(noBorder, [1, 1], 7)
+        AhkTest.AssertEqual(noBorder, returned)
+        AhkTest.AssertEqual([
+            1, 1, 9, 9, 9,
+            1, 7, 7, 9, 9,
+            1, 7, 3, 3, 9,
+            1, 1, 3, 9, 9,
+        ], PillowTestBufferToArray(noBorder.ToBytes()))
+
+        Pillow.ImageDraw.Floodfill(threshold, [0, 0], 99, unset, 3.0)
+        AhkTest.AssertEqual([
+            99, 99, 14, 20, 20,
+            99, 99, 99, 21, 20,
+            99, 30, 99, 22, 20,
+        ], PillowTestBufferToArray(threshold.ToBytes()))
+
+        Pillow.ImageDraw.Floodfill(border, [1, 1], 7, 1)
+        AhkTest.AssertEqual([
+            1, 1, 1, 1, 1,
+            1, 7, 7, 7, 1,
+            1, 7, 7, 7, 1,
+            1, 1, 1, 1, 1,
+        ], PillowTestBufferToArray(border.ToBytes()))
+
+        Pillow.ImageDraw.Floodfill(rgb, [0, 0], [1, 2, 3], unset, 3.0)
+        AhkTest.AssertEqual([
+            1, 2, 3, 1, 2, 3, 100, 0, 0,
+            1, 2, 3, 50, 50, 50, 100, 0, 0,
+        ], PillowTestBufferToArray(rgb.ToBytes()))
+    } finally {
+        rgb.Close()
+        border.Close()
+        threshold.Close()
+        noBorder.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Floodfill mutates images through native path", PillowTestImageDrawFloodfillMutatesImagesThroughNativePath)
+
+PillowTestImageDrawFloodfillHandlesSeedsAndRejectsInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    negativeSeed := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([3, 3, 3]))
+    outside := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([1, 2, 3]))
+    alreadyFill := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([5, 5, 6]))
+    try {
+        Pillow.ImageDraw.Floodfill(negativeSeed, [-1, 0], 9)
+        AhkTest.AssertEqual([9, 9, 9], PillowTestBufferToArray(negativeSeed.ToBytes()))
+
+        Pillow.ImageDraw.Floodfill(outside, [3, 0], 9)
+        AhkTest.AssertEqual([1, 2, 3], PillowTestBufferToArray(outside.ToBytes()))
+
+        Pillow.ImageDraw.Floodfill(alreadyFill, [0, 0], 5)
+        AhkTest.AssertEqual([5, 5, 6], PillowTestBufferToArray(alreadyFill.ToBytes()))
+
+        for args in [
+            ["image", "not image", [0, 0], 7],
+            ["xy", alreadyFill, "bad", 7],
+            ["value", alreadyFill, [0, 0], [7, 8]],
+        ] {
+            try {
+                Pillow.ImageDraw.Floodfill(args[2], args[3], args[4])
+                AhkTest.Fail("Expected ImageDraw.Floodfill to reject invalid arguments")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, args[1]) > 0 || InStr(err.Message, "color") > 0)
+            }
+        }
+    } finally {
+        alreadyFill.Close()
+        outside.Close()
+        negativeSeed.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Floodfill handles seeds and rejects invalid arguments", PillowTestImageDrawFloodfillHandlesSeedsAndRejectsInvalidArguments)
+
 PillowTestImageDrawLineMutatesImageThroughNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.New("L", [6, 5])

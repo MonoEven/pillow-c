@@ -644,6 +644,31 @@ PillowCImageDrawBitmap(handle, xy, mask, fill) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageDrawFloodfill(handle, xy, value, border := unset, thresh := 0.0) {
+    valueBuffer := PillowCBuffer(value)
+    borderPtr := 0
+    borderSize := 0
+    borderBuffer := 0
+    if IsSet(border) {
+        borderBuffer := PillowCBuffer(border)
+        borderPtr := borderBuffer.Ptr
+        borderSize := borderBuffer.Size
+    }
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_floodfill",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", valueBuffer,
+        "UPtr", valueBuffer.Size,
+        "Ptr", borderPtr,
+        "UPtr", borderSize,
+        "Double", thresh,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageDrawLine(handle, points, fill, width := 0) {
     pointBuffer := PillowCIntBuffer(points)
     fillBuffer := PillowCBuffer(fill)
@@ -4597,6 +4622,112 @@ PillowCTestImageDrawBitmapRejectsInvalidArguments(*) {
 }
 
 AhkTest.Test("pillow_c image draw_bitmap rejects invalid arguments", PillowCTestImageDrawBitmapRejectsInvalidArguments)
+
+PillowCTestImageDrawFloodfillMatchesPillowFillModes(*) {
+    noBorder := PillowCCreateImageMode(5, 4, 1)
+    threshold := PillowCCreateImageMode(5, 3, 1)
+    border := PillowCCreateImageMode(5, 4, 1)
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    try {
+        PillowCImageSetBytes(noBorder, [
+            1, 1, 9, 9, 9,
+            1, 2, 2, 9, 9,
+            1, 2, 3, 3, 9,
+            1, 1, 3, 9, 9,
+        ])
+        PillowCImageDrawFloodfill(noBorder, [1, 1], [7])
+        AhkTest.AssertEqual([
+            1, 1, 9, 9, 9,
+            1, 7, 7, 9, 9,
+            1, 7, 3, 3, 9,
+            1, 1, 3, 9, 9,
+        ], PillowCImageToArray(noBorder, 20))
+
+        PillowCImageSetBytes(threshold, [
+            10, 11, 14, 20, 20,
+            9, 12, 13, 21, 20,
+            8, 30, 13, 22, 20,
+        ])
+        PillowCImageDrawFloodfill(threshold, [0, 0], [99], unset, 3.0)
+        AhkTest.AssertEqual([
+            99, 99, 14, 20, 20,
+            99, 99, 99, 21, 20,
+            99, 30, 99, 22, 20,
+        ], PillowCImageToArray(threshold, 15))
+
+        PillowCImageSetBytes(border, [
+            1, 1, 1, 1, 1,
+            1, 2, 2, 8, 1,
+            1, 2, 3, 8, 1,
+            1, 1, 1, 1, 1,
+        ])
+        PillowCImageDrawFloodfill(border, [1, 1], [7], [1])
+        AhkTest.AssertEqual([
+            1, 1, 1, 1, 1,
+            1, 7, 7, 7, 1,
+            1, 7, 7, 7, 1,
+            1, 1, 1, 1, 1,
+        ], PillowCImageToArray(border, 20))
+
+        PillowCImageSetBytes(rgb, [
+            10, 20, 30, 11, 21, 31, 100, 0, 0,
+            9, 19, 29, 50, 50, 50, 100, 0, 0,
+        ])
+        PillowCImageDrawFloodfill(rgb, [0, 0], [1, 2, 3], unset, 3.0)
+        AhkTest.AssertEqual([
+            1, 2, 3, 1, 2, 3, 100, 0, 0,
+            1, 2, 3, 50, 50, 50, 100, 0, 0,
+        ], PillowCImageToArray(rgb, 18))
+    } finally {
+        for handle in [rgb, border, threshold, noBorder] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_floodfill matches Pillow fill modes", PillowCTestImageDrawFloodfillMatchesPillowFillModes)
+
+PillowCTestImageDrawFloodfillHandlesSeedAndRejectsInvalidArguments(*) {
+    negativeSeed := PillowCCreateImageMode(3, 1, 1)
+    outside := PillowCCreateImageMode(3, 1, 1)
+    alreadyFill := PillowCCreateImageMode(3, 1, 1)
+    target := PillowCCreateImageMode(3, 1, 1)
+    try {
+        PillowCImageSetBytes(negativeSeed, [3, 3, 3])
+        PillowCImageDrawFloodfill(negativeSeed, [-1, 0], [9])
+        AhkTest.AssertEqual([9, 9, 9], PillowCImageToArray(negativeSeed, 3))
+
+        PillowCImageSetBytes(outside, [1, 2, 3])
+        PillowCImageDrawFloodfill(outside, [3, 0], [9])
+        AhkTest.AssertEqual([1, 2, 3], PillowCImageToArray(outside, 3))
+
+        PillowCImageSetBytes(alreadyFill, [5, 5, 6])
+        PillowCImageDrawFloodfill(alreadyFill, [0, 0], [5])
+        AhkTest.AssertEqual([5, 5, 6], PillowCImageToArray(alreadyFill, 3))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_floodfill",
+            "Ptr", target,
+            "Int", 0,
+            "Int", 0,
+            "Ptr", PillowCBuffer([7, 8]),
+            "UPtr", 2,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Double", 0.0,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+    } finally {
+        for handle in [target, alreadyFill, outside, negativeSeed] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_floodfill handles seeds and rejects invalid arguments", PillowCTestImageDrawFloodfillHandlesSeedAndRejectsInvalidArguments)
 
 PillowCTestImageDrawLineMatchesPillowWidthZeroAndOne(*) {
     horizontal := PillowCCreateImageMode(6, 4, 1)
