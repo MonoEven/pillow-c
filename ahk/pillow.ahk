@@ -1997,6 +1997,17 @@ class Pillow {
     }
 
     class Image {
+        class PixelAccess {
+            __New(image) {
+                this.Image := image
+            }
+
+            __Item[x, y] {
+                get => this.Image.GetPixel([x, y])
+                set => this.Image.PutPixel([x, y], value)
+            }
+        }
+
         __New(handle) {
             this.Handle := handle
         }
@@ -2366,6 +2377,11 @@ class Pillow {
             if !this.HasOwnProp("Handle") || this.Handle = 0
                 throw Error("Pillow.Image handle is closed", -1)
             return this.Handle
+        }
+
+        Load() {
+            this.RequireHandle()
+            return Pillow.Image.PixelAccess(this)
         }
 
         Mode {

@@ -2506,6 +2506,25 @@ PillowTestImageGetDataReturnsPillowLikePixelSequence(*) {
 
 AhkTest.Test("Pillow Image.GetData returns Pillow-like pixel sequences", PillowTestImageGetDataReturnsPillowLikePixelSequence)
 
+PillowTestImageLoadReturnsPixelAccess(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    try {
+        pixels := image.Load()
+        AhkTest.AssertEqual([1, 2, 3], pixels[0, 0])
+        AhkTest.AssertEqual([4, 5, 6], pixels[-1, 0])
+
+        pixels[0, 0] := [9, 8, 7]
+        pixels[1, 0] := 5
+
+        AhkTest.AssertEqual([9, 8, 7, 5, 0, 0], PillowTestBufferToArray(image.ToBytes()))
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Load returns a mutable PixelAccess facade", PillowTestImageLoadReturnsPixelAccess)
+
 PillowTestImagePutDataBulkWritesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.New("L", [4, 1])
