@@ -2994,6 +2994,31 @@ PillowTestImageResizeNearestUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Resize NEAREST resizes through native handles", PillowTestImageResizeNearestUsesNativeHandleOperation)
 
+PillowTestImageResizeCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    resized := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        resized := source.Resize([1, 1], Pillow.Resampling.NEAREST)
+
+        AhkTest.AssertEqual("", resized.Format)
+        AhkTest.AssertEqual("ahk", resized.Info["author"])
+
+        resized.Info["author"] := "resize"
+        resized.Info["extra"] := 1
+        AhkTest.AssertEqual("ahk", source.Info["author"])
+        AhkTest.AssertTrue(!source.Info.Has("extra"))
+    } finally {
+        if IsObject(resized)
+            resized.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Resize copies info metadata", PillowTestImageResizeCopiesInfoMetadata)
+
 PillowTestImageResizeBilinearUsesNativeHandleOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([0, 64, 128, 255]))

@@ -3377,7 +3377,7 @@ class Pillow {
                     "Int"
                 ))
             }
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         Thumbnail(size, resample := unset, reducingGap := 2.0) {
