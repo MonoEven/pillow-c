@@ -4482,6 +4482,34 @@ PillowTestImageTransformQuadUsesPythonLikeEntryPoint(*) {
 
 AhkTest.Test("Pillow Image.Transform QUAD uses Python-like entry point", PillowTestImageTransformQuadUsesPythonLikeEntryPoint)
 
+PillowTestImageTransformQuadCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([
+        10, 20,
+        30, 40,
+    ]))
+    transformed := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        transformed := source.Transform([2, 2], Pillow.Transform.QUAD, [0, 0, 0, 2, 2, 2, 2, 0], Pillow.Resampling.NEAREST)
+
+        AhkTest.AssertEqual("", transformed.Format)
+        AhkTest.AssertEqual("ahk", transformed.Info["author"])
+
+        transformed.Info["author"] := "quad"
+        transformed.Info["extra"] := 1
+        AhkTest.AssertEqual("ahk", source.Info["author"])
+        AhkTest.AssertTrue(!source.Info.Has("extra"))
+    } finally {
+        if IsObject(transformed)
+            transformed.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Transform QUAD copies info metadata", PillowTestImageTransformQuadCopiesInfoMetadata)
+
 PillowTestImageTransformMeshUsesPythonLikeEntryPoint(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
