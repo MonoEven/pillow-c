@@ -4388,7 +4388,59 @@ void add_polygon_edge(PolygonEdge* edge, int x0, int y0, int x1, int y1)
     edge->y0 = y0;
 }
 
-int fill_polygon_edges(PillowCImage* image, const std::vector<PolygonEdge>& edges, const std::uint8_t* color)
+bool polygon_mask_allows(const PillowCImage* mask, int x, int y)
+{
+    if (!mask) {
+        return true;
+    }
+    if (x < 0 || x >= mask->width || y < 0 || y >= mask->height || mask->channels != 1) {
+        return false;
+    }
+    const std::uint8_t* pixel =
+        mask->pixels.data() +
+        static_cast<std::size_t>(y) * mask->stride +
+        static_cast<std::size_t>(x);
+    return *pixel != 0;
+}
+
+void fill_horizontal_span_masked(
+    PillowCImage* image,
+    int left,
+    int y,
+    std::int64_t right_exclusive,
+    const std::uint8_t* color,
+    const PillowCImage* mask)
+{
+    if (!mask) {
+        fill_horizontal_span(image, left, y, right_exclusive, color);
+        return;
+    }
+    if (y < 0 || y >= image->height || right_exclusive <= 0 || left >= image->width) {
+        return;
+    }
+    int clipped_left = left < 0 ? 0 : left;
+    int clipped_right = right_exclusive > image->width ? image->width : static_cast<int>(right_exclusive);
+    if (clipped_right <= clipped_left) {
+        return;
+    }
+
+    std::uint8_t* dst =
+        image->pixels.data() +
+        static_cast<std::size_t>(y) * image->stride +
+        static_cast<std::size_t>(clipped_left) * image->channels;
+    for (int x = clipped_left; x < clipped_right; ++x) {
+        if (polygon_mask_allows(mask, x, y)) {
+            std::memcpy(dst, color, static_cast<std::size_t>(image->channels));
+        }
+        dst += image->channels;
+    }
+}
+
+int fill_polygon_edges(
+    PillowCImage* image,
+    const std::vector<PolygonEdge>& edges,
+    const std::uint8_t* color,
+    const PillowCImage* mask = nullptr)
 {
     if (edges.empty()) {
         return PILLOW_C_OK;
@@ -4407,7 +4459,7 @@ int fill_polygon_edges(PillowCImage* image, const std::vector<PolygonEdge>& edge
         ymin = std::min(ymin, edge.ymin);
         ymax = std::max(ymax, edge.ymax);
         if (edge.ymin == edge.ymax) {
-            fill_horizontal_span(image, edge.xmin, edge.ymin, static_cast<std::int64_t>(edge.xmax) + 1, color);
+            fill_horizontal_span_masked(image, edge.xmin, edge.ymin, static_cast<std::int64_t>(edge.xmax) + 1, color, mask);
             continue;
         }
         edge_table.push_back(&edge);
@@ -4478,12 +4530,13 @@ int fill_polygon_edges(PillowCImage* image, const std::vector<PolygonEdge>& edge
 
         std::sort(intersections.begin(), intersections.begin() + static_cast<std::ptrdiff_t>(count));
         for (std::size_t index = 1; index < count; index += 2u) {
-            fill_horizontal_span(
+            fill_horizontal_span_masked(
                 image,
                 round_up_away_from_zero(intersections[index - 1u]),
                 ymin,
                 static_cast<std::int64_t>(round_down_toward_zero(intersections[index])) + 1,
-                color);
+                color,
+                mask);
         }
     }
 
@@ -4585,12 +4638,15 @@ int draw_wide_line_segment_image(
     int x1,
     int y1,
     const std::uint8_t* color,
-    int width)
+    int width,
+    const PillowCImage* mask = nullptr)
 {
     const int dx = x1 - x0;
     const int dy = y1 - y0;
     if (dx == 0 && dy == 0) {
-        draw_point_image(image, x0, y0, color);
+        if (polygon_mask_allows(mask, x0, y0)) {
+            draw_point_image(image, x0, y0, color);
+        }
         return PILLOW_C_OK;
     }
 
@@ -4621,7 +4677,7 @@ int draw_wide_line_segment_image(
     add_polygon_edge(&edges[1], vertices[1][0], vertices[1][1], vertices[2][0], vertices[2][1]);
     add_polygon_edge(&edges[2], vertices[2][0], vertices[2][1], vertices[3][0], vertices[3][1]);
     add_polygon_edge(&edges[3], vertices[3][0], vertices[3][1], vertices[0][0], vertices[0][1]);
-    return fill_polygon_edges(image, edges, color);
+    return fill_polygon_edges(image, edges, color, mask);
 }
 
 int draw_line_image(
@@ -4823,6 +4879,40 @@ int draw_points_image(
     return PILLOW_C_OK;
 }
 
+int build_polygon_edges(const int* points, std::size_t point_count, std::vector<PolygonEdge>* edges)
+{
+    try {
+        edges->resize(point_count);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+
+    std::size_t edge_count = 0;
+    for (std::size_t index = 0; index + 1u < point_count; ++index) {
+        const int* current = points + index * 2u;
+        const int* next = current + 2;
+        if (current[1] == next[1] && index != 0 && current[1] == points[index * 2u - 1u]) {
+            PolygonEdge* last = &(*edges)[edge_count - 1u];
+            if (next[0] > current[0] && current[0] > points[index * 2u - 2u]) {
+                last->xmax = next[0];
+                continue;
+            }
+            if (next[0] < current[0] && current[0] < points[index * 2u - 2u]) {
+                last->xmin = next[0];
+                continue;
+            }
+        }
+        add_polygon_edge(&(*edges)[edge_count++], current[0], current[1], next[0], next[1]);
+    }
+
+    const int* last = points + (point_count - 1u) * 2u;
+    if (last[0] != points[0] || last[1] != points[1]) {
+        add_polygon_edge(&(*edges)[edge_count++], last[0], last[1], points[0], points[1]);
+    }
+    edges->resize(edge_count);
+    return PILLOW_C_OK;
+}
+
 int draw_polygon_image(
     PillowCImage* image,
     const int* points,
@@ -4849,7 +4939,7 @@ int draw_polygon_image(
     if (point_count < 2 || point_count > static_cast<std::size_t>(INT_MAX)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (outline_size != 0 && width > 1) {
+    if (outline_size != 0 && width > 1 && width > INT_MAX / 2) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
     if (image->pixels.empty()) {
@@ -4858,34 +4948,10 @@ int draw_polygon_image(
 
     if (fill_size != 0) {
         std::vector<PolygonEdge> edges;
-        try {
-            edges.resize(point_count);
-        } catch (const std::bad_alloc&) {
-            return PILLOW_C_ALLOCATION_FAILED;
+        const int edge_status = build_polygon_edges(points, point_count, &edges);
+        if (edge_status != PILLOW_C_OK) {
+            return edge_status;
         }
-
-        std::size_t edge_count = 0;
-        for (std::size_t index = 0; index + 1u < point_count; ++index) {
-            const int* current = points + index * 2u;
-            const int* next = current + 2;
-            if (current[1] == next[1] && index != 0 && current[1] == points[index * 2u - 1u]) {
-                PolygonEdge* last = &edges[edge_count - 1u];
-                if (next[0] > current[0] && current[0] > points[index * 2u - 2u]) {
-                    last->xmax = next[0];
-                    continue;
-                }
-                if (next[0] < current[0] && current[0] < points[index * 2u - 2u]) {
-                    last->xmin = next[0];
-                    continue;
-                }
-            }
-            add_polygon_edge(&edges[edge_count++], current[0], current[1], next[0], next[1]);
-        }
-        const int* last = points + (point_count - 1u) * 2u;
-        if (last[0] != points[0] || last[1] != points[1]) {
-            add_polygon_edge(&edges[edge_count++], last[0], last[1], points[0], points[1]);
-        }
-        edges.resize(edge_count);
         const int fill_status = fill_polygon_edges(image, edges, fill);
         if (fill_status != PILLOW_C_OK) {
             return fill_status;
@@ -4893,13 +4959,73 @@ int draw_polygon_image(
     }
 
     if (outline_size != 0 && width != 0) {
-        for (std::size_t index = 0; index + 1u < point_count; ++index) {
-            const int* current = points + index * 2u;
-            draw_line_segment_image(image, current[0], current[1], current[2], current[3], outline);
+        if (width <= 1) {
+            for (std::size_t index = 0; index + 1u < point_count; ++index) {
+                const int* current = points + index * 2u;
+                draw_line_segment_image(image, current[0], current[1], current[2], current[3], outline);
+            }
+            const int* last = points + (point_count - 1u) * 2u;
+            draw_line_segment_image(image, last[0], last[1], points[0], points[1], outline);
+            draw_point_image(image, points[0], points[1], outline);
+        } else {
+            std::size_t mask_stride = 0;
+            std::size_t mask_size = 0;
+            if (!checked_image_size_allow_empty(image->width, image->height, 1, &mask_stride, &mask_size)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+
+            try {
+                PillowCImage mask{
+                    image->width,
+                    image->height,
+                    PILLOW_C_MODE_1,
+                    1,
+                    mask_stride,
+                    std::vector<std::uint8_t>(mask_size)};
+                std::vector<PolygonEdge> mask_edges;
+                const int edge_status = build_polygon_edges(points, point_count, &mask_edges);
+                if (edge_status != PILLOW_C_OK) {
+                    return edge_status;
+                }
+                const std::uint8_t mask_value = 255;
+                const int mask_status = fill_polygon_edges(&mask, mask_edges, &mask_value);
+                if (mask_status != PILLOW_C_OK) {
+                    return mask_status;
+                }
+
+                const int wide_width = width * 2 - 1;
+                for (std::size_t index = 0; index + 1u < point_count; ++index) {
+                    const int* current = points + index * 2u;
+                    const int status = draw_wide_line_segment_image(
+                        image,
+                        current[0],
+                        current[1],
+                        current[2],
+                        current[3],
+                        outline,
+                        wide_width,
+                        &mask);
+                    if (status != PILLOW_C_OK) {
+                        return status;
+                    }
+                }
+                const int* last = points + (point_count - 1u) * 2u;
+                const int status = draw_wide_line_segment_image(
+                    image,
+                    last[0],
+                    last[1],
+                    points[0],
+                    points[1],
+                    outline,
+                    wide_width,
+                    &mask);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+            } catch (const std::bad_alloc&) {
+                return PILLOW_C_ALLOCATION_FAILED;
+            }
         }
-        const int* last = points + (point_count - 1u) * 2u;
-        draw_line_segment_image(image, last[0], last[1], points[0], points[1], outline);
-        draw_point_image(image, points[0], points[1], outline);
     }
 
     return PILLOW_C_OK;

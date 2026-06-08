@@ -1728,6 +1728,66 @@ PillowTestImageDrawPolygonMutatesImagesThroughNativePath(*) {
 
 AhkTest.Test("Pillow ImageDraw.Polygon mutates images through native path", PillowTestImageDrawPolygonMutatesImagesThroughNativePath)
 
+PillowTestImageDrawPolygonSupportsWideOutlines(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    outline := Pillow.Image.New("L", [8, 7])
+    fillOutline := Pillow.Image.New("L", [8, 7])
+    rgb := Pillow.Image.New("RGB", [7, 6])
+    lineLike := Pillow.Image.New("L", [5, 5])
+    try {
+        points := [[1, 1], [6, 1], [3, 5]]
+        draw := Pillow.ImageDraw.Draw(outline)
+        returned := draw.Polygon(points, unset, 9, 3)
+        AhkTest.AssertEqual(draw, returned)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 9, 9, 9, 9, 9, 9, 0,
+            0, 0, 9, 9, 9, 9, 0, 0,
+            0, 0, 9, 9, 9, 0, 0, 0,
+            0, 0, 0, 9, 9, 0, 0, 0,
+            0, 0, 0, 9, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(outline.ToBytes()))
+
+        Pillow.ImageDraw.Draw(fillOutline).Polygon(points, 4, 9, 3)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 9, 9, 9, 9, 9, 9, 0,
+            0, 0, 9, 9, 9, 9, 0, 0,
+            0, 0, 9, 9, 9, 0, 0, 0,
+            0, 0, 0, 9, 9, 0, 0, 0,
+            0, 0, 0, 9, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(fillOutline.ToBytes()))
+
+        Pillow.ImageDraw.Draw(rgb).Polygon([0, 0, 6, 1, 2, 5], unset, [10, 20, 30], 4)
+        AhkTest.AssertEqual([
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30,
+            0, 0, 0, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 0, 0, 0,
+            0, 0, 0, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 10, 20, 30, 10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(rgb.ToBytes()))
+
+        Pillow.ImageDraw.Draw(lineLike).Polygon([[0, 0], [4, 4]], unset, 7, 3)
+        AhkTest.AssertEqual([
+            7, 0, 0, 0, 0,
+            0, 7, 0, 0, 0,
+            0, 0, 7, 0, 0,
+            0, 0, 0, 7, 0,
+            0, 0, 0, 0, 7,
+        ], PillowTestBufferToArray(lineLike.ToBytes()))
+    } finally {
+        lineLike.Close()
+        rgb.Close()
+        fillOutline.Close()
+        outline.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Polygon supports wide outlines", PillowTestImageDrawPolygonSupportsWideOutlines)
+
 PillowTestImageDrawPolygonClipsAndRejectsInvalidArguments(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [5, 4])
@@ -1747,11 +1807,16 @@ PillowTestImageDrawPolygonClipsAndRejectsInvalidArguments(*) {
         } catch Error as err {
             AhkTest.AssertTrue(InStr(err.Message, "expects") > 0)
         }
+        lineLike := Pillow.Image.New("L", [3, 3])
         try {
-            draw.Polygon([[0, 0], [1, 1]], unset, 7, 2)
-            AhkTest.Fail("Expected ImageDraw.Polygon to reject wide outlines for now")
-        } catch Error as err {
-            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+            Pillow.ImageDraw.Draw(lineLike).Polygon([[0, 0], [1, 1]], unset, 7, 2)
+            AhkTest.AssertEqual([
+                7, 0, 0,
+                0, 7, 0,
+                0, 0, 0,
+            ], PillowTestBufferToArray(lineLike.ToBytes()))
+        } finally {
+            lineLike.Close()
         }
     } finally {
         image.Close()

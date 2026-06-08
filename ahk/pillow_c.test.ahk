@@ -4933,6 +4933,63 @@ PillowCTestImageDrawPolygonMatchesPillowFillOutlineAndRgb(*) {
 
 AhkTest.Test("pillow_c image draw_polygon matches Pillow fill outline and RGB", PillowCTestImageDrawPolygonMatchesPillowFillOutlineAndRgb)
 
+PillowCTestImageDrawPolygonSupportsWideOutlines(*) {
+    outline := PillowCCreateImageMode(8, 7, 1)
+    fillOutline := PillowCCreateImageMode(8, 7, 1)
+    rgb := PillowCCreateImageMode(7, 6, 3)
+    lineLike := PillowCCreateImageMode(5, 5, 1)
+    try {
+        points := [1, 1, 6, 1, 3, 5]
+        PillowCImageDrawPolygon(outline, points, unset, [9], 3)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 9, 9, 9, 9, 9, 9, 0,
+            0, 0, 9, 9, 9, 9, 0, 0,
+            0, 0, 9, 9, 9, 0, 0, 0,
+            0, 0, 0, 9, 9, 0, 0, 0,
+            0, 0, 0, 9, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(outline, 56))
+
+        PillowCImageDrawPolygon(fillOutline, points, [4], [9], 3)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 9, 9, 9, 9, 9, 9, 0,
+            0, 0, 9, 9, 9, 9, 0, 0,
+            0, 0, 9, 9, 9, 0, 0, 0,
+            0, 0, 0, 9, 9, 0, 0, 0,
+            0, 0, 0, 9, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(fillOutline, 56))
+
+        PillowCImageDrawPolygon(rgb, [0, 0, 6, 1, 2, 5], unset, [10, 20, 30], 4)
+        AhkTest.AssertEqual([
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30,
+            0, 0, 0, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 0, 0, 0,
+            0, 0, 0, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 10, 20, 30, 10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(rgb, 126))
+
+        PillowCImageDrawPolygon(lineLike, [0, 0, 4, 4], unset, [7], 3)
+        AhkTest.AssertEqual([
+            7, 0, 0, 0, 0,
+            0, 7, 0, 0, 0,
+            0, 0, 7, 0, 0,
+            0, 0, 0, 7, 0,
+            0, 0, 0, 0, 7,
+        ], PillowCImageToArray(lineLike, 25))
+    } finally {
+        for handle in [lineLike, rgb, fillOutline, outline] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_polygon supports wide outlines", PillowCTestImageDrawPolygonSupportsWideOutlines)
+
 PillowCTestImageDrawPolygonClipsAndRejectsInvalidArguments(*) {
     clipped := PillowCCreateImageMode(5, 4, 1)
     lineLike := PillowCCreateImageMode(3, 3, 1)
@@ -4966,19 +5023,12 @@ PillowCTestImageDrawPolygonClipsAndRejectsInvalidArguments(*) {
         )
         AhkTest.AssertEqual(-3, status)
 
-        status := DllCall(
-            PillowCDllPath() "\pillow_c_image_draw_polygon",
-            "Ptr", clipped,
-            "Ptr", PillowCIntBuffer([0, 0, 1, 1]),
-            "UPtr", 2,
-            "Ptr", 0,
-            "UPtr", 0,
-            "Ptr", PillowCBuffer([7]),
-            "UPtr", 1,
-            "Int", 2,
-            "Int"
-        )
-        AhkTest.AssertEqual(-3, status)
+        PillowCImageDrawPolygon(lineLike, [0, 0, 1, 1], unset, [7], 2)
+        AhkTest.AssertEqual([
+            7, 0, 0,
+            0, 7, 0,
+            0, 0, 0,
+        ], PillowCImageToArray(lineLike, 9))
     } finally {
         for handle in [lineLike, clipped] {
             if handle
