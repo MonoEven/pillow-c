@@ -5501,6 +5501,49 @@ PillowCTestImageGetChannelReturnsLImage(*) {
 
 AhkTest.Test("pillow_c image get_channel returns an L image for one channel", PillowCTestImageGetChannelReturnsLImage)
 
+PillowCTestImageGetChannelPreservesPaletteMode(*) {
+    palette := [0, 0, 0, 10, 20, 30, 200, 100, 50, 255, 255, 255]
+    source := PillowCCreateImageMode(4, 2, 6)
+    target := PillowCCreateImageMode(4, 2, 6)
+    channel := 0
+    channelRgb := 0
+    targetRgb := 0
+    try {
+        PillowCImageSetBytes(source, [0, 1, 2, 3, 3, 2, 1, 0])
+        PillowCImagePutPaletteRgb(source, palette)
+
+        channel := PillowCImageGetChannel(source, 0)
+        before := PillowCImageData(target).Ptr
+        PillowCImageGetChannelInto(source, 0, target)
+        after := PillowCImageData(target).Ptr
+
+        AhkTest.AssertEqual(6, PillowCImageMode(channel))
+        AhkTest.AssertEqual(1, PillowCImageInt(channel, "pillow_c_image_channels"))
+        AhkTest.AssertEqual([4, 2], [PillowCImageInt(channel, "pillow_c_image_width"), PillowCImageInt(channel, "pillow_c_image_height")])
+        AhkTest.AssertEqual(before, after)
+        AhkTest.AssertEqual([0, 1, 2, 3, 3, 2, 1, 0], PillowCImageToArray(channel, 8))
+        AhkTest.AssertEqual([0, 1, 2, 3, 3, 2, 1, 0], PillowCImageToArray(target, 8))
+        AhkTest.AssertEqual(palette, PillowCImageGetPaletteRgb(channel))
+        AhkTest.AssertEqual(palette, PillowCImageGetPaletteRgb(target))
+
+        channelRgb := PillowCImageConvertMode(channel, 3)
+        targetRgb := PillowCImageConvertMode(target, 3)
+        AhkTest.AssertEqual([0, 0, 0, 10, 20, 30, 200, 100, 50, 255, 255, 255, 255, 255, 255, 200, 100, 50, 10, 20, 30, 0, 0, 0], PillowCImageToArray(channelRgb, 24))
+        AhkTest.AssertEqual([0, 0, 0, 10, 20, 30, 200, 100, 50, 255, 255, 255, 255, 255, 255, 200, 100, 50, 10, 20, 30, 0, 0, 0], PillowCImageToArray(targetRgb, 24))
+    } finally {
+        if targetRgb
+            PillowCFreeImage(targetRgb)
+        if channelRgb
+            PillowCFreeImage(channelRgb)
+        if channel
+            PillowCFreeImage(channel)
+        PillowCFreeImage(target)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image get_channel preserves P mode and palette", PillowCTestImageGetChannelPreservesPaletteMode)
+
 PillowCTestImageGetChannelIntoReusesTargetHandle(*) {
     source := PillowCCreateImageMode(2, 1, 4)
     target := PillowCCreateImageMode(2, 1, 1)
@@ -5588,6 +5631,34 @@ PillowCTestImageSplitBandsReturnsAllLBandsInOneCall(*) {
 }
 
 AhkTest.Test("pillow_c image split_bands returns all L bands in one call", PillowCTestImageSplitBandsReturnsAllLBandsInOneCall)
+
+PillowCTestImageSplitBandsPreservesPaletteMode(*) {
+    palette := [0, 0, 0, 10, 20, 30, 200, 100, 50, 255, 255, 255]
+    source := PillowCCreateImageMode(4, 2, 6)
+    bands := []
+    bandRgb := 0
+    try {
+        PillowCImageSetBytes(source, [0, 1, 2, 3, 3, 2, 1, 0])
+        PillowCImagePutPaletteRgb(source, palette)
+
+        bands := PillowCImageSplitBands(source, 1)
+        AhkTest.AssertEqual(1, bands.Length)
+        AhkTest.AssertEqual(6, PillowCImageMode(bands[1]))
+        AhkTest.AssertEqual([0, 1, 2, 3, 3, 2, 1, 0], PillowCImageToArray(bands[1], 8))
+        AhkTest.AssertEqual(palette, PillowCImageGetPaletteRgb(bands[1]))
+
+        bandRgb := PillowCImageConvertMode(bands[1], 3)
+        AhkTest.AssertEqual([0, 0, 0, 10, 20, 30, 200, 100, 50, 255, 255, 255, 255, 255, 255, 200, 100, 50, 10, 20, 30, 0, 0, 0], PillowCImageToArray(bandRgb, 24))
+    } finally {
+        if bandRgb
+            PillowCFreeImage(bandRgb)
+        for handle in bands
+            PillowCFreeImage(handle)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image split_bands preserves P mode and palette", PillowCTestImageSplitBandsPreservesPaletteMode)
 
 PillowCTestImageSplitBandsRejectsWrongOutputCount(*) {
     source := PillowCCreateImageMode(2, 1, 3)

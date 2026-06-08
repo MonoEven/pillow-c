@@ -2105,6 +2105,11 @@ int equalize_image_into(const PillowCImage* source, PillowCImage* target)
     return equalize_image_masked_into(source, nullptr, target);
 }
 
+int channel_target_mode_for_source(const PillowCImage* source)
+{
+    return source && source->mode == PILLOW_C_MODE_P ? PILLOW_C_MODE_P : PILLOW_C_MODE_L;
+}
+
 int copy_channel_into(const PillowCImage* source, int channel_index, PillowCImage* target)
 {
     if (!source || !target) {
@@ -2113,10 +2118,12 @@ int copy_channel_into(const PillowCImage* source, int channel_index, PillowCImag
     if (channel_index < 0 || channel_index >= source->channels) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_L, 1)) {
+    const int target_mode = channel_target_mode_for_source(source);
+    if (!image_shape_matches(target, source->width, source->height, target_mode, 1)) {
         return PILLOW_C_MISMATCH;
     }
     if (source->pixels.empty()) {
+        copy_palette_if_same_mode(source, target);
         return PILLOW_C_OK;
     }
 
@@ -2126,6 +2133,7 @@ int copy_channel_into(const PillowCImage* source, int channel_index, PillowCImag
     for (std::size_t i = 0; i < pixels; ++i) {
         dst[i] = src[i * source->channels];
     }
+    copy_palette_if_same_mode(source, target);
     return PILLOW_C_OK;
 }
 
@@ -6847,11 +6855,12 @@ extern "C" __declspec(dllexport) int pillow_c_image_split_bands(
     }
 
     try {
+        const int target_mode = channel_target_mode_for_source(source);
         for (std::size_t channel = 0; channel < out_count; ++channel) {
             auto* image = new PillowCImage{
                 source->width,
                 source->height,
-                PILLOW_C_MODE_L,
+                target_mode,
                 1,
                 stride,
                 std::vector<std::uint8_t>(size)};
@@ -8591,10 +8600,11 @@ extern "C" __declspec(dllexport) int pillow_c_image_get_channel(
     }
 
     try {
+        const int target_mode = channel_target_mode_for_source(source);
         auto* image = new PillowCImage{
             source->width,
             source->height,
-            PILLOW_C_MODE_L,
+            target_mode,
             1,
             static_cast<std::size_t>(source->width),
             std::vector<std::uint8_t>(static_cast<std::size_t>(source->width) * source->height)};

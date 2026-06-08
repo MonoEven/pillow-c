@@ -2550,6 +2550,34 @@ PillowTestImageGetChannelSupportsLaMode(*) {
 
 AhkTest.Test("Pillow Image.GetChannel supports LA mode names", PillowTestImageGetChannelSupportsLaMode)
 
+PillowTestImageGetChannelPreservesPaletteMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    palette := [0, 0, 0, 10, 20, 30, 200, 100, 50, 255, 255, 255]
+    source := Pillow.Image.FromBytes("P", [4, 2], PillowTestBuffer([0, 1, 2, 3, 3, 2, 1, 0]))
+    channel := 0
+    channelRgb := 0
+    try {
+        source.PutPalette(palette)
+
+        channel := source.GetChannel("P")
+        channelRgb := channel.Convert("RGB")
+
+        AhkTest.AssertEqual("P", channel.Mode)
+        AhkTest.AssertEqual([4, 2], channel.Size)
+        AhkTest.AssertEqual([0, 1, 2, 3, 3, 2, 1, 0], PillowTestBufferToArray(channel.ToBytes()))
+        AhkTest.AssertEqual(palette, channel.GetPalette())
+        AhkTest.AssertEqual([0, 0, 0, 10, 20, 30, 200, 100, 50, 255, 255, 255, 255, 255, 255, 200, 100, 50, 10, 20, 30, 0, 0, 0], PillowTestBufferToArray(channelRgb.ToBytes()))
+    } finally {
+        if IsObject(channelRgb)
+            channelRgb.Close()
+        if IsObject(channel)
+            channel.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetChannel preserves P mode and palette", PillowTestImageGetChannelPreservesPaletteMode)
+
 PillowTestImageGetBandsReturnsPillowModeBandNames(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.New("L", [1, 1])
@@ -3713,6 +3741,34 @@ PillowTestImageSplitUsesNativeOperation(*) {
 }
 
 AhkTest.Test("Pillow Image.Split returns all L bands through one native call", PillowTestImageSplitUsesNativeOperation)
+
+PillowTestImageSplitPreservesPaletteMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    palette := [0, 0, 0, 10, 20, 30, 200, 100, 50, 255, 255, 255]
+    source := Pillow.Image.FromBytes("P", [4, 2], PillowTestBuffer([0, 1, 2, 3, 3, 2, 1, 0]))
+    bands := []
+    bandRgb := 0
+    try {
+        source.PutPalette(palette)
+
+        bands := source.Split()
+        bandRgb := bands[1].Convert("RGB")
+
+        AhkTest.AssertEqual(1, bands.Length)
+        AhkTest.AssertEqual("P", bands[1].Mode)
+        AhkTest.AssertEqual([0, 1, 2, 3, 3, 2, 1, 0], PillowTestBufferToArray(bands[1].ToBytes()))
+        AhkTest.AssertEqual(palette, bands[1].GetPalette())
+        AhkTest.AssertEqual([0, 0, 0, 10, 20, 30, 200, 100, 50, 255, 255, 255, 255, 255, 255, 200, 100, 50, 10, 20, 30, 0, 0, 0], PillowTestBufferToArray(bandRgb.ToBytes()))
+    } finally {
+        if IsObject(bandRgb)
+            bandRgb.Close()
+        for band in bands
+            band.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Split preserves P mode and palette", PillowTestImageSplitPreservesPaletteMode)
 
 PillowTestImageMergeStaticUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
