@@ -3782,6 +3782,113 @@ void fill_vertical_span(
     }
 }
 
+void draw_point_image(PillowCImage* image, int x, int y, const std::uint8_t* color)
+{
+    if (x < 0 || x >= image->width || y < 0 || y >= image->height) {
+        return;
+    }
+    std::uint8_t* dst =
+        image->pixels.data() +
+        static_cast<std::size_t>(y) * image->stride +
+        static_cast<std::size_t>(x) * image->channels;
+    std::memcpy(dst, color, static_cast<std::size_t>(image->channels));
+}
+
+void draw_line_segment_image(
+    PillowCImage* image,
+    int x0,
+    int y0,
+    int x1,
+    int y1,
+    const std::uint8_t* color)
+{
+    int dx = x1 - x0;
+    int xs = 1;
+    if (dx < 0) {
+        dx = -dx;
+        xs = -1;
+    }
+    int dy = y1 - y0;
+    int ys = 1;
+    if (dy < 0) {
+        dy = -dy;
+        ys = -1;
+    }
+
+    if (dx == 0) {
+        for (int i = 0; i < dy; ++i) {
+            draw_point_image(image, x0, y0, color);
+            y0 += ys;
+        }
+    } else if (dy == 0) {
+        for (int i = 0; i < dx; ++i) {
+            draw_point_image(image, x0, y0, color);
+            x0 += xs;
+        }
+    } else if (dx > dy) {
+        const int n = dx;
+        dy += dy;
+        int e = dy - dx;
+        dx += dx;
+        for (int i = 0; i < n; ++i) {
+            draw_point_image(image, x0, y0, color);
+            if (e >= 0) {
+                y0 += ys;
+                e -= dx;
+            }
+            e += dy;
+            x0 += xs;
+        }
+    } else {
+        const int n = dy;
+        dx += dx;
+        int e = dx - dy;
+        dy += dy;
+        for (int i = 0; i < n; ++i) {
+            draw_point_image(image, x0, y0, color);
+            if (e >= 0) {
+                x0 += xs;
+                e -= dy;
+            }
+            e += dx;
+            y0 += ys;
+        }
+    }
+}
+
+int draw_line_image(
+    PillowCImage* image,
+    const int* points,
+    std::size_t point_count,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    int width)
+{
+    if (!image || !points || !color) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (color_size != static_cast<std::size_t>(image->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (point_count < 2 || point_count > static_cast<std::size_t>(INT_MAX)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (width > 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    for (std::size_t index = 0; index + 1 < point_count; ++index) {
+        const int* current = points + index * 2u;
+        draw_line_segment_image(image, current[0], current[1], current[2], current[3], color);
+    }
+    const int* last = points + (point_count - 1u) * 2u;
+    draw_point_image(image, last[0], last[1], color);
+    return PILLOW_C_OK;
+}
+
 int draw_rectangle_image(
     PillowCImage* image,
     int left,
@@ -10323,6 +10430,17 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_rectangle(
     int width)
 {
     return draw_rectangle_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_draw_line(
+    PillowCImage* image,
+    const int* points,
+    std::size_t point_count,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    int width)
+{
+    return draw_line_image(image, points, point_count, color, color_size, width);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_get_bytes(

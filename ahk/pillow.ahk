@@ -1181,6 +1181,51 @@ class Pillow {
                 ))
                 return this
             }
+
+            Line(xy, fill := unset, width := 0, joint := unset) {
+                if IsSet(joint) && joint != "" && joint != 0
+                    throw Error("Pillow.ImageDraw.Line joint is not supported yet", -1)
+                points := Pillow.ImageDraw.FlattenPoints(xy, "Line")
+                color := this.Image.PasteColorBuffer(IsSet(fill) ? fill : 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_draw_line",
+                    "Ptr", this.Image.RequireHandle(),
+                    "Ptr", points,
+                    "UPtr", points.Size // 8,
+                    "Ptr", color,
+                    "UPtr", color.Size,
+                    "Int", width,
+                    "Int"
+                ))
+                return this
+            }
+        }
+
+        static FlattenPoints(xy, operationName) {
+            if !IsObject(xy)
+                throw Error("Pillow.ImageDraw." operationName " expects a coordinate array", -1)
+
+            values := []
+            for item in xy {
+                if IsObject(item) {
+                    if item.Length != 2
+                        throw Error("Pillow.ImageDraw." operationName " point expects [x, y]", -1)
+                    values.Push(item[1])
+                    values.Push(item[2])
+                } else {
+                    values.Push(item)
+                }
+            }
+
+            if values.Length < 4 || Mod(values.Length, 2) != 0
+                throw Error("Pillow.ImageDraw." operationName " expects at least two points", -1)
+            buf := Buffer(values.Length * 4, 0)
+            for index, value in values {
+                if !(value is Number)
+                    throw Error("Pillow.ImageDraw." operationName " coordinates must be numeric", -1)
+                NumPut("Int", Integer(value), buf, (index - 1) * 4)
+            }
+            return buf
         }
     }
 

@@ -453,6 +453,22 @@ PillowCImageDrawRectangle(handle, box, fill := unset, outline := unset, width :=
     PillowCAssertStatus(status)
 }
 
+PillowCImageDrawLine(handle, points, fill, width := 0) {
+    pointBuffer := PillowCIntBuffer(points)
+    fillBuffer := PillowCBuffer(fill)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_line",
+        "Ptr", handle,
+        "Ptr", pointBuffer,
+        "UPtr", points.Length // 2,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int", width,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCFreeImage(handle) {
     return DllCall(PillowCDllPath() "\pillow_c_image_free", "Ptr", handle, "Int")
 }
@@ -3666,6 +3682,109 @@ PillowCTestImageDrawRectangleClipsAndRejectsInvalidArguments(*) {
 }
 
 AhkTest.Test("pillow_c image draw_rectangle clips and rejects invalid arguments", PillowCTestImageDrawRectangleClipsAndRejectsInvalidArguments)
+
+PillowCTestImageDrawLineMatchesPillowWidthZeroAndOne(*) {
+    horizontal := PillowCCreateImageMode(6, 4, 1)
+    diagonal := PillowCCreateImageMode(6, 6, 1)
+    rgb := PillowCCreateImageMode(4, 4, 3)
+    try {
+        PillowCImageDrawLine(horizontal, [1, 1, 4, 1], [7], 0)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            0, 7, 7, 7, 7, 0,
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(horizontal, 24))
+
+        PillowCImageDrawLine(diagonal, [0, 0, 5, 3], [7], 1)
+        AhkTest.AssertEqual([
+            7, 0, 0, 0, 0, 0,
+            0, 7, 7, 0, 0, 0,
+            0, 0, 0, 7, 7, 0,
+            0, 0, 0, 0, 0, 7,
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(diagonal, 36))
+
+        PillowCImageDrawLine(rgb, [0, 0, 3, 2], [10, 20, 30], 1)
+        AhkTest.AssertEqual([
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 10, 20, 30, 10, 20, 30, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 20, 30,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(rgb, 48))
+    } finally {
+        for handle in [rgb, diagonal, horizontal] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_line matches Pillow width zero and one", PillowCTestImageDrawLineMatchesPillowWidthZeroAndOne)
+
+PillowCTestImageDrawLineSupportsPolylinesClippingAndRejectsInvalidArguments(*) {
+    polyline := PillowCCreateImageMode(6, 5, 1)
+    clipped := PillowCCreateImageMode(6, 4, 1)
+    offdiag := PillowCCreateImageMode(5, 5, 1)
+    try {
+        PillowCImageDrawLine(polyline, [0, 0, 3, 2, 5, 1], [7], 1)
+        AhkTest.AssertEqual([
+            7, 0, 0, 0, 0, 0,
+            0, 7, 7, 0, 7, 7,
+            0, 0, 0, 7, 0, 0,
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(polyline, 30))
+
+        PillowCImageDrawLine(clipped, [-2, 1, 3, 1], [7], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            7, 7, 7, 7, 0, 0,
+            0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(clipped, 24))
+
+        PillowCImageDrawLine(offdiag, [-1, -1, 3, 3], [7], 1)
+        AhkTest.AssertEqual([
+            7, 0, 0, 0, 0,
+            0, 7, 0, 0, 0,
+            0, 0, 7, 0, 0,
+            0, 0, 0, 7, 0,
+            0, 0, 0, 0, 0,
+        ], PillowCImageToArray(offdiag, 25))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_line",
+            "Ptr", polyline,
+            "Ptr", PillowCIntBuffer([0, 0]),
+            "UPtr", 1,
+            "Ptr", PillowCBuffer([7]),
+            "UPtr", 1,
+            "Int", 1,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_line",
+            "Ptr", polyline,
+            "Ptr", PillowCIntBuffer([0, 0, 1, 1]),
+            "UPtr", 2,
+            "Ptr", PillowCBuffer([7]),
+            "UPtr", 1,
+            "Int", 2,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+    } finally {
+        for handle in [offdiag, clipped, polyline] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_line supports polylines clipping and rejects invalid arguments", PillowCTestImageDrawLineSupportsPolylinesClippingAndRejectsInvalidArguments)
 
 PillowCTestImageBlendOperatesOnNativeHandles(*) {
     left := PillowCCreateImage(2, 1, 3)
