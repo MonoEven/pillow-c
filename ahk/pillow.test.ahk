@@ -4299,6 +4299,10 @@ PillowTestImageEnhanceBrightnessContrastColorUseNativeComposition(*) {
         10, 20, 30, 40, 80, 40, 10, 70, 130, 140, 150, 100,
         200, 190, 180, 130, 20, 120, 220, 160, 250, 240, 10, 190,
     ]))
+    cmyk := Pillow.Image.FromBytes("CMYK", [3, 2], PillowTestBuffer([
+        0, 0, 0, 0, 20, 40, 60, 80, 100, 50, 25, 125,
+        255, 128, 64, 32, 10, 200, 30, 40, 200, 10, 220, 0,
+    ]))
     outputs := []
     try {
         cases := [
@@ -4347,11 +4351,33 @@ PillowTestImageEnhanceBrightnessContrastColorUseNativeComposition(*) {
             outputs.Push(item.Out)
             AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(item.Out.ToBytes()))
         }
+
+        cmykBrightness := Pillow.ImageEnhance.Brightness(cmyk).Enhance(1.2)
+        outputs.Push(cmykBrightness)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 24, 48, 72, 96, 120, 60, 30, 150,
+            255, 153, 76, 38, 12, 240, 36, 48, 240, 12, 255, 0,
+        ], PillowTestBufferToArray(cmykBrightness.ToBytes()))
+
+        cmykContrast := Pillow.ImageEnhance.Contrast(cmyk).Enhance(1.2)
+        outputs.Push(cmykContrast)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 24, 48, 72, 73, 120, 60, 30, 127,
+            255, 153, 76, 16, 12, 240, 36, 25, 240, 12, 255, 0,
+        ], PillowTestBufferToArray(cmykContrast.ToBytes()))
+
+        cmykColor := Pillow.ImageEnhance.Color(cmyk).Enhance(1.2)
+        outputs.Push(cmykColor)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 24, 48, 72, 75, 120, 60, 30, 118,
+            255, 153, 76, 4, 12, 240, 36, 19, 240, 12, 255, 0,
+        ], PillowTestBufferToArray(cmykColor.ToBytes()))
     } finally {
         for image in outputs {
             if IsObject(image)
                 image.Close()
         }
+        cmyk.Close()
         rgba.Close()
         rgb.Close()
     }

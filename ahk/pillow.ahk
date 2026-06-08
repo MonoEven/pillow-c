@@ -1005,8 +1005,10 @@ class Pillow {
                     this.Degenerate := image.Convert("L").Convert("RGB")
                 } else if image.Mode = "RGBA" {
                     this.Degenerate := image.Convert("LA").Convert("RGBA")
+                } else if image.Mode = "CMYK" {
+                    this.Degenerate := image.Convert("L").Convert("CMYK")
                 } else {
-                    throw Error("Pillow.ImageEnhance.Color currently supports L LA RGB and RGBA", -1)
+                    throw Error("Pillow.ImageEnhance.Color currently supports L LA RGB RGBA and CMYK", -1)
                 }
             }
         }
