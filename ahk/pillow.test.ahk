@@ -235,6 +235,42 @@ PillowTestImageEffectMandelbrotUsesNativeGenerator(*) {
 
 AhkTest.Test("Pillow Image.EffectMandelbrot creates native L images", PillowTestImageEffectMandelbrotUsesNativeGenerator)
 
+PillowTestImageEffectNoiseUsesNativeGenerator(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := 0
+    zeroSigma := 0
+    empty := 0
+    try {
+        image := Pillow.Image.EffectNoise([4, 3], 12.5)
+        zeroSigma := Pillow.Image.EffectNoise([3, 1], 0.0)
+        empty := Pillow.Image.EffectNoise([0, 1], 12.5)
+
+        AhkTest.AssertEqual("L", image.Mode)
+        AhkTest.AssertEqual([4, 3], image.Size)
+        AhkTest.AssertEqual([121, 160, 124, 137, 125, 151, 118, 124, 131, 141, 147, 115], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertEqual("L", zeroSigma.Mode)
+        AhkTest.AssertEqual([128, 128, 128], PillowTestBufferToArray(zeroSigma.ToBytes()))
+        AhkTest.AssertEqual("L", empty.Mode)
+        AhkTest.AssertEqual([0, 1], empty.Size)
+        AhkTest.AssertEqual([], PillowTestBufferToArray(empty.ToBytes()))
+
+        errorWasRaised := false
+        try {
+            Pillow.Image.EffectNoise("bad-size", 12.5)
+        } catch Error {
+            errorWasRaised := true
+        }
+        AhkTest.AssertTrue(errorWasRaised)
+    } finally {
+        for item in [empty, zeroSigma, image] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.EffectNoise creates native L images", PillowTestImageEffectNoiseUsesNativeGenerator)
+
 PillowTestImageFromBytesOwnsNativeCopy(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     data := PillowTestBuffer([10, 20, 30, 40, 50, 60])

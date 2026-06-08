@@ -1943,6 +1943,24 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static EffectNoise(size, sigma) {
+            if !IsObject(size) || size.Length != 2
+                throw Error("Pillow.Image.EffectNoise expects size [width, height]", -1)
+            if !(sigma is Number)
+                throw Error("Pillow.Image.EffectNoise sigma must be numeric", -1)
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_effect_noise",
+                "Int", size[1],
+                "Int", size[2],
+                "Double", sigma,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static Open(path, formats := unset) {
             if !(path is String)
                 throw Error("Pillow.Image.Open expects a file path", -1)

@@ -294,6 +294,21 @@ PillowCImageEffectMandelbrot(width, height, extent, quality) {
     return handle
 }
 
+PillowCImageEffectNoise(width, height, sigma) {
+    handle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_effect_noise",
+        "Int", width,
+        "Int", height,
+        "Double", sigma,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
 PillowCImageOpenBmp(path) {
     handle := 0
     pathBytes := PillowCUtf8Buffer(path)
@@ -3025,6 +3040,40 @@ PillowCTestImageEffectMandelbrotMatchesPillow(*) {
 }
 
 AhkTest.Test("pillow_c image effect_mandelbrot matches Pillow", PillowCTestImageEffectMandelbrotMatchesPillow)
+
+PillowCTestImageEffectNoiseMatchesPillow(*) {
+    first := 0
+    zeroSigma := 0
+    empty := 0
+    outHandle := 0
+    try {
+        first := PillowCImageEffectNoise(4, 3, 12.5)
+        zeroSigma := PillowCImageEffectNoise(3, 1, 0.0)
+        empty := PillowCImageEffectNoise(0, 1, 12.5)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(first))
+        AhkTest.AssertEqual(4, PillowCImageInt(first, "pillow_c_image_width"))
+        AhkTest.AssertEqual(3, PillowCImageInt(first, "pillow_c_image_height"))
+        AhkTest.AssertEqual([121, 160, 124, 137, 125, 151, 118, 124, 131, 141, 147, 115], PillowCImageToArray(first, 12))
+        AhkTest.AssertEqual([128, 128, 128], PillowCImageToArray(zeroSigma, 3))
+        AhkTest.AssertEqual(0, PillowCImageInt(empty, "pillow_c_image_width"))
+        AhkTest.AssertEqual(1, PillowCImageInt(empty, "pillow_c_image_height"))
+        AhkTest.AssertEqual([], PillowCImageToArray(empty, 0))
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_effect_noise", "Int", -1, "Int", 2, "Double", 12.5, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        for image in [empty, zeroSigma, first] {
+            if image
+                PillowCFreeImage(image)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image effect_noise matches Pillow initial rand stream", PillowCTestImageEffectNoiseMatchesPillow)
 
 PillowCTestImageSaveBmpMatchesPillowRgb(*) {
     image := PillowCCreateImageMode(2, 2, 3)

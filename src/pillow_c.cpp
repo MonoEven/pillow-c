@@ -333,6 +333,17 @@ inline std::uint8_t clip_u8_double(double value)
     return static_cast<std::uint8_t>(value);
 }
 
+inline std::uint8_t pillow_clip8_double(double value)
+{
+    if (value <= 0.0) {
+        return 0;
+    }
+    if (value < 256.0) {
+        return static_cast<std::uint8_t>(value);
+    }
+    return 255;
+}
+
 inline std::uint8_t round_half_up_clip_u8(double value)
 {
     if (!(value > 0.0)) {
@@ -2708,6 +2719,57 @@ int effect_mandelbrot_image(int width, int height, const double* extent, int qua
                         break;
                     }
                 }
+            }
+        }
+
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int effect_noise_image(int width, int height, double sigma, PillowCImage** out_image)
+{
+    if (!out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(width, height, 1, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            width,
+            height,
+            PILLOW_C_MODE_L,
+            1,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        if (width == 0 || height == 0) {
+            *out_image = image;
+            return PILLOW_C_OK;
+        }
+
+        const float sigma_f = static_cast<float>(sigma);
+        for (int y = 0; y < height; ++y) {
+            std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+            for (int x = 0; x < width; ++x) {
+                double v1 = 0.0;
+                double v2 = 0.0;
+                double radius = 0.0;
+                do {
+                    v1 = std::rand() * (2.0 / RAND_MAX) - 1.0;
+                    v2 = std::rand() * (2.0 / RAND_MAX) - 1.0;
+                    radius = v1 * v1 + v2 * v2;
+                } while (radius >= 1.0);
+
+                const double factor = std::sqrt(-2.0 * std::log(radius) / radius);
+                row[x] = pillow_clip8_double(128.0 + static_cast<double>(sigma_f) * factor * v1);
             }
         }
 
@@ -10515,6 +10577,15 @@ extern "C" __declspec(dllexport) int pillow_c_image_effect_mandelbrot(
     PillowCImage** out_image)
 {
     return effect_mandelbrot_image(width, height, extent, quality, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_effect_noise(
+    int width,
+    int height,
+    double sigma,
+    PillowCImage** out_image)
+{
+    return effect_noise_image(width, height, sigma, out_image);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_bmp(
