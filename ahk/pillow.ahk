@@ -2165,16 +2165,7 @@ class Pillow {
             if !(fn is Func)
                 throw Error("Pillow.Image.Eval expects a callable function", -1)
 
-            baseLut := []
-            loop 256
-                baseLut.Push(Pillow.Image.RoundClipU8(fn.Call(A_Index - 1)))
-
-            lut := []
-            loop image.Channels {
-                for value in baseLut
-                    lut.Push(value)
-            }
-            return image.Point(lut)
+            return image.Point(fn)
         }
 
         static Blend(left, right, alpha) {
@@ -2874,6 +2865,8 @@ class Pillow {
         }
 
         Point(lut) {
+            if lut is Func
+                lut := this.CallablePointLut(lut)
             lutBytes := this.LutBuffer(lut)
             outHandle := 0
             Pillow.CheckStatus(DllCall(
@@ -2885,6 +2878,19 @@ class Pillow {
                 "Int"
             ))
             return Pillow.WrapImageHandle(outHandle)
+        }
+
+        CallablePointLut(fn) {
+            baseLut := []
+            loop 256
+                baseLut.Push(Pillow.Image.RoundClipU8(fn.Call(A_Index - 1)))
+
+            lut := []
+            loop this.Channels {
+                for value in baseLut
+                    lut.Push(value)
+            }
+            return lut
         }
 
         LutBuffer(lut) {

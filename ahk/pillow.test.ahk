@@ -5062,6 +5062,34 @@ PillowTestImagePointUsesNativeLutOperation(*) {
 
 AhkTest.Test("Pillow Image.Point applies a Pillow-style LUT through native handles", PillowTestImagePointUsesNativeLutOperation)
 
+PillowTestImagePointAcceptsCallableFunction(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 1, 127, 128, 255]))
+    rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([0, 1, 2, 10, 20, 30]))
+    lOut := 0
+    rgbOut := 0
+    calls := []
+    try {
+        lOut := l.Point((value) => value + 0.5)
+        rgbOut := rgb.Point((value) => (calls.Push(value), 255 - value))
+
+        AhkTest.AssertEqual("L", lOut.Mode)
+        AhkTest.AssertEqual([0, 2, 128, 128, 255], PillowTestBufferToArray(lOut.ToBytes()))
+        AhkTest.AssertEqual("RGB", rgbOut.Mode)
+        AhkTest.AssertEqual([255, 254, 253, 245, 235, 225], PillowTestBufferToArray(rgbOut.ToBytes()))
+        AhkTest.AssertEqual(256, calls.Length)
+        AhkTest.AssertEqual(0, calls[1])
+        AhkTest.AssertEqual(255, calls[256])
+    } finally {
+        for image in [rgbOut, lOut, rgb, l] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Point accepts callable functions", PillowTestImagePointAcceptsCallableFunction)
+
 PillowTestImageEvalBuildsSharedLutForAllBands(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([0, 1, 2, 10, 20, 30]))
