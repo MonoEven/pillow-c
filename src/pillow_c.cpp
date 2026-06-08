@@ -4198,6 +4198,53 @@ void arc_init(ClipEllipseState* state, std::int32_t a, std::int32_t b, std::int3
     }
 }
 
+void chord_init(ClipEllipseState* state, std::int32_t a, std::int32_t b, std::int32_t width, double start, double end)
+{
+    ellipse_init(&state->ellipse, a, b, width);
+    state->root = -1;
+    state->node_count = 0;
+    state->events.clear();
+
+    const double xl = a * std::cos(start * PILLOW_C_PI / 180.0);
+    const double xr = a * std::cos(end * PILLOW_C_PI / 180.0);
+    const double yl = b * std::sin(start * PILLOW_C_PI / 180.0);
+    const double yr = b * std::sin(end * PILLOW_C_PI / 180.0);
+    state->root = clip_node(state, ClipNodeType::Clip);
+    ClipNode& root = state->nodes[state->root];
+    root.a = yr - yl;
+    root.b = xl - xr;
+    root.c = -(root.a * xl + root.b * yl);
+}
+
+void chord_line_init(ClipEllipseState* state, std::int32_t a, std::int32_t b, std::int32_t width, double start, double end)
+{
+    ellipse_init(&state->ellipse, a, b, a + b + 1);
+    state->root = -1;
+    state->node_count = 0;
+    state->events.clear();
+
+    const double xl = a * std::cos(start * PILLOW_C_PI / 180.0);
+    const double xr = a * std::cos(end * PILLOW_C_PI / 180.0);
+    const double yl = b * std::sin(start * PILLOW_C_PI / 180.0);
+    const double yr = b * std::sin(end * PILLOW_C_PI / 180.0);
+
+    state->root = clip_node(state, ClipNodeType::And);
+    const int left = clip_node(state, ClipNodeType::Clip);
+    const int right = clip_node(state, ClipNodeType::Clip);
+    state->nodes[state->root].left = left;
+    state->nodes[state->root].right = right;
+
+    ClipNode& left_node = state->nodes[left];
+    left_node.a = yr - yl;
+    left_node.b = xl - xr;
+    left_node.c = -(left_node.a * xl + left_node.b * yl);
+
+    ClipNode& right_node = state->nodes[right];
+    right_node.a = -left_node.a;
+    right_node.b = -left_node.b;
+    right_node.c = 2.0 * width * std::sqrt(left_node.a * left_node.a + left_node.b * left_node.b) - left_node.c;
+}
+
 int clip_ellipse_next(ClipEllipseState* state, std::int32_t* out_x0, std::int32_t* out_y, std::int32_t* out_x1)
 {
     std::int32_t x0 = 0;
@@ -4730,6 +4777,48 @@ int draw_ellipse_image(
     return PILLOW_C_OK;
 }
 
+int draw_clip_ellipse_spans(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const std::uint8_t* color,
+    void (*init)(ClipEllipseState*, std::int32_t, std::int32_t, std::int32_t, double, double),
+    int width,
+    double start,
+    double end)
+{
+    const int a = right - left;
+    const int b = bottom - top;
+    ClipEllipseState state{};
+    try {
+        state.events.reserve(8);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    init(&state, a, b, width, start, end);
+
+    std::int32_t x0 = 0;
+    std::int32_t y = 0;
+    std::int32_t x1 = 0;
+    while (true) {
+        const int next_status = clip_ellipse_next(&state, &x0, &y, &x1);
+        if (next_status == PILLOW_C_INVALID_LENGTH) {
+            return PILLOW_C_OK;
+        }
+        if (next_status != PILLOW_C_OK) {
+            return next_status;
+        }
+        fill_horizontal_span(
+            image,
+            static_cast<std::int64_t>(left) + (static_cast<std::int64_t>(x0) + a) / 2,
+            static_cast<std::int64_t>(top) + (static_cast<std::int64_t>(y) + b) / 2,
+            static_cast<std::int64_t>(left) + (static_cast<std::int64_t>(x1) + a) / 2 + 1,
+            color);
+    }
+}
+
 int draw_arc_image(
     PillowCImage* image,
     int left,
@@ -4763,34 +4852,71 @@ int draw_arc_image(
         return PILLOW_C_OK;
     }
 
-    const int a = right - left;
-    const int b = bottom - top;
-    ClipEllipseState state{};
-    try {
-        state.events.reserve(8);
-    } catch (const std::bad_alloc&) {
-        return PILLOW_C_ALLOCATION_FAILED;
-    }
-    arc_init(&state, a, b, width, start, end);
+    return draw_clip_ellipse_spans(image, left, top, right, bottom, color, arc_init, width, start, end);
+}
 
-    std::int32_t x0 = 0;
-    std::int32_t y = 0;
-    std::int32_t x1 = 0;
-    while (true) {
-        const int next_status = clip_ellipse_next(&state, &x0, &y, &x1);
-        if (next_status == PILLOW_C_INVALID_LENGTH) {
-            return PILLOW_C_OK;
-        }
-        if (next_status != PILLOW_C_OK) {
-            return next_status;
-        }
-        fill_horizontal_span(
-            image,
-            static_cast<std::int64_t>(left) + (static_cast<std::int64_t>(x0) + a) / 2,
-            static_cast<std::int64_t>(top) + (static_cast<std::int64_t>(y) + b) / 2,
-            static_cast<std::int64_t>(left) + (static_cast<std::int64_t>(x1) + a) / 2 + 1,
-            color);
+int draw_chord_image(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    double start,
+    double end,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
     }
+    if ((fill_size > 0 && !fill) || (outline_size > 0 && !outline)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const std::size_t channels = static_cast<std::size_t>(image->channels);
+    if ((fill_size != 0 && fill_size != channels) || (outline_size != 0 && outline_size != channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if ((fill && fill_size == 0) || (outline && outline_size == 0)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (right < left || bottom < top || !std::isfinite(start) || !std::isfinite(end)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    normalize_arc_angles(&start, &end);
+    if (start + 360.0 == end) {
+        return draw_ellipse_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
+    }
+    if (start == end) {
+        return PILLOW_C_OK;
+    }
+
+    if (fill_size != 0) {
+        const int fill_width = right - left + bottom - top + 1;
+        const int status = draw_clip_ellipse_spans(image, left, top, right, bottom, fill, chord_init, fill_width, start, end);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+
+    if (outline_size != 0 && width != 0) {
+        int status = draw_clip_ellipse_spans(image, left, top, right, bottom, outline, chord_line_init, width, start, end);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = draw_clip_ellipse_spans(image, left, top, right, bottom, outline, chord_init, width, start, end);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+
+    return PILLOW_C_OK;
 }
 
 int composite_image_into(
@@ -11312,6 +11438,23 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_arc(
     int width)
 {
     return draw_arc_image(image, left, top, right, bottom, start, end, color, color_size, width);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_draw_chord(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    double start,
+    double end,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width)
+{
+    return draw_chord_image(image, left, top, right, bottom, start, end, fill, fill_size, outline, outline_size, width);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_line(
