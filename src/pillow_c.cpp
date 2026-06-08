@@ -109,6 +109,16 @@ struct ColorCountEntry {
     std::uint8_t color[4];
 };
 
+struct PolygonEdge {
+    int x0;
+    int y0;
+    int xmin;
+    int ymin;
+    int xmax;
+    int ymax;
+    float dx;
+};
+
 enum class RawCodecKind {
     Unsupported,
     One,
@@ -3782,6 +3792,145 @@ void fill_vertical_span(
     }
 }
 
+int round_up_away_from_zero(float value)
+{
+    return value >= 0.0f
+        ? static_cast<int>(std::floor(value + 0.5f))
+        : -static_cast<int>(std::floor(std::fabs(value) + 0.5f));
+}
+
+int round_down_toward_zero(float value)
+{
+    return value >= 0.0f
+        ? static_cast<int>(std::ceil(value - 0.5f))
+        : -static_cast<int>(std::ceil(std::fabs(value) - 0.5f));
+}
+
+void add_polygon_edge(PolygonEdge* edge, int x0, int y0, int x1, int y1)
+{
+    if (x0 <= x1) {
+        edge->xmin = x0;
+        edge->xmax = x1;
+    } else {
+        edge->xmin = x1;
+        edge->xmax = x0;
+    }
+
+    if (y0 <= y1) {
+        edge->ymin = y0;
+        edge->ymax = y1;
+    } else {
+        edge->ymin = y1;
+        edge->ymax = y0;
+    }
+
+    edge->dx = y0 == y1 ? 0.0f : static_cast<float>(x1 - x0) / static_cast<float>(y1 - y0);
+    edge->x0 = x0;
+    edge->y0 = y0;
+}
+
+int fill_polygon_edges(PillowCImage* image, const std::vector<PolygonEdge>& edges, const std::uint8_t* color)
+{
+    if (edges.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    int ymin = image->height - 1;
+    int ymax = 0;
+    std::vector<const PolygonEdge*> edge_table;
+    try {
+        edge_table.reserve(edges.size());
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+
+    for (const PolygonEdge& edge : edges) {
+        ymin = std::min(ymin, edge.ymin);
+        ymax = std::max(ymax, edge.ymax);
+        if (edge.ymin == edge.ymax) {
+            fill_horizontal_span(image, edge.xmin, edge.ymin, static_cast<std::int64_t>(edge.xmax) + 1, color);
+            continue;
+        }
+        edge_table.push_back(&edge);
+    }
+
+    if (ymin < 0) {
+        ymin = 0;
+    }
+    if (ymax > image->height) {
+        ymax = image->height;
+    }
+
+    std::vector<float> intersections;
+    try {
+        intersections.resize(edge_table.size() * 2u);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+
+    for (; ymin <= ymax; ++ymin) {
+        std::size_t count = 0;
+        for (std::size_t index = 0; index < edge_table.size(); ++index) {
+            const PolygonEdge* current = edge_table[index];
+            if (ymin < current->ymin || ymin > current->ymax) {
+                continue;
+            }
+
+            intersections[count++] =
+                static_cast<float>(ymin - current->y0) * current->dx +
+                static_cast<float>(current->x0);
+
+            if (ymin == current->ymax && ymin < ymax) {
+                intersections[count] = intersections[count - 1u];
+                ++count;
+            } else if ((ymin == current->ymin || ymin == current->ymax) && current->dx != 0.0f) {
+                for (std::size_t other_index = 0; other_index < index; ++other_index) {
+                    const PolygonEdge* other = edge_table[other_index];
+                    if ((ymin != other->ymin && ymin != other->ymax) || other->dx == 0.0f) {
+                        continue;
+                    }
+                    const float other_x =
+                        static_cast<float>(ymin - other->y0) * other->dx +
+                        static_cast<float>(other->x0);
+                    if (std::round(intersections[count - 1u]) != std::round(other_x)) {
+                        continue;
+                    }
+
+                    const int offset = ymin == current->ymax ? -1 : 1;
+                    const float adjacent_current =
+                        static_cast<float>(ymin + offset - current->y0) * current->dx +
+                        static_cast<float>(current->x0);
+                    if (ymin + offset >= other->ymin && ymin + offset <= other->ymax) {
+                        const float adjacent_other =
+                            static_cast<float>(ymin + offset - other->y0) * other->dx +
+                            static_cast<float>(other->x0);
+                        if (intersections[count - 1u] > adjacent_current + 1.0f &&
+                            intersections[count - 1u] > adjacent_other + 1.0f) {
+                            intersections[count - 1u] = std::round(std::max(adjacent_current, adjacent_other)) + 1.0f;
+                        } else if (intersections[count - 1u] < adjacent_current - 1.0f &&
+                                   intersections[count - 1u] < adjacent_other - 1.0f) {
+                            intersections[count - 1u] = std::round(std::min(adjacent_current, adjacent_other)) - 1.0f;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        std::sort(intersections.begin(), intersections.begin() + static_cast<std::ptrdiff_t>(count));
+        for (std::size_t index = 1; index < count; index += 2u) {
+            fill_horizontal_span(
+                image,
+                round_up_away_from_zero(intersections[index - 1u]),
+                ymin,
+                static_cast<std::int64_t>(round_down_toward_zero(intersections[index])) + 1,
+                color);
+        }
+    }
+
+    return PILLOW_C_OK;
+}
+
 void draw_point_image(PillowCImage* image, int x, int y, const std::uint8_t* color)
 {
     if (x < 0 || x >= image->width || y < 0 || y >= image->height) {
@@ -3913,6 +4062,88 @@ int draw_points_image(
         const int* current = points + index * 2u;
         draw_point_image(image, current[0], current[1], color);
     }
+    return PILLOW_C_OK;
+}
+
+int draw_polygon_image(
+    PillowCImage* image,
+    const int* points,
+    std::size_t point_count,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width)
+{
+    if (!image || !points) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((fill_size > 0 && !fill) || (outline_size > 0 && !outline)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const std::size_t channels = static_cast<std::size_t>(image->channels);
+    if ((fill_size != 0 && fill_size != channels) || (outline_size != 0 && outline_size != channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if ((fill && fill_size == 0) || (outline && outline_size == 0)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (point_count < 2 || point_count > static_cast<std::size_t>(INT_MAX)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (outline_size != 0 && width > 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    if (fill_size != 0) {
+        std::vector<PolygonEdge> edges;
+        try {
+            edges.resize(point_count);
+        } catch (const std::bad_alloc&) {
+            return PILLOW_C_ALLOCATION_FAILED;
+        }
+
+        std::size_t edge_count = 0;
+        for (std::size_t index = 0; index + 1u < point_count; ++index) {
+            const int* current = points + index * 2u;
+            const int* next = current + 2;
+            if (current[1] == next[1] && index != 0 && current[1] == points[index * 2u - 1u]) {
+                PolygonEdge* last = &edges[edge_count - 1u];
+                if (next[0] > current[0] && current[0] > points[index * 2u - 2u]) {
+                    last->xmax = next[0];
+                    continue;
+                }
+                if (next[0] < current[0] && current[0] < points[index * 2u - 2u]) {
+                    last->xmin = next[0];
+                    continue;
+                }
+            }
+            add_polygon_edge(&edges[edge_count++], current[0], current[1], next[0], next[1]);
+        }
+        const int* last = points + (point_count - 1u) * 2u;
+        if (last[0] != points[0] || last[1] != points[1]) {
+            add_polygon_edge(&edges[edge_count++], last[0], last[1], points[0], points[1]);
+        }
+        edges.resize(edge_count);
+        const int fill_status = fill_polygon_edges(image, edges, fill);
+        if (fill_status != PILLOW_C_OK) {
+            return fill_status;
+        }
+    }
+
+    if (outline_size != 0 && width != 0) {
+        for (std::size_t index = 0; index + 1u < point_count; ++index) {
+            const int* current = points + index * 2u;
+            draw_line_segment_image(image, current[0], current[1], current[2], current[3], outline);
+        }
+        const int* last = points + (point_count - 1u) * 2u;
+        draw_line_segment_image(image, last[0], last[1], points[0], points[1], outline);
+        draw_point_image(image, points[0], points[1], outline);
+    }
+
     return PILLOW_C_OK;
 }
 
@@ -10478,6 +10709,19 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_points(
     std::size_t color_size)
 {
     return draw_points_image(image, points, point_count, color, color_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_draw_polygon(
+    PillowCImage* image,
+    const int* points,
+    std::size_t point_count,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width)
+{
+    return draw_polygon_image(image, points, point_count, fill, fill_size, outline, outline_size, width);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_get_bytes(

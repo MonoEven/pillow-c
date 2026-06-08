@@ -1214,6 +1214,42 @@ class Pillow {
                 ))
                 return this
             }
+
+            Polygon(xy, fill := unset, outline := unset, width := 1) {
+                points := Pillow.ImageDraw.FlattenPoints(xy, "Polygon")
+
+                fillPtr := 0
+                fillSize := 0
+                fillBuffer := 0
+                if IsSet(fill) {
+                    fillBuffer := this.Image.PasteColorBuffer(fill)
+                    fillPtr := fillBuffer.Ptr
+                    fillSize := fillBuffer.Size
+                }
+
+                outlinePtr := 0
+                outlineSize := 0
+                outlineBuffer := 0
+                if IsSet(outline) {
+                    outlineBuffer := this.Image.PasteColorBuffer(outline)
+                    outlinePtr := outlineBuffer.Ptr
+                    outlineSize := outlineBuffer.Size
+                }
+
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_draw_polygon",
+                    "Ptr", this.Image.RequireHandle(),
+                    "Ptr", points,
+                    "UPtr", points.Size // 8,
+                    "Ptr", fillPtr,
+                    "UPtr", fillSize,
+                    "Ptr", outlinePtr,
+                    "UPtr", outlineSize,
+                    "Int", width,
+                    "Int"
+                ))
+                return this
+            }
         }
 
         static FlattenPoints(xy, operationName, minPoints := 2) {

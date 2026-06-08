@@ -89,6 +89,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_draw_rectangle`
 - `pillow_c_image_draw_line`
 - `pillow_c_image_draw_points`
+- `pillow_c_image_draw_polygon`
 - `pillow_c_image_get_bytes`
 - `pillow_c_image_get_raw_bytes`
 - `pillow_c_image_histogram`
@@ -234,6 +235,8 @@ Reusable target operations:
 `pillow_c_image_draw_line` mutates one image handle in place for ordinary Pillow `ImageDraw.line` calls. It accepts a pointer to packed `int x, y` pairs, a point count, a caller-packed color, and a width. The current verified path supports `width <= 1`, draws each segment with Pillow's Bresenham-style endpoint rule, draws the final point once, clips individual points to the image bounds, and returns `-3` for fewer than two points or wide lines. Wide-line polygon filling and curved joints are intentionally separate future ABI surfaces.
 
 `pillow_c_image_draw_points` mutates one image handle in place for Pillow `ImageDraw.point` calls. It accepts a pointer to packed `int x, y` pairs, a point count, and a caller-packed color. Empty point lists are a no-op, single points are valid, out-of-bounds points are clipped away, and color length must match the image channel count.
+
+`pillow_c_image_draw_polygon` mutates one image handle in place for Pillow `ImageDraw.polygon` calls. It accepts packed `int x, y` vertices, optional caller-packed fill and outline colors, and an outline width. The current verified path supports fill and `width <= 1` outlines using Pillow's scanline edge rules and line closing behavior, clips to the image bounds, accepts two-point line-like polygons, and returns `-3` for fewer than two points or wide outlines. Pillow's mask-assisted wide outline path is intentionally a future native surface.
 
 `pillow_c_image_remap_palette` and `pillow_c_image_remap_palette_into` implement Pillow's `Image.remap_palette` for mode `P` and `L` images over RGB palettes. The native path builds the new palette from `dest_map`, remaps all one-byte pixels in one pass, returns a mode `P` image, and uses Pillow's default grayscale source palette for `L` inputs. RGBA palette remapping is intentionally outside the current RGB palette ABI.
 
