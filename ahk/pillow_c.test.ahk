@@ -469,6 +469,21 @@ PillowCImageDrawLine(handle, points, fill, width := 0) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageDrawPoints(handle, points, fill) {
+    pointBuffer := points.Length ? PillowCIntBuffer(points) : 0
+    fillBuffer := PillowCBuffer(fill)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_points",
+        "Ptr", handle,
+        "Ptr", pointBuffer,
+        "UPtr", points.Length // 2,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCFreeImage(handle) {
     return DllCall(PillowCDllPath() "\pillow_c_image_free", "Ptr", handle, "Int")
 }
@@ -3785,6 +3800,83 @@ PillowCTestImageDrawLineSupportsPolylinesClippingAndRejectsInvalidArguments(*) {
 }
 
 AhkTest.Test("pillow_c image draw_line supports polylines clipping and rejects invalid arguments", PillowCTestImageDrawLineSupportsPolylinesClippingAndRejectsInvalidArguments)
+
+PillowCTestImageDrawPointsMatchesPillowSingleMultipleAndRgb(*) {
+    l := PillowCCreateImageMode(5, 4, 1)
+    rgb := PillowCCreateImageMode(3, 3, 3)
+    single := PillowCCreateImageMode(2, 2, 1)
+    try {
+        PillowCImageDrawPoints(l, [0, 0, 2, 1, 4, 3], [7])
+        AhkTest.AssertEqual([
+            7, 0, 0, 0, 0,
+            0, 0, 7, 0, 0,
+            0, 0, 0, 0, 0,
+            0, 0, 0, 0, 7,
+        ], PillowCImageToArray(l, 20))
+
+        PillowCImageDrawPoints(rgb, [0, 0, 2, 1], [10, 20, 30])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 10, 20, 30,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(rgb, 27))
+
+        PillowCImageDrawPoints(single, [1, 1], [5])
+        AhkTest.AssertEqual([0, 0, 0, 5], PillowCImageToArray(single, 4))
+    } finally {
+        for handle in [single, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_points matches Pillow single multiple and RGB", PillowCTestImageDrawPointsMatchesPillowSingleMultipleAndRgb)
+
+PillowCTestImageDrawPointsClipsAllowsEmptyAndRejectsInvalidArguments(*) {
+    clipped := PillowCCreateImageMode(5, 4, 1)
+    empty := PillowCCreateImageMode(2, 2, 1)
+    try {
+        PillowCImageDrawPoints(clipped, [-1, -1, 0, 0, 2, 2, 5, 4], [9])
+        AhkTest.AssertEqual([
+            9, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,
+            0, 0, 9, 0, 0,
+            0, 0, 0, 0, 0,
+        ], PillowCImageToArray(clipped, 20))
+
+        fillBuffer := PillowCBuffer([7])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_points",
+            "Ptr", empty,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", fillBuffer,
+            "UPtr", fillBuffer.Size,
+            "Int"
+        )
+        AhkTest.AssertEqual(0, status)
+        AhkTest.AssertEqual([0, 0, 0, 0], PillowCImageToArray(empty, 4))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_points",
+            "Ptr", clipped,
+            "Ptr", PillowCIntBuffer([0, 0]),
+            "UPtr", 1,
+            "Ptr", PillowCBuffer([1, 2]),
+            "UPtr", 2,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+    } finally {
+        for handle in [empty, clipped] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_points clips allows empty and rejects invalid arguments", PillowCTestImageDrawPointsClipsAllowsEmptyAndRejectsInvalidArguments)
 
 PillowCTestImageBlendOperatesOnNativeHandles(*) {
     left := PillowCCreateImage(2, 1, 3)

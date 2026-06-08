@@ -3889,6 +3889,33 @@ int draw_line_image(
     return PILLOW_C_OK;
 }
 
+int draw_points_image(
+    PillowCImage* image,
+    const int* points,
+    std::size_t point_count,
+    const std::uint8_t* color,
+    std::size_t color_size)
+{
+    if (!image || !color || (!points && point_count != 0)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (color_size != static_cast<std::size_t>(image->channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (point_count > static_cast<std::size_t>(INT_MAX)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    for (std::size_t index = 0; index < point_count; ++index) {
+        const int* current = points + index * 2u;
+        draw_point_image(image, current[0], current[1], color);
+    }
+    return PILLOW_C_OK;
+}
+
 int draw_rectangle_image(
     PillowCImage* image,
     int left,
@@ -10441,6 +10468,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_line(
     int width)
 {
     return draw_line_image(image, points, point_count, color, color_size, width);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_draw_points(
+    PillowCImage* image,
+    const int* points,
+    std::size_t point_count,
+    const std::uint8_t* color,
+    std::size_t color_size)
+{
+    return draw_points_image(image, points, point_count, color, color_size);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_get_bytes(

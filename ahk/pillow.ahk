@@ -1199,9 +1199,24 @@ class Pillow {
                 ))
                 return this
             }
+
+            Point(xy, fill := unset) {
+                points := Pillow.ImageDraw.FlattenPoints(xy, "Point", 0)
+                color := this.Image.PasteColorBuffer(IsSet(fill) ? fill : 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_draw_points",
+                    "Ptr", this.Image.RequireHandle(),
+                    "Ptr", points.Size ? points : 0,
+                    "UPtr", points.Size // 8,
+                    "Ptr", color,
+                    "UPtr", color.Size,
+                    "Int"
+                ))
+                return this
+            }
         }
 
-        static FlattenPoints(xy, operationName) {
+        static FlattenPoints(xy, operationName, minPoints := 2) {
             if !IsObject(xy)
                 throw Error("Pillow.ImageDraw." operationName " expects a coordinate array", -1)
 
@@ -1217,8 +1232,8 @@ class Pillow {
                 }
             }
 
-            if values.Length < 4 || Mod(values.Length, 2) != 0
-                throw Error("Pillow.ImageDraw." operationName " expects at least two points", -1)
+            if Mod(values.Length, 2) != 0 || values.Length < minPoints * 2
+                throw Error("Pillow.ImageDraw." operationName " expects at least " minPoints " point" (minPoints = 1 ? "" : "s"), -1)
             buf := Buffer(values.Length * 4, 0)
             for index, value in values {
                 if !(value is Number)

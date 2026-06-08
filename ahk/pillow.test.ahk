@@ -845,6 +845,77 @@ PillowTestImageDrawLineClipsAndRejectsInvalidArguments(*) {
 
 AhkTest.Test("Pillow ImageDraw.Line clips and rejects invalid arguments", PillowTestImageDrawLineClipsAndRejectsInvalidArguments)
 
+PillowTestImageDrawPointMutatesImagesThroughNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.New("L", [5, 4])
+    rgb := Pillow.Image.New("RGB", [3, 3])
+    single := Pillow.Image.New("L", [2, 2])
+    try {
+        draw := Pillow.ImageDraw.Draw(l)
+        returned := draw.Point([[0, 0], [2, 1], [4, 3]], 7)
+        AhkTest.AssertEqual(draw, returned)
+        AhkTest.AssertEqual([
+            7, 0, 0, 0, 0,
+            0, 0, 7, 0, 0,
+            0, 0, 0, 0, 0,
+            0, 0, 0, 0, 7,
+        ], PillowTestBufferToArray(l.ToBytes()))
+
+        Pillow.ImageDraw.Draw(rgb).Point([0, 0, 2, 1], [10, 20, 30])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 10, 20, 30,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(rgb.ToBytes()))
+
+        Pillow.ImageDraw.Draw(single).Point([[1, 1]], 5)
+        AhkTest.AssertEqual([0, 0, 0, 5], PillowTestBufferToArray(single.ToBytes()))
+    } finally {
+        single.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Point mutates images through native path", PillowTestImageDrawPointMutatesImagesThroughNativePath)
+
+PillowTestImageDrawPointClipsAllowsEmptyAndRejectsInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [5, 4])
+    empty := Pillow.Image.New("L", [2, 2])
+    try {
+        draw := Pillow.ImageDraw.Draw(image)
+        draw.Point([-1, -1, 0, 0, 2, 2, 5, 4], 9)
+        AhkTest.AssertEqual([
+            9, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,
+            0, 0, 9, 0, 0,
+            0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(image.ToBytes()))
+
+        Pillow.ImageDraw.Draw(empty).Point([], 7)
+        AhkTest.AssertEqual([0, 0, 0, 0], PillowTestBufferToArray(empty.ToBytes()))
+
+        try {
+            draw.Point([0, 0, 1], 7)
+            AhkTest.Fail("Expected ImageDraw.Point to reject odd coordinate counts")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "expects") > 0)
+        }
+        try {
+            draw.Point([[0, 0, 1]], 7)
+            AhkTest.Fail("Expected ImageDraw.Point to reject malformed points")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "point expects") > 0)
+        }
+    } finally {
+        empty.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Point clips allows empty and rejects invalid arguments", PillowTestImageDrawPointClipsAllowsEmptyAndRejectsInvalidArguments)
+
 PillowTestImageCmykFoundationUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer([0, 10, 20, 30, 255, 128, 64, 0]))
