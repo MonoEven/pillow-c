@@ -4121,30 +4121,50 @@ PillowCMakeInvertLut(channelCount) {
     return lut
 }
 
+PillowCConstantArray(count, value) {
+    items := []
+    loop count
+        items.Push(value)
+    return items
+}
+
 PillowCTestImagePointLutAppliesPerChannelTables(*) {
     l := PillowCCreateImageMode(4, 1, 1)
     rgb := PillowCCreateImageMode(2, 1, 3)
     rgba := PillowCCreateImageMode(2, 1, 4)
+    one := PillowCCreateImageMode(4, 1, 5)
     lOut := 0
     rgbOut := 0
     rgbaOut := 0
+    oneInvert := 0
+    oneConst := 0
     try {
         PillowCImageSetBytes(l, [0, 1, 2, 255])
         PillowCImageSetBytes(rgb, [0, 1, 2, 10, 20, 30])
         PillowCImageSetBytes(rgba, [0, 1, 2, 3, 10, 20, 30, 40])
+        PillowCImageSetRawBytes(one, [0x50], "1")
         lOut := PillowCImagePointLut(l, PillowCMakeInvertLut(1))
         rgbOut := PillowCImagePointLut(rgb, PillowCMakeInvertLut(3))
         rgbaOut := PillowCImagePointLut(rgba, PillowCMakeInvertLut(4))
+        oneInvert := PillowCImagePointLut(one, PillowCMakeInvertLut(1))
+        oneConst := PillowCImagePointLut(one, PillowCConstantArray(256, 2))
         AhkTest.AssertEqual([255, 254, 253, 0], PillowCImageToArray(lOut, 4))
         AhkTest.AssertEqual([255, 254, 253, 245, 235, 225], PillowCImageToArray(rgbOut, 6))
         AhkTest.AssertEqual([255, 254, 253, 252, 245, 235, 225, 215], PillowCImageToArray(rgbaOut, 8))
+        AhkTest.AssertEqual([255, 0, 255, 0], PillowCImageToArray(oneInvert, 4))
+        AhkTest.AssertEqual([2, 2, 2, 2], PillowCImageToArray(oneConst, 4))
     } finally {
+        if oneConst
+            PillowCFreeImage(oneConst)
+        if oneInvert
+            PillowCFreeImage(oneInvert)
         if rgbaOut
             PillowCFreeImage(rgbaOut)
         if rgbOut
             PillowCFreeImage(rgbOut)
         if lOut
             PillowCFreeImage(lOut)
+        PillowCFreeImage(one)
         PillowCFreeImage(rgba)
         PillowCFreeImage(rgb)
         PillowCFreeImage(l)

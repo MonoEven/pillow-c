@@ -2070,18 +2070,36 @@ PillowTestMakeInvertLut(channelCount) {
     return lut
 }
 
+PillowTestConstantArray(count, value) {
+    items := []
+    loop count
+        items.Push(value)
+    return items
+}
+
 PillowTestImagePointUsesNativeLutOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([0, 1, 2, 10, 20, 30]))
+    one := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x50]))
     pointed := 0
+    oneInvert := 0
+    oneConst := 0
     try {
         pointed := source.Point(PillowTestMakeInvertLut(3))
+        oneInvert := one.Point(PillowTestMakeInvertLut(1))
+        oneConst := one.Point(PillowTestConstantArray(256, 2))
         AhkTest.AssertEqual("RGB", pointed.Mode)
         AhkTest.AssertEqual([2, 1], pointed.Size)
         AhkTest.AssertEqual([255, 254, 253, 245, 235, 225], PillowTestBufferToArray(pointed.ToBytes()))
+        AhkTest.AssertEqual("1", oneInvert.Mode)
+        AhkTest.AssertEqual([0xA0], PillowTestBufferToArray(oneInvert.ToBytes()))
+        AhkTest.AssertEqual(2, oneConst.GetPixel([0, 0]))
+        AhkTest.AssertEqual([0xF0], PillowTestBufferToArray(oneConst.ToBytes()))
     } finally {
-        if IsObject(pointed)
-            pointed.Close()
+        for image in [oneConst, oneInvert, pointed, one] {
+            if IsObject(image)
+                image.Close()
+        }
         source.Close()
     }
 }
@@ -2169,6 +2187,33 @@ PillowTestImageEvalSupportsRgba(*) {
 }
 
 AhkTest.Test("Pillow Image.Eval supports RGBA through native point LUT", PillowTestImageEvalSupportsRgba)
+
+PillowTestImageEvalSupportsModeOne(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x50]))
+    inverted := 0
+    constOne := 0
+    constHigh := 0
+    try {
+        inverted := Pillow.Image.Eval(source, (value) => 255 - value)
+        constOne := Pillow.Image.Eval(source, (*) => 1)
+        constHigh := Pillow.Image.Eval(source, (*) => 256)
+
+        AhkTest.AssertEqual("1", inverted.Mode)
+        AhkTest.AssertEqual([0xA0], PillowTestBufferToArray(inverted.ToBytes()))
+        AhkTest.AssertEqual(1, constOne.GetPixel([0, 0]))
+        AhkTest.AssertEqual([0xF0], PillowTestBufferToArray(constOne.ToBytes()))
+        AhkTest.AssertEqual(255, constHigh.GetPixel([0, 0]))
+        AhkTest.AssertEqual([0xF0], PillowTestBufferToArray(constHigh.ToBytes()))
+    } finally {
+        for image in [constHigh, constOne, inverted, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Eval supports mode 1 through native point LUT", PillowTestImageEvalSupportsModeOne)
 
 PillowTestImageEvalRejectsInvalidFunctionReturns(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
