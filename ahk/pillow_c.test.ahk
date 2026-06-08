@@ -3820,10 +3820,10 @@ PillowCTestImageDrawLineSupportsPolylinesClippingAndRejectsInvalidArguments(*) {
             "UPtr", 2,
             "Ptr", PillowCBuffer([7]),
             "UPtr", 1,
-            "Int", 2,
+            "Int", 0,
             "Int"
         )
-        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, status)
     } finally {
         for handle in [offdiag, clipped, polyline] {
             if handle
@@ -3833,6 +3833,91 @@ PillowCTestImageDrawLineSupportsPolylinesClippingAndRejectsInvalidArguments(*) {
 }
 
 AhkTest.Test("pillow_c image draw_line supports polylines clipping and rejects invalid arguments", PillowCTestImageDrawLineSupportsPolylinesClippingAndRejectsInvalidArguments)
+
+PillowCTestImageDrawLineSupportsWideLines(*) {
+    horizontal := PillowCCreateImageMode(7, 5, 1)
+    vertical := PillowCCreateImageMode(6, 7, 1)
+    diagonal := PillowCCreateImageMode(7, 7, 1)
+    rgb := PillowCCreateImageMode(5, 4, 3)
+    try {
+        PillowCImageDrawLine(horizontal, [1, 2, 5, 2], [7], 3)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 7, 7, 7, 7, 7, 0,
+            0, 7, 7, 7, 7, 7, 0,
+            0, 7, 7, 7, 7, 7, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(horizontal, 35))
+
+        PillowCImageDrawLine(vertical, [2, 1, 2, 5], [8], 4)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            0, 8, 8, 8, 8, 0,
+            0, 8, 8, 8, 8, 0,
+            0, 8, 8, 8, 8, 0,
+            0, 8, 8, 8, 8, 0,
+            0, 8, 8, 8, 8, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(vertical, 42))
+
+        PillowCImageDrawLine(diagonal, [1, 1, 5, 4], [9], 3)
+        AhkTest.AssertEqual([
+            0, 0, 9, 0, 0, 0, 0,
+            0, 9, 9, 9, 0, 0, 0,
+            9, 9, 9, 9, 9, 9, 0,
+            0, 9, 9, 9, 9, 9, 9,
+            0, 0, 0, 9, 9, 9, 0,
+            0, 0, 0, 0, 9, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(diagonal, 49))
+
+        PillowCImageDrawLine(rgb, [0, 1, 4, 1], [10, 20, 30], 3)
+        AhkTest.AssertEqual([
+            10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30,
+            10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30,
+            10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(rgb, 60))
+    } finally {
+        for handle in [rgb, diagonal, vertical, horizontal] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_line supports wide lines", PillowCTestImageDrawLineSupportsWideLines)
+
+PillowCTestImageDrawLineSupportsWidePolylineAndClipping(*) {
+    polyline := PillowCCreateImageMode(7, 6, 1)
+    clipped := PillowCCreateImageMode(5, 4, 1)
+    try {
+        PillowCImageDrawLine(polyline, [0, 0, 3, 3, 6, 1], [6], 3)
+        AhkTest.AssertEqual([
+            6, 6, 6, 0, 0, 6, 0,
+            6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6,
+            0, 6, 6, 6, 6, 6, 0,
+            0, 0, 6, 0, 6, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(polyline, 42))
+
+        PillowCImageDrawLine(clipped, [-2, 1, 3, 1], [5], 3)
+        AhkTest.AssertEqual([
+            5, 5, 5, 5, 0,
+            5, 5, 5, 5, 0,
+            5, 5, 5, 5, 0,
+            0, 0, 0, 0, 0,
+        ], PillowCImageToArray(clipped, 20))
+    } finally {
+        for handle in [clipped, polyline] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_line supports wide polyline and clipping", PillowCTestImageDrawLineSupportsWidePolylineAndClipping)
 
 PillowCTestImageDrawPointsMatchesPillowSingleMultipleAndRgb(*) {
     l := PillowCCreateImageMode(5, 4, 1)

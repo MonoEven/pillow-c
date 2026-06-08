@@ -832,18 +832,84 @@ PillowTestImageDrawLineClipsAndRejectsInvalidArguments(*) {
         } catch Error as err {
             AhkTest.AssertTrue(InStr(err.Message, "expects") > 0)
         }
-        try {
-            draw.Line([[0, 0], [1, 1]], 7, 2)
-            AhkTest.Fail("Expected ImageDraw.Line to reject wide lines for now")
-        } catch Error as err {
-            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
-        }
     } finally {
         image.Close()
     }
 }
 
 AhkTest.Test("Pillow ImageDraw.Line clips and rejects invalid arguments", PillowTestImageDrawLineClipsAndRejectsInvalidArguments)
+
+PillowTestImageDrawLineSupportsWideLines(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    horizontal := Pillow.Image.New("L", [7, 5])
+    diagonal := Pillow.Image.New("L", [7, 7])
+    rgb := Pillow.Image.New("RGB", [5, 4])
+    try {
+        Pillow.ImageDraw.Draw(horizontal).Line([[1, 2], [5, 2]], 7, 3)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 7, 7, 7, 7, 7, 0,
+            0, 7, 7, 7, 7, 7, 0,
+            0, 7, 7, 7, 7, 7, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(horizontal.ToBytes()))
+
+        Pillow.ImageDraw.Draw(diagonal).Line([[1, 1], [5, 4]], 9, 3)
+        AhkTest.AssertEqual([
+            0, 0, 9, 0, 0, 0, 0,
+            0, 9, 9, 9, 0, 0, 0,
+            9, 9, 9, 9, 9, 9, 0,
+            0, 9, 9, 9, 9, 9, 9,
+            0, 0, 0, 9, 9, 9, 0,
+            0, 0, 0, 0, 9, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(diagonal.ToBytes()))
+
+        Pillow.ImageDraw.Draw(rgb).Line([0, 1, 4, 1], [10, 20, 30], 3)
+        AhkTest.AssertEqual([
+            10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30,
+            10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30,
+            10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30, 10, 20, 30,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(rgb.ToBytes()))
+    } finally {
+        rgb.Close()
+        diagonal.Close()
+        horizontal.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Line supports wide lines", PillowTestImageDrawLineSupportsWideLines)
+
+PillowTestImageDrawLineSupportsWidePolylineAndClipping(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    polyline := Pillow.Image.New("L", [7, 6])
+    clipped := Pillow.Image.New("L", [5, 4])
+    try {
+        Pillow.ImageDraw.Draw(polyline).Line([[0, 0], [3, 3], [6, 1]], 6, 3)
+        AhkTest.AssertEqual([
+            6, 6, 6, 0, 0, 6, 0,
+            6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6,
+            0, 6, 6, 6, 6, 6, 0,
+            0, 0, 6, 0, 6, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(polyline.ToBytes()))
+
+        Pillow.ImageDraw.Draw(clipped).Line([[-2, 1], [3, 1]], 5, 3)
+        AhkTest.AssertEqual([
+            5, 5, 5, 5, 0,
+            5, 5, 5, 5, 0,
+            5, 5, 5, 5, 0,
+            0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(clipped.ToBytes()))
+    } finally {
+        clipped.Close()
+        polyline.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Line supports wide polyline and clipping", PillowTestImageDrawLineSupportsWidePolylineAndClipping)
 
 PillowTestImageDrawPointMutatesImagesThroughNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
