@@ -108,6 +108,43 @@ PillowTestImageLinearGradientUsesNativeGenerator(*) {
 
 AhkTest.Test("Pillow Image.LinearGradient creates native 256x256 gradients", PillowTestImageLinearGradientUsesNativeGenerator)
 
+PillowTestImageRadialGradientUsesNativeGenerator(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := 0
+    one := 0
+    p := 0
+    try {
+        l := Pillow.Image.RadialGradient("L")
+        one := Pillow.Image.RadialGradient("1")
+        p := Pillow.Image.RadialGradient("P")
+
+        AhkTest.AssertEqual("L", l.Mode)
+        AhkTest.AssertEqual([256, 256], l.Size)
+        AhkTest.AssertEqual([255], [l.GetPixel([0, 0])])
+        AhkTest.AssertEqual([0], [l.GetPixel([128, 128])])
+        AhkTest.AssertEqual([1], [l.GetPixel([129, 128])])
+        AhkTest.AssertEqual([179], [l.GetPixel([255, 128])])
+        AhkTest.AssertEqual([254], [l.GetPixel([255, 255])])
+
+        AhkTest.AssertEqual("1", one.Mode)
+        AhkTest.AssertEqual([0], [one.GetPixel([128, 128])])
+        AhkTest.AssertEqual([1], [one.GetPixel([129, 128])])
+        oneBytes := PillowTestBufferToArray(one.ToBytes())
+        AhkTest.AssertEqual(8192, oneBytes.Length)
+
+        AhkTest.AssertEqual("P", p.Mode)
+        AhkTest.AssertEqual([90], [p.GetPixel([64, 128])])
+        AhkTest.AssertEqual([], p.GetPalette())
+    } finally {
+        for image in [p, one, l] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.RadialGradient creates native 256x256 gradients", PillowTestImageRadialGradientUsesNativeGenerator)
+
 PillowTestImageFromBytesOwnsNativeCopy(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     data := PillowTestBuffer([10, 20, 30, 40, 50, 60])

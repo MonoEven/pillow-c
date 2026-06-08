@@ -70,6 +70,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_set_raw_bytes`
 - `pillow_c_image_put_data`
 - `pillow_c_image_linear_gradient`
+- `pillow_c_image_radial_gradient`
 - `pillow_c_image_fill`
 - `pillow_c_image_getpixel`
 - `pillow_c_image_putpixel`
@@ -149,6 +150,7 @@ Image operations:
 Reusable target operations:
 
 - `pillow_c_image_linear_gradient_into`
+- `pillow_c_image_radial_gradient_into`
 - `pillow_c_image_copy_into`
 - `pillow_c_image_constant_into`
 - `pillow_c_image_chops_invert_into`
@@ -209,6 +211,8 @@ Reusable target operations:
 `pillow_c_image_set_raw_bytes` and `pillow_c_image_get_raw_bytes` implement common Pillow raw decoder/encoder modes without AHK-side byte reordering. The current raw decode support covers `1`->`1`, `L`->`L`, `LA`->`LA`, `CMYK`->`CMYK`, `RGB` target raw modes `RGB`, `RGBX`, `BGR`, `BGRX`, `XBGR`, and `RGBA` target raw modes `RGBA`, `BGRA`, `ARGB`, `ABGR`, `BGR`. Mode `1` raw bytes are bit-packed most-significant-bit first per row, while native image storage remains one byte per pixel. Decode accepts a non-negative source stride, where `0` means tightly packed, and negative orientation reads rows bottom-up. Raw encode support covers matching direct modes plus common `RGB`/`RGBA` BGR-family packers; callers can first pass a null output pointer to query the required byte size.
 
 `pillow_c_image_linear_gradient` and `pillow_c_image_linear_gradient_into` implement Pillow's fixed-size top-to-bottom `256x256` `Image.linear_gradient` generator for modes `1`, `L`, and `P`. Internal storage writes the row value `0..255` across each row; mode `1` still uses the existing raw encoder when callers request Pillow's bit-packed external bytes. Unsupported modes return `-3`, and `_into` target shape or mode mismatches return `-5`.
+
+`pillow_c_image_radial_gradient` and `pillow_c_image_radial_gradient_into` implement Pillow's fixed-size `256x256` `Image.radial_gradient` generator for modes `1`, `L`, and `P`. Pixel values are generated from the Pillow-compatible center-distance formula and clipped to `0..255`; mode `1` uses the same internal unpacked storage and external bit-packed raw encoder as other native mode `1` paths. Unsupported modes return `-3`, and `_into` target shape or mode mismatches return `-5`.
 
 `pillow_c_image_logical_and`, `pillow_c_image_logical_or`, `pillow_c_image_logical_xor`, and their `_into` variants implement Pillow `ImageChops.logical_*` for mode `1` images only. They return `-3` for other modes, use overlapping output dimensions for mismatched sizes, and allow empty width or height outputs.
 

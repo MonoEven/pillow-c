@@ -186,6 +186,19 @@ PillowCImageLinearGradient(mode) {
     return handle
 }
 
+PillowCImageRadialGradient(mode) {
+    handle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_radial_gradient",
+        "Int", mode,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
 PillowCFreeImage(handle) {
     return DllCall(PillowCDllPath() "\pillow_c_image_free", "Ptr", handle, "Int")
 }
@@ -2297,6 +2310,57 @@ PillowCTestImageLinearGradientMatchesPillowCoreModes(*) {
 }
 
 AhkTest.Test("pillow_c image linear_gradient matches Pillow core modes", PillowCTestImageLinearGradientMatchesPillowCoreModes)
+
+PillowCTestImageRadialGradientMatchesPillowCoreModes(*) {
+    one := 0
+    l := 0
+    p := 0
+    target := PillowCCreateImageMode(256, 256, 1)
+    wrongTarget := PillowCCreateImageMode(256, 256, 3)
+    outHandle := 0
+    try {
+        one := PillowCImageRadialGradient(5)
+        l := PillowCImageRadialGradient(1)
+        p := PillowCImageRadialGradient(6)
+
+        for image in [one, l, p] {
+            AhkTest.AssertEqual(256, PillowCImageInt(image, "pillow_c_image_width"))
+            AhkTest.AssertEqual(256, PillowCImageInt(image, "pillow_c_image_height"))
+            AhkTest.AssertEqual(1, PillowCImageInt(image, "pillow_c_image_channels"))
+            AhkTest.AssertEqual([0], PillowCImageGetPixel(image, 128, 128, 1))
+            AhkTest.AssertEqual([1], PillowCImageGetPixel(image, 129, 128, 1))
+            AhkTest.AssertEqual([2], PillowCImageGetPixel(image, 127, 127, 1))
+            AhkTest.AssertEqual([90], PillowCImageGetPixel(image, 64, 128, 1))
+            AhkTest.AssertEqual([179], PillowCImageGetPixel(image, 255, 128, 1))
+            AhkTest.AssertEqual([254], PillowCImageGetPixel(image, 255, 255, 1))
+            AhkTest.AssertEqual([255], PillowCImageGetPixel(image, 0, 0, 1))
+        }
+        AhkTest.AssertEqual(5, PillowCImageMode(one))
+        AhkTest.AssertEqual(1, PillowCImageMode(l))
+        AhkTest.AssertEqual(6, PillowCImageMode(p))
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_radial_gradient_into", "Int", 1, "Ptr", target, "Int")
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual([0], PillowCImageGetPixel(target, 128, 128, 1))
+        AhkTest.AssertEqual([255], PillowCImageGetPixel(target, 0, 0, 1))
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_radial_gradient", "Int", 3, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_radial_gradient_into", "Int", 1, "Ptr", wrongTarget, "Int")
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        for image in [wrongTarget, target, p, l, one] {
+            if image
+                PillowCFreeImage(image)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image radial_gradient matches Pillow core modes", PillowCTestImageRadialGradientMatchesPillowCoreModes)
 
 PillowCTestImageCopyIsIndependent(*) {
     source := PillowCCreateImage(2, 1, 3)
