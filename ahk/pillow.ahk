@@ -1221,6 +1221,22 @@ class Pillow {
                 return this
             }
 
+            Circle(xy, radius, fill := unset, outline := unset, width := 1) {
+                if !IsObject(xy) || xy.Length != 2
+                    throw Error("Pillow.ImageDraw.Circle center expects [x, y]", -1)
+                if !(xy[1] is Number) || !(xy[2] is Number)
+                    throw Error("Pillow.ImageDraw.Circle center coordinates must be numeric", -1)
+                if !(radius is Number)
+                    throw Error("Pillow.ImageDraw.Circle radius must be numeric", -1)
+
+                return this.Ellipse([
+                    xy[1] - radius,
+                    xy[2] - radius,
+                    xy[1] + radius,
+                    xy[2] + radius,
+                ], IsSet(fill) ? fill : unset, IsSet(outline) ? outline : unset, width)
+            }
+
             Line(xy, fill := unset, width := 0, joint := unset) {
                 if IsSet(joint) && joint != "" && joint != 0
                     throw Error("Pillow.ImageDraw.Line joint is not supported yet", -1)
