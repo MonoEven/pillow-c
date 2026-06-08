@@ -1668,6 +1668,53 @@ PillowTestImageFilterUnsharpMaskSupportsRgbRgba(*) {
 
 AhkTest.Test("Pillow ImageFilter UnsharpMask supports RGB and RGBA", PillowTestImageFilterUnsharpMaskSupportsRgbRgba)
 
+PillowTestImageFilterLaUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    la := Pillow.Image.FromBytes("LA", [3, 3], PillowTestBuffer([
+        10, 0, 40, 64, 80, 128,
+        30, 255, 120, 128, 220, 32,
+        90, 64, 160, 192, 250, 255,
+    ]))
+    outputs := []
+    try {
+        cases := [
+            { Out: la.Filter(Pillow.ImageFilter.Kernel([3, 3], [1, 2, 1, 2, 4, 2, 1, 2, 1], 16, 3)), Bytes: [
+                10, 0, 40, 64, 80, 128, 30, 255, 116, 131, 220, 32, 90, 64, 160, 192, 250, 255,
+            ] },
+            { Out: la.Filter(Pillow.ImageFilter.MedianFilter(3)), Bytes: [
+                30, 64, 40, 64, 80, 128, 40, 64, 90, 128, 160, 128, 90, 128, 160, 192, 220, 192,
+            ] },
+            { Out: la.Filter(Pillow.ImageFilter.ModeFilter(3)), Bytes: [
+                10, 0, 40, 64, 80, 128, 30, 255, 120, 128, 220, 32, 90, 64, 160, 192, 250, 255,
+            ] },
+            { Out: la.Filter(Pillow.ImageFilter.BoxBlur(1)), Bytes: [
+                33, 85, 70, 89, 107, 93, 64, 114, 111, 124, 158, 135, 95, 142, 152, 159, 209, 177,
+            ] },
+            { Out: la.Filter(Pillow.ImageFilter.GaussianBlur(1)), Bytes: [
+                42, 84, 74, 92, 107, 100, 70, 126, 112, 126, 155, 125, 99, 134, 146, 155, 193, 171,
+            ] },
+            { Out: la.Filter(Pillow.ImageFilter.UnsharpMask(1, 150, 0)), Bytes: [
+                0, 0, 0, 22, 40, 170, 0, 255, 132, 131, 255, 0, 77, 0, 181, 247, 255, 255,
+            ] },
+        ]
+
+        for item in cases {
+            outputs.Push(item.Out)
+            AhkTest.AssertEqual("LA", item.Out.Mode)
+            AhkTest.AssertEqual([3, 3], item.Out.Size)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(item.Out.ToBytes()))
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        la.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter supports LA through native path", PillowTestImageFilterLaUsesNativePath)
+
 PillowTestImageFilterCmykUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     cmyk := Pillow.Image.FromBytes("CMYK", [4, 3], PillowTestBuffer([

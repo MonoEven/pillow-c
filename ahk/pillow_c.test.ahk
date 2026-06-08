@@ -8758,6 +8758,55 @@ PillowCTestImageFilterUnsharpMaskRejectsOutOfRangeRadius(*) {
 
 AhkTest.Test("pillow_c image filter UnsharpMask rejects out-of-range radius", PillowCTestImageFilterUnsharpMaskRejectsOutOfRangeRadius)
 
+PillowCTestImageFilterLaMatchesPillow(*) {
+    la := PillowCCreateImageMode(3, 3, 2)
+    kernelOut := 0
+    minOut := 0
+    medianOut := 0
+    maxOut := 0
+    modeOut := 0
+    boxOut := 0
+    gaussianOut := 0
+    unsharpOut := 0
+    boxTarget := PillowCCreateImageMode(3, 3, 2)
+    try {
+        PillowCImageSetBytes(la, [
+            10, 0, 40, 64, 80, 128,
+            30, 255, 120, 128, 220, 32,
+            90, 64, 160, 192, 250, 255,
+        ])
+        before := PillowCImageData(boxTarget).Ptr
+
+        kernelOut := PillowCImageFilterKernel(la, 3, 3, [1, 2, 1, 2, 4, 2, 1, 2, 1], 16.0, 3.0)
+        minOut := PillowCImageFilterRank(la, 3, 0)
+        medianOut := PillowCImageFilterRank(la, 3, 4)
+        maxOut := PillowCImageFilterRank(la, 3, 8)
+        modeOut := PillowCImageFilterMode(la, 3)
+        boxOut := PillowCImageFilterBoxBlur(la, 1, 1)
+        gaussianOut := PillowCImageFilterGaussianBlur(la, 1, 1)
+        unsharpOut := PillowCImageFilterUnsharpMask(la, 1, 150, 0)
+        PillowCImageFilterBoxBlurInto(la, 1, 1, boxTarget)
+
+        AhkTest.AssertEqual(before, PillowCImageData(boxTarget).Ptr)
+        AhkTest.AssertEqual([10, 0, 40, 64, 80, 128, 30, 255, 116, 131, 220, 32, 90, 64, 160, 192, 250, 255], PillowCImageToArray(kernelOut, 18))
+        AhkTest.AssertEqual([10, 0, 10, 0, 40, 32, 10, 0, 10, 0, 40, 32, 30, 64, 30, 32, 120, 32], PillowCImageToArray(minOut, 18))
+        AhkTest.AssertEqual([30, 64, 40, 64, 80, 128, 40, 64, 90, 128, 160, 128, 90, 128, 160, 192, 220, 192], PillowCImageToArray(medianOut, 18))
+        AhkTest.AssertEqual([120, 255, 220, 255, 220, 128, 160, 255, 250, 255, 250, 255, 160, 255, 250, 255, 250, 255], PillowCImageToArray(maxOut, 18))
+        AhkTest.AssertEqual([10, 0, 40, 64, 80, 128, 30, 255, 120, 128, 220, 32, 90, 64, 160, 192, 250, 255], PillowCImageToArray(modeOut, 18))
+        AhkTest.AssertEqual([33, 85, 70, 89, 107, 93, 64, 114, 111, 124, 158, 135, 95, 142, 152, 159, 209, 177], PillowCImageToArray(boxOut, 18))
+        AhkTest.AssertEqual(PillowCImageToArray(boxOut, 18), PillowCImageToArray(boxTarget, 18))
+        AhkTest.AssertEqual([42, 84, 74, 92, 107, 100, 70, 126, 112, 126, 155, 125, 99, 134, 146, 155, 193, 171], PillowCImageToArray(gaussianOut, 18))
+        AhkTest.AssertEqual([0, 0, 0, 22, 40, 170, 0, 255, 132, 131, 255, 0, 77, 0, 181, 247, 255, 255], PillowCImageToArray(unsharpOut, 18))
+    } finally {
+        for handle in [boxTarget, unsharpOut, gaussianOut, boxOut, modeOut, maxOut, medianOut, minOut, kernelOut, la] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image filters match Pillow LA", PillowCTestImageFilterLaMatchesPillow)
+
 PillowCTestImageFilterCmykMatchesPillow(*) {
     cmyk := PillowCCreateImageMode(4, 3, 7)
     modeSource := PillowCCreateImageMode(3, 3, 7)
