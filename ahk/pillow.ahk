@@ -55,6 +55,17 @@ class Pillow {
             return image.Transpose(Pillow.Transpose.FLIP_TOP_BOTTOM)
         }
 
+        static Deform(image, deformer, resample := unset) {
+            Pillow.ImageOps.RequireImageHandle(image, "Deform")
+            if !IsObject(deformer) || !HasMethod(deformer, "getmesh")
+                throw Error("Pillow.ImageOps.Deform expects a deformer with getmesh(image)", -1)
+            return image.Transform(
+                image.Size,
+                Pillow.Transform.MESH,
+                deformer.getmesh(image),
+                IsSet(resample) ? resample : Pillow.Resampling.BILINEAR)
+        }
+
         static Posterize(image, bits) {
             if !(bits is Integer)
                 throw Error("Pillow.ImageOps.Posterize bits must be an integer", -1)

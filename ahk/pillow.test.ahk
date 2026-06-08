@@ -1709,6 +1709,42 @@ PillowTestImageTransformMeshUsesPythonLikeEntryPoint(*) {
 
 AhkTest.Test("Pillow Image.Transform MESH uses Python-like entry point", PillowTestImageTransformMeshUsesPythonLikeEntryPoint)
 
+class PillowTestHalfShiftDeformer {
+    getmesh(image) {
+        AhkTest.AssertEqual([4, 3], image.Size)
+        return [
+            [[0, 0, 4, 3], [0.5, 0.0, 0.5, 3.0, 4.5, 3.0, 4.5, 0.0]],
+        ]
+    }
+}
+
+PillowTestImageOpsDeformUsesNativeMeshTransform(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([
+        1, 2, 3, 4,
+        5, 6, 7, 8,
+        9, 10, 11, 12,
+    ]))
+    defaultOut := 0
+    nearestOut := 0
+    try {
+        deformer := PillowTestHalfShiftDeformer()
+        defaultOut := Pillow.ImageOps.Deform(source, deformer)
+        nearestOut := Pillow.ImageOps.Deform(source, deformer, Pillow.Resampling.NEAREST)
+
+        AhkTest.AssertEqual([4, 3], defaultOut.Size)
+        AhkTest.AssertEqual([1, 2, 3, 0, 5, 6, 7, 0, 9, 10, 11, 0], PillowTestBufferToArray(defaultOut.ToBytes()))
+        AhkTest.AssertEqual([2, 3, 4, 0, 6, 7, 8, 0, 10, 11, 12, 0], PillowTestBufferToArray(nearestOut.ToBytes()))
+    } finally {
+        for image in [nearestOut, defaultOut, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Deform uses native MESH transform", PillowTestImageOpsDeformUsesNativeMeshTransform)
+
 PillowTestImageTransformRejectsUnsupportedMethods(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
