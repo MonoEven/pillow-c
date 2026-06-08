@@ -2395,6 +2395,10 @@ class Pillow {
                 throw Error("no more images in file", -1)
         }
 
+        Verify() {
+            this.RequireHandle()
+        }
+
         Mode {
             get {
                 mode := 0

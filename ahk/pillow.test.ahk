@@ -2557,6 +2557,19 @@ PillowTestImageSeekMatchesBaseSingleFrameSemantics(*) {
 
 AhkTest.Test("Pillow Image.Seek matches base single-frame semantics", PillowTestImageSeekMatchesBaseSingleFrameSemantics)
 
+PillowTestImageVerifyIsNoopForLoadedNativeImages(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([1, 2]))
+    try {
+        AhkTest.AssertEqual("", image.Verify())
+        AhkTest.AssertEqual([1, 2], PillowTestBufferToArray(image.ToBytes()))
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Verify is a no-op for loaded native images", PillowTestImageVerifyIsNoopForLoadedNativeImages)
+
 PillowTestImagePutDataBulkWritesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.New("L", [4, 1])
