@@ -4607,6 +4607,63 @@ PillowCTestImageEqualizeMatchesPillowLAndRgb(*) {
 
 AhkTest.Test("pillow_c image equalize matches Pillow for L and RGB histograms", PillowCTestImageEqualizeMatchesPillowLAndRgb)
 
+PillowCTestEqualizePaletteFixture() {
+    values := []
+    mask := []
+    loop 400 {
+        index := A_Index - 1
+        values.Push(index < 300 ? 0 : index < 350 ? 1 : 2)
+        mask.Push(index < 290 ? 0 : index < 310 ? 255 : index < 350 ? 0 : 255)
+    }
+    return {
+        Values: values,
+        Mask: mask,
+        Palette: [0, 10, 0, 128, 200, 64, 255, 200, 255],
+    }
+}
+
+PillowCTestAssertSamples(data, positions, expected) {
+    actual := []
+    for position in positions
+        actual.Push(data[position])
+    AhkTest.AssertEqual(expected, actual)
+}
+
+PillowCTestImageEqualizeConvertsPaletteModeToRgb(*) {
+    fixture := PillowCTestEqualizePaletteFixture()
+    source := PillowCCreateImageMode(400, 1, 6)
+    target := PillowCCreateImageMode(400, 1, 3)
+    out := 0
+    try {
+        PillowCImageSetBytes(source, fixture.Values)
+        PillowCImagePutPaletteRgb(source, fixture.Palette)
+
+        out := PillowCImageEqualize(source)
+        before := PillowCImageData(target).Ptr
+        PillowCImageEqualizeInto(source, target)
+        after := PillowCImageData(target).Ptr
+
+        AhkTest.AssertEqual(3, PillowCImageMode(out))
+        AhkTest.AssertEqual([400, 1], [PillowCImageInt(out, "pillow_c_image_width"), PillowCImageInt(out, "pillow_c_image_height")])
+        AhkTest.AssertEqual(before, after)
+        PillowCTestAssertSamples(
+            PillowCImageToArray(out, 1200),
+            [1, 2, 3, 898, 899, 900, 901, 902, 903, 1048, 1049, 1050, 1051, 1052, 1053, 1198, 1199, 1200],
+            [0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
+        PillowCTestAssertSamples(
+            PillowCImageToArray(target, 1200),
+            [1, 2, 3, 898, 899, 900, 901, 902, 903, 1048, 1049, 1050, 1051, 1052, 1053, 1198, 1199, 1200],
+            [0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        PillowCFreeImage(target)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image equalize converts P images to RGB like Pillow", PillowCTestImageEqualizeConvertsPaletteModeToRgb)
+
 PillowCTestAppendEqualizeMaskGroup(fixture, count, lValue, r, g, b, maskValue) {
     loop count {
         fixture.L.Push(lValue)
@@ -4670,6 +4727,44 @@ PillowCTestImageEqualizeUsesMaskHistogram(*) {
 }
 
 AhkTest.Test("pillow_c image equalize uses mask histogram", PillowCTestImageEqualizeUsesMaskHistogram)
+
+PillowCTestImageEqualizeConvertsMaskedPaletteModeToRgb(*) {
+    fixture := PillowCTestEqualizePaletteFixture()
+    source := PillowCCreateImageMode(400, 1, 6)
+    mask := PillowCCreateImageMode(400, 1, 1)
+    target := PillowCCreateImageMode(400, 1, 3)
+    out := 0
+    try {
+        PillowCImageSetBytes(source, fixture.Values)
+        PillowCImageSetBytes(mask, fixture.Mask)
+        PillowCImagePutPaletteRgb(source, fixture.Palette)
+
+        out := PillowCImageEqualizeMasked(source, mask)
+        before := PillowCImageData(target).Ptr
+        PillowCImageEqualizeMaskedInto(source, mask, target)
+        after := PillowCImageData(target).Ptr
+
+        AhkTest.AssertEqual(3, PillowCImageMode(out))
+        AhkTest.AssertEqual([400, 1], [PillowCImageInt(out, "pillow_c_image_width"), PillowCImageInt(out, "pillow_c_image_height")])
+        AhkTest.AssertEqual(before, after)
+        PillowCTestAssertSamples(
+            PillowCImageToArray(out, 1200),
+            [1, 2, 3, 871, 872, 873, 898, 899, 900, 901, 902, 903, 1048, 1049, 1050, 1051, 1052, 1053, 1198, 1199, 1200],
+            [0, 10, 0, 0, 10, 0, 0, 10, 0, 128, 200, 64, 128, 200, 64, 255, 200, 255, 255, 200, 255])
+        PillowCTestAssertSamples(
+            PillowCImageToArray(target, 1200),
+            [1, 2, 3, 871, 872, 873, 898, 899, 900, 901, 902, 903, 1048, 1049, 1050, 1051, 1052, 1053, 1198, 1199, 1200],
+            [0, 10, 0, 0, 10, 0, 0, 10, 0, 128, 200, 64, 128, 200, 64, 255, 200, 255, 255, 200, 255])
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        PillowCFreeImage(target)
+        PillowCFreeImage(mask)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image equalize converts masked P images to RGB like Pillow", PillowCTestImageEqualizeConvertsMaskedPaletteModeToRgb)
 
 PillowCTestImageEqualizeIntoReusesTargetHandleStorage(*) {
     source := PillowCCreateImageMode(400, 1, 1)

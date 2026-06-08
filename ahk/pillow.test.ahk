@@ -3335,6 +3335,53 @@ PillowTestImageOpsEqualizeUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow ImageOps.Equalize maps L and RGB histograms through native handles", PillowTestImageOpsEqualizeUsesNativeOperation)
 
+PillowFacadeTestEqualizePaletteFixture() {
+    values := []
+    mask := []
+    loop 400 {
+        index := A_Index - 1
+        values.Push(index < 300 ? 0 : index < 350 ? 1 : 2)
+        mask.Push(index < 290 ? 0 : index < 310 ? 255 : index < 350 ? 0 : 255)
+    }
+    return {
+        Values: values,
+        Mask: mask,
+        Palette: [0, 10, 0, 128, 200, 64, 255, 200, 255],
+    }
+}
+
+PillowFacadeTestAssertSamples(data, positions, expected) {
+    actual := []
+    for position in positions
+        actual.Push(data[position])
+    AhkTest.AssertEqual(expected, actual)
+}
+
+PillowTestImageOpsEqualizeConvertsPaletteModeToRgb(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    fixture := PillowFacadeTestEqualizePaletteFixture()
+    source := Pillow.Image.FromBytes("P", [400, 1], PillowTestBuffer(fixture.Values))
+    out := 0
+    try {
+        source.PutPalette(fixture.Palette)
+
+        out := Pillow.ImageOps.Equalize(source)
+
+        AhkTest.AssertEqual("RGB", out.Mode)
+        AhkTest.AssertEqual([400, 1], out.Size)
+        PillowFacadeTestAssertSamples(
+            PillowTestBufferToArray(out.ToBytes()),
+            [1, 2, 3, 898, 899, 900, 901, 902, 903, 1048, 1049, 1050, 1051, 1052, 1053, 1198, 1199, 1200],
+            [0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255])
+    } finally {
+        if IsObject(out)
+            out.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Equalize converts P images to RGB like Pillow", PillowTestImageOpsEqualizeConvertsPaletteModeToRgb)
+
 PillowFacadeTestAppendEqualizeMaskGroup(fixture, count, lValue, r, g, b, maskValue) {
     loop count {
         fixture.L.Push(lValue)
@@ -3391,6 +3438,33 @@ PillowTestImageOpsEqualizeUsesMaskHistogram(*) {
 }
 
 AhkTest.Test("Pillow ImageOps.Equalize uses mask histogram", PillowTestImageOpsEqualizeUsesMaskHistogram)
+
+PillowTestImageOpsEqualizeConvertsMaskedPaletteModeToRgb(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    fixture := PillowFacadeTestEqualizePaletteFixture()
+    source := Pillow.Image.FromBytes("P", [400, 1], PillowTestBuffer(fixture.Values))
+    mask := Pillow.Image.FromBytes("L", [400, 1], PillowTestBuffer(fixture.Mask))
+    out := 0
+    try {
+        source.PutPalette(fixture.Palette)
+
+        out := Pillow.ImageOps.Equalize(source, mask)
+
+        AhkTest.AssertEqual("RGB", out.Mode)
+        AhkTest.AssertEqual([400, 1], out.Size)
+        PillowFacadeTestAssertSamples(
+            PillowTestBufferToArray(out.ToBytes()),
+            [1, 2, 3, 871, 872, 873, 898, 899, 900, 901, 902, 903, 1048, 1049, 1050, 1051, 1052, 1053, 1198, 1199, 1200],
+            [0, 10, 0, 0, 10, 0, 0, 10, 0, 128, 200, 64, 128, 200, 64, 255, 200, 255, 255, 200, 255])
+    } finally {
+        if IsObject(out)
+            out.Close()
+        mask.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Equalize converts masked P images to RGB like Pillow", PillowTestImageOpsEqualizeConvertsMaskedPaletteModeToRgb)
 
 PillowTestImageOpsEqualizeRejectsUnsupportedMode(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

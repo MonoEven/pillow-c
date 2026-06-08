@@ -1973,6 +1973,23 @@ int histogram_image_masked(
     const PillowCImage* mask,
     std::uint64_t* out_histogram,
     std::size_t out_count);
+int convert_palette_image_into(const PillowCImage* source, int target_mode, PillowCImage* target);
+
+bool supports_equalize_mode(const PillowCImage* source)
+{
+    return supports_imageops_lut(source) ||
+           (source && source->mode == PILLOW_C_MODE_P && source->channels == 1);
+}
+
+int equalize_target_mode(const PillowCImage* source)
+{
+    return source && source->mode == PILLOW_C_MODE_P ? PILLOW_C_MODE_RGB : source->mode;
+}
+
+int equalize_target_channels(const PillowCImage* source)
+{
+    return source && source->mode == PILLOW_C_MODE_P ? 3 : source->channels;
+}
 
 int build_equalize_lut(
     const PillowCImage* source,
@@ -2037,11 +2054,41 @@ int equalize_image_masked_into(const PillowCImage* source, const PillowCImage* m
     if (!source || !target) {
         return PILLOW_C_NULL_POINTER;
     }
-    if (!image_shape_matches(target, source)) {
+    if (!supports_equalize_mode(source)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int target_mode = equalize_target_mode(source);
+    const int target_channels = equalize_target_channels(source);
+    if (!image_shape_matches(target, source->width, source->height, target_mode, target_channels)) {
         return PILLOW_C_MISMATCH;
     }
 
     try {
+        if (source->mode == PILLOW_C_MODE_P) {
+            std::size_t stride = 0;
+            std::size_t size = 0;
+            if (!checked_image_size_allow_empty(source->width, source->height, 3, &stride, &size)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            PillowCImage rgb{
+                source->width,
+                source->height,
+                PILLOW_C_MODE_RGB,
+                3,
+                stride,
+                std::vector<std::uint8_t>(size)};
+            int status = convert_palette_image_into(source, PILLOW_C_MODE_RGB, &rgb);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            std::vector<std::uint8_t> lut;
+            status = build_equalize_lut(&rgb, mask, &lut);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            return apply_point_lut_into(&rgb, lut.data(), lut.size(), target);
+        }
+
         std::vector<std::uint8_t> lut;
         const int status = build_equalize_lut(source, mask, &lut);
         if (status != PILLOW_C_OK) {
@@ -8426,12 +8473,25 @@ extern "C" __declspec(dllexport) int pillow_c_image_equalize(
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
-    if (!supports_imageops_lut(source)) {
+    if (!supports_equalize_mode(source)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
     try {
-        auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
+        const int target_mode = equalize_target_mode(source);
+        const int target_channels = equalize_target_channels(source);
+        std::size_t stride = 0;
+        std::size_t size = 0;
+        if (!checked_image_size_allow_empty(source->width, source->height, target_channels, &stride, &size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            target_mode,
+            target_channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
         const int status = equalize_image_into(source, image);
         if (status != PILLOW_C_OK) {
             delete image;
@@ -8453,12 +8513,25 @@ extern "C" __declspec(dllexport) int pillow_c_image_equalize_masked(
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
-    if (!supports_imageops_lut(source)) {
+    if (!supports_equalize_mode(source)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
     try {
-        auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, std::vector<std::uint8_t>(source->pixels.size())};
+        const int target_mode = equalize_target_mode(source);
+        const int target_channels = equalize_target_channels(source);
+        std::size_t stride = 0;
+        std::size_t size = 0;
+        if (!checked_image_size_allow_empty(source->width, source->height, target_channels, &stride, &size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            target_mode,
+            target_channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
         const int status = equalize_image_masked_into(source, mask, image);
         if (status != PILLOW_C_OK) {
             delete image;
