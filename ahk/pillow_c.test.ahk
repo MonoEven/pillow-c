@@ -9086,6 +9086,61 @@ PillowCTestImageRotateRejectsUnsupportedResampleAndTargetShape(*) {
 
 AhkTest.Test("pillow_c image rotate rejects unsupported resample and target shape", PillowCTestImageRotateRejectsUnsupportedResampleAndTargetShape)
 
+PillowCTestImageGeometryCmykMatchesPillow(*) {
+    source := PillowCCreateImageMode(3, 2, 7)
+    resizeTarget := PillowCCreateImageMode(4, 3, 7)
+    resized := 0
+    lanczos := 0
+    affine := 0
+    rotated := 0
+    try {
+        PillowCImageSetBytes(source, [
+            1, 2, 3, 4, 10, 20, 30, 40, 40, 50, 60, 70,
+            70, 80, 90, 100, 100, 110, 120, 130, 130, 140, 150, 160,
+        ])
+        before := PillowCImageData(resizeTarget).Ptr
+
+        resized := PillowCImageResize(source, 4, 3, 3)
+        lanczos := PillowCImageResize(source, 2, 4, 1)
+        affine := PillowCImageTransformAffine(source, 4, 3, [0.75, 0.0, 0.0, 0.0, 0.75, 0.0], 3, [9, 8, 7, 6])
+        rotated := PillowCImageRotate(source, 45, 2, true, 0.0, 0.0, false, 0.0, 0.0, false, [9, 8, 7, 6])
+        PillowCImageResizeInto(source, 4, 3, 3, resizeTarget)
+
+        AhkTest.AssertEqual(before, PillowCImageData(resizeTarget).Ptr)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 5, 12, 18, 16, 26, 37, 48, 36, 46, 56, 66,
+            35, 40, 45, 50, 46, 54, 63, 71, 68, 78, 88, 99, 87, 97, 107, 117,
+            72, 83, 94, 104, 92, 103, 113, 123, 119, 129, 139, 149, 138, 148, 158, 168,
+        ], PillowCImageToArray(resized, 48))
+        AhkTest.AssertEqual(PillowCImageToArray(resized, 48), PillowCImageToArray(resizeTarget, 48))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 14, 25, 36, 46,
+            20, 25, 30, 36, 51, 62, 73, 83,
+            60, 69, 78, 86, 101, 111, 121, 131,
+            91, 102, 113, 124, 138, 148, 158, 168,
+        ], PillowCImageToArray(lanczos, 32))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 6, 13, 13, 25, 36, 47, 34, 44, 54, 64,
+            42, 48, 54, 60, 53, 62, 71, 79, 80, 91, 101, 112, 99, 109, 119, 129,
+            76, 88, 99, 111, 96, 106, 117, 127, 129, 139, 148, 158, 146, 156, 166, 176,
+        ], PillowCImageToArray(affine, 48))
+        AhkTest.AssertEqual([5, 4], [PillowCImageInt(rotated, "pillow_c_image_width"), PillowCImageInt(rotated, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6,
+            9, 8, 7, 6, 9, 8, 7, 6, 33, 43, 53, 63, 116, 126, 136, 146, 9, 8, 7, 6,
+            9, 8, 7, 6, 11, 13, 15, 18, 77, 86, 96, 105, 9, 8, 7, 6, 9, 8, 7, 6,
+            9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6,
+        ], PillowCImageToArray(rotated, 80))
+    } finally {
+        for handle in [rotated, affine, lanczos, resized, resizeTarget, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image geometry paths match Pillow CMYK", PillowCTestImageGeometryCmykMatchesPillow)
+
 PillowCTestImageContainAndCoverNearestMatchPillowGeometry(*) {
     source := PillowCCreateImageMode(4, 2, 1)
     containTall := 0

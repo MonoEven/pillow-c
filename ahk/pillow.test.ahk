@@ -1864,6 +1864,58 @@ PillowTestImageRotateBicubicUsesNativeAffinePath(*) {
 
 AhkTest.Test("Pillow Image.Rotate BICUBIC uses native affine path", PillowTestImageRotateBicubicUsesNativeAffinePath)
 
+PillowTestImageGeometryCmykUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("CMYK", [3, 2], PillowTestBuffer([
+        1, 2, 3, 4, 10, 20, 30, 40, 40, 50, 60, 70,
+        70, 80, 90, 100, 100, 110, 120, 130, 130, 140, 150, 160,
+    ]))
+    resized := 0
+    lanczos := 0
+    affine := 0
+    rotated := 0
+    try {
+        resized := source.Resize([4, 3], Pillow.Resampling.BICUBIC)
+        lanczos := source.Resize([2, 4], Pillow.Resampling.LANCZOS)
+        affine := source.TransformAffine([4, 3], [0.75, 0.0, 0.0, 0.0, 0.75, 0.0], Pillow.Resampling.BICUBIC, [9, 8, 7, 6])
+        rotated := source.Rotate(45, Pillow.Resampling.BILINEAR, true, , , [9, 8, 7, 6])
+
+        AhkTest.AssertEqual("CMYK", resized.Mode)
+        AhkTest.AssertEqual([4, 3], resized.Size)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 5, 12, 18, 16, 26, 37, 48, 36, 46, 56, 66,
+            35, 40, 45, 50, 46, 54, 63, 71, 68, 78, 88, 99, 87, 97, 107, 117,
+            72, 83, 94, 104, 92, 103, 113, 123, 119, 129, 139, 149, 138, 148, 158, 168,
+        ], PillowTestBufferToArray(resized.ToBytes()))
+        AhkTest.AssertEqual([2, 4], lanczos.Size)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 14, 25, 36, 46,
+            20, 25, 30, 36, 51, 62, 73, 83,
+            60, 69, 78, 86, 101, 111, 121, 131,
+            91, 102, 113, 124, 138, 148, 158, 168,
+        ], PillowTestBufferToArray(lanczos.ToBytes()))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 6, 13, 13, 25, 36, 47, 34, 44, 54, 64,
+            42, 48, 54, 60, 53, 62, 71, 79, 80, 91, 101, 112, 99, 109, 119, 129,
+            76, 88, 99, 111, 96, 106, 117, 127, 129, 139, 148, 158, 146, 156, 166, 176,
+        ], PillowTestBufferToArray(affine.ToBytes()))
+        AhkTest.AssertEqual([5, 4], rotated.Size)
+        AhkTest.AssertEqual([
+            9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6,
+            9, 8, 7, 6, 9, 8, 7, 6, 33, 43, 53, 63, 116, 126, 136, 146, 9, 8, 7, 6,
+            9, 8, 7, 6, 11, 13, 15, 18, 77, 86, 96, 105, 9, 8, 7, 6, 9, 8, 7, 6,
+            9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6, 9, 8, 7, 6,
+        ], PillowTestBufferToArray(rotated.ToBytes()))
+    } finally {
+        for image in [rotated, affine, lanczos, resized, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow geometry paths support CMYK through native handles", PillowTestImageGeometryCmykUsesNativePath)
+
 PillowTestImageOpsScaleUsesNativeResizeAndPythonRounding(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [5, 3], PillowTestBuffer([
