@@ -2434,6 +2434,46 @@ PillowTestImageOpsPadParsesColorAndCenteringLikePillow(*) {
 
 AhkTest.Test("Pillow ImageOps.Pad parses color and centering like Pillow", PillowTestImageOpsPadParsesColorAndCenteringLikePillow)
 
+PillowTestImageOpsPadSupportsLaFillColors(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("LA", [2, 2], PillowTestBuffer([10, 0, 80, 64, 160, 128, 250, 255]))
+    scalar := 0
+    tuple1 := 0
+    tuple2 := 0
+    try {
+        scalar := Pillow.ImageOps.Pad(source, [4, 2], Pillow.Resampling.NEAREST, 9, [0.5, 0.5])
+        tuple1 := Pillow.ImageOps.Pad(source, [4, 2], Pillow.Resampling.NEAREST, [9], [0.5, 0.5])
+        tuple2 := Pillow.ImageOps.Pad(source, [4, 2], Pillow.Resampling.NEAREST, [9, 17], [0.5, 0.5])
+
+        AhkTest.AssertEqual("LA", tuple2.Mode)
+        AhkTest.AssertEqual([4, 2], tuple2.Size)
+        AhkTest.AssertEqual([
+            9, 0, 10, 0, 80, 64, 9, 0,
+            9, 0, 160, 128, 250, 255, 9, 0,
+        ], PillowTestBufferToArray(scalar.ToBytes()))
+        AhkTest.AssertEqual(PillowTestBufferToArray(scalar.ToBytes()), PillowTestBufferToArray(tuple1.ToBytes()))
+        AhkTest.AssertEqual([
+            9, 17, 10, 0, 80, 64, 9, 17,
+            9, 17, 160, 128, 250, 255, 9, 17,
+        ], PillowTestBufferToArray(tuple2.ToBytes()))
+
+        try {
+            Pillow.ImageOps.Pad(source, [4, 2], Pillow.Resampling.NEAREST, [9, 17, 99], [0.5, 0.5])
+            AhkTest.Fail("Expected LA pad color to reject a three-item tuple")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "fill") > 0)
+        }
+    } finally {
+        for image in [tuple2, tuple1, scalar] {
+            if IsObject(image)
+                image.Close()
+        }
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Pad supports LA fill colors", PillowTestImageOpsPadSupportsLaFillColors)
+
 PillowTestImageOpsPadFillColorMatchesModeOneSemantics(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("1", [2, 1], PillowTestBuffer([0x80]))

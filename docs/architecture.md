@@ -153,7 +153,7 @@ Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes, including v
 
 `Image.getdata` and `Image.putdata` expose Pillow-like pixel sequence ergonomics while keeping the native handle as the storage authority. `GetData` exports a bulk byte snapshot, and `PutData` packs AHK values once before calling the native `put_data` prefix-writer instead of crossing the DLL boundary per pixel.
 
-`ImageOps.expand` and related facade fill parsing support Pillow-style scalar and tuple fill colors for current core modes, including `LA` single-value fills as transparent luminance and two-value `[l, a]` fills before dispatching to the native expand path.
+`ImageOps.expand`, `ImageOps.pad`, and related facade fill parsing support Pillow-style scalar and tuple fill colors for current core modes, including `LA` single-value fills as transparent luminance and two-value `[l, a]` fills before dispatching to native geometry paths.
 
 `Image.reduce` supports native integer block downsampling for `L`, `LA`, `RGB`, `RGBA`, and `CMYK`, including Pillow-style output-size ceiling, optional box regions, and allocation-avoiding `_into` calls. `LA` and `RGBA` reduce through Pillow's premultiplied-alpha semantics before converting back to the public mode.
 

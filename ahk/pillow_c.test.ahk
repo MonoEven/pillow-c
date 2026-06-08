@@ -10025,6 +10025,38 @@ PillowCTestImagePadHandlesRgbRgbaFillAndCenteringClamp(*) {
 
 AhkTest.Test("pillow_c image Pad handles RGB RGBA fill and centering clamp", PillowCTestImagePadHandlesRgbRgbaFillAndCenteringClamp)
 
+PillowCTestImagePadHandlesLaFillAndCentering(*) {
+    la := PillowCCreateImageMode(2, 2, 2)
+    wide := 0
+    tall := 0
+    try {
+        PillowCImageSetBytes(la, [10, 0, 80, 64, 160, 128, 250, 255])
+        wide := PillowCImagePad(la, 4, 2, 0, [9, 17], 0.5, 0.5)
+        tall := PillowCImagePad(la, 2, 4, 0, [9, 17], 0.5, 0.5)
+
+        AhkTest.AssertEqual([4, 2], [PillowCImageInt(wide, "pillow_c_image_width"), PillowCImageInt(wide, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            9, 17, 10, 0, 80, 64, 9, 17,
+            9, 17, 160, 128, 250, 255, 9, 17,
+        ], PillowCImageToArray(wide, 16))
+
+        AhkTest.AssertEqual([2, 4], [PillowCImageInt(tall, "pillow_c_image_width"), PillowCImageInt(tall, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            9, 17, 9, 17,
+            10, 0, 80, 64,
+            160, 128, 250, 255,
+            9, 17, 9, 17,
+        ], PillowCImageToArray(tall, 16))
+    } finally {
+        for handle in [tall, wide, la] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image Pad handles LA fill and centering", PillowCTestImagePadHandlesLaFillAndCentering)
+
 PillowCTestImagePadRejectsInvalidRequestedSize(*) {
     source := PillowCCreateImageMode(4, 2, 1)
     color := PillowCBuffer([0])
