@@ -27,6 +27,12 @@ PillowCArraySlice(values, firstIndex, lastIndex) {
     return out
 }
 
+PillowCAssertArrayNear(expected, actual, tolerance) {
+    AhkTest.AssertEqual(expected.Length, actual.Length)
+    for index, expectedValue in expected
+        AhkTest.AssertTrue(Abs(expectedValue - actual[index]) <= tolerance)
+}
+
 PillowCWriteFileBytes(path, values) {
     buf := PillowCBuffer(values)
     file := FileOpen(path, "w")
@@ -54,6 +60,10 @@ PillowCTempBmpPath(name) {
 
 PillowCTempPngPath(name) {
     return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) ".png"
+}
+
+PillowCTempJpegPath(name) {
+    return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) ".jpg"
 }
 
 PillowCDeleteFile(path) {
@@ -319,6 +329,31 @@ PillowCImageSavePng(handle, path) {
     pathBytes := PillowCUtf8Buffer(path)
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_save_png",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageOpenJpeg(path) {
+    handle := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_open_jpeg",
+        "Ptr", pathBytes,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
+PillowCImageSaveJpeg(handle, path) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_jpeg",
         "Ptr", handle,
         "Ptr", pathBytes,
         "Int"
@@ -2992,6 +3027,173 @@ PillowCTestImagePngRejectsUnsupportedModesAndInvalidFiles(*) {
 }
 
 AhkTest.Test("pillow_c PNG IO rejects unsupported modes and invalid files", PillowCTestImagePngRejectsUnsupportedModesAndInvalidFiles)
+
+PillowCTestImageOpenJpegReadsPillowCoreModes(*) {
+    rgbPath := PillowCTempJpegPath("open-rgb")
+    lPath := PillowCTempJpegPath("open-l")
+    rgb := 0
+    l := 0
+    try {
+        PillowCWriteFileBytes(rgbPath, [
+            255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 1, 0, 0, 1,
+            0, 1, 0, 0, 255, 219, 0, 67, 0, 8, 6, 6, 7, 6, 5, 8,
+            7, 7, 7, 9, 9, 8, 10, 12, 20, 13, 12, 11, 11, 12, 25, 18,
+            19, 15, 20, 29, 26, 31, 30, 29, 26, 28, 28, 32, 36, 46, 39, 32,
+            34, 44, 35, 28, 28, 40, 55, 41, 44, 48, 49, 52, 52, 52, 31, 39,
+            57, 61, 56, 50, 60, 46, 51, 52, 50, 255, 219, 0, 67, 1, 9, 9,
+            9, 12, 11, 12, 24, 13, 13, 24, 50, 33, 28, 33, 50, 50, 50, 50,
+            50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50,
+            50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50,
+            50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 255, 192,
+            0, 17, 8, 0, 1, 0, 1, 3, 1, 34, 0, 2, 17, 1, 3, 17,
+            1, 255, 196, 0, 31, 0, 0, 1, 5, 1, 1, 1, 1, 1, 1, 0,
+            0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+            10, 11, 255, 196, 0, 181, 16, 0, 2, 1, 3, 3, 2, 4, 3, 5,
+            5, 4, 4, 0, 0, 1, 125, 1, 2, 3, 0, 4, 17, 5, 18, 33,
+            49, 65, 6, 19, 81, 97, 7, 34, 113, 20, 50, 129, 145, 161, 8, 35,
+            66, 177, 193, 21, 82, 209, 240, 36, 51, 98, 114, 130, 9, 10, 22, 23,
+            24, 25, 26, 37, 38, 39, 40, 41, 42, 52, 53, 54, 55, 56, 57, 58,
+            67, 68, 69, 70, 71, 72, 73, 74, 83, 84, 85, 86, 87, 88, 89, 90,
+            99, 100, 101, 102, 103, 104, 105, 106, 115, 116, 117, 118, 119, 120, 121, 122,
+            131, 132, 133, 134, 135, 136, 137, 138, 146, 147, 148, 149, 150, 151, 152, 153,
+            154, 162, 163, 164, 165, 166, 167, 168, 169, 170, 178, 179, 180, 181, 182, 183,
+            184, 185, 186, 194, 195, 196, 197, 198, 199, 200, 201, 202, 210, 211, 212, 213,
+            214, 215, 216, 217, 218, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 241,
+            242, 243, 244, 245, 246, 247, 248, 249, 250, 255, 196, 0, 31, 1, 0, 3,
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1,
+            2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 255, 196, 0, 181, 17, 0,
+            2, 1, 2, 4, 4, 3, 4, 7, 5, 4, 4, 0, 1, 2, 119, 0,
+            1, 2, 3, 17, 4, 5, 33, 49, 6, 18, 65, 81, 7, 97, 113, 19,
+            34, 50, 129, 8, 20, 66, 145, 161, 177, 193, 9, 35, 51, 82, 240, 21,
+            98, 114, 209, 10, 22, 36, 52, 225, 37, 241, 23, 24, 25, 26, 38, 39,
+            40, 41, 42, 53, 54, 55, 56, 57, 58, 67, 68, 69, 70, 71, 72, 73,
+            74, 83, 84, 85, 86, 87, 88, 89, 90, 99, 100, 101, 102, 103, 104, 105,
+            106, 115, 116, 117, 118, 119, 120, 121, 122, 130, 131, 132, 133, 134, 135, 136,
+            137, 138, 146, 147, 148, 149, 150, 151, 152, 153, 154, 162, 163, 164, 165, 166,
+            167, 168, 169, 170, 178, 179, 180, 181, 182, 183, 184, 185, 186, 194, 195, 196,
+            197, 198, 199, 200, 201, 202, 210, 211, 212, 213, 214, 215, 216, 217, 218, 226,
+            227, 228, 229, 230, 231, 232, 233, 234, 242, 243, 244, 245, 246, 247, 248, 249,
+            250, 255, 218, 0, 12, 3, 1, 0, 2, 17, 3, 17, 0, 63, 0, 40,
+            162, 138, 216, 200, 255, 217
+        ])
+        PillowCWriteFileBytes(lPath, [
+            255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 1, 0, 0, 1,
+            0, 1, 0, 0, 255, 219, 0, 67, 0, 8, 6, 6, 7, 6, 5, 8,
+            7, 7, 7, 9, 9, 8, 10, 12, 20, 13, 12, 11, 11, 12, 25, 18,
+            19, 15, 20, 29, 26, 31, 30, 29, 26, 28, 28, 32, 36, 46, 39, 32,
+            34, 44, 35, 28, 28, 40, 55, 41, 44, 48, 49, 52, 52, 52, 31, 39,
+            57, 61, 56, 50, 60, 46, 51, 52, 50, 255, 192, 0, 11, 8, 0, 1,
+            0, 1, 1, 1, 17, 0, 255, 196, 0, 31, 0, 0, 1, 5, 1, 1,
+            1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4,
+            5, 6, 7, 8, 9, 10, 11, 255, 196, 0, 181, 16, 0, 2, 1, 3,
+            3, 2, 4, 3, 5, 5, 4, 4, 0, 0, 1, 125, 1, 2, 3, 0,
+            4, 17, 5, 18, 33, 49, 65, 6, 19, 81, 97, 7, 34, 113, 20, 50,
+            129, 145, 161, 8, 35, 66, 177, 193, 21, 82, 209, 240, 36, 51, 98, 114,
+            130, 9, 10, 22, 23, 24, 25, 26, 37, 38, 39, 40, 41, 42, 52, 53,
+            54, 55, 56, 57, 58, 67, 68, 69, 70, 71, 72, 73, 74, 83, 84, 85,
+            86, 87, 88, 89, 90, 99, 100, 101, 102, 103, 104, 105, 106, 115, 116, 117,
+            118, 119, 120, 121, 122, 131, 132, 133, 134, 135, 136, 137, 138, 146, 147, 148,
+            149, 150, 151, 152, 153, 154, 162, 163, 164, 165, 166, 167, 168, 169, 170, 178,
+            179, 180, 181, 182, 183, 184, 185, 186, 194, 195, 196, 197, 198, 199, 200, 201,
+            202, 210, 211, 212, 213, 214, 215, 216, 217, 218, 225, 226, 227, 228, 229, 230,
+            231, 232, 233, 234, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 255, 218,
+            0, 8, 1, 1, 0, 0, 63, 0, 138, 191, 255, 217
+        ])
+
+        rgb := PillowCImageOpenJpeg(rgbPath)
+        l := PillowCImageOpenJpeg(lPath)
+        AhkTest.AssertEqual(3, PillowCImageMode(rgb))
+        AhkTest.AssertEqual([1, 1], [PillowCImageInt(rgb, "pillow_c_image_width"), PillowCImageInt(rgb, "pillow_c_image_height")])
+        PillowCAssertArrayNear([120, 130, 140], PillowCImageToArray(rgb, 3), 2)
+        AhkTest.AssertEqual(1, PillowCImageMode(l))
+        PillowCAssertArrayNear([123], PillowCImageToArray(l, 1), 2)
+    } finally {
+        for handle in [l, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        for path in [lPath, rgbPath]
+            PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_jpeg reads Pillow L and RGB JPEGs", PillowCTestImageOpenJpegReadsPillowCoreModes)
+
+PillowCTestImageSaveJpegRoundTripsCoreModes(*) {
+    rgb := PillowCCreateImageMode(1, 1, 3)
+    l := PillowCCreateImageMode(1, 1, 1)
+    rgbPath := PillowCTempJpegPath("save-rgb")
+    lPath := PillowCTempJpegPath("save-l")
+    rgbLoaded := 0
+    lLoaded := 0
+    try {
+        PillowCImageSetBytes(rgb, [120, 130, 140])
+        PillowCImageSetBytes(l, [123])
+        PillowCImageSaveJpeg(rgb, rgbPath)
+        PillowCImageSaveJpeg(l, lPath)
+        AhkTest.AssertEqual([255, 216], PillowCArraySlice(PillowCReadFileBytes(rgbPath), 1, 2))
+        AhkTest.AssertEqual([255, 216], PillowCArraySlice(PillowCReadFileBytes(lPath), 1, 2))
+
+        rgbLoaded := PillowCImageOpenJpeg(rgbPath)
+        lLoaded := PillowCImageOpenJpeg(lPath)
+        AhkTest.AssertEqual(3, PillowCImageMode(rgbLoaded))
+        PillowCAssertArrayNear([120, 130, 140], PillowCImageToArray(rgbLoaded, 3), 8)
+        AhkTest.AssertEqual(1, PillowCImageMode(lLoaded))
+        PillowCAssertArrayNear([123], PillowCImageToArray(lLoaded, 1), 8)
+    } finally {
+        for handle in [lLoaded, rgbLoaded, l, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        for path in [lPath, rgbPath]
+            PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_jpeg round-trips L and RGB modes", PillowCTestImageSaveJpegRoundTripsCoreModes)
+
+PillowCTestImageJpegRejectsUnsupportedModesAndInvalidFiles(*) {
+    rgba := PillowCCreateImageMode(1, 1, 4)
+    badPath := PillowCTempJpegPath("bad")
+    missingPath := PillowCTempJpegPath("missing")
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(rgba, [1, 2, 3, 4])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_jpeg",
+            "Ptr", rgba,
+            "Ptr", PillowCUtf8Buffer(badPath),
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        PillowCWriteFileBytes(badPath, [1, 2, 3, 4])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_open_jpeg",
+            "Ptr", PillowCUtf8Buffer(badPath),
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_open_jpeg",
+            "Ptr", PillowCUtf8Buffer(missingPath),
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCDeleteFile(badPath)
+        PillowCFreeImage(rgba)
+    }
+}
+
+AhkTest.Test("pillow_c JPEG IO rejects unsupported modes and invalid files", PillowCTestImageJpegRejectsUnsupportedModesAndInvalidFiles)
 
 PillowCTestImageCopyIsIndependent(*) {
     source := PillowCCreateImage(2, 1, 3)

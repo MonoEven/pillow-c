@@ -1728,12 +1728,16 @@ class Pillow {
                 return "BMP"
             if RegExMatch(path, "i)\.png$")
                 return "PNG"
+            if RegExMatch(path, "i)\.jpe?g$")
+                return "JPEG"
             throw Error("Pillow image file format is unsupported", -1)
         }
 
         static NormalizeFileFormat(format) {
             name := StrUpper(format)
-            if name = "BMP" || name = "PNG"
+            if name = "JPG"
+                return "JPEG"
+            if name = "BMP" || name = "PNG" || name = "JPEG"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
