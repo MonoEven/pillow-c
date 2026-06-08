@@ -67,6 +67,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_set_bytes`
 - `pillow_c_image_put_palette_rgb`
 - `pillow_c_image_get_palette_rgb`
+- `pillow_c_image_remap_palette`
 - `pillow_c_image_set_raw_bytes`
 - `pillow_c_image_put_data`
 - `pillow_c_image_linear_gradient`
@@ -152,6 +153,7 @@ Reusable target operations:
 
 - `pillow_c_image_linear_gradient_into`
 - `pillow_c_image_radial_gradient_into`
+- `pillow_c_image_remap_palette_into`
 - `pillow_c_image_copy_into`
 - `pillow_c_image_constant_into`
 - `pillow_c_image_chops_invert_into`
@@ -208,6 +210,8 @@ Reusable target operations:
 `pillow_c_image_equalize` and `pillow_c_image_equalize_into` implement Pillow's `ImageOps.equalize` for `L` and `RGB`; mode `P` sources are converted through their RGB palette first and produce an `RGB` target. `pillow_c_image_equalize_masked` and `pillow_c_image_equalize_masked_into` accept a same-size mode `1` or `L` mask handle after the source handle. A null mask keeps full-image histogram behavior.
 
 `pillow_c_image_put_data` accepts already-packed mode-sized pixel bytes plus a pixel count, writes that prefix into the image in row-major order, and leaves any remaining pixels unchanged. The AHK facade owns Python-like `putdata` value coercion before making this single native call.
+
+`pillow_c_image_remap_palette` and `pillow_c_image_remap_palette_into` implement Pillow's `Image.remap_palette` for mode `P` and `L` images over RGB palettes. The native path builds the new palette from `dest_map`, remaps all one-byte pixels in one pass, returns a mode `P` image, and uses Pillow's default grayscale source palette for `L` inputs. RGBA palette remapping is intentionally outside the current RGB palette ABI.
 
 `pillow_c_image_set_raw_bytes` and `pillow_c_image_get_raw_bytes` implement common Pillow raw decoder/encoder modes without AHK-side byte reordering. The current raw decode support covers `1`->`1`, `L`->`L`, `LA`->`LA`, `CMYK`->`CMYK`, `RGB` target raw modes `RGB`, `RGBX`, `BGR`, `BGRX`, `XBGR`, and `RGBA` target raw modes `RGBA`, `BGRA`, `ARGB`, `ABGR`, `BGR`. Mode `1` raw bytes are bit-packed most-significant-bit first per row, while native image storage remains one byte per pixel. Decode accepts a non-negative source stride, where `0` means tightly packed, and negative orientation reads rows bottom-up. Raw encode support covers matching direct modes plus common `RGB`/`RGBA` BGR-family packers; callers can first pass a null output pointer to query the required byte size.
 

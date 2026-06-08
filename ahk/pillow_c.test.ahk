@@ -27,6 +27,13 @@ PillowCDoubleBuffer(values) {
     return buf
 }
 
+PillowCIntBuffer(values) {
+    buf := Buffer(values.Length * 4, 0)
+    for index, value in values
+        NumPut("Int", value, buf, (index - 1) * 4)
+    return buf
+}
+
 SumArray(values) {
     total := 0
     for value in values
@@ -1206,6 +1213,41 @@ PillowCImageConvertModeInto(sourceHandle, mode, targetHandle) {
         PillowCDllPath() "\pillow_c_image_convert_mode_into",
         "Ptr", sourceHandle,
         "Int", mode,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageRemapPalette(sourceHandle, destMap, sourcePalette := unset) {
+    map := PillowCIntBuffer(destMap)
+    palette := IsSet(sourcePalette) ? PillowCBuffer(sourcePalette) : 0
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_remap_palette",
+        "Ptr", sourceHandle,
+        "Ptr", map,
+        "UPtr", destMap.Length,
+        "Ptr", IsObject(palette) ? palette.Ptr : 0,
+        "UPtr", IsObject(palette) ? palette.Size : 0,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageRemapPaletteInto(sourceHandle, destMap, targetHandle, sourcePalette := unset) {
+    map := PillowCIntBuffer(destMap)
+    palette := IsSet(sourcePalette) ? PillowCBuffer(sourcePalette) : 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_remap_palette_into",
+        "Ptr", sourceHandle,
+        "Ptr", map,
+        "UPtr", destMap.Length,
+        "Ptr", IsObject(palette) ? palette.Ptr : 0,
+        "UPtr", IsObject(palette) ? palette.Size : 0,
         "Ptr", targetHandle,
         "Int"
     )
@@ -6437,6 +6479,58 @@ PillowCTestPaletteModeConvertsThroughNativePalette(*) {
 }
 
 AhkTest.Test("pillow_c P mode converts through native RGB palette", PillowCTestPaletteModeConvertsThroughNativePalette)
+
+PillowCTestImageRemapPaletteMatchesPillowPAndL(*) {
+    p := PillowCCreateImageMode(4, 1, 6)
+    l := PillowCCreateImageMode(4, 1, 1)
+    rgb := PillowCCreateImageMode(1, 1, 3)
+    remappedP := 0
+    duplicateP := 0
+    remappedL := 0
+    target := PillowCCreateImageMode(4, 1, 6)
+    wrongTarget := PillowCCreateImageMode(4, 1, 1)
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(p, [0, 1, 2, 3])
+        PillowCImagePutPaletteRgb(p, [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120])
+        PillowCImageSetBytes(l, [0, 1, 2, 3])
+
+        remappedP := PillowCImageRemapPalette(p, [3, 2, 1, 0])
+        AhkTest.AssertEqual(6, PillowCImageMode(remappedP))
+        AhkTest.AssertEqual([3, 2, 1, 0], PillowCImageToArray(remappedP, 4))
+        AhkTest.AssertEqual([100, 110, 120, 70, 80, 90, 40, 50, 60, 10, 20, 30], PillowCImageGetPaletteRgb(remappedP))
+
+        duplicateP := PillowCImageRemapPalette(p, [1, 1, 2, 3])
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowCImageToArray(duplicateP, 4))
+        AhkTest.AssertEqual([40, 50, 60, 40, 50, 60, 70, 80, 90, 100, 110, 120], PillowCImageGetPaletteRgb(duplicateP))
+
+        remappedL := PillowCImageRemapPalette(l, [3, 2, 1, 0])
+        AhkTest.AssertEqual(6, PillowCImageMode(remappedL))
+        AhkTest.AssertEqual([3, 2, 1, 0], PillowCImageToArray(remappedL, 4))
+        AhkTest.AssertEqual([3, 3, 3, 2, 2, 2, 1, 1, 1, 0, 0, 0], PillowCImageGetPaletteRgb(remappedL))
+
+        PillowCImageRemapPaletteInto(p, [0, 1], target)
+        AhkTest.AssertEqual([0, 1, 0, 0], PillowCImageToArray(target, 4))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowCImageGetPaletteRgb(target))
+
+        map := PillowCIntBuffer([0])
+        status := DllCall(PillowCDllPath() "\pillow_c_image_remap_palette", "Ptr", rgb, "Ptr", map, "UPtr", 1, "Ptr", 0, "UPtr", 0, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_remap_palette_into", "Ptr", p, "Ptr", map, "UPtr", 1, "Ptr", 0, "UPtr", 0, "Ptr", wrongTarget, "Int")
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        for image in [wrongTarget, target, remappedL, duplicateP, remappedP, rgb, l, p] {
+            if image
+                PillowCFreeImage(image)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image remap_palette matches Pillow P and L", PillowCTestImageRemapPaletteMatchesPillowPAndL)
 
 PillowCTestPaletteModePreservesPaletteThroughNativeOperations(*) {
     source := PillowCCreateImageMode(4, 2, 6)

@@ -2437,6 +2437,88 @@ int convert_palette_image_into(const PillowCImage* source, int target_mode, Pill
     return PILLOW_C_OK;
 }
 
+int remap_palette_image_into(
+    const PillowCImage* source,
+    const int* dest_map,
+    std::size_t dest_count,
+    const std::uint8_t* source_palette,
+    std::size_t source_palette_size,
+    PillowCImage* target)
+{
+    if (!source || !target || (!dest_map && dest_count > 0) || (!source_palette && source_palette_size > 0)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((source->mode != PILLOW_C_MODE_P && source->mode != PILLOW_C_MODE_L) ||
+        source->channels != 1 ||
+        dest_count > 256u ||
+        source_palette_size > 768u ||
+        source_palette_size % 3u != 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_P, 1)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    std::uint8_t new_positions[256] = {};
+    for (std::size_t index = 0; index < dest_count; ++index) {
+        const int old_position = dest_map[index];
+        if (old_position < 0 || old_position > 255) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        new_positions[old_position] = static_cast<std::uint8_t>(index);
+    }
+
+    std::vector<std::uint8_t> gray_palette;
+    const std::uint8_t* palette_data = source_palette;
+    std::size_t palette_size = source_palette_size;
+    if (!palette_data) {
+        if (source->mode == PILLOW_C_MODE_P) {
+            palette_data = source->palette_rgb.empty() ? nullptr : source->palette_rgb.data();
+            palette_size = source->palette_rgb.size();
+        } else {
+            try {
+                gray_palette.resize(768u);
+            } catch (const std::bad_alloc&) {
+                return PILLOW_C_ALLOCATION_FAILED;
+            }
+            for (int value = 0; value < 256; ++value) {
+                const std::size_t offset = static_cast<std::size_t>(value) * 3u;
+                gray_palette[offset] = static_cast<std::uint8_t>(value);
+                gray_palette[offset + 1u] = static_cast<std::uint8_t>(value);
+                gray_palette[offset + 2u] = static_cast<std::uint8_t>(value);
+            }
+            palette_data = gray_palette.data();
+            palette_size = gray_palette.size();
+        }
+    }
+
+    std::vector<std::uint8_t> remapped_palette;
+    try {
+        remapped_palette.reserve(dest_count * 3u);
+        for (std::size_t index = 0; index < dest_count; ++index) {
+            const std::size_t offset = static_cast<std::size_t>(dest_map[index]) * 3u;
+            if (palette_data && offset < palette_size) {
+                const std::size_t available = std::min<std::size_t>(3u, palette_size - offset);
+                remapped_palette.insert(remapped_palette.end(), palette_data + offset, palette_data + offset + available);
+            }
+        }
+
+        const std::uint8_t* source_pixels = source->pixels.empty() ? nullptr : source->pixels.data();
+        std::vector<std::uint8_t> source_copy;
+        if (source == target && !source->pixels.empty()) {
+            source_copy = source->pixels;
+            source_pixels = source_copy.data();
+        }
+        for (std::size_t index = 0; index < target->pixels.size(); ++index) {
+            target->pixels[index] = new_positions[source_pixels[index]];
+        }
+        target->palette_rgb = std::move(remapped_palette);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowCImage* target)
 {
     if (!source || !target) {
@@ -7679,6 +7761,59 @@ extern "C" __declspec(dllexport) int pillow_c_image_set_bytes(
     }
     std::memcpy(image->pixels.data(), data, size);
     return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_remap_palette_into(
+    const PillowCImage* source,
+    const int* dest_map,
+    std::size_t dest_count,
+    const std::uint8_t* source_palette,
+    std::size_t source_palette_size,
+    PillowCImage* target)
+{
+    return remap_palette_image_into(source, dest_map, dest_count, source_palette, source_palette_size, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_remap_palette(
+    const PillowCImage* source,
+    const int* dest_map,
+    std::size_t dest_count,
+    const std::uint8_t* source_palette,
+    std::size_t source_palette_size,
+    PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if ((source->mode != PILLOW_C_MODE_P && source->mode != PILLOW_C_MODE_L) || source->channels != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(source->width, source->height, 1, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            PILLOW_C_MODE_P,
+            1,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = remap_palette_image_into(source, dest_map, dest_count, source_palette, source_palette_size, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_put_palette_rgb(

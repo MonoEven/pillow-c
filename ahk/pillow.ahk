@@ -1661,6 +1661,18 @@ class Pillow {
             return buf
         }
 
+        static IntBuffer(values, operationName) {
+            if !IsObject(values)
+                throw Error(operationName " expects an array of integers", -1)
+            buf := Buffer(values.Length * 4, 0)
+            for index, value in values {
+                if !(value is Integer)
+                    throw Error(operationName " values must be integers", -1)
+                NumPut("Int", value, buf, (index - 1) * 4)
+            }
+            return buf
+        }
+
         static RawModeBuffer(rawmode) {
             buf := Buffer(StrPut(rawmode, "UTF-8"), 0)
             StrPut(rawmode, buf, "UTF-8")
@@ -1886,6 +1898,23 @@ class Pillow {
             loop out.Size
                 values.Push(NumGet(out, A_Index - 1, "UChar"))
             return values
+        }
+
+        RemapPalette(destMap, sourcePalette := unset) {
+            map := Pillow.Image.IntBuffer(destMap, "Pillow.Image.RemapPalette")
+            palette := IsSet(sourcePalette) ? Pillow.Image.ByteBuffer(sourcePalette, "Pillow.Image.RemapPalette source_palette") : 0
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_remap_palette",
+                "Ptr", this.RequireHandle(),
+                "Ptr", map,
+                "UPtr", destMap.Length,
+                "Ptr", IsObject(palette) ? palette.Ptr : 0,
+                "UPtr", IsObject(palette) ? palette.Size : 0,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
         }
 
         PutData(data, scale := 1.0, offset := 0.0) {

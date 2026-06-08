@@ -344,6 +344,53 @@ PillowTestPaletteModeUsesNativePaletteForConversion(*) {
 
 AhkTest.Test("Pillow P mode uses native palette for conversion", PillowTestPaletteModeUsesNativePaletteForConversion)
 
+PillowTestImageRemapPaletteUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    p := Pillow.Image.FromBytes("P", [4, 1], PillowTestBuffer([0, 1, 2, 3]))
+    l := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 1, 2, 3]))
+    rgb := Pillow.Image.New("RGB", [1, 1])
+    outputs := []
+    try {
+        p.PutPalette([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120])
+
+        remappedP := p.RemapPalette([3, 2, 1, 0])
+        duplicateP := p.RemapPalette([1, 1, 2, 3])
+        remappedL := l.RemapPalette([3, 2, 1, 0])
+        outputs.Push(remappedP)
+        outputs.Push(duplicateP)
+        outputs.Push(remappedL)
+
+        AhkTest.AssertEqual("P", remappedP.Mode)
+        AhkTest.AssertEqual([3, 2, 1, 0], PillowTestBufferToArray(remappedP.ToBytes()))
+        AhkTest.AssertEqual([100, 110, 120, 70, 80, 90, 40, 50, 60, 10, 20, 30], remappedP.GetPalette())
+
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowTestBufferToArray(duplicateP.ToBytes()))
+        AhkTest.AssertEqual([40, 50, 60, 40, 50, 60, 70, 80, 90, 100, 110, 120], duplicateP.GetPalette())
+
+        AhkTest.AssertEqual("P", remappedL.Mode)
+        AhkTest.AssertEqual([3, 2, 1, 0], PillowTestBufferToArray(remappedL.ToBytes()))
+        AhkTest.AssertEqual([3, 3, 3, 2, 2, 2, 1, 1, 1, 0, 0, 0], remappedL.GetPalette())
+
+        errorWasRaised := false
+        try {
+            rgb.RemapPalette([0])
+        } catch Error as err {
+            errorWasRaised := InStr(err.Message, "invalid argument") > 0 || InStr(err.Message, "illegal image mode") > 0
+        }
+        AhkTest.AssertTrue(errorWasRaised)
+    } finally {
+        for item in outputs {
+            if IsObject(item)
+                item.Close()
+        }
+        rgb.Close()
+        l.Close()
+        p.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.RemapPalette remaps P and L through native path", PillowTestImageRemapPaletteUsesNativePath)
+
 PillowTestPaletteModePreservesPaletteThroughNativeOperations(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     palette := [
