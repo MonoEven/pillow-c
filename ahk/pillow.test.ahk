@@ -71,6 +71,43 @@ PillowTestImageNewWithColorUsesNativeFill(*) {
 
 AhkTest.Test("Pillow Image.New fills a solid color through the native DLL", PillowTestImageNewWithColorUsesNativeFill)
 
+PillowTestImageLinearGradientUsesNativeGenerator(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := 0
+    one := 0
+    p := 0
+    try {
+        l := Pillow.Image.LinearGradient("L")
+        one := Pillow.Image.LinearGradient("1")
+        p := Pillow.Image.LinearGradient("P")
+
+        AhkTest.AssertEqual("L", l.Mode)
+        AhkTest.AssertEqual([256, 256], l.Size)
+        AhkTest.AssertEqual([0], [l.GetPixel([0, 0])])
+        AhkTest.AssertEqual([127], [l.GetPixel([255, 127])])
+        AhkTest.AssertEqual([255], [l.GetPixel([128, 255])])
+
+        AhkTest.AssertEqual("1", one.Mode)
+        AhkTest.AssertEqual([0], [one.GetPixel([0, 0])])
+        AhkTest.AssertEqual([1], [one.GetPixel([0, 1])])
+        oneBytes := PillowTestBufferToArray(one.ToBytes())
+        AhkTest.AssertEqual(8192, oneBytes.Length)
+        AhkTest.AssertEqual(0, oneBytes[1])
+        AhkTest.AssertEqual(255, oneBytes[33])
+
+        AhkTest.AssertEqual("P", p.Mode)
+        AhkTest.AssertEqual([128], [p.GetPixel([10, 128])])
+        AhkTest.AssertEqual([], p.GetPalette())
+    } finally {
+        for image in [p, one, l] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.LinearGradient creates native 256x256 gradients", PillowTestImageLinearGradientUsesNativeGenerator)
+
 PillowTestImageFromBytesOwnsNativeCopy(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     data := PillowTestBuffer([10, 20, 30, 40, 50, 60])

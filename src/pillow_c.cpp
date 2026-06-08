@@ -32,6 +32,8 @@ constexpr int PILLOW_C_RESAMPLE_BICUBIC = 3;
 constexpr int PILLOW_C_RESAMPLE_BOX = 4;
 constexpr int PILLOW_C_RESAMPLE_HAMMING = 5;
 
+constexpr int PILLOW_C_GRADIENT_SIZE = 256;
+
 constexpr int RESAMPLE_PRECISION_BITS = 32 - 8 - 2;
 constexpr int RESAMPLE_PRECISION_SCALE = 1 << RESAMPLE_PRECISION_BITS;
 constexpr int RESAMPLE_ROUNDING_BIAS = 1 << (RESAMPLE_PRECISION_BITS - 1);
@@ -652,6 +654,31 @@ void copy_palette_if_same_mode(const PillowCImage* source, PillowCImage* target)
     if (source && target && source->mode == target->mode) {
         target->palette_rgb = source->palette_rgb;
     }
+}
+
+bool supports_linear_gradient_mode(int mode)
+{
+    return mode == PILLOW_C_MODE_1 || mode == PILLOW_C_MODE_L || mode == PILLOW_C_MODE_P;
+}
+
+int linear_gradient_image_into(int mode, PillowCImage* target)
+{
+    if (!target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!supports_linear_gradient_mode(mode)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, PILLOW_C_GRADIENT_SIZE, PILLOW_C_GRADIENT_SIZE, mode, 1)) {
+        return PILLOW_C_MISMATCH;
+    }
+
+    for (int y = 0; y < PILLOW_C_GRADIENT_SIZE; ++y) {
+        std::uint8_t* row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+        std::fill_n(row, PILLOW_C_GRADIENT_SIZE, static_cast<std::uint8_t>(y));
+    }
+    target->palette_rgb.clear();
+    return PILLOW_C_OK;
 }
 
 void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::uint8_t* dst, int target_mode)
@@ -6123,6 +6150,51 @@ extern "C" __declspec(dllexport) int pillow_c_image_create_mode(
 
     try {
         auto* image = new PillowCImage{width, height, mode, channels, stride, std::vector<std::uint8_t>(size)};
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_linear_gradient_into(
+    int mode,
+    PillowCImage* target)
+{
+    return linear_gradient_image_into(mode, target);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_linear_gradient(
+    int mode,
+    PillowCImage** out_image)
+{
+    if (!out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!supports_linear_gradient_mode(mode)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size(PILLOW_C_GRADIENT_SIZE, PILLOW_C_GRADIENT_SIZE, 1, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            PILLOW_C_GRADIENT_SIZE,
+            PILLOW_C_GRADIENT_SIZE,
+            mode,
+            1,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = linear_gradient_image_into(mode, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
         *out_image = image;
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {

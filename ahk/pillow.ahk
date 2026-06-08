@@ -1417,6 +1417,17 @@ class Pillow {
             this.Close()
         }
 
+        static LinearGradient(modeName) {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_linear_gradient",
+                "Int", Pillow.ModeId(modeName),
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static New(modeName, size, color := unset) {
             if size.Length != 2
                 throw Error("Pillow.Image.New expects size [width, height]", -1)
