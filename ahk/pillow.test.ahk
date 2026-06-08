@@ -34,6 +34,15 @@ PillowTestAssertArrayNear(expected, actual, tolerance) {
         AhkTest.AssertTrue(Abs(expectedValue - actual[index]) <= tolerance)
 }
 
+PillowTestAssertDerivedInfoCopy(source, derived, marker) {
+    AhkTest.AssertEqual("", derived.Format)
+    AhkTest.AssertEqual("ahk", derived.Info["author"])
+    derived.Info["author"] := marker
+    derived.Info["extra"] := 1
+    AhkTest.AssertEqual("ahk", source.Info["author"])
+    AhkTest.AssertTrue(!source.Info.Has("extra"))
+}
+
 PillowTestWriteFileBytes(path, values) {
     buf := PillowTestBuffer(values)
     file := FileOpen(path, "w")
@@ -324,6 +333,25 @@ PillowTestImageEffectSpreadUsesNativePath(*) {
 }
 
 AhkTest.Test("Pillow Image.EffectSpread uses native path", PillowTestImageEffectSpreadUsesNativePath)
+
+PillowTestImageEffectSpreadCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([0, 1, 2, 3]))
+    spread := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        spread := source.EffectSpread(0)
+
+        PillowTestAssertDerivedInfoCopy(source, spread, "effect_spread")
+    } finally {
+        if IsObject(spread)
+            spread.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.EffectSpread copies info metadata", PillowTestImageEffectSpreadCopiesInfoMetadata)
 
 PillowTestImageFromBytesOwnsNativeCopy(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -5202,6 +5230,31 @@ PillowTestImageTransposeUsesPillowConstants(*) {
 
 AhkTest.Test("Pillow Image.Transpose accepts Pillow transpose constants", PillowTestImageTransposeUsesPillowConstants)
 
+PillowTestImageTransposeCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    transposed := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        transposed := source.Transpose(Pillow.Transpose.FLIP_LEFT_RIGHT)
+
+        AhkTest.AssertEqual("", transposed.Format)
+        AhkTest.AssertEqual("ahk", transposed.Info["author"])
+
+        transposed.Info["author"] := "transpose"
+        transposed.Info["extra"] := 1
+        AhkTest.AssertEqual("ahk", source.Info["author"])
+        AhkTest.AssertTrue(!source.Info.Has("extra"))
+    } finally {
+        if IsObject(transposed)
+            transposed.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Transpose copies info metadata", PillowTestImageTransposeCopiesInfoMetadata)
+
 PillowTestImageOpsMirrorAndFlipUseNativeTranspose(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
@@ -5273,6 +5326,25 @@ PillowTestImageConvertRgbToLUsesNativeHandleOperation(*) {
 }
 
 AhkTest.Test("Pillow Image.Convert converts RGB to L through native handles", PillowTestImageConvertRgbToLUsesNativeHandleOperation)
+
+PillowTestImageConvertCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    converted := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        converted := source.Convert("L")
+
+        PillowTestAssertDerivedInfoCopy(source, converted, "convert")
+    } finally {
+        if IsObject(converted)
+            converted.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Convert copies info metadata", PillowTestImageConvertCopiesInfoMetadata)
 
 PillowTestImageConvertCoreModesUseNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -5470,6 +5542,25 @@ PillowTestImageConvertMatrixUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.Convert matrix uses native operation", PillowTestImageConvertMatrixUsesNativeOperation)
 
+PillowTestImageConvertMatrixCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    converted := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        converted := source.Convert("L", [0.299, 0.587, 0.114, 0])
+
+        PillowTestAssertDerivedInfoCopy(source, converted, "convert_matrix")
+    } finally {
+        if IsObject(converted)
+            converted.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Convert matrix copies info metadata", PillowTestImageConvertMatrixCopiesInfoMetadata)
+
 PillowTestImageConvertMatrixRejectsInvalidArguments(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     rgb := Pillow.Image.New("RGB", [1, 1])
@@ -5607,6 +5698,25 @@ PillowTestImageConvertToModeOneFloydSteinbergUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.Convert to mode 1 supports Floyd-Steinberg dither", PillowTestImageConvertToModeOneFloydSteinbergUsesNativeOperation)
 
+PillowTestImageConvertDitherCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 64, 128, 255]))
+    converted := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        converted := source.Convert("1", Pillow.Dither.NONE)
+
+        PillowTestAssertDerivedInfoCopy(source, converted, "convert_dither")
+    } finally {
+        if IsObject(converted)
+            converted.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Convert dither copies info metadata", PillowTestImageConvertDitherCopiesInfoMetadata)
+
 PillowTestMakeInvertLut(channelCount) {
     lut := []
     loop channelCount {
@@ -5660,6 +5770,25 @@ PillowTestImagePointUsesNativeLutOperation(*) {
 }
 
 AhkTest.Test("Pillow Image.Point applies a Pillow-style LUT through native handles", PillowTestImagePointUsesNativeLutOperation)
+
+PillowTestImagePointCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([10, 20]))
+    pointed := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        pointed := source.Point(PillowTestMakeIdentityLut(1))
+
+        PillowTestAssertDerivedInfoCopy(source, pointed, "point")
+    } finally {
+        if IsObject(pointed)
+            pointed.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Point copies info metadata", PillowTestImagePointCopiesInfoMetadata)
 
 PillowTestImagePointAcceptsCallableFunction(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -5737,6 +5866,25 @@ PillowTestImagePointSupportsTargetModeForSingleBandImages(*) {
 }
 
 AhkTest.Test("Pillow Image.Point supports target mode for single-band images", PillowTestImagePointSupportsTargetModeForSingleBandImages)
+
+PillowTestImagePointModeCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([10, 20]))
+    pointed := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        pointed := source.Point(PillowTestMakeIdentityLut(1), "P")
+
+        PillowTestAssertDerivedInfoCopy(source, pointed, "point_mode")
+    } finally {
+        if IsObject(pointed)
+            pointed.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Point mode copies info metadata", PillowTestImagePointModeCopiesInfoMetadata)
 
 PillowTestImageEvalBuildsSharedLutForAllBands(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -5886,6 +6034,25 @@ PillowTestImageGetChannelUsesNativeOperation(*) {
 }
 
 AhkTest.Test("Pillow Image.GetChannel extracts one channel through native handles", PillowTestImageGetChannelUsesNativeOperation)
+
+PillowTestImageGetChannelCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 10, 20, 30]))
+    channel := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        channel := source.GetChannel("R")
+
+        PillowTestAssertDerivedInfoCopy(source, channel, "getchannel")
+    } finally {
+        if IsObject(channel)
+            channel.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetChannel copies info metadata", PillowTestImageGetChannelCopiesInfoMetadata)
 
 PillowTestImageGetChannelSupportsLaMode(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

@@ -2977,7 +2977,7 @@ class Pillow {
                     "Int"
                 ))
             }
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         CallablePointLut(fn) {
@@ -3014,7 +3014,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         Histogram(mask := unset) {
@@ -3806,7 +3806,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         EffectSpread(distance) {
@@ -3820,7 +3820,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         Convert(modeName, matrixOrDither := unset, dither := unset) {
@@ -3847,7 +3847,7 @@ class Pillow {
                     "Ptr*", &outHandle,
                     "Int"
                 ))
-                return Pillow.WrapImageHandle(outHandle)
+                return this.WrapDerivedHandle(outHandle)
             }
             if targetMode = 5 {
                 resolvedDither := IsSet(matrixOrDither) ? matrixOrDither : (IsSet(dither) ? dither : Pillow.Dither.FLOYDSTEINBERG)
@@ -3860,7 +3860,7 @@ class Pillow {
                     "Ptr*", &outHandle,
                     "Int"
                 ))
-                return Pillow.WrapImageHandle(outHandle)
+                return this.WrapDerivedHandle(outHandle)
             }
             if IsSet(matrixOrDither) || IsSet(dither)
                 throw Error("Pillow.Image.Convert dither is currently supported only for mode 1", -1)
@@ -3872,7 +3872,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
     }
 }
