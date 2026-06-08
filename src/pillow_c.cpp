@@ -707,6 +707,76 @@ int radial_gradient_image_into(int mode, PillowCImage* target)
     return PILLOW_C_OK;
 }
 
+int effect_mandelbrot_image(int width, int height, const double* extent, int quality, PillowCImage** out_image)
+{
+    if (!extent || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    const double extent_width = extent[2] - extent[0];
+    const double extent_height = extent[3] - extent[1];
+    if (extent_width < 0.0 || extent_height < 0.0 || quality < 2) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(width, height, 1, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            width,
+            height,
+            PILLOW_C_MODE_L,
+            1,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        if (width == 0 || height == 0) {
+            *out_image = image;
+            return PILLOW_C_OK;
+        }
+
+        const double dr = extent_width / static_cast<double>(width - 1);
+        const double di = extent_height / static_cast<double>(height - 1);
+        constexpr double radius = 100.0;
+
+        for (int y = 0; y < height; ++y) {
+            std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+            for (int x = 0; x < width; ++x) {
+                double x1 = 0.0;
+                double y1 = 0.0;
+                double xi2 = 0.0;
+                double yi2 = 0.0;
+                const double cr = static_cast<double>(x) * dr + extent[0];
+                const double ci = static_cast<double>(y) * di + extent[1];
+
+                for (int k = 1;; ++k) {
+                    y1 = 2.0 * x1 * y1 + ci;
+                    x1 = xi2 - yi2 + cr;
+                    xi2 = x1 * x1;
+                    yi2 = y1 * y1;
+                    if ((xi2 + yi2) > radius) {
+                        row[x] = static_cast<std::uint8_t>(k * 255 / quality);
+                        break;
+                    }
+                    if (k > quality) {
+                        row[x] = 0;
+                        break;
+                    }
+                }
+            }
+        }
+
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::uint8_t* dst, int target_mode)
 {
     switch (target_mode) {
@@ -6271,6 +6341,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_radial_gradient(
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_effect_mandelbrot(
+    int width,
+    int height,
+    const double* extent,
+    int quality,
+    PillowCImage** out_image)
+{
+    return effect_mandelbrot_image(width, height, extent, quality, out_image);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_crop(

@@ -20,6 +20,13 @@ PillowCBufferToArray(buf) {
     return values
 }
 
+PillowCDoubleBuffer(values) {
+    buf := Buffer(values.Length * 8, 0)
+    for index, value in values
+        NumPut("Double", value, buf, (index - 1) * 8)
+    return buf
+}
+
 SumArray(values) {
     total := 0
     for value in values
@@ -191,6 +198,23 @@ PillowCImageRadialGradient(mode) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_radial_gradient",
         "Int", mode,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
+PillowCImageEffectMandelbrot(width, height, extent, quality) {
+    handle := 0
+    extentBuffer := PillowCDoubleBuffer(extent)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_effect_mandelbrot",
+        "Int", width,
+        "Int", height,
+        "Ptr", extentBuffer,
+        "Int", quality,
         "Ptr*", &handle,
         "Int"
     )
@@ -2361,6 +2385,46 @@ PillowCTestImageRadialGradientMatchesPillowCoreModes(*) {
 }
 
 AhkTest.Test("pillow_c image radial_gradient matches Pillow core modes", PillowCTestImageRadialGradientMatchesPillowCoreModes)
+
+PillowCTestImageEffectMandelbrotMatchesPillow(*) {
+    first := 0
+    second := 0
+    empty := 0
+    outHandle := 0
+    try {
+        first := PillowCImageEffectMandelbrot(4, 3, [-2.0, -1.0, 1.0, 1.0], 10)
+        second := PillowCImageEffectMandelbrot(5, 4, [-2.0, -1.25, 0.75, 1.25], 20)
+        empty := PillowCImageEffectMandelbrot(0, 1, [-2.0, -1.0, 1.0, 1.0], 10)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(first))
+        AhkTest.AssertEqual(4, PillowCImageInt(first, "pillow_c_image_width"))
+        AhkTest.AssertEqual(3, PillowCImageInt(first, "pillow_c_image_height"))
+        AhkTest.AssertEqual([76, 102, 0, 102, 0, 0, 0, 102, 76, 102, 0, 102], PillowCImageToArray(first, 12))
+        AhkTest.AssertEqual([38, 51, 51, 63, 51, 51, 102, 0, 0, 63, 51, 102, 0, 0, 63, 38, 51, 51, 63, 51], PillowCImageToArray(second, 20))
+        AhkTest.AssertEqual(0, PillowCImageInt(empty, "pillow_c_image_width"))
+        AhkTest.AssertEqual(1, PillowCImageInt(empty, "pillow_c_image_height"))
+        AhkTest.AssertEqual([], PillowCImageToArray(empty, 0))
+
+        badExtent := PillowCDoubleBuffer([1.0, 0.0, -1.0, 1.0])
+        status := DllCall(PillowCDllPath() "\pillow_c_image_effect_mandelbrot", "Int", 2, "Int", 2, "Ptr", badExtent, "Int", 10, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        goodExtent := PillowCDoubleBuffer([-1.0, 0.0, 1.0, 1.0])
+        status := DllCall(PillowCDllPath() "\pillow_c_image_effect_mandelbrot", "Int", 2, "Int", 2, "Ptr", goodExtent, "Int", 1, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        for image in [empty, second, first] {
+            if image
+                PillowCFreeImage(image)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image effect_mandelbrot matches Pillow", PillowCTestImageEffectMandelbrotMatchesPillow)
 
 PillowCTestImageCopyIsIndependent(*) {
     source := PillowCCreateImage(2, 1, 3)

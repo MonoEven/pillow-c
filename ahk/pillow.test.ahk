@@ -145,6 +145,38 @@ PillowTestImageRadialGradientUsesNativeGenerator(*) {
 
 AhkTest.Test("Pillow Image.RadialGradient creates native 256x256 gradients", PillowTestImageRadialGradientUsesNativeGenerator)
 
+PillowTestImageEffectMandelbrotUsesNativeGenerator(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := 0
+    empty := 0
+    try {
+        image := Pillow.Image.EffectMandelbrot([4, 3], [-2.0, -1.0, 1.0, 1.0], 10)
+        empty := Pillow.Image.EffectMandelbrot([0, 1], [-2.0, -1.0, 1.0, 1.0], 10)
+
+        AhkTest.AssertEqual("L", image.Mode)
+        AhkTest.AssertEqual([4, 3], image.Size)
+        AhkTest.AssertEqual([76, 102, 0, 102, 0, 0, 0, 102, 76, 102, 0, 102], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertEqual("L", empty.Mode)
+        AhkTest.AssertEqual([0, 1], empty.Size)
+        AhkTest.AssertEqual([], PillowTestBufferToArray(empty.ToBytes()))
+
+        errorWasRaised := false
+        try {
+            Pillow.Image.EffectMandelbrot([2, 2], [1.0, 0.0, -1.0, 1.0], 10)
+        } catch Error as err {
+            errorWasRaised := InStr(err.Message, "invalid argument") > 0
+        }
+        AhkTest.AssertTrue(errorWasRaised)
+    } finally {
+        for item in [empty, image] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.EffectMandelbrot creates native L images", PillowTestImageEffectMandelbrotUsesNativeGenerator)
+
 PillowTestImageFromBytesOwnsNativeCopy(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     data := PillowTestBuffer([10, 20, 30, 40, 50, 60])

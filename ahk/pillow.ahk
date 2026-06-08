@@ -1439,6 +1439,34 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static EffectMandelbrot(size, extent, quality) {
+            if !IsObject(size) || size.Length != 2
+                throw Error("Pillow.Image.EffectMandelbrot expects size [width, height]", -1)
+            if !IsObject(extent) || extent.Length != 4
+                throw Error("Pillow.Image.EffectMandelbrot expects extent [x0, y0, x1, y1]", -1)
+            if !(quality is Integer)
+                throw Error("Pillow.Image.EffectMandelbrot quality must be an integer", -1)
+
+            extentBuffer := Buffer(4 * 8, 0)
+            for index, value in extent {
+                if !(value is Number)
+                    throw Error("Pillow.Image.EffectMandelbrot extent values must be numeric", -1)
+                NumPut("Double", value, extentBuffer, (index - 1) * 8)
+            }
+
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_effect_mandelbrot",
+                "Int", size[1],
+                "Int", size[2],
+                "Ptr", extentBuffer,
+                "Int", quality,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
         static New(modeName, size, color := unset) {
             if size.Length != 2
                 throw Error("Pillow.Image.New expects size [width, height]", -1)
