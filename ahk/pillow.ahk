@@ -330,6 +330,13 @@ class Pillow {
                     NumPut("UChar", image.ModeAwareU8(fill[1]), buf, 0)
                     return buf
                 }
+                if channels = 2 {
+                    if fill.Length != 1 && fill.Length != 2
+                        throw Error("Pillow.ImageOps." operationName " fill must match image mode", -1)
+                    NumPut("UChar", fill[1], buf, 0)
+                    NumPut("UChar", fill.Length = 2 ? fill[2] : 0, buf, 1)
+                    return buf
+                }
                 if channels = 3 {
                     if fill.Length != 3 && fill.Length != 4
                         throw Error("Pillow.ImageOps." operationName " fill must match image mode", -1)

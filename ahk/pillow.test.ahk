@@ -4223,6 +4223,50 @@ PillowTestImageOpsExpandUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow ImageOps.Expand adds filled borders through native handles", PillowTestImageOpsExpandUsesNativeOperation)
 
+PillowTestImageOpsExpandSupportsLaFillColors(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("LA", [2, 2], PillowTestBuffer([10, 0, 80, 64, 160, 128, 250, 255]))
+    scalar := 0
+    tuple1 := 0
+    tuple2 := 0
+    try {
+        scalar := Pillow.ImageOps.Expand(source, 1, 9)
+        tuple1 := Pillow.ImageOps.Expand(source, 1, [9])
+        tuple2 := Pillow.ImageOps.Expand(source, 1, [9, 17])
+
+        AhkTest.AssertEqual("LA", tuple2.Mode)
+        AhkTest.AssertEqual([4, 4], tuple2.Size)
+        AhkTest.AssertEqual([
+            9, 0, 9, 0, 9, 0, 9, 0,
+            9, 0, 10, 0, 80, 64, 9, 0,
+            9, 0, 160, 128, 250, 255, 9, 0,
+            9, 0, 9, 0, 9, 0, 9, 0,
+        ], PillowTestBufferToArray(scalar.ToBytes()))
+        AhkTest.AssertEqual(PillowTestBufferToArray(scalar.ToBytes()), PillowTestBufferToArray(tuple1.ToBytes()))
+        AhkTest.AssertEqual([
+            9, 17, 9, 17, 9, 17, 9, 17,
+            9, 17, 10, 0, 80, 64, 9, 17,
+            9, 17, 160, 128, 250, 255, 9, 17,
+            9, 17, 9, 17, 9, 17, 9, 17,
+        ], PillowTestBufferToArray(tuple2.ToBytes()))
+
+        try {
+            Pillow.ImageOps.Expand(source, 1, [9, 17, 99])
+            AhkTest.Fail("Expected LA fill to reject a three-item tuple")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "fill") > 0)
+        }
+    } finally {
+        for image in [tuple2, tuple1, scalar] {
+            if IsObject(image)
+                image.Close()
+        }
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Expand supports LA fill colors", PillowTestImageOpsExpandSupportsLaFillColors)
+
 PillowTestImageOpsExpandParsesBorderAndFillLikePillow(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
