@@ -388,6 +388,82 @@ PillowTestImageOpenSavePngRejectsUnsupportedInputs(*) {
 
 AhkTest.Test("Pillow Image.Open and Save PNG reject unsupported inputs", PillowTestImageOpenSavePngRejectsUnsupportedInputs)
 
+PillowTestImageOpenPngPreservesLaAndPaletteModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    laPath := PillowTestTempPngPath("open-la")
+    pPath := PillowTestTempPngPath("open-p")
+    la := 0
+    p := 0
+    try {
+        PillowTestWriteFileBytes(laPath, [
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 2, 0, 0, 0, 2, 8, 4, 0, 0, 0, 216, 191, 197, 175,
+            0, 0, 0, 18, 73, 68, 65, 84, 120, 156, 99, 228, 18, 17, 17,
+            97, 209, 208, 16, 17, 1, 0, 3, 122, 0, 196, 80, 243, 202, 125,
+            0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+        PillowTestWriteFileBytes(pPath, [
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 2, 0, 0, 0, 2, 2, 3, 0, 0, 0, 15, 216, 229, 183,
+            0, 0, 0, 12, 80, 76, 84, 69, 10, 20, 30, 40, 50, 60, 70,
+            80, 90, 100, 110, 120, 198, 72, 119, 223, 0, 0, 0, 12, 73,
+            68, 65, 84, 120, 156, 99, 16, 96, 216, 0, 0, 0, 228, 0, 193,
+            39, 168, 232, 87, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+
+        la := Pillow.Image.Open(laPath, ["PNG"])
+        p := Pillow.Image.Open(pPath, ["PNG"])
+
+        AhkTest.AssertEqual("LA", la.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80], PillowTestBufferToArray(la.ToBytes()))
+        AhkTest.AssertEqual("P", p.Mode)
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowTestBufferToArray(p.ToBytes()))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120], p.GetPalette())
+    } finally {
+        for image in [p, la] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [pPath, laPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open PNG preserves LA and P modes", PillowTestImageOpenPngPreservesLaAndPaletteModes)
+
+PillowTestImageSavePngPreservesLaAndPaletteModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    la := Pillow.Image.FromBytes("LA", [2, 2], PillowTestBuffer([10, 20, 30, 40, 50, 60, 70, 80]))
+    p := Pillow.Image.FromBytes("P", [2, 2], PillowTestBuffer([0, 1, 2, 3]))
+    palette := [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
+    laPath := PillowTestTempPngPath("save-la")
+    pPath := PillowTestTempPngPath("save-p")
+    laLoaded := 0
+    pLoaded := 0
+    try {
+        p.PutPalette(palette)
+        la.Save(laPath, "PNG")
+        p.Save(pPath, "PNG")
+        laLoaded := Pillow.Image.Open(laPath)
+        pLoaded := Pillow.Image.Open(pPath)
+
+        AhkTest.AssertEqual("LA", laLoaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80], PillowTestBufferToArray(laLoaded.ToBytes()))
+        AhkTest.AssertEqual("P", pLoaded.Mode)
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowTestBufferToArray(pLoaded.ToBytes()))
+        AhkTest.AssertEqual(palette, pLoaded.GetPalette())
+    } finally {
+        for image in [pLoaded, laLoaded, p, la] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [pPath, laPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG preserves LA and P modes", PillowTestImageSavePngPreservesLaAndPaletteModes)
+
 PillowTestImageCmykFoundationUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer([0, 10, 20, 30, 255, 128, 64, 0]))

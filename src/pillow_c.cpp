@@ -783,6 +783,14 @@ std::int32_t read_le_i32(const std::uint8_t* data)
     return static_cast<std::int32_t>(read_le32(data));
 }
 
+std::uint32_t read_be32(const std::uint8_t* data)
+{
+    return (static_cast<std::uint32_t>(data[0]) << 24) |
+           (static_cast<std::uint32_t>(data[1]) << 16) |
+           (static_cast<std::uint32_t>(data[2]) << 8) |
+           static_cast<std::uint32_t>(data[3]);
+}
+
 void append_le16(std::vector<std::uint8_t>& out, std::uint16_t value)
 {
     out.push_back(static_cast<std::uint8_t>(value & 0xffu));
@@ -795,6 +803,14 @@ void append_le32(std::vector<std::uint8_t>& out, std::uint32_t value)
     out.push_back(static_cast<std::uint8_t>((value >> 8) & 0xffu));
     out.push_back(static_cast<std::uint8_t>((value >> 16) & 0xffu));
     out.push_back(static_cast<std::uint8_t>((value >> 24) & 0xffu));
+}
+
+void append_be32(std::vector<std::uint8_t>& out, std::uint32_t value)
+{
+    out.push_back(static_cast<std::uint8_t>((value >> 24) & 0xffu));
+    out.push_back(static_cast<std::uint8_t>((value >> 16) & 0xffu));
+    out.push_back(static_cast<std::uint8_t>((value >> 8) & 0xffu));
+    out.push_back(static_cast<std::uint8_t>(value & 0xffu));
 }
 
 bool utf8_path_to_wide(const char* path, std::vector<wchar_t>* out)
@@ -851,6 +867,37 @@ bool read_binary_file(const char* path, std::vector<std::uint8_t>* out)
         }
     }
     std::fclose(file);
+    return true;
+}
+
+struct PngHeaderInfo {
+    int bit_depth;
+    int color_type;
+};
+
+bool read_png_header_info(const char* path, PngHeaderInfo* info)
+{
+    if (!path || !info) {
+        return false;
+    }
+    std::vector<wchar_t> wide_path;
+    if (!utf8_path_to_wide(path, &wide_path)) {
+        return false;
+    }
+    std::FILE* file = nullptr;
+    if (_wfopen_s(&file, wide_path.data(), L"rb") != 0 || !file) {
+        return false;
+    }
+    std::uint8_t header[33] = {};
+    const std::size_t read_count = std::fread(header, 1, sizeof(header), file);
+    std::fclose(file);
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (read_count != sizeof(header) || std::memcmp(header, signature, sizeof(signature)) != 0 ||
+        read_be32(header + 8) != 13u || std::memcmp(header + 12, "IHDR", 4) != 0) {
+        return false;
+    }
+    info->bit_depth = header[24];
+    info->color_type = header[25];
     return true;
 }
 
@@ -1174,6 +1221,41 @@ int wic_format_to_mode(const WICPixelFormatGUID& format, int* mode, int* channel
     return PILLOW_C_OK;
 }
 
+int copy_wic_palette_rgb(IWICBitmapSource* source, IWICImagingFactory* factory, std::vector<std::uint8_t>* out_palette)
+{
+    if (!source || !factory || !out_palette) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    ComPtr<IWICPalette> palette;
+    HRESULT hr = factory->CreatePalette(palette.put());
+    if (FAILED(hr)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    hr = source->CopyPalette(palette.get());
+    if (FAILED(hr)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    UINT count = 0;
+    hr = palette->GetColorCount(&count);
+    if (FAILED(hr) || count == 0 || count > 256u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<WICColor> colors(count);
+    UINT actual = 0;
+    hr = palette->GetColors(count, colors.data(), &actual);
+    if (FAILED(hr) || actual == 0 || actual > 256u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    out_palette->assign(static_cast<std::size_t>(actual) * 3u, std::uint8_t{0});
+    for (UINT i = 0; i < actual; ++i) {
+        const WICColor color = colors[i];
+        (*out_palette)[static_cast<std::size_t>(i) * 3u + 0u] = static_cast<std::uint8_t>((color >> 16) & 0xffu);
+        (*out_palette)[static_cast<std::size_t>(i) * 3u + 1u] = static_cast<std::uint8_t>((color >> 8) & 0xffu);
+        (*out_palette)[static_cast<std::size_t>(i) * 3u + 2u] = static_cast<std::uint8_t>(color & 0xffu);
+    }
+    return PILLOW_C_OK;
+}
+
 int open_png_image(const char* path, PillowCImage** out_image)
 {
     if (!path || !out_image) {
@@ -1184,6 +1266,10 @@ int open_png_image(const char* path, PillowCImage** out_image)
     try {
         std::vector<wchar_t> wide_path;
         if (!utf8_path_to_wide(path, &wide_path)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        PngHeaderInfo header_info = {};
+        if (!read_png_header_info(path, &header_info)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
         ComInitScope com;
@@ -1236,16 +1322,50 @@ int open_png_image(const char* path, PillowCImage** out_image)
         }
         int mode = 0;
         int channels = 0;
+        int decoded_channels = 0;
         WICPixelFormatGUID target_format = {};
-        status = wic_format_to_mode(source_format, &mode, &channels, &target_format);
-        if (status != PILLOW_C_OK) {
-            return status;
+        if (header_info.color_type == 4 && header_info.bit_depth == 8) {
+            mode = PILLOW_C_MODE_LA;
+            channels = 2;
+            decoded_channels = 4;
+            target_format = GUID_WICPixelFormat32bppRGBA;
+        } else if (header_info.color_type == 3 && header_info.bit_depth <= 8) {
+            mode = PILLOW_C_MODE_P;
+            channels = 1;
+            decoded_channels = 1;
+            target_format = GUID_WICPixelFormat8bppIndexed;
+        } else {
+            status = wic_format_to_mode(source_format, &mode, &channels, &target_format);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            decoded_channels = channels;
         }
 
         std::size_t stride = 0;
         std::size_t size = 0;
         if (!checked_image_size(width, height, channels, &stride, &size)) {
             return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::size_t decoded_stride = 0;
+        std::size_t decoded_size = 0;
+        if (!checked_image_size(width, height, decoded_channels, &decoded_stride, &decoded_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::vector<std::uint8_t> palette_rgb;
+        ComPtr<IWICPalette> source_palette;
+        IWICPalette* converter_palette = nullptr;
+        if (mode == PILLOW_C_MODE_P) {
+            status = copy_wic_palette_rgb(frame.get(), factory.get(), &palette_rgb);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            HRESULT palette_hr = factory->CreatePalette(source_palette.put());
+            if (FAILED(palette_hr) || FAILED(frame->CopyPalette(source_palette.get()))) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            converter_palette = source_palette.get();
         }
 
         ComPtr<IWICBitmapSource> source;
@@ -1262,9 +1382,9 @@ int open_png_image(const char* path, PillowCImage** out_image)
                 frame.get(),
                 target_format,
                 WICBitmapDitherTypeNone,
-                nullptr,
+                converter_palette,
                 0.0,
-                WICBitmapPaletteTypeMedianCut);
+                mode == PILLOW_C_MODE_P ? WICBitmapPaletteTypeCustom : WICBitmapPaletteTypeMedianCut);
             if (FAILED(hr)) {
                 return PILLOW_C_INVALID_ARGUMENT;
             }
@@ -1279,14 +1399,39 @@ int open_png_image(const char* path, PillowCImage** out_image)
             channels,
             stride,
             std::vector<std::uint8_t>(size)};
+        std::vector<std::uint8_t> decoded;
+        std::uint8_t* copy_target = image->pixels.data();
+        UINT copy_stride = static_cast<UINT>(stride);
+        UINT copy_size = static_cast<UINT>(image->pixels.size());
+        if (decoded_channels != channels) {
+            decoded.assign(decoded_size, std::uint8_t{0});
+            copy_target = decoded.data();
+            copy_stride = static_cast<UINT>(decoded_stride);
+            copy_size = static_cast<UINT>(decoded.size());
+        }
         hr = source->CopyPixels(
             nullptr,
-            static_cast<UINT>(stride),
-            static_cast<UINT>(image->pixels.size()),
-            image->pixels.data());
+            copy_stride,
+            copy_size,
+            copy_target);
         if (FAILED(hr)) {
             delete image;
             return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (mode == PILLOW_C_MODE_LA) {
+            for (int y = 0; y < height; ++y) {
+                const std::uint8_t* src_row = decoded.data() + static_cast<std::size_t>(y) * decoded_stride;
+                std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+                for (int x = 0; x < width; ++x) {
+                    const std::size_t src = static_cast<std::size_t>(x) * 4u;
+                    const std::size_t dst = static_cast<std::size_t>(x) * 2u;
+                    dst_row[dst + 0u] = src_row[src + 0u];
+                    dst_row[dst + 1u] = src_row[src + 3u];
+                }
+            }
+        }
+        if (mode == PILLOW_C_MODE_P) {
+            image->palette_rgb = std::move(palette_rgb);
         }
         *out_image = image;
         return PILLOW_C_OK;
@@ -1315,6 +1460,135 @@ int png_mode_format(const PillowCImage* image, WICPixelFormatGUID* format)
     return PILLOW_C_INVALID_ARGUMENT;
 }
 
+std::uint32_t crc32_bytes(const std::uint8_t* data, std::size_t size)
+{
+    std::uint32_t crc = 0xffffffffu;
+    for (std::size_t i = 0; i < size; ++i) {
+        crc ^= data[i];
+        for (int bit = 0; bit < 8; ++bit) {
+            const std::uint32_t mask = 0u - (crc & 1u);
+            crc = (crc >> 1) ^ (0xedb88320u & mask);
+        }
+    }
+    return crc ^ 0xffffffffu;
+}
+
+std::uint32_t adler32_bytes(const std::uint8_t* data, std::size_t size)
+{
+    constexpr std::uint32_t mod = 65521u;
+    std::uint32_t a = 1u;
+    std::uint32_t b = 0u;
+    for (std::size_t i = 0; i < size; ++i) {
+        a = (a + data[i]) % mod;
+        b = (b + a) % mod;
+    }
+    return (b << 16) | a;
+}
+
+void append_png_chunk(std::vector<std::uint8_t>& out, const char type[4], const std::vector<std::uint8_t>& data)
+{
+    append_be32(out, static_cast<std::uint32_t>(data.size()));
+    const std::size_t type_offset = out.size();
+    out.push_back(static_cast<std::uint8_t>(type[0]));
+    out.push_back(static_cast<std::uint8_t>(type[1]));
+    out.push_back(static_cast<std::uint8_t>(type[2]));
+    out.push_back(static_cast<std::uint8_t>(type[3]));
+    out.insert(out.end(), data.begin(), data.end());
+    append_be32(out, crc32_bytes(out.data() + type_offset, out.size() - type_offset));
+}
+
+int append_zlib_stored(std::vector<std::uint8_t>& out, const std::vector<std::uint8_t>& raw)
+{
+    out.push_back(0x78u);
+    out.push_back(0x01u);
+    std::size_t offset = 0;
+    do {
+        const std::size_t remaining = raw.size() - offset;
+        const std::uint16_t block_size = static_cast<std::uint16_t>(std::min<std::size_t>(remaining, 65535u));
+        const bool final_block = offset + block_size == raw.size();
+        out.push_back(final_block ? 0x01u : 0x00u);
+        append_le16(out, block_size);
+        append_le16(out, static_cast<std::uint16_t>(~block_size));
+        out.insert(out.end(), raw.begin() + static_cast<std::ptrdiff_t>(offset), raw.begin() + static_cast<std::ptrdiff_t>(offset + block_size));
+        offset += block_size;
+    } while (offset < raw.size());
+    append_be32(out, adler32_bytes(raw.empty() ? nullptr : raw.data(), raw.size()));
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image(const PillowCImage* image, const char* path)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!((image->mode == PILLOW_C_MODE_LA && image->channels == 2) ||
+          (image->mode == PILLOW_C_MODE_P && image->channels == 1))) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const int payload_channels = image->mode == PILLOW_C_MODE_LA ? 2 : 1;
+    if (image->width > (std::numeric_limits<int>::max() - 1) / payload_channels) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t raw_stride = 1u + static_cast<std::size_t>(image->width) * static_cast<std::size_t>(payload_channels);
+    if (image->height > 0 && raw_stride > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(image->height)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t raw_size = raw_stride * static_cast<std::size_t>(image->height);
+
+    try {
+        std::vector<std::uint8_t> raw(raw_size, std::uint8_t{0});
+        for (int y = 0; y < image->height; ++y) {
+            std::uint8_t* dst = raw.data() + static_cast<std::size_t>(y) * raw_stride;
+            const std::uint8_t* src = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+            dst[0] = 0;
+            std::memcpy(dst + 1, src, static_cast<std::size_t>(image->width) * static_cast<std::size_t>(payload_channels));
+        }
+
+        std::vector<std::uint8_t> png;
+        static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+        png.insert(png.end(), signature, signature + 8);
+
+        std::vector<std::uint8_t> ihdr;
+        append_be32(ihdr, static_cast<std::uint32_t>(image->width));
+        append_be32(ihdr, static_cast<std::uint32_t>(image->height));
+        ihdr.push_back(8);
+        ihdr.push_back(image->mode == PILLOW_C_MODE_LA ? 4 : 3);
+        ihdr.push_back(0);
+        ihdr.push_back(0);
+        ihdr.push_back(0);
+        append_png_chunk(png, "IHDR", ihdr);
+
+        if (image->mode == PILLOW_C_MODE_P) {
+            std::vector<std::uint8_t> plte = image->palette_rgb;
+            if (plte.empty()) {
+                plte.assign(3u, std::uint8_t{0});
+            }
+            if (plte.size() % 3u != 0u || plte.size() > 256u * 3u) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            append_png_chunk(png, "PLTE", plte);
+        }
+
+        std::vector<std::uint8_t> zlib;
+        append_zlib_stored(zlib, raw);
+        append_png_chunk(png, "IDAT", zlib);
+
+        std::vector<std::uint8_t> empty;
+        append_png_chunk(png, "IEND", empty);
+
+        if (!write_binary_file(path, png)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 int save_png_image(const PillowCImage* image, const char* path)
 {
     if (!image || !path) {
@@ -1322,6 +1596,9 @@ int save_png_image(const PillowCImage* image, const char* path)
     }
     if (image->width <= 0 || image->height <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->mode == PILLOW_C_MODE_LA || image->mode == PILLOW_C_MODE_P) {
+        return save_png_custom_image(image, path);
     }
 
     WICPixelFormatGUID format = {};

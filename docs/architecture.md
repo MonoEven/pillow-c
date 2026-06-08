@@ -153,7 +153,7 @@ Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes, including v
 
 `Image.frombytes` and `Image.tobytes` keep raw byte import/export in the DLL for common interop layouts such as mode `1` bit-packed rows, direct `CMYK`, BGR, BGRA, ARGB, ABGR, RGBX, BGRX, and bottom-up stride-based source rows. Mode `1` stays unpacked as one byte per pixel inside the native handle for fast bulk operations and memory sharing, while facade `ToBytes()` returns Pillow's bit-packed external representation.
 
-`Image.open` and `image.save` expose native file-format paths for BMP and PNG. The BMP layer parses and writes uncompressed Windows BMP files, including Pillow-compatible 24-bit RGB save bytes, 8-bit grayscale BMP, and Pillow-style 32-bit RGBA BMP saves that reopen as RGB. The PNG layer uses the Windows Imaging Component inside the DLL for `L`, `RGB`, and `RGBA`, keeping decode/encode work out of AHK.
+`Image.open` and `image.save` expose native file-format paths for BMP and PNG. The BMP layer parses and writes uncompressed Windows BMP files, including Pillow-compatible 24-bit RGB save bytes, 8-bit grayscale BMP, and Pillow-style 32-bit RGBA BMP saves that reopen as RGB. The PNG layer keeps `L`, `LA`, `P`, `RGB`, and `RGBA` decode/encode work inside the DLL; WIC handles the common codec path while native chunk writing preserves Pillow-style `LA` and palette-mode PNG semantics.
 
 `Image.getdata` and `Image.putdata` expose Pillow-like pixel sequence ergonomics while keeping the native handle as the storage authority. `GetData` exports a bulk byte snapshot, and `PutData` packs AHK values once before calling the native `put_data` prefix-writer instead of crossing the DLL boundary per pixel.
 

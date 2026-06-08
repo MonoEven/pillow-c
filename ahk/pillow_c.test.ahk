@@ -2874,6 +2874,82 @@ PillowCTestImageSavePngRoundTripsCoreModes(*) {
 
 AhkTest.Test("pillow_c image save_png round-trips core modes", PillowCTestImageSavePngRoundTripsCoreModes)
 
+PillowCTestImageOpenPngReadsPillowLaAndPaletteModes(*) {
+    laPath := PillowCTempPngPath("open-la")
+    pPath := PillowCTempPngPath("open-p")
+    la := 0
+    p := 0
+    try {
+        PillowCWriteFileBytes(laPath, [
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 2, 0, 0, 0, 2, 8, 4, 0, 0, 0, 216, 191, 197, 175,
+            0, 0, 0, 18, 73, 68, 65, 84, 120, 156, 99, 228, 18, 17, 17,
+            97, 209, 208, 16, 17, 1, 0, 3, 122, 0, 196, 80, 243, 202, 125,
+            0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+        PillowCWriteFileBytes(pPath, [
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 2, 0, 0, 0, 2, 2, 3, 0, 0, 0, 15, 216, 229, 183,
+            0, 0, 0, 12, 80, 76, 84, 69, 10, 20, 30, 40, 50, 60, 70,
+            80, 90, 100, 110, 120, 198, 72, 119, 223, 0, 0, 0, 12, 73,
+            68, 65, 84, 120, 156, 99, 16, 96, 216, 0, 0, 0, 228, 0, 193,
+            39, 168, 232, 87, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+
+        la := PillowCImageOpenPng(laPath)
+        p := PillowCImageOpenPng(pPath)
+
+        AhkTest.AssertEqual(2, PillowCImageMode(la))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80], PillowCImageToArray(la, 8))
+        AhkTest.AssertEqual(6, PillowCImageMode(p))
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowCImageToArray(p, 4))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120], PillowCImageGetPaletteRgb(p))
+    } finally {
+        for handle in [p, la] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        for path in [pPath, laPath]
+            PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_png reads Pillow LA and P modes", PillowCTestImageOpenPngReadsPillowLaAndPaletteModes)
+
+PillowCTestImageSavePngRoundTripsLaAndPaletteModes(*) {
+    la := PillowCCreateImageMode(2, 2, 2)
+    p := PillowCCreateImageMode(2, 2, 6)
+    laPath := PillowCTempPngPath("save-la")
+    pPath := PillowCTempPngPath("save-p")
+    laLoaded := 0
+    pLoaded := 0
+    try {
+        PillowCImageSetBytes(la, [10, 20, 30, 40, 50, 60, 70, 80])
+        PillowCImageSetBytes(p, [0, 1, 2, 3])
+        PillowCImagePutPaletteRgb(p, [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120])
+
+        PillowCImageSavePng(la, laPath)
+        PillowCImageSavePng(p, pPath)
+        laLoaded := PillowCImageOpenPng(laPath)
+        pLoaded := PillowCImageOpenPng(pPath)
+
+        AhkTest.AssertEqual(2, PillowCImageMode(laLoaded))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80], PillowCImageToArray(laLoaded, 8))
+        AhkTest.AssertEqual(6, PillowCImageMode(pLoaded))
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowCImageToArray(pLoaded, 4))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120], PillowCImageGetPaletteRgb(pLoaded))
+    } finally {
+        for handle in [pLoaded, laLoaded, p, la] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        for path in [pPath, laPath]
+            PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_png round-trips LA and P modes", PillowCTestImageSavePngRoundTripsLaAndPaletteModes)
+
 PillowCTestImagePngRejectsUnsupportedModesAndInvalidFiles(*) {
     cmyk := PillowCCreateImageMode(1, 1, 7)
     badPath := PillowCTempPngPath("bad")
