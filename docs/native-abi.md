@@ -35,7 +35,7 @@ Mode `1` uses one unpacked byte per pixel internally for native operations and d
 
 Mode `P` uses one palette index byte per pixel internally. RGB palette metadata lives on the image handle and is exposed through `pillow_c_image_put_palette_rgb` and `pillow_c_image_get_palette_rgb`. Same-mode pixel-copy, point/LUT, reorder, expand, offset, resize, transform, and rotate paths preserve that palette so later conversion still resolves indexes like Pillow.
 
-Mode `CMYK` uses four direct channel bytes per pixel. The current verified CMYK foundation covers mode mapping, raw byte import/export, getdata/putdata facade packing, getpixel/putpixel, copy, and `ImageChops.invert`.
+Mode `CMYK` uses four direct channel bytes per pixel. The current verified CMYK foundation covers mode mapping, raw byte import/export, getdata/putdata facade packing, getpixel/putpixel, copy, `ImageChops.invert`, and non-logical `ImageChops` binary operations.
 
 ## Export Groups
 
@@ -231,6 +231,8 @@ Reusable target operations:
 `pillow_c_image_effect_mandelbrot` implements Pillow's `Image.effect_mandelbrot(size, extent, quality)` generator and returns a mode `L` image. It accepts non-empty or empty dimensions through the same native handle model, rejects reversed extents and `quality < 2` with `-3`, and otherwise uses Pillow's escape-time formula for deterministic byte output.
 
 `pillow_c_image_logical_and`, `pillow_c_image_logical_or`, `pillow_c_image_logical_xor`, and their `_into` variants implement Pillow `ImageChops.logical_*` for mode `1` images only. They return `-3` for other modes, use overlapping output dimensions for mismatched sizes, and allow empty width or height outputs.
+
+The non-logical `ImageChops` binary operations (`difference`, `multiply`, `screen`, `lighter`, `darker`, `soft_light`, `hard_light`, `overlay`, `add`, `subtract`, `add_modulo`, and `subtract_modulo`) use the same overlapping-output rule and operate channel-generically on matching source modes. The current verified modes are `L`, `LA`, `RGB`, `RGBA`, and `CMYK`.
 
 `pillow_c_image_invert` and `pillow_c_image_invert_into` implement `ImageOps.invert` for modes `1`, `L`, and `RGB`. `pillow_c_image_posterize` and `pillow_c_image_solarize`, plus their `_into` variants, follow Pillow's `_lut` boundary for modes `L` and `RGB`; mode `1`, `LA`, and `RGBA` return `-3`.
 

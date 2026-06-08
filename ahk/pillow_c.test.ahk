@@ -4150,6 +4150,108 @@ PillowCTestImageModuloOpsRejectModeMismatch(*) {
 
 AhkTest.Test("pillow_c image modulo ops reject mode mismatch", PillowCTestImageModuloOpsRejectModeMismatch)
 
+PillowCTestImageChopsBinaryOpsMatchPillowLaAndCmyk(*) {
+    la1 := PillowCCreateImageMode(2, 1, 2)
+    la2 := PillowCCreateImageMode(2, 1, 2)
+    cmyk1 := PillowCCreateImageMode(2, 1, 7)
+    cmyk2 := PillowCCreateImageMode(2, 1, 7)
+    laDiff := 0
+    laMultiply := 0
+    laScreen := 0
+    laLight := 0
+    laDark := 0
+    laAdd := 0
+    laSub := 0
+    laAddModulo := 0
+    laSubModulo := 0
+    laSoft := 0
+    laHard := 0
+    laOverlay := 0
+    cmykDiff := 0
+    cmykMultiply := 0
+    cmykScreen := 0
+    cmykLight := 0
+    cmykDark := 0
+    cmykAdd := 0
+    cmykSub := 0
+    cmykAddModulo := 0
+    cmykSubModulo := 0
+    cmykSoft := 0
+    cmykHard := 0
+    cmykOverlay := 0
+    try {
+        PillowCImageSetBytes(la1, [10, 20, 200, 220])
+        PillowCImageSetBytes(la2, [30, 40, 150, 160])
+        PillowCImageSetBytes(cmyk1, [10, 20, 30, 40, 200, 210, 220, 230])
+        PillowCImageSetBytes(cmyk2, [30, 40, 50, 60, 150, 160, 170, 180])
+
+        laDiff := PillowCImageDifference(la1, la2)
+        laMultiply := PillowCImageMultiply(la1, la2)
+        laScreen := PillowCImageScreen(la1, la2)
+        laLight := PillowCImageLighter(la1, la2)
+        laDark := PillowCImageDarker(la1, la2)
+        laAdd := PillowCImageAdd(la1, la2)
+        laSub := PillowCImageSubtract(la1, la2)
+        laAddModulo := PillowCImageAddModulo(la1, la2)
+        laSubModulo := PillowCImageSubtractModulo(la1, la2)
+        laSoft := PillowCImageSoftLight(la1, la2)
+        laHard := PillowCImageHardLight(la1, la2)
+        laOverlay := PillowCImageOverlay(la1, la2)
+        cmykDiff := PillowCImageDifference(cmyk1, cmyk2)
+        cmykMultiply := PillowCImageMultiply(cmyk1, cmyk2)
+        cmykScreen := PillowCImageScreen(cmyk1, cmyk2)
+        cmykLight := PillowCImageLighter(cmyk1, cmyk2)
+        cmykDark := PillowCImageDarker(cmyk1, cmyk2)
+        cmykAdd := PillowCImageAdd(cmyk1, cmyk2)
+        cmykSub := PillowCImageSubtract(cmyk1, cmyk2)
+        cmykAddModulo := PillowCImageAddModulo(cmyk1, cmyk2)
+        cmykSubModulo := PillowCImageSubtractModulo(cmyk1, cmyk2)
+        cmykSoft := PillowCImageSoftLight(cmyk1, cmyk2)
+        cmykHard := PillowCImageHardLight(cmyk1, cmyk2)
+        cmykOverlay := PillowCImageOverlay(cmyk1, cmyk2)
+
+        AhkTest.AssertEqual(2, PillowCImageMode(laDiff))
+        AhkTest.AssertEqual([20, 20, 50, 60], PillowCImageToArray(laDiff, 4))
+        AhkTest.AssertEqual([1, 3, 117, 138], PillowCImageToArray(laMultiply, 4))
+        AhkTest.AssertEqual([39, 57, 233, 242], PillowCImageToArray(laScreen, 4))
+        AhkTest.AssertEqual([30, 40, 200, 220], PillowCImageToArray(laLight, 4))
+        AhkTest.AssertEqual([10, 20, 150, 160], PillowCImageToArray(laDark, 4))
+        AhkTest.AssertEqual([40, 60, 255, 255], PillowCImageToArray(laAdd, 4))
+        AhkTest.AssertEqual([0, 0, 50, 60], PillowCImageToArray(laSub, 4))
+        AhkTest.AssertEqual([40, 60, 94, 124], PillowCImageToArray(laAddModulo, 4))
+        AhkTest.AssertEqual([236, 236, 50, 60], PillowCImageToArray(laSubModulo, 4))
+        AhkTest.AssertEqual([2, 6, 207, 226], PillowCImageToArray(laSoft, 4))
+        AhkTest.AssertEqual([2, 6, 210, 229], PillowCImageToArray(laHard, 4))
+        AhkTest.AssertEqual([2, 6, 210, 229], PillowCImageToArray(laOverlay, 4))
+
+        AhkTest.AssertEqual(7, PillowCImageMode(cmykDiff))
+        AhkTest.AssertEqual([20, 20, 20, 20, 50, 50, 50, 50], PillowCImageToArray(cmykDiff, 8))
+        AhkTest.AssertEqual([1, 3, 5, 9, 117, 131, 146, 162], PillowCImageToArray(cmykMultiply, 8))
+        AhkTest.AssertEqual([39, 57, 75, 91, 233, 239, 244, 248], PillowCImageToArray(cmykScreen, 8))
+        AhkTest.AssertEqual([30, 40, 50, 60, 200, 210, 220, 230], PillowCImageToArray(cmykLight, 8))
+        AhkTest.AssertEqual([10, 20, 30, 40, 150, 160, 170, 180], PillowCImageToArray(cmykDark, 8))
+        AhkTest.AssertEqual([40, 60, 80, 100, 255, 255, 255, 255], PillowCImageToArray(cmykAdd, 8))
+        AhkTest.AssertEqual([0, 0, 0, 0, 50, 50, 50, 50], PillowCImageToArray(cmykSub, 8))
+        AhkTest.AssertEqual([40, 60, 80, 100, 94, 114, 134, 154], PillowCImageToArray(cmykAddModulo, 8))
+        AhkTest.AssertEqual([236, 236, 236, 236, 50, 50, 50, 50], PillowCImageToArray(cmykSubModulo, 8))
+        AhkTest.AssertEqual([2, 6, 13, 21, 207, 219, 229, 238], PillowCImageToArray(cmykSoft, 8))
+        AhkTest.AssertEqual([2, 6, 11, 18, 210, 222, 232, 241], PillowCImageToArray(cmykHard, 8))
+        AhkTest.AssertEqual([2, 6, 11, 18, 210, 222, 232, 241], PillowCImageToArray(cmykOverlay, 8))
+    } finally {
+        for handle in [
+            cmykOverlay, cmykHard, cmykSoft, cmykSubModulo, cmykAddModulo, cmykSub,
+            cmykAdd, cmykDark, cmykLight, cmykScreen, cmykMultiply, cmykDiff,
+            laOverlay, laHard, laSoft, laSubModulo, laAddModulo, laSub, laAdd,
+            laDark, laLight, laScreen, laMultiply, laDiff, cmyk2, cmyk1, la2, la1
+        ] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c ImageChops binary ops match Pillow LA and CMYK", PillowCTestImageChopsBinaryOpsMatchPillowLaAndCmyk)
+
 PillowCTestImageLogicalOpsMatchPillowModeOne(*) {
     left := PillowCCreateImageMode(4, 1, 5)
     right := PillowCCreateImageMode(4, 1, 5)
