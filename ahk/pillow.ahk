@@ -2775,6 +2775,43 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        AlphaComposite(image, dest := unset, source := unset) {
+            if !(IsObject(image) && image is Pillow.Image)
+                throw Error("Pillow.Image.AlphaComposite expects a Pillow.Image", -1)
+            targetDest := IsSet(dest) ? dest : [0, 0]
+            targetSource := IsSet(source) ? source : [0, 0]
+            if !IsObject(targetDest) || targetDest.Length != 2
+                throw Error("Destination must be a sequence of length 2", -1)
+            if !IsObject(targetSource) || !(targetSource.Length = 2 || targetSource.Length = 4)
+                throw Error("Source must be a sequence of length 2 or 4", -1)
+
+            sourceLeft := targetSource[1]
+            sourceTop := targetSource[2]
+            if targetSource.Length = 4 {
+                sourceRight := targetSource[3]
+                sourceBottom := targetSource[4]
+            } else {
+                sourceRight := image.Width
+                sourceBottom := image.Height
+            }
+            if sourceLeft < 0 || sourceTop < 0 || sourceRight < 0 || sourceBottom < 0
+                throw Error("Source must be non-negative", -1)
+
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_alpha_composite_rgba_in_place",
+                "Ptr", this.RequireHandle(),
+                "Ptr", image.RequireHandle(),
+                "Int", targetDest[1],
+                "Int", targetDest[2],
+                "Int", sourceLeft,
+                "Int", sourceTop,
+                "Int", sourceRight,
+                "Int", sourceBottom,
+                "Int"
+            ))
+            return this
+        }
+
         Paste(source, box, mask := unset) {
             if box.Length < 2
                 throw Error("Pillow.Image.Paste expects box [left, top]", -1)

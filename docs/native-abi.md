@@ -125,6 +125,7 @@ Image operations:
 - `pillow_c_image_merge_bands`
 - `pillow_c_image_rgb_to_l`
 - `pillow_c_image_alpha_composite_rgba`
+- `pillow_c_image_alpha_composite_rgba_in_place`
 - `pillow_c_image_crop`
 - `pillow_c_image_expand`
 - `pillow_c_image_resize`
@@ -226,6 +227,8 @@ Reusable target operations:
 `pillow_c_image_invert` and `pillow_c_image_invert_into` implement `ImageOps.invert` for modes `1`, `L`, and `RGB`. `pillow_c_image_posterize` and `pillow_c_image_solarize`, plus their `_into` variants, follow Pillow's `_lut` boundary for modes `L` and `RGB`; mode `1`, `LA`, and `RGBA` return `-3`.
 
 `pillow_c_image_composite` and `pillow_c_image_composite_into` blend through mask modes `1`, `L`, `LA`, and `RGBA`; `LA` and `RGBA` use their alpha band.
+
+`pillow_c_image_alpha_composite_rgba_in_place` implements Pillow's instance `Image.alpha_composite` geometry for RGBA images. It mutates the destination handle, accepts destination coordinates and a source rectangle, clips visible pixels to the destination, treats source pixels outside the source image as transparent, and rejects negative source coordinates with `-3`.
 
 `pillow_c_image_paste_masked` mutates the target in place, clips the source rectangle to the target bounds, converts the source to the target mode when needed, and blends through a same-size source mask. Mask modes `1`, `L`, `LA`, and `RGBA` are accepted; `LA` and `RGBA` use their alpha band.
 

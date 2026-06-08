@@ -130,6 +130,40 @@ inline std::uint32_t shift_for_div255(std::uint32_t value)
     return (((value >> 8) + value) >> 8);
 }
 
+inline void alpha_composite_pixel_rgba(const std::uint8_t* dst, const std::uint8_t* src, std::uint8_t* out)
+{
+    if (src[3] == 0) {
+        out[0] = dst[0];
+        out[1] = dst[1];
+        out[2] = dst[2];
+        out[3] = dst[3];
+        return;
+    }
+
+    constexpr std::uint32_t precision_bits = 7;
+    constexpr std::uint32_t precision = 1u << precision_bits;
+    const std::uint32_t blend = static_cast<std::uint32_t>(dst[3]) * (255u - src[3]);
+    const std::uint32_t outa255 = static_cast<std::uint32_t>(src[3]) * 255u + blend;
+    const std::uint32_t coef1 =
+        static_cast<std::uint32_t>(src[3]) * 255u * 255u * precision / outa255;
+    const std::uint32_t coef2 = 255u * precision - coef1;
+
+    const std::uint32_t tmpr = static_cast<std::uint32_t>(src[0]) * coef1 +
+                               static_cast<std::uint32_t>(dst[0]) * coef2;
+    const std::uint32_t tmpg = static_cast<std::uint32_t>(src[1]) * coef1 +
+                               static_cast<std::uint32_t>(dst[1]) * coef2;
+    const std::uint32_t tmpb = static_cast<std::uint32_t>(src[2]) * coef1 +
+                               static_cast<std::uint32_t>(dst[2]) * coef2;
+
+    out[0] = static_cast<std::uint8_t>(
+        shift_for_div255(tmpr + (0x80u << precision_bits)) >> precision_bits);
+    out[1] = static_cast<std::uint8_t>(
+        shift_for_div255(tmpg + (0x80u << precision_bits)) >> precision_bits);
+    out[2] = static_cast<std::uint8_t>(
+        shift_for_div255(tmpb + (0x80u << precision_bits)) >> precision_bits);
+    out[3] = static_cast<std::uint8_t>(shift_for_div255(outa255 + 0x80u));
+}
+
 inline std::uint8_t clip_u8(float value)
 {
     if (value <= 0.0f) {
@@ -6232,42 +6266,11 @@ extern "C" __declspec(dllexport) int pillow_c_alpha_composite_rgba(
         return PILLOW_C_NULL_POINTER;
     }
 
-    constexpr std::uint32_t precision_bits = 7;
-    constexpr std::uint32_t precision = 1u << precision_bits;
-
     for (std::size_t i = 0; i < pixels; ++i) {
         const std::uint8_t* d = dst + i * 4;
         const std::uint8_t* s = src + i * 4;
         std::uint8_t* o = out + i * 4;
-
-        if (s[3] == 0) {
-            o[0] = d[0];
-            o[1] = d[1];
-            o[2] = d[2];
-            o[3] = d[3];
-            continue;
-        }
-
-        const std::uint32_t blend = static_cast<std::uint32_t>(d[3]) * (255u - s[3]);
-        const std::uint32_t outa255 = static_cast<std::uint32_t>(s[3]) * 255u + blend;
-        const std::uint32_t coef1 =
-            static_cast<std::uint32_t>(s[3]) * 255u * 255u * precision / outa255;
-        const std::uint32_t coef2 = 255u * precision - coef1;
-
-        const std::uint32_t tmpr = static_cast<std::uint32_t>(s[0]) * coef1 +
-                                   static_cast<std::uint32_t>(d[0]) * coef2;
-        const std::uint32_t tmpg = static_cast<std::uint32_t>(s[1]) * coef1 +
-                                   static_cast<std::uint32_t>(d[1]) * coef2;
-        const std::uint32_t tmpb = static_cast<std::uint32_t>(s[2]) * coef1 +
-                                   static_cast<std::uint32_t>(d[2]) * coef2;
-
-        o[0] = static_cast<std::uint8_t>(
-            shift_for_div255(tmpr + (0x80u << precision_bits)) >> precision_bits);
-        o[1] = static_cast<std::uint8_t>(
-            shift_for_div255(tmpg + (0x80u << precision_bits)) >> precision_bits);
-        o[2] = static_cast<std::uint8_t>(
-            shift_for_div255(tmpb + (0x80u << precision_bits)) >> precision_bits);
-        o[3] = static_cast<std::uint8_t>(shift_for_div255(outa255 + 0x80u));
+        alpha_composite_pixel_rgba(d, s, o);
     }
 
     return PILLOW_C_OK;
@@ -7342,6 +7345,78 @@ extern "C" __declspec(dllexport) int pillow_c_image_alpha_composite_rgba_into(
         src->pixels.data(),
         target->pixels.data(),
         static_cast<std::size_t>(dst->width) * dst->height);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_alpha_composite_rgba_in_place(
+    PillowCImage* dst,
+    const PillowCImage* src,
+    int dest_x,
+    int dest_y,
+    int source_left,
+    int source_top,
+    int source_right,
+    int source_bottom)
+{
+    if (!dst || !src) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (dst->mode != PILLOW_C_MODE_RGBA || src->mode != PILLOW_C_MODE_RGBA ||
+        dst->channels != 4 || src->channels != 4) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (source_left < 0 || source_top < 0 || source_right < source_left || source_bottom < source_top) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const int overlay_width = source_right - source_left;
+    const int overlay_height = source_bottom - source_top;
+    if (overlay_width == 0 || overlay_height == 0 || dst->width == 0 || dst->height == 0) {
+        return PILLOW_C_OK;
+    }
+
+    const int dest_right = dest_x + overlay_width;
+    const int dest_bottom = dest_y + overlay_height;
+    const int visible_left = std::max(dest_x, 0);
+    const int visible_top = std::max(dest_y, 0);
+    const int visible_right = std::min(dest_right, dst->width);
+    const int visible_bottom = std::min(dest_bottom, dst->height);
+    if (visible_left >= visible_right || visible_top >= visible_bottom) {
+        return PILLOW_C_OK;
+    }
+
+    std::vector<std::uint8_t> source_copy;
+    const std::uint8_t* source_pixels = src->pixels.empty() ? nullptr : src->pixels.data();
+    if (dst == src && !src->pixels.empty()) {
+        try {
+            source_copy = src->pixels;
+        } catch (const std::bad_alloc&) {
+            return PILLOW_C_ALLOCATION_FAILED;
+        }
+        source_pixels = source_copy.data();
+    }
+
+    for (int y = visible_top; y < visible_bottom; ++y) {
+        const int overlay_y = y - dest_y;
+        const int source_y = source_top + overlay_y;
+        if (source_y < 0 || source_y >= src->height) {
+            continue;
+        }
+        for (int x = visible_left; x < visible_right; ++x) {
+            const int overlay_x = x - dest_x;
+            const int source_x = source_left + overlay_x;
+            if (source_x < 0 || source_x >= src->width) {
+                continue;
+            }
+            std::uint8_t* dst_pixel = dst->pixels.data() +
+                static_cast<std::size_t>(y) * dst->stride +
+                static_cast<std::size_t>(x) * 4u;
+            const std::uint8_t* src_pixel = source_pixels +
+                static_cast<std::size_t>(source_y) * src->stride +
+                static_cast<std::size_t>(source_x) * 4u;
+            alpha_composite_pixel_rgba(dst_pixel, src_pixel, dst_pixel);
+        }
+    }
+    return PILLOW_C_OK;
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_crop_into(

@@ -1382,6 +1382,22 @@ PillowCImageAlphaCompositeRgbaInto(dstHandle, srcHandle, targetHandle) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageAlphaCompositeRgbaInPlace(dstHandle, srcHandle, destX, destY, sourceLeft, sourceTop, sourceRight, sourceBottom) {
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_alpha_composite_rgba_in_place",
+        "Ptr", dstHandle,
+        "Ptr", srcHandle,
+        "Int", destX,
+        "Int", destY,
+        "Int", sourceLeft,
+        "Int", sourceTop,
+        "Int", sourceRight,
+        "Int", sourceBottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageCrop(sourceHandle, left, top, right, bottom) {
     outHandle := 0
     status := DllCall(
@@ -6829,6 +6845,72 @@ PillowCTestImageAlphaCompositeRgbaIntoReusesTargetHandle(*) {
 }
 
 AhkTest.Test("pillow_c image alpha_composite_rgba_into reuses target handle storage", PillowCTestImageAlphaCompositeRgbaIntoReusesTargetHandle)
+
+PillowCAlphaCompositeInPlaceSourceBytes() {
+    return [
+        100, 0, 0, 128, 0, 100, 0, 64, 0, 0, 100, 255,
+        200, 50, 0, 128, 0, 200, 50, 128, 50, 0, 200, 0,
+    ]
+}
+
+PillowCAlphaCompositeInPlaceNewDst() {
+    dst := PillowCCreateImage(4, 3, 4)
+    PillowCImageSetBytes(dst, [
+        10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+        10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+        10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+    ])
+    return dst
+}
+
+PillowCTestImageAlphaCompositeRgbaInPlaceMatchesPillowGeometry(*) {
+    src := PillowCCreateImage(3, 2, 4)
+    destOffset := 0
+    negativeDest := 0
+    sourceBox := 0
+    rgb := PillowCCreateImageMode(1, 1, 3)
+    try {
+        PillowCImageSetBytes(src, PillowCAlphaCompositeInPlaceSourceBytes())
+
+        destOffset := PillowCAlphaCompositeInPlaceNewDst()
+        PillowCImageAlphaCompositeRgbaInPlace(destOffset, src, 1, 1, 0, 0, 3, 2)
+        AhkTest.AssertEqual([
+            10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+            10, 20, 30, 255, 55, 10, 15, 255, 7, 40, 22, 255, 0, 0, 100, 255,
+            10, 20, 30, 255, 105, 35, 15, 255, 5, 110, 40, 255, 10, 20, 30, 255,
+        ], PillowCImageToArray(destOffset, 48))
+
+        negativeDest := PillowCAlphaCompositeInPlaceNewDst()
+        PillowCImageAlphaCompositeRgbaInPlace(negativeDest, src, -1, 0, 0, 0, 3, 2)
+        AhkTest.AssertEqual([
+            7, 40, 22, 255, 0, 0, 100, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+            5, 110, 40, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+            10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+        ], PillowCImageToArray(negativeDest, 48))
+
+        sourceBox := PillowCAlphaCompositeInPlaceNewDst()
+        PillowCImageAlphaCompositeRgbaInPlace(sourceBox, src, 1, 0, 1, 0, 3, 2)
+        AhkTest.AssertEqual([
+            10, 20, 30, 255, 7, 40, 22, 255, 0, 0, 100, 255, 10, 20, 30, 255,
+            10, 20, 30, 255, 5, 110, 40, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+            10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+        ], PillowCImageToArray(sourceBox, 48))
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_alpha_composite_rgba_in_place", "Ptr", rgb, "Ptr", src, "Int", 0, "Int", 0, "Int", 0, "Int", 0, "Int", 1, "Int", 1, "Int")
+        AhkTest.AssertEqual(-3, status)
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_alpha_composite_rgba_in_place", "Ptr", destOffset, "Ptr", src, "Int", 0, "Int", 0, "Int", -1, "Int", 0, "Int", 1, "Int", 1, "Int")
+        AhkTest.AssertEqual(-3, status)
+    } finally {
+        PillowCFreeImage(rgb)
+        for image in [sourceBox, negativeDest, destOffset, src] {
+            if image
+                PillowCFreeImage(image)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image alpha_composite_rgba_in_place matches Pillow geometry", PillowCTestImageAlphaCompositeRgbaInPlaceMatchesPillowGeometry)
 
 PillowCTestImageCropInsideBox(*) {
     source := PillowCCreateImage(3, 2, 3)

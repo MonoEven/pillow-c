@@ -5633,3 +5633,38 @@ PillowTestImageAlphaCompositeStaticUsesNativeHandles(*) {
 }
 
 AhkTest.Test("Pillow Image.AlphaComposite composites RGBA images through native handles", PillowTestImageAlphaCompositeStaticUsesNativeHandles)
+
+PillowTestImageAlphaCompositeMutatesThroughNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    dst := Pillow.Image.FromBytes("RGBA", [4, 3], PillowTestBuffer([
+        10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+        10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+        10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+    ]))
+    src := Pillow.Image.FromBytes("RGBA", [3, 2], PillowTestBuffer([
+        100, 0, 0, 128, 0, 100, 0, 64, 0, 0, 100, 255,
+        200, 50, 0, 128, 0, 200, 50, 128, 50, 0, 200, 0,
+    ]))
+    try {
+        returned := dst.AlphaComposite(src, [1, 1])
+        AhkTest.AssertEqual(dst.Handle, returned.Handle)
+        AhkTest.AssertEqual([
+            10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
+            10, 20, 30, 255, 55, 10, 15, 255, 7, 40, 22, 255, 0, 0, 100, 255,
+            10, 20, 30, 255, 105, 35, 15, 255, 5, 110, 40, 255, 10, 20, 30, 255,
+        ], PillowTestBufferToArray(dst.ToBytes()))
+
+        errorWasRaised := false
+        try {
+            dst.AlphaComposite(src, [0, 0], [-1, 0])
+        } catch Error as err {
+            errorWasRaised := InStr(err.Message, "invalid argument") > 0 || InStr(err.Message, "Source must be non-negative") > 0
+        }
+        AhkTest.AssertTrue(errorWasRaised)
+    } finally {
+        src.Close()
+        dst.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.AlphaComposite mutates through native path", PillowTestImageAlphaCompositeMutatesThroughNativePath)
