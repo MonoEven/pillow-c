@@ -2719,6 +2719,77 @@ PillowTestImageResizeReducingGapUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Resize supports native reducing_gap", PillowTestImageResizeReducingGapUsesNativePath)
 
+PillowTestImageThumbnailMutatesThroughNativeResize(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [4, 2], PillowTestBuffer([0, 1, 2, 3, 4, 5, 6, 7]))
+    rgb := Pillow.Image.FromBytes("RGB", [3, 5], PillowTestBuffer([
+        0, 1, 2, 3, 4, 5, 6, 7, 8,
+        9, 10, 11, 12, 13, 14, 15, 16, 17,
+        18, 19, 20, 21, 22, 23, 24, 25, 26,
+        27, 28, 29, 30, 31, 32, 33, 34, 35,
+        36, 37, 38, 39, 40, 41, 42, 43, 44,
+    ]))
+    noUpscale := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([1, 2, 3, 4]))
+    floorSize := Pillow.Image.FromBytes("L", [7, 3], PillowTestBuffer([
+        0, 1, 2, 3, 4, 5, 6,
+        7, 8, 9, 10, 11, 12, 13,
+        14, 15, 16, 17, 18, 19, 20,
+    ]))
+    try {
+        returned := l.Thumbnail([2, 2], Pillow.Resampling.NEAREST)
+        AhkTest.AssertEqual("", returned)
+        AhkTest.AssertEqual([2, 1], l.Size)
+        AhkTest.AssertEqual([5, 7], PillowTestBufferToArray(l.ToBytes()))
+
+        rgb.Thumbnail([2, 2], Pillow.Resampling.NEAREST)
+        AhkTest.AssertEqual([1, 2], rgb.Size)
+        AhkTest.AssertEqual([12, 13, 14, 30, 31, 32], PillowTestBufferToArray(rgb.ToBytes()))
+
+        noUpscale.Thumbnail([9, 9], Pillow.Resampling.NEAREST)
+        AhkTest.AssertEqual([2, 2], noUpscale.Size)
+        AhkTest.AssertEqual([1, 2, 3, 4], PillowTestBufferToArray(noUpscale.ToBytes()))
+
+        floorSize.Thumbnail([4.9, 2.1], Pillow.Resampling.NEAREST, unset)
+        AhkTest.AssertEqual([4, 2], floorSize.Size)
+        AhkTest.AssertEqual([0, 2, 4, 6, 14, 16, 18, 20], PillowTestBufferToArray(floorSize.ToBytes()))
+    } finally {
+        floorSize.Close()
+        noUpscale.Close()
+        rgb.Close()
+        l.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Thumbnail mutates images through native resize", PillowTestImageThumbnailMutatesThroughNativeResize)
+
+PillowTestImageThumbnailRejectsInvalidParameters(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [3, 2])
+    try {
+        for args in [
+            ["size", "bad", Pillow.Resampling.NEAREST],
+            ["size", [0, 1], Pillow.Resampling.NEAREST],
+            ["size", [1, 0], Pillow.Resampling.NEAREST],
+            ["size", ["2", 2], Pillow.Resampling.NEAREST],
+            ["reducingGap", [1, 1], Pillow.Resampling.NEAREST, 0.5],
+        ] {
+            try {
+                if args.Length = 4
+                    image.Thumbnail(args[2], args[3], args[4])
+                else
+                    image.Thumbnail(args[2], args[3])
+                AhkTest.Fail("Expected Thumbnail to reject invalid parameters")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, args[1]) > 0 || InStr(err.Message, "width") > 0 || InStr(err.Message, "number") > 0)
+            }
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Thumbnail rejects invalid parameters", PillowTestImageThumbnailRejectsInvalidParameters)
+
 PillowTestImageReduceUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.FromBytes("L", [5, 3], PillowTestBuffer([

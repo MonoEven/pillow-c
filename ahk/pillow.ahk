@@ -3170,6 +3170,54 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        Thumbnail(size, resample := unset, reducingGap := 2.0) {
+            if !IsObject(size) || size.Length != 2
+                throw Error("Pillow.Image.Thumbnail size expects [width, height]", -1)
+            if !(size[1] is Number) || !(size[2] is Number)
+                throw Error("Pillow.Image.Thumbnail size values must be numbers", -1)
+            if !IsSet(resample)
+                resample := Pillow.Resampling.BICUBIC
+            if IsSet(reducingGap) && (!(reducingGap is Number) || reducingGap <= 1.0)
+                throw Error("Pillow.Image.Thumbnail reducingGap must be greater than 1.0", -1)
+
+            requestedWidth := Floor(size[1])
+            requestedHeight := Floor(size[2])
+            if requestedWidth <= 0 || requestedHeight <= 0
+                throw Error("Pillow.Image.Thumbnail height and width must be > 0", -1)
+
+            sourceWidth := this.Width
+            sourceHeight := this.Height
+            if requestedWidth >= sourceWidth && requestedHeight >= sourceHeight
+                return
+
+            aspect := sourceWidth / sourceHeight
+            if requestedWidth / requestedHeight >= aspect {
+                finalWidth := Pillow.Image.ThumbnailRoundAspect(requestedHeight * aspect, (candidate) => Abs(aspect - candidate / requestedHeight))
+                finalHeight := requestedHeight
+            } else {
+                finalWidth := requestedWidth
+                finalHeight := Pillow.Image.ThumbnailRoundAspect(requestedWidth / aspect, (candidate) => candidate = 0 ? 0 : Abs(aspect - requestedWidth / candidate))
+            }
+
+            resized := IsSet(reducingGap)
+                ? this.Resize([finalWidth, finalHeight], resample, unset, reducingGap)
+                : this.Resize([finalWidth, finalHeight], resample)
+            oldHandle := this.Handle
+            this.Handle := resized.RequireHandle()
+            resized.Handle := 0
+            Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", oldHandle, "Int"))
+            return
+        }
+
+        static ThumbnailRoundAspect(number, key) {
+            floorValue := Floor(number)
+            ceilValue := Ceil(number)
+            floorKey := key(floorValue)
+            ceilKey := key(ceilValue)
+            result := floorKey <= ceilKey ? floorValue : ceilValue
+            return result < 1 ? 1 : result
+        }
+
         Reduce(factor, box := unset) {
             scale := this.ReduceFactor(factor)
             cropBox := IsSet(box) ? this.ReduceBox(box) : [0, 0, this.Width, this.Height]

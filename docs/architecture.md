@@ -54,6 +54,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `image.Fill(...)`
 - `image.Crop(...)`
 - `image.Resize(..., box := ...)`
+- `image.Thumbnail(...)`
 - `image.Reduce(...)`
 - `image.Filter(Pillow.ImageFilter.Kernel(...))`
 - `image.Transform(...)`
@@ -150,7 +151,7 @@ Core `1`, `L`, `LA`, `RGB`, `RGBA`, `P`, and `CMYK` conversion paths, native BMP
 
 `ImageOps.equalize` and `ImageOps.autocontrast` currently implement common histogram/LUT paths with mode `1` or `L` masks for supported `L`/`RGB` images. Equalize also mirrors Pillow's mode `P` special case by converting through the native RGB palette and returning `RGB`. Autocontrast also supports `cutoff`, `ignore`, and Pillow's `preserve_tone` mode.
 
-Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes, including verified CMYK coverage. `NEAREST` uses Pillow's affine-scale coordinate progression. `BOX`, `BILINEAR`, `HAMMING`, `BICUBIC`, and `LANCZOS` use separable two-pass filtering with Pillow-style fixed-point coefficient normalization. `Image.Resize(size, resample, box)` maps directly to the native box-resize path so AHK does not need a crop intermediate before resampling. `Image.Resize(size, resample, box, reducingGap)` also stays in the DLL: for large downsampling it computes Pillow's safe reduce box, performs native integer reduction, and runs final box resize against the reduced temporary. Non-NEAREST `LA` and `RGBA` resize use premultiplied color internally and preserve identity resizes as byte copies.
+Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes, including verified CMYK coverage. `NEAREST` uses Pillow's affine-scale coordinate progression. `BOX`, `BILINEAR`, `HAMMING`, `BICUBIC`, and `LANCZOS` use separable two-pass filtering with Pillow-style fixed-point coefficient normalization. `Image.Resize(size, resample, box)` maps directly to the native box-resize path so AHK does not need a crop intermediate before resampling. `Image.Resize(size, resample, box, reducingGap)` also stays in the DLL: for large downsampling it computes Pillow's safe reduce box, performs native integer reduction, and runs final box resize against the reduced temporary. `Image.Thumbnail(...)` follows Pillow's aspect-preserving in-place API at the facade layer and delegates the actual resampling to those native resize paths. Non-NEAREST `LA` and `RGBA` resize use premultiplied color internally and preserve identity resizes as byte copies.
 
 `Image.frombytes` and `Image.tobytes` keep raw byte import/export in the DLL for common interop layouts such as mode `1` bit-packed rows, direct `CMYK`, BGR, BGRA, ARGB, ABGR, RGBX, BGRX, and bottom-up stride-based source rows. Mode `1` stays unpacked as one byte per pixel inside the native handle for fast bulk operations and memory sharing, while facade `ToBytes()` returns Pillow's bit-packed external representation.
 
