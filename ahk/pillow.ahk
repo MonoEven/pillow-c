@@ -2406,6 +2406,10 @@ class Pillow {
             this.RequireHandle()
         }
 
+        Draft(mode, size) {
+            this.RequireHandle()
+        }
+
         Mode {
             get {
                 mode := 0

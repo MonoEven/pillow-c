@@ -2686,6 +2686,29 @@ PillowTestImageVerifyIsNoopForLoadedNativeImages(*) {
 
 AhkTest.Test("Pillow Image.Verify is a no-op for loaded native images", PillowTestImageVerifyIsNoopForLoadedNativeImages)
 
+PillowTestImageDraftMatchesBaseNoOpSemantics(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    try {
+        AhkTest.AssertEqual("", image.Draft("L", [1, 1]))
+        AhkTest.AssertEqual("RGB", image.Mode)
+        AhkTest.AssertEqual([2, 1], image.Size)
+        AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowTestBufferToArray(image.ToBytes()))
+
+        image.Close()
+        try {
+            image.Draft("RGB", [1, 1])
+            AhkTest.Fail("Expected Draft to reject closed images")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "closed") > 0)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Draft matches base no-op semantics", PillowTestImageDraftMatchesBaseNoOpSemantics)
+
 PillowTestImagePutDataBulkWritesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.New("L", [4, 1])
