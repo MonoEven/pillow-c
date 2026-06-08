@@ -542,6 +542,42 @@ PillowCImageDrawChord(handle, box, start, end, fill := unset, outline := unset, 
     PillowCAssertStatus(status)
 }
 
+PillowCImageDrawPieslice(handle, box, start, end, fill := unset, outline := unset, width := 1) {
+    fillPtr := 0
+    fillSize := 0
+    fillBuffer := 0
+    if IsSet(fill) {
+        fillBuffer := PillowCBuffer(fill)
+        fillPtr := fillBuffer.Ptr
+        fillSize := fillBuffer.Size
+    }
+    outlinePtr := 0
+    outlineSize := 0
+    outlineBuffer := 0
+    if IsSet(outline) {
+        outlineBuffer := PillowCBuffer(outline)
+        outlinePtr := outlineBuffer.Ptr
+        outlineSize := outlineBuffer.Size
+    }
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_pieslice",
+        "Ptr", handle,
+        "Int", box[1],
+        "Int", box[2],
+        "Int", box[3],
+        "Int", box[4],
+        "Double", start,
+        "Double", end,
+        "Ptr", fillPtr,
+        "UPtr", fillSize,
+        "Ptr", outlinePtr,
+        "UPtr", outlineSize,
+        "Int", width,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageDrawLine(handle, points, fill, width := 0) {
     pointBuffer := PillowCIntBuffer(points)
     fillBuffer := PillowCBuffer(fill)
@@ -4116,6 +4152,111 @@ PillowCTestImageDrawChordClipsAndRejectsInvalidArguments(*) {
 }
 
 AhkTest.Test("pillow_c image draw_chord clips and rejects invalid arguments", PillowCTestImageDrawChordClipsAndRejectsInvalidArguments)
+
+PillowCTestImageDrawPiesliceMatchesPillowFillOutlineWidthAndRgb(*) {
+    fillOutline := PillowCCreateImageMode(7, 7, 1)
+    outlineWide := PillowCCreateImageMode(7, 7, 1)
+    wrapFill := PillowCCreateImageMode(7, 7, 1)
+    rgb := PillowCCreateImageMode(5, 4, 3)
+    try {
+        PillowCImageDrawPieslice(fillOutline, [1, 1, 5, 5], 0, 90, [7], [9], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 9, 9, 9, 9, 0,
+            0, 0, 9, 9, 7, 9, 0,
+            0, 0, 9, 9, 9, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(fillOutline, 49))
+
+        PillowCImageDrawPieslice(outlineWide, [1, 1, 5, 5], 0, 180, unset, [8], 2)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 8, 8, 8, 8, 8, 0,
+            0, 8, 8, 8, 8, 8, 0,
+            0, 8, 8, 8, 8, 8, 0,
+            0, 0, 8, 8, 8, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(outlineWide, 49))
+
+        PillowCImageDrawPieslice(wrapFill, [1, 1, 5, 5], 300, 60, [6])
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 6, 0, 0,
+            0, 0, 0, 0, 6, 6, 0,
+            0, 0, 0, 6, 6, 6, 0,
+            0, 0, 0, 0, 6, 6, 0,
+            0, 0, 0, 0, 6, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(wrapFill, 49))
+
+        PillowCImageDrawPieslice(rgb, [0, 0, 4, 3], 0, 180, [10, 20, 30], [90, 80, 70], 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            90, 80, 70, 90, 80, 70, 90, 80, 70, 90, 80, 70, 90, 80, 70,
+            90, 80, 70, 90, 80, 70, 90, 80, 70, 90, 80, 70, 90, 80, 70,
+            0, 0, 0, 90, 80, 70, 90, 80, 70, 90, 80, 70, 0, 0, 0,
+        ], PillowCImageToArray(rgb, 60))
+    } finally {
+        for handle in [rgb, wrapFill, outlineWide, fillOutline] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_pieslice matches Pillow fill outline width and RGB", PillowCTestImageDrawPiesliceMatchesPillowFillOutlineWidthAndRgb)
+
+PillowCTestImageDrawPiesliceClipsAndRejectsInvalidArguments(*) {
+    clipped := PillowCCreateImageMode(6, 5, 1)
+    widthZero := PillowCCreateImageMode(4, 4, 1)
+    reversed := PillowCCreateImageMode(3, 3, 1)
+    try {
+        PillowCImageDrawPieslice(clipped, [-2, -1, 3, 3], 0, 270, [5], [8], 1)
+        AhkTest.AssertEqual([
+            8, 8, 0, 0, 0, 0,
+            8, 8, 8, 8, 0, 0,
+            5, 5, 5, 8, 0, 0,
+            8, 8, 8, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(clipped, 30))
+
+        PillowCImageDrawPieslice(widthZero, [0, 0, 3, 3], 0, 180, unset, [5], 0)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+        ], PillowCImageToArray(widthZero, 16))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_pieslice",
+            "Ptr", reversed,
+            "Int", 2,
+            "Int", 2,
+            "Int", 1,
+            "Int", 1,
+            "Double", 0,
+            "Double", 90,
+            "Ptr", PillowCBuffer([7]),
+            "UPtr", 1,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Int", 1,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+    } finally {
+        for handle in [reversed, widthZero, clipped] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_pieslice clips and rejects invalid arguments", PillowCTestImageDrawPiesliceClipsAndRejectsInvalidArguments)
 
 PillowCTestImageDrawLineMatchesPillowWidthZeroAndOne(*) {
     horizontal := PillowCCreateImageMode(6, 4, 1)

@@ -1304,6 +1304,49 @@ class Pillow {
                 return this
             }
 
+            Pieslice(box, start, end, fill := unset, outline := unset, width := 1) {
+                if !IsObject(box) || box.Length != 4
+                    throw Error("Pillow.ImageDraw.Pieslice expects box [left, top, right, bottom]", -1)
+                if !(start is Number) || !(end is Number)
+                    throw Error("Pillow.ImageDraw.Pieslice angles must be numeric", -1)
+
+                fillPtr := 0
+                fillSize := 0
+                fillBuffer := 0
+                if IsSet(fill) {
+                    fillBuffer := this.Image.PasteColorBuffer(fill)
+                    fillPtr := fillBuffer.Ptr
+                    fillSize := fillBuffer.Size
+                }
+
+                outlinePtr := 0
+                outlineSize := 0
+                outlineBuffer := 0
+                if IsSet(outline) {
+                    outlineBuffer := this.Image.PasteColorBuffer(outline)
+                    outlinePtr := outlineBuffer.Ptr
+                    outlineSize := outlineBuffer.Size
+                }
+
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_draw_pieslice",
+                    "Ptr", this.Image.RequireHandle(),
+                    "Int", box[1],
+                    "Int", box[2],
+                    "Int", box[3],
+                    "Int", box[4],
+                    "Double", start,
+                    "Double", end,
+                    "Ptr", fillPtr,
+                    "UPtr", fillSize,
+                    "Ptr", outlinePtr,
+                    "UPtr", outlineSize,
+                    "Int", width,
+                    "Int"
+                ))
+                return this
+            }
+
             Line(xy, fill := unset, width := 0, joint := unset) {
                 if IsSet(joint) && joint != "" && joint != 0
                     throw Error("Pillow.ImageDraw.Line joint is not supported yet", -1)

@@ -4245,6 +4245,74 @@ void chord_line_init(ClipEllipseState* state, std::int32_t a, std::int32_t b, st
     right_node.c = 2.0 * width * std::sqrt(left_node.a * left_node.a + left_node.b * left_node.b) - left_node.c;
 }
 
+void pie_side_init(ClipEllipseState* state, std::int32_t a, std::int32_t b, std::int32_t width, double start, double)
+{
+    ellipse_init(&state->ellipse, a, b, a + b + 1);
+    state->root = -1;
+    state->node_count = 0;
+    state->events.clear();
+
+    const double x = a * std::cos(start * PILLOW_C_PI / 180.0);
+    const double y = b * std::sin(start * PILLOW_C_PI / 180.0);
+    const double side_a = -y;
+    const double side_b = x;
+    const double side_c = width * std::sqrt(side_a * side_a + side_b * side_b);
+
+    state->root = clip_node(state, ClipNodeType::And);
+    const int side_and = clip_node(state, ClipNodeType::And);
+    const int left = clip_node(state, ClipNodeType::Clip);
+    const int right = clip_node(state, ClipNodeType::Clip);
+    const int half = clip_node(state, ClipNodeType::Clip);
+
+    state->nodes[state->root].left = side_and;
+    state->nodes[state->root].right = half;
+    state->nodes[side_and].left = left;
+    state->nodes[side_and].right = right;
+
+    state->nodes[left].a = side_a;
+    state->nodes[left].b = side_b;
+    state->nodes[left].c = side_c;
+    state->nodes[right].a = -side_a;
+    state->nodes[right].b = -side_b;
+    state->nodes[right].c = side_c;
+    state->nodes[half].a = side_b;
+    state->nodes[half].b = -side_a;
+}
+
+void pie_init(ClipEllipseState* state, std::int32_t a, std::int32_t b, std::int32_t width, double start, double end)
+{
+    ellipse_init(&state->ellipse, a, b, width);
+    state->root = -1;
+    state->node_count = 0;
+    state->events.clear();
+
+    const double xl = a * std::cos(start * PILLOW_C_PI / 180.0);
+    const double xr = a * std::cos(end * PILLOW_C_PI / 180.0);
+    const double yl = b * std::sin(start * PILLOW_C_PI / 180.0);
+    const double yr = b * std::sin(end * PILLOW_C_PI / 180.0);
+
+    const int left_clip = clip_node(state, ClipNodeType::Clip);
+    const int right_clip = clip_node(state, ClipNodeType::Clip);
+    state->nodes[left_clip].a = -yl;
+    state->nodes[left_clip].b = xl;
+    state->nodes[right_clip].a = yr;
+    state->nodes[right_clip].b = -xr;
+
+    state->root = clip_node(state, end - start < 180.0 ? ClipNodeType::And : ClipNodeType::Or);
+    state->nodes[state->root].left = left_clip;
+    state->nodes[state->root].right = right_clip;
+
+    if (end - start < 90.0) {
+        const int old_root = state->root;
+        const int spike_clipper = clip_node(state, ClipNodeType::Clip);
+        state->root = clip_node(state, ClipNodeType::And);
+        state->nodes[state->root].left = old_root;
+        state->nodes[state->root].right = spike_clipper;
+        state->nodes[spike_clipper].a = (xl + xr) / 2.0;
+        state->nodes[spike_clipper].b = (yl + yr) / 2.0;
+    }
+}
+
 int clip_ellipse_next(ClipEllipseState* state, std::int32_t* out_x0, std::int32_t* out_y, std::int32_t* out_x1)
 {
     std::int32_t x0 = 0;
@@ -4911,6 +4979,90 @@ int draw_chord_image(
             return status;
         }
         status = draw_clip_ellipse_spans(image, left, top, right, bottom, outline, chord_init, width, start, end);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+
+    return PILLOW_C_OK;
+}
+
+int draw_pieslice_image(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    double start,
+    double end,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((fill_size > 0 && !fill) || (outline_size > 0 && !outline)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const std::size_t channels = static_cast<std::size_t>(image->channels);
+    if ((fill_size != 0 && fill_size != channels) || (outline_size != 0 && outline_size != channels)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if ((fill && fill_size == 0) || (outline && outline_size == 0)) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (right < left || bottom < top || !std::isfinite(start) || !std::isfinite(end)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    normalize_arc_angles(&start, &end);
+    if (start + 360.0 == end) {
+        return draw_ellipse_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
+    }
+    if (start == end) {
+        return PILLOW_C_OK;
+    }
+
+    if (fill_size != 0) {
+        const int fill_width = right + bottom - left - top;
+        const int status = draw_clip_ellipse_spans(image, left, top, right, bottom, fill, pie_init, fill_width, start, end);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+
+    if (outline_size != 0 && width != 0) {
+        int status = draw_clip_ellipse_spans(image, left, top, right, bottom, outline, pie_side_init, width, start, end);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = draw_clip_ellipse_spans(image, left, top, right, bottom, outline, pie_side_init, width, end, 0.0);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        const int center_left = static_cast<int>(std::lround((left + right - width) / 2.0));
+        const int center_top = static_cast<int>(std::lround((top + bottom - width) / 2.0));
+        status = draw_ellipse_image(
+            image,
+            center_left,
+            center_top,
+            center_left + width - 1,
+            center_top + width - 1,
+            outline,
+            outline_size,
+            nullptr,
+            0,
+            0);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = draw_clip_ellipse_spans(image, left, top, right, bottom, outline, pie_init, width, start, end);
         if (status != PILLOW_C_OK) {
             return status;
         }
@@ -11455,6 +11607,23 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_chord(
     int width)
 {
     return draw_chord_image(image, left, top, right, bottom, start, end, fill, fill_size, outline, outline_size, width);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_draw_pieslice(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    double start,
+    double end,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width)
+{
+    return draw_pieslice_image(image, left, top, right, bottom, start, end, fill, fill_size, outline, outline_size, width);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_line(
