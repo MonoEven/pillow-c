@@ -4303,6 +4303,34 @@ PillowTestImageTransformAffineUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.TransformAffine uses native affine path", PillowTestImageTransformAffineUsesNativePath)
 
+PillowTestImageTransformAffineCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([
+        10, 20,
+        30, 40,
+    ]))
+    transformed := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        transformed := source.TransformAffine([2, 2], [1, 0, 0, 0, 1, 0], Pillow.Resampling.NEAREST)
+
+        AhkTest.AssertEqual("", transformed.Format)
+        AhkTest.AssertEqual("ahk", transformed.Info["author"])
+
+        transformed.Info["author"] := "transform"
+        transformed.Info["extra"] := 1
+        AhkTest.AssertEqual("ahk", source.Info["author"])
+        AhkTest.AssertTrue(!source.Info.Has("extra"))
+    } finally {
+        if IsObject(transformed)
+            transformed.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.TransformAffine copies info metadata", PillowTestImageTransformAffineCopiesInfoMetadata)
+
 PillowTestImageTransformAffinePythonLikeEntryPoint(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
