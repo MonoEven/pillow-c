@@ -61,7 +61,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `image.TransformAffine(...)`
 - `image.Rotate(...)`
 - `image.Transpose(...)`
-- `image.Convert(...)`
+- `image.Convert(...)`, including RGB matrix conversion to `L` or `RGB`
 - `image.Point(...)`
 - `Pillow.ImageOps.Invert(...)`
 - `Pillow.ImageOps.Grayscale(...)`

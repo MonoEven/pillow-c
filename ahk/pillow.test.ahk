@@ -4818,6 +4818,71 @@ PillowTestImageConvertCmykUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.Convert supports CMYK through native handles", PillowTestImageConvertCmykUsesNativeOperation)
 
+PillowTestImageConvertMatrixUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([
+        0, 0, 0, 10, 20, 30, 100, 110, 120,
+        200, 150, 100, 255, 128, 64, 5, 250, 125,
+    ]))
+    outputs := []
+    try {
+        l := source.Convert("L", [0.299, 0.587, 0.114, 0])
+        lBias := source.Convert("L", [0.5, 0.25, 0.125, 10])
+        rgb := source.Convert("RGB", [
+            1, 0, 0, 5,
+            0, 0.5, 0, 10,
+            0, 0, -1, 255,
+        ])
+        outputs.Push(l)
+        outputs.Push(lBias)
+        outputs.Push(rgb)
+
+        AhkTest.AssertEqual("L", l.Mode)
+        AhkTest.AssertEqual([0, 18, 108, 159, 159, 162], PillowTestBufferToArray(l.ToBytes()))
+        AhkTest.AssertEqual([10, 24, 103, 160, 178, 91], PillowTestBufferToArray(lBias.ToBytes()))
+        AhkTest.AssertEqual("RGB", rgb.Mode)
+        AhkTest.AssertEqual([5, 10, 255, 15, 20, 225, 105, 65, 135, 205, 85, 155, 255, 74, 191, 10, 135, 130], PillowTestBufferToArray(rgb.ToBytes()))
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Convert matrix uses native operation", PillowTestImageConvertMatrixUsesNativeOperation)
+
+PillowTestImageConvertMatrixRejectsInvalidArguments(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.New("RGB", [1, 1])
+    rgba := Pillow.Image.New("RGBA", [1, 1])
+    l := Pillow.Image.New("L", [1, 1])
+    try {
+        cases := [
+            (*) => rgba.Convert("L", [0.299, 0.587, 0.114, 0]),
+            (*) => l.Convert("L", [0.299, 0.587, 0.114, 0]),
+            (*) => rgb.Convert("RGBA", [0.299, 0.587, 0.114, 0]),
+            (*) => rgb.Convert("L", [1, 2, 3]),
+            (*) => rgb.Convert("RGB", [1, 2, 3, 4]),
+        ]
+        for action in cases {
+            try {
+                action.Call()
+                AhkTest.Fail("Expected Convert matrix to reject invalid arguments")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, "matrix") > 0 || InStr(err.Message, "illegal conversion") > 0 || InStr(err.Message, "wrong mode") > 0 || InStr(err.Message, "invalid argument") > 0)
+            }
+        }
+    } finally {
+        l.Close()
+        rgba.Close()
+        rgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Convert matrix rejects invalid arguments", PillowTestImageConvertMatrixRejectsInvalidArguments)
+
 PillowTestImageConvertToModeOneDitherNoneUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.FromBytes("L", [8, 1], PillowTestBuffer([0, 32, 64, 96, 128, 160, 192, 255]))

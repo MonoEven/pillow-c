@@ -3681,23 +3681,46 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
-        Convert(modeName, dither := unset) {
+        Convert(modeName, matrixOrDither := unset, dither := unset) {
             targetMode := Pillow.ModeId(modeName)
-            if targetMode = 5 {
-                if !IsSet(dither)
-                    dither := Pillow.Dither.FLOYDSTEINBERG
+            if IsSet(matrixOrDither) && IsObject(matrixOrDither) {
+                if !(targetMode = 1 || targetMode = 3)
+                    throw Error("Pillow.Image.Convert matrix illegal conversion", -1)
+                expected := targetMode = 1 ? 4 : 12
+                if matrixOrDither.Length != expected
+                    throw Error("Pillow.Image.Convert matrix length must be " expected, -1)
+                matrixBuffer := Buffer(expected * 8, 0)
+                for index, value in matrixOrDither {
+                    if !(value is Number)
+                        throw Error("Pillow.Image.Convert matrix values must be numeric", -1)
+                    NumPut("Double", value, matrixBuffer, (index - 1) * 8)
+                }
                 outHandle := 0
                 Pillow.CheckStatus(DllCall(
-                    Pillow.RequireDllPath() "\pillow_c_image_convert_mode_dither",
+                    Pillow.RequireDllPath() "\pillow_c_image_convert_matrix",
                     "Ptr", this.RequireHandle(),
                     "Int", targetMode,
-                    "Int", dither,
+                    "Ptr", matrixBuffer,
+                    "UPtr", expected,
                     "Ptr*", &outHandle,
                     "Int"
                 ))
                 return Pillow.WrapImageHandle(outHandle)
             }
-            if IsSet(dither)
+            if targetMode = 5 {
+                resolvedDither := IsSet(matrixOrDither) ? matrixOrDither : (IsSet(dither) ? dither : Pillow.Dither.FLOYDSTEINBERG)
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_convert_mode_dither",
+                    "Ptr", this.RequireHandle(),
+                    "Int", targetMode,
+                    "Int", resolvedDither,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return Pillow.WrapImageHandle(outHandle)
+            }
+            if IsSet(matrixOrDither) || IsSet(dither)
                 throw Error("Pillow.Image.Convert dither is currently supported only for mode 1", -1)
             outHandle := 0
             Pillow.CheckStatus(DllCall(

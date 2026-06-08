@@ -1750,6 +1750,37 @@ PillowCImageConvertModeDither(sourceHandle, mode, dither) {
     return outHandle
 }
 
+PillowCImageConvertMatrix(sourceHandle, mode, matrixValues) {
+    matrix := PillowCDoubleBuffer(matrixValues)
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_convert_matrix",
+        "Ptr", sourceHandle,
+        "Int", mode,
+        "Ptr", matrix,
+        "UPtr", matrixValues.Length,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
+PillowCImageConvertMatrixInto(sourceHandle, mode, matrixValues, targetHandle) {
+    matrix := PillowCDoubleBuffer(matrixValues)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_convert_matrix_into",
+        "Ptr", sourceHandle,
+        "Int", mode,
+        "Ptr", matrix,
+        "UPtr", matrixValues.Length,
+        "Ptr", targetHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageConvertModeInto(sourceHandle, mode, targetHandle) {
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_convert_mode_into",
@@ -9343,6 +9374,117 @@ PillowCTestImageConvertModeDitherFloydSteinbergCoversModeOneTarget(*) {
 }
 
 AhkTest.Test("pillow_c image convert_mode_dither Floyd-Steinberg covers mode 1 target", PillowCTestImageConvertModeDitherFloydSteinbergCoversModeOneTarget)
+
+PillowCTestImageConvertMatrixMatchesPillowRgbInput(*) {
+    source := PillowCCreateImageMode(3, 2, 3)
+    lTarget := PillowCCreateImageMode(3, 2, 1)
+    rgbTarget := PillowCCreateImageMode(3, 2, 3)
+    lOut := 0
+    lBiasOut := 0
+    rgbOut := 0
+    try {
+        PillowCImageSetBytes(source, [
+            0, 0, 0, 10, 20, 30, 100, 110, 120,
+            200, 150, 100, 255, 128, 64, 5, 250, 125,
+        ])
+        PillowCImageSetBytes(lTarget, [99, 99, 99, 99, 99, 99])
+        PillowCImageSetBytes(rgbTarget, [
+            9, 9, 9, 9, 9, 9, 9, 9, 9,
+            9, 9, 9, 9, 9, 9, 9, 9, 9,
+        ])
+
+        lMatrix := [0.299, 0.587, 0.114, 0]
+        lBiasMatrix := [0.5, 0.25, 0.125, 10]
+        rgbMatrix := [
+            1, 0, 0, 5,
+            0, 0.5, 0, 10,
+            0, 0, -1, 255,
+        ]
+        lOut := PillowCImageConvertMatrix(source, 1, lMatrix)
+        lBiasOut := PillowCImageConvertMatrix(source, 1, lBiasMatrix)
+        rgbOut := PillowCImageConvertMatrix(source, 3, rgbMatrix)
+        lBefore := PillowCImageData(lTarget).Ptr
+        rgbBefore := PillowCImageData(rgbTarget).Ptr
+        PillowCImageConvertMatrixInto(source, 1, lMatrix, lTarget)
+        PillowCImageConvertMatrixInto(source, 3, rgbMatrix, rgbTarget)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(lOut))
+        AhkTest.AssertEqual([0, 18, 108, 159, 159, 162], PillowCImageToArray(lOut, 6))
+        AhkTest.AssertEqual([10, 24, 103, 160, 178, 91], PillowCImageToArray(lBiasOut, 6))
+        AhkTest.AssertEqual(3, PillowCImageMode(rgbOut))
+        AhkTest.AssertEqual([5, 10, 255, 15, 20, 225, 105, 65, 135, 205, 85, 155, 255, 74, 191, 10, 135, 130], PillowCImageToArray(rgbOut, 18))
+        AhkTest.AssertEqual(lBefore, PillowCImageData(lTarget).Ptr)
+        AhkTest.AssertEqual([0, 18, 108, 159, 159, 162], PillowCImageToArray(lTarget, 6))
+        AhkTest.AssertEqual(rgbBefore, PillowCImageData(rgbTarget).Ptr)
+        AhkTest.AssertEqual(PillowCImageToArray(rgbOut, 18), PillowCImageToArray(rgbTarget, 18))
+    } finally {
+        for handle in [rgbOut, lBiasOut, lOut, rgbTarget, lTarget, source] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image convert_matrix matches Pillow RGB input", PillowCTestImageConvertMatrixMatchesPillowRgbInput)
+
+PillowCTestImageConvertMatrixRejectsInvalidArguments(*) {
+    rgb := PillowCCreateImageMode(1, 1, 3)
+    rgba := PillowCCreateImageMode(1, 1, 4)
+    l := PillowCCreateImageMode(1, 1, 1)
+    wrongTarget := PillowCCreateImageMode(1, 1, 4)
+    outHandle := 0
+    try {
+        matrix4 := PillowCDoubleBuffer([0.299, 0.587, 0.114, 0])
+        matrix12 := PillowCDoubleBuffer([
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+        ])
+        matrix3 := PillowCDoubleBuffer([1, 2, 3])
+
+        cases := [
+            { Source: rgba, Mode: 1, Matrix: matrix4, Count: 4, Status: -3 },
+            { Source: l, Mode: 1, Matrix: matrix4, Count: 4, Status: -3 },
+            { Source: rgb, Mode: 4, Matrix: matrix4, Count: 4, Status: -3 },
+            { Source: rgb, Mode: 1, Matrix: matrix3, Count: 3, Status: -2 },
+            { Source: rgb, Mode: 1, Matrix: matrix12, Count: 12, Status: -2 },
+            { Source: rgb, Mode: 3, Matrix: matrix4, Count: 4, Status: -2 },
+        ]
+        for item in cases {
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_convert_matrix",
+                "Ptr", item.Source,
+                "Int", item.Mode,
+                "Ptr", item.Matrix,
+                "UPtr", item.Count,
+                "Ptr*", &outHandle,
+                "Int"
+            )
+            AhkTest.AssertEqual(item.Status, status)
+            AhkTest.AssertEqual(0, outHandle)
+        }
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_convert_matrix_into",
+            "Ptr", rgb,
+            "Int", 3,
+            "Ptr", matrix12,
+            "UPtr", 12,
+            "Ptr", wrongTarget,
+            "Int"
+        )
+        AhkTest.AssertEqual(-5, status)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCFreeImage(wrongTarget)
+        PillowCFreeImage(l)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c image convert_matrix rejects invalid arguments", PillowCTestImageConvertMatrixRejectsInvalidArguments)
 
 PillowCTestPaletteModeConvertsThroughNativePalette(*) {
     source := PillowCCreateImageMode(4, 1, 6)

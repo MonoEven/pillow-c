@@ -6946,6 +6946,108 @@ int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowC
     return PILLOW_C_INVALID_ARGUMENT;
 }
 
+inline std::uint8_t clip_matrix_float(float value)
+{
+    if (value <= 0.0f) {
+        return 0;
+    }
+    if (value >= 255.0f) {
+        return 255;
+    }
+    return static_cast<std::uint8_t>(value);
+}
+
+bool valid_convert_matrix_arguments(
+    const PillowCImage* source,
+    int target_mode,
+    std::size_t matrix_count,
+    int* out_target_channels)
+{
+    if (!source || !out_target_channels || source->mode != PILLOW_C_MODE_RGB || source->channels != 3) {
+        return false;
+    }
+    if (target_mode == PILLOW_C_MODE_L) {
+        *out_target_channels = 1;
+        return matrix_count == 4u;
+    }
+    if (target_mode == PILLOW_C_MODE_RGB) {
+        *out_target_channels = 3;
+        return matrix_count == 12u;
+    }
+    return false;
+}
+
+int convert_matrix_image_into(
+    const PillowCImage* source,
+    int target_mode,
+    const double* matrix,
+    std::size_t matrix_count,
+    PillowCImage* target)
+{
+    if (!source || !matrix || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    int target_channels = 0;
+    if (!valid_convert_matrix_arguments(source, target_mode, matrix_count, &target_channels)) {
+        if (source && source->mode == PILLOW_C_MODE_RGB &&
+            (target_mode == PILLOW_C_MODE_L || target_mode == PILLOW_C_MODE_RGB) &&
+            matrix_count != (target_mode == PILLOW_C_MODE_L ? 4u : 12u)) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, source->width, source->height, target_mode, target_channels)) {
+        return PILLOW_C_MISMATCH;
+    }
+    for (std::size_t index = 0; index < matrix_count; ++index) {
+        if (!std::isfinite(matrix[index])) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    if (source->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    std::vector<std::uint8_t> source_snapshot;
+    const std::uint8_t* source_data = source->pixels.data();
+    if (source == target) {
+        source_snapshot = source->pixels;
+        source_data = source_snapshot.data();
+    }
+
+    const double* m = matrix;
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    if (target_mode == PILLOW_C_MODE_L) {
+        for (std::size_t i = 0; i < pixels; ++i) {
+            const std::uint8_t* src = source_data + i * 3u;
+            const float value =
+                static_cast<float>(m[0]) * src[0] +
+                static_cast<float>(m[1]) * src[1] +
+                static_cast<float>(m[2]) * src[2] +
+                static_cast<float>(m[3]) +
+                0.5f;
+            target->pixels[i] = clip_matrix_float(value);
+        }
+        return PILLOW_C_OK;
+    }
+
+    for (std::size_t i = 0; i < pixels; ++i) {
+        const std::uint8_t* src = source_data + i * 3u;
+        std::uint8_t* dst = target->pixels.data() + i * 3u;
+        for (int out_channel = 0; out_channel < 3; ++out_channel) {
+            const std::size_t offset = static_cast<std::size_t>(out_channel) * 4u;
+            const float value =
+                static_cast<float>(m[offset]) * src[0] +
+                static_cast<float>(m[offset + 1u]) * src[1] +
+                static_cast<float>(m[offset + 2u]) * src[2] +
+                static_cast<float>(m[offset + 3u]) +
+                0.5f;
+            dst[out_channel] = clip_matrix_float(value);
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 int convert_image_to_mode1_floyd_steinberg_into(const PillowCImage* source, PillowCImage* target)
 {
     if (!source || !target) {
@@ -11947,6 +12049,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_mode_dither_into(
     return convert_image_mode_dither_into(source, target_mode, dither, target);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_convert_matrix_into(
+    const PillowCImage* source,
+    int target_mode,
+    const double* matrix,
+    std::size_t matrix_count,
+    PillowCImage* target)
+{
+    return convert_matrix_image_into(source, target_mode, matrix, matrix_count, target);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_merge_bands_into(
     int target_mode,
     const PillowCImage* const* bands,
@@ -14263,6 +14375,53 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_mode_dither(
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = convert_image_mode_dither_into(source, target_mode, dither, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_convert_matrix(
+    const PillowCImage* source,
+    int target_mode,
+    const double* matrix,
+    std::size_t matrix_count,
+    PillowCImage** out_image)
+{
+    if (!source || !matrix || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    int target_channels = 0;
+    if (!valid_convert_matrix_arguments(source, target_mode, matrix_count, &target_channels)) {
+        if (source->mode == PILLOW_C_MODE_RGB &&
+            (target_mode == PILLOW_C_MODE_L || target_mode == PILLOW_C_MODE_RGB) &&
+            matrix_count != (target_mode == PILLOW_C_MODE_L ? 4u : 12u)) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(source->width, source->height, target_channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            target_mode,
+            target_channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        const int status = convert_matrix_image_into(source, target_mode, matrix, matrix_count, image);
         if (status != PILLOW_C_OK) {
             delete image;
             return status;
