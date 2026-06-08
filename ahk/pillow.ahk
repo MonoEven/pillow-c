@@ -2635,10 +2635,9 @@ class Pillow {
         }
 
         Quantize(colors := 256, method := unset, kmeans := 0, palette := unset, dither := unset) {
-            if !(colors is Integer) || colors < 1 || colors > 256
-                throw Error("bad number of colors", -1)
-            if !(kmeans is Integer) || kmeans < 0
-                throw Error("kmeans must not be negative", -1)
+            resolvedMethod := IsSet(method) ? method : (this.Mode = "RGBA" ? Pillow.Quantize.FASTOCTREE : Pillow.Quantize.MEDIANCUT)
+            if this.Mode = "RGBA" && !(resolvedMethod = Pillow.Quantize.FASTOCTREE || resolvedMethod = Pillow.Quantize.LIBIMAGEQUANT)
+                throw Error("Fast Octree (method == 2) and libimagequant (method == 3) are the only valid methods for quantizing RGBA images", -1)
             if IsSet(palette) {
                 if !(palette is Pillow.Image)
                     throw Error("bad mode for palette image", -1)
@@ -2657,7 +2656,11 @@ class Pillow {
                 ))
                 return Pillow.WrapImageHandle(outHandle)
             }
-            if IsSet(method) && method != 0
+            if !(colors is Integer) || colors < 1 || colors > 256
+                throw Error("bad number of colors", -1)
+            if !(kmeans is Integer) || kmeans < 0
+                throw Error("kmeans must not be negative", -1)
+            if resolvedMethod != Pillow.Quantize.MEDIANCUT
                 throw Error("quantization error", -1)
             if !(this.Mode = "RGB" || this.Mode = "L")
                 throw Error("Pillow.Image.Quantize currently supports exact RGB/L images", -1)

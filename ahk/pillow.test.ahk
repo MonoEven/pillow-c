@@ -2503,6 +2503,35 @@ PillowTestImageQuantizeUsesReferencePalette(*) {
 
 AhkTest.Test("Pillow Image.Quantize uses a reference palette", PillowTestImageQuantizeUsesReferencePalette)
 
+PillowTestImageQuantizeWithReferencePaletteIgnoresUnusedParameters(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    palette := Pillow.Image.New("P", [1, 1])
+    rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([
+        250, 10, 10,
+        1, 2, 3,
+    ]))
+    out := 0
+    try {
+        palette.PutPalette([
+            0, 0, 0,
+            255, 0, 0,
+        ])
+
+        out := rgb.Quantize(0, "ignored", -1, palette, Pillow.Dither.NONE)
+
+        AhkTest.AssertEqual("P", out.Mode)
+        AhkTest.AssertEqual([1, 0], PillowTestBufferToArray(out.ToBytes()))
+        AhkTest.AssertEqual(palette.GetPalette(), out.GetPalette())
+    } finally {
+        for image in [out, rgb, palette] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Quantize with reference palette ignores colors method and kmeans", PillowTestImageQuantizeWithReferencePaletteIgnoresUnusedParameters)
+
 PillowTestImageQuantizeCoversExactUniqueColors(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     rgb := Pillow.Image.FromBytes("RGB", [4, 1], PillowTestBuffer([
