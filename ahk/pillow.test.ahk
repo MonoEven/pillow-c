@@ -310,6 +310,43 @@ PillowTestPaletteModePreservesPaletteThroughGeometryOperations(*) {
 
 AhkTest.Test("Pillow P mode preserves palette through geometry operations", PillowTestPaletteModePreservesPaletteThroughGeometryOperations)
 
+PillowTestPaletteModePreservesPaletteThroughPointOperations(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    palette := [
+        0, 0, 0,
+        10, 20, 30,
+        200, 100, 50,
+        255, 255, 255,
+    ]
+    lut := []
+    loop 256
+        lut.Push(Mod(A_Index, 4))
+    image := Pillow.Image.FromBytes("P", [2, 2], PillowTestBuffer([0, 1, 2, 3]))
+    outputs := []
+    try {
+        image.PutPalette(palette)
+
+        pointed := image.Point(lut)
+        outputs.Push(pointed)
+
+        AhkTest.AssertEqual("P", pointed.Mode)
+        AhkTest.AssertEqual([1, 2, 3, 0], PillowTestBufferToArray(pointed.ToBytes()))
+        AhkTest.AssertEqual(palette, pointed.GetPalette())
+
+        pointedRgb := pointed.Convert("RGB")
+        outputs.Push(pointedRgb)
+        AhkTest.AssertEqual([10, 20, 30, 200, 100, 50, 255, 255, 255, 0, 0, 0], PillowTestBufferToArray(pointedRgb.ToBytes()))
+    } finally {
+        for item in outputs {
+            if IsObject(item)
+                item.Close()
+        }
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow P mode preserves palette through point operations", PillowTestPaletteModePreservesPaletteThroughPointOperations)
+
 PillowTestImageDataPointerSharesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [3, 1])

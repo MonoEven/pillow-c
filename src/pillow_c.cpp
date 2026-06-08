@@ -1740,6 +1740,7 @@ int apply_point_lut_into(const PillowCImage* source, const std::uint8_t* lut, st
         return PILLOW_C_MISMATCH;
     }
     if (source->pixels.empty()) {
+        copy_palette_if_same_mode(source, target);
         return PILLOW_C_OK;
     }
 
@@ -1751,6 +1752,7 @@ int apply_point_lut_into(const PillowCImage* source, const std::uint8_t* lut, st
         const std::size_t channel = static_cast<std::size_t>(i % channels);
         dst[i] = lut[channel * 256u + src[i]];
     }
+    copy_palette_if_same_mode(source, target);
     return PILLOW_C_OK;
 }
 
