@@ -12749,10 +12749,13 @@ extern "C" __declspec(dllexport) int pillow_c_image_put_palette_rgb(
     if (!image || (!data && size > 0)) {
         return PILLOW_C_NULL_POINTER;
     }
-    if (image->mode != PILLOW_C_MODE_P || image->channels != 1 || size % 3u != 0 || size > 768u) {
+    if (!((image->mode == PILLOW_C_MODE_P || image->mode == PILLOW_C_MODE_L) && image->channels == 1) ||
+        size % 3u != 0 ||
+        size > 768u) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
     try {
+        image->mode = PILLOW_C_MODE_P;
         image->palette_rgb.assign(data, data + size);
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {

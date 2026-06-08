@@ -2542,7 +2542,7 @@ class Pillow {
         }
 
         PutPalette(data, rawmode := "RGB") {
-            if this.Mode != "P"
+            if !(this.Mode = "P" || this.Mode = "L")
                 throw Error("illegal image mode", -1)
             if rawmode != "RGB"
                 throw Error("Pillow.Image.PutPalette currently supports only RGB palettes", -1)

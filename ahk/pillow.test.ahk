@@ -2360,6 +2360,33 @@ PillowTestPaletteModePreservesPaletteThroughNativeOperations(*) {
 
 AhkTest.Test("Pillow P mode preserves palette through native operations", PillowTestPaletteModePreservesPaletteThroughNativeOperations)
 
+PillowTestPutPaletteConvertsLToPaletteMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([0, 1, 2]))
+    rgb := 0
+    palette := [
+        10, 20, 30,
+        40, 50, 60,
+        70, 80, 90,
+    ]
+    try {
+        image.PutPalette(palette)
+        rgb := image.Convert("RGB")
+
+        AhkTest.AssertEqual("P", image.Mode)
+        AhkTest.AssertEqual(["P"], image.GetBands())
+        AhkTest.AssertEqual([0, 1, 2], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertEqual(palette, image.GetPalette())
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90], PillowTestBufferToArray(rgb.ToBytes()))
+    } finally {
+        if IsObject(rgb)
+            rgb.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.PutPalette converts L images to P mode", PillowTestPutPaletteConvertsLToPaletteMode)
+
 PillowTestPaletteModePreservesPaletteThroughGeometryOperations(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     palette := [

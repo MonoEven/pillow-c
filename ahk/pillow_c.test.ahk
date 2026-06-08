@@ -9636,6 +9636,32 @@ PillowCTestPaletteModePreservesPaletteThroughNativeOperations(*) {
 
 AhkTest.Test("pillow_c P mode preserves palette through native operations", PillowCTestPaletteModePreservesPaletteThroughNativeOperations)
 
+PillowCTestPutPaletteConvertsLToPaletteMode(*) {
+    source := PillowCCreateImageMode(3, 1, 1)
+    rgb := 0
+    palette := [
+        10, 20, 30,
+        40, 50, 60,
+        70, 80, 90,
+    ]
+    try {
+        PillowCImageSetBytes(source, [0, 1, 2])
+        PillowCImagePutPaletteRgb(source, palette)
+        rgb := PillowCImageConvertMode(source, 3)
+
+        AhkTest.AssertEqual(6, PillowCImageMode(source))
+        AhkTest.AssertEqual([0, 1, 2], PillowCImageToArray(source, 3))
+        AhkTest.AssertEqual(palette, PillowCImageGetPaletteRgb(source))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90], PillowCImageToArray(rgb, 9))
+    } finally {
+        if rgb
+            PillowCFreeImage(rgb)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image put_palette converts L images to P mode", PillowCTestPutPaletteConvertsLToPaletteMode)
+
 PillowCTestPaletteModePreservesPaletteThroughGeometryOperations(*) {
     source := PillowCCreateImageMode(2, 2, 6)
     outputs := []
