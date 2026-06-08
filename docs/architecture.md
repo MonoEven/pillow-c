@@ -169,9 +169,9 @@ Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes, including v
 
 `ImageEnhance.Brightness`, `Contrast`, `Sharpness`, and `Color` follow Pillow's degenerate-image plus blend model. The facade composes existing native image operations instead of AHK pixel loops: blend, mode conversion, histogram mean, `ImageFilter.SMOOTH`, alpha reinsertion, and byte clipping all stay in the native path. `Color` supports `L`, `LA`, `RGB`, `RGBA`, and `CMYK`; RGBA uses Pillow's `LA` intermediate mode so alpha is preserved while color is desaturated, while CMYK uses Pillow's `L` to `CMYK` degenerate path.
 
-`Image.rotate` currently supports Pillow-style geometry, expansion, center, translate, and fill color for `NEAREST`, `BILINEAR`, and `BICUBIC`, including verified CMYK fill-color packing and sampling. Additional rotate resamplers should build on the same affine ABI instead of adding wrapper loops.
+`Image.rotate` currently supports Pillow-style geometry, expansion, center, translate, and fill color for `NEAREST`, `BILINEAR`, and `BICUBIC`, including verified CMYK fill-color packing and sampling plus `LA`/`RGBA` premultiplied filtered sampling. Additional rotate resamplers should build on the same affine ABI instead of adding wrapper loops.
 
-`Image.Transform(...)` covers Pillow's `AFFINE`, `EXTENT`, `PERSPECTIVE`, `QUAD`, and `MESH` methods through native paths for `NEAREST`, `BILINEAR`, and `BICUBIC`. `Image.TransformAffine` remains as the lower-level affine convenience entry, and CMYK is covered by the same channel-generic native geometry path.
+`Image.Transform(...)` covers Pillow's `AFFINE`, `EXTENT`, `PERSPECTIVE`, `QUAD`, and `MESH` methods through native paths for `NEAREST`, `BILINEAR`, and `BICUBIC`. `Image.TransformAffine` remains as the lower-level affine convenience entry, CMYK is covered by the same channel-generic native geometry path, and `LA`/`RGBA` filtered transforms sample color in premultiplied-alpha space.
 
 ## Performance Direction
 

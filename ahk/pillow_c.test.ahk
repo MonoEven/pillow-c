@@ -8856,13 +8856,19 @@ AhkTest.Test("pillow_c image transform AFFINE NEAREST matches Pillow", PillowCTe
 
 PillowCTestImageTransformAffineFilteredResamplersMatchPillow(*) {
     l := PillowCCreateImageMode(3, 2, 1)
+    la := PillowCCreateImageMode(3, 2, 2)
     rgb := PillowCCreateImageMode(3, 2, 3)
     rgba := PillowCCreateImageMode(2, 2, 4)
     lOut := 0
+    laOut := 0
     rgbOut := 0
     rgbaOut := 0
     try {
         PillowCImageSetBytes(l, [1, 2, 3, 4, 5, 6])
+        PillowCImageSetBytes(la, [
+            10, 0, 80, 64, 200, 128,
+            40, 255, 160, 128, 250, 32,
+        ])
         PillowCImageSetBytes(rgb, [
             1, 2, 3,
             10, 20, 30,
@@ -8879,10 +8885,15 @@ PillowCTestImageTransformAffineFilteredResamplersMatchPillow(*) {
         ])
 
         lOut := PillowCImageTransformAffine(l, 3, 2, [1.0, 0.0, -0.5, 0.0, 1.0, 0.0], 2, [8])
+        laOut := PillowCImageTransformAffine(la, 3, 2, [1.0, 0.0, -0.25, 0.0, 1.0, 0.0], 2, [0, 0])
         rgbOut := PillowCImageTransformAffine(rgb, 4, 3, [0.75, 0.0, 0.0, 0.0, 0.75, 0.0], 3, [9, 0, 0])
         rgbaOut := PillowCImageTransformAffine(rgba, 4, 4, [1.0, 0.0, -1.0, 0.0, 1.0, -1.0], 2, [9, 0, 0, 128])
 
         AhkTest.AssertEqual([1, 1, 2, 4, 4, 5], PillowCImageToArray(lOut, 6))
+        AhkTest.AssertEqual([
+            0, 0, 79, 48, 182, 112,
+            40, 255, 112, 159, 195, 56,
+        ], PillowCImageToArray(laOut, 12))
         AhkTest.AssertEqual([
             0, 0, 0, 0, 0, 6, 13, 25, 36, 34, 44, 54,
             42, 48, 54, 53, 62, 71, 80, 91, 101, 99, 109, 119,
@@ -8895,7 +8906,7 @@ PillowCTestImageTransformAffineFilteredResamplersMatchPillow(*) {
             17, 0, 0, 128, 17, 0, 0, 128, 17, 0, 0, 128, 17, 0, 0, 128,
         ], PillowCImageToArray(rgbaOut, 64))
     } finally {
-        for handle in [rgbaOut, rgbOut, lOut, rgba, rgb, l] {
+        for handle in [rgbaOut, rgbOut, laOut, lOut, rgba, rgb, la, l] {
             if handle
                 PillowCFreeImage(handle)
         }
@@ -9380,13 +9391,19 @@ AhkTest.Test("pillow_c image rotate NEAREST expand and fill match Pillow", Pillo
 
 PillowCTestImageRotateBilinearMatchesPillowGeometry(*) {
     l := PillowCCreateImageMode(3, 2, 1)
+    la := PillowCCreateImageMode(3, 2, 2)
     rgb := PillowCCreateImageMode(3, 2, 3)
     rgba := PillowCCreateImageMode(2, 2, 4)
     lOut := 0
+    laOut := 0
     rgbOut := 0
     rgbaOut := 0
     try {
         PillowCImageSetBytes(l, [1, 2, 3, 4, 5, 6])
+        PillowCImageSetBytes(la, [
+            10, 0, 80, 64, 200, 128,
+            40, 255, 160, 128, 250, 32,
+        ])
         PillowCImageSetBytes(rgb, [
             1, 2, 3,
             10, 20, 30,
@@ -9403,10 +9420,18 @@ PillowCTestImageRotateBilinearMatchesPillowGeometry(*) {
         ])
 
         lOut := PillowCImageRotate(l, 45, 2)
+        laOut := PillowCImageRotate(la, 30, 2, true)
         rgbOut := PillowCImageRotate(rgb, 45, 2)
         rgbaOut := PillowCImageRotate(rgba, 45, 2)
 
         AhkTest.AssertEqual([0, 2, 5, 1, 4, 0], PillowCImageToArray(lOut, 6))
+        AhkTest.AssertEqual([5, 4], [PillowCImageInt(laOut, "pillow_c_image_width"), PillowCImageInt(laOut, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 74, 24, 129, 81, 209, 73, 0, 0,
+            0, 0, 39, 110, 110, 152, 183, 68, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(laOut, 40))
         AhkTest.AssertEqual([
             0, 0, 0,
             33, 43, 53,
@@ -9422,7 +9447,7 @@ PillowCTestImageRotateBilinearMatchesPillowGeometry(*) {
             73, 84, 94, 100,
         ], PillowCImageToArray(rgbaOut, 16))
     } finally {
-        for handle in [rgbaOut, rgbOut, lOut, rgba, rgb, l] {
+        for handle in [rgbaOut, rgbOut, laOut, lOut, rgba, rgb, la, l] {
             if handle
                 PillowCFreeImage(handle)
         }

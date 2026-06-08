@@ -3782,6 +3782,18 @@ int clamp_index(int value, int upper_exclusive)
     return value;
 }
 
+bool is_premultiplied_alpha_mode(const PillowCImage* source)
+{
+    return source &&
+           (source->mode == PILLOW_C_MODE_LA ||
+            source->mode == PILLOW_C_MODE_RGBA);
+}
+
+int alpha_channel_index(const PillowCImage* source)
+{
+    return source ? source->channels - 1 : 0;
+}
+
 std::uint8_t transform_sample_channel(
     const PillowCImage* source,
     int x,
@@ -3793,8 +3805,9 @@ std::uint8_t transform_sample_channel(
         source->pixels.data() +
         static_cast<std::size_t>(y) * source->stride +
         static_cast<std::size_t>(x) * source->channels;
-    if (premultiply_alpha && source->mode == PILLOW_C_MODE_RGBA && channel < 3) {
-        return mul_div_255(px[channel], px[3]);
+    const int alpha_channel = alpha_channel_index(source);
+    if (premultiply_alpha && is_premultiplied_alpha_mode(source) && channel < alpha_channel) {
+        return mul_div_255(px[channel], px[alpha_channel]);
     }
     return px[channel];
 }
@@ -3823,8 +3836,9 @@ std::uint8_t bilinear_transform_channel(
     const std::size_t offset1 = static_cast<std::size_t>(x1) * source->channels + channel;
     const auto sample = [source, channel, premultiply_alpha](const std::uint8_t* row, std::size_t offset) -> std::uint8_t {
         const std::uint8_t* px = row + offset - static_cast<std::size_t>(channel);
-        if (premultiply_alpha && source->mode == PILLOW_C_MODE_RGBA && channel < 3) {
-            return mul_div_255(px[channel], px[3]);
+        const int alpha_channel = alpha_channel_index(source);
+        if (premultiply_alpha && is_premultiplied_alpha_mode(source) && channel < alpha_channel) {
+            return mul_div_255(px[channel], px[alpha_channel]);
         }
         return px[channel];
     };
@@ -3885,18 +3899,15 @@ std::uint8_t bicubic_transform_channel(
 
 void write_transform_values(const PillowCImage* source, const std::uint8_t* values, std::uint8_t* dst)
 {
-    if (source->mode == PILLOW_C_MODE_RGBA) {
-        const std::uint8_t alpha = values[3];
-        if (alpha == 0 || alpha == 255) {
-            dst[0] = values[0];
-            dst[1] = values[1];
-            dst[2] = values[2];
-        } else {
-            dst[0] = clip_u8_int(255 * values[0] / alpha);
-            dst[1] = clip_u8_int(255 * values[1] / alpha);
-            dst[2] = clip_u8_int(255 * values[2] / alpha);
+    if (is_premultiplied_alpha_mode(source)) {
+        const int alpha_channel = alpha_channel_index(source);
+        const std::uint8_t alpha = values[alpha_channel];
+        for (int channel = 0; channel < alpha_channel; ++channel) {
+            dst[channel] = (alpha == 0 || alpha == 255)
+                ? values[channel]
+                : clip_u8_int(255 * static_cast<int>(values[channel]) / alpha);
         }
-        dst[3] = alpha;
+        dst[alpha_channel] = alpha;
     } else {
         for (int channel = 0; channel < source->channels; ++channel) {
             dst[channel] = values[channel];
@@ -4085,7 +4096,7 @@ int rotate_bilinear_into(
             }
             std::uint8_t values[4]{0, 0, 0, 0};
             for (int channel = 0; channel < source->channels; ++channel) {
-                values[channel] = bilinear_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA);
+                values[channel] = bilinear_transform_channel(source, source_x, source_y, channel, is_premultiplied_alpha_mode(source));
             }
             write_transform_values(source, values, dst);
         }
@@ -4177,7 +4188,7 @@ int rotate_bicubic_into(
             }
             std::uint8_t values[4]{0, 0, 0, 0};
             for (int channel = 0; channel < source->channels; ++channel) {
-                values[channel] = bicubic_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA);
+                values[channel] = bicubic_transform_channel(source, source_x, source_y, channel, is_premultiplied_alpha_mode(source));
             }
             write_transform_values(source, values, dst);
         }
@@ -4325,8 +4336,8 @@ int transform_with_mapper_into(
             std::uint8_t values[4]{0, 0, 0, 0};
             for (int channel = 0; channel < source->channels; ++channel) {
                 values[channel] = resample == PILLOW_C_RESAMPLE_BILINEAR
-                    ? bilinear_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA)
-                    : bicubic_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA);
+                    ? bilinear_transform_channel(source, source_x, source_y, channel, is_premultiplied_alpha_mode(source))
+                    : bicubic_transform_channel(source, source_x, source_y, channel, is_premultiplied_alpha_mode(source));
             }
             write_transform_values(source, values, dst);
         }
@@ -4618,8 +4629,8 @@ int mesh_transform_image_into(
                 std::uint8_t values[4]{0, 0, 0, 0};
                 for (int channel = 0; channel < source->channels; ++channel) {
                     values[channel] = resample == PILLOW_C_RESAMPLE_BILINEAR
-                        ? bilinear_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA)
-                        : bicubic_transform_channel(source, source_x, source_y, channel, source->mode == PILLOW_C_MODE_RGBA);
+                        ? bilinear_transform_channel(source, source_x, source_y, channel, is_premultiplied_alpha_mode(source))
+                        : bicubic_transform_channel(source, source_x, source_y, channel, is_premultiplied_alpha_mode(source));
                 }
                 write_transform_values(source, values, dst);
             }

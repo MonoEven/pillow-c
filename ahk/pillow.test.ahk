@@ -1763,6 +1763,10 @@ AhkTest.Test("Pillow ImageFilter UnsharpMask rejects invalid arguments", PillowT
 PillowTestImageTransformAffineUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    la := Pillow.Image.FromBytes("LA", [3, 2], PillowTestBuffer([
+        10, 0, 80, 64, 200, 128,
+        40, 255, 160, 128, 250, 32,
+    ]))
     rgb := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([
         1, 2, 3,
         10, 20, 30,
@@ -1772,12 +1776,18 @@ PillowTestImageTransformAffineUsesNativePath(*) {
         130, 140, 150,
     ]))
     nearest := 0
+    laBilinear := 0
     bicubic := 0
     try {
         nearest := source.TransformAffine([3, 2], [1.0, 0.0, -1.0, 0.0, 1.0, 0.0], Pillow.Resampling.NEAREST, 8)
+        laBilinear := la.TransformAffine([3, 2], [1.0, 0.0, -0.25, 0.0, 1.0, 0.0], Pillow.Resampling.BILINEAR, [0, 0])
         bicubic := rgb.TransformAffine([4, 3], [0.75, 0.0, 0.0, 0.0, 0.75, 0.0], Pillow.Resampling.BICUBIC, [9, 0, 0])
 
         AhkTest.AssertEqual([8, 1, 2, 8, 4, 5], PillowTestBufferToArray(nearest.ToBytes()))
+        AhkTest.AssertEqual([
+            0, 0, 79, 48, 182, 112,
+            40, 255, 112, 159, 195, 56,
+        ], PillowTestBufferToArray(laBilinear.ToBytes()))
         AhkTest.AssertEqual([4, 3], bicubic.Size)
         AhkTest.AssertEqual([
             0, 0, 0, 0, 0, 6, 13, 25, 36, 34, 44, 54,
@@ -1785,7 +1795,7 @@ PillowTestImageTransformAffineUsesNativePath(*) {
             76, 88, 99, 96, 106, 117, 129, 139, 148, 146, 156, 166,
         ], PillowTestBufferToArray(bicubic.ToBytes()))
     } finally {
-        for image in [bicubic, nearest, rgb, source] {
+        for image in [bicubic, laBilinear, nearest, rgb, la, source] {
             if IsObject(image)
                 image.Close()
         }

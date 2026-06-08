@@ -2153,6 +2153,14 @@ class Pillow {
                     NumPut("UChar", this.ModeAwareU8(color[1]), buf, 0)
                     return buf
                 }
+                if channels = 2 {
+                    if color.Length != 1 && color.Length != 2
+                        throw Error("Pillow transform fill must match image mode", -1)
+                    buf := Buffer(color.Length, 0)
+                    loop color.Length
+                        NumPut("UChar", color[A_Index], buf, A_Index - 1)
+                    return buf
+                }
                 if channels = 3 {
                     if color.Length != 1 && color.Length != 3 && color.Length != 4
                         throw Error("Pillow transform fill must match image mode", -1)
