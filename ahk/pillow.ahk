@@ -2325,6 +2325,8 @@ class Pillow {
                 return ["R", "G", "B"]
             if mode = "RGBA"
                 return ["R", "G", "B", "A"]
+            if mode = "CMYK"
+                return ["C", "M", "Y", "K"]
             return []
         }
 

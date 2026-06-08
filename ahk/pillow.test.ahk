@@ -87,6 +87,37 @@ PillowTestImageFromBytesOwnsNativeCopy(*) {
 
 AhkTest.Test("Pillow Image.FromBytes copies caller bytes into native storage", PillowTestImageFromBytesOwnsNativeCopy)
 
+PillowTestImageCmykFoundationUsesNativeHandles(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer([0, 10, 20, 30, 255, 128, 64, 0]))
+    inverted := 0
+    try {
+        AhkTest.AssertEqual("CMYK", image.Mode)
+        AhkTest.AssertEqual([2, 1], image.Size)
+        AhkTest.AssertEqual(4, image.Channels)
+        AhkTest.AssertEqual(["C", "M", "Y", "K"], image.GetBands())
+        AhkTest.AssertEqual([0, 10, 20, 30, 255, 128, 64, 0], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertEqual([[0, 10, 20, 30], [255, 128, 64, 0]], image.GetData())
+        AhkTest.AssertEqual([255, 128, 64, 0], image.GetPixel([1, 0]))
+
+        image.PutData([[9, 8, 7, 6]])
+        AhkTest.AssertEqual([9, 8, 7, 6, 255, 128, 64, 0], PillowTestBufferToArray(image.ToBytes()))
+
+        image.PutPixel([0, 0], [1, 2, 3, 4])
+        AhkTest.AssertEqual([1, 2, 3, 4, 255, 128, 64, 0], PillowTestBufferToArray(image.ToBytes()))
+
+        inverted := Pillow.ImageChops.Invert(image)
+        AhkTest.AssertEqual("CMYK", inverted.Mode)
+        AhkTest.AssertEqual([254, 253, 252, 251, 0, 127, 191, 255], PillowTestBufferToArray(inverted.ToBytes()))
+    } finally {
+        if IsObject(inverted)
+            inverted.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow CMYK foundation uses native handles", PillowTestImageCmykFoundationUsesNativeHandles)
+
 PillowTestImageFromBytesDefaultRawAllowsExtraBytes(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     rgb := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
@@ -2584,16 +2615,21 @@ PillowTestImageGetBandsReturnsPillowModeBandNames(*) {
     la := Pillow.Image.New("LA", [1, 1])
     rgb := Pillow.Image.New("RGB", [1, 1])
     rgba := Pillow.Image.New("RGBA", [1, 1])
+    cmyk := 0
     try {
         AhkTest.AssertEqual(["L"], l.GetBands())
         AhkTest.AssertEqual(["L", "A"], la.GetBands())
         AhkTest.AssertEqual(["R", "G", "B"], rgb.GetBands())
         AhkTest.AssertEqual(["R", "G", "B", "A"], rgba.GetBands())
+        cmyk := Pillow.Image.New("CMYK", [1, 1])
+        AhkTest.AssertEqual(["C", "M", "Y", "K"], cmyk.GetBands())
 
         bands := rgba.GetBands()
         bands[1] := "changed"
         AhkTest.AssertEqual(["R", "G", "B", "A"], rgba.GetBands())
     } finally {
+        if IsObject(cmyk)
+            cmyk.Close()
         rgba.Close()
         rgb.Close()
         la.Close()

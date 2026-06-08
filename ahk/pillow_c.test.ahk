@@ -2042,7 +2042,8 @@ AhkTest.Test("pillow_c maps core Pillow mode names to native mode ids", (*) => (
     AhkTest.AssertEqual(2, PillowCModeFromString("LA")),
     AhkTest.AssertEqual(3, PillowCModeFromString("RGB")),
     AhkTest.AssertEqual(4, PillowCModeFromString("RGBA")),
-    AhkTest.AssertEqual(6, PillowCModeFromString("P"))
+    AhkTest.AssertEqual(6, PillowCModeFromString("P")),
+    AhkTest.AssertEqual(7, PillowCModeFromString("CMYK"))
 ))
 
 AhkTest.Test("pillow_c maps native mode ids back to Pillow mode names", (*) => (
@@ -2052,6 +2053,7 @@ AhkTest.Test("pillow_c maps native mode ids back to Pillow mode names", (*) => (
     rgb := PillowCModeName(3),
     rgba := PillowCModeName(4),
     p := PillowCModeName(6),
+    cmyk := PillowCModeName(7),
     AhkTest.AssertEqual("1", one.Text),
     AhkTest.AssertEqual(2, one.Required),
     AhkTest.AssertEqual("L", l.Text),
@@ -2063,7 +2065,9 @@ AhkTest.Test("pillow_c maps native mode ids back to Pillow mode names", (*) => (
     AhkTest.AssertEqual("RGBA", rgba.Text),
     AhkTest.AssertEqual(5, rgba.Required),
     AhkTest.AssertEqual("P", p.Text),
-    AhkTest.AssertEqual(2, p.Required)
+    AhkTest.AssertEqual(2, p.Required),
+    AhkTest.AssertEqual("CMYK", cmyk.Text),
+    AhkTest.AssertEqual(5, cmyk.Required)
 ))
 
 AhkTest.Test("pillow_c_blend_u8 matches Pillow L alpha 0.25", (*) =>
@@ -2164,6 +2168,38 @@ PillowCTestImageHandleOwnsModeMetadata(*) {
 }
 
 AhkTest.Test("pillow_c image handle owns Pillow mode metadata", PillowCTestImageHandleOwnsModeMetadata)
+
+PillowCTestImageHandleOwnsCmykBytesAndOperations(*) {
+    cmyk := PillowCCreateImageMode(2, 1, 7)
+    inverted := 0
+    try {
+        AhkTest.AssertEqual(7, PillowCImageMode(cmyk))
+        AhkTest.AssertEqual(4, PillowCImageInt(cmyk, "pillow_c_image_channels"))
+        AhkTest.AssertEqual(8, PillowCImageInt(cmyk, "pillow_c_image_stride"))
+        AhkTest.AssertEqual(8, PillowCImageSize(cmyk))
+
+        PillowCImageSetRawBytes(cmyk, [0, 10, 20, 30, 255, 128, 64, 0], "CMYK")
+        AhkTest.AssertEqual([0, 10, 20, 30, 255, 128, 64, 0], PillowCImageToArray(cmyk, 8))
+        AhkTest.AssertEqual([0, 10, 20, 30, 255, 128, 64, 0], PillowCImageGetRawBytes(cmyk, "CMYK"))
+        AhkTest.AssertEqual([255, 128, 64, 0], PillowCImageGetPixel(cmyk, 1, 0, 4))
+
+        PillowCImagePutData(cmyk, [9, 8, 7, 6], 1)
+        AhkTest.AssertEqual([9, 8, 7, 6, 255, 128, 64, 0], PillowCImageToArray(cmyk, 8))
+
+        PillowCImagePutPixel(cmyk, 0, 0, [1, 2, 3, 4])
+        AhkTest.AssertEqual([1, 2, 3, 4, 255, 128, 64, 0], PillowCImageToArray(cmyk, 8))
+
+        inverted := PillowCImageChopsInvert(cmyk)
+        AhkTest.AssertEqual(7, PillowCImageMode(inverted))
+        AhkTest.AssertEqual([254, 253, 252, 251, 0, 127, 191, 255], PillowCImageToArray(inverted, 8))
+    } finally {
+        if inverted
+            PillowCFreeImage(inverted)
+        PillowCFreeImage(cmyk)
+    }
+}
+
+AhkTest.Test("pillow_c image handle owns CMYK bytes and operations", PillowCTestImageHandleOwnsCmykBytesAndOperations)
 
 PillowCTestImageCreateKeepsLegacyChannelModeMapping(*) {
     l := PillowCCreateImage(3, 2, 1)

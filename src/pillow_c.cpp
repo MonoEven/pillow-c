@@ -23,6 +23,7 @@ constexpr int PILLOW_C_MODE_RGB = 3;
 constexpr int PILLOW_C_MODE_RGBA = 4;
 constexpr int PILLOW_C_MODE_1 = 5;
 constexpr int PILLOW_C_MODE_P = 6;
+constexpr int PILLOW_C_MODE_CMYK = 7;
 
 constexpr int PILLOW_C_RESAMPLE_NEAREST = 0;
 constexpr int PILLOW_C_RESAMPLE_LANCZOS = 1;
@@ -113,6 +114,7 @@ enum class RawCodecKind {
     BGRA,
     ARGB,
     ABGR,
+    CMYK,
 };
 
 struct RawCodecSpec {
@@ -294,6 +296,8 @@ int channels_for_mode(int mode)
         return 3;
     case PILLOW_C_MODE_RGBA:
         return 4;
+    case PILLOW_C_MODE_CMYK:
+        return 4;
     default:
         return 0;
     }
@@ -330,6 +334,8 @@ const char* mode_name(int mode)
         return "RGB";
     case PILLOW_C_MODE_RGBA:
         return "RGBA";
+    case PILLOW_C_MODE_CMYK:
+        return "CMYK";
     default:
         return nullptr;
     }
@@ -394,6 +400,11 @@ RawCodecSpec raw_decode_spec(int target_mode, const char* raw_mode)
         }
         if (std::strcmp(raw_mode, "BGR") == 0) {
             return {RawCodecKind::BGR, 3};
+        }
+        break;
+    case PILLOW_C_MODE_CMYK:
+        if (std::strcmp(raw_mode, "CMYK") == 0) {
+            return {RawCodecKind::CMYK, 4};
         }
         break;
     default:
@@ -462,6 +473,11 @@ RawCodecSpec raw_encode_spec(int source_mode, const char* raw_mode)
         }
         if (std::strcmp(raw_mode, "BGR") == 0) {
             return {RawCodecKind::BGR, 3};
+        }
+        break;
+    case PILLOW_C_MODE_CMYK:
+        if (std::strcmp(raw_mode, "CMYK") == 0) {
+            return {RawCodecKind::CMYK, 4};
         }
         break;
     default:
@@ -693,6 +709,12 @@ void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::ui
         default:
             return;
         }
+    case PILLOW_C_MODE_CMYK:
+        dst[0] = src[0];
+        dst[1] = src[1];
+        dst[2] = src[2];
+        dst[3] = src[3];
+        return;
     default:
         return;
     }
@@ -860,6 +882,12 @@ void encode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::ui
         default:
             return;
         }
+    case PILLOW_C_MODE_CMYK:
+        dst[0] = src[0];
+        dst[1] = src[1];
+        dst[2] = src[2];
+        dst[3] = src[3];
+        return;
     default:
         return;
     }
@@ -5787,6 +5815,10 @@ extern "C" __declspec(dllexport) int pillow_c_mode_from_string(
     }
     if (std::strcmp(mode_name_text, "P") == 0) {
         *out_mode = PILLOW_C_MODE_P;
+        return PILLOW_C_OK;
+    }
+    if (std::strcmp(mode_name_text, "CMYK") == 0) {
+        *out_mode = PILLOW_C_MODE_CMYK;
         return PILLOW_C_OK;
     }
     *out_mode = 0;
