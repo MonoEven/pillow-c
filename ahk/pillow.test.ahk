@@ -1555,6 +1555,77 @@ PillowTestImageDrawLineSupportsWidePolylineAndClipping(*) {
 
 AhkTest.Test("Pillow ImageDraw.Line supports wide polyline and clipping", PillowTestImageDrawLineSupportsWidePolylineAndClipping)
 
+PillowTestImageDrawLineSupportsCurveJoints(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    curve := Pillow.Image.New("L", [9, 9])
+    gap := Pillow.Image.New("L", [12, 10])
+    straight := Pillow.Image.New("L", [9, 9])
+    clippedGap := Pillow.Image.New("L", [18, 9])
+    try {
+        draw := Pillow.ImageDraw.Draw(curve)
+        returned := draw.Line([[1, 7], [4, 1], [7, 7]], 7, 5, "curve")
+        AhkTest.AssertEqual(draw, returned)
+        AhkTest.AssertEqual([
+            0, 0, 7, 7, 7, 0, 7, 0, 0,
+            0, 0, 7, 7, 7, 7, 7, 0, 0,
+            0, 7, 7, 7, 7, 7, 7, 7, 0,
+            0, 7, 7, 7, 7, 7, 7, 7, 0,
+            7, 7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7, 7,
+            0, 7, 7, 7, 0, 7, 7, 7, 0,
+            0, 0, 0, 7, 0, 7, 0, 0, 0,
+        ], PillowTestBufferToArray(curve.ToBytes()))
+
+        Pillow.ImageDraw.Draw(gap).Line([[1, 8], [5, 1], [10, 8]], 9, 9, "curve")
+        AhkTest.AssertEqual([
+            0, 9, 9, 9, 9, 9, 9, 9, 9, 9, 0, 0,
+            0, 9, 9, 9, 9, 9, 9, 9, 9, 9, 0, 0,
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 0,
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+            0, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 0,
+            0, 0, 0, 9, 9, 9, 9, 9, 9, 0, 0, 0,
+        ], PillowTestBufferToArray(gap.ToBytes()))
+
+        Pillow.ImageDraw.Draw(straight).Line([[1, 7], [4, 4], [7, 1]], 5, 7, "curve")
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 5, 5, 5, 0, 0,
+            0, 0, 0, 5, 5, 5, 5, 5, 0,
+            0, 0, 5, 5, 5, 5, 5, 5, 5,
+            0, 5, 5, 5, 5, 5, 5, 5, 5,
+            5, 5, 5, 5, 5, 5, 5, 5, 5,
+            5, 5, 5, 5, 5, 5, 5, 5, 0,
+            5, 5, 5, 5, 5, 5, 5, 0, 0,
+            0, 5, 5, 5, 5, 5, 0, 0, 0,
+            0, 0, 5, 5, 5, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(straight.ToBytes()))
+
+        Pillow.ImageDraw.Draw(clippedGap).Line([[-4, 1], [15, 4], [13, 0]], 17, 9, "curve")
+        AhkTest.AssertEqual([
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            0, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            0, 0, 0, 0, 0, 0, 0, 0, 17, 17, 17, 17, 17, 17, 17, 17, 17, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0,
+        ], PillowTestBufferToArray(clippedGap.ToBytes()))
+    } finally {
+        clippedGap.Close()
+        straight.Close()
+        gap.Close()
+        curve.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Line supports curve joints", PillowTestImageDrawLineSupportsCurveJoints)
+
 PillowTestImageDrawPointMutatesImagesThroughNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.New("L", [5, 4])

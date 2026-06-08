@@ -94,6 +94,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_draw_rounded_rectangle`
 - `pillow_c_image_draw_bitmap`
 - `pillow_c_image_draw_line`
+- `pillow_c_image_draw_line_joint`
 - `pillow_c_image_draw_points`
 - `pillow_c_image_draw_polygon`
 - `pillow_c_image_get_bytes`
@@ -250,7 +251,9 @@ Reusable target operations:
 
 `pillow_c_image_draw_bitmap` mutates one image handle in place for Pillow `ImageDraw.bitmap` calls. It accepts an inclusive destination origin, a native bitmap/mask image handle, and a caller-packed fill color. The implementation follows Pillow 11.3.0's `ImagingDrawBitmap`/`ImagingFill2` path: mode `1` masks write the fill color where nonzero, mode `L` and `RGBA` masks alpha-blend the fill color, other mask modes return `-3`, color length must match the destination channel count, and drawing is clipped to the destination bounds.
 
-`pillow_c_image_draw_line` mutates one image handle in place for ordinary Pillow `ImageDraw.line` calls. It accepts a pointer to packed `int x, y` pairs, a point count, a caller-packed color, and a width. The current verified path supports `width <= 1` Bresenham-style segments with the final endpoint draw, plus `width > 1` segment filling through Pillow's wide-line quadrilateral rules. Multi-segment wide lines draw each segment separately like Pillow's C core, clipped to image bounds. Curved `joint="curve"` handling is intentionally a wrapper/native future surface.
+`pillow_c_image_draw_line` mutates one image handle in place for ordinary Pillow `ImageDraw.line` calls. It accepts a pointer to packed `int x, y` pairs, a point count, a caller-packed color, and a width. The current verified path supports `width <= 1` Bresenham-style segments with the final endpoint draw, plus `width > 1` segment filling through Pillow's wide-line quadrilateral rules. Multi-segment wide lines draw each segment separately like Pillow's C core, clipped to image bounds.
+
+`pillow_c_image_draw_line_joint` extends the line path with a `joint_curve` flag for Pillow `ImageDraw.line(..., joint="curve")`. It first draws the ordinary native wide polyline, then for `width > 4` and non-straight interior vertices adds Pillow-style filled pieslice joints. For `width > 8`, it also adds Pillow's narrow gap-cover line between the calculated tangent points. The implementation follows Pillow 11.3.0's `ImageDraw.line` wrapper angle, flipped-arc, and `coord_at_angle` rules while keeping all intermediate drawing in one DLL call from AHK.
 
 `pillow_c_image_draw_points` mutates one image handle in place for Pillow `ImageDraw.point` calls. It accepts a pointer to packed `int x, y` pairs, a point count, and a caller-packed color. Empty point lists are a no-op, single points are valid, out-of-bounds points are clipped away, and color length must match the image channel count.
 

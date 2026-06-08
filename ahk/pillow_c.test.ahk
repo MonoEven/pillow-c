@@ -645,6 +645,27 @@ PillowCImageDrawLine(handle, points, fill, width := 0) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageDrawLineJoint(handle, points, fill, width := 0, jointCurve := false) {
+    pointBuffer := PillowCIntBuffer(points)
+    fillBuffer := PillowCBuffer(fill)
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_line_joint",
+            "Ptr", handle,
+            "Ptr", pointBuffer,
+            "UPtr", points.Length // 2,
+            "Ptr", fillBuffer,
+            "UPtr", fillBuffer.Size,
+            "Int", width,
+            "Int", jointCurve ? 1 : 0,
+            "Int"
+        )
+    } catch Error as err {
+        AhkTest.Fail("Expected pillow_c_image_draw_line_joint export: " err.Message)
+    }
+    PillowCAssertStatus(status)
+}
+
 PillowCImageDrawPoints(handle, points, fill) {
     pointBuffer := points.Length ? PillowCIntBuffer(points) : 0
     fillBuffer := PillowCBuffer(fill)
@@ -4715,6 +4736,74 @@ PillowCTestImageDrawLineSupportsWidePolylineAndClipping(*) {
 }
 
 AhkTest.Test("pillow_c image draw_line supports wide polyline and clipping", PillowCTestImageDrawLineSupportsWidePolylineAndClipping)
+
+PillowCTestImageDrawLineSupportsCurveJoints(*) {
+    curve := PillowCCreateImageMode(9, 9, 1)
+    gap := PillowCCreateImageMode(12, 10, 1)
+    straight := PillowCCreateImageMode(9, 9, 1)
+    clippedGap := PillowCCreateImageMode(18, 9, 1)
+    try {
+        PillowCImageDrawLineJoint(curve, [1, 7, 4, 1, 7, 7], [7], 5, true)
+        AhkTest.AssertEqual([
+            0, 0, 7, 7, 7, 0, 7, 0, 0,
+            0, 0, 7, 7, 7, 7, 7, 0, 0,
+            0, 7, 7, 7, 7, 7, 7, 7, 0,
+            0, 7, 7, 7, 7, 7, 7, 7, 0,
+            7, 7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7, 7,
+            7, 7, 7, 7, 7, 7, 7, 7, 7,
+            0, 7, 7, 7, 0, 7, 7, 7, 0,
+            0, 0, 0, 7, 0, 7, 0, 0, 0,
+        ], PillowCImageToArray(curve, 81))
+
+        PillowCImageDrawLineJoint(gap, [1, 8, 5, 1, 10, 8], [9], 9, true)
+        AhkTest.AssertEqual([
+            0, 9, 9, 9, 9, 9, 9, 9, 9, 9, 0, 0,
+            0, 9, 9, 9, 9, 9, 9, 9, 9, 9, 0, 0,
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 0,
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+            0, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 0,
+            0, 0, 0, 9, 9, 9, 9, 9, 9, 0, 0, 0,
+        ], PillowCImageToArray(gap, 120))
+
+        PillowCImageDrawLineJoint(straight, [1, 7, 4, 4, 7, 1], [5], 7, true)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 5, 5, 5, 0, 0,
+            0, 0, 0, 5, 5, 5, 5, 5, 0,
+            0, 0, 5, 5, 5, 5, 5, 5, 5,
+            0, 5, 5, 5, 5, 5, 5, 5, 5,
+            5, 5, 5, 5, 5, 5, 5, 5, 5,
+            5, 5, 5, 5, 5, 5, 5, 5, 0,
+            5, 5, 5, 5, 5, 5, 5, 0, 0,
+            0, 5, 5, 5, 5, 5, 0, 0, 0,
+            0, 0, 5, 5, 5, 0, 0, 0, 0,
+        ], PillowCImageToArray(straight, 81))
+
+        PillowCImageDrawLineJoint(clippedGap, [-4, 1, 15, 4, 13, 0], [17], 9, true)
+        AhkTest.AssertEqual([
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            0, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            0, 0, 0, 0, 0, 0, 0, 0, 17, 17, 17, 17, 17, 17, 17, 17, 17, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0,
+        ], PillowCImageToArray(clippedGap, 162))
+    } finally {
+        for handle in [clippedGap, straight, gap, curve] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_line supports curve joints", PillowCTestImageDrawLineSupportsCurveJoints)
 
 PillowCTestImageDrawPointsMatchesPillowSingleMultipleAndRgb(*) {
     l := PillowCCreateImageMode(5, 4, 1)

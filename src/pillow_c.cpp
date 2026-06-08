@@ -4502,6 +4502,20 @@ void draw_point_image(PillowCImage* image, int x, int y, const std::uint8_t* col
     std::memcpy(dst, color, static_cast<std::size_t>(image->channels));
 }
 
+int draw_pieslice_image(
+    PillowCImage* image,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    double start,
+    double end,
+    const std::uint8_t* fill,
+    std::size_t fill_size,
+    const std::uint8_t* outline,
+    std::size_t outline_size,
+    int width);
+
 void draw_line_segment_image(
     PillowCImage* image,
     int x0,
@@ -4647,6 +4661,139 @@ int draw_line_image(
         draw_point_image(image, last[0], last[1], color);
     }
     return PILLOW_C_OK;
+}
+
+double line_joint_angle_degrees(const int* start, const int* end)
+{
+    double angle =
+        std::atan2(
+            static_cast<double>(end[0] - start[0]),
+            static_cast<double>(start[1] - end[1])) *
+        180.0 / PILLOW_C_PI;
+    angle = std::fmod(angle, 360.0);
+    if (angle < 0.0) {
+        angle += 360.0;
+    }
+    return angle;
+}
+
+int line_joint_coordinate_delta(double delta)
+{
+    return static_cast<int>(delta > 0.0 ? std::floor(delta) : std::ceil(delta));
+}
+
+int line_joint_x_at_angle(int x, double angle, int width)
+{
+    angle -= 90.0;
+    const double distance = static_cast<double>(width) / 2.0 - 1.0;
+    const double delta = distance * std::cos(angle * PILLOW_C_PI / 180.0);
+    return x + line_joint_coordinate_delta(delta);
+}
+
+int line_joint_y_at_angle(int y, double angle, int width)
+{
+    angle -= 90.0;
+    const double distance = static_cast<double>(width) / 2.0 - 1.0;
+    const double delta = distance * std::sin(angle * PILLOW_C_PI / 180.0);
+    return y + line_joint_coordinate_delta(delta);
+}
+
+int draw_line_curve_joints_image(
+    PillowCImage* image,
+    const int* points,
+    std::size_t point_count,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    int width)
+{
+    for (std::size_t index = 1; index + 1u < point_count; ++index) {
+        const int* previous = points + (index - 1u) * 2u;
+        const int* point = points + index * 2u;
+        const int* next = points + (index + 1u) * 2u;
+
+        const double previous_angle = line_joint_angle_degrees(previous, point);
+        const double next_angle = line_joint_angle_degrees(point, next);
+        if (previous_angle == next_angle) {
+            continue;
+        }
+
+        const bool flipped =
+            (next_angle > previous_angle && next_angle - 180.0 > previous_angle) ||
+            (next_angle < previous_angle && next_angle + 180.0 > previous_angle);
+
+        const double half_width = static_cast<double>(width) / 2.0;
+        const int left = static_cast<int>(static_cast<double>(point[0]) - half_width + 1.0);
+        const int top = static_cast<int>(static_cast<double>(point[1]) - half_width + 1.0);
+        const int right = static_cast<int>(static_cast<double>(point[0]) + half_width - 1.0);
+        const int bottom = static_cast<int>(static_cast<double>(point[1]) + half_width - 1.0);
+
+        double start = 0.0;
+        double end = 0.0;
+        if (flipped) {
+            start = next_angle + 90.0;
+            end = previous_angle + 90.0;
+        } else {
+            start = previous_angle - 90.0;
+            end = next_angle - 90.0;
+        }
+
+        int status = draw_pieslice_image(
+            image,
+            left,
+            top,
+            right,
+            bottom,
+            start - 90.0,
+            end - 90.0,
+            color,
+            color_size,
+            nullptr,
+            0,
+            1);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        if (width > 8) {
+            int gap_points[6] = {};
+            if (flipped) {
+                gap_points[0] = line_joint_x_at_angle(point[0], previous_angle + 90.0, width);
+                gap_points[1] = line_joint_y_at_angle(point[1], previous_angle + 90.0, width);
+                gap_points[4] = line_joint_x_at_angle(point[0], next_angle + 90.0, width);
+                gap_points[5] = line_joint_y_at_angle(point[1], next_angle + 90.0, width);
+            } else {
+                gap_points[0] = line_joint_x_at_angle(point[0], previous_angle - 90.0, width);
+                gap_points[1] = line_joint_y_at_angle(point[1], previous_angle - 90.0, width);
+                gap_points[4] = line_joint_x_at_angle(point[0], next_angle - 90.0, width);
+                gap_points[5] = line_joint_y_at_angle(point[1], next_angle - 90.0, width);
+            }
+            gap_points[2] = point[0];
+            gap_points[3] = point[1];
+
+            status = draw_line_image(image, gap_points, 3, color, color_size, 3);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+    }
+
+    return PILLOW_C_OK;
+}
+
+int draw_line_joint_image(
+    PillowCImage* image,
+    const int* points,
+    std::size_t point_count,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    int width,
+    int joint_curve)
+{
+    const int status = draw_line_image(image, points, point_count, color, color_size, width);
+    if (status != PILLOW_C_OK || !joint_curve || width <= 4 || point_count < 3 || !image || image->pixels.empty()) {
+        return status;
+    }
+    return draw_line_curve_joints_image(image, points, point_count, color, color_size, width);
 }
 
 int draw_points_image(
@@ -12041,6 +12188,18 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_line(
     int width)
 {
     return draw_line_image(image, points, point_count, color, color_size, width);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_draw_line_joint(
+    PillowCImage* image,
+    const int* points,
+    std::size_t point_count,
+    const std::uint8_t* color,
+    std::size_t color_size,
+    int width,
+    int joint_curve)
+{
+    return draw_line_joint_image(image, points, point_count, color, color_size, width, joint_curve);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_points(

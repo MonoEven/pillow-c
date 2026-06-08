@@ -1426,20 +1426,33 @@ class Pillow {
             }
 
             Line(xy, fill := unset, width := 0, joint := unset) {
-                if IsSet(joint) && joint != "" && joint != 0
-                    throw Error("Pillow.ImageDraw.Line joint is not supported yet", -1)
                 points := Pillow.ImageDraw.FlattenPoints(xy, "Line")
                 color := this.Image.PasteColorBuffer(IsSet(fill) ? fill : 0)
-                Pillow.CheckStatus(DllCall(
-                    Pillow.RequireDllPath() "\pillow_c_image_draw_line",
-                    "Ptr", this.Image.RequireHandle(),
-                    "Ptr", points,
-                    "UPtr", points.Size // 8,
-                    "Ptr", color,
-                    "UPtr", color.Size,
-                    "Int", width,
-                    "Int"
-                ))
+                jointCurve := IsSet(joint) && joint = "curve"
+                if jointCurve {
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_draw_line_joint",
+                        "Ptr", this.Image.RequireHandle(),
+                        "Ptr", points,
+                        "UPtr", points.Size // 8,
+                        "Ptr", color,
+                        "UPtr", color.Size,
+                        "Int", width,
+                        "Int", 1,
+                        "Int"
+                    ))
+                } else {
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_draw_line",
+                        "Ptr", this.Image.RequireHandle(),
+                        "Ptr", points,
+                        "UPtr", points.Size // 8,
+                        "Ptr", color,
+                        "UPtr", color.Size,
+                        "Int", width,
+                        "Int"
+                    ))
+                }
                 return this
             }
 
