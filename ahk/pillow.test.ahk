@@ -2525,6 +2525,18 @@ PillowTestImageLoadReturnsPixelAccess(*) {
 
 AhkTest.Test("Pillow Image.Load returns a mutable PixelAccess facade", PillowTestImageLoadReturnsPixelAccess)
 
+PillowTestImageTellReturnsBaseFrameIndex(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    try {
+        AhkTest.AssertEqual(0, image.Tell())
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Tell returns the base frame index", PillowTestImageTellReturnsBaseFrameIndex)
+
 PillowTestImagePutDataBulkWritesNativeStorage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.New("L", [4, 1])

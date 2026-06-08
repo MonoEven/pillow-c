@@ -2384,6 +2384,11 @@ class Pillow {
             return Pillow.Image.PixelAccess(this)
         }
 
+        Tell() {
+            this.RequireHandle()
+            return 0
+        }
+
         Mode {
             get {
                 mode := 0
