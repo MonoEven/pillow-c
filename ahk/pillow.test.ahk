@@ -3017,6 +3017,36 @@ PillowTestImageReduceUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.Reduce uses native integer downsampling", PillowTestImageReduceUsesNativeOperation)
 
+PillowTestImageReduceFactorOneReturnsCopyBeforeNativeModeChecks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    palette := [0, 0, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+    source := Pillow.Image.FromBytes("P", [4, 2], PillowTestBuffer([0, 1, 2, 3, 3, 2, 1, 0]))
+    copied := 0
+    try {
+        source.PutPalette(palette)
+        copied := source.Reduce(1)
+        AhkTest.AssertEqual("P", copied.Mode)
+        AhkTest.AssertEqual([4, 2], copied.Size)
+        AhkTest.AssertEqual([0, 1, 2, 3, 3, 2, 1, 0], PillowTestBufferToArray(copied.ToBytes()))
+        AhkTest.AssertEqual(palette, copied.GetPalette())
+        source.PutPixel([0, 0], 3)
+        AhkTest.AssertEqual(0, copied.GetPixel([0, 0]))
+
+        try {
+            source.Reduce(2)
+            AhkTest.Fail("Expected P Reduce(2) to reject unsupported mode")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0 || InStr(err.Message, "wrong mode") > 0)
+        }
+    } finally {
+        if IsObject(copied)
+            copied.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Reduce factor one returns copy before native mode checks", PillowTestImageReduceFactorOneReturnsCopyBeforeNativeModeChecks)
+
 PillowTestImageFilterKernelUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [5, 5], PillowTestBuffer([

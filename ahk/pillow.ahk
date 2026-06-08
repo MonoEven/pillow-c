@@ -3330,6 +3330,9 @@ class Pillow {
         Reduce(factor, box := unset) {
             scale := this.ReduceFactor(factor)
             cropBox := IsSet(box) ? this.ReduceBox(box) : [0, 0, this.Width, this.Height]
+            if scale[1] = 1 && scale[2] = 1 &&
+                cropBox[1] = 0 && cropBox[2] = 0 && cropBox[3] = this.Width && cropBox[4] = this.Height
+                return this.Copy()
             outHandle := 0
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_reduce",
