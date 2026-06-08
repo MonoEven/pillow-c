@@ -71,6 +71,10 @@ PillowTestTempTiffPath(name) {
     return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) ".tiff"
 }
 
+PillowTestTempGifPath(name) {
+    return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) ".gif"
+}
+
 PillowTestDeleteFile(path) {
     try FileDelete path
 }
@@ -644,6 +648,71 @@ PillowTestImageOpenSaveTiffRejectsUnsupportedInputs(*) {
 }
 
 AhkTest.Test("Pillow Image.Open and Save TIFF reject unsupported inputs", PillowTestImageOpenSaveTiffRejectsUnsupportedInputs)
+
+PillowTestImageSaveAndOpenGifUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("P", [2, 2], PillowTestBuffer([0, 1, 2, 3]))
+    palette := [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
+    savedPath := PillowTestTempGifPath("save-open")
+    oraclePath := PillowTestTempGifPath("oracle-open")
+    loaded := 0
+    oracle := 0
+    try {
+        image.PutPalette(palette)
+        image.Save(savedPath, "GIF")
+        AhkTest.AssertEqual([71, 73, 70], PillowTestArraySlice(PillowTestReadFileBytes(savedPath), 1, 3))
+        loaded := Pillow.Image.Open(savedPath)
+        AhkTest.AssertEqual("P", loaded.Mode)
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(palette, loaded.GetPalette())
+
+        PillowTestWriteFileBytes(oraclePath, [
+            71, 73, 70, 56, 55, 97, 2, 0, 2, 0, 129, 0, 0, 10, 20, 30,
+            40, 50, 60, 70, 80, 90, 100, 110, 120, 44, 0, 0, 0, 0, 2, 0,
+            2, 0, 0, 8, 7, 0, 1, 4, 16, 48, 32, 32, 0, 59
+        ])
+        oracle := Pillow.Image.Open(oraclePath, ["GIF"])
+        AhkTest.AssertEqual("P", oracle.Mode)
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowTestBufferToArray(oracle.ToBytes()))
+        AhkTest.AssertEqual(palette, oracle.GetPalette())
+    } finally {
+        for item in [oracle, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(oraclePath)
+        PillowTestDeleteFile(savedPath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save and Image.Open support GIF through native path", PillowTestImageSaveAndOpenGifUsesNativePath)
+
+PillowTestImageOpenSaveGifRejectsUnsupportedInputs(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    badPath := PillowTestTempGifPath("bad")
+    try {
+        try {
+            image.Save(badPath, "GIF")
+            AhkTest.Fail("Expected Image.Save to reject unsupported RGB GIF")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+
+        PillowTestWriteFileBytes(badPath, [1, 2, 3, 4])
+        try {
+            Pillow.Image.Open(badPath, ["GIF"])
+            AhkTest.Fail("Expected Image.Open to reject invalid GIF")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+    } finally {
+        PillowTestDeleteFile(badPath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Open and Save GIF reject unsupported inputs", PillowTestImageOpenSaveGifRejectsUnsupportedInputs)
 
 PillowTestImageCmykFoundationUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

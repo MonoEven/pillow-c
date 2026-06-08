@@ -1732,6 +1732,8 @@ class Pillow {
                 return "JPEG"
             if RegExMatch(path, "i)\.tiff?$")
                 return "TIFF"
+            if RegExMatch(path, "i)\.gif$")
+                return "GIF"
             throw Error("Pillow image file format is unsupported", -1)
         }
 
@@ -1741,7 +1743,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "PNG" || name = "JPEG" || name = "TIFF"
+            if name = "BMP" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }

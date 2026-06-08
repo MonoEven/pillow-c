@@ -70,6 +70,10 @@ PillowCTempTiffPath(name) {
     return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) ".tiff"
 }
 
+PillowCTempGifPath(name) {
+    return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) ".gif"
+}
+
 PillowCDeleteFile(path) {
     try FileDelete path
 }
@@ -383,6 +387,31 @@ PillowCImageSaveTiff(handle, path) {
     pathBytes := PillowCUtf8Buffer(path)
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_save_tiff",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageOpenGif(path) {
+    handle := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_open_gif",
+        "Ptr", pathBytes,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
+PillowCImageSaveGif(handle, path) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_gif",
         "Ptr", handle,
         "Ptr", pathBytes,
         "Int"
@@ -3372,6 +3401,96 @@ PillowCTestImageTiffRejectsUnsupportedModesAndInvalidFiles(*) {
 }
 
 AhkTest.Test("pillow_c TIFF IO rejects unsupported modes and invalid files", PillowCTestImageTiffRejectsUnsupportedModesAndInvalidFiles)
+
+PillowCTestImageOpenGifReadsPillowPaletteMode(*) {
+    path := PillowCTempGifPath("open-p")
+    image := 0
+    try {
+        PillowCWriteFileBytes(path, [
+            71, 73, 70, 56, 55, 97, 2, 0, 2, 0, 129, 0, 0, 10, 20, 30,
+            40, 50, 60, 70, 80, 90, 100, 110, 120, 44, 0, 0, 0, 0, 2, 0,
+            2, 0, 0, 8, 7, 0, 1, 4, 16, 48, 32, 32, 0, 59
+        ])
+        image := PillowCImageOpenGif(path)
+        AhkTest.AssertEqual(6, PillowCImageMode(image))
+        AhkTest.AssertEqual([2, 2], [PillowCImageInt(image, "pillow_c_image_width"), PillowCImageInt(image, "pillow_c_image_height")])
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowCImageToArray(image, 4))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120], PillowCImageGetPaletteRgb(image))
+    } finally {
+        if image
+            PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_gif reads Pillow P mode GIFs", PillowCTestImageOpenGifReadsPillowPaletteMode)
+
+PillowCTestImageSaveGifRoundTripsPaletteMode(*) {
+    image := PillowCCreateImageMode(2, 2, 6)
+    path := PillowCTempGifPath("save-p")
+    loaded := 0
+    try {
+        PillowCImageSetBytes(image, [0, 1, 2, 3])
+        PillowCImagePutPaletteRgb(image, [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120])
+        PillowCImageSaveGif(image, path)
+        AhkTest.AssertEqual([71, 73, 70], PillowCArraySlice(PillowCReadFileBytes(path), 1, 3))
+
+        loaded := PillowCImageOpenGif(path)
+        AhkTest.AssertEqual(6, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowCImageToArray(loaded, 4))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120], PillowCImageGetPaletteRgb(loaded))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif round-trips P mode images", PillowCTestImageSaveGifRoundTripsPaletteMode)
+
+PillowCTestImageGifRejectsUnsupportedModesAndInvalidFiles(*) {
+    rgb := PillowCCreateImageMode(1, 1, 3)
+    badPath := PillowCTempGifPath("bad")
+    missingPath := PillowCTempGifPath("missing")
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(rgb, [1, 2, 3])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_gif",
+            "Ptr", rgb,
+            "Ptr", PillowCUtf8Buffer(badPath),
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        PillowCWriteFileBytes(badPath, [1, 2, 3, 4])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_open_gif",
+            "Ptr", PillowCUtf8Buffer(badPath),
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_open_gif",
+            "Ptr", PillowCUtf8Buffer(missingPath),
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCDeleteFile(badPath)
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c GIF IO rejects unsupported modes and invalid files", PillowCTestImageGifRejectsUnsupportedModesAndInvalidFiles)
 
 PillowCTestImageCopyIsIndependent(*) {
     source := PillowCCreateImage(2, 1, 3)
