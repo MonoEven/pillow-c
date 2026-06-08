@@ -6839,6 +6839,28 @@ PillowTestImagePasteAcceptsMaskAsSecondArgument(*) {
 
 AhkTest.Test("Pillow Image.Paste accepts mask as second argument", PillowTestImagePasteAcceptsMaskAsSecondArgument)
 
+PillowTestImagePasteDefaultsImageBoxToOrigin(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    target := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([0, 0, 0, 0, 0, 0]))
+    source := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([9, 8]))
+    try {
+        target.Paste(source)
+        AhkTest.AssertEqual([9, 8, 0, 0, 0, 0], PillowTestBufferToArray(target.ToBytes()))
+
+        try {
+            target.Paste(7)
+            AhkTest.Fail("Expected Image.Paste to require a 4-item box for color sources")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "cannot determine region size") > 0 || InStr(err.Message, "4-item box") > 0)
+        }
+    } finally {
+        source.Close()
+        target.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Paste defaults image box to origin", PillowTestImagePasteDefaultsImageBoxToOrigin)
+
 PillowTestImagePasteAcceptsModeOneMask(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     target := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([1, 2, 3, 4]))

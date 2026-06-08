@@ -3631,7 +3631,9 @@ class Pillow {
             return this
         }
 
-        Paste(source, box, mask := unset) {
+        Paste(source, box := unset, mask := unset) {
+            if !IsSet(box)
+                box := [0, 0]
             if IsObject(box) && box is Pillow.Image {
                 if IsSet(mask)
                     throw Error("If using second argument as mask, third argument must be None", -1)
