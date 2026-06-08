@@ -2762,6 +2762,39 @@ PillowTestImageResizeBicubicUsesNativeHandleOperation(*) {
 
 AhkTest.Test("Pillow Image.Resize BICUBIC resizes through native handles", PillowTestImageResizeBicubicUsesNativeHandleOperation)
 
+PillowTestImageResizeDefaultsMatchPillowResamplingRules(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([
+        1, 2, 3, 10, 20, 30,
+        100, 110, 120, 200, 210, 220,
+    ]))
+    l := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([1, 10, 100, 200]))
+    p := Pillow.Image.FromBytes("P", [2, 2], PillowTestBuffer([0, 1, 2, 3]))
+    rgbDefault := 0
+    lDefault := 0
+    pDefault := 0
+    try {
+        rgbDefault := rgb.Resize([3, 3])
+        lDefault := l.Resize([3, 3])
+        pDefault := p.Resize([3, 3])
+
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 1, 7, 0, 8, 19,
+            47, 52, 57, 78, 86, 94, 109, 119, 130,
+            99, 110, 120, 159, 170, 180, 220, 230, 240,
+        ], PillowTestBufferToArray(rgbDefault.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 0, 47, 78, 109, 99, 159, 220], PillowTestBufferToArray(lDefault.ToBytes()))
+        AhkTest.AssertEqual([0, 1, 1, 2, 3, 3, 2, 3, 3], PillowTestBufferToArray(pDefault.ToBytes()))
+    } finally {
+        for image in [pDefault, lDefault, rgbDefault, p, l, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Resize defaults match Pillow resampling rules", PillowTestImageResizeDefaultsMatchPillowResamplingRules)
+
 PillowTestImageResizeBoxUsesNativeSampling(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     rgb := Pillow.Image.FromBytes("RGB", [3, 3], PillowTestBuffer([

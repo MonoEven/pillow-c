@@ -3215,7 +3215,7 @@ class Pillow {
             if size.Length != 2
                 throw Error("Pillow.Image.Resize expects size [width, height]", -1)
             if !IsSet(resample)
-                resample := Pillow.Resampling.NEAREST
+                resample := (this.Mode = "1" || this.Mode = "P") ? Pillow.Resampling.NEAREST : Pillow.Resampling.BICUBIC
 
             outHandle := 0
             if IsSet(reducingGap) {
