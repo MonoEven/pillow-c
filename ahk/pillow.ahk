@@ -1996,6 +1996,12 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static EffectSpread(image, distance) {
+            if !(image is Pillow.Image)
+                throw Error("Pillow.Image.EffectSpread expects a Pillow.Image", -1)
+            return image.EffectSpread(distance)
+        }
+
         static Open(path, formats := unset) {
             if !(path is String)
                 throw Error("Pillow.Image.Open expects a file path", -1)
@@ -3578,6 +3584,20 @@ class Pillow {
                 Pillow.RequireDllPath() "\pillow_c_image_transpose",
                 "Ptr", this.RequireHandle(),
                 "Int", method,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        EffectSpread(distance) {
+            if !(distance is Integer)
+                throw Error("Pillow.Image.EffectSpread distance must be an integer", -1)
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_effect_spread",
+                "Ptr", this.RequireHandle(),
+                "Int", distance,
                 "Ptr*", &outHandle,
                 "Int"
             ))

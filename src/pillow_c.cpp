@@ -2780,6 +2780,71 @@ int effect_noise_image(int width, int height, double sigma, PillowCImage** out_i
     }
 }
 
+int effect_spread_image(const PillowCImage* source, int distance, PillowCImage** out_image)
+{
+    if (!source || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (distance < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(source->width, source->height, source->channels, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            source->width,
+            source->height,
+            source->mode,
+            source->channels,
+            stride,
+            std::vector<std::uint8_t>(size),
+            source->palette_rgb};
+        if (source->width == 0 || source->height == 0 || distance == 0) {
+            image->pixels = source->pixels;
+            *out_image = image;
+            return PILLOW_C_OK;
+        }
+
+        const int half_distance = distance / 2;
+        for (int y = 0; y < source->height; ++y) {
+            const std::size_t row_offset = static_cast<std::size_t>(y) * source->stride;
+            for (int x = 0; x < source->width; ++x) {
+                const int xx = x + (std::rand() % distance) - half_distance;
+                const int yy = y + (std::rand() % distance) - half_distance;
+                const std::size_t source_offset = row_offset + static_cast<std::size_t>(x) * source->channels;
+                if (xx >= 0 && xx < source->width && yy >= 0 && yy < source->height) {
+                    const std::size_t target_offset =
+                        static_cast<std::size_t>(yy) * image->stride + static_cast<std::size_t>(xx) * image->channels;
+                    for (int channel = 0; channel < source->channels; ++channel) {
+                        image->pixels[target_offset + static_cast<std::size_t>(channel)] =
+                            source->pixels[source_offset + static_cast<std::size_t>(channel)];
+                    }
+                    for (int channel = 0; channel < source->channels; ++channel) {
+                        image->pixels[source_offset + static_cast<std::size_t>(channel)] =
+                            source->pixels[target_offset + static_cast<std::size_t>(channel)];
+                    }
+                } else {
+                    for (int channel = 0; channel < source->channels; ++channel) {
+                        image->pixels[source_offset + static_cast<std::size_t>(channel)] =
+                            source->pixels[source_offset + static_cast<std::size_t>(channel)];
+                    }
+                }
+            }
+        }
+
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::uint8_t* dst, int target_mode)
 {
     switch (target_mode) {
@@ -10704,6 +10769,14 @@ extern "C" __declspec(dllexport) int pillow_c_image_effect_noise(
     PillowCImage** out_image)
 {
     return effect_noise_image(width, height, sigma, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_effect_spread(
+    const PillowCImage* source,
+    int distance,
+    PillowCImage** out_image)
+{
+    return effect_spread_image(source, distance, out_image);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_bmp(

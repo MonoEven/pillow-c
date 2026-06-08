@@ -309,6 +309,24 @@ PillowCImageEffectNoise(width, height, sigma) {
     return handle
 }
 
+PillowCTestSrand(seed := 1) {
+    DllCall("ucrtbase\srand", "UInt", seed, "Cdecl")
+}
+
+PillowCImageEffectSpread(source, distance) {
+    handle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_effect_spread",
+        "Ptr", source,
+        "Int", distance,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
 PillowCImageOpenBmp(path) {
     handle := 0
     pathBytes := PillowCUtf8Buffer(path)
@@ -3072,6 +3090,7 @@ PillowCTestImageEffectNoiseMatchesPillow(*) {
     empty := 0
     outHandle := 0
     try {
+        PillowCTestSrand(1)
         first := PillowCImageEffectNoise(4, 3, 12.5)
         zeroSigma := PillowCImageEffectNoise(3, 1, 0.0)
         empty := PillowCImageEffectNoise(0, 1, 12.5)
@@ -3098,7 +3117,60 @@ PillowCTestImageEffectNoiseMatchesPillow(*) {
     }
 }
 
-AhkTest.Test("pillow_c image effect_noise matches Pillow initial rand stream", PillowCTestImageEffectNoiseMatchesPillow)
+AhkTest.Test("pillow_c image effect_noise matches Pillow seeded rand stream", PillowCTestImageEffectNoiseMatchesPillow)
+
+PillowCTestImageEffectSpreadMatchesPillowCore(*) {
+    l := PillowCCreateImageMode(4, 3, 1)
+    rgb := PillowCCreateImageMode(3, 2, 3)
+    p := PillowCCreateImageMode(3, 2, 6)
+    lOut := 0
+    rgbOut := 0
+    pOut := 0
+    identity := 0
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(l, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        PillowCImageSetBytes(rgb, [
+            0, 1, 2, 3, 4, 5, 6, 7, 8,
+            9, 10, 11, 12, 13, 14, 15, 16, 17,
+        ])
+        PillowCImageSetBytes(p, [0, 1, 2, 3, 4, 5])
+        PillowCImagePutPaletteRgb(p, [10, 20, 30, 40, 50, 60, 70, 80, 90])
+
+        PillowCTestSrand(1)
+        lOut := PillowCImageEffectSpread(l, 2)
+        PillowCTestSrand(1)
+        rgbOut := PillowCImageEffectSpread(rgb, 2)
+        PillowCTestSrand(1)
+        pOut := PillowCImageEffectSpread(p, 2)
+        identity := PillowCImageEffectSpread(l, 0)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(lOut))
+        AhkTest.AssertEqual([0, 1, 2, 3, 8, 9, 10, 7, 4, 5, 11, 10], PillowCImageToArray(lOut, 12))
+        AhkTest.AssertEqual(3, PillowCImageMode(rgbOut))
+        AhkTest.AssertEqual([
+            12, 13, 14, 3, 4, 5, 6, 7, 8,
+            9, 10, 11, 0, 1, 2, 15, 16, 17,
+        ], PillowCImageToArray(rgbOut, 18))
+        AhkTest.AssertEqual(6, PillowCImageMode(pOut))
+        AhkTest.AssertEqual([4, 1, 2, 3, 0, 5], PillowCImageToArray(pOut, 6))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90], PillowCImageGetPaletteRgb(pOut))
+        AhkTest.AssertEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], PillowCImageToArray(identity, 12))
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_effect_spread", "Ptr", l, "Int", -1, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        for image in [identity, pOut, rgbOut, lOut, p, rgb, l] {
+            if image
+                PillowCFreeImage(image)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image effect_spread matches Pillow core", PillowCTestImageEffectSpreadMatchesPillowCore)
 
 PillowCTestImageSaveBmpMatchesPillowRgb(*) {
     image := PillowCCreateImageMode(2, 2, 3)

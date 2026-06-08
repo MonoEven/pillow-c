@@ -271,6 +271,60 @@ PillowTestImageEffectNoiseUsesNativeGenerator(*) {
 
 AhkTest.Test("Pillow Image.EffectNoise creates native L images", PillowTestImageEffectNoiseUsesNativeGenerator)
 
+PillowTestImageEffectSpreadUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [4, 3], PillowTestBuffer([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]))
+    rgb := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([
+        0, 1, 2, 3, 4, 5, 6, 7, 8,
+        9, 10, 11, 12, 13, 14, 15, 16, 17,
+    ]))
+    p := Pillow.Image.FromBytes("P", [3, 2], PillowTestBuffer([0, 1, 2, 3, 4, 5]))
+    lOut := 0
+    rgbOut := 0
+    pOut := 0
+    identity := 0
+    try {
+        p.PutPalette([10, 20, 30, 40, 50, 60, 70, 80, 90])
+
+        DllCall("ucrtbase\srand", "UInt", 1, "Cdecl")
+        lOut := l.EffectSpread(2)
+        DllCall("ucrtbase\srand", "UInt", 1, "Cdecl")
+        rgbOut := Pillow.Image.EffectSpread(rgb, 2)
+        DllCall("ucrtbase\srand", "UInt", 1, "Cdecl")
+        pOut := p.EffectSpread(2)
+        identity := l.EffectSpread(0)
+
+        AhkTest.AssertEqual("L", lOut.Mode)
+        AhkTest.AssertEqual([4, 3], lOut.Size)
+        AhkTest.AssertEqual([0, 1, 2, 3, 8, 9, 10, 7, 4, 5, 11, 10], PillowTestBufferToArray(lOut.ToBytes()))
+        AhkTest.AssertEqual("RGB", rgbOut.Mode)
+        AhkTest.AssertEqual([
+            12, 13, 14, 3, 4, 5, 6, 7, 8,
+            9, 10, 11, 0, 1, 2, 15, 16, 17,
+        ], PillowTestBufferToArray(rgbOut.ToBytes()))
+        AhkTest.AssertEqual("P", pOut.Mode)
+        AhkTest.AssertEqual([4, 1, 2, 3, 0, 5], PillowTestBufferToArray(pOut.ToBytes()))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90], pOut.GetPalette())
+        AhkTest.AssertEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], PillowTestBufferToArray(identity.ToBytes()))
+        AhkTest.AssertEqual([0, 1, 2, 3, 4, 5], PillowTestBufferToArray(p.ToBytes()))
+
+        errorWasRaised := false
+        try {
+            l.EffectSpread(-1)
+        } catch Error as err {
+            errorWasRaised := InStr(err.Message, "invalid argument") > 0
+        }
+        AhkTest.AssertTrue(errorWasRaised)
+    } finally {
+        for item in [identity, pOut, rgbOut, lOut, p, rgb, l] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.EffectSpread uses native path", PillowTestImageEffectSpreadUsesNativePath)
+
 PillowTestImageFromBytesOwnsNativeCopy(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     data := PillowTestBuffer([10, 20, 30, 40, 50, 60])

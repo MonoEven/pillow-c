@@ -84,6 +84,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_radial_gradient`
 - `pillow_c_image_effect_mandelbrot`
 - `pillow_c_image_effect_noise`
+- `pillow_c_image_effect_spread`
 - `pillow_c_image_fill`
 - `pillow_c_image_getpixel`
 - `pillow_c_image_putpixel`
@@ -288,6 +289,8 @@ Reusable target operations:
 `pillow_c_image_effect_mandelbrot` implements Pillow's `Image.effect_mandelbrot(size, extent, quality)` generator and returns a mode `L` image. It accepts non-empty or empty dimensions through the same native handle model, rejects reversed extents and `quality < 2` with `-3`, and otherwise uses Pillow's escape-time formula for deterministic byte output.
 
 `pillow_c_image_effect_noise` implements Pillow's `Image.effect_noise(size, sigma)` generator and returns a mode `L` image. It accepts non-empty or empty dimensions through the same native handle model and follows Pillow 11.3.0's C core: C `rand()` drives the Marsaglia polar Gaussian generator, `sigma` is narrowed to `float`, and output bytes use Pillow's `CLIP8(128 + sigma * value)` semantics.
+
+`pillow_c_image_effect_spread` implements Pillow's `Image.effect_spread(distance)` for existing native image handles. It returns a same-mode, same-size image, preserves RGB palette metadata for mode `P`, rejects negative distances with `-3`, and follows Pillow 11.3.0's C core: `distance == 0` copies the source bytes, otherwise C `rand()` chooses the source-neighborhood offset and output pixels are assigned from the original source image.
 
 `pillow_c_image_logical_and`, `pillow_c_image_logical_or`, `pillow_c_image_logical_xor`, and their `_into` variants implement Pillow `ImageChops.logical_*` for mode `1` images only. They return `-3` for other modes, use overlapping output dimensions for mismatched sizes, and allow empty width or height outputs.
 
