@@ -126,6 +126,71 @@ PillowTestPythonStyleUnderscoreAliasesUseNativePaths(*) {
 
 AhkTest.Test("Pillow Python-style underscore aliases use native paths", PillowTestPythonStyleUnderscoreAliasesUseNativePaths)
 
+PillowTestPythonStyleGeneratorAndDrawAliasesUseNativePaths(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    linear := 0
+    radial := 0
+    mandel := 0
+    noise := 0
+    spreadSource := 0
+    spreadStatic := 0
+    spreadInstance := 0
+    rounded := 0
+    triangle := 0
+    try {
+        linear := Pillow.Image.linear_gradient("L")
+        radial := Pillow.Image.radial_gradient("L")
+        mandel := Pillow.Image.effect_mandelbrot([4, 3], [-2.0, -1.0, 1.0, 1.0], 10)
+        noise := Pillow.Image.effect_noise([3, 1], 0.0)
+        spreadSource := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([1, 2, 3, 4]))
+        spreadStatic := Pillow.Image.effect_spread(spreadSource, 0)
+        spreadInstance := spreadSource.effect_spread(0)
+        rounded := Pillow.Image.New("L", [6, 5])
+        triangle := Pillow.Image.New("L", [9, 9])
+
+        AhkTest.AssertEqual("L", linear.Mode)
+        AhkTest.AssertEqual([127], [linear.GetPixel([255, 127])])
+        AhkTest.AssertEqual("L", radial.Mode)
+        AhkTest.AssertEqual([0], [radial.GetPixel([128, 128])])
+        AhkTest.AssertEqual([76, 102, 0, 102, 0, 0, 0, 102, 76, 102, 0, 102], PillowTestBufferToArray(mandel.ToBytes()))
+        AhkTest.AssertEqual([128, 128, 128], PillowTestBufferToArray(noise.ToBytes()))
+        AhkTest.AssertEqual([1, 2, 3, 4], PillowTestBufferToArray(spreadStatic.ToBytes()))
+        AhkTest.AssertEqual([1, 2, 3, 4], PillowTestBufferToArray(spreadInstance.ToBytes()))
+
+        roundedDraw := Pillow.ImageDraw.Draw(rounded)
+        AhkTest.AssertEqual(roundedDraw, roundedDraw.rounded_rectangle([1, 1, 4, 3], 0, 6, 9, 1))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0,
+            0, 9, 9, 9, 9, 0,
+            0, 9, 6, 6, 9, 0,
+            0, 9, 9, 9, 9, 0,
+            0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(rounded.ToBytes()))
+
+        polygonDraw := Pillow.ImageDraw.Draw(triangle)
+        AhkTest.AssertEqual(polygonDraw, polygonDraw.regular_polygon([4, 4, 3], 3, 0, 7, 9))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 9, 0, 0, 0, 0,
+            0, 0, 0, 9, 9, 0, 0, 0, 0,
+            0, 0, 9, 7, 7, 9, 0, 0, 0,
+            0, 0, 9, 7, 7, 9, 0, 0, 0,
+            0, 9, 9, 9, 9, 9, 9, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowTestBufferToArray(triangle.ToBytes()))
+    } finally {
+        DllCall("ucrtbase\srand", "UInt", 1, "Cdecl")
+        for image in [triangle, rounded, spreadInstance, spreadStatic, spreadSource, noise, mandel, radial, linear] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Python-style generator and draw aliases use native paths", PillowTestPythonStyleGeneratorAndDrawAliasesUseNativePaths)
+
 PillowTestImageNewCreatesModeAwareNativeImage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("RGB", [2, 1])

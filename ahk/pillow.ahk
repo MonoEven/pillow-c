@@ -1548,6 +1548,12 @@ class Pillow {
                 return this
             }
 
+            rounded_rectangle(box, radius := 0, fill := unset, outline := unset, width := 1, corners := unset) {
+                if IsSet(corners)
+                    return this.RoundedRectangle(box, radius, IsSet(fill) ? fill : unset, IsSet(outline) ? outline : unset, width, corners)
+                return this.RoundedRectangle(box, radius, IsSet(fill) ? fill : unset, IsSet(outline) ? outline : unset, width)
+            }
+
             Bitmap(xy, bitmap, fill := unset) {
                 if !IsObject(xy) || xy.Length != 2
                     throw Error("Pillow.ImageDraw.Bitmap xy expects [x, y]", -1)
@@ -1621,6 +1627,10 @@ class Pillow {
             RegularPolygon(boundingCircle, nSides, rotation := 0, fill := unset, outline := unset, width := 1) {
                 points := Pillow.ImageDraw.RegularPolygonVertices(boundingCircle, nSides, rotation)
                 return this.Polygon(points, IsSet(fill) ? fill : unset, IsSet(outline) ? outline : unset, width)
+            }
+
+            regular_polygon(boundingCircle, n_sides, rotation := 0, fill := unset, outline := unset, width := 1) {
+                return this.RegularPolygon(boundingCircle, n_sides, rotation, IsSet(fill) ? fill : unset, IsSet(outline) ? outline : unset, width)
             }
 
             Polygon(xy, fill := unset, outline := unset, width := 1) {
@@ -2064,6 +2074,10 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static linear_gradient(modeName) {
+            return Pillow.Image.LinearGradient(modeName)
+        }
+
         static RadialGradient(modeName) {
             outHandle := 0
             Pillow.CheckStatus(DllCall(
@@ -2073,6 +2087,10 @@ class Pillow {
                 "Int"
             ))
             return Pillow.WrapImageHandle(outHandle)
+        }
+
+        static radial_gradient(modeName) {
+            return Pillow.Image.RadialGradient(modeName)
         }
 
         static EffectMandelbrot(size, extent, quality) {
@@ -2103,6 +2121,10 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static effect_mandelbrot(size, extent, quality) {
+            return Pillow.Image.EffectMandelbrot(size, extent, quality)
+        }
+
         static EffectNoise(size, sigma) {
             if !IsObject(size) || size.Length != 2
                 throw Error("Pillow.Image.EffectNoise expects size [width, height]", -1)
@@ -2121,10 +2143,18 @@ class Pillow {
             return Pillow.WrapImageHandle(outHandle)
         }
 
+        static effect_noise(size, sigma) {
+            return Pillow.Image.EffectNoise(size, sigma)
+        }
+
         static EffectSpread(image, distance) {
             if !(image is Pillow.Image)
                 throw Error("Pillow.Image.EffectSpread expects a Pillow.Image", -1)
             return image.EffectSpread(distance)
+        }
+
+        static effect_spread(image, distance) {
+            return Pillow.Image.EffectSpread(image, distance)
         }
 
         static Open(path, formats := unset) {
@@ -3901,6 +3931,10 @@ class Pillow {
                 "Int"
             ))
             return this.WrapDerivedHandle(outHandle)
+        }
+
+        effect_spread(distance) {
+            return this.EffectSpread(distance)
         }
 
         Convert(modeName, matrixOrDither := unset, dither := unset) {
