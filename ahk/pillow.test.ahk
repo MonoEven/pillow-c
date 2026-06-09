@@ -2222,6 +2222,37 @@ PillowTestImageFromBytesSupportsRawModesAndStride(*) {
 
 AhkTest.Test("Pillow Image.FromBytes supports raw modes and stride", PillowTestImageFromBytesSupportsRawModesAndStride)
 
+PillowTestImageInstanceFromBytesMutatesExistingStorage(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGB", [2, 2])
+    source := PillowTestBuffer([
+        10, 20, 30, 40, 50, 60,
+        70, 80, 90, 100, 110, 120,
+    ])
+    try {
+        image.Info["author"] := "ahk"
+        handle := image.Handle
+        returned := image.FromBytes(source)
+
+        AhkTest.AssertEqual(image, returned)
+        AhkTest.AssertEqual(handle, image.Handle)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120], PillowTestBufferToArray(image.ToBytes()))
+        NumPut("UChar", 255, source, 0)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestArraySlice(PillowTestBufferToArray(image.ToBytes()), 1, 3))
+        AhkTest.AssertEqual("ahk", image.Info["author"])
+
+        image.FromBytes(PillowTestBuffer([
+            1, 2, 3, 4, 5, 6, 99, 99,
+            7, 8, 9, 10, 11, 12, 88, 88,
+        ]), "raw", "BGR", 8, -1)
+        AhkTest.AssertEqual([9, 8, 7, 12, 11, 10, 3, 2, 1, 6, 5, 4], PillowTestBufferToArray(image.ToBytes()))
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBytes mutates existing storage", PillowTestImageInstanceFromBytesMutatesExistingStorage)
+
 PillowTestImageToBytesSupportsRawModes(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))

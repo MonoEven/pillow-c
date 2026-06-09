@@ -2181,6 +2181,39 @@ class Pillow {
             }
         }
 
+        FromBytes(bytes, decoder := unset, rawmode := unset, stride := 0, orientation := 1) {
+            if IsSet(decoder) {
+                if decoder != "raw"
+                    throw Error("Pillow.Image.FromBytes currently supports only the raw decoder", -1)
+                if !IsSet(rawmode)
+                    rawmode := this.Mode
+                rawModeBytes := Pillow.Image.RawModeBuffer(rawmode)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_set_raw_bytes",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", bytes,
+                    "UPtr", bytes.Size,
+                    "Ptr", rawModeBytes,
+                    "Int", stride,
+                    "Int", orientation,
+                    "Int"
+                ))
+            } else {
+                rawModeBytes := Pillow.Image.RawModeBuffer(this.Mode)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_set_raw_bytes",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", bytes,
+                    "UPtr", bytes.Size,
+                    "Ptr", rawModeBytes,
+                    "Int", 0,
+                    "Int", 1,
+                    "Int"
+                ))
+            }
+            return this
+        }
+
         static Eval(image, fn) {
             if !(IsObject(image) && image is Pillow.Image)
                 throw Error("Pillow.Image.Eval expects a Pillow.Image", -1)
