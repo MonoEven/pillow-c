@@ -126,6 +126,7 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `Pillow.ImageColor.getrgb(...)`
 - `Pillow.ImageColor.getcolor(...)`
 - `Pillow.ImageSequence.Iterator(...)`
+- `Pillow.ImageSequence.all_frames(...)`
 - `image.GetBands(...)`
 - `image.GetChannel(...)`
 - `image.Split(...)`

@@ -1371,6 +1371,74 @@ PillowTestImageSequenceIteratorHandlesSingleFrameImages(*) {
 
 AhkTest.Test("Pillow ImageSequence.Iterator handles single-frame images", PillowTestImageSequenceIteratorHandlesSingleFrameImages)
 
+PillowTestImageSequenceAllFramesCopiesAndRestoresOriginal(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempGifPath("sequence-all-frames")
+    image := 0
+    frames := []
+    try {
+        PillowTestWriteFileBytes(path, [
+            71, 73, 70, 56, 57, 97, 2, 0, 1, 0, 129, 0, 0, 0, 0, 0,
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 33, 255, 11, 78, 69, 84, 83,
+            67, 65, 80, 69, 50, 46, 48, 3, 1, 0, 0, 0, 33, 249, 4, 0,
+            1, 0, 0, 0, 44, 0, 0, 0, 0, 2, 0, 1, 0, 0, 8, 5,
+            0, 1, 4, 8, 8, 0, 33, 249, 4, 1, 2, 0, 2, 0, 44, 0,
+            0, 0, 0, 2, 0, 1, 0, 129, 0, 0, 0, 10, 20, 30, 0, 0,
+            0, 0, 0, 0, 8, 5, 0, 3, 0, 8, 8, 0, 59
+        ])
+
+        image := Pillow.Image.Open(path, ["GIF"])
+        image.Seek(1)
+        frames := Pillow.ImageSequence.AllFrames(image)
+
+        AhkTest.AssertEqual(1, image.Tell())
+        AhkTest.AssertEqual("RGB", image.Mode)
+        AhkTest.AssertEqual(2, frames.Length)
+        AhkTest.AssertTrue(frames[1] != image)
+        AhkTest.AssertTrue(frames[2] != image)
+        AhkTest.AssertTrue(frames[1] != frames[2])
+        AhkTest.AssertEqual("P", frames[1].Mode)
+        AhkTest.AssertEqual("RGB", frames[2].Mode)
+        AhkTest.AssertEqual([0, 1], PillowTestBufferToArray(frames[1].ToBytes()))
+        AhkTest.AssertEqual([10, 20, 30, 0, 0, 0], PillowTestBufferToArray(frames[2].ToBytes()))
+    } finally {
+        for frame in frames {
+            if IsObject(frame)
+                frame.Close()
+        }
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow ImageSequence.all_frames copies frames and restores original image", PillowTestImageSequenceAllFramesCopiesAndRestoresOriginal)
+
+PillowTestImageSequenceAllFramesAcceptsListsAndFunctions(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([7]))
+    right := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([9]))
+    frames := []
+    try {
+        frames := Pillow.ImageSequence.all_frames([left, right], (frame) => frame.Point((value) => value + 1))
+
+        AhkTest.AssertEqual(2, frames.Length)
+        AhkTest.AssertEqual([8], PillowTestBufferToArray(frames[1].ToBytes()))
+        AhkTest.AssertEqual([10], PillowTestBufferToArray(frames[2].ToBytes()))
+        AhkTest.AssertEqual([7], PillowTestBufferToArray(left.ToBytes()))
+        AhkTest.AssertEqual([9], PillowTestBufferToArray(right.ToBytes()))
+    } finally {
+        for frame in frames {
+            if IsObject(frame)
+                frame.Close()
+        }
+        right.Close()
+        left.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageSequence.all_frames accepts image lists and functions", PillowTestImageSequenceAllFramesAcceptsListsAndFunctions)
+
 PillowTestImageOpenGifExposesAnimationMetadata(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     path := PillowTestTempGifPath("metadata")

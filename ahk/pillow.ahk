@@ -43,6 +43,42 @@ class Pillow {
     }
 
     class ImageSequence {
+        static AllFrames(im, fn := unset) {
+            if im is Array {
+                sequences := im
+            } else {
+                sequences := [im]
+            }
+            if IsSet(fn) && !(fn is Func)
+                throw Error("Pillow.ImageSequence.AllFrames expects a callable function", -1)
+
+            frames := []
+            for image in sequences {
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("Pillow.ImageSequence.AllFrames expects Pillow.Image inputs", -1)
+                current := image.Tell()
+                try {
+                    for frame in Pillow.ImageSequence.Iterator(image)
+                        frames.Push(frame.Copy())
+                } finally {
+                    image.Seek(current)
+                }
+            }
+            if !IsSet(fn)
+                return frames
+
+            mapped := []
+            for frame in frames
+                mapped.Push(fn.Call(frame))
+            return mapped
+        }
+
+        static all_frames(im, fn := unset) {
+            return IsSet(fn)
+                ? Pillow.ImageSequence.AllFrames(im, fn)
+                : Pillow.ImageSequence.AllFrames(im)
+        }
+
         class Iterator {
             __New(image) {
                 if !(IsObject(image) && image is Pillow.Image)
