@@ -64,6 +64,47 @@ PillowTestReadFileBytes(path) {
     }
 }
 
+PillowTestReadBe32(values, offset) {
+    return (values[offset] << 24)
+        | (values[offset + 1] << 16)
+        | (values[offset + 2] << 8)
+        | values[offset + 3]
+}
+
+PillowTestArrayEquals(left, right) {
+    if left.Length != right.Length
+        return false
+    for index, value in left {
+        if value != right[index]
+            return false
+    }
+    return true
+}
+
+PillowTestFindPngChunk(values, typeBytes) {
+    pos := 9
+    while pos + 11 <= values.Length {
+        length := PillowTestReadBe32(values, pos)
+        typeStart := pos + 4
+        if typeStart + 3 <= values.Length
+            && PillowTestArrayEquals(PillowTestArraySlice(values, typeStart, typeStart + 3), typeBytes) {
+            return { Found: true, DataOffset: pos + 8, Length: length }
+        }
+        pos += 12 + length
+    }
+    return { Found: false, DataOffset: 0, Length: 0 }
+}
+
+PillowTestAssertPngPhys(path, expectedX, expectedY) {
+    bytes := PillowTestReadFileBytes(path)
+    chunk := PillowTestFindPngChunk(bytes, [0x70, 0x48, 0x59, 0x73])
+    AhkTest.AssertTrue(chunk.Found)
+    AhkTest.AssertEqual(9, chunk.Length)
+    AhkTest.AssertEqual(expectedX, PillowTestReadBe32(bytes, chunk.DataOffset))
+    AhkTest.AssertEqual(expectedY, PillowTestReadBe32(bytes, chunk.DataOffset + 4))
+    AhkTest.AssertEqual(1, bytes[chunk.DataOffset + 8])
+}
+
 PillowTestExifOrientationSegment(orientation) {
     return [
         0xFF, 0xE1, 0x00, 0x22,
@@ -990,6 +1031,37 @@ PillowTestImageSavePngCompressLevelOptionUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Save PNG compress_level option uses native path", PillowTestImageSavePngCompressLevelOptionUsesNativePath)
 
+PillowTestImageSavePngDpiOptionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    dpiPath := PillowTestTempPngPath("dpi")
+    aliasPath := PillowTestTempPngPath("dpi-alias")
+    loaded := 0
+    aliasLoaded := 0
+    try {
+        image.Save(dpiPath, "PNG", { Dpi: [300, 150] })
+        image.Save(aliasPath, "PNG", { dpi: [96, 96], compress_level: 0 })
+
+        PillowTestAssertPngPhys(dpiPath, 11811, 5906)
+        PillowTestAssertPngPhys(aliasPath, 3780, 3780)
+
+        loaded := Pillow.Image.Open(dpiPath, ["PNG"])
+        aliasLoaded := Pillow.Image.Open(aliasPath, ["PNG"])
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowTestBufferToArray(aliasLoaded.ToBytes()))
+    } finally {
+        for item in [aliasLoaded, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        for path in [aliasPath, dpiPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG dpi option uses native path", PillowTestImageSavePngDpiOptionUsesNativePath)
+
 PillowTestImageSavePngCompressLevelRejectsInvalidOption(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
@@ -1015,6 +1087,30 @@ PillowTestImageSavePngCompressLevelRejectsInvalidOption(*) {
 }
 
 AhkTest.Test("Pillow Image.Save PNG compress_level rejects invalid options", PillowTestImageSavePngCompressLevelRejectsInvalidOption)
+
+PillowTestImageSavePngDpiRejectsInvalidOption(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    badPath := PillowTestTempPngPath("bad-dpi")
+    try {
+        for badDpi in [96, [96], [96, "x"], [-1, 96]] {
+            rejected := false
+            try {
+                image.Save(badPath, "PNG", { dpi: badDpi })
+            } catch Error as err {
+                rejected := true
+                AhkTest.AssertTrue(InStr(err.Message, "dpi") > 0 || InStr(err.Message, "invalid argument") > 0)
+            }
+            if !rejected
+                AhkTest.Fail("Expected Image.Save to reject invalid PNG dpi")
+        }
+    } finally {
+        PillowTestDeleteFile(badPath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG dpi rejects invalid options", PillowTestImageSavePngDpiRejectsInvalidOption)
 
 PillowTestImageSaveAndOpenJpegUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

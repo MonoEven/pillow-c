@@ -2033,7 +2033,37 @@ int append_zlib_stored(std::vector<std::uint8_t>& out, const std::vector<std::ui
     return PILLOW_C_OK;
 }
 
-int save_png_custom_image(const PillowCImage* image, const char* path)
+bool png_dpi_to_pixels_per_meter(double dpi, std::uint32_t* out_value)
+{
+    if (!out_value || !std::isfinite(dpi) || dpi <= 0.0) {
+        return false;
+    }
+    const double pixels_per_meter = dpi / 0.0254 + 0.5;
+    if (pixels_per_meter < 0.0 || pixels_per_meter > static_cast<double>(std::numeric_limits<std::uint32_t>::max())) {
+        return false;
+    }
+    *out_value = static_cast<std::uint32_t>(pixels_per_meter);
+    return true;
+}
+
+int append_png_phys_chunk(std::vector<std::uint8_t>& png, double dpi_x, double dpi_y)
+{
+    std::uint32_t x_pixels_per_meter = 0;
+    std::uint32_t y_pixels_per_meter = 0;
+    if (!png_dpi_to_pixels_per_meter(dpi_x, &x_pixels_per_meter) ||
+        !png_dpi_to_pixels_per_meter(dpi_y, &y_pixels_per_meter)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::vector<std::uint8_t> phys;
+    append_be32(phys, x_pixels_per_meter);
+    append_be32(phys, y_pixels_per_meter);
+    phys.push_back(1);
+    append_png_chunk(png, "pHYs", phys);
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_dpi(const PillowCImage* image, const char* path, bool has_dpi, double dpi_x, double dpi_y)
 {
     if (!image || !path) {
         return PILLOW_C_NULL_POINTER;
@@ -2080,6 +2110,13 @@ int save_png_custom_image(const PillowCImage* image, const char* path)
         ihdr.push_back(0);
         append_png_chunk(png, "IHDR", ihdr);
 
+        if (has_dpi) {
+            status = append_png_phys_chunk(png, dpi_x, dpi_y);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
         if (image->mode == PILLOW_C_MODE_P) {
             std::vector<std::uint8_t> plte = image->palette_rgb;
             if (plte.empty()) {
@@ -2107,7 +2144,12 @@ int save_png_custom_image(const PillowCImage* image, const char* path)
     }
 }
 
-int save_png_image(const PillowCImage* image, const char* path)
+int save_png_custom_image(const PillowCImage* image, const char* path)
+{
+    return save_png_custom_image_with_dpi(image, path, false, 0.0, 0.0);
+}
+
+int save_png_image_with_dpi(const PillowCImage* image, const char* path, bool has_dpi, double dpi_x, double dpi_y)
 {
     if (!image || !path) {
         return PILLOW_C_NULL_POINTER;
@@ -2115,8 +2157,16 @@ int save_png_image(const PillowCImage* image, const char* path)
     if (image->width <= 0 || image->height <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return save_png_custom_image_with_dpi(image, path, true, dpi_x, dpi_y);
+    }
     if (image->mode == PILLOW_C_MODE_LA || image->mode == PILLOW_C_MODE_P) {
-        return save_png_custom_image(image, path);
+        return save_png_custom_image_with_dpi(image, path, has_dpi, dpi_x, dpi_y);
     }
 
     WICPixelFormatGUID format = {};
@@ -2220,6 +2270,11 @@ int save_png_image(const PillowCImage* image, const char* path)
     }
 }
 
+int save_png_image(const PillowCImage* image, const char* path)
+{
+    return save_png_image_with_dpi(image, path, false, 0.0, 0.0);
+}
+
 int save_png_image_with_compress_level(const PillowCImage* image, const char* path, int compress_level)
 {
     if (compress_level == -1) {
@@ -2232,6 +2287,25 @@ int save_png_image_with_compress_level(const PillowCImage* image, const char* pa
         return save_png_custom_image(image, path);
     }
     return save_png_image(image, path);
+}
+
+int save_png_image_with_options(const PillowCImage* image, const char* path, int compress_level, double dpi_x, double dpi_y)
+{
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    if (compress_level == 0) {
+        return save_png_custom_image_with_dpi(image, path, has_dpi, dpi_x, dpi_y);
+    }
+    return save_png_image_with_dpi(image, path, has_dpi, dpi_x, dpi_y);
 }
 
 int open_jpeg_image(const char* path, PillowCImage** out_image)
@@ -12172,6 +12246,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_png_compress_level(
     int compress_level)
 {
     return save_png_image_with_compress_level(image, path, compress_level);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y)
+{
+    return save_png_image_with_options(image, path, compress_level, dpi_x, dpi_y);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_jpeg(

@@ -54,6 +54,47 @@ PillowCReadFileBytes(path) {
     }
 }
 
+PillowCReadBe32(values, offset) {
+    return (values[offset] << 24)
+        | (values[offset + 1] << 16)
+        | (values[offset + 2] << 8)
+        | values[offset + 3]
+}
+
+PillowCArrayEquals(left, right) {
+    if left.Length != right.Length
+        return false
+    for index, value in left {
+        if value != right[index]
+            return false
+    }
+    return true
+}
+
+PillowCFindPngChunk(values, typeBytes) {
+    pos := 9
+    while pos + 11 <= values.Length {
+        length := PillowCReadBe32(values, pos)
+        typeStart := pos + 4
+        if typeStart + 3 <= values.Length
+            && PillowCArrayEquals(PillowCArraySlice(values, typeStart, typeStart + 3), typeBytes) {
+            return { Found: true, DataOffset: pos + 8, Length: length }
+        }
+        pos += 12 + length
+    }
+    return { Found: false, DataOffset: 0, Length: 0 }
+}
+
+PillowCAssertPngPhys(path, expectedX, expectedY) {
+    bytes := PillowCReadFileBytes(path)
+    chunk := PillowCFindPngChunk(bytes, [0x70, 0x48, 0x59, 0x73])
+    AhkTest.AssertTrue(chunk.Found)
+    AhkTest.AssertEqual(9, chunk.Length)
+    AhkTest.AssertEqual(expectedX, PillowCReadBe32(bytes, chunk.DataOffset))
+    AhkTest.AssertEqual(expectedY, PillowCReadBe32(bytes, chunk.DataOffset + 4))
+    AhkTest.AssertEqual(1, bytes[chunk.DataOffset + 8])
+}
+
 PillowCExifOrientationSegment(orientation) {
     return [
         0xFF, 0xE1, 0x00, 0x22,
@@ -3915,6 +3956,75 @@ PillowCTestImageSavePngCompressLevelRejectsInvalidLevel(*) {
 }
 
 AhkTest.Test("pillow_c image save_png_compress_level rejects invalid levels", PillowCTestImageSavePngCompressLevelRejectsInvalidLevel)
+
+PillowCTestImageSavePngOptionsWritesDpiChunk(*) {
+    rgb := PillowCCreateImageMode(2, 1, 3)
+    p := PillowCCreateImageMode(2, 1, 6)
+    rgbPath := PillowCTempPngPath("dpi-rgb")
+    pPath := PillowCTempPngPath("dpi-p")
+    rgbLoaded := 0
+    pLoaded := 0
+    try {
+        PillowCImageSetBytes(rgb, [1, 2, 3, 4, 5, 6])
+        PillowCImageSetBytes(p, [0, 1])
+        PillowCImagePutPaletteRgb(p, [10, 20, 30, 40, 50, 60])
+
+        try {
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_save_png_options",
+                "Ptr", rgb,
+                "Ptr", PillowCUtf8Buffer(rgbPath),
+                "Int", -1,
+                "Double", 300.0,
+                "Double", 150.0,
+                "Int"
+            )
+        } catch Error as err {
+            AhkTest.Fail("Expected pillow_c_image_save_png_options export")
+            return
+        }
+        PillowCAssertStatus(status)
+        PillowCAssertPngPhys(rgbPath, 11811, 5906)
+        rgbLoaded := PillowCImageOpenPng(rgbPath)
+        AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowCImageToArray(rgbLoaded, 6))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_png_options",
+            "Ptr", p,
+            "Ptr", PillowCUtf8Buffer(pPath),
+            "Int", 0,
+            "Double", 96.0,
+            "Double", 96.0,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        PillowCAssertPngPhys(pPath, 3780, 3780)
+        pLoaded := PillowCImageOpenPng(pPath)
+        AhkTest.AssertEqual(6, PillowCImageMode(pLoaded))
+        AhkTest.AssertEqual([0, 1], PillowCImageToArray(pLoaded, 2))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowCImageGetPaletteRgb(pLoaded))
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_png_options",
+            "Ptr", rgb,
+            "Ptr", PillowCUtf8Buffer(rgbPath),
+            "Int", -1,
+            "Double", -1.0,
+            "Double", 96.0,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+    } finally {
+        for handle in [pLoaded, rgbLoaded, p, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        for path in [pPath, rgbPath]
+            PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_png_options writes dpi metadata", PillowCTestImageSavePngOptionsWritesDpiChunk)
 
 PillowCTestImagePngRejectsUnsupportedModesAndInvalidFiles(*) {
     cmyk := PillowCCreateImageMode(1, 1, 7)

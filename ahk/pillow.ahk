@@ -3109,6 +3109,22 @@ class Pillow {
             return { Buffer: Pillow.Image.IntBuffer(values, "Pillow.Image.Save " optionName), Count: values.Length }
         }
 
+        static SaveDpiPair(value) {
+            if !IsObject(value)
+                throw Error("Pillow.Image.Save dpi expects [x, y]", -1)
+            values := []
+            for item in value {
+                if !(item is Number)
+                    throw Error("Pillow.Image.Save dpi values must be numeric", -1)
+                values.Push(item + 0.0)
+            }
+            if values.Length != 2
+                throw Error("Pillow.Image.Save dpi expects [x, y]", -1)
+            if values[1] <= 0 || values[2] <= 0
+                throw Error("Pillow.Image.Save dpi values must be greater than 0", -1)
+            return values
+        }
+
         Close() {
             if !this.HasOwnProp("Handle") || this.Handle = 0
                 return
@@ -3368,14 +3384,28 @@ class Pillow {
             pathBytes := Pillow.Image.Utf8Buffer(path)
             if IsSet(saveOptions) && resolvedFormat = "PNG" {
                 compressLevelOption := Pillow.Image.SaveOption(saveOptions, "CompressLevel", "compress_level")
-                if compressLevelOption.Set {
-                    if !(compressLevelOption.Value is Integer)
-                        throw Error("Pillow.Image.Save compress_level must be an integer", -1)
+                dpiOption := Pillow.Image.SaveOption(saveOptions, "Dpi", "dpi")
+                if compressLevelOption.Set || dpiOption.Set {
+                    compressLevel := -1
+                    if compressLevelOption.Set {
+                        if !(compressLevelOption.Value is Integer)
+                            throw Error("Pillow.Image.Save compress_level must be an integer", -1)
+                        compressLevel := compressLevelOption.Value
+                    }
+                    dpiX := 0.0
+                    dpiY := 0.0
+                    if dpiOption.Set {
+                        dpi := Pillow.Image.SaveDpiPair(dpiOption.Value)
+                        dpiX := dpi[1]
+                        dpiY := dpi[2]
+                    }
                     Pillow.CheckStatus(DllCall(
-                        Pillow.RequireDllPath() "\pillow_c_image_save_png_compress_level",
+                        Pillow.RequireDllPath() "\pillow_c_image_save_png_options",
                         "Ptr", this.RequireHandle(),
                         "Ptr", pathBytes,
-                        "Int", compressLevelOption.Value,
+                        "Int", compressLevel,
+                        "Double", dpiX,
+                        "Double", dpiY,
                         "Int"
                     ))
                     return
