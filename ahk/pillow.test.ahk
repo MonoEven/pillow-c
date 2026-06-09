@@ -53,6 +53,17 @@ PillowTestWriteFileBytes(path, values) {
     }
 }
 
+PillowTestWriteFileText(path, text) {
+    buf := Buffer(StrPut(text, "UTF-8"), 0)
+    StrPut(text, buf, "UTF-8")
+    file := FileOpen(path, "w")
+    try {
+        file.RawWrite(buf, buf.Size - 1)
+    } finally {
+        file.Close()
+    }
+}
+
 PillowTestReadFileBytes(path) {
     file := FileOpen(path, "r")
     try {
@@ -893,6 +904,47 @@ PillowTestImageSaveAndOpenPbmUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Save and Image.Open support PBM through native path", PillowTestImageSaveAndOpenPbmUsesNativePath)
 
+PillowTestImageOpenPlainNetpbmUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    onePath := PillowTestTempPpmPath("open-plain-1", "pbm")
+    lPath := PillowTestTempPpmPath("open-plain-l", "pgm")
+    rgbPath := PillowTestTempPpmPath("open-plain-rgb", "pnm")
+    one := 0
+    l := 0
+    rgb := 0
+    try {
+        PillowTestWriteFileText(onePath, "P1`n# comment`n5 2`n1 0 1 0 1`n0 1 0 1 0`n")
+        PillowTestWriteFileText(lPath, "P2`n4 1`n3`n0 1 2 3`n")
+        PillowTestWriteFileText(rgbPath, "P3`n2 1`n15`n0 1 15 15 8 0`n")
+
+        one := Pillow.Image.Open(onePath)
+        l := Pillow.Image.Open(lPath, ["PPM"])
+        rgb := Pillow.Image.Open(rgbPath)
+
+        AhkTest.AssertEqual("PPM", one.Format)
+        AhkTest.AssertEqual("1", one.Mode)
+        AhkTest.AssertEqual([5, 2], one.Size)
+        AhkTest.AssertEqual([0x50, 0xA8], PillowTestBufferToArray(one.ToBytes()))
+        AhkTest.AssertEqual([0, 255, 0, 255, 0, 255, 0, 255, 0, 255], one.GetData())
+
+        AhkTest.AssertEqual("L", l.Mode)
+        AhkTest.AssertEqual([0, 85, 170, 255], PillowTestBufferToArray(l.ToBytes()))
+
+        AhkTest.AssertEqual("RGB", rgb.Mode)
+        AhkTest.AssertEqual([0, 17, 255, 255, 136, 0], PillowTestBufferToArray(rgb.ToBytes()))
+    } finally {
+        for image in [rgb, l, one] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(rgbPath)
+        PillowTestDeleteFile(lPath)
+        PillowTestDeleteFile(onePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open supports plain Netpbm through native path", PillowTestImageOpenPlainNetpbmUsesNativePath)
+
 PillowTestImageOpenSavePpmRejectsUnsupportedInputs(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
@@ -905,7 +957,12 @@ PillowTestImageOpenSavePpmRejectsUnsupportedInputs(*) {
             AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
         }
 
-        PillowTestWriteFileBytes(badPath, [0x50, 0x36, 0x0A, 0x31, 0x20, 0x31, 0x0A, 0x31, 0x32, 0x37, 0x0A, 1, 2, 3])
+        PillowTestWriteFileBytes(badPath, [
+            0x50, 0x35, 0x0A,
+            0x31, 0x20, 0x31, 0x0A,
+            0x36, 0x35, 0x35, 0x33, 0x35, 0x0A,
+            0, 0,
+        ])
         try {
             Pillow.Image.Open(badPath, ["PPM"])
             AhkTest.Fail("Expected Image.Open to reject invalid PPM")

@@ -1592,6 +1592,58 @@ bool ppm_read_positive_int(const std::vector<std::uint8_t>& data, std::size_t* o
     return true;
 }
 
+bool ppm_read_nonnegative_int(const std::vector<std::uint8_t>& data, std::size_t* offset, int* out)
+{
+    if (!offset || !out || !ppm_skip_space_and_comments(data, offset)) {
+        return false;
+    }
+    std::uint64_t value = 0;
+    bool has_digit = false;
+    while (*offset < data.size()) {
+        const std::uint8_t ch = data[*offset];
+        if (ch < '0' || ch > '9') {
+            break;
+        }
+        has_digit = true;
+        value = value * 10u + static_cast<std::uint64_t>(ch - '0');
+        if (value > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
+            return false;
+        }
+        ++(*offset);
+    }
+    if (!has_digit) {
+        return false;
+    }
+    *out = static_cast<int>(value);
+    return true;
+}
+
+std::uint8_t ppm_scale_sample_to_u8(int value, int max_value)
+{
+    if (value <= 0) {
+        return 0;
+    }
+    if (max_value <= 0) {
+        return 0;
+    }
+    if (max_value == 255) {
+        return static_cast<std::uint8_t>(std::min(value, 255));
+    }
+
+    const std::uint64_t numerator = static_cast<std::uint64_t>(value) * 255u;
+    const std::uint64_t denominator = static_cast<std::uint64_t>(max_value);
+    std::uint64_t quotient = numerator / denominator;
+    const std::uint64_t remainder = numerator % denominator;
+    const std::uint64_t twice_remainder = remainder * 2u;
+    if (twice_remainder > denominator || (twice_remainder == denominator && (quotient & 1u) != 0u)) {
+        ++quotient;
+    }
+    if (quotient > 255u) {
+        return 255;
+    }
+    return static_cast<std::uint8_t>(quotient);
+}
+
 int ppm_data_offset_after_header(const std::vector<std::uint8_t>& data, std::size_t offset, std::size_t* out_offset)
 {
     if (!out_offset || offset >= data.size() || !ppm_is_space(data[offset])) {
@@ -1628,12 +1680,13 @@ int open_ppm_image(const char* path, PillowCImage** out_image)
     try {
         std::vector<std::uint8_t> data;
         if (!read_binary_file(path, &data) || data.size() < 3u || data[0] != 'P' ||
-            (data[1] != '4' && data[1] != '5' && data[1] != '6')) {
+            (data[1] < '1' || data[1] > '6')) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
 
-        const bool is_pbm = data[1] == '4';
-        const int mode = is_pbm ? PILLOW_C_MODE_1 : (data[1] == '5' ? PILLOW_C_MODE_L : PILLOW_C_MODE_RGB);
+        const bool is_plain = data[1] == '1' || data[1] == '2' || data[1] == '3';
+        const bool is_pbm = data[1] == '1' || data[1] == '4';
+        const int mode = is_pbm ? PILLOW_C_MODE_1 : ((data[1] == '2' || data[1] == '5') ? PILLOW_C_MODE_L : PILLOW_C_MODE_RGB);
         const int channels = mode == PILLOW_C_MODE_RGB ? 3 : 1;
         std::size_t offset = 2u;
         int width = 0;
@@ -1647,15 +1700,14 @@ int open_ppm_image(const char* path, PillowCImage** out_image)
             if (!ppm_read_positive_int(data, &offset, &max_value)) {
                 return PILLOW_C_INVALID_ARGUMENT;
             }
-            if (max_value != 255) {
+            if (max_value >= 65536) {
                 return PILLOW_C_INVALID_ARGUMENT;
             }
-        }
-
-        std::size_t pixel_offset = 0;
-        int status = ppm_data_offset_after_header(data, offset, &pixel_offset);
-        if (status != PILLOW_C_OK) {
-            return status;
+            if (max_value != 255) {
+                if (mode == PILLOW_C_MODE_L && max_value > 255) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+            }
         }
 
         std::size_t stride = 0;
@@ -1671,7 +1723,27 @@ int open_ppm_image(const char* path, PillowCImage** out_image)
             channels,
             stride,
             std::vector<std::uint8_t>(size)};
-        if (is_pbm) {
+        if (is_plain) {
+            for (std::size_t i = 0; i < size; ++i) {
+                int value = 0;
+                if (!ppm_read_nonnegative_int(data, &offset, &value)) {
+                    delete image;
+                    return PILLOW_C_INVALID_LENGTH;
+                }
+                const int limit = is_pbm ? 1 : max_value;
+                if (value > limit) {
+                    delete image;
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                image->pixels[i] = is_pbm ? (value == 0 ? 255 : 0) : ppm_scale_sample_to_u8(value, max_value);
+            }
+        } else if (is_pbm) {
+            std::size_t pixel_offset = 0;
+            int status = ppm_data_offset_after_header(data, offset, &pixel_offset);
+            if (status != PILLOW_C_OK) {
+                delete image;
+                return status;
+            }
             const std::size_t packed_row_bytes = (static_cast<std::size_t>(width) + 7u) / 8u;
             const std::size_t packed_size = packed_row_bytes * static_cast<std::size_t>(height);
             if (packed_size > data.size() - pixel_offset) {
@@ -1688,11 +1760,35 @@ int open_ppm_image(const char* path, PillowCImage** out_image)
                 }
             }
         } else {
-            if (size > data.size() - pixel_offset) {
+            std::size_t pixel_offset = 0;
+            int status = ppm_data_offset_after_header(data, offset, &pixel_offset);
+            if (status != PILLOW_C_OK) {
+                delete image;
+                return status;
+            }
+            const int bytes_per_sample = max_value < 256 ? 1 : 2;
+            if (bytes_per_sample == 2 && mode == PILLOW_C_MODE_L) {
+                delete image;
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            if (size > (data.size() - pixel_offset) / static_cast<std::size_t>(bytes_per_sample)) {
                 delete image;
                 return PILLOW_C_INVALID_LENGTH;
             }
-            std::memcpy(image->pixels.data(), data.data() + pixel_offset, size);
+            if (max_value == 255) {
+                std::memcpy(image->pixels.data(), data.data() + pixel_offset, size);
+            } else {
+                for (std::size_t i = 0; i < size; ++i) {
+                    int value = 0;
+                    if (bytes_per_sample == 1) {
+                        value = data[pixel_offset + i];
+                    } else {
+                        const std::size_t src_offset = pixel_offset + i * 2u;
+                        value = (static_cast<int>(data[src_offset]) << 8) | static_cast<int>(data[src_offset + 1u]);
+                    }
+                    image->pixels[i] = ppm_scale_sample_to_u8(value, max_value);
+                }
+            }
         }
         *out_image = image;
         return PILLOW_C_OK;

@@ -43,6 +43,17 @@ PillowCWriteFileBytes(path, values) {
     }
 }
 
+PillowCWriteFileText(path, text) {
+    buf := Buffer(StrPut(text, "UTF-8"), 0)
+    StrPut(text, buf, "UTF-8")
+    file := FileOpen(path, "w")
+    try {
+        file.RawWrite(buf, buf.Size - 1)
+    } finally {
+        file.Close()
+    }
+}
+
 PillowCReadFileBytes(path) {
     file := FileOpen(path, "r")
     try {
@@ -3865,6 +3876,82 @@ PillowCTestImageOpenPpmReadsBinaryPbmAsModeOne(*) {
 
 AhkTest.Test("pillow_c image open_ppm reads binary PBM as mode 1", PillowCTestImageOpenPpmReadsBinaryPbmAsModeOne)
 
+PillowCTestImageOpenPpmReadsPlainNetpbmImages(*) {
+    onePath := PillowCTempPpmPath("open-plain-1", "pbm")
+    lPath := PillowCTempPpmPath("open-plain-l", "pgm")
+    rgbPath := PillowCTempPpmPath("open-plain-rgb", "ppm")
+    one := 0
+    l := 0
+    rgb := 0
+    try {
+        PillowCWriteFileText(onePath, "P1`n# comment`n5 2`n1 0 1 0 1`n0 1 0 1 0`n")
+        PillowCWriteFileText(lPath, "P2`n4 1`n3`n0 1 2 3`n")
+        PillowCWriteFileText(rgbPath, "P3`n2 1`n15`n0 1 15 15 8 0`n")
+
+        one := PillowCImageOpenPpm(onePath)
+        l := PillowCImageOpenPpm(lPath)
+        rgb := PillowCImageOpenPpm(rgbPath)
+
+        AhkTest.AssertEqual(5, PillowCImageMode(one))
+        AhkTest.AssertEqual(1, PillowCImageMode(l))
+        AhkTest.AssertEqual(3, PillowCImageMode(rgb))
+        AhkTest.AssertEqual([0x50, 0xA8], PillowCImageGetRawBytes(one, "1"))
+        AhkTest.AssertEqual([0, 255, 0, 255, 0, 255, 0, 255, 0, 255], PillowCImageToArray(one, 10))
+        AhkTest.AssertEqual([0, 85, 170, 255], PillowCImageToArray(l, 4))
+        AhkTest.AssertEqual([0, 17, 255, 255, 136, 0], PillowCImageToArray(rgb, 6))
+    } finally {
+        if rgb
+            PillowCFreeImage(rgb)
+        if l
+            PillowCFreeImage(l)
+        if one
+            PillowCFreeImage(one)
+        PillowCDeleteFile(rgbPath)
+        PillowCDeleteFile(lPath)
+        PillowCDeleteFile(onePath)
+    }
+}
+
+AhkTest.Test("pillow_c image open_ppm reads plain Netpbm images", PillowCTestImageOpenPpmReadsPlainNetpbmImages)
+
+PillowCTestImageOpenPpmScalesLowMaxvalBinaryImages(*) {
+    lPath := PillowCTempPpmPath("open-low-max-l", "pgm")
+    rgbPath := PillowCTempPpmPath("open-low-max-rgb", "ppm")
+    l := 0
+    rgb := 0
+    try {
+        PillowCWriteFileBytes(lPath, [
+            0x50, 0x35, 0x0A,
+            0x34, 0x20, 0x31, 0x0A,
+            0x33, 0x0A,
+            0, 1, 2, 3,
+        ])
+        PillowCWriteFileBytes(rgbPath, [
+            0x50, 0x36, 0x0A,
+            0x32, 0x20, 0x31, 0x0A,
+            0x31, 0x35, 0x0A,
+            0, 1, 15, 15, 8, 0,
+        ])
+
+        l := PillowCImageOpenPpm(lPath)
+        rgb := PillowCImageOpenPpm(rgbPath)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(l))
+        AhkTest.AssertEqual(3, PillowCImageMode(rgb))
+        AhkTest.AssertEqual([0, 85, 170, 255], PillowCImageToArray(l, 4))
+        AhkTest.AssertEqual([0, 17, 255, 255, 136, 0], PillowCImageToArray(rgb, 6))
+    } finally {
+        if rgb
+            PillowCFreeImage(rgb)
+        if l
+            PillowCFreeImage(l)
+        PillowCDeleteFile(rgbPath)
+        PillowCDeleteFile(lPath)
+    }
+}
+
+AhkTest.Test("pillow_c image open_ppm scales low maxval binary images", PillowCTestImageOpenPpmScalesLowMaxvalBinaryImages)
+
 PillowCTestImageSavePpmWritesPillowBinaryPgmAndPpm(*) {
     l := PillowCCreateImageMode(4, 1, 1)
     rgb := PillowCCreateImageMode(2, 1, 3)
@@ -3933,7 +4020,12 @@ PillowCTestImagePpmRejectsUnsupportedModesAndInvalidFiles(*) {
         )
         AhkTest.AssertEqual(-3, status)
 
-        PillowCWriteFileBytes(badPath, [0x50, 0x36, 0x0A, 0x31, 0x20, 0x31, 0x0A, 0x31, 0x32, 0x37, 0x0A, 1, 2, 3])
+        PillowCWriteFileBytes(badPath, [
+            0x50, 0x35, 0x0A,
+            0x31, 0x20, 0x31, 0x0A,
+            0x36, 0x35, 0x35, 0x33, 0x35, 0x0A,
+            0, 0,
+        ])
         status := DllCall(
             PillowCDllPath() "\pillow_c_image_open_ppm",
             "Ptr", PillowCUtf8Buffer(badPath),
