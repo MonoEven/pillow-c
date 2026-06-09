@@ -1260,6 +1260,117 @@ PillowTestImageOpenGifSupportsFrameMetadataAndSeek(*) {
 
 AhkTest.Test("Pillow Image.Open GIF exposes n_frames and seek", PillowTestImageOpenGifSupportsFrameMetadataAndSeek)
 
+PillowTestImageSequenceIteratorYieldsFramesAndMutatesImage(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempGifPath("sequence-iterator")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            71, 73, 70, 56, 57, 97, 2, 0, 1, 0, 129, 0, 0, 0, 0, 0,
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 33, 255, 11, 78, 69, 84, 83,
+            67, 65, 80, 69, 50, 46, 48, 3, 1, 0, 0, 0, 33, 249, 4, 0,
+            1, 0, 0, 0, 44, 0, 0, 0, 0, 2, 0, 1, 0, 0, 8, 5,
+            0, 1, 4, 8, 8, 0, 33, 249, 4, 1, 2, 0, 2, 0, 44, 0,
+            0, 0, 0, 2, 0, 1, 0, 129, 0, 0, 0, 10, 20, 30, 0, 0,
+            0, 0, 0, 0, 8, 5, 0, 3, 0, 8, 8, 0, 59
+        ])
+
+        image := Pillow.Image.Open(path, ["GIF"])
+        seenIndexes := []
+        seenModes := []
+        seenBytes := []
+        for frame in Pillow.ImageSequence.Iterator(image) {
+            AhkTest.AssertEqual(image, frame)
+            seenIndexes.Push(frame.Tell())
+            seenModes.Push(frame.Mode)
+            seenBytes.Push(PillowTestBufferToArray(frame.ToBytes()))
+        }
+
+        AhkTest.AssertEqual([0, 1], seenIndexes)
+        AhkTest.AssertEqual(["P", "RGB"], seenModes)
+        AhkTest.AssertEqual([0, 1], seenBytes[1])
+        AhkTest.AssertEqual([10, 20, 30, 0, 0, 0], seenBytes[2])
+        AhkTest.AssertEqual(1, image.Tell())
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow ImageSequence.Iterator yields frames and mutates original image", PillowTestImageSequenceIteratorYieldsFramesAndMutatesImage)
+
+PillowTestImageSequenceIteratorIndexingSeeksOriginalImage(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempGifPath("sequence-index")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            71, 73, 70, 56, 57, 97, 2, 0, 1, 0, 129, 0, 0, 0, 0, 0,
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 33, 255, 11, 78, 69, 84, 83,
+            67, 65, 80, 69, 50, 46, 48, 3, 1, 0, 0, 0, 33, 249, 4, 0,
+            1, 0, 0, 0, 44, 0, 0, 0, 0, 2, 0, 1, 0, 0, 8, 5,
+            0, 1, 4, 8, 8, 0, 33, 249, 4, 1, 2, 0, 2, 0, 44, 0,
+            0, 0, 0, 2, 0, 1, 0, 129, 0, 0, 0, 10, 20, 30, 0, 0,
+            0, 0, 0, 0, 8, 5, 0, 3, 0, 8, 8, 0, 59
+        ])
+
+        image := Pillow.Image.Open(path, ["GIF"])
+        iterator := Pillow.ImageSequence.Iterator(image)
+        frame1 := iterator[1]
+        AhkTest.AssertEqual(image, frame1)
+        AhkTest.AssertEqual(1, image.Tell())
+        AhkTest.AssertEqual("RGB", image.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 0, 0, 0], PillowTestBufferToArray(image.ToBytes()))
+
+        frame0 := iterator[0]
+        AhkTest.AssertEqual(image, frame0)
+        AhkTest.AssertEqual(0, image.Tell())
+        AhkTest.AssertEqual("P", image.Mode)
+        AhkTest.AssertEqual([0, 1], PillowTestBufferToArray(image.ToBytes()))
+
+        try {
+            iterator[2]
+            AhkTest.Fail("Expected ImageSequence.Iterator index past n_frames to fail")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "end of sequence") > 0)
+        }
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow ImageSequence.Iterator indexing seeks original image", PillowTestImageSequenceIteratorIndexingSeeksOriginalImage)
+
+PillowTestImageSequenceIteratorHandlesSingleFrameImages(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([7, 9]))
+    try {
+        count := 0
+        for frame in Pillow.ImageSequence.Iterator(image) {
+            count += 1
+            AhkTest.AssertEqual(image, frame)
+            AhkTest.AssertEqual(0, frame.Tell())
+            AhkTest.AssertEqual([7, 9], PillowTestBufferToArray(frame.ToBytes()))
+        }
+        AhkTest.AssertEqual(1, count)
+        AhkTest.AssertEqual(0, image.Tell())
+
+        try {
+            Pillow.ImageSequence.Iterator(image)[1]
+            AhkTest.Fail("Expected ImageSequence.Iterator single-frame index past end to fail")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "end of sequence") > 0)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageSequence.Iterator handles single-frame images", PillowTestImageSequenceIteratorHandlesSingleFrameImages)
+
 PillowTestImageOpenSaveGifRejectsUnsupportedInputs(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))

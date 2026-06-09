@@ -42,6 +42,81 @@ class Pillow {
         static LIBIMAGEQUANT := 3
     }
 
+    class ImageSequence {
+        class Iterator {
+            __New(image) {
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("im must have seek method", -1)
+                this.Image := image
+                this.Position := 0
+            }
+
+            __Item[index] {
+                get {
+                    return this.GetFrame(index)
+                }
+            }
+
+            __Enum(varCount) {
+                if varCount = 1 {
+                    iterator := this
+                    EnumerateOne(&frame) {
+                        index := iterator.Position
+                        if !iterator.SeekForIteration(index)
+                            return false
+                        iterator.Position := index + 1
+                        frame := iterator.Image
+                        return true
+                    }
+                    return EnumerateOne
+                }
+                if varCount = 2 {
+                    iterator := this
+                    EnumerateTwo(&index, &frame) {
+                        frameIndex := iterator.Position
+                        if !iterator.SeekForIteration(frameIndex)
+                            return false
+                        iterator.Position := frameIndex + 1
+                        index := frameIndex
+                        frame := iterator.Image
+                        return true
+                    }
+                    return EnumerateTwo
+                }
+                throw Error("Pillow.ImageSequence.Iterator supports one or two loop variables", -1)
+            }
+
+            GetFrame(index) {
+                if !(index is Integer)
+                    throw Error("Pillow.ImageSequence.Iterator index must be an integer", -1)
+                try {
+                    this.Image.Seek(index)
+                } catch Error as err {
+                    if Pillow.ImageSequence.Iterator.IsEndError(err)
+                        throw Error("end of sequence", -1)
+                    throw
+                }
+                return this.Image
+            }
+
+            SeekForIteration(index) {
+                try {
+                    this.Image.Seek(index)
+                    return true
+                } catch Error as err {
+                    if Pillow.ImageSequence.Iterator.IsEndError(err)
+                        return false
+                    throw
+                }
+            }
+
+            static IsEndError(err) {
+                return InStr(err.Message, "attempt to seek outside sequence") > 0
+                    || InStr(err.Message, "no more images in file") > 0
+            }
+        }
+    }
+
     class ImageColor {
         static GetRgb(color) {
             if !(color is String)
