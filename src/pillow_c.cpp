@@ -1526,6 +1526,52 @@ int create_wic_palette_from_rgb(
     return SUCCEEDED(hr) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
 }
 
+int wic_container_frame_count(const char* path, const GUID& container_format, int* out_count)
+{
+    if (!path || !out_count) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_count = 0;
+    try {
+        std::vector<wchar_t> wide_path;
+        if (!utf8_path_to_wide(path, &wide_path)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ComInitScope com;
+        if (!com.usable()) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ComPtr<IWICImagingFactory> factory;
+        int status = create_wic_factory(&factory);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        ComPtr<IWICBitmapDecoder> decoder;
+        HRESULT hr = factory->CreateDecoderFromFilename(
+            wide_path.data(),
+            nullptr,
+            GENERIC_READ,
+            WICDecodeMetadataCacheOnDemand,
+            decoder.put());
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        GUID actual_container = {};
+        if (FAILED(decoder->GetContainerFormat(&actual_container)) || !IsEqualGUID(actual_container, container_format)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        UINT frame_count = 0;
+        hr = decoder->GetFrameCount(&frame_count);
+        if (FAILED(hr) || frame_count > static_cast<UINT>(std::numeric_limits<int>::max())) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        *out_count = static_cast<int>(frame_count);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 int open_png_image(const char* path, PillowCImage** out_image)
 {
     if (!path || !out_image) {
@@ -2219,12 +2265,15 @@ int save_jpeg_image(const PillowCImage* image, const char* path)
     }
 }
 
-int open_tiff_image(const char* path, PillowCImage** out_image)
+int open_tiff_frame_image(const char* path, int frame_index, PillowCImage** out_image)
 {
     if (!path || !out_image) {
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
+    if (frame_index < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
 
     try {
         std::vector<wchar_t> wide_path;
@@ -2255,9 +2304,14 @@ int open_tiff_image(const char* path, PillowCImage** out_image)
         if (FAILED(decoder->GetContainerFormat(&container)) || !IsEqualGUID(container, GUID_ContainerFormatTiff)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
+        UINT frame_count = 0;
+        hr = decoder->GetFrameCount(&frame_count);
+        if (FAILED(hr) || static_cast<UINT>(frame_index) >= frame_count) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
 
         ComPtr<IWICBitmapFrameDecode> frame;
-        hr = decoder->GetFrame(0, frame.put());
+        hr = decoder->GetFrame(static_cast<UINT>(frame_index), frame.put());
         if (FAILED(hr)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
@@ -2346,6 +2400,11 @@ int open_tiff_image(const char* path, PillowCImage** out_image)
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int open_tiff_image(const char* path, PillowCImage** out_image)
+{
+    return open_tiff_frame_image(path, 0, out_image);
 }
 
 int save_tiff_image(const PillowCImage* image, const char* path)
@@ -2470,12 +2529,15 @@ int save_tiff_image(const PillowCImage* image, const char* path)
     }
 }
 
-int open_gif_image(const char* path, PillowCImage** out_image)
+int open_gif_frame_image(const char* path, int frame_index, PillowCImage** out_image)
 {
     if (!path || !out_image) {
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
+    if (frame_index < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
 
     try {
         std::vector<wchar_t> wide_path;
@@ -2506,9 +2568,14 @@ int open_gif_image(const char* path, PillowCImage** out_image)
         if (FAILED(decoder->GetContainerFormat(&container)) || !IsEqualGUID(container, GUID_ContainerFormatGif)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
+        UINT frame_count = 0;
+        hr = decoder->GetFrameCount(&frame_count);
+        if (FAILED(hr) || static_cast<UINT>(frame_index) >= frame_count) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
 
         ComPtr<IWICBitmapFrameDecode> frame;
-        hr = decoder->GetFrame(0, frame.put());
+        hr = decoder->GetFrame(static_cast<UINT>(frame_index), frame.put());
         if (FAILED(hr)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
@@ -2523,6 +2590,57 @@ int open_gif_image(const char* path, PillowCImage** out_image)
         const int height = static_cast<int>(height_u);
         if (width <= 0 || height <= 0) {
             return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        if (frame_index > 0) {
+            std::size_t stride = 0;
+            std::size_t size = 0;
+            if (!checked_image_size(width, height, 3, &stride, &size) ||
+                stride > static_cast<std::size_t>(std::numeric_limits<UINT>::max()) ||
+                size > static_cast<std::size_t>(std::numeric_limits<UINT>::max())) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+
+            ComPtr<IWICFormatConverter> converter;
+            hr = factory->CreateFormatConverter(converter.put());
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            hr = converter->Initialize(
+                frame.get(),
+                GUID_WICPixelFormat24bppBGR,
+                WICBitmapDitherTypeNone,
+                nullptr,
+                0.0,
+                WICBitmapPaletteTypeMedianCut);
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+
+            std::vector<std::uint8_t> bgr(size, std::uint8_t{0});
+            hr = converter->CopyPixels(nullptr, static_cast<UINT>(stride), static_cast<UINT>(bgr.size()), bgr.data());
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            auto* image = new PillowCImage{
+                width,
+                height,
+                PILLOW_C_MODE_RGB,
+                3,
+                stride,
+                std::vector<std::uint8_t>(size)};
+            for (int y = 0; y < height; ++y) {
+                const std::uint8_t* src_row = bgr.data() + static_cast<std::size_t>(y) * stride;
+                std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+                for (int x = 0; x < width; ++x) {
+                    const std::size_t offset = static_cast<std::size_t>(x) * 3u;
+                    dst_row[offset + 0u] = src_row[offset + 2u];
+                    dst_row[offset + 1u] = src_row[offset + 1u];
+                    dst_row[offset + 2u] = src_row[offset + 0u];
+                }
+            }
+            *out_image = image;
+            return PILLOW_C_OK;
         }
 
         std::vector<std::uint8_t> palette_rgb;
@@ -2598,6 +2716,11 @@ int open_gif_image(const char* path, PillowCImage** out_image)
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int open_gif_image(const char* path, PillowCImage** out_image)
+{
+    return open_gif_frame_image(path, 0, out_image);
 }
 
 int save_gif_image(const PillowCImage* image, const char* path)
@@ -11574,6 +11697,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_open_tiff(
     return open_tiff_image(path, out_image);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_open_tiff_frame(
+    const char* path,
+    int frame_index,
+    PillowCImage** out_image)
+{
+    return open_tiff_frame_image(path, frame_index, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_frame_count_tiff(
+    const char* path,
+    int* out_count)
+{
+    return wic_container_frame_count(path, GUID_ContainerFormatTiff, out_count);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_save_tiff(
     const PillowCImage* image,
     const char* path)
@@ -11586,6 +11724,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_open_gif(
     PillowCImage** out_image)
 {
     return open_gif_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_gif_frame(
+    const char* path,
+    int frame_index,
+    PillowCImage** out_image)
+{
+    return open_gif_frame_image(path, frame_index, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_frame_count_gif(
+    const char* path,
+    int* out_count)
+{
+    return wic_container_frame_count(path, GUID_ContainerFormatGif, out_count);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_gif(

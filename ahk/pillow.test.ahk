@@ -1017,6 +1017,62 @@ PillowTestImageSaveAndOpenTiffUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Save and Image.Open support TIFF through native path", PillowTestImageSaveAndOpenTiffUsesNativePath)
 
+PillowTestImageOpenTiffSupportsFrameMetadataAndSeek(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempTiffPath("multi-l")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            73, 73, 42, 0, 8, 0, 0, 0, 9, 0, 0, 1, 4, 0, 1, 0,
+            0, 0, 2, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+            0, 0, 2, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0, 3, 1,
+            3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
+            0, 0, 1, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 122, 0,
+            0, 0, 22, 1, 4, 0, 1, 0, 0, 0, 1, 0, 0, 0, 23, 1,
+            4, 0, 1, 0, 0, 0, 2, 0, 0, 0, 28, 1, 3, 0, 1, 0,
+            0, 0, 1, 0, 0, 0, 136, 0, 0, 0, 10, 20, 0, 0, 0, 0,
+            73, 73, 42, 0, 8, 0, 0, 0, 9, 0, 0, 1, 4, 0, 1, 0,
+            0, 0, 2, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+            0, 0, 2, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0, 3, 1,
+            3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
+            0, 0, 1, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 250, 0,
+            0, 0, 22, 1, 4, 0, 1, 0, 0, 0, 1, 0, 0, 0, 23, 1,
+            4, 0, 1, 0, 0, 0, 2, 0, 0, 0, 28, 1, 3, 0, 1, 0,
+            0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 30, 40, 0, 0, 0, 0
+        ])
+
+        image := Pillow.Image.Open(path)
+        AhkTest.AssertEqual("TIFF", image.Format)
+        AhkTest.AssertEqual(2, image.NFrames)
+        AhkTest.AssertEqual(2, image.n_frames)
+        AhkTest.AssertEqual(true, image.IsAnimated)
+        AhkTest.AssertEqual(true, image.is_animated)
+        AhkTest.AssertEqual(0, image.Tell())
+        AhkTest.AssertEqual("L", image.Mode)
+        AhkTest.AssertEqual([10, 20], PillowTestBufferToArray(image.ToBytes()))
+
+        AhkTest.AssertEqual("", image.Seek(1))
+        AhkTest.AssertEqual(1, image.Tell())
+        AhkTest.AssertEqual([30, 40], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertEqual("", image.Seek(0))
+        AhkTest.AssertEqual(0, image.Tell())
+        AhkTest.AssertEqual([10, 20], PillowTestBufferToArray(image.ToBytes()))
+
+        try {
+            image.Seek(2)
+            AhkTest.Fail("Expected TIFF seek past n_frames to fail")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "attempt to seek outside sequence") > 0)
+        }
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open TIFF exposes n_frames and seek", PillowTestImageOpenTiffSupportsFrameMetadataAndSeek)
+
 PillowTestImageOpenSaveTiffRejectsUnsupportedInputs(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("CMYK", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
@@ -1081,6 +1137,63 @@ PillowTestImageSaveAndOpenGifUsesNativePath(*) {
 }
 
 AhkTest.Test("Pillow Image.Save and Image.Open support GIF through native path", PillowTestImageSaveAndOpenGifUsesNativePath)
+
+PillowTestImageOpenGifSupportsFrameMetadataAndSeek(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempGifPath("multi-p")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            71, 73, 70, 56, 57, 97, 2, 0, 1, 0, 129, 0, 0, 0, 0, 0,
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 33, 255, 11, 78, 69, 84, 83,
+            67, 65, 80, 69, 50, 46, 48, 3, 1, 0, 0, 0, 33, 249, 4, 0,
+            1, 0, 0, 0, 44, 0, 0, 0, 0, 2, 0, 1, 0, 0, 8, 5,
+            0, 1, 4, 8, 8, 0, 33, 249, 4, 1, 2, 0, 2, 0, 44, 0,
+            0, 0, 0, 2, 0, 1, 0, 129, 0, 0, 0, 10, 20, 30, 0, 0,
+            0, 0, 0, 0, 8, 5, 0, 3, 0, 8, 8, 0, 59
+        ])
+
+        image := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual("GIF", image.Format)
+        AhkTest.AssertEqual(2, image.NFrames)
+        AhkTest.AssertEqual(2, image.n_frames)
+        AhkTest.AssertEqual(true, image.IsAnimated)
+        AhkTest.AssertEqual(true, image.is_animated)
+        AhkTest.AssertEqual(0, image.Tell())
+        AhkTest.AssertEqual("P", image.Mode)
+        AhkTest.AssertEqual([0, 1], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 0, 10, 20, 30], PillowTestArraySlice(image.GetPalette(), 1, 6))
+
+        AhkTest.AssertEqual("", image.Seek(1))
+        AhkTest.AssertEqual(1, image.Tell())
+        AhkTest.AssertEqual("RGB", image.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 0, 0, 0], PillowTestBufferToArray(image.ToBytes()))
+        try {
+            image.GetPalette()
+            AhkTest.Fail("Expected GIF RGB frame to reject getpalette")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "illegal image mode") > 0)
+        }
+
+        AhkTest.AssertEqual("", image.Seek(0))
+        AhkTest.AssertEqual(0, image.Tell())
+        AhkTest.AssertEqual("P", image.Mode)
+        AhkTest.AssertEqual([0, 1], PillowTestBufferToArray(image.ToBytes()))
+
+        try {
+            image.Seek(2)
+            AhkTest.Fail("Expected GIF seek past n_frames to fail")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "attempt to seek outside sequence") > 0)
+        }
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open GIF exposes n_frames and seek", PillowTestImageOpenGifSupportsFrameMetadataAndSeek)
 
 PillowTestImageOpenSaveGifRejectsUnsupportedInputs(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

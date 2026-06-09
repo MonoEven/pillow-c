@@ -441,6 +441,34 @@ PillowCImageOpenTiff(path) {
     return handle
 }
 
+PillowCImageOpenTiffFrame(path, frame) {
+    handle := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_open_tiff_frame",
+        "Ptr", pathBytes,
+        "Int", frame,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
+PillowCImageFrameCountTiff(path) {
+    count := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_frame_count_tiff",
+        "Ptr", pathBytes,
+        "Int*", &count,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return count
+}
+
 PillowCImageSaveTiff(handle, path) {
     pathBytes := PillowCUtf8Buffer(path)
     status := DllCall(
@@ -464,6 +492,34 @@ PillowCImageOpenGif(path) {
     PillowCAssertStatus(status)
     AhkTest.AssertTrue(handle != 0)
     return handle
+}
+
+PillowCImageOpenGifFrame(path, frame) {
+    handle := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_open_gif_frame",
+        "Ptr", pathBytes,
+        "Int", frame,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
+PillowCImageFrameCountGif(path) {
+    count := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_frame_count_gif",
+        "Ptr", pathBytes,
+        "Int*", &count,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return count
 }
 
 PillowCImageSaveGif(handle, path) {
@@ -4007,6 +4063,55 @@ PillowCTestImageOpenTiffReadsPillowCoreModes(*) {
 
 AhkTest.Test("pillow_c image open_tiff reads Pillow L RGB and RGBA TIFFs", PillowCTestImageOpenTiffReadsPillowCoreModes)
 
+PillowCTestImageOpenTiffFramesReadsMultiframeImages(*) {
+    path := PillowCTempTiffPath("multi-l")
+    first := 0
+    second := 0
+    outHandle := 0
+    try {
+        PillowCWriteFileBytes(path, [
+            73, 73, 42, 0, 8, 0, 0, 0, 9, 0, 0, 1, 4, 0, 1, 0,
+            0, 0, 2, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+            0, 0, 2, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0, 3, 1,
+            3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
+            0, 0, 1, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 122, 0,
+            0, 0, 22, 1, 4, 0, 1, 0, 0, 0, 1, 0, 0, 0, 23, 1,
+            4, 0, 1, 0, 0, 0, 2, 0, 0, 0, 28, 1, 3, 0, 1, 0,
+            0, 0, 1, 0, 0, 0, 136, 0, 0, 0, 10, 20, 0, 0, 0, 0,
+            73, 73, 42, 0, 8, 0, 0, 0, 9, 0, 0, 1, 4, 0, 1, 0,
+            0, 0, 2, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+            0, 0, 2, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0, 3, 1,
+            3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
+            0, 0, 1, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 250, 0,
+            0, 0, 22, 1, 4, 0, 1, 0, 0, 0, 1, 0, 0, 0, 23, 1,
+            4, 0, 1, 0, 0, 0, 2, 0, 0, 0, 28, 1, 3, 0, 1, 0,
+            0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 30, 40, 0, 0, 0, 0
+        ])
+
+        AhkTest.AssertEqual(2, PillowCImageFrameCountTiff(path))
+        first := PillowCImageOpenTiffFrame(path, 0)
+        second := PillowCImageOpenTiffFrame(path, 1)
+        AhkTest.AssertEqual(1, PillowCImageMode(first))
+        AhkTest.AssertEqual([10, 20], PillowCImageToArray(first, 2))
+        AhkTest.AssertEqual(1, PillowCImageMode(second))
+        AhkTest.AssertEqual([30, 40], PillowCImageToArray(second, 2))
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_open_tiff_frame", "Ptr", PillowCUtf8Buffer(path), "Int", 2, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        for handle in [second, first] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_tiff_frame reads multiframe TIFF images", PillowCTestImageOpenTiffFramesReadsMultiframeImages)
+
 PillowCTestImageSaveTiffRoundTripsCoreModes(*) {
     l := PillowCCreateImageMode(2, 2, 1)
     rgb := PillowCCreateImageMode(2, 2, 3)
@@ -4113,6 +4218,47 @@ PillowCTestImageOpenGifReadsPillowPaletteMode(*) {
 }
 
 AhkTest.Test("pillow_c image open_gif reads Pillow P mode GIFs", PillowCTestImageOpenGifReadsPillowPaletteMode)
+
+PillowCTestImageOpenGifFramesReadsMultiframeImages(*) {
+    path := PillowCTempGifPath("multi-p")
+    first := 0
+    second := 0
+    outHandle := 0
+    try {
+        PillowCWriteFileBytes(path, [
+            71, 73, 70, 56, 57, 97, 2, 0, 1, 0, 129, 0, 0, 0, 0, 0,
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 33, 255, 11, 78, 69, 84, 83,
+            67, 65, 80, 69, 50, 46, 48, 3, 1, 0, 0, 0, 33, 249, 4, 0,
+            1, 0, 0, 0, 44, 0, 0, 0, 0, 2, 0, 1, 0, 0, 8, 5,
+            0, 1, 4, 8, 8, 0, 33, 249, 4, 1, 2, 0, 2, 0, 44, 0,
+            0, 0, 0, 2, 0, 1, 0, 129, 0, 0, 0, 10, 20, 30, 0, 0,
+            0, 0, 0, 0, 8, 5, 0, 3, 0, 8, 8, 0, 59
+        ])
+
+        AhkTest.AssertEqual(2, PillowCImageFrameCountGif(path))
+        first := PillowCImageOpenGifFrame(path, 0)
+        second := PillowCImageOpenGifFrame(path, 1)
+        AhkTest.AssertEqual(6, PillowCImageMode(first))
+        AhkTest.AssertEqual([0, 1], PillowCImageToArray(first, 2))
+        AhkTest.AssertEqual([0, 0, 0, 10, 20, 30], PillowCArraySlice(PillowCImageGetPaletteRgb(first), 1, 6))
+        AhkTest.AssertEqual(3, PillowCImageMode(second))
+        AhkTest.AssertEqual([10, 20, 30, 0, 0, 0], PillowCImageToArray(second, 6))
+
+        status := DllCall(PillowCDllPath() "\pillow_c_image_open_gif_frame", "Ptr", PillowCUtf8Buffer(path), "Int", 2, "Ptr*", &outHandle, "Int")
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        for handle in [second, first] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_gif_frame reads multiframe GIF images", PillowCTestImageOpenGifFramesReadsMultiframeImages)
 
 PillowCTestImageSaveGifRoundTripsPaletteMode(*) {
     image := PillowCCreateImageMode(2, 2, 6)

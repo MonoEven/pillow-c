@@ -2157,6 +2157,10 @@ class Pillow {
             this.Handle := handle
             this.Format := ""
             this.Info := Map()
+            this.FramePath := ""
+            this.FrameFormat := ""
+            this.FrameIndex := 0
+            this.FrameCount := 1
         }
 
         __Delete() {
@@ -2274,7 +2278,16 @@ class Pillow {
                 )
                 if lastStatus = 0 {
                     image := Pillow.WrapImageHandle(outHandle)
-                    image.Format := format
+                    try {
+                        image.Format := format
+                        image.FramePath := path
+                        image.FrameFormat := format
+                        image.FrameIndex := 0
+                        image.FrameCount := Pillow.Image.FrameCountForOpen(pathBytes, format)
+                    } catch {
+                        image.Close()
+                        throw
+                    }
                     return image
                 }
                 if outHandle
@@ -2671,6 +2684,19 @@ class Pillow {
             return Pillow.Image.FormatFromPath(path)
         }
 
+        static FrameCountForOpen(pathBytes, format) {
+            if !(format = "TIFF" || format = "GIF")
+                return 1
+            count := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_frame_count_" StrLower(format),
+                "Ptr", pathBytes,
+                "Int*", &count,
+                "Int"
+            ))
+            return count > 0 ? count : 1
+        }
+
         static FormatFromPath(path) {
             if RegExMatch(path, "i)\.bmp$")
                 return "BMP"
@@ -2727,13 +2753,60 @@ class Pillow {
 
         Tell() {
             this.RequireHandle()
-            return 0
+            return this.FrameIndex
         }
 
         Seek(frame) {
             this.RequireHandle()
-            if frame != 0
-                throw Error("no more images in file", -1)
+            if !(frame is Integer)
+                throw Error("Pillow.Image.Seek frame must be an integer", -1)
+            if this.FrameCount <= 1 {
+                if frame != 0
+                    throw Error("no more images in file", -1)
+                return
+            }
+            if frame < 0 || frame >= this.FrameCount
+                throw Error("attempt to seek outside sequence", -1)
+            if frame = this.FrameIndex
+                return
+
+            outHandle := 0
+            pathBytes := Pillow.Image.Utf8Buffer(this.FramePath)
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(this.FrameFormat) "_frame",
+                "Ptr", pathBytes,
+                "Int", frame,
+                "Ptr*", &outHandle,
+                "Int"
+            )
+            if status != 0 {
+                if outHandle
+                    Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", outHandle, "Int"))
+                Pillow.CheckStatus(status)
+            }
+            oldHandle := this.Handle
+            this.Handle := outHandle
+            this.FrameIndex := frame
+            Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", oldHandle, "Int"))
+        }
+
+        NFrames {
+            get {
+                this.RequireHandle()
+                return this.FrameCount
+            }
+        }
+
+        n_frames {
+            get => this.NFrames
+        }
+
+        IsAnimated {
+            get => this.NFrames > 1
+        }
+
+        is_animated {
+            get => this.IsAnimated
         }
 
         Verify() {
