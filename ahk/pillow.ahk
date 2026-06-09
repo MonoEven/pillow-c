@@ -3109,7 +3109,7 @@ class Pillow {
             return { Buffer: Pillow.Image.IntBuffer(values, "Pillow.Image.Save " optionName), Count: values.Length }
         }
 
-        static SaveDpiPair(value) {
+        static SaveDpiPair(value, requirePositive := true) {
             if !IsObject(value)
                 throw Error("Pillow.Image.Save dpi expects [x, y]", -1)
             values := []
@@ -3120,7 +3120,7 @@ class Pillow {
             }
             if values.Length != 2
                 throw Error("Pillow.Image.Save dpi expects [x, y]", -1)
-            if values[1] <= 0 || values[2] <= 0
+            if requirePositive && (values[1] <= 0 || values[2] <= 0)
                 throw Error("Pillow.Image.Save dpi values must be greater than 0", -1)
             return values
         }
@@ -3414,14 +3414,31 @@ class Pillow {
 
             if IsSet(saveOptions) && resolvedFormat = "JPEG" {
                 qualityOption := Pillow.Image.SaveOption(saveOptions, "Quality", "quality")
-                if qualityOption.Set {
-                    if !(qualityOption.Value is Integer)
-                        throw Error("Pillow.Image.Save quality must be an integer", -1)
+                dpiOption := Pillow.Image.SaveOption(saveOptions, "Dpi", "dpi")
+                if qualityOption.Set || dpiOption.Set {
+                    quality := -1
+                    if qualityOption.Set {
+                        if !(qualityOption.Value is Integer)
+                            throw Error("Pillow.Image.Save quality must be an integer", -1)
+                        quality := qualityOption.Value
+                    }
+                    hasDpi := 0
+                    dpiX := 0.0
+                    dpiY := 0.0
+                    if dpiOption.Set {
+                        dpi := Pillow.Image.SaveDpiPair(dpiOption.Value, false)
+                        hasDpi := 1
+                        dpiX := dpi[1]
+                        dpiY := dpi[2]
+                    }
                     Pillow.CheckStatus(DllCall(
-                        Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_quality",
+                        Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_options",
                         "Ptr", this.RequireHandle(),
                         "Ptr", pathBytes,
-                        "Int", qualityOption.Value,
+                        "Int", quality,
+                        "Int", hasDpi,
+                        "Double", dpiX,
+                        "Double", dpiY,
                         "Int"
                     ))
                     return

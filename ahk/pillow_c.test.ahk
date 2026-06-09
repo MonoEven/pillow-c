@@ -61,6 +61,10 @@ PillowCReadBe32(values, offset) {
         | values[offset + 3]
 }
 
+PillowCReadBe16(values, offset) {
+    return (values[offset] << 8) | values[offset + 1]
+}
+
 PillowCArrayEquals(left, right) {
     if left.Length != right.Length
         return false
@@ -93,6 +97,33 @@ PillowCAssertPngPhys(path, expectedX, expectedY) {
     AhkTest.AssertEqual(expectedX, PillowCReadBe32(bytes, chunk.DataOffset))
     AhkTest.AssertEqual(expectedY, PillowCReadBe32(bytes, chunk.DataOffset + 4))
     AhkTest.AssertEqual(1, bytes[chunk.DataOffset + 8])
+}
+
+PillowCReadJpegJfif(path) {
+    bytes := PillowCReadFileBytes(path)
+    AhkTest.AssertTrue(bytes.Length >= 4)
+    AhkTest.AssertEqual([0xFF, 0xD8], PillowCArraySlice(bytes, 1, 2))
+    pos := 3
+    while pos + 3 <= bytes.Length {
+        AhkTest.AssertEqual(0xFF, bytes[pos])
+        marker := bytes[pos + 1]
+        pos += 2
+        if marker = 0xD9 || (marker >= 0xD0 && marker <= 0xD7)
+            continue
+        length := PillowCReadBe16(bytes, pos)
+        payloadStart := pos + 2
+        if marker = 0xE0
+            && length >= 16
+            && PillowCArrayEquals(PillowCArraySlice(bytes, payloadStart, payloadStart + 4), [0x4A, 0x46, 0x49, 0x46, 0]) {
+            return {
+                Unit: bytes[payloadStart + 7],
+                XDensity: PillowCReadBe16(bytes, payloadStart + 8),
+                YDensity: PillowCReadBe16(bytes, payloadStart + 10)
+            }
+        }
+        pos += length
+    }
+    AhkTest.Fail("Expected JPEG JFIF metadata")
 }
 
 PillowCExifOrientationSegment(orientation) {
@@ -4237,6 +4268,58 @@ PillowCTestImageSaveJpegQualityChangesEncodedSize(*) {
 }
 
 AhkTest.Test("pillow_c image save_jpeg_quality controls encoded quality", PillowCTestImageSaveJpegQualityChangesEncodedSize)
+
+PillowCTestImageSaveJpegOptionsWritesDpiMetadata(*) {
+    rgb := PillowCCreateImageMode(2, 1, 3)
+    dpiPath := PillowCTempJpegPath("dpi")
+    defaultUnitPath := PillowCTempJpegPath("dpi-default-unit")
+    try {
+        PillowCImageSetBytes(rgb, [10, 20, 30, 40, 50, 60])
+
+        try {
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_save_jpeg_options",
+                "Ptr", rgb,
+                "Ptr", PillowCUtf8Buffer(dpiPath),
+                "Int", 95,
+                "Int", 1,
+                "Double", 300.0,
+                "Double", 150.0,
+                "Int"
+            )
+        } catch Error as err {
+            AhkTest.Fail("Expected pillow_c_image_save_jpeg_options export")
+            return
+        }
+        PillowCAssertStatus(status)
+        jfif := PillowCReadJpegJfif(dpiPath)
+        AhkTest.AssertEqual(1, jfif.Unit)
+        AhkTest.AssertEqual(300, jfif.XDensity)
+        AhkTest.AssertEqual(150, jfif.YDensity)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_jpeg_options",
+            "Ptr", rgb,
+            "Ptr", PillowCUtf8Buffer(defaultUnitPath),
+            "Int", -1,
+            "Int", 1,
+            "Double", 0.4,
+            "Double", 96.0,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        jfif := PillowCReadJpegJfif(defaultUnitPath)
+        AhkTest.AssertEqual(0, jfif.Unit)
+        AhkTest.AssertEqual(1, jfif.XDensity)
+        AhkTest.AssertEqual(1, jfif.YDensity)
+    } finally {
+        PillowCDeleteFile(defaultUnitPath)
+        PillowCDeleteFile(dpiPath)
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c image save_jpeg_options writes dpi metadata", PillowCTestImageSaveJpegOptionsWritesDpiMetadata)
 
 PillowCTestImageOpenJpegReadsExifOrientationMetadata(*) {
     rgb := PillowCCreateImageMode(2, 3, 3)

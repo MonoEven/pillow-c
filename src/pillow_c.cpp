@@ -915,6 +915,12 @@ void append_le16(std::vector<std::uint8_t>& out, std::uint16_t value)
     out.push_back(static_cast<std::uint8_t>((value >> 8) & 0xffu));
 }
 
+void append_be16(std::vector<std::uint8_t>& out, std::uint16_t value)
+{
+    out.push_back(static_cast<std::uint8_t>((value >> 8) & 0xffu));
+    out.push_back(static_cast<std::uint8_t>(value & 0xffu));
+}
+
 void append_le32(std::vector<std::uint8_t>& out, std::uint32_t value)
 {
     out.push_back(static_cast<std::uint8_t>(value & 0xffu));
@@ -1300,6 +1306,117 @@ bool read_jpeg_component_count(const char* path, int* components)
 {
     int orientation = 0;
     return read_jpeg_component_count_and_orientation(path, components, &orientation);
+}
+
+bool pillow_round_to_i64(double value, std::int64_t* out_value)
+{
+    if (!out_value || !std::isfinite(value) ||
+        value < static_cast<double>(std::numeric_limits<std::int64_t>::min()) ||
+        value > static_cast<double>(std::numeric_limits<std::int64_t>::max())) {
+        return false;
+    }
+    const double lower = std::floor(value);
+    const double fraction = value - lower;
+    double rounded = lower;
+    if (fraction > 0.5) {
+        rounded = lower + 1.0;
+    } else if (fraction == 0.5) {
+        const auto lower_i = static_cast<std::int64_t>(lower);
+        rounded = (lower_i % 2 == 0) ? lower : lower + 1.0;
+    }
+    *out_value = static_cast<std::int64_t>(rounded);
+    return true;
+}
+
+bool jpeg_standalone_marker(std::uint8_t marker)
+{
+    return marker == 0xd8u || marker == 0xd9u || (marker >= 0xd0u && marker <= 0xd7u);
+}
+
+bool write_binary_file(const char* path, const std::vector<std::uint8_t>& data);
+
+int jpeg_density_from_dpi(double dpi_x, double dpi_y, std::uint8_t* out_unit, std::uint16_t* out_x, std::uint16_t* out_y)
+{
+    if (!out_unit || !out_x || !out_y) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    std::int64_t rounded_x = 0;
+    std::int64_t rounded_y = 0;
+    if (!pillow_round_to_i64(dpi_x, &rounded_x) || !pillow_round_to_i64(dpi_y, &rounded_y)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (rounded_x <= 0 || rounded_y <= 0) {
+        *out_unit = 0;
+        *out_x = 1;
+        *out_y = 1;
+        return PILLOW_C_OK;
+    }
+    *out_unit = 1;
+    *out_x = static_cast<std::uint16_t>(rounded_x);
+    *out_y = static_cast<std::uint16_t>(rounded_y);
+    return PILLOW_C_OK;
+}
+
+int patch_jpeg_jfif_density(const char* path, double dpi_x, double dpi_y)
+{
+    std::uint8_t unit = 0;
+    std::uint16_t x_density = 0;
+    std::uint16_t y_density = 0;
+    int status = jpeg_density_from_dpi(dpi_x, dpi_y, &unit, &x_density, &y_density);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data) || data.size() < 2u || data[0] != 0xffu || data[1] != 0xd8u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::size_t pos = 2u;
+        while (pos + 4u <= data.size()) {
+            if (data[pos] != 0xffu) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            const std::uint8_t marker = data[pos + 1u];
+            pos += 2u;
+            if (jpeg_standalone_marker(marker)) {
+                continue;
+            }
+            if (pos + 2u > data.size()) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            const std::uint16_t length = read_be16(data.data() + pos);
+            if (length < 2u || pos + static_cast<std::size_t>(length) > data.size()) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            const std::size_t payload = pos + 2u;
+            const std::size_t payload_size = static_cast<std::size_t>(length) - 2u;
+            if (marker == 0xe0u && payload_size >= 14u &&
+                std::memcmp(data.data() + payload, "JFIF\0", 5u) == 0) {
+                data[payload + 7u] = unit;
+                data[payload + 8u] = static_cast<std::uint8_t>((x_density >> 8) & 0xffu);
+                data[payload + 9u] = static_cast<std::uint8_t>(x_density & 0xffu);
+                data[payload + 10u] = static_cast<std::uint8_t>((y_density >> 8) & 0xffu);
+                data[payload + 11u] = static_cast<std::uint8_t>(y_density & 0xffu);
+                return write_binary_file(path, data) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+            }
+            pos += length;
+        }
+
+        std::vector<std::uint8_t> app0;
+        app0.push_back(0xffu);
+        app0.push_back(0xe0u);
+        append_be16(app0, 16u);
+        app0.insert(app0.end(), {'J', 'F', 'I', 'F', 0, 1, 1, unit});
+        append_be16(app0, x_density);
+        append_be16(app0, y_density);
+        app0.push_back(0);
+        app0.push_back(0);
+        data.insert(data.begin() + 2, app0.begin(), app0.end());
+        return write_binary_file(path, data) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
 }
 
 bool write_binary_file(const char* path, const std::vector<std::uint8_t>& data)
@@ -2440,7 +2557,7 @@ int open_jpeg_image(const char* path, PillowCImage** out_image)
     }
 }
 
-int save_jpeg_image_with_quality(const PillowCImage* image, const char* path, int quality)
+int save_jpeg_image_with_options(const PillowCImage* image, const char* path, int quality, bool has_dpi, double dpi_x, double dpi_y)
 {
     if (!image || !path) {
         return PILLOW_C_NULL_POINTER;
@@ -2458,6 +2575,15 @@ int save_jpeg_image_with_quality(const PillowCImage* image, const char* path, in
     }
     const bool has_quality = quality != -1;
     const int clamped_quality = std::max(0, std::min(quality, 100));
+    if (has_dpi) {
+        std::uint8_t unit = 0;
+        std::uint16_t x_density = 0;
+        std::uint16_t y_density = 0;
+        const int status = jpeg_density_from_dpi(dpi_x, dpi_y, &unit, &x_density, &y_density);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
 
     try {
         std::vector<wchar_t> wide_path;
@@ -2566,10 +2692,23 @@ int save_jpeg_image_with_quality(const PillowCImage* image, const char* path, in
         if (FAILED(hr)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
+        frame.reset();
+        encoder_options.reset();
+        encoder.reset();
+        stream.reset();
+        factory.reset();
+        if (has_dpi) {
+            return patch_jpeg_jfif_density(path, dpi_x, dpi_y);
+        }
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int save_jpeg_image_with_quality(const PillowCImage* image, const char* path, int quality)
+{
+    return save_jpeg_image_with_options(image, path, quality, false, 0.0, 0.0);
 }
 
 int save_jpeg_image(const PillowCImage* image, const char* path)
@@ -12278,6 +12417,17 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_quality(
     int quality)
 {
     return save_jpeg_image_with_quality(image, path, quality);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y)
+{
+    return save_jpeg_image_with_options(image, path, quality, has_dpi != 0, dpi_x, dpi_y);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_tiff(
