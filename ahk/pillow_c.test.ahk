@@ -54,6 +54,31 @@ PillowCReadFileBytes(path) {
     }
 }
 
+PillowCExifOrientationSegment(orientation) {
+    return [
+        0xFF, 0xE1, 0x00, 0x22,
+        0x45, 0x78, 0x69, 0x66, 0x00, 0x00,
+        0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00,
+        0x01, 0x00,
+        0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00,
+        orientation, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ]
+}
+
+PillowCWriteJpegWithExifOrientation(sourcePath, targetPath, orientation) {
+    bytes := PillowCReadFileBytes(sourcePath)
+    AhkTest.AssertTrue(bytes.Length >= 2)
+    AhkTest.AssertEqual([0xFF, 0xD8], PillowCArraySlice(bytes, 1, 2))
+
+    out := [bytes[1], bytes[2]]
+    for value in PillowCExifOrientationSegment(orientation)
+        out.Push(value)
+    loop bytes.Length - 2
+        out.Push(bytes[A_Index + 2])
+    PillowCWriteFileBytes(targetPath, out)
+}
+
 PillowCTempBmpPath(name) {
     return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) ".bmp"
 }
@@ -914,6 +939,18 @@ PillowCImageMode(handle) {
     status := DllCall(PillowCDllPath() "\pillow_c_image_mode", "Ptr", handle, "Int*", &mode, "Int")
     PillowCAssertStatus(status)
     return mode
+}
+
+PillowCImageExifOrientation(handle) {
+    orientation := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_exif_orientation",
+        "Ptr", handle,
+        "Int*", &orientation,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return orientation
 }
 
 PillowCImageHistogram(handle, expectedCount) {
@@ -3779,6 +3816,37 @@ PillowCTestImageSaveJpegRoundTripsCoreModes(*) {
 }
 
 AhkTest.Test("pillow_c image save_jpeg round-trips L and RGB modes", PillowCTestImageSaveJpegRoundTripsCoreModes)
+
+PillowCTestImageOpenJpegReadsExifOrientationMetadata(*) {
+    rgb := PillowCCreateImageMode(2, 3, 3)
+    plainPath := PillowCTempJpegPath("exif-source")
+    exifPath := PillowCTempJpegPath("exif-orientation")
+    plainLoaded := 0
+    exifLoaded := 0
+    try {
+        PillowCImageSetBytes(rgb, [
+            10, 20, 30, 40, 50, 60,
+            70, 80, 90, 100, 110, 120,
+            130, 140, 150, 160, 170, 180,
+        ])
+        PillowCImageSaveJpeg(rgb, plainPath)
+        PillowCWriteJpegWithExifOrientation(plainPath, exifPath, 6)
+
+        plainLoaded := PillowCImageOpenJpeg(plainPath)
+        exifLoaded := PillowCImageOpenJpeg(exifPath)
+        AhkTest.AssertEqual(0, PillowCImageExifOrientation(plainLoaded))
+        AhkTest.AssertEqual(6, PillowCImageExifOrientation(exifLoaded))
+    } finally {
+        for handle in [exifLoaded, plainLoaded, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        for path in [exifPath, plainPath]
+            PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_jpeg reads EXIF orientation metadata", PillowCTestImageOpenJpegReadsExifOrientationMetadata)
 
 PillowCTestImageJpegRejectsUnsupportedModesAndInvalidFiles(*) {
     rgba := PillowCCreateImageMode(1, 1, 4)

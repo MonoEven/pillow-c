@@ -64,6 +64,31 @@ PillowTestReadFileBytes(path) {
     }
 }
 
+PillowTestExifOrientationSegment(orientation) {
+    return [
+        0xFF, 0xE1, 0x00, 0x22,
+        0x45, 0x78, 0x69, 0x66, 0x00, 0x00,
+        0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00,
+        0x01, 0x00,
+        0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00,
+        orientation, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ]
+}
+
+PillowTestWriteJpegWithExifOrientation(sourcePath, targetPath, orientation) {
+    bytes := PillowTestReadFileBytes(sourcePath)
+    AhkTest.AssertTrue(bytes.Length >= 2)
+    AhkTest.AssertEqual([0xFF, 0xD8], PillowTestArraySlice(bytes, 1, 2))
+
+    out := [bytes[1], bytes[2]]
+    for value in PillowTestExifOrientationSegment(orientation)
+        out.Push(value)
+    loop bytes.Length - 2
+        out.Push(bytes[A_Index + 2])
+    PillowTestWriteFileBytes(targetPath, out)
+}
+
 PillowTestTempBmpPath(name) {
     return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) ".bmp"
 }
@@ -241,14 +266,6 @@ PillowTestImageOpsExifTransposeNoExifUsesNativeCopyPath(*) {
         returned := Pillow.ImageOps.exif_transpose(source, true)
         AhkTest.AssertEqual("", returned)
         AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowTestBufferToArray(source.ToBytes()))
-
-        source.Info["exif"] := "orientation bytes"
-        try {
-            Pillow.ImageOps.exif_transpose(source)
-            AhkTest.Fail("Expected ImageOps.exif_transpose to reject explicit EXIF metadata until orientation parsing is implemented")
-        } catch Error as err {
-            AhkTest.AssertTrue(InStr(err.Message, "EXIF orientation") > 0)
-        }
     } finally {
         if IsObject(copied)
             copied.Close()
@@ -257,6 +274,47 @@ PillowTestImageOpsExifTransposeNoExifUsesNativeCopyPath(*) {
 }
 
 AhkTest.Test("Pillow ImageOps.exif_transpose copies no-EXIF images through native path", PillowTestImageOpsExifTransposeNoExifUsesNativeCopyPath)
+
+PillowTestImageOpsExifTransposeAppliesJpegOrientation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 3], PillowTestBuffer([
+        10, 20, 30, 40, 50, 60,
+        70, 80, 90, 100, 110, 120,
+        130, 140, 150, 160, 170, 180,
+    ]))
+    plainPath := PillowTestTempJpegPath("exif-source")
+    exifPath := PillowTestTempJpegPath("exif-orientation")
+    opened := 0
+    expected := 0
+    transposed := 0
+    inPlace := 0
+    try {
+        source.Save(plainPath, "JPEG")
+        PillowTestWriteJpegWithExifOrientation(plainPath, exifPath, 6)
+
+        opened := Pillow.Image.Open(exifPath)
+        expected := opened.Transpose(Pillow.Transpose.ROTATE_270)
+        transposed := Pillow.ImageOps.exif_transpose(opened)
+        AhkTest.AssertTrue(transposed != opened)
+        AhkTest.AssertEqual([3, 2], transposed.Size)
+        AhkTest.AssertEqual(PillowTestBufferToArray(expected.ToBytes()), PillowTestBufferToArray(transposed.ToBytes()))
+
+        inPlace := Pillow.Image.Open(exifPath)
+        returned := Pillow.ImageOps.exif_transpose(inPlace, true)
+        AhkTest.AssertEqual("", returned)
+        AhkTest.AssertEqual([3, 2], inPlace.Size)
+        AhkTest.AssertEqual(PillowTestBufferToArray(expected.ToBytes()), PillowTestBufferToArray(inPlace.ToBytes()))
+    } finally {
+        for image in [inPlace, transposed, expected, opened, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [exifPath, plainPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.exif_transpose applies JPEG EXIF orientation", PillowTestImageOpsExifTransposeAppliesJpegOrientation)
 
 PillowTestImageNewCreatesModeAwareNativeImage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

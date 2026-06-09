@@ -62,6 +62,7 @@ struct PillowCImage {
     std::size_t stride;
     std::vector<std::uint8_t> pixels;
     std::vector<std::uint8_t> palette_rgb;
+    int exif_orientation = 0;
 };
 
 struct ResampleCoefficients {
@@ -1015,11 +1016,64 @@ bool jpeg_is_sof_marker(std::uint8_t marker)
            marker != 0xccu;
 }
 
-bool read_jpeg_component_count(const char* path, int* components)
+std::uint16_t read_tiff16(const std::uint8_t* data, bool little_endian)
 {
-    if (!path || !components) {
+    return little_endian ? read_le16(data) : read_be16(data);
+}
+
+std::uint32_t read_tiff32(const std::uint8_t* data, bool little_endian)
+{
+    return little_endian ? read_le32(data) : read_be32(data);
+}
+
+int parse_exif_orientation(const std::uint8_t* payload, std::size_t payload_size)
+{
+    static constexpr std::uint8_t exif_header[6] = {'E', 'x', 'i', 'f', 0, 0};
+    if (!payload || payload_size < sizeof(exif_header) + 8u ||
+        std::memcmp(payload, exif_header, sizeof(exif_header)) != 0) {
+        return 0;
+    }
+
+    const std::uint8_t* tiff = payload + sizeof(exif_header);
+    const std::size_t tiff_size = payload_size - sizeof(exif_header);
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return 0;
+    }
+
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return 0;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return 0;
+    }
+
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if (tag == 0x0112u && type == 3u && count == 1u) {
+            const std::uint16_t value = read_tiff16(entry + 8u, little_endian);
+            return value >= 1u && value <= 8u ? static_cast<int>(value) : 0;
+        }
+    }
+    return 0;
+}
+
+bool read_jpeg_component_count_and_orientation(const char* path, int* components, int* orientation)
+{
+    if (!path || !components || !orientation) {
         return false;
     }
+    *components = 0;
+    *orientation = 0;
     std::vector<std::uint8_t> data;
     if (!read_binary_file(path, &data)) {
         return false;
@@ -1050,16 +1104,26 @@ bool read_jpeg_component_count(const char* path, int* components)
         if (segment_length < 2u || offset + segment_length > data.size()) {
             return false;
         }
+        const std::uint8_t* segment_payload = data.data() + offset + 2u;
+        const std::size_t segment_payload_size = static_cast<std::size_t>(segment_length) - 2u;
+        if (marker == 0xe1u && *orientation == 0) {
+            *orientation = parse_exif_orientation(segment_payload, segment_payload_size);
+        }
         if (jpeg_is_sof_marker(marker)) {
             if (segment_length < 8u) {
                 return false;
             }
             *components = data[offset + 7u];
-            return *components > 0;
         }
         offset += segment_length;
     }
-    return false;
+    return *components > 0;
+}
+
+bool read_jpeg_component_count(const char* path, int* components)
+{
+    int orientation = 0;
+    return read_jpeg_component_count_and_orientation(path, components, &orientation);
 }
 
 bool write_binary_file(const char* path, const std::vector<std::uint8_t>& data)
@@ -1905,7 +1969,8 @@ int open_jpeg_image(const char* path, PillowCImage** out_image)
 
     try {
         int component_count = 0;
-        if (!read_jpeg_component_count(path, &component_count)) {
+        int exif_orientation = 0;
+        if (!read_jpeg_component_count_and_orientation(path, &component_count, &exif_orientation)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
         if (component_count != 1 && component_count != 3) {
@@ -2009,6 +2074,7 @@ int open_jpeg_image(const char* path, PillowCImage** out_image)
             channels,
             stride,
             std::vector<std::uint8_t>(size)};
+        image->exif_orientation = exif_orientation;
         hr = source->CopyPixels(
             nullptr,
             static_cast<UINT>(stride),
@@ -11694,6 +11760,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_copy_into(
         std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
     }
     target->palette_rgb = source->palette_rgb;
+    target->exif_orientation = source->exif_orientation;
     return PILLOW_C_OK;
 }
 
@@ -12940,6 +13007,15 @@ extern "C" __declspec(dllexport) int pillow_c_image_mode(const PillowCImage* ima
     return PILLOW_C_OK;
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_exif_orientation(const PillowCImage* image, int* out_orientation)
+{
+    if (!image || !out_orientation) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_orientation = image->exif_orientation;
+    return PILLOW_C_OK;
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_stride(const PillowCImage* image, int* out_stride)
 {
     if (!image || !out_stride) {
@@ -13433,7 +13509,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_copy(
     }
     *out_image = nullptr;
     try {
-        auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, source->pixels, source->palette_rgb};
+        auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, source->pixels, source->palette_rgb, source->exif_orientation};
         *out_image = image;
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {

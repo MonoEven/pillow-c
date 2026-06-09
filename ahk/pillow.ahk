@@ -64,15 +64,47 @@ class Pillow {
 
         static ExifTranspose(image, in_place := false) {
             Pillow.ImageOps.RequireImageHandle(image, "ExifTranspose")
-            if image.Info.Has("exif")
-                throw Error("Pillow.ImageOps.ExifTranspose currently supports only images without EXIF orientation metadata", -1)
-            if in_place
+            orientation := image.ExifOrientation()
+            if orientation <= 1 {
+                if in_place
+                    return
+                return image.Copy()
+            }
+
+            method := Pillow.ImageOps.ExifOrientationTransposeMethod(orientation)
+            if in_place {
+                transposed := image.Transpose(method)
+                oldHandle := image.RequireHandle()
+                image.Handle := transposed.RequireHandle()
+                transposed.Handle := 0
+                Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", oldHandle, "Int"))
                 return
-            return image.Copy()
+            }
+            return image.Transpose(method)
         }
 
         static exif_transpose(image, in_place := false) {
             return Pillow.ImageOps.ExifTranspose(image, in_place)
+        }
+
+        static ExifOrientationTransposeMethod(orientation) {
+            switch orientation {
+                case 2:
+                    return Pillow.Transpose.FLIP_LEFT_RIGHT
+                case 3:
+                    return Pillow.Transpose.ROTATE_180
+                case 4:
+                    return Pillow.Transpose.FLIP_TOP_BOTTOM
+                case 5:
+                    return Pillow.Transpose.TRANSPOSE
+                case 6:
+                    return Pillow.Transpose.ROTATE_270
+                case 7:
+                    return Pillow.Transpose.TRANSVERSE
+                case 8:
+                    return Pillow.Transpose.ROTATE_90
+            }
+            throw Error("Pillow.ImageOps.ExifTranspose unsupported EXIF orientation", -1)
         }
 
         static Deform(image, deformer, resample := unset) {
@@ -2583,6 +2615,12 @@ class Pillow {
                 Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_mode", "Ptr", this.RequireHandle(), "Int*", &mode, "Int"))
                 return Pillow.ModeName(mode)
             }
+        }
+
+        ExifOrientation() {
+            orientation := 0
+            Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_exif_orientation", "Ptr", this.RequireHandle(), "Int*", &orientation, "Int"))
+            return orientation
         }
 
         Width {
