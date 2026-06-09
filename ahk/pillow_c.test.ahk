@@ -402,6 +402,18 @@ PillowCImageSavePng(handle, path) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageSavePngCompressLevel(handle, path, compressLevel) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_png_compress_level",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int", compressLevel,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageOpenJpeg(path) {
     handle := 0
     pathBytes := PillowCUtf8Buffer(path)
@@ -3818,6 +3830,91 @@ PillowCTestImageSavePngRoundTripsLaAndPaletteModes(*) {
 }
 
 AhkTest.Test("pillow_c image save_png round-trips LA and P modes", PillowCTestImageSavePngRoundTripsLaAndPaletteModes)
+
+PillowCTestImageSavePngCompressLevelZeroWritesStoredPng(*) {
+    rgb := PillowCCreateImageMode(32, 32, 3)
+    l := PillowCCreateImageMode(4, 2, 1)
+    rgba := PillowCCreateImageMode(2, 2, 4)
+    defaultPath := PillowCTempPngPath("compress-default")
+    storedPath := PillowCTempPngPath("compress-stored")
+    lPath := PillowCTempPngPath("compress-l")
+    rgbaPath := PillowCTempPngPath("compress-rgba")
+    rgbLoaded := 0
+    lLoaded := 0
+    rgbaLoaded := 0
+    try {
+        rgbValues := []
+        loop 32 {
+            y := A_Index - 1
+            loop 32 {
+                x := A_Index - 1
+                rgbValues.Push(Mod(x * 19 + y * 7, 256))
+                rgbValues.Push(Mod(x * 3 + y * 29, 256))
+                rgbValues.Push(Mod(x * 41 + y * 11, 256))
+            }
+        }
+        lValues := [0, 32, 64, 96, 128, 160, 192, 255]
+        rgbaValues := [
+            255, 0, 0, 0,
+            0, 255, 0, 64,
+            0, 0, 255, 128,
+            10, 20, 30, 255,
+        ]
+        PillowCImageSetBytes(rgb, rgbValues)
+        PillowCImageSetBytes(l, lValues)
+        PillowCImageSetBytes(rgba, rgbaValues)
+
+        PillowCImageSavePng(rgb, defaultPath)
+        PillowCImageSavePngCompressLevel(rgb, storedPath, 0)
+        defaultBytes := PillowCReadFileBytes(defaultPath)
+        storedBytes := PillowCReadFileBytes(storedPath)
+        AhkTest.AssertEqual([137, 80, 78, 71, 13, 10, 26, 10], PillowCArraySlice(storedBytes, 1, 8))
+        AhkTest.AssertTrue(storedBytes.Length > defaultBytes.Length)
+        rgbLoaded := PillowCImageOpenPng(storedPath)
+        AhkTest.AssertEqual(3, PillowCImageMode(rgbLoaded))
+        AhkTest.AssertEqual(rgbValues, PillowCImageToArray(rgbLoaded, rgbValues.Length))
+
+        PillowCImageSavePngCompressLevel(l, lPath, 0)
+        lLoaded := PillowCImageOpenPng(lPath)
+        AhkTest.AssertEqual(1, PillowCImageMode(lLoaded))
+        AhkTest.AssertEqual(lValues, PillowCImageToArray(lLoaded, lValues.Length))
+
+        PillowCImageSavePngCompressLevel(rgba, rgbaPath, 0)
+        rgbaLoaded := PillowCImageOpenPng(rgbaPath)
+        AhkTest.AssertEqual(4, PillowCImageMode(rgbaLoaded))
+        AhkTest.AssertEqual(rgbaValues, PillowCImageToArray(rgbaLoaded, rgbaValues.Length))
+    } finally {
+        for handle in [rgbaLoaded, lLoaded, rgbLoaded, rgba, l, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        for path in [rgbaPath, lPath, storedPath, defaultPath]
+            PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_png_compress_level zero writes stored PNG", PillowCTestImageSavePngCompressLevelZeroWritesStoredPng)
+
+PillowCTestImageSavePngCompressLevelRejectsInvalidLevel(*) {
+    rgb := PillowCCreateImageMode(1, 1, 3)
+    badPath := PillowCTempPngPath("bad-compress-level")
+    try {
+        PillowCImageSetBytes(rgb, [1, 2, 3])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_png_compress_level",
+            "Ptr", rgb,
+            "Ptr", PillowCUtf8Buffer(badPath),
+            "Int", 10,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+    } finally {
+        PillowCDeleteFile(badPath)
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c image save_png_compress_level rejects invalid levels", PillowCTestImageSavePngCompressLevelRejectsInvalidLevel)
 
 PillowCTestImagePngRejectsUnsupportedModesAndInvalidFiles(*) {
     cmyk := PillowCCreateImageMode(1, 1, 7)

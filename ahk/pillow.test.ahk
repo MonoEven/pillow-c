@@ -942,6 +942,80 @@ PillowTestImageSavePngPreservesLaAndPaletteModes(*) {
 
 AhkTest.Test("Pillow Image.Save PNG preserves LA and P modes", PillowTestImageSavePngPreservesLaAndPaletteModes)
 
+PillowTestImageSavePngCompressLevelOptionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 32 {
+        y := A_Index - 1
+        loop 32 {
+            x := A_Index - 1
+            values.Push(Mod(x * 19 + y * 7, 256))
+            values.Push(Mod(x * 3 + y * 29, 256))
+            values.Push(Mod(x * 41 + y * 11, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [32, 32], PillowTestBuffer(values))
+    defaultPath := PillowTestTempPngPath("compress-default")
+    storedPath := PillowTestTempPngPath("compress-stored")
+    aliasPath := PillowTestTempPngPath("compress-alias")
+    storedLoaded := 0
+    aliasLoaded := 0
+    try {
+        image.Save(defaultPath, "PNG")
+        image.Save(storedPath, "PNG", { CompressLevel: 0 })
+        image.Save(aliasPath, "PNG", { compress_level: 0 })
+
+        defaultBytes := PillowTestReadFileBytes(defaultPath)
+        storedBytes := PillowTestReadFileBytes(storedPath)
+        aliasBytes := PillowTestReadFileBytes(aliasPath)
+        AhkTest.AssertEqual([137, 80, 78, 71, 13, 10, 26, 10], PillowTestArraySlice(storedBytes, 1, 8))
+        AhkTest.AssertTrue(storedBytes.Length > defaultBytes.Length)
+        AhkTest.AssertEqual(storedBytes.Length, aliasBytes.Length)
+
+        storedLoaded := Pillow.Image.Open(storedPath, ["PNG"])
+        aliasLoaded := Pillow.Image.Open(aliasPath, ["PNG"])
+        AhkTest.AssertEqual("RGB", storedLoaded.Mode)
+        AhkTest.AssertEqual("RGB", aliasLoaded.Mode)
+        AhkTest.AssertEqual(values, PillowTestBufferToArray(storedLoaded.ToBytes()))
+        AhkTest.AssertEqual(values, PillowTestBufferToArray(aliasLoaded.ToBytes()))
+    } finally {
+        for item in [aliasLoaded, storedLoaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        for path in [aliasPath, storedPath, defaultPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG compress_level option uses native path", PillowTestImageSavePngCompressLevelOptionUsesNativePath)
+
+PillowTestImageSavePngCompressLevelRejectsInvalidOption(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    badPath := PillowTestTempPngPath("bad-compress")
+    try {
+        try {
+            image.Save(badPath, "PNG", { compress_level: "0" })
+            AhkTest.Fail("Expected Image.Save to reject non-integer PNG compress_level")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "compress_level") > 0)
+        }
+
+        try {
+            image.Save(badPath, "PNG", { CompressLevel: 10 })
+            AhkTest.Fail("Expected Image.Save to reject invalid PNG compress_level")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+    } finally {
+        PillowTestDeleteFile(badPath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG compress_level rejects invalid options", PillowTestImageSavePngCompressLevelRejectsInvalidOption)
+
 PillowTestImageSaveAndOpenJpegUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([120, 130, 140]))

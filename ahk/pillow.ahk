@@ -3366,6 +3366,22 @@ class Pillow {
             }
 
             pathBytes := Pillow.Image.Utf8Buffer(path)
+            if IsSet(saveOptions) && resolvedFormat = "PNG" {
+                compressLevelOption := Pillow.Image.SaveOption(saveOptions, "CompressLevel", "compress_level")
+                if compressLevelOption.Set {
+                    if !(compressLevelOption.Value is Integer)
+                        throw Error("Pillow.Image.Save compress_level must be an integer", -1)
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_png_compress_level",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Int", compressLevelOption.Value,
+                        "Int"
+                    ))
+                    return
+                }
+            }
+
             if IsSet(saveOptions) && resolvedFormat = "JPEG" {
                 qualityOption := Pillow.Image.SaveOption(saveOptions, "Quality", "quality")
                 if qualityOption.Set {

@@ -1944,6 +1944,39 @@ int png_mode_format(const PillowCImage* image, WICPixelFormatGUID* format)
     return PILLOW_C_INVALID_ARGUMENT;
 }
 
+int png_custom_mode_spec(const PillowCImage* image, int* color_type, int* payload_channels)
+{
+    if (!image || !color_type || !payload_channels) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode == PILLOW_C_MODE_L && image->channels == 1) {
+        *color_type = 0;
+        *payload_channels = 1;
+        return PILLOW_C_OK;
+    }
+    if (image->mode == PILLOW_C_MODE_RGB && image->channels == 3) {
+        *color_type = 2;
+        *payload_channels = 3;
+        return PILLOW_C_OK;
+    }
+    if (image->mode == PILLOW_C_MODE_P && image->channels == 1) {
+        *color_type = 3;
+        *payload_channels = 1;
+        return PILLOW_C_OK;
+    }
+    if (image->mode == PILLOW_C_MODE_LA && image->channels == 2) {
+        *color_type = 4;
+        *payload_channels = 2;
+        return PILLOW_C_OK;
+    }
+    if (image->mode == PILLOW_C_MODE_RGBA && image->channels == 4) {
+        *color_type = 6;
+        *payload_channels = 4;
+        return PILLOW_C_OK;
+    }
+    return PILLOW_C_INVALID_ARGUMENT;
+}
+
 std::uint32_t crc32_bytes(const std::uint8_t* data, std::size_t size)
 {
     std::uint32_t crc = 0xffffffffu;
@@ -2008,12 +2041,13 @@ int save_png_custom_image(const PillowCImage* image, const char* path)
     if (image->width <= 0 || image->height <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (!((image->mode == PILLOW_C_MODE_LA && image->channels == 2) ||
-          (image->mode == PILLOW_C_MODE_P && image->channels == 1))) {
-        return PILLOW_C_INVALID_ARGUMENT;
-    }
 
-    const int payload_channels = image->mode == PILLOW_C_MODE_LA ? 2 : 1;
+    int color_type = 0;
+    int payload_channels = 0;
+    int status = png_custom_mode_spec(image, &color_type, &payload_channels);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
     if (image->width > (std::numeric_limits<int>::max() - 1) / payload_channels) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
@@ -2040,7 +2074,7 @@ int save_png_custom_image(const PillowCImage* image, const char* path)
         append_be32(ihdr, static_cast<std::uint32_t>(image->width));
         append_be32(ihdr, static_cast<std::uint32_t>(image->height));
         ihdr.push_back(8);
-        ihdr.push_back(image->mode == PILLOW_C_MODE_LA ? 4 : 3);
+        ihdr.push_back(static_cast<std::uint8_t>(color_type));
         ihdr.push_back(0);
         ihdr.push_back(0);
         ihdr.push_back(0);
@@ -2184,6 +2218,20 @@ int save_png_image(const PillowCImage* image, const char* path)
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int save_png_image_with_compress_level(const PillowCImage* image, const char* path, int compress_level)
+{
+    if (compress_level == -1) {
+        return save_png_image(image, path);
+    }
+    if (compress_level < 0 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (compress_level == 0) {
+        return save_png_custom_image(image, path);
+    }
+    return save_png_image(image, path);
 }
 
 int open_jpeg_image(const char* path, PillowCImage** out_image)
@@ -12116,6 +12164,14 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_png(
     const char* path)
 {
     return save_png_image(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_compress_level(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level)
+{
+    return save_png_image_with_compress_level(image, path, compress_level);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_jpeg(
