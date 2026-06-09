@@ -93,6 +93,39 @@ AhkTest.Test("Pillow facade exposes native ABI version", (*) => (
     AhkTest.AssertEqual([0, 1, 0], Pillow.AbiVersion())
 ))
 
+PillowTestPythonStyleUnderscoreAliasesUseNativePaths(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    dst := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 255]))
+    src := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([10, 20, 30, 255]))
+    p := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([0, 1]))
+    addLeft := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([250, 10]))
+    addRight := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([10, 250]))
+    logicLeft := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x60]))
+    logicRight := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x30]))
+    outputs := []
+    try {
+        p.PutPalette([0, 0, 0, 255, 255, 255])
+        outputs.Push(Pillow.Image.alpha_composite(dst, src))
+        outputs.Push(p.remap_palette([1, 0]))
+        outputs.Push(Pillow.ImageChops.add_modulo(addLeft, addRight))
+        outputs.Push(Pillow.ImageChops.logical_and(logicLeft, logicRight))
+
+        AhkTest.AssertEqual([10, 20, 30, 255], PillowTestBufferToArray(outputs[1].ToBytes()))
+        AhkTest.AssertEqual([1, 0], PillowTestBufferToArray(outputs[2].ToBytes()))
+        AhkTest.AssertEqual([4, 4], PillowTestBufferToArray(outputs[3].ToBytes()))
+        AhkTest.AssertEqual([0x20], PillowTestBufferToArray(outputs[4].ToBytes()))
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        for image in [logicRight, logicLeft, addRight, addLeft, p, src, dst]
+            image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Python-style underscore aliases use native paths", PillowTestPythonStyleUnderscoreAliasesUseNativePaths)
+
 PillowTestImageNewCreatesModeAwareNativeImage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("RGB", [2, 1])

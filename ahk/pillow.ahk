@@ -675,6 +675,34 @@ class Pillow {
             return left.WrapDerivedHandle(outHandle)
         }
 
+        static add_modulo(left, right) {
+            return Pillow.ImageChops.AddModulo(left, right)
+        }
+
+        static hard_light(left, right) {
+            return Pillow.ImageChops.HardLight(left, right)
+        }
+
+        static logical_and(left, right) {
+            return Pillow.ImageChops.LogicalAnd(left, right)
+        }
+
+        static logical_or(left, right) {
+            return Pillow.ImageChops.LogicalOr(left, right)
+        }
+
+        static logical_xor(left, right) {
+            return Pillow.ImageChops.LogicalXor(left, right)
+        }
+
+        static soft_light(left, right) {
+            return Pillow.ImageChops.SoftLight(left, right)
+        }
+
+        static subtract_modulo(left, right) {
+            return Pillow.ImageChops.SubtractModulo(left, right)
+        }
+
         static RequireImageHandle(image, operationName) {
             if !(IsObject(image) && image is Pillow.Image)
                 throw Error("Pillow.ImageChops." operationName " expects a Pillow.Image", -1)
@@ -2266,6 +2294,10 @@ class Pillow {
             return dst.WrapDerivedHandle(outHandle)
         }
 
+        static alpha_composite(dst, src) {
+            return Pillow.Image.AlphaComposite(dst, src)
+        }
+
         static Merge(modeName, bands) {
             if !IsObject(bands)
                 throw Error("Pillow.Image.Merge expects an array of band images", -1)
@@ -2673,6 +2705,12 @@ class Pillow {
                 "Int"
             ))
             return this.WrapDerivedHandle(outHandle)
+        }
+
+        remap_palette(destMap, sourcePalette := unset) {
+            if IsSet(sourcePalette)
+                return this.RemapPalette(destMap, sourcePalette)
+            return this.RemapPalette(destMap)
         }
 
         Quantize(colors := 256, method := unset, kmeans := 0, palette := unset, dither := unset) {
@@ -3770,6 +3808,15 @@ class Pillow {
                 "Int"
             ))
             return this
+        }
+
+        alpha_composite(image, dest := unset, source := unset) {
+            if IsSet(dest) {
+                if IsSet(source)
+                    return this.AlphaComposite(image, dest, source)
+                return this.AlphaComposite(image, dest)
+            }
+            return this.AlphaComposite(image)
         }
 
         Paste(source, box := unset, mask := unset) {
