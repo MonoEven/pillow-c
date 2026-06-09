@@ -2055,6 +2055,61 @@ class Pillow {
     }
 
     class Image {
+        static ModeInfo(modeName) {
+            modeName := modeName ""
+            switch modeName {
+                case "1":
+                    return { BaseMode: "L", BaseType: "L", Bands: ["1"] }
+                case "L":
+                    return { BaseMode: "L", BaseType: "L", Bands: ["L"] }
+                case "LA":
+                    return { BaseMode: "L", BaseType: "L", Bands: ["L", "A"] }
+                case "P":
+                    return { BaseMode: "P", BaseType: "L", Bands: ["P"] }
+                case "PA":
+                    return { BaseMode: "RGB", BaseType: "L", Bands: ["P", "A"] }
+                case "RGB":
+                    return { BaseMode: "RGB", BaseType: "L", Bands: ["R", "G", "B"] }
+                case "RGBA":
+                    return { BaseMode: "RGB", BaseType: "L", Bands: ["R", "G", "B", "A"] }
+                case "RGBX":
+                    return { BaseMode: "RGB", BaseType: "L", Bands: ["R", "G", "B", "X"] }
+                case "CMYK":
+                    return { BaseMode: "RGB", BaseType: "L", Bands: ["C", "M", "Y", "K"] }
+                case "YCbCr":
+                    return { BaseMode: "RGB", BaseType: "L", Bands: ["Y", "Cb", "Cr"] }
+                case "LAB":
+                    return { BaseMode: "RGB", BaseType: "L", Bands: ["L", "A", "B"] }
+                case "HSV":
+                    return { BaseMode: "RGB", BaseType: "L", Bands: ["H", "S", "V"] }
+                case "I":
+                    return { BaseMode: "L", BaseType: "I", Bands: ["I"] }
+                case "F":
+                    return { BaseMode: "L", BaseType: "F", Bands: ["F"] }
+                case "I;16", "I;16L", "I;16B", "I;16N":
+                    return { BaseMode: "L", BaseType: "L", Bands: ["I"] }
+                case "BGR;15", "BGR;16", "BGR;24":
+                    return { BaseMode: "RGB", BaseType: "L", Bands: ["B", "G", "R"] }
+            }
+            throw Error("'" modeName "'", -1)
+        }
+
+        static GetModeBands(modeName) {
+            return Pillow.Image.ModeInfo(modeName).Bands.Length
+        }
+
+        static GetModeBandNames(modeName) {
+            return Pillow.Image.ModeInfo(modeName).Bands.Clone()
+        }
+
+        static GetModeBase(modeName) {
+            return Pillow.Image.ModeInfo(modeName).BaseMode
+        }
+
+        static GetModeType(modeName) {
+            return Pillow.Image.ModeInfo(modeName).BaseType
+        }
+
         class PixelAccess {
             __New(image) {
                 this.Image := image

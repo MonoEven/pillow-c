@@ -93,6 +93,38 @@ AhkTest.Test("Pillow facade exposes native ABI version", (*) => (
     AhkTest.AssertEqual([0, 1, 0], Pillow.AbiVersion())
 ))
 
+PillowTestImageModeHelpersMatchPillowModeTable(*) {
+    AhkTest.AssertEqual(1, Pillow.Image.getmodebands("1"))
+    AhkTest.AssertEqual(["1"], Pillow.Image.getmodebandnames("1"))
+    AhkTest.AssertEqual("L", Pillow.Image.getmodebase("1"))
+    AhkTest.AssertEqual("L", Pillow.Image.getmodetype("1"))
+
+    AhkTest.AssertEqual(4, Pillow.Image.getmodebands("RGBA"))
+    AhkTest.AssertEqual(["R", "G", "B", "A"], Pillow.Image.getmodebandnames("RGBA"))
+    AhkTest.AssertEqual("RGB", Pillow.Image.getmodebase("RGBA"))
+    AhkTest.AssertEqual("L", Pillow.Image.getmodetype("RGBA"))
+
+    AhkTest.AssertEqual(["C", "M", "Y", "K"], Pillow.Image.getmodebandnames("CMYK"))
+    AhkTest.AssertEqual("RGB", Pillow.Image.getmodebase("CMYK"))
+    AhkTest.AssertEqual(["Y", "Cb", "Cr"], Pillow.Image.getmodebandnames("YCbCr"))
+    AhkTest.AssertEqual(["I"], Pillow.Image.getmodebandnames("I;16B"))
+    AhkTest.AssertEqual("I", Pillow.Image.getmodetype("I"))
+    AhkTest.AssertEqual("F", Pillow.Image.getmodetype("F"))
+
+    bands := Pillow.Image.getmodebandnames("RGB")
+    bands[1] := "X"
+    AhkTest.AssertEqual(["R", "G", "B"], Pillow.Image.getmodebandnames("RGB"))
+
+    try {
+        Pillow.Image.getmodebands("BAD")
+        AhkTest.Fail("Expected getmodebands to reject an unknown mode")
+    } catch Error as err {
+        AhkTest.AssertTrue(InStr(err.Message, "BAD") > 0)
+    }
+}
+
+AhkTest.Test("Pillow Image mode helpers match Pillow mode table", PillowTestImageModeHelpersMatchPillowModeTable)
+
 PillowTestPythonStyleUnderscoreAliasesUseNativePaths(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     dst := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 255]))
