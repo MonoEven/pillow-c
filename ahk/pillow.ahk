@@ -2623,6 +2623,7 @@ class Pillow {
                         image.FrameFormat := format
                         image.FrameIndex := 0
                         image.FrameCount := Pillow.Image.FrameCountForOpen(pathBytes, format)
+                        image.ApplyNativeMetadata()
                         image.ApplyFrameMetadata()
                     } catch {
                         image.Close()
@@ -3182,6 +3183,7 @@ class Pillow {
             this.Handle := outHandle
             this.FrameIndex := frame
             try {
+                this.ApplyNativeMetadata()
                 this.ApplyFrameMetadata()
             } catch {
                 this.Handle := oldHandle
@@ -3190,6 +3192,41 @@ class Pillow {
                 throw
             }
             Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", oldHandle, "Int"))
+        }
+
+        ApplyNativeMetadata() {
+            this.RequireHandle()
+            hasDpi := 0
+            dpiX := 0.0
+            dpiY := 0.0
+            jfif := 0
+            jfifMajor := 0
+            jfifMinor := 0
+            jfifUnit := -1
+            jfifDensityX := 0
+            jfifDensityY := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_resolution",
+                "Ptr", this.RequireHandle(),
+                "Int*", &hasDpi,
+                "Double*", &dpiX,
+                "Double*", &dpiY,
+                "Int*", &jfif,
+                "Int*", &jfifMajor,
+                "Int*", &jfifMinor,
+                "Int*", &jfifUnit,
+                "Int*", &jfifDensityX,
+                "Int*", &jfifDensityY,
+                "Int"
+            ))
+            if hasDpi
+                this.Info["dpi"] := [dpiX, dpiY]
+            if jfif {
+                this.Info["jfif"] := jfif
+                this.Info["jfif_version"] := [jfifMajor, jfifMinor]
+                this.Info["jfif_unit"] := jfifUnit
+                this.Info["jfif_density"] := [jfifDensityX, jfifDensityY]
+            }
         }
 
         ApplyFrameMetadata() {

@@ -1155,6 +1155,42 @@ PillowCImageExifOrientation(handle) {
     return orientation
 }
 
+PillowCImageMetadataResolution(handle) {
+    hasDpi := 0
+    dpiX := 0.0
+    dpiY := 0.0
+    jfif := 0
+    jfifMajor := 0
+    jfifMinor := 0
+    jfifUnit := -1
+    jfifDensityX := 0
+    jfifDensityY := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_metadata_resolution",
+        "Ptr", handle,
+        "Int*", &hasDpi,
+        "Double*", &dpiX,
+        "Double*", &dpiY,
+        "Int*", &jfif,
+        "Int*", &jfifMajor,
+        "Int*", &jfifMinor,
+        "Int*", &jfifUnit,
+        "Int*", &jfifDensityX,
+        "Int*", &jfifDensityY,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return {
+        HasDpi: hasDpi,
+        DpiX: dpiX,
+        DpiY: dpiY,
+        Jfif: jfif,
+        JfifVersion: [jfifMajor, jfifMinor],
+        JfifUnit: jfifUnit,
+        JfifDensity: [jfifDensityX, jfifDensityY],
+    }
+}
+
 PillowCImageHistogram(handle, expectedCount) {
     out := Buffer(expectedCount * 8, 0)
     status := DllCall(
@@ -4018,6 +4054,11 @@ PillowCTestImageSavePngOptionsWritesDpiChunk(*) {
         PillowCAssertPngPhys(rgbPath, 11811, 5906)
         rgbLoaded := PillowCImageOpenPng(rgbPath)
         AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowCImageToArray(rgbLoaded, 6))
+        metadata := PillowCImageMetadataResolution(rgbLoaded)
+        AhkTest.AssertEqual(1, metadata.HasDpi)
+        PillowCAssertFloatClose(299.9994, metadata.DpiX, 0.0001)
+        PillowCAssertFloatClose(150.0124, metadata.DpiY, 0.0001)
+        AhkTest.AssertEqual(0, metadata.Jfif)
 
         status := DllCall(
             PillowCDllPath() "\pillow_c_image_save_png_options",
@@ -4034,6 +4075,10 @@ PillowCTestImageSavePngOptionsWritesDpiChunk(*) {
         AhkTest.AssertEqual(6, PillowCImageMode(pLoaded))
         AhkTest.AssertEqual([0, 1], PillowCImageToArray(pLoaded, 2))
         AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowCImageGetPaletteRgb(pLoaded))
+        metadata := PillowCImageMetadataResolution(pLoaded)
+        AhkTest.AssertEqual(1, metadata.HasDpi)
+        PillowCAssertFloatClose(96.012, metadata.DpiX, 0.0001)
+        PillowCAssertFloatClose(96.012, metadata.DpiY, 0.0001)
 
         status := DllCall(
             PillowCDllPath() "\pillow_c_image_save_png_options",
@@ -4273,6 +4318,8 @@ PillowCTestImageSaveJpegOptionsWritesDpiMetadata(*) {
     rgb := PillowCCreateImageMode(2, 1, 3)
     dpiPath := PillowCTempJpegPath("dpi")
     defaultUnitPath := PillowCTempJpegPath("dpi-default-unit")
+    dpiLoaded := 0
+    defaultUnitLoaded := 0
     try {
         PillowCImageSetBytes(rgb, [10, 20, 30, 40, 50, 60])
 
@@ -4296,6 +4343,15 @@ PillowCTestImageSaveJpegOptionsWritesDpiMetadata(*) {
         AhkTest.AssertEqual(1, jfif.Unit)
         AhkTest.AssertEqual(300, jfif.XDensity)
         AhkTest.AssertEqual(150, jfif.YDensity)
+        dpiLoaded := PillowCImageOpenJpeg(dpiPath)
+        metadata := PillowCImageMetadataResolution(dpiLoaded)
+        AhkTest.AssertEqual(1, metadata.HasDpi)
+        PillowCAssertFloatClose(300.0, metadata.DpiX)
+        PillowCAssertFloatClose(150.0, metadata.DpiY)
+        AhkTest.AssertEqual(257, metadata.Jfif)
+        AhkTest.AssertEqual([1, 1], metadata.JfifVersion)
+        AhkTest.AssertEqual(1, metadata.JfifUnit)
+        AhkTest.AssertEqual([300, 150], metadata.JfifDensity)
 
         status := DllCall(
             PillowCDllPath() "\pillow_c_image_save_jpeg_options",
@@ -4312,7 +4368,18 @@ PillowCTestImageSaveJpegOptionsWritesDpiMetadata(*) {
         AhkTest.AssertEqual(0, jfif.Unit)
         AhkTest.AssertEqual(1, jfif.XDensity)
         AhkTest.AssertEqual(1, jfif.YDensity)
+        defaultUnitLoaded := PillowCImageOpenJpeg(defaultUnitPath)
+        metadata := PillowCImageMetadataResolution(defaultUnitLoaded)
+        AhkTest.AssertEqual(0, metadata.HasDpi)
+        AhkTest.AssertEqual(257, metadata.Jfif)
+        AhkTest.AssertEqual([1, 1], metadata.JfifVersion)
+        AhkTest.AssertEqual(0, metadata.JfifUnit)
+        AhkTest.AssertEqual([1, 1], metadata.JfifDensity)
     } finally {
+        for handle in [defaultUnitLoaded, dpiLoaded] {
+            if handle
+                PillowCFreeImage(handle)
+        }
         PillowCDeleteFile(defaultUnitPath)
         PillowCDeleteFile(dpiPath)
         PillowCFreeImage(rgb)

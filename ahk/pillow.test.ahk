@@ -1079,6 +1079,10 @@ PillowTestImageSavePngDpiOptionUsesNativePath(*) {
         loaded := Pillow.Image.Open(dpiPath, ["PNG"])
         aliasLoaded := Pillow.Image.Open(aliasPath, ["PNG"])
         AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertTrue(loaded.Info.Has("dpi"))
+        PillowTestAssertFloatArrayClose([299.9994, 150.0124], loaded.Info["dpi"], 0.0001)
+        AhkTest.AssertTrue(aliasLoaded.Info.Has("dpi"))
+        PillowTestAssertFloatArrayClose([96.012, 96.012], aliasLoaded.Info["dpi"], 0.0001)
         AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowTestBufferToArray(loaded.ToBytes()))
         AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowTestBufferToArray(aliasLoaded.ToBytes()))
     } finally {
@@ -1265,6 +1269,7 @@ PillowTestImageSaveJpegDpiOptionUsesNativePath(*) {
     aliasPath := PillowTestTempJpegPath("dpi-alias")
     defaultUnitPath := PillowTestTempJpegPath("dpi-default-unit")
     loaded := 0
+    defaultUnitLoaded := 0
     try {
         image.Save(dpiPath, "JPEG", { Dpi: [300, 150] })
         image.Save(aliasPath, "JPEG", { dpi: [96, 96], quality: 95 })
@@ -1288,7 +1293,21 @@ PillowTestImageSaveJpegDpiOptionUsesNativePath(*) {
         loaded := Pillow.Image.Open(dpiPath, ["JPEG"])
         AhkTest.AssertEqual("RGB", loaded.Mode)
         AhkTest.AssertEqual([2, 1], loaded.Size)
+        AhkTest.AssertEqual(257, loaded.Info["jfif"])
+        AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+        AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+
+        defaultUnitLoaded := Pillow.Image.Open(defaultUnitPath, ["JPEG"])
+        AhkTest.AssertEqual(257, defaultUnitLoaded.Info["jfif"])
+        AhkTest.AssertEqual([1, 1], defaultUnitLoaded.Info["jfif_version"])
+        AhkTest.AssertTrue(!defaultUnitLoaded.Info.Has("dpi"))
+        AhkTest.AssertEqual(0, defaultUnitLoaded.Info["jfif_unit"])
+        AhkTest.AssertEqual([1, 1], defaultUnitLoaded.Info["jfif_density"])
     } finally {
+        if IsObject(defaultUnitLoaded)
+            defaultUnitLoaded.Close()
         if IsObject(loaded)
             loaded.Close()
         image.Close()

@@ -70,6 +70,15 @@ struct PillowCImage {
     int exif_orientation = 0;
     std::vector<std::uint8_t> palette_alpha;
     int palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+    bool has_dpi = false;
+    double dpi_x = 0.0;
+    double dpi_y = 0.0;
+    bool has_jfif = false;
+    int jfif_major = 0;
+    int jfif_minor = 0;
+    int jfif_unit = -1;
+    int jfif_density_x = 0;
+    int jfif_density_y = 0;
 };
 
 struct ResampleCoefficients {
@@ -999,6 +1008,20 @@ struct PngHeaderInfo {
     int color_type;
 };
 
+struct JpegMetadata {
+    int components = 0;
+    int exif_orientation = 0;
+    bool has_dpi = false;
+    double dpi_x = 0.0;
+    double dpi_y = 0.0;
+    bool has_jfif = false;
+    int jfif_major = 0;
+    int jfif_minor = 0;
+    int jfif_unit = -1;
+    int jfif_density_x = 0;
+    int jfif_density_y = 0;
+};
+
 struct GifMetadata {
     int duration_ms = -1;
     int loop = -1;
@@ -1030,6 +1053,45 @@ bool read_png_header_info(const char* path, PngHeaderInfo* info)
     info->bit_depth = header[24];
     info->color_type = header[25];
     return true;
+}
+
+bool read_png_dpi_metadata(const char* path, double* out_dpi_x, double* out_dpi_y)
+{
+    if (!path || !out_dpi_x || !out_dpi_y) {
+        return false;
+    }
+    *out_dpi_x = 0.0;
+    *out_dpi_y = 0.0;
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.size() < sizeof(signature) || std::memcmp(data.data(), signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= data.size()) {
+        const std::uint32_t length = read_be32(data.data() + pos);
+        if (length > data.size() - pos - 12u) {
+            return false;
+        }
+        const std::uint8_t* type = data.data() + pos + 4u;
+        const std::uint8_t* payload = data.data() + pos + 8u;
+        if (length == 9u && std::memcmp(type, "pHYs", 4u) == 0) {
+            if (payload[8] != 1u) {
+                return false;
+            }
+            *out_dpi_x = static_cast<double>(read_be32(payload)) * 0.0254;
+            *out_dpi_y = static_cast<double>(read_be32(payload + 4u)) * 0.0254;
+            return true;
+        }
+        if (std::memcmp(type, "IEND", 4u) == 0) {
+            return false;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    return false;
 }
 
 bool skip_gif_sub_blocks(const std::vector<std::uint8_t>& data, std::size_t* pos)
@@ -1249,13 +1311,34 @@ int parse_exif_orientation(const std::uint8_t* payload, std::size_t payload_size
     return 0;
 }
 
-bool read_jpeg_component_count_and_orientation(const char* path, int* components, int* orientation)
+void apply_jpeg_jfif_metadata(const std::uint8_t* payload, std::size_t payload_size, JpegMetadata* metadata)
 {
-    if (!path || !components || !orientation) {
+    if (!payload || payload_size < 12u || !metadata || std::memcmp(payload, "JFIF\0", 5u) != 0) {
+        return;
+    }
+    metadata->has_jfif = true;
+    metadata->jfif_major = payload[5];
+    metadata->jfif_minor = payload[6];
+    metadata->jfif_unit = payload[7];
+    metadata->jfif_density_x = read_be16(payload + 8u);
+    metadata->jfif_density_y = read_be16(payload + 10u);
+    if (metadata->jfif_unit == 1) {
+        metadata->has_dpi = true;
+        metadata->dpi_x = static_cast<double>(metadata->jfif_density_x);
+        metadata->dpi_y = static_cast<double>(metadata->jfif_density_y);
+    } else if (metadata->jfif_unit == 2) {
+        metadata->has_dpi = true;
+        metadata->dpi_x = static_cast<double>(metadata->jfif_density_x) * 2.54;
+        metadata->dpi_y = static_cast<double>(metadata->jfif_density_y) * 2.54;
+    }
+}
+
+bool read_jpeg_metadata(const char* path, JpegMetadata* metadata)
+{
+    if (!path || !metadata) {
         return false;
     }
-    *components = 0;
-    *orientation = 0;
+    *metadata = JpegMetadata{};
     std::vector<std::uint8_t> data;
     if (!read_binary_file(path, &data)) {
         return false;
@@ -1288,18 +1371,35 @@ bool read_jpeg_component_count_and_orientation(const char* path, int* components
         }
         const std::uint8_t* segment_payload = data.data() + offset + 2u;
         const std::size_t segment_payload_size = static_cast<std::size_t>(segment_length) - 2u;
-        if (marker == 0xe1u && *orientation == 0) {
-            *orientation = parse_exif_orientation(segment_payload, segment_payload_size);
+        if (marker == 0xe0u && !metadata->has_jfif) {
+            apply_jpeg_jfif_metadata(segment_payload, segment_payload_size, metadata);
+        }
+        if (marker == 0xe1u && metadata->exif_orientation == 0) {
+            metadata->exif_orientation = parse_exif_orientation(segment_payload, segment_payload_size);
         }
         if (jpeg_is_sof_marker(marker)) {
             if (segment_length < 8u) {
                 return false;
             }
-            *components = data[offset + 7u];
+            metadata->components = data[offset + 7u];
         }
         offset += segment_length;
     }
-    return *components > 0;
+    return metadata->components > 0;
+}
+
+bool read_jpeg_component_count_and_orientation(const char* path, int* components, int* orientation)
+{
+    if (!path || !components || !orientation) {
+        return false;
+    }
+    JpegMetadata metadata;
+    if (!read_jpeg_metadata(path, &metadata)) {
+        return false;
+    }
+    *components = metadata.components;
+    *orientation = metadata.exif_orientation;
+    return true;
 }
 
 bool read_jpeg_component_count(const char* path, int* components)
@@ -2034,6 +2134,13 @@ int open_png_image(const char* path, PillowCImage** out_image)
             image->palette_alpha.clear();
             image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
         }
+        double dpi_x = 0.0;
+        double dpi_y = 0.0;
+        if (read_png_dpi_metadata(path, &dpi_x, &dpi_y)) {
+            image->has_dpi = true;
+            image->dpi_x = dpi_x;
+            image->dpi_y = dpi_y;
+        }
         *out_image = image;
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
@@ -2433,12 +2540,11 @@ int open_jpeg_image(const char* path, PillowCImage** out_image)
     *out_image = nullptr;
 
     try {
-        int component_count = 0;
-        int exif_orientation = 0;
-        if (!read_jpeg_component_count_and_orientation(path, &component_count, &exif_orientation)) {
+        JpegMetadata metadata;
+        if (!read_jpeg_metadata(path, &metadata)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
-        if (component_count != 1 && component_count != 3) {
+        if (metadata.components != 1 && metadata.components != 3) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
 
@@ -2489,10 +2595,10 @@ int open_jpeg_image(const char* path, PillowCImage** out_image)
             return PILLOW_C_INVALID_ARGUMENT;
         }
 
-        const int mode = component_count == 1 ? PILLOW_C_MODE_L : PILLOW_C_MODE_RGB;
-        const int channels = component_count == 1 ? 1 : 3;
+        const int mode = metadata.components == 1 ? PILLOW_C_MODE_L : PILLOW_C_MODE_RGB;
+        const int channels = metadata.components == 1 ? 1 : 3;
         const WICPixelFormatGUID target_format =
-            component_count == 1 ? GUID_WICPixelFormat8bppGray : GUID_WICPixelFormat24bppRGB;
+            metadata.components == 1 ? GUID_WICPixelFormat8bppGray : GUID_WICPixelFormat24bppRGB;
 
         std::size_t stride = 0;
         std::size_t size = 0;
@@ -2539,7 +2645,16 @@ int open_jpeg_image(const char* path, PillowCImage** out_image)
             channels,
             stride,
             std::vector<std::uint8_t>(size)};
-        image->exif_orientation = exif_orientation;
+        image->exif_orientation = metadata.exif_orientation;
+        image->has_dpi = metadata.has_dpi;
+        image->dpi_x = metadata.dpi_x;
+        image->dpi_y = metadata.dpi_y;
+        image->has_jfif = metadata.has_jfif;
+        image->jfif_major = metadata.jfif_major;
+        image->jfif_minor = metadata.jfif_minor;
+        image->jfif_unit = metadata.jfif_unit;
+        image->jfif_density_x = metadata.jfif_density_x;
+        image->jfif_density_y = metadata.jfif_density_y;
         hr = source->CopyPixels(
             nullptr,
             static_cast<UINT>(stride),
@@ -13992,6 +14107,34 @@ extern "C" __declspec(dllexport) int pillow_c_image_exif_orientation(const Pillo
         return PILLOW_C_NULL_POINTER;
     }
     *out_orientation = image->exif_orientation;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_resolution(
+    const PillowCImage* image,
+    int* out_has_dpi,
+    double* out_dpi_x,
+    double* out_dpi_y,
+    int* out_jfif,
+    int* out_jfif_major,
+    int* out_jfif_minor,
+    int* out_jfif_unit,
+    int* out_jfif_density_x,
+    int* out_jfif_density_y)
+{
+    if (!image || !out_has_dpi || !out_dpi_x || !out_dpi_y || !out_jfif || !out_jfif_major || !out_jfif_minor ||
+        !out_jfif_unit || !out_jfif_density_x || !out_jfif_density_y) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_has_dpi = image->has_dpi ? 1 : 0;
+    *out_dpi_x = image->dpi_x;
+    *out_dpi_y = image->dpi_y;
+    *out_jfif = image->has_jfif ? ((image->jfif_major << 8) | image->jfif_minor) : 0;
+    *out_jfif_major = image->has_jfif ? image->jfif_major : 0;
+    *out_jfif_minor = image->has_jfif ? image->jfif_minor : 0;
+    *out_jfif_unit = image->has_jfif ? image->jfif_unit : -1;
+    *out_jfif_density_x = image->has_jfif ? image->jfif_density_x : 0;
+    *out_jfif_density_y = image->has_jfif ? image->jfif_density_y : 0;
     return PILLOW_C_OK;
 }
 
