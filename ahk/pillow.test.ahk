@@ -1845,14 +1845,45 @@ PillowTestImageOpenGifExposesAnimationMetadata(*) {
 
 AhkTest.Test("Pillow Image.Open GIF exposes animation metadata", PillowTestImageOpenGifExposesAnimationMetadata)
 
+PillowTestImageSaveGifQuantizesExactRgbThroughNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([
+        0, 0, 0, 255, 0, 0,
+        0, 255, 0, 0, 0, 255,
+    ]))
+    path := PillowTestTempGifPath("save-rgb")
+    loaded := 0
+    rgb := 0
+    try {
+        image.Save(path, "GIF")
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual("GIF", loaded.Format)
+        AhkTest.AssertEqual("P", loaded.Mode)
+        rgb := loaded.Convert("RGB")
+        AhkTest.AssertEqual([
+            0, 0, 0, 255, 0, 0,
+            0, 255, 0, 0, 0, 255,
+        ], PillowTestBufferToArray(rgb.ToBytes()))
+    } finally {
+        if IsObject(rgb)
+            rgb.Close()
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save GIF quantizes exact RGB through native path", PillowTestImageSaveGifQuantizesExactRgbThroughNativePath)
+
 PillowTestImageOpenSaveGifRejectsUnsupportedInputs(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
-    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
+    image := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
     badPath := PillowTestTempGifPath("bad")
     try {
         try {
             image.Save(badPath, "GIF")
-            AhkTest.Fail("Expected Image.Save to reject unsupported RGB GIF")
+            AhkTest.Fail("Expected Image.Save to reject unsupported RGBA GIF")
         } catch Error as err {
             AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
         }

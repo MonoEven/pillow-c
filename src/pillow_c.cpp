@@ -3289,6 +3289,8 @@ int open_gif_image(const char* path, PillowCImage** out_image)
     return open_gif_frame_image(path, 0, out_image);
 }
 
+int quantize_exact_image_into(const PillowCImage* source, int colors, PillowCImage* target);
+
 int save_gif_image(const PillowCImage* image, const char* path)
 {
     if (!image || !path) {
@@ -3296,6 +3298,30 @@ int save_gif_image(const PillowCImage* image, const char* path)
     }
     if (image->width <= 0 || image->height <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if ((image->mode == PILLOW_C_MODE_L && image->channels == 1) ||
+        (image->mode == PILLOW_C_MODE_RGB && image->channels == 3)) {
+        std::size_t stride = 0;
+        std::size_t size = 0;
+        if (!checked_image_size_allow_empty(image->width, image->height, 1, &stride, &size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        try {
+            PillowCImage quantized{
+                image->width,
+                image->height,
+                PILLOW_C_MODE_P,
+                1,
+                stride,
+                std::vector<std::uint8_t>(size)};
+            const int status = quantize_exact_image_into(image, 256, &quantized);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            return save_gif_image(&quantized, path);
+        } catch (const std::bad_alloc&) {
+            return PILLOW_C_ALLOCATION_FAILED;
+        }
     }
     if (image->mode != PILLOW_C_MODE_P || image->channels != 1) {
         return PILLOW_C_INVALID_ARGUMENT;

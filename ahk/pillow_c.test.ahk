@@ -4794,6 +4794,49 @@ PillowCTestImageSaveGifRoundTripsPaletteMode(*) {
 
 AhkTest.Test("pillow_c image save_gif round-trips P mode images", PillowCTestImageSaveGifRoundTripsPaletteMode)
 
+PillowCTestImageSaveGifQuantizesExactLAndRgbImages(*) {
+    l := PillowCCreateImageMode(4, 1, 1)
+    rgb := PillowCCreateImageMode(2, 2, 3)
+    lPath := PillowCTempGifPath("save-l")
+    rgbPath := PillowCTempGifPath("save-rgb")
+    lLoaded := 0
+    rgbLoaded := 0
+    lAsL := 0
+    rgbAsRgb := 0
+    try {
+        PillowCImageSetBytes(l, [0, 64, 128, 255])
+        PillowCImageSetBytes(rgb, [
+            0, 0, 0, 255, 0, 0,
+            0, 255, 0, 0, 0, 255,
+        ])
+
+        PillowCImageSaveGif(l, lPath)
+        PillowCImageSaveGif(rgb, rgbPath)
+
+        lLoaded := PillowCImageOpenGif(lPath)
+        rgbLoaded := PillowCImageOpenGif(rgbPath)
+        AhkTest.AssertEqual(6, PillowCImageMode(lLoaded))
+        AhkTest.AssertEqual(6, PillowCImageMode(rgbLoaded))
+
+        lAsL := PillowCImageConvertMode(lLoaded, 1)
+        rgbAsRgb := PillowCImageConvertMode(rgbLoaded, 3)
+        AhkTest.AssertEqual([0, 64, 128, 255], PillowCImageToArray(lAsL, 4))
+        AhkTest.AssertEqual([
+            0, 0, 0, 255, 0, 0,
+            0, 255, 0, 0, 0, 255,
+        ], PillowCImageToArray(rgbAsRgb, 12))
+    } finally {
+        for handle in [rgbAsRgb, lAsL, rgbLoaded, lLoaded, rgb, l] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCDeleteFile(rgbPath)
+        PillowCDeleteFile(lPath)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif quantizes exact L and RGB images", PillowCTestImageSaveGifQuantizesExactLAndRgbImages)
+
 PillowCTestImageSaveGifAnimationWritesFramesAndMetadata(*) {
     first := PillowCCreateImageMode(2, 1, 6)
     second := PillowCCreateImageMode(2, 1, 6)
@@ -4839,15 +4882,15 @@ PillowCTestImageSaveGifAnimationWritesFramesAndMetadata(*) {
 AhkTest.Test("pillow_c image save_gif_animation writes frames and metadata", PillowCTestImageSaveGifAnimationWritesFramesAndMetadata)
 
 PillowCTestImageGifRejectsUnsupportedModesAndInvalidFiles(*) {
-    rgb := PillowCCreateImageMode(1, 1, 3)
+    rgba := PillowCCreateImageMode(1, 1, 4)
     badPath := PillowCTempGifPath("bad")
     missingPath := PillowCTempGifPath("missing")
     outHandle := 0
     try {
-        PillowCImageSetBytes(rgb, [1, 2, 3])
+        PillowCImageSetBytes(rgba, [1, 2, 3, 4])
         status := DllCall(
             PillowCDllPath() "\pillow_c_image_save_gif",
-            "Ptr", rgb,
+            "Ptr", rgba,
             "Ptr", PillowCUtf8Buffer(badPath),
             "Int"
         )
@@ -4875,7 +4918,7 @@ PillowCTestImageGifRejectsUnsupportedModesAndInvalidFiles(*) {
         if outHandle
             PillowCFreeImage(outHandle)
         PillowCDeleteFile(badPath)
-        PillowCFreeImage(rgb)
+        PillowCFreeImage(rgba)
     }
 }
 
