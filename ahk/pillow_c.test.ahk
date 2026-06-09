@@ -3836,6 +3836,35 @@ PillowCTestImageOpenPpmReadsBinaryPgmAndPpm(*) {
 
 AhkTest.Test("pillow_c image open_ppm reads binary PGM and PPM images", PillowCTestImageOpenPpmReadsBinaryPgmAndPpm)
 
+PillowCTestImageOpenPpmReadsBinaryPbmAsModeOne(*) {
+    path := PillowCTempPpmPath("open-1", "pbm")
+    image := 0
+    try {
+        PillowCWriteFileBytes(path, [
+            0x50, 0x34, 0x0A,
+            0x23, 0x20, 0x63, 0x6F, 0x6D, 0x6D, 0x65, 0x6E, 0x74, 0x0A,
+            0x35, 0x20, 0x32, 0x0A,
+            0xA8, 0x50,
+        ])
+
+        image := PillowCImageOpenPpm(path)
+
+        AhkTest.AssertEqual(5, PillowCImageMode(image))
+        AhkTest.AssertEqual([5, 2], [
+            PillowCImageInt(image, "pillow_c_image_width"),
+            PillowCImageInt(image, "pillow_c_image_height")
+        ])
+        AhkTest.AssertEqual([0x50, 0xA8], PillowCImageGetRawBytes(image, "1"))
+        AhkTest.AssertEqual([0, 255, 0, 255, 0, 255, 0, 255, 0, 255], PillowCImageToArray(image, 10))
+    } finally {
+        if image
+            PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_ppm reads binary PBM as mode 1", PillowCTestImageOpenPpmReadsBinaryPbmAsModeOne)
+
 PillowCTestImageSavePpmWritesPillowBinaryPgmAndPpm(*) {
     l := PillowCCreateImageMode(4, 1, 1)
     rgb := PillowCCreateImageMode(2, 1, 3)
@@ -3868,6 +3897,26 @@ PillowCTestImageSavePpmWritesPillowBinaryPgmAndPpm(*) {
 }
 
 AhkTest.Test("pillow_c image save_ppm writes Pillow binary PGM and PPM bytes", PillowCTestImageSavePpmWritesPillowBinaryPgmAndPpm)
+
+PillowCTestImageSavePpmWritesPillowBinaryPbmBytes(*) {
+    image := PillowCCreateImageMode(8, 1, 5)
+    path := PillowCTempPpmPath("save-1", "pbm")
+    try {
+        PillowCImageSetRawBytes(image, [0xB0], "1")
+        PillowCImageSavePpm(image, path)
+
+        AhkTest.AssertEqual([
+            0x50, 0x34, 0x0A,
+            0x38, 0x20, 0x31, 0x0A,
+            0x4F,
+        ], PillowCReadFileBytes(path))
+    } finally {
+        PillowCDeleteFile(path)
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image save_ppm writes Pillow binary PBM bytes", PillowCTestImageSavePpmWritesPillowBinaryPbmBytes)
 
 PillowCTestImagePpmRejectsUnsupportedModesAndInvalidFiles(*) {
     rgba := PillowCCreateImageMode(1, 1, 4)

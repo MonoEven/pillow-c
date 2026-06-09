@@ -862,6 +862,37 @@ PillowTestImageSaveAndOpenPpmUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Save and Image.Open support PPM through native path", PillowTestImageSaveAndOpenPpmUsesNativePath)
 
+PillowTestImageSaveAndOpenPbmUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("1", [8, 1], PillowTestBuffer([0xB0]))
+    path := PillowTestTempPpmPath("save-1", "pbm")
+    loaded := 0
+    try {
+        image.Save(path)
+
+        AhkTest.AssertEqual([
+            0x50, 0x34, 0x0A,
+            0x38, 0x20, 0x31, 0x0A,
+            0x4F,
+        ], PillowTestReadFileBytes(path))
+
+        loaded := Pillow.Image.Open(path)
+
+        AhkTest.AssertEqual("PPM", loaded.Format)
+        AhkTest.AssertEqual("1", loaded.Mode)
+        AhkTest.AssertEqual([8, 1], loaded.Size)
+        AhkTest.AssertEqual([0xB0], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual([255, 0, 255, 255, 0, 0, 0, 0], loaded.GetData())
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save and Image.Open support PBM through native path", PillowTestImageSaveAndOpenPbmUsesNativePath)
+
 PillowTestImageOpenSavePpmRejectsUnsupportedInputs(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 4]))

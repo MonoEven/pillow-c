@@ -1627,23 +1627,29 @@ int open_ppm_image(const char* path, PillowCImage** out_image)
 
     try {
         std::vector<std::uint8_t> data;
-        if (!read_binary_file(path, &data) || data.size() < 3u || data[0] != 'P' || (data[1] != '5' && data[1] != '6')) {
+        if (!read_binary_file(path, &data) || data.size() < 3u || data[0] != 'P' ||
+            (data[1] != '4' && data[1] != '5' && data[1] != '6')) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
 
-        const int mode = data[1] == '5' ? PILLOW_C_MODE_L : PILLOW_C_MODE_RGB;
-        const int channels = mode == PILLOW_C_MODE_L ? 1 : 3;
+        const bool is_pbm = data[1] == '4';
+        const int mode = is_pbm ? PILLOW_C_MODE_1 : (data[1] == '5' ? PILLOW_C_MODE_L : PILLOW_C_MODE_RGB);
+        const int channels = mode == PILLOW_C_MODE_RGB ? 3 : 1;
         std::size_t offset = 2u;
         int width = 0;
         int height = 0;
         int max_value = 0;
         if (!ppm_read_positive_int(data, &offset, &width) ||
-            !ppm_read_positive_int(data, &offset, &height) ||
-            !ppm_read_positive_int(data, &offset, &max_value)) {
+            !ppm_read_positive_int(data, &offset, &height)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
-        if (max_value != 255) {
-            return PILLOW_C_INVALID_ARGUMENT;
+        if (!is_pbm) {
+            if (!ppm_read_positive_int(data, &offset, &max_value)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            if (max_value != 255) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
         }
 
         std::size_t pixel_offset = 0;
@@ -1657,9 +1663,6 @@ int open_ppm_image(const char* path, PillowCImage** out_image)
         if (!checked_image_size(width, height, channels, &stride, &size)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
-        if (size > data.size() - pixel_offset) {
-            return PILLOW_C_INVALID_LENGTH;
-        }
 
         auto* image = new PillowCImage{
             width,
@@ -1668,7 +1671,29 @@ int open_ppm_image(const char* path, PillowCImage** out_image)
             channels,
             stride,
             std::vector<std::uint8_t>(size)};
-        std::memcpy(image->pixels.data(), data.data() + pixel_offset, size);
+        if (is_pbm) {
+            const std::size_t packed_row_bytes = (static_cast<std::size_t>(width) + 7u) / 8u;
+            const std::size_t packed_size = packed_row_bytes * static_cast<std::size_t>(height);
+            if (packed_size > data.size() - pixel_offset) {
+                delete image;
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            for (int y = 0; y < height; ++y) {
+                const std::uint8_t* src_row = data.data() + pixel_offset + static_cast<std::size_t>(y) * packed_row_bytes;
+                std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * stride;
+                for (int x = 0; x < width; ++x) {
+                    const std::uint8_t packed = src_row[static_cast<std::size_t>(x) / 8u];
+                    const int bit = (packed >> (7 - (x & 7))) & 1;
+                    dst_row[x] = bit ? 0 : 255;
+                }
+            }
+        } else {
+            if (size > data.size() - pixel_offset) {
+                delete image;
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            std::memcpy(image->pixels.data(), data.data() + pixel_offset, size);
+        }
         *out_image = image;
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
@@ -1684,12 +1709,43 @@ int save_ppm_image(const PillowCImage* image, const char* path)
     if (image->width <= 0 || image->height <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (!((image->mode == PILLOW_C_MODE_L && image->channels == 1) ||
+    if (!((image->mode == PILLOW_C_MODE_1 && image->channels == 1) ||
+          (image->mode == PILLOW_C_MODE_L && image->channels == 1) ||
           (image->mode == PILLOW_C_MODE_RGB && image->channels == 3))) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
     try {
+        if (image->mode == PILLOW_C_MODE_1) {
+            std::size_t packed_row_bytes = 0;
+            std::size_t packed_size = 0;
+            if (!checked_mode1_raw_size(image, &packed_row_bytes, &packed_size)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+
+            std::vector<std::uint8_t> out;
+            out.reserve(32u + packed_size);
+            out.push_back('P');
+            out.push_back('4');
+            out.push_back('\n');
+            append_ascii_int(out, image->width);
+            out.push_back(' ');
+            append_ascii_int(out, image->height);
+            out.push_back('\n');
+            const std::size_t pixel_offset = out.size();
+            out.resize(pixel_offset + packed_size, 0);
+            for (int y = 0; y < image->height; ++y) {
+                const std::uint8_t* src_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+                std::uint8_t* dst_row = out.data() + pixel_offset + static_cast<std::size_t>(y) * packed_row_bytes;
+                for (int x = 0; x < image->width; ++x) {
+                    if (src_row[x] == 0) {
+                        dst_row[static_cast<std::size_t>(x) / 8u] |= static_cast<std::uint8_t>(0x80u >> (x & 7));
+                    }
+                }
+            }
+            return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+        }
+
         std::vector<std::uint8_t> out;
         out.reserve(32u + image->pixels.size());
         out.push_back('P');
