@@ -6734,6 +6734,32 @@ PillowTestImageOpsLutTransformsUseNativeOperations(*) {
 
 AhkTest.Test("Pillow ImageOps LUT transforms map L and RGB images through native handles", PillowTestImageOpsLutTransformsUseNativeOperations)
 
+PillowTestImageOpsLutTransformsCopyInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([0, 128, 255]))
+    inverted := 0
+    posterized := 0
+    solarized := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        inverted := Pillow.ImageOps.Invert(source)
+        posterized := Pillow.ImageOps.Posterize(source, 4)
+        solarized := Pillow.ImageOps.Solarize(source, 128)
+
+        PillowTestAssertDerivedInfoCopy(source, inverted, "invert")
+        PillowTestAssertDerivedInfoCopy(source, posterized, "posterize")
+        PillowTestAssertDerivedInfoCopy(source, solarized, "solarize")
+    } finally {
+        for image in [solarized, posterized, inverted, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps LUT transforms copy info metadata", PillowTestImageOpsLutTransformsCopyInfoMetadata)
+
 PillowTestImageOpsInvertSupportsModeOne(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("1", [3, 1], PillowTestBuffer([0x40]))
@@ -6799,6 +6825,25 @@ PillowTestImageOpsColorizeUsesNativeOperation(*) {
 }
 
 AhkTest.Test("Pillow ImageOps.Colorize maps L images through native handles", PillowTestImageOpsColorizeUsesNativeOperation)
+
+PillowTestImageOpsColorizeCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([0, 128, 255]))
+    colorized := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        colorized := Pillow.ImageOps.Colorize(source, [0, 0, 0], [255, 255, 255])
+
+        PillowTestAssertDerivedInfoCopy(source, colorized, "colorize")
+    } finally {
+        if IsObject(colorized)
+            colorized.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Colorize copies info metadata", PillowTestImageOpsColorizeCopiesInfoMetadata)
 
 PillowTestImageOpsColorizeAcceptsPointParametersAndRejectsInvalidInputs(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -7961,6 +8006,41 @@ PillowTestImageChopsBlendAndCompositeUseNativeAliases(*) {
 
 AhkTest.Test("Pillow ImageChops.Blend and Composite alias native image operations", PillowTestImageChopsBlendAndCompositeUseNativeAliases)
 
+PillowTestImageBlendAndCompositeCopyInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 100, 110, 120]))
+    right := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([250, 240, 230, 1, 2, 3]))
+    mask := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([0, 128]))
+    blended := 0
+    composited := 0
+    try {
+        left.Format := "PNG"
+        left.Info["author"] := "ahk"
+        right.Format := "JPEG"
+        right.Info["author"] := "right"
+        right.Info["right_only"] := 1
+        blended := Pillow.Image.Blend(left, right, 0.25)
+
+        PillowTestAssertDerivedInfoCopy(left, blended, "blend")
+        AhkTest.AssertTrue(!blended.Info.Has("right_only"))
+
+        right.Info["author"] := "ahk"
+        left.Info["author"] := "left"
+        left.Info["left_only"] := 1
+        composited := Pillow.Image.Composite(left, right, mask)
+
+        PillowTestAssertDerivedInfoCopy(right, composited, "composite")
+        AhkTest.AssertTrue(!composited.Info.Has("left_only"))
+    } finally {
+        for item in [composited, blended, mask, right, left] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Blend and Composite copy info metadata", PillowTestImageBlendAndCompositeCopyInfoMetadata)
+
 PillowTestImageChopsConstantReturnsLImage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]))
@@ -8002,6 +8082,27 @@ PillowTestImageChopsConstantHandlesEmptyImages(*) {
 }
 
 AhkTest.Test("Pillow ImageChops.Constant handles empty images", PillowTestImageChopsConstantHandlesEmptyImages)
+
+PillowTestImageChopsConstantDoesNotCopyInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    out := 0
+    try {
+        image.Format := "PNG"
+        image.Info["author"] := "ahk"
+        out := Pillow.ImageChops.Constant(image, 7)
+
+        AhkTest.AssertEqual("", out.Format)
+        AhkTest.AssertTrue(!out.Info.Has("author"))
+    } finally {
+        for item in [out, image] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops.Constant leaves info metadata empty", PillowTestImageChopsConstantDoesNotCopyInfoMetadata)
 
 PillowTestImageChopsDuplicateReturnsIndependentCopy(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -8045,6 +8146,32 @@ PillowTestImageChopsInvertUsesNativeHandles(*) {
 }
 
 AhkTest.Test("Pillow ImageChops.Invert maps pixels through native handles", PillowTestImageChopsInvertUsesNativeHandles)
+
+PillowTestImageChopsUnaryCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    duplicate := 0
+    inverted := 0
+    offset := 0
+    try {
+        image.Format := "PNG"
+        image.Info["author"] := "ahk"
+        duplicate := Pillow.ImageChops.Duplicate(image)
+        inverted := Pillow.ImageChops.Invert(image)
+        offset := Pillow.ImageChops.Offset(image, 1, -1)
+
+        PillowTestAssertDerivedInfoCopy(image, duplicate, "duplicate")
+        PillowTestAssertDerivedInfoCopy(image, inverted, "invert")
+        PillowTestAssertDerivedInfoCopy(image, offset, "offset")
+    } finally {
+        for item in [offset, inverted, duplicate, image] {
+            if IsObject(item)
+                item.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops unary ops copy info metadata", PillowTestImageChopsUnaryCopiesInfoMetadata)
 
 PillowTestImageChopsConstantRejectsInvalidValue(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -8717,6 +8844,47 @@ PillowTestImageChopsModuloOpsRejectModeMismatch(*) {
 
 AhkTest.Test("Pillow ImageChops modulo ops reject mode mismatch", PillowTestImageChopsModuloOpsRejectModeMismatch)
 
+PillowTestImageChopsBinaryCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 50, 200, 255, 0, 80]))
+    right := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([4, 20, 100, 15, 200, 90]))
+    outputs := []
+    try {
+        left.Format := "PNG"
+        left.Info["author"] := "ahk"
+        right.Format := "JPEG"
+        right.Info["author"] := "right"
+        right.Info["right_only"] := 1
+
+        outputs.Push(Pillow.ImageChops.Difference(left, right))
+        outputs.Push(Pillow.ImageChops.Multiply(left, right))
+        outputs.Push(Pillow.ImageChops.Screen(left, right))
+        outputs.Push(Pillow.ImageChops.Lighter(left, right))
+        outputs.Push(Pillow.ImageChops.Darker(left, right))
+        outputs.Push(Pillow.ImageChops.SoftLight(left, right))
+        outputs.Push(Pillow.ImageChops.HardLight(left, right))
+        outputs.Push(Pillow.ImageChops.Overlay(left, right))
+        outputs.Push(Pillow.ImageChops.Add(left, right))
+        outputs.Push(Pillow.ImageChops.Subtract(left, right))
+        outputs.Push(Pillow.ImageChops.AddModulo(left, right))
+        outputs.Push(Pillow.ImageChops.SubtractModulo(left, right))
+
+        for index, image in outputs {
+            PillowTestAssertDerivedInfoCopy(left, image, "binary_" index)
+            AhkTest.AssertTrue(!image.Info.Has("right_only"))
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        right.Close()
+        left.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageChops binary ops copy info metadata", PillowTestImageChopsBinaryCopiesInfoMetadata)
+
 PillowTestImageChopsBinaryOpsSupportLaAndCmyk(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     la1 := Pillow.Image.FromBytes("LA", [2, 1], PillowTestBuffer([10, 20, 200, 220]))
@@ -8893,6 +9061,37 @@ PillowTestImageChopsLogicalOpsRejectNonModeOne(*) {
 }
 
 AhkTest.Test("Pillow ImageChops logical ops reject non mode 1 images", PillowTestImageChopsLogicalOpsRejectNonModeOne)
+
+PillowTestImageChopsLogicalCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    left := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x60]))
+    right := Pillow.Image.FromBytes("1", [4, 1], PillowTestBuffer([0x30]))
+    andOut := 0
+    orOut := 0
+    xorOut := 0
+    try {
+        left.Format := "PNG"
+        left.Info["author"] := "ahk"
+        right.Format := "JPEG"
+        right.Info["author"] := "right"
+        right.Info["right_only"] := 1
+        andOut := Pillow.ImageChops.LogicalAnd(left, right)
+        orOut := Pillow.ImageChops.LogicalOr(left, right)
+        xorOut := Pillow.ImageChops.LogicalXor(left, right)
+
+        for index, image in [andOut, orOut, xorOut] {
+            PillowTestAssertDerivedInfoCopy(left, image, "logical_" index)
+            AhkTest.AssertTrue(!image.Info.Has("right_only"))
+        }
+    } finally {
+        for image in [xorOut, orOut, andOut, right, left] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageChops logical ops copy info metadata", PillowTestImageChopsLogicalCopiesInfoMetadata)
 
 PillowTestImageAlphaCompositeStaticUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

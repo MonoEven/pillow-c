@@ -89,7 +89,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return image.WrapDerivedHandle(outHandle)
         }
 
         static Solarize(image, threshold := 128) {
@@ -104,7 +104,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return image.WrapDerivedHandle(outHandle)
         }
 
         static Colorize(image, black, white, mid := unset, blackpoint := 0, whitepoint := 255, midpoint := 127) {
@@ -138,7 +138,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return image.WrapDerivedHandle(outHandle)
         }
 
         static Equalize(image, mask := unset) {
@@ -307,7 +307,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return image.WrapDerivedHandle(outHandle)
         }
 
         static RequireImageHandle(image, operationName) {
@@ -445,7 +445,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return image.WrapDerivedHandle(outHandle)
         }
 
         static Invert(image) {
@@ -456,7 +456,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return image.WrapDerivedHandle(outHandle)
         }
 
         static Difference(left, right) {
@@ -468,7 +468,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static Multiply(left, right) {
@@ -480,7 +480,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static Screen(left, right) {
@@ -492,7 +492,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static Lighter(left, right) {
@@ -504,7 +504,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static Darker(left, right) {
@@ -516,7 +516,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static SoftLight(left, right) {
@@ -528,7 +528,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static HardLight(left, right) {
@@ -540,7 +540,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static Overlay(left, right) {
@@ -552,7 +552,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static LogicalAnd(left, right) {
@@ -564,7 +564,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static LogicalOr(left, right) {
@@ -576,7 +576,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static LogicalXor(left, right) {
@@ -588,7 +588,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static Offset(image, xoffset, yoffset := unset) {
@@ -610,7 +610,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return image.WrapDerivedHandle(outHandle)
         }
 
         static Add(left, right, scale := 1.0, offset := 0) {
@@ -629,7 +629,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static Subtract(left, right, scale := 1.0, offset := 0) {
@@ -648,7 +648,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static AddModulo(left, right) {
@@ -660,7 +660,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static SubtractModulo(left, right) {
@@ -672,7 +672,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static RequireImageHandle(image, operationName) {
@@ -2200,7 +2200,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return left.WrapDerivedHandle(outHandle)
         }
 
         static Composite(image1, image2, mask) {
@@ -2218,7 +2218,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return image2.WrapDerivedHandle(outHandle)
         }
 
         static AlphaComposite(dst, src) {
