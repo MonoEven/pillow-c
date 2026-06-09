@@ -2353,6 +2353,26 @@ PillowTestImageRemapPaletteUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.RemapPalette remaps P and L through native path", PillowTestImageRemapPaletteUsesNativePath)
 
+PillowTestImageRemapPaletteCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([0, 1]))
+    remapped := 0
+    try {
+        source.PutPalette([0, 0, 0, 255, 255, 255])
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        remapped := source.RemapPalette([1, 0])
+
+        PillowTestAssertDerivedInfoCopy(source, remapped, "remap_palette")
+    } finally {
+        if IsObject(remapped)
+            remapped.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.RemapPalette copies info metadata", PillowTestImageRemapPaletteCopiesInfoMetadata)
+
 PillowTestPaletteModePreservesPaletteThroughNativeOperations(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     palette := [
@@ -2626,6 +2646,45 @@ PillowTestImageQuantizeCoversExactUniqueColors(*) {
 }
 
 AhkTest.Test("Pillow Image.Quantize covers exact unique colors", PillowTestImageQuantizeCoversExactUniqueColors)
+
+PillowTestImageQuantizeCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    palette := Pillow.Image.New("P", [1, 1])
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([
+        255, 0, 0,
+        0, 255, 0,
+    ]))
+    exact := 0
+    paletted := 0
+    try {
+        palette.PutPalette([
+            0, 0, 0,
+            255, 0, 0,
+            0, 255, 0,
+        ])
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        source.Info["source_only"] := 1
+        palette.Format := "GIF"
+        palette.Info["author"] := "palette"
+        palette.Info["palette_only"] := 1
+
+        exact := source.Quantize(2, unset, 0, unset, Pillow.Dither.NONE)
+        paletted := source.Quantize(256, unset, 0, palette, Pillow.Dither.NONE)
+
+        PillowTestAssertDerivedInfoCopy(source, exact, "quantize_exact")
+        PillowTestAssertDerivedInfoCopy(source, paletted, "quantize_palette")
+        AhkTest.AssertEqual(1, paletted.Info["source_only"])
+        AhkTest.AssertTrue(!paletted.Info.Has("palette_only"))
+    } finally {
+        for image in [paletted, exact, source, palette] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Quantize copies info metadata", PillowTestImageQuantizeCopiesInfoMetadata)
 
 PillowTestImageQuantizeExposesPillowConstants(*) {
     AhkTest.AssertEqual(0, Pillow.Quantize.MEDIANCUT)
@@ -3360,6 +3419,28 @@ PillowTestImageReduceUsesNativeOperation(*) {
 }
 
 AhkTest.Test("Pillow Image.Reduce uses native integer downsampling", PillowTestImageReduceUsesNativeOperation)
+
+PillowTestImageReduceCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 2], PillowTestBuffer([
+        0, 1, 2, 3,
+        4, 5, 6, 7,
+    ]))
+    reduced := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        reduced := source.Reduce(2)
+
+        PillowTestAssertDerivedInfoCopy(source, reduced, "reduce")
+    } finally {
+        if IsObject(reduced)
+            reduced.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Reduce copies info metadata", PillowTestImageReduceCopiesInfoMetadata)
 
 PillowTestImageReduceFactorOneReturnsCopyBeforeNativeModeChecks(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -4972,6 +5053,32 @@ PillowTestImageOpsContainAndCoverUseNativeResizeGeometry(*) {
 }
 
 AhkTest.Test("Pillow ImageOps.Contain and Cover use native proportional resize geometry", PillowTestImageOpsContainAndCoverUseNativeResizeGeometry)
+
+PillowTestImageOpsContainCoverFitCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [4, 2], PillowTestBuffer([0, 40, 80, 120, 160, 200, 220, 255]))
+    contained := 0
+    covered := 0
+    fit := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        contained := Pillow.ImageOps.Contain(source, [4, 4], Pillow.Resampling.NEAREST)
+        covered := Pillow.ImageOps.Cover(source, [4, 4], Pillow.Resampling.NEAREST)
+        fit := Pillow.ImageOps.Fit(source, [2, 2], Pillow.Resampling.NEAREST)
+
+        PillowTestAssertDerivedInfoCopy(source, contained, "contain")
+        PillowTestAssertDerivedInfoCopy(source, covered, "cover")
+        PillowTestAssertDerivedInfoCopy(source, fit, "fit")
+    } finally {
+        for image in [fit, covered, contained, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Contain Cover and Fit copy info metadata", PillowTestImageOpsContainCoverFitCopiesInfoMetadata)
 
 PillowTestImageOpsContainAndCoverRejectInvalidSize(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -6694,6 +6801,40 @@ PillowTestImageOpsAutocontrastPreserveToneUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow ImageOps.Autocontrast preserve_tone uses native handles", PillowTestImageOpsAutocontrastPreserveToneUsesNativeOperation)
 
+PillowTestImageOpsHistogramTransformsCopyInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 10, 20, 30, 255]))
+    mask := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 255, 255, 0, 0]))
+    autocontrasted := 0
+    maskedAutocontrasted := 0
+    equalized := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        source.Info["source_only"] := 1
+        mask.Format := "TIFF"
+        mask.Info["author"] := "mask"
+        mask.Info["mask_only"] := 1
+
+        autocontrasted := Pillow.ImageOps.Autocontrast(source)
+        maskedAutocontrasted := Pillow.ImageOps.Autocontrast(source, , , mask)
+        equalized := Pillow.ImageOps.Equalize(source, mask)
+
+        for image in [autocontrasted, maskedAutocontrasted, equalized] {
+            PillowTestAssertDerivedInfoCopy(source, image, "histogram")
+            AhkTest.AssertEqual(1, image.Info["source_only"])
+            AhkTest.AssertTrue(!image.Info.Has("mask_only"))
+        }
+    } finally {
+        for image in [equalized, maskedAutocontrasted, autocontrasted, mask, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps histogram transforms copy info metadata", PillowTestImageOpsHistogramTransformsCopyInfoMetadata)
+
 PillowTestImageOpsLutTransformsUseNativeOperations(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     l := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 1, 127, 128, 255]))
@@ -7340,6 +7481,34 @@ PillowTestImageOpsExpandRejectsInvalidWrapperParameters(*) {
 }
 
 AhkTest.Test("Pillow ImageOps.Expand rejects invalid wrapper parameters", PillowTestImageOpsExpandRejectsInvalidWrapperParameters)
+
+PillowTestImageOpsExpandAndPadLeaveInfoMetadataEmpty(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([
+        1, 2,
+        3, 4,
+    ]))
+    expanded := 0
+    padded := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        expanded := Pillow.ImageOps.Expand(source, 1, 0)
+        padded := Pillow.ImageOps.Pad(source, [4, 4], Pillow.Resampling.NEAREST)
+
+        for image in [expanded, padded] {
+            AhkTest.AssertEqual("", image.Format)
+            AhkTest.AssertTrue(!image.Info.Has("author"))
+        }
+    } finally {
+        for image in [padded, expanded, source] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.Expand and Pad leave info metadata empty", PillowTestImageOpsExpandAndPadLeaveInfoMetadataEmpty)
 
 PillowTestImageSplitUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

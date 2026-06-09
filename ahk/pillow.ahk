@@ -151,7 +151,7 @@ class Pillow {
                     "Ptr*", &outHandle,
                     "Int"
                 ))
-                return Pillow.WrapImageHandle(outHandle)
+                return image.WrapDerivedHandle(outHandle)
             }
             return Pillow.ImageOps.NativeUnaryImageOp(image, "pillow_c_image_equalize")
         }
@@ -227,7 +227,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return image.WrapDerivedHandle(outHandle)
         }
 
         static Pad(image, size, method := unset, color := unset, centering := unset) {
@@ -280,7 +280,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return image.WrapDerivedHandle(outHandle)
         }
 
         static NativeProportionalResize(image, size, method, exportName) {
@@ -296,7 +296,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return image.WrapDerivedHandle(outHandle)
         }
 
         static NativeUnaryImageOp(image, exportName) {
@@ -2639,7 +2639,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         Quantize(colors := 256, method := unset, kmeans := 0, palette := unset, dither := unset) {
@@ -2662,7 +2662,7 @@ class Pillow {
                     "Ptr*", &outHandle,
                     "Int"
                 ))
-                return Pillow.WrapImageHandle(outHandle)
+                return this.WrapDerivedHandle(outHandle)
             }
             if !(colors is Integer) || colors < 1 || colors > 256
                 throw Error("bad number of colors", -1)
@@ -2681,7 +2681,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         PutData(data, scale := 1.0, offset := 0.0) {
@@ -3447,7 +3447,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         ReduceFactor(factor) {
