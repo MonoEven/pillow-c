@@ -1961,6 +1961,57 @@ PillowCImageGetPaletteRgb(sourceHandle) {
     return PillowCBufferToArray(out)
 }
 
+PillowCImagePutPaletteRgba(sourceHandle, values, alphaMode := 1) {
+    data := PillowCBuffer(values)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_put_palette_rgba",
+        "Ptr", sourceHandle,
+        "Ptr", data,
+        "UPtr", data.Size,
+        "Int", alphaMode,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImagePaletteAlphaMode(sourceHandle) {
+    mode := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_palette_alpha_mode",
+        "Ptr", sourceHandle,
+        "Int*", &mode,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return mode
+}
+
+PillowCImageGetPaletteRgba(sourceHandle) {
+    required := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_get_palette_rgba",
+        "Ptr", sourceHandle,
+        "Ptr", 0,
+        "UPtr", 0,
+        "UPtr*", &required,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    out := Buffer(required, 0)
+    if required = 0
+        return []
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_get_palette_rgba",
+        "Ptr", sourceHandle,
+        "Ptr", out,
+        "UPtr", out.Size,
+        "UPtr*", &required,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return PillowCBufferToArray(out)
+}
+
 PillowCImageHandleArray(handles) {
     buf := Buffer(handles.Length * A_PtrSize, 0)
     for index, handle in handles
@@ -9924,6 +9975,54 @@ PillowCTestPutPaletteConvertsLToPaletteMode(*) {
 }
 
 AhkTest.Test("pillow_c image put_palette converts L images to P mode", PillowCTestPutPaletteConvertsLToPaletteMode)
+
+PillowCTestPutPaletteRgbaPreservesAlphaMetadata(*) {
+    source := PillowCCreateImageMode(2, 1, 1)
+    rgb := 0
+    paletteRgba := [
+        10, 20, 30, 40,
+        50, 60, 70, 80,
+    ]
+    try {
+        PillowCImageSetBytes(source, [0, 1])
+        PillowCImagePutPaletteRgba(source, paletteRgba)
+        rgb := PillowCImageConvertMode(source, 3)
+
+        AhkTest.AssertEqual(6, PillowCImageMode(source))
+        AhkTest.AssertEqual([0, 1], PillowCImageToArray(source, 2))
+        AhkTest.AssertEqual([10, 20, 30, 50, 60, 70], PillowCImageGetPaletteRgb(source))
+        AhkTest.AssertEqual(paletteRgba, PillowCImageGetPaletteRgba(source))
+        AhkTest.AssertEqual(1, PillowCImagePaletteAlphaMode(source))
+        AhkTest.AssertEqual([10, 20, 30, 50, 60, 70], PillowCImageToArray(rgb, 6))
+    } finally {
+        if rgb
+            PillowCFreeImage(rgb)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image put_palette_rgba preserves alpha metadata", PillowCTestPutPaletteRgbaPreservesAlphaMetadata)
+
+PillowCTestPutPaletteRgbaTracksAlphaMode(*) {
+    source := PillowCCreateImageMode(1, 1, 6)
+    try {
+        PillowCImagePutPaletteRgba(source, [1, 2, 3, 4], 2)
+        AhkTest.AssertEqual(2, PillowCImagePaletteAlphaMode(source))
+        AhkTest.AssertEqual([1, 2, 3, 4], PillowCImageGetPaletteRgba(source))
+
+        PillowCImagePutPaletteRgba(source, [5, 6, 7, 255], 0)
+        AhkTest.AssertEqual(0, PillowCImagePaletteAlphaMode(source))
+        AhkTest.AssertEqual([5, 6, 7, 255], PillowCImageGetPaletteRgba(source))
+
+        PillowCImagePutPaletteRgb(source, [8, 9, 10])
+        AhkTest.AssertEqual(0, PillowCImagePaletteAlphaMode(source))
+        AhkTest.AssertEqual([8, 9, 10, 255], PillowCImageGetPaletteRgba(source))
+    } finally {
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image put_palette_rgba tracks alpha mode metadata", PillowCTestPutPaletteRgbaTracksAlphaMode)
 
 PillowCTestPaletteModePreservesPaletteThroughGeometryOperations(*) {
     source := PillowCCreateImageMode(2, 2, 6)

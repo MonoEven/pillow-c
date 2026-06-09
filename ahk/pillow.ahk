@@ -2513,7 +2513,7 @@ class Pillow {
                 return name
             if allowExpanded && (name = "RGBA" || name = "RGBX" || name = "BGRX")
                 return name
-            throw Error(operationName " currently supports RGB and BGR palettes", -1)
+            throw Error(operationName " currently supports RGB BGR RGBA RGBX and BGRX palettes", -1)
         }
 
         static PaletteBuffer(values, rawmode, operationName) {
@@ -2532,6 +2532,38 @@ class Pillow {
                 NumPut("UChar", NumGet(buf, offset, "UChar"), out, offset + 2)
             }
             return out
+        }
+
+        static PaletteRgbaBuffer(values, rawmode, operationName) {
+            rawmode := Pillow.Image.NormalizePaletteRawmode(rawmode, operationName, true)
+            buf := Pillow.Image.ByteBuffer(values, operationName)
+            if Mod(buf.Size, 4) != 0
+                throw Error(operationName " palette length must be a multiple of 4", -1)
+            if !(rawmode = "RGBA" || rawmode = "RGBX" || rawmode = "BGRX")
+                throw Error(operationName " rawmode does not contain four palette bytes", -1)
+
+            out := Buffer(buf.Size, 0)
+            loop buf.Size // 4 {
+                offset := (A_Index - 1) * 4
+                if rawmode = "BGRX" {
+                    NumPut("UChar", NumGet(buf, offset + 2, "UChar"), out, offset)
+                    NumPut("UChar", NumGet(buf, offset + 1, "UChar"), out, offset + 1)
+                    NumPut("UChar", NumGet(buf, offset, "UChar"), out, offset + 2)
+                    NumPut("UChar", 255, out, offset + 3)
+                } else {
+                    loop 4
+                        NumPut("UChar", NumGet(buf, offset + A_Index - 1, "UChar"), out, offset + A_Index - 1)
+                }
+            }
+            return out
+        }
+
+        static PaletteAlphaModeForPut(rawmode) {
+            if rawmode = "RGBA"
+                return 1
+            if rawmode = "RGBX"
+                return 2
+            return 0
         }
 
         static ConvertRgbPaletteValues(values, rawmode, operationName) {
@@ -2558,6 +2590,34 @@ class Pillow {
                     out.Push(values[index + 1])
                     out.Push(values[index + 2])
                     out.Push(255)
+                }
+            }
+            return out
+        }
+
+        static ConvertRgbaPaletteValues(values, rawmode, operationName) {
+            rawmode := Pillow.Image.NormalizePaletteRawmode(rawmode, operationName, true)
+            if Mod(values.Length, 4) != 0
+                throw Error(operationName " palette length must be a multiple of 4", -1)
+            if rawmode = "RGBA" || rawmode = "RGBX"
+                return values
+
+            out := []
+            loop values.Length // 4 {
+                index := (A_Index - 1) * 4 + 1
+                if rawmode = "RGB" {
+                    out.Push(values[index])
+                    out.Push(values[index + 1])
+                    out.Push(values[index + 2])
+                } else if rawmode = "BGR" {
+                    out.Push(values[index + 2])
+                    out.Push(values[index + 1])
+                    out.Push(values[index])
+                } else {
+                    out.Push(values[index + 2])
+                    out.Push(values[index + 1])
+                    out.Push(values[index])
+                    out.Push(0)
                 }
             }
             return out
@@ -2857,14 +2917,27 @@ class Pillow {
         PutPalette(data, rawmode := "RGB") {
             if !(this.Mode = "P" || this.Mode = "L")
                 throw Error("illegal image mode", -1)
-            palette := Pillow.Image.PaletteBuffer(data, rawmode, "Pillow.Image.PutPalette")
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_put_palette_rgb",
-                "Ptr", this.RequireHandle(),
-                "Ptr", palette,
-                "UPtr", palette.Size,
-                "Int"
-            ))
+            rawmode := Pillow.Image.NormalizePaletteRawmode(rawmode, "Pillow.Image.PutPalette", true)
+            if rawmode = "RGBA" || rawmode = "RGBX" || rawmode = "BGRX" {
+                palette := Pillow.Image.PaletteRgbaBuffer(data, rawmode, "Pillow.Image.PutPalette")
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_put_palette_rgba",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", palette,
+                    "UPtr", palette.Size,
+                    "Int", Pillow.Image.PaletteAlphaModeForPut(rawmode),
+                    "Int"
+                ))
+            } else {
+                palette := Pillow.Image.PaletteBuffer(data, rawmode, "Pillow.Image.PutPalette")
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_put_palette_rgb",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", palette,
+                    "UPtr", palette.Size,
+                    "Int"
+                ))
+            }
             return this
         }
 
@@ -2872,9 +2945,17 @@ class Pillow {
             if this.Mode != "P"
                 throw Error("illegal image mode", -1)
             rawmode := Pillow.Image.NormalizePaletteRawmode(rawmode, "Pillow.Image.GetPalette", true)
+            exportName := "pillow_c_image_get_palette_rgb"
+            if rawmode = "RGBX" || rawmode = "BGRX" {
+                alphaMode := this.PaletteAlphaMode()
+                if alphaMode = 1
+                    throw Error("unrecognized raw mode", -1)
+            }
+            if rawmode = "RGBA" || rawmode = "RGBX"
+                exportName := "pillow_c_image_get_palette_rgba"
             required := 0
             Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_get_palette_rgb",
+                Pillow.RequireDllPath() "\" exportName,
                 "Ptr", this.RequireHandle(),
                 "Ptr", 0,
                 "UPtr", 0,
@@ -2885,7 +2966,7 @@ class Pillow {
                 return []
             out := Buffer(required, 0)
             Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_get_palette_rgb",
+                Pillow.RequireDllPath() "\" exportName,
                 "Ptr", this.RequireHandle(),
                 "Ptr", out,
                 "UPtr", out.Size,
@@ -2895,7 +2976,20 @@ class Pillow {
             values := []
             loop out.Size
                 values.Push(NumGet(out, A_Index - 1, "UChar"))
+            if exportName = "pillow_c_image_get_palette_rgba"
+                return Pillow.Image.ConvertRgbaPaletteValues(values, rawmode, "Pillow.Image.GetPalette")
             return Pillow.Image.ConvertRgbPaletteValues(values, rawmode, "Pillow.Image.GetPalette")
+        }
+
+        PaletteAlphaMode() {
+            mode := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_palette_alpha_mode",
+                "Ptr", this.RequireHandle(),
+                "Int*", &mode,
+                "Int"
+            ))
+            return mode
         }
 
         RemapPalette(destMap, sourcePalette := unset) {

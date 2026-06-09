@@ -2801,6 +2801,114 @@ PillowTestGetPaletteSupportsExpandedRawmodes(*) {
 
 AhkTest.Test("Pillow Image.GetPalette supports expanded RGB palette rawmodes", PillowTestGetPaletteSupportsExpandedRawmodes)
 
+PillowTestPutPaletteSupportsRgbaRawmode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([0, 1]))
+    rgb := 0
+    try {
+        image.PutPalette([
+            10, 20, 30, 40,
+            50, 60, 70, 80,
+        ], "RGBA")
+        rgb := image.Convert("RGB")
+
+        AhkTest.AssertEqual("P", image.Mode)
+        AhkTest.AssertEqual([
+            10, 20, 30,
+            50, 60, 70,
+        ], image.GetPalette())
+        AhkTest.AssertEqual([
+            10, 20, 30, 40,
+            50, 60, 70, 80,
+        ], image.GetPalette("RGBA"))
+        try {
+            image.GetPalette("RGBX")
+            AhkTest.Fail("Expected RGBA palette to reject RGBX rawmode")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "unrecognized raw mode") > 0)
+        }
+        try {
+            image.GetPalette("BGRX")
+            AhkTest.Fail("Expected RGBA palette to reject BGRX rawmode")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "unrecognized raw mode") > 0)
+        }
+        AhkTest.AssertEqual([10, 20, 30, 50, 60, 70], PillowTestBufferToArray(rgb.ToBytes()))
+    } finally {
+        if IsObject(rgb)
+            rgb.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.PutPalette supports RGBA rawmode", PillowTestPutPaletteSupportsRgbaRawmode)
+
+PillowTestPutPaletteSupportsRgbxAndBgrxRawmodes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgbx := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([0, 1]))
+    bgrx := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([0, 1]))
+    rgbxRgb := 0
+    bgrxRgb := 0
+    try {
+        rgbx.PutPalette([
+            10, 20, 30, 40,
+            50, 60, 70, 80,
+        ], "RGBX")
+        rgbxRgb := rgbx.Convert("RGB")
+
+        AhkTest.AssertEqual([
+            10, 20, 30,
+            50, 60, 70,
+        ], rgbx.GetPalette())
+        AhkTest.AssertEqual([
+            10, 20, 30, 40,
+            50, 60, 70, 80,
+        ], rgbx.GetPalette("RGBA"))
+        AhkTest.AssertEqual([
+            10, 20, 30, 40,
+            50, 60, 70, 80,
+        ], rgbx.GetPalette("RGBX"))
+        AhkTest.AssertEqual([
+            30, 20, 10, 0,
+            70, 60, 50, 0,
+        ], rgbx.GetPalette("BGRX"))
+        AhkTest.AssertEqual([10, 20, 30, 50, 60, 70], PillowTestBufferToArray(rgbxRgb.ToBytes()))
+
+        bgrx.PutPalette([
+            30, 20, 10, 40,
+            70, 60, 50, 80,
+        ], "BGRX")
+        bgrxRgb := bgrx.Convert("RGB")
+
+        AhkTest.AssertEqual([
+            10, 20, 30,
+            50, 60, 70,
+        ], bgrx.GetPalette())
+        AhkTest.AssertEqual([
+            10, 20, 30, 255,
+            50, 60, 70, 255,
+        ], bgrx.GetPalette("RGBA"))
+        AhkTest.AssertEqual([
+            10, 20, 30, 255,
+            50, 60, 70, 255,
+        ], bgrx.GetPalette("RGBX"))
+        AhkTest.AssertEqual([
+            30, 20, 10, 0,
+            70, 60, 50, 0,
+        ], bgrx.GetPalette("BGRX"))
+        AhkTest.AssertEqual([10, 20, 30, 50, 60, 70], PillowTestBufferToArray(bgrxRgb.ToBytes()))
+    } finally {
+        if IsObject(bgrxRgb)
+            bgrxRgb.Close()
+        if IsObject(rgbxRgb)
+            rgbxRgb.Close()
+        bgrx.Close()
+        rgbx.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.PutPalette supports RGBX and BGRX rawmodes", PillowTestPutPaletteSupportsRgbxAndBgrxRawmodes)
+
 PillowTestPaletteModePreservesPaletteThroughGeometryOperations(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     palette := [

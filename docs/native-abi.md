@@ -33,7 +33,7 @@ The legacy `pillow_c_image_create(width, height, channels, ...)` maps channel co
 
 Mode `1` uses one unpacked byte per pixel internally for native operations and data-pointer sharing. `pillow_c_image_set_raw_bytes` and `pillow_c_image_get_raw_bytes` expose Pillow's external bit-packed row format for raw mode `1`.
 
-Mode `P` uses one palette index byte per pixel internally. RGB palette metadata lives on the image handle and is exposed through `pillow_c_image_put_palette_rgb` and `pillow_c_image_get_palette_rgb`. `pillow_c_image_put_palette_rgb` also mirrors Pillow's `L.putpalette(...)` behavior by converting an `L` handle to mode `P` while keeping its one-byte pixel indexes. Same-mode pixel-copy, point/LUT, reorder, expand, offset, resize, transform, and rotate paths preserve that palette so later conversion still resolves indexes like Pillow.
+Mode `P` uses one palette index byte per pixel internally. RGB palette metadata lives on the image handle and is exposed through `pillow_c_image_put_palette_rgb` and `pillow_c_image_get_palette_rgb`; optional palette alpha metadata is exposed through `pillow_c_image_put_palette_rgba`, `pillow_c_image_get_palette_rgba`, and `pillow_c_image_palette_alpha_mode`. `pillow_c_image_put_palette_rgb` and `pillow_c_image_put_palette_rgba` also mirror Pillow's `L.putpalette(...)` behavior by converting an `L` handle to mode `P` while keeping its one-byte pixel indexes. Same-mode pixel-copy, point/LUT, reorder, expand, offset, resize, transform, and rotate paths preserve that palette so later conversion still resolves indexes like Pillow.
 
 Mode `CMYK` uses four direct channel bytes per pixel. The current verified CMYK foundation covers mode mapping, raw byte import/export, getdata/putdata facade packing, getpixel/putpixel, copy, `ImageChops.invert`, and non-logical `ImageChops` binary operations.
 
@@ -66,7 +66,10 @@ Image lifecycle and metadata:
 - `pillow_c_image_data`
 - `pillow_c_image_set_bytes`
 - `pillow_c_image_put_palette_rgb`
+- `pillow_c_image_put_palette_rgba`
 - `pillow_c_image_get_palette_rgb`
+- `pillow_c_image_get_palette_rgba`
+- `pillow_c_image_palette_alpha_mode`
 - `pillow_c_image_remap_palette`
 - `pillow_c_image_set_raw_bytes`
 - `pillow_c_image_put_data`
@@ -273,6 +276,8 @@ Reusable target operations:
 `pillow_c_image_draw_polygon` mutates one image handle in place for Pillow `ImageDraw.polygon` calls. It accepts packed `int x, y` vertices, optional caller-packed fill and outline colors, and an outline width. The verified path supports fill and outlines using Pillow's scanline edge rules and closed-outline behavior, clips to the image bounds, and accepts two-point line-like polygons. For `width > 1`, it follows Pillow 11.3.0's wrapper strategy: fill a same-size mode `1` polygon mask, draw `width * 2 - 1` wide outline segments, and apply those segments only where the mask is nonzero so the outline does not expand outside the polygon.
 
 `pillow_c_image_remap_palette` and `pillow_c_image_remap_palette_into` implement Pillow's `Image.remap_palette` for mode `P` and `L` images over RGB palettes. The native path builds the new palette from `dest_map`, remaps all one-byte pixels in one pass, returns a mode `P` image, and uses Pillow's default grayscale source palette for `L` inputs. RGBA palette remapping is intentionally outside the current RGB palette ABI.
+
+`pillow_c_image_put_palette_rgba` accepts normalized RGBA palette bytes plus an alpha-mode id: `0` means no stored alpha metadata, `1` means Pillow `RGBA` palette semantics, and `2` means Pillow `RGBX` palette semantics. `pillow_c_image_get_palette_rgba` returns RGB plus stored alpha bytes, or `255` alpha when no alpha metadata exists. `pillow_c_image_palette_alpha_mode` lets the AHK facade reproduce Pillow's rawmode restrictions, including `getpalette("RGBX")`/`getpalette("BGRX")` rejection for true `RGBA` palettes.
 
 `pillow_c_image_resize_box` and `pillow_c_image_resize_box_into` expose Pillow-style `Image.resize(..., box=...)` sampling directly against a source region. The current ABI accepts finite positive-area boxes contained inside the source image, supports the same resampling IDs as `pillow_c_image_resize`, preserves same-mode palettes, uses premultiplied color sampling for `LA` and `RGBA`, returns `-3` for invalid boxes, and returns `-5` for `_into` target shape or mode mismatches.
 
