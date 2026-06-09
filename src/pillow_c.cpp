@@ -8,6 +8,7 @@
 #include <cstring>
 #include <limits>
 #include <new>
+#include <unordered_map>
 #include <vector>
 
 #ifndef NOMINMAX
@@ -2989,6 +2990,258 @@ int save_gif_image(const PillowCImage* image, const char* path)
         }
         hr = encoder->Commit();
         if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+struct GifBitWriter {
+    std::vector<std::uint8_t> bytes;
+    std::uint32_t bits = 0;
+    int bit_count = 0;
+
+    void write(int code, int size)
+    {
+        bits |= static_cast<std::uint32_t>(code) << bit_count;
+        bit_count += size;
+        while (bit_count >= 8) {
+            bytes.push_back(static_cast<std::uint8_t>(bits & 0xffu));
+            bits >>= 8;
+            bit_count -= 8;
+        }
+    }
+
+    void flush()
+    {
+        if (bit_count > 0) {
+            bytes.push_back(static_cast<std::uint8_t>(bits & 0xffu));
+            bits = 0;
+            bit_count = 0;
+        }
+    }
+};
+
+int gif_color_table_entries(const PillowCImage* image, int* out_entries, int* out_min_code_size)
+{
+    if (!image || !out_entries || !out_min_code_size ||
+        image->palette_rgb.empty() || image->palette_rgb.size() % 3u != 0u ||
+        image->palette_rgb.size() > 256u * 3u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::size_t palette_entries = image->palette_rgb.size() / 3u;
+    int table_entries = 2;
+    while (static_cast<std::size_t>(table_entries) < palette_entries) {
+        table_entries <<= 1;
+    }
+    if (table_entries > 256) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    int bits = 0;
+    while ((1 << bits) < table_entries) {
+        ++bits;
+    }
+    *out_entries = table_entries;
+    *out_min_code_size = std::max(2, bits);
+    return PILLOW_C_OK;
+}
+
+void append_gif_sub_blocks(std::vector<std::uint8_t>& out, const std::vector<std::uint8_t>& data)
+{
+    std::size_t offset = 0;
+    while (offset < data.size()) {
+        const std::size_t chunk = std::min<std::size_t>(255u, data.size() - offset);
+        out.push_back(static_cast<std::uint8_t>(chunk));
+        out.insert(out.end(), data.begin() + static_cast<std::ptrdiff_t>(offset),
+                   data.begin() + static_cast<std::ptrdiff_t>(offset + chunk));
+        offset += chunk;
+    }
+    out.push_back(0);
+}
+
+bool gif_lzw_encode_image(
+    const PillowCImage* image,
+    int color_table_entries,
+    int min_code_size,
+    std::vector<std::uint8_t>* out)
+{
+    if (!image || !out || image->width <= 0 || image->height <= 0 || color_table_entries <= 0) {
+        return false;
+    }
+    const int clear_code = 1 << min_code_size;
+    const int end_code = clear_code + 1;
+    int next_code = end_code + 1;
+    int code_size = min_code_size + 1;
+
+    GifBitWriter writer;
+    std::unordered_map<std::uint32_t, int> dictionary;
+    dictionary.reserve(4096);
+
+    writer.write(clear_code, code_size);
+    int prefix = -1;
+    for (int y = 0; y < image->height; ++y) {
+        const std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+        for (int x = 0; x < image->width; ++x) {
+            const int value = row[x];
+            if (value < 0 || value >= color_table_entries) {
+                return false;
+            }
+            if (prefix < 0) {
+                prefix = value;
+                continue;
+            }
+
+            const std::uint32_t key = (static_cast<std::uint32_t>(prefix) << 8) |
+                                      static_cast<std::uint32_t>(value);
+            const auto found = dictionary.find(key);
+            if (found != dictionary.end()) {
+                prefix = found->second;
+                continue;
+            }
+
+            writer.write(prefix, code_size);
+            if (next_code <= 4095) {
+                dictionary.emplace(key, next_code++);
+                if (next_code == (1 << code_size) && code_size < 12) {
+                    ++code_size;
+                }
+            } else {
+                writer.write(clear_code, code_size);
+                dictionary.clear();
+                next_code = end_code + 1;
+                code_size = min_code_size + 1;
+            }
+            prefix = value;
+        }
+    }
+    if (prefix < 0) {
+        return false;
+    }
+    writer.write(prefix, code_size);
+    writer.write(end_code, code_size);
+    writer.flush();
+    *out = std::move(writer.bytes);
+    return true;
+}
+
+int gif_sequence_value(const int* values, std::size_t count, std::size_t index, int fallback, bool* ok)
+{
+    if (!ok || count == 0 || !values) {
+        return fallback;
+    }
+    if (count == 1) {
+        return values[0];
+    }
+    if (index >= count) {
+        *ok = false;
+        return fallback;
+    }
+    return values[index];
+}
+
+int save_gif_animation_image(
+    const PillowCImage* const* images,
+    std::size_t image_count,
+    const char* path,
+    const int* durations_ms,
+    std::size_t duration_count,
+    int loop,
+    const int* disposals,
+    std::size_t disposal_count)
+{
+    if (!images || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image_count == 0 || image_count > static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
+        (duration_count != 0 && duration_count != 1 && duration_count != image_count) ||
+        (disposal_count != 0 && disposal_count != 1 && disposal_count != image_count) ||
+        loop < -1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const PillowCImage* first = images[0];
+    if (!first || first->width <= 0 || first->height <= 0 ||
+        first->mode != PILLOW_C_MODE_P || first->channels != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    int color_table_entries = 0;
+    int min_code_size = 0;
+    int status = gif_color_table_entries(first, &color_table_entries, &min_code_size);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (first->width > std::numeric_limits<std::uint16_t>::max() ||
+        first->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    for (std::size_t i = 0; i < image_count; ++i) {
+        const PillowCImage* image = images[i];
+        if (!image || image->mode != PILLOW_C_MODE_P || image->channels != 1 ||
+            image->width != first->width || image->height != first->height ||
+            image->stride > static_cast<std::size_t>(std::numeric_limits<UINT>::max())) {
+            return i == 0 ? PILLOW_C_INVALID_ARGUMENT : PILLOW_C_MISMATCH;
+        }
+        if (image->palette_rgb != first->palette_rgb) {
+            return PILLOW_C_MISMATCH;
+        }
+    }
+
+    try {
+        std::vector<std::uint8_t> gif;
+        gif.reserve(32u + first->palette_rgb.size() + image_count * (first->pixels.size() + 32u));
+        gif.insert(gif.end(), {'G', 'I', 'F', '8', '9', 'a'});
+        append_le16(gif, static_cast<std::uint16_t>(first->width));
+        append_le16(gif, static_cast<std::uint16_t>(first->height));
+        int table_size_code = 0;
+        for (int entries = 2; entries < color_table_entries; entries <<= 1) {
+            ++table_size_code;
+        }
+        const int color_resolution = std::max(0, min_code_size - 1);
+        gif.push_back(static_cast<std::uint8_t>(0x80 | ((color_resolution & 0x07) << 4) | (table_size_code & 0x07)));
+        gif.push_back(0);
+        gif.push_back(0);
+        gif.insert(gif.end(), first->palette_rgb.begin(), first->palette_rgb.end());
+        gif.resize(gif.size() + static_cast<std::size_t>(color_table_entries) * 3u - first->palette_rgb.size(), 0);
+
+        if (loop >= 0) {
+            gif.insert(gif.end(), {0x21, 0xff, 0x0b, 'N', 'E', 'T', 'S', 'C', 'A', 'P', 'E', '2', '.', '0',
+                                   0x03, 0x01});
+            append_le16(gif, static_cast<std::uint16_t>(loop));
+            gif.push_back(0);
+        }
+
+        for (std::size_t i = 0; i < image_count; ++i) {
+            bool ok = true;
+            const int duration = gif_sequence_value(durations_ms, duration_count, i, 0, &ok);
+            const int disposal = gif_sequence_value(disposals, disposal_count, i, 0, &ok);
+            if (!ok || duration < 0 || disposal < 0 || disposal > 7) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            const int delay_cs = std::min(duration / 10, 65535);
+            gif.insert(gif.end(), {0x21, 0xf9, 0x04, static_cast<std::uint8_t>((disposal & 0x07) << 2)});
+            append_le16(gif, static_cast<std::uint16_t>(delay_cs));
+            gif.push_back(0);
+            gif.push_back(0);
+
+            gif.push_back(0x2c);
+            append_le16(gif, 0);
+            append_le16(gif, 0);
+            append_le16(gif, static_cast<std::uint16_t>(first->width));
+            append_le16(gif, static_cast<std::uint16_t>(first->height));
+            gif.push_back(0);
+            gif.push_back(static_cast<std::uint8_t>(min_code_size));
+
+            std::vector<std::uint8_t> lzw;
+            if (!gif_lzw_encode_image(images[i], color_table_entries, min_code_size, &lzw)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            append_gif_sub_blocks(gif, lzw);
+        }
+
+        gif.push_back(0x3b);
+        if (!write_binary_file(path, gif)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
         return PILLOW_C_OK;
@@ -11944,6 +12197,19 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_gif(
     const char* path)
 {
     return save_gif_image(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_gif_animation(
+    const PillowCImage* const* images,
+    std::size_t image_count,
+    const char* path,
+    const int* durations_ms,
+    std::size_t duration_count,
+    int loop,
+    const int* disposals,
+    std::size_t disposal_count)
+{
+    return save_gif_animation_image(images, image_count, path, durations_ms, duration_count, loop, disposals, disposal_count);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_crop(

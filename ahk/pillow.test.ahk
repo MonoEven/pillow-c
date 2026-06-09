@@ -1203,6 +1203,46 @@ PillowTestImageSaveAndOpenGifUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Save and Image.Open support GIF through native path", PillowTestImageSaveAndOpenGifUsesNativePath)
 
+PillowTestImageSaveGifAnimationUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([0, 1]))
+    second := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([1, 0]))
+    palette := [0, 0, 0, 10, 20, 30]
+    path := PillowTestTempGifPath("save-animation")
+    loaded := 0
+    try {
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        first.Save(path, "GIF", { SaveAll: true, AppendImages: [second], Duration: [10, 20], Loop: 3, Disposal: [0, 2] })
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual("GIF", loaded.Format)
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual(true, loaded.IsAnimated)
+        AhkTest.AssertEqual("P", loaded.Mode)
+        AhkTest.AssertEqual([0, 1], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(palette, PillowTestArraySlice(loaded.GetPalette(), 1, 6))
+        AhkTest.AssertEqual(10, loaded.Info["duration"])
+        AhkTest.AssertEqual(3, loaded.Info["loop"])
+        AhkTest.AssertEqual(0, loaded.DisposalMethod)
+
+        loaded.Seek(1)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 0, 0, 0], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(20, loaded.Info["duration"])
+        AhkTest.AssertEqual(3, loaded.Info["loop"])
+        AhkTest.AssertEqual(2, loaded.DisposalMethod)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save GIF save_all uses native animation path", PillowTestImageSaveGifAnimationUsesNativePath)
+
 PillowTestImageOpenGifSupportsFrameMetadataAndSeek(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     path := PillowTestTempGifPath("multi-p")

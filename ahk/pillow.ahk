@@ -3072,6 +3072,43 @@ class Pillow {
             return buf
         }
 
+        static SaveOption(options, names*) {
+            if !IsObject(options)
+                return { Set: false }
+            for name in names {
+                if options is Map {
+                    if options.Has(name)
+                        return { Set: true, Value: options[name] }
+                } else if options.HasOwnProp(name) {
+                    return { Set: true, Value: options.%name% }
+                }
+            }
+            return { Set: false }
+        }
+
+        static SaveOptionBool(options, defaultValue, names*) {
+            option := Pillow.Image.SaveOption(options, names*)
+            return option.Set ? !!option.Value : defaultValue
+        }
+
+        static SaveIntSequence(value, imageCount, optionName) {
+            values := []
+            if IsObject(value) {
+                for item in value {
+                    if !(item is Integer)
+                        throw Error("Pillow.Image.Save " optionName " values must be integers", -1)
+                    values.Push(item)
+                }
+            } else {
+                if !(value is Integer)
+                    throw Error("Pillow.Image.Save " optionName " must be an integer or integer array", -1)
+                values.Push(value)
+            }
+            if !(values.Length = 1 || values.Length = imageCount)
+                throw Error("Pillow.Image.Save " optionName " length must be 1 or match frame count", -1)
+            return { Buffer: Pillow.Image.IntBuffer(values, "Pillow.Image.Save " optionName), Count: values.Length }
+        }
+
         Close() {
             if !this.HasOwnProp("Handle") || this.Handle = 0
                 return
@@ -3301,16 +3338,95 @@ class Pillow {
             return out
         }
 
-        Save(path, format := unset) {
+        Save(path, format := unset, options := unset) {
             if !(path is String)
                 throw Error("Pillow.Image.Save expects a file path", -1)
-            resolvedFormat := Pillow.Image.ResolveSaveFormat(path, IsSet(format) ? format : unset)
+
+            saveFormat := unset
+            saveOptions := unset
+            if IsSet(format) {
+                if IsObject(format) && !IsSet(options) {
+                    saveOptions := format
+                    formatOption := Pillow.Image.SaveOption(saveOptions, "Format", "format")
+                    if formatOption.Set
+                        saveFormat := formatOption.Value
+                } else {
+                    saveFormat := format
+                }
+            }
+            if IsSet(options)
+                saveOptions := options
+
+            resolvedFormat := Pillow.Image.ResolveSaveFormat(path, IsSet(saveFormat) ? saveFormat : unset)
+            if IsSet(saveOptions) && Pillow.Image.SaveOptionBool(saveOptions, false, "SaveAll", "save_all") {
+                if resolvedFormat != "GIF"
+                    throw Error("Pillow.Image.Save save_all currently supports GIF only", -1)
+                this.SaveGifAnimation(path, saveOptions)
+                return
+            }
 
             pathBytes := Pillow.Image.Utf8Buffer(path)
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_save_" StrLower(resolvedFormat),
                 "Ptr", this.RequireHandle(),
                 "Ptr", pathBytes,
+                "Int"
+            ))
+        }
+
+        SaveGifAnimation(path, options) {
+            appendOption := Pillow.Image.SaveOption(options, "AppendImages", "append_images")
+            images := [this]
+            if appendOption.Set {
+                appendImages := appendOption.Value
+                if IsObject(appendImages) && appendImages is Pillow.Image {
+                    images.Push(appendImages)
+                } else if IsObject(appendImages) {
+                    for image in appendImages {
+                        if !(IsObject(image) && image is Pillow.Image)
+                            throw Error("Pillow.Image.Save append_images expects Pillow.Image values", -1)
+                        images.Push(image)
+                    }
+                } else {
+                    throw Error("Pillow.Image.Save append_images expects an image or image array", -1)
+                }
+            }
+
+            durationPtr := 0
+            durationCount := 0
+            durationOption := Pillow.Image.SaveOption(options, "Duration", "duration")
+            if durationOption.Set {
+                duration := Pillow.Image.SaveIntSequence(durationOption.Value, images.Length, "duration")
+                durationPtr := duration.Buffer.Ptr
+                durationCount := duration.Count
+            }
+
+            disposalPtr := 0
+            disposalCount := 0
+            disposalOption := Pillow.Image.SaveOption(options, "Disposal", "disposal")
+            if disposalOption.Set {
+                disposal := Pillow.Image.SaveIntSequence(disposalOption.Value, images.Length, "disposal")
+                disposalPtr := disposal.Buffer.Ptr
+                disposalCount := disposal.Count
+            }
+
+            loopOption := Pillow.Image.SaveOption(options, "Loop", "loop")
+            loopCount := loopOption.Set ? loopOption.Value : -1
+            if !(loopCount is Integer)
+                throw Error("Pillow.Image.Save loop must be an integer", -1)
+
+            pathBytes := Pillow.Image.Utf8Buffer(path)
+            handles := Pillow.Image.HandleArray(images)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_save_gif_animation",
+                "Ptr", handles,
+                "UPtr", images.Length,
+                "Ptr", pathBytes,
+                "Ptr", durationPtr,
+                "UPtr", durationCount,
+                "Int", loopCount,
+                "Ptr", disposalPtr,
+                "UPtr", disposalCount,
                 "Int"
             ))
         }

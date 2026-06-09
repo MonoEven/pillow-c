@@ -553,6 +553,36 @@ PillowCImageSaveGif(handle, path) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageSaveGifAnimation(handles, path, durations := unset, loopCount := -1, disposals := unset) {
+    pathBytes := PillowCUtf8Buffer(path)
+    handleArray := PillowCImageHandleArray(handles)
+    durationBuffer := 0
+    durationCount := 0
+    disposalBuffer := 0
+    disposalCount := 0
+    if IsSet(durations) {
+        durationBuffer := PillowCIntBuffer(durations)
+        durationCount := durations.Length
+    }
+    if IsSet(disposals) {
+        disposalBuffer := PillowCIntBuffer(disposals)
+        disposalCount := disposals.Length
+    }
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_gif_animation",
+        "Ptr", handleArray,
+        "UPtr", handles.Length,
+        "Ptr", pathBytes,
+        "Ptr", durationBuffer,
+        "UPtr", durationCount,
+        "Int", loopCount,
+        "Ptr", disposalBuffer,
+        "UPtr", disposalCount,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageDrawRectangle(handle, box, fill := unset, outline := unset, width := 1) {
     fillPtr := 0
     fillSize := 0
@@ -4349,6 +4379,50 @@ PillowCTestImageSaveGifRoundTripsPaletteMode(*) {
 }
 
 AhkTest.Test("pillow_c image save_gif round-trips P mode images", PillowCTestImageSaveGifRoundTripsPaletteMode)
+
+PillowCTestImageSaveGifAnimationWritesFramesAndMetadata(*) {
+    first := PillowCCreateImageMode(2, 1, 6)
+    second := PillowCCreateImageMode(2, 1, 6)
+    path := PillowCTempGifPath("save-animation")
+    loadedFirst := 0
+    loadedSecond := 0
+    try {
+        palette := [0, 0, 0, 10, 20, 30]
+        PillowCImageSetBytes(first, [0, 1])
+        PillowCImageSetBytes(second, [1, 0])
+        PillowCImagePutPaletteRgb(first, palette)
+        PillowCImagePutPaletteRgb(second, palette)
+
+        PillowCImageSaveGifAnimation([first, second], path, [10, 20], 3, [0, 2])
+        AhkTest.AssertEqual([71, 73, 70, 56, 57, 97], PillowCArraySlice(PillowCReadFileBytes(path), 1, 6))
+        AhkTest.AssertEqual(2, PillowCImageFrameCountGif(path))
+
+        firstMetadata := PillowCImageGifMetadata(path, 0)
+        secondMetadata := PillowCImageGifMetadata(path, 1)
+        AhkTest.AssertEqual(10, firstMetadata.Duration)
+        AhkTest.AssertEqual(20, secondMetadata.Duration)
+        AhkTest.AssertEqual(3, firstMetadata.Loop)
+        AhkTest.AssertEqual(3, secondMetadata.Loop)
+        AhkTest.AssertEqual(0, firstMetadata.Disposal)
+        AhkTest.AssertEqual(2, secondMetadata.Disposal)
+
+        loadedFirst := PillowCImageOpenGifFrame(path, 0)
+        loadedSecond := PillowCImageOpenGifFrame(path, 1)
+        AhkTest.AssertEqual(6, PillowCImageMode(loadedFirst))
+        AhkTest.AssertEqual([0, 1], PillowCImageToArray(loadedFirst, 2))
+        AhkTest.AssertEqual(palette, PillowCArraySlice(PillowCImageGetPaletteRgb(loadedFirst), 1, 6))
+        AhkTest.AssertEqual(3, PillowCImageMode(loadedSecond))
+        AhkTest.AssertEqual([10, 20, 30, 0, 0, 0], PillowCImageToArray(loadedSecond, 6))
+    } finally {
+        for handle in [loadedSecond, loadedFirst, second, first] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif_animation writes frames and metadata", PillowCTestImageSaveGifAnimationWritesFramesAndMetadata)
 
 PillowCTestImageGifRejectsUnsupportedModesAndInvalidFiles(*) {
     rgb := PillowCCreateImageMode(1, 1, 3)
