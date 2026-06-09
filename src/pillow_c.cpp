@@ -1862,6 +1862,275 @@ int save_ppm_image(const PillowCImage* image, const char* path)
     }
 }
 
+std::size_t qoi_hash_pixel(const std::uint8_t pixel[4])
+{
+    return (static_cast<std::size_t>(pixel[0]) * 3u +
+            static_cast<std::size_t>(pixel[1]) * 5u +
+            static_cast<std::size_t>(pixel[2]) * 7u +
+            static_cast<std::size_t>(pixel[3]) * 11u) %
+           64u;
+}
+
+int qoi_signed_delta(std::uint8_t left, std::uint8_t right)
+{
+    int result = (static_cast<int>(left) - static_cast<int>(right)) & 255;
+    if (result >= 128) {
+        result -= 256;
+    }
+    return result;
+}
+
+void qoi_write_run(std::vector<std::uint8_t>& out, int* run)
+{
+    out.push_back(static_cast<std::uint8_t>(0xc0u | static_cast<std::uint8_t>(*run - 1)));
+    *run = 0;
+}
+
+int open_qoi_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() < 4u || std::memcmp(data.data(), "qoif", 4u) != 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() < 14u) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+
+        const std::uint32_t width_u32 = read_be32(data.data() + 4u);
+        const std::uint32_t height_u32 = read_be32(data.data() + 8u);
+        const int channels = data[12] == 3u ? 3 : (data[12] == 4u ? 4 : 0);
+        if (width_u32 == 0 || height_u32 == 0 || width_u32 > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+            height_u32 > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) || channels == 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        const int width = static_cast<int>(width_u32);
+        const int height = static_cast<int>(height_u32);
+        const int mode = channels == 3 ? PILLOW_C_MODE_RGB : PILLOW_C_MODE_RGBA;
+        std::size_t stride = 0;
+        std::size_t size = 0;
+        if (!checked_image_size(width, height, channels, &stride, &size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        auto* image = new PillowCImage{
+            width,
+            height,
+            mode,
+            channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+
+        std::uint8_t index[64][4] = {};
+        std::uint8_t previous[4] = {0, 0, 0, 255};
+        std::size_t offset = 14u;
+        const std::size_t pixel_count = size / static_cast<std::size_t>(channels);
+        std::size_t out_pixel = 0;
+        while (out_pixel < pixel_count) {
+            if (offset >= data.size()) {
+                delete image;
+                return PILLOW_C_INVALID_LENGTH;
+            }
+
+            const std::uint8_t byte = data[offset++];
+            std::uint8_t pixel[4] = {previous[0], previous[1], previous[2], previous[3]};
+            if (byte == 0xfeu) {
+                if (offset + 3u > data.size()) {
+                    delete image;
+                    return PILLOW_C_INVALID_LENGTH;
+                }
+                pixel[0] = data[offset++];
+                pixel[1] = data[offset++];
+                pixel[2] = data[offset++];
+            } else if (byte == 0xffu) {
+                if (offset + 4u > data.size()) {
+                    delete image;
+                    return PILLOW_C_INVALID_LENGTH;
+                }
+                pixel[0] = data[offset++];
+                pixel[1] = data[offset++];
+                pixel[2] = data[offset++];
+                pixel[3] = data[offset++];
+            } else {
+                const std::uint8_t op = byte >> 6;
+                if (op == 0u) {
+                    const std::uint8_t slot = byte & 0x3fu;
+                    pixel[0] = index[slot][0];
+                    pixel[1] = index[slot][1];
+                    pixel[2] = index[slot][2];
+                    pixel[3] = index[slot][3];
+                } else if (op == 1u) {
+                    pixel[0] = static_cast<std::uint8_t>(previous[0] + ((byte >> 4) & 0x03u) - 2);
+                    pixel[1] = static_cast<std::uint8_t>(previous[1] + ((byte >> 2) & 0x03u) - 2);
+                    pixel[2] = static_cast<std::uint8_t>(previous[2] + (byte & 0x03u) - 2);
+                } else if (op == 2u) {
+                    if (offset >= data.size()) {
+                        delete image;
+                        return PILLOW_C_INVALID_LENGTH;
+                    }
+                    const std::uint8_t second = data[offset++];
+                    const int dg = static_cast<int>(byte & 0x3fu) - 32;
+                    const int dr = static_cast<int>((second >> 4) & 0x0fu) - 8;
+                    const int db = static_cast<int>(second & 0x0fu) - 8;
+                    pixel[0] = static_cast<std::uint8_t>(previous[0] + dg + dr);
+                    pixel[1] = static_cast<std::uint8_t>(previous[1] + dg);
+                    pixel[2] = static_cast<std::uint8_t>(previous[2] + dg + db);
+                } else {
+                    const std::size_t run = static_cast<std::size_t>(byte & 0x3fu) + 1u;
+                    if (run > pixel_count - out_pixel) {
+                        delete image;
+                        return PILLOW_C_INVALID_LENGTH;
+                    }
+                    for (std::size_t i = 0; i < run; ++i) {
+                        std::uint8_t* dst = image->pixels.data() + (out_pixel + i) * static_cast<std::size_t>(channels);
+                        dst[0] = previous[0];
+                        dst[1] = previous[1];
+                        dst[2] = previous[2];
+                        if (channels == 4) {
+                            dst[3] = previous[3];
+                        }
+                    }
+                    out_pixel += run;
+                    continue;
+                }
+            }
+
+            previous[0] = pixel[0];
+            previous[1] = pixel[1];
+            previous[2] = pixel[2];
+            previous[3] = pixel[3];
+            const std::size_t slot = qoi_hash_pixel(pixel);
+            index[slot][0] = pixel[0];
+            index[slot][1] = pixel[1];
+            index[slot][2] = pixel[2];
+            index[slot][3] = pixel[3];
+
+            std::uint8_t* dst = image->pixels.data() + out_pixel * static_cast<std::size_t>(channels);
+            dst[0] = pixel[0];
+            dst[1] = pixel[1];
+            dst[2] = pixel[2];
+            if (channels == 4) {
+                dst[3] = pixel[3];
+            }
+            ++out_pixel;
+        }
+
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int save_qoi_image(const PillowCImage* image, const char* path)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!((image->mode == PILLOW_C_MODE_RGB && image->channels == 3) ||
+          (image->mode == PILLOW_C_MODE_RGBA && image->channels == 4)) ||
+        image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        std::vector<std::uint8_t> out;
+        out.reserve(14u + image->pixels.size() + 8u);
+        out.insert(out.end(), {'q', 'o', 'i', 'f'});
+        append_be32(out, static_cast<std::uint32_t>(image->width));
+        append_be32(out, static_cast<std::uint32_t>(image->height));
+        out.push_back(static_cast<std::uint8_t>(image->channels));
+        out.push_back(1u);
+
+        std::uint8_t index[64][4] = {};
+        bool valid[64] = {};
+        valid[0] = true;
+        std::uint8_t previous[4] = {0, 0, 0, 255};
+        int run = 0;
+        for (int y = 0; y < image->height; ++y) {
+            const std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+            for (int x = 0; x < image->width; ++x) {
+                const std::uint8_t* src = row + static_cast<std::size_t>(x) * static_cast<std::size_t>(image->channels);
+                std::uint8_t pixel[4] = {src[0], src[1], src[2], image->channels == 4 ? src[3] : static_cast<std::uint8_t>(255)};
+                if (std::memcmp(pixel, previous, 4u) == 0) {
+                    ++run;
+                    if (run == 62) {
+                        qoi_write_run(out, &run);
+                    }
+                } else {
+                    if (run != 0) {
+                        qoi_write_run(out, &run);
+                    }
+
+                    const std::size_t slot = qoi_hash_pixel(pixel);
+                    if (valid[slot] && std::memcmp(index[slot], pixel, 4u) == 0) {
+                        out.push_back(static_cast<std::uint8_t>(slot));
+                    } else {
+                        valid[slot] = true;
+                        index[slot][0] = pixel[0];
+                        index[slot][1] = pixel[1];
+                        index[slot][2] = pixel[2];
+                        index[slot][3] = pixel[3];
+
+                        if (previous[3] == pixel[3]) {
+                            const int dr = qoi_signed_delta(pixel[0], previous[0]);
+                            const int dg = qoi_signed_delta(pixel[1], previous[1]);
+                            const int db = qoi_signed_delta(pixel[2], previous[2]);
+                            if (dr >= -2 && dr < 2 && dg >= -2 && dg < 2 && db >= -2 && db < 2) {
+                                out.push_back(static_cast<std::uint8_t>(
+                                    0x40u |
+                                    static_cast<std::uint8_t>((dr + 2) << 4) |
+                                    static_cast<std::uint8_t>((dg + 2) << 2) |
+                                    static_cast<std::uint8_t>(db + 2)));
+                            } else {
+                                const int dgr = qoi_signed_delta(static_cast<std::uint8_t>(dr), static_cast<std::uint8_t>(dg));
+                                const int dgb = qoi_signed_delta(static_cast<std::uint8_t>(db), static_cast<std::uint8_t>(dg));
+                                if (dgr >= -8 && dgr < 8 && dg >= -32 && dg < 32 && dgb >= -8 && dgb < 8) {
+                                    out.push_back(static_cast<std::uint8_t>(0x80u | static_cast<std::uint8_t>(dg + 32)));
+                                    out.push_back(static_cast<std::uint8_t>(
+                                        static_cast<std::uint8_t>((dgr + 8) << 4) |
+                                        static_cast<std::uint8_t>(dgb + 8)));
+                                } else {
+                                    out.push_back(0xfeu);
+                                    out.push_back(pixel[0]);
+                                    out.push_back(pixel[1]);
+                                    out.push_back(pixel[2]);
+                                }
+                            }
+                        } else {
+                            out.push_back(0xffu);
+                            out.push_back(pixel[0]);
+                            out.push_back(pixel[1]);
+                            out.push_back(pixel[2]);
+                            out.push_back(pixel[3]);
+                        }
+                    }
+                }
+                previous[0] = pixel[0];
+                previous[1] = pixel[1];
+                previous[2] = pixel[2];
+                previous[3] = pixel[3];
+            }
+        }
+        if (run != 0) {
+            qoi_write_run(out, &run);
+        }
+        out.insert(out.end(), {0, 0, 0, 0, 0, 0, 0, 1});
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 int bmp_row_stride(int width, int bits_per_pixel, std::size_t* out_stride)
 {
     if (width <= 0 || bits_per_pixel <= 0 || !out_stride) {
@@ -12840,6 +13109,20 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_ppm(
     const char* path)
 {
     return save_ppm_image(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_qoi(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_qoi_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_qoi(
+    const PillowCImage* image,
+    const char* path)
+{
+    return save_qoi_image(image, path);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_png(

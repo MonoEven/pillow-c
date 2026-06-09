@@ -196,6 +196,10 @@ PillowTestTempPpmPath(name, ext := "ppm") {
     return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) "." ext
 }
 
+PillowTestTempQoiPath(name) {
+    return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) ".qoi"
+}
+
 PillowTestDeleteFile(path) {
     try FileDelete path
 }
@@ -976,6 +980,79 @@ PillowTestImageOpenSavePpmRejectsUnsupportedInputs(*) {
 }
 
 AhkTest.Test("Pillow Image.Open and Save PPM reject unsupported inputs", PillowTestImageOpenSavePpmRejectsUnsupportedInputs)
+
+PillowTestImageSaveAndOpenQoiUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer([10, 20, 30, 10, 20, 30, 11, 21, 31, 200, 10, 30]))
+    rgba := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([10, 20, 30, 40, 10, 20, 30, 40]))
+    rgbPath := PillowTestTempQoiPath("save-rgb")
+    rgbaPath := PillowTestTempQoiPath("save-rgba")
+    loadedRgb := 0
+    loadedRgba := 0
+    try {
+        rgb.Save(rgbPath)
+        rgba.Save(rgbaPath, "QOI")
+
+        AhkTest.AssertEqual([
+            113, 111, 105, 102, 0, 0, 0, 2, 0, 0, 0, 2, 3, 1,
+            254, 10, 20, 30, 192, 127, 254, 200, 10, 30,
+            0, 0, 0, 0, 0, 0, 0, 1,
+        ], PillowTestReadFileBytes(rgbPath))
+        AhkTest.AssertEqual([
+            113, 111, 105, 102, 0, 0, 0, 2, 0, 0, 0, 1, 4, 1,
+            255, 10, 20, 30, 40, 192,
+            0, 0, 0, 0, 0, 0, 0, 1,
+        ], PillowTestReadFileBytes(rgbaPath))
+
+        loadedRgb := Pillow.Image.Open(rgbPath)
+        loadedRgba := Pillow.Image.Open(rgbaPath, ["QOI"])
+
+        AhkTest.AssertEqual("QOI", loadedRgb.Format)
+        AhkTest.AssertEqual("RGB", loadedRgb.Mode)
+        AhkTest.AssertEqual([2, 2], loadedRgb.Size)
+        AhkTest.AssertEqual([10, 20, 30, 10, 20, 30, 11, 21, 31, 200, 10, 30], PillowTestBufferToArray(loadedRgb.ToBytes()))
+        AhkTest.AssertEqual("QOI", loadedRgba.Format)
+        AhkTest.AssertEqual("RGBA", loadedRgba.Mode)
+        AhkTest.AssertEqual([2, 1], loadedRgba.Size)
+        AhkTest.AssertEqual([10, 20, 30, 40, 10, 20, 30, 40], PillowTestBufferToArray(loadedRgba.ToBytes()))
+    } finally {
+        for image in [loadedRgba, loadedRgb, rgba, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(rgbaPath)
+        PillowTestDeleteFile(rgbPath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save and Image.Open support QOI through native path", PillowTestImageSaveAndOpenQoiUsesNativePath)
+
+PillowTestImageOpenSaveQoiRejectsUnsupportedInputs(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([1]))
+    badPath := PillowTestTempQoiPath("bad")
+    try {
+        try {
+            image.Save(badPath, "QOI")
+            AhkTest.Fail("Expected Image.Save to reject unsupported L QOI")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+
+        PillowTestWriteFileBytes(badPath, [113, 111, 105, 102, 0, 0, 0, 1])
+        try {
+            Pillow.Image.Open(badPath, ["QOI"])
+            AhkTest.Fail("Expected Image.Open to reject invalid QOI")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid length") > 0)
+        }
+    } finally {
+        PillowTestDeleteFile(badPath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Open and Save QOI reject unsupported inputs", PillowTestImageOpenSaveQoiRejectsUnsupportedInputs)
 
 PillowTestImageSaveAndOpenPngUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

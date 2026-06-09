@@ -186,6 +186,10 @@ PillowCTempPpmPath(name, ext := "ppm") {
     return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) "." ext
 }
 
+PillowCTempQoiPath(name) {
+    return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) ".qoi"
+}
+
 PillowCDeleteFile(path) {
     try FileDelete path
 }
@@ -482,6 +486,31 @@ PillowCImageSavePpm(handle, path) {
     pathBytes := PillowCUtf8Buffer(path)
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_save_ppm",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageOpenQoi(path) {
+    handle := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_open_qoi",
+        "Ptr", pathBytes,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
+PillowCImageSaveQoi(handle, path) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_qoi",
         "Ptr", handle,
         "Ptr", pathBytes,
         "Int"
@@ -4050,6 +4079,144 @@ PillowCTestImagePpmRejectsUnsupportedModesAndInvalidFiles(*) {
 }
 
 AhkTest.Test("pillow_c PPM IO rejects unsupported modes and invalid files", PillowCTestImagePpmRejectsUnsupportedModesAndInvalidFiles)
+
+PillowCTestImageSaveQoiMatchesPillowRgbAndRgba(*) {
+    rgb := PillowCCreateImageMode(2, 2, 3)
+    lumaIndex := PillowCCreateImageMode(3, 1, 3)
+    rgba := PillowCCreateImageMode(2, 1, 4)
+    rgbPath := PillowCTempQoiPath("save-rgb")
+    lumaIndexPath := PillowCTempQoiPath("save-luma-index")
+    rgbaPath := PillowCTempQoiPath("save-rgba")
+    try {
+        PillowCImageSetBytes(rgb, [10, 20, 30, 10, 20, 30, 11, 21, 31, 200, 10, 30])
+        PillowCImageSetBytes(lumaIndex, [100, 100, 100, 118, 120, 115, 100, 100, 100])
+        PillowCImageSetBytes(rgba, [10, 20, 30, 40, 10, 20, 30, 40])
+
+        PillowCImageSaveQoi(rgb, rgbPath)
+        PillowCImageSaveQoi(lumaIndex, lumaIndexPath)
+        PillowCImageSaveQoi(rgba, rgbaPath)
+
+        AhkTest.AssertEqual([
+            113, 111, 105, 102, 0, 0, 0, 2, 0, 0, 0, 2, 3, 1,
+            254, 10, 20, 30, 192, 127, 254, 200, 10, 30,
+            0, 0, 0, 0, 0, 0, 0, 1,
+        ], PillowCReadFileBytes(rgbPath))
+        AhkTest.AssertEqual([
+            113, 111, 105, 102, 0, 0, 0, 3, 0, 0, 0, 1, 3, 1,
+            254, 100, 100, 100, 180, 99, 17,
+            0, 0, 0, 0, 0, 0, 0, 1,
+        ], PillowCReadFileBytes(lumaIndexPath))
+        AhkTest.AssertEqual([
+            113, 111, 105, 102, 0, 0, 0, 2, 0, 0, 0, 1, 4, 1,
+            255, 10, 20, 30, 40, 192,
+            0, 0, 0, 0, 0, 0, 0, 1,
+        ], PillowCReadFileBytes(rgbaPath))
+    } finally {
+        PillowCDeleteFile(rgbaPath)
+        PillowCDeleteFile(lumaIndexPath)
+        PillowCDeleteFile(rgbPath)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(lumaIndex)
+        PillowCFreeImage(rgb)
+    }
+}
+
+AhkTest.Test("pillow_c image save_qoi matches Pillow RGB and RGBA bytes", PillowCTestImageSaveQoiMatchesPillowRgbAndRgba)
+
+PillowCTestImageOpenQoiReadsPillowRgbAndRgba(*) {
+    rgbPath := PillowCTempQoiPath("open-rgb")
+    lumaIndexPath := PillowCTempQoiPath("open-luma-index")
+    rgbaPath := PillowCTempQoiPath("open-rgba")
+    rgb := 0
+    lumaIndex := 0
+    rgba := 0
+    try {
+        PillowCWriteFileBytes(rgbPath, [
+            113, 111, 105, 102, 0, 0, 0, 2, 0, 0, 0, 2, 3, 1,
+            254, 10, 20, 30, 192, 127, 254, 200, 10, 30,
+            0, 0, 0, 0, 0, 0, 0, 1,
+        ])
+        PillowCWriteFileBytes(lumaIndexPath, [
+            113, 111, 105, 102, 0, 0, 0, 3, 0, 0, 0, 1, 3, 1,
+            254, 100, 100, 100, 180, 99, 17,
+            0, 0, 0, 0, 0, 0, 0, 1,
+        ])
+        PillowCWriteFileBytes(rgbaPath, [
+            113, 111, 105, 102, 0, 0, 0, 2, 0, 0, 0, 1, 4, 1,
+            255, 10, 20, 30, 40, 192,
+            0, 0, 0, 0, 0, 0, 0, 1,
+        ])
+
+        rgb := PillowCImageOpenQoi(rgbPath)
+        lumaIndex := PillowCImageOpenQoi(lumaIndexPath)
+        rgba := PillowCImageOpenQoi(rgbaPath)
+
+        AhkTest.AssertEqual(3, PillowCImageMode(rgb))
+        AhkTest.AssertEqual([2, 2], [PillowCImageInt(rgb, "pillow_c_image_width"), PillowCImageInt(rgb, "pillow_c_image_height")])
+        AhkTest.AssertEqual([10, 20, 30, 10, 20, 30, 11, 21, 31, 200, 10, 30], PillowCImageToArray(rgb, 12))
+        AhkTest.AssertEqual(3, PillowCImageMode(lumaIndex))
+        AhkTest.AssertEqual([3, 1], [PillowCImageInt(lumaIndex, "pillow_c_image_width"), PillowCImageInt(lumaIndex, "pillow_c_image_height")])
+        AhkTest.AssertEqual([100, 100, 100, 118, 120, 115, 100, 100, 100], PillowCImageToArray(lumaIndex, 9))
+        AhkTest.AssertEqual(4, PillowCImageMode(rgba))
+        AhkTest.AssertEqual([2, 1], [PillowCImageInt(rgba, "pillow_c_image_width"), PillowCImageInt(rgba, "pillow_c_image_height")])
+        AhkTest.AssertEqual([10, 20, 30, 40, 10, 20, 30, 40], PillowCImageToArray(rgba, 8))
+    } finally {
+        if rgba
+            PillowCFreeImage(rgba)
+        if lumaIndex
+            PillowCFreeImage(lumaIndex)
+        if rgb
+            PillowCFreeImage(rgb)
+        PillowCDeleteFile(rgbaPath)
+        PillowCDeleteFile(lumaIndexPath)
+        PillowCDeleteFile(rgbPath)
+    }
+}
+
+AhkTest.Test("pillow_c image open_qoi reads Pillow RGB and RGBA files", PillowCTestImageOpenQoiReadsPillowRgbAndRgba)
+
+PillowCTestImageQoiRejectsUnsupportedModesAndInvalidFiles(*) {
+    l := PillowCCreateImageMode(1, 1, 1)
+    badPath := PillowCTempQoiPath("bad")
+    missingPath := PillowCTempQoiPath("missing")
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(l, [1])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_qoi",
+            "Ptr", l,
+            "Ptr", PillowCUtf8Buffer(badPath),
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        PillowCWriteFileBytes(badPath, [113, 111, 105, 102, 0, 0, 0, 1])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_open_qoi",
+            "Ptr", PillowCUtf8Buffer(badPath),
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_open_qoi",
+            "Ptr", PillowCUtf8Buffer(missingPath),
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCDeleteFile(badPath)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c QOI IO rejects unsupported modes and invalid files", PillowCTestImageQoiRejectsUnsupportedModesAndInvalidFiles)
 
 PillowCTestImageOpenPngReadsPillowCoreModes(*) {
     rgbPath := PillowCTempPngPath("open-rgb")
