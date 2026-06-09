@@ -2505,6 +2505,50 @@ class Pillow {
             return buf
         }
 
+        static NormalizePaletteRawmode(rawmode, operationName) {
+            if !(rawmode is String)
+                throw Error(operationName " rawmode expects a string", -1)
+            name := StrUpper(rawmode)
+            if name = "RGB" || name = "BGR"
+                return name
+            throw Error(operationName " currently supports RGB and BGR palettes", -1)
+        }
+
+        static PaletteBuffer(values, rawmode, operationName) {
+            rawmode := Pillow.Image.NormalizePaletteRawmode(rawmode, operationName)
+            buf := Pillow.Image.ByteBuffer(values, operationName)
+            if Mod(buf.Size, 3) != 0
+                throw Error(operationName " palette length must be a multiple of 3", -1)
+            if rawmode = "RGB"
+                return buf
+
+            out := Buffer(buf.Size, 0)
+            loop buf.Size // 3 {
+                offset := (A_Index - 1) * 3
+                NumPut("UChar", NumGet(buf, offset + 2, "UChar"), out, offset)
+                NumPut("UChar", NumGet(buf, offset + 1, "UChar"), out, offset + 1)
+                NumPut("UChar", NumGet(buf, offset, "UChar"), out, offset + 2)
+            }
+            return out
+        }
+
+        static ConvertRgbPaletteValues(values, rawmode, operationName) {
+            rawmode := Pillow.Image.NormalizePaletteRawmode(rawmode, operationName)
+            if Mod(values.Length, 3) != 0
+                throw Error(operationName " palette length must be a multiple of 3", -1)
+            if rawmode = "RGB"
+                return values
+
+            out := []
+            loop values.Length // 3 {
+                index := (A_Index - 1) * 3 + 1
+                out.Push(values[index + 2])
+                out.Push(values[index + 1])
+                out.Push(values[index])
+            }
+            return out
+        }
+
         static IntBuffer(values, operationName) {
             if !IsObject(values)
                 throw Error(operationName " expects an array of integers", -1)
@@ -2799,9 +2843,7 @@ class Pillow {
         PutPalette(data, rawmode := "RGB") {
             if !(this.Mode = "P" || this.Mode = "L")
                 throw Error("illegal image mode", -1)
-            if rawmode != "RGB"
-                throw Error("Pillow.Image.PutPalette currently supports only RGB palettes", -1)
-            palette := Pillow.Image.ByteBuffer(data, "Pillow.Image.PutPalette")
+            palette := Pillow.Image.PaletteBuffer(data, rawmode, "Pillow.Image.PutPalette")
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_put_palette_rgb",
                 "Ptr", this.RequireHandle(),
@@ -2815,8 +2857,7 @@ class Pillow {
         GetPalette(rawmode := "RGB") {
             if this.Mode != "P"
                 throw Error("illegal image mode", -1)
-            if rawmode != "RGB"
-                throw Error("Pillow.Image.GetPalette currently supports only RGB palettes", -1)
+            rawmode := Pillow.Image.NormalizePaletteRawmode(rawmode, "Pillow.Image.GetPalette")
             required := 0
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_get_palette_rgb",
@@ -2840,7 +2881,7 @@ class Pillow {
             values := []
             loop out.Size
                 values.Push(NumGet(out, A_Index - 1, "UChar"))
-            return values
+            return Pillow.Image.ConvertRgbPaletteValues(values, rawmode, "Pillow.Image.GetPalette")
         }
 
         RemapPalette(destMap, sourcePalette := unset) {

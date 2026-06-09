@@ -2743,6 +2743,36 @@ PillowTestPutPaletteConvertsLToPaletteMode(*) {
 
 AhkTest.Test("Pillow Image.PutPalette converts L images to P mode", PillowTestPutPaletteConvertsLToPaletteMode)
 
+PillowTestPutPaletteSupportsBgrRawmode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([0, 1]))
+    rgb := 0
+    try {
+        image.PutPalette([
+            30, 20, 10,
+            60, 50, 40,
+        ], "BGR")
+        rgb := image.Convert("RGB")
+
+        AhkTest.AssertEqual("P", image.Mode)
+        AhkTest.AssertEqual([
+            10, 20, 30,
+            40, 50, 60,
+        ], image.GetPalette())
+        AhkTest.AssertEqual([
+            30, 20, 10,
+            60, 50, 40,
+        ], image.GetPalette("BGR"))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowTestBufferToArray(rgb.ToBytes()))
+    } finally {
+        if IsObject(rgb)
+            rgb.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.PutPalette supports BGR rawmode", PillowTestPutPaletteSupportsBgrRawmode)
+
 PillowTestPaletteModePreservesPaletteThroughGeometryOperations(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     palette := [
