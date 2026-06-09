@@ -2505,11 +2505,13 @@ class Pillow {
             return buf
         }
 
-        static NormalizePaletteRawmode(rawmode, operationName) {
+        static NormalizePaletteRawmode(rawmode, operationName, allowExpanded := false) {
             if !(rawmode is String)
                 throw Error(operationName " rawmode expects a string", -1)
             name := StrUpper(rawmode)
             if name = "RGB" || name = "BGR"
+                return name
+            if allowExpanded && (name = "RGBA" || name = "RGBX" || name = "BGRX")
                 return name
             throw Error(operationName " currently supports RGB and BGR palettes", -1)
         }
@@ -2533,7 +2535,7 @@ class Pillow {
         }
 
         static ConvertRgbPaletteValues(values, rawmode, operationName) {
-            rawmode := Pillow.Image.NormalizePaletteRawmode(rawmode, operationName)
+            rawmode := Pillow.Image.NormalizePaletteRawmode(rawmode, operationName, true)
             if Mod(values.Length, 3) != 0
                 throw Error(operationName " palette length must be a multiple of 3", -1)
             if rawmode = "RGB"
@@ -2542,9 +2544,21 @@ class Pillow {
             out := []
             loop values.Length // 3 {
                 index := (A_Index - 1) * 3 + 1
-                out.Push(values[index + 2])
-                out.Push(values[index + 1])
-                out.Push(values[index])
+                if rawmode = "BGR" {
+                    out.Push(values[index + 2])
+                    out.Push(values[index + 1])
+                    out.Push(values[index])
+                } else if rawmode = "BGRX" {
+                    out.Push(values[index + 2])
+                    out.Push(values[index + 1])
+                    out.Push(values[index])
+                    out.Push(0)
+                } else {
+                    out.Push(values[index])
+                    out.Push(values[index + 1])
+                    out.Push(values[index + 2])
+                    out.Push(255)
+                }
             }
             return out
         }
@@ -2857,7 +2871,7 @@ class Pillow {
         GetPalette(rawmode := "RGB") {
             if this.Mode != "P"
                 throw Error("illegal image mode", -1)
-            rawmode := Pillow.Image.NormalizePaletteRawmode(rawmode, "Pillow.Image.GetPalette")
+            rawmode := Pillow.Image.NormalizePaletteRawmode(rawmode, "Pillow.Image.GetPalette", true)
             required := 0
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_get_palette_rgb",

@@ -2773,6 +2773,34 @@ PillowTestPutPaletteSupportsBgrRawmode(*) {
 
 AhkTest.Test("Pillow Image.PutPalette supports BGR rawmode", PillowTestPutPaletteSupportsBgrRawmode)
 
+PillowTestGetPaletteSupportsExpandedRawmodes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([0, 1]))
+    try {
+        image.PutPalette([
+            10, 20, 30,
+            40, 50, 60,
+        ])
+
+        AhkTest.AssertEqual([
+            10, 20, 30, 255,
+            40, 50, 60, 255,
+        ], image.GetPalette("RGBA"))
+        AhkTest.AssertEqual([
+            10, 20, 30, 255,
+            40, 50, 60, 255,
+        ], image.GetPalette("RGBX"))
+        AhkTest.AssertEqual([
+            30, 20, 10, 0,
+            60, 50, 40, 0,
+        ], image.GetPalette("BGRX"))
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetPalette supports expanded RGB palette rawmodes", PillowTestGetPaletteSupportsExpandedRawmodes)
+
 PillowTestPaletteModePreservesPaletteThroughGeometryOperations(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     palette := [
