@@ -3366,6 +3366,22 @@ class Pillow {
             }
 
             pathBytes := Pillow.Image.Utf8Buffer(path)
+            if IsSet(saveOptions) && resolvedFormat = "JPEG" {
+                qualityOption := Pillow.Image.SaveOption(saveOptions, "Quality", "quality")
+                if qualityOption.Set {
+                    if !(qualityOption.Value is Integer)
+                        throw Error("Pillow.Image.Save quality must be an integer", -1)
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_quality",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Int", qualityOption.Value,
+                        "Int"
+                    ))
+                    return
+                }
+            }
+
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_save_" StrLower(resolvedFormat),
                 "Ptr", this.RequireHandle(),

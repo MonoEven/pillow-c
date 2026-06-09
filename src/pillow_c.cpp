@@ -2318,7 +2318,7 @@ int open_jpeg_image(const char* path, PillowCImage** out_image)
     }
 }
 
-int save_jpeg_image(const PillowCImage* image, const char* path)
+int save_jpeg_image_with_quality(const PillowCImage* image, const char* path, int quality)
 {
     if (!image || !path) {
         return PILLOW_C_NULL_POINTER;
@@ -2334,6 +2334,8 @@ int save_jpeg_image(const PillowCImage* image, const char* path)
         image->pixels.size() > static_cast<std::size_t>(std::numeric_limits<UINT>::max())) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    const bool has_quality = quality != -1;
+    const int clamped_quality = std::max(0, std::min(quality, 100));
 
     try {
         std::vector<wchar_t> wide_path;
@@ -2371,11 +2373,28 @@ int save_jpeg_image(const PillowCImage* image, const char* path)
         }
 
         ComPtr<IWICBitmapFrameEncode> frame;
-        hr = encoder->CreateNewFrame(frame.put(), nullptr);
+        ComPtr<IPropertyBag2> encoder_options;
+        hr = has_quality ? encoder->CreateNewFrame(frame.put(), encoder_options.put()) :
+                           encoder->CreateNewFrame(frame.put(), nullptr);
         if (FAILED(hr)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
-        hr = frame->Initialize(nullptr);
+        if (has_quality) {
+            if (!encoder_options.get()) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            PROPBAG2 option = {};
+            option.pstrName = const_cast<LPOLESTR>(L"ImageQuality");
+            VARIANT value;
+            VariantInit(&value);
+            value.vt = VT_R4;
+            value.fltVal = static_cast<float>(clamped_quality) / 100.0f;
+            hr = encoder_options->Write(1, &option, &value);
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+        }
+        hr = frame->Initialize(has_quality ? encoder_options.get() : nullptr);
         if (FAILED(hr)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
@@ -2429,6 +2448,11 @@ int save_jpeg_image(const PillowCImage* image, const char* path)
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int save_jpeg_image(const PillowCImage* image, const char* path)
+{
+    return save_jpeg_image_with_quality(image, path, -1);
 }
 
 int open_tiff_frame_image(const char* path, int frame_index, PillowCImage** out_image)
@@ -12106,6 +12130,14 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg(
     const char* path)
 {
     return save_jpeg_image(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_quality(
+    const PillowCImage* image,
+    const char* path,
+    int quality)
+{
+    return save_jpeg_image_with_quality(image, path, quality);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_tiff(

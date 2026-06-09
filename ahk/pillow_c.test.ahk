@@ -427,6 +427,18 @@ PillowCImageSaveJpeg(handle, path) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageSaveJpegQuality(handle, path, quality) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_jpeg_quality",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int", quality,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageOpenTiff(path) {
     handle := 0
     pathBytes := PillowCUtf8Buffer(path)
@@ -3973,6 +3985,51 @@ PillowCTestImageSaveJpegRoundTripsCoreModes(*) {
 }
 
 AhkTest.Test("pillow_c image save_jpeg round-trips L and RGB modes", PillowCTestImageSaveJpegRoundTripsCoreModes)
+
+PillowCTestImageSaveJpegQualityChangesEncodedSize(*) {
+    rgb := PillowCCreateImageMode(32, 32, 3)
+    lowPath := PillowCTempJpegPath("quality-low")
+    highPath := PillowCTempJpegPath("quality-high")
+    lowLoaded := 0
+    highLoaded := 0
+    try {
+        values := []
+        loop 32 {
+            y := A_Index - 1
+            loop 32 {
+                x := A_Index - 1
+                values.Push(Mod(x * 19 + y * 7, 256))
+                values.Push(Mod(x * 3 + y * 29, 256))
+                values.Push(Mod(x * 41 + y * 11, 256))
+            }
+        }
+        PillowCImageSetBytes(rgb, values)
+
+        PillowCImageSaveJpegQuality(rgb, lowPath, 20)
+        PillowCImageSaveJpegQuality(rgb, highPath, 95)
+        lowBytes := PillowCReadFileBytes(lowPath)
+        highBytes := PillowCReadFileBytes(highPath)
+        AhkTest.AssertEqual([255, 216], PillowCArraySlice(lowBytes, 1, 2))
+        AhkTest.AssertEqual([255, 216], PillowCArraySlice(highBytes, 1, 2))
+        AhkTest.AssertTrue(highBytes.Length > lowBytes.Length)
+
+        lowLoaded := PillowCImageOpenJpeg(lowPath)
+        highLoaded := PillowCImageOpenJpeg(highPath)
+        AhkTest.AssertEqual([32, 32], [PillowCImageInt(lowLoaded, "pillow_c_image_width"), PillowCImageInt(lowLoaded, "pillow_c_image_height")])
+        AhkTest.AssertEqual([32, 32], [PillowCImageInt(highLoaded, "pillow_c_image_width"), PillowCImageInt(highLoaded, "pillow_c_image_height")])
+        AhkTest.AssertEqual(3, PillowCImageMode(lowLoaded))
+        AhkTest.AssertEqual(3, PillowCImageMode(highLoaded))
+    } finally {
+        for handle in [highLoaded, lowLoaded, rgb] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        for path in [highPath, lowPath]
+            PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_jpeg_quality controls encoded quality", PillowCTestImageSaveJpegQualityChangesEncodedSize)
 
 PillowCTestImageOpenJpegReadsExifOrientationMetadata(*) {
     rgb := PillowCCreateImageMode(2, 3, 3)

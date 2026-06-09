@@ -1013,6 +1013,50 @@ PillowTestImageSaveAndOpenJpegUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Save and Image.Open support JPEG through native path", PillowTestImageSaveAndOpenJpegUsesNativePath)
 
+PillowTestImageSaveJpegQualityOptionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 32 {
+        y := A_Index - 1
+        loop 32 {
+            x := A_Index - 1
+            values.Push(Mod(x * 19 + y * 7, 256))
+            values.Push(Mod(x * 3 + y * 29, 256))
+            values.Push(Mod(x * 41 + y * 11, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [32, 32], PillowTestBuffer(values))
+    lowPath := PillowTestTempJpegPath("quality-low")
+    highPath := PillowTestTempJpegPath("quality-high")
+    lowLoaded := 0
+    highLoaded := 0
+    try {
+        image.Save(lowPath, "JPEG", { Quality: 20 })
+        image.Save(highPath, "JPEG", { quality: 95 })
+        lowBytes := PillowTestReadFileBytes(lowPath)
+        highBytes := PillowTestReadFileBytes(highPath)
+        AhkTest.AssertEqual([255, 216], PillowTestArraySlice(lowBytes, 1, 2))
+        AhkTest.AssertEqual([255, 216], PillowTestArraySlice(highBytes, 1, 2))
+        AhkTest.AssertTrue(highBytes.Length > lowBytes.Length)
+
+        lowLoaded := Pillow.Image.Open(lowPath, ["JPEG"])
+        highLoaded := Pillow.Image.Open(highPath, ["JPEG"])
+        AhkTest.AssertEqual("RGB", lowLoaded.Mode)
+        AhkTest.AssertEqual("RGB", highLoaded.Mode)
+        AhkTest.AssertEqual([32, 32], lowLoaded.Size)
+        AhkTest.AssertEqual([32, 32], highLoaded.Size)
+    } finally {
+        for item in [highLoaded, lowLoaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(highPath)
+        PillowTestDeleteFile(lowPath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG quality option uses native path", PillowTestImageSaveJpegQualityOptionUsesNativePath)
+
 PillowTestImageOpenSaveJpegRejectsUnsupportedInputs(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 4]))

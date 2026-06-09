@@ -79,6 +79,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_save_png`
 - `pillow_c_image_open_jpeg`
 - `pillow_c_image_save_jpeg`
+- `pillow_c_image_save_jpeg_quality`
 - `pillow_c_image_open_tiff`
 - `pillow_c_image_open_tiff_frame`
 - `pillow_c_image_frame_count_tiff`
@@ -295,7 +296,7 @@ Reusable target operations:
 
 `pillow_c_image_open_png` and `pillow_c_image_save_png` keep PNG decode/encode inside the DLL. The current PNG path supports `L`, `LA`, `P`, `RGB`, and `RGBA` image handles. Native open converts supported source PNG pixel formats into the DLL's row-major public modes and preserves short RGB palettes for `P`. Native save writes valid PNG files from those modes after any required RGB/BGR channel packing inside C++; `LA` and `P` saves use native PNG chunk writing so they reopen with Pillow-style mode and palette semantics.
 
-`pillow_c_image_open_jpeg` and `pillow_c_image_save_jpeg` keep JPEG decode/encode inside the DLL through WIC. The current JPEG path supports lossy `L` and `RGB` image handles. Native open probes the JPEG frame component count before decoding so one-component JPEGs reopen as `L` and three-component JPEGs reopen as public RGB byte order. Native save accepts `L` and `RGB`, packs RGB to WIC's BGR encoder format inside C++, and rejects alpha, palette, and CMYK modes with `-3`.
+`pillow_c_image_open_jpeg`, `pillow_c_image_save_jpeg`, and `pillow_c_image_save_jpeg_quality` keep JPEG decode/encode inside the DLL through WIC. The current JPEG path supports lossy `L` and `RGB` image handles. Native open probes the JPEG frame component count before decoding so one-component JPEGs reopen as `L` and three-component JPEGs reopen as public RGB byte order. Native save accepts `L` and `RGB`, packs RGB to WIC's BGR encoder format inside C++, and rejects alpha, palette, and CMYK modes with `-3`. `pillow_c_image_save_jpeg_quality` accepts an integer quality value, maps `-1` to the encoder default, clamps other values into WIC's `0..100` quality range, and is used by the facade for `Image.Save(..., { Quality: n })` and `quality`.
 
 `pillow_c_image_open_tiff`, `pillow_c_image_open_tiff_frame`, `pillow_c_image_frame_count_tiff`, and `pillow_c_image_save_tiff` keep TIFF decode/encode inside the DLL through WIC. The current TIFF path supports lossless `L`, `RGB`, and `RGBA` image handles. Native open converts supported TIFF pixel formats into the DLL's public row-major byte order. `pillow_c_image_open_tiff` opens frame `0`; `pillow_c_image_open_tiff_frame` opens a zero-based frame index and returns `-3` for negative or out-of-range frames. `pillow_c_image_frame_count_tiff` returns WIC's decoded frame count after validating the container. Native save packs RGB/RGBA to WIC's BGR/BGRA encoder formats inside C++ and rejects palette, LA, mode `1`, and CMYK modes with `-3`.
 
