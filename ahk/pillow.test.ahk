@@ -747,6 +747,33 @@ PillowTestImageOpenTracksFileFormatMetadata(*) {
 
 AhkTest.Test("Pillow Image.Open tracks file format metadata", PillowTestImageOpenTracksFileFormatMetadata)
 
+PillowTestImageOpenTriesExplicitFormatCandidates(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60, 70, 80]))
+    pngPath := PillowTestTempPngPath("candidate-source")
+    disguisedPath := PillowTestTempJpegPath("candidate-disguised")
+    opened := 0
+    try {
+        image.Save(pngPath, "PNG")
+        PillowTestWriteFileBytes(disguisedPath, PillowTestReadFileBytes(pngPath))
+
+        opened := Pillow.Image.Open(disguisedPath, ["JPEG", "PNG"])
+
+        AhkTest.AssertEqual("PNG", opened.Format)
+        AhkTest.AssertEqual("RGBA", opened.Mode)
+        AhkTest.AssertEqual([2, 1], opened.Size)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80], PillowTestBufferToArray(opened.ToBytes()))
+    } finally {
+        if IsObject(opened)
+            opened.Close()
+        PillowTestDeleteFile(disguisedPath)
+        PillowTestDeleteFile(pngPath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Open tries explicit format candidates", PillowTestImageOpenTriesExplicitFormatCandidates)
+
 PillowTestImageOpenSavePngRejectsUnsupportedInputs(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("CMYK", [1, 1], PillowTestBuffer([1, 2, 3, 4]))

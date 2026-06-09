@@ -2260,19 +2260,27 @@ class Pillow {
         static Open(path, formats := unset) {
             if !(path is String)
                 throw Error("Pillow.Image.Open expects a file path", -1)
-            format := Pillow.Image.ResolveOpenFormat(path, IsSet(formats) ? formats : unset)
+            openFormats := Pillow.Image.ResolveOpenFormats(path, IsSet(formats) ? formats : unset)
 
             pathBytes := Pillow.Image.Utf8Buffer(path)
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
-                "Ptr", pathBytes,
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            image := Pillow.WrapImageHandle(outHandle)
-            image.Format := format
-            return image
+            lastStatus := -3
+            for format in openFormats {
+                outHandle := 0
+                lastStatus := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
+                    "Ptr", pathBytes,
+                    "Ptr*", &outHandle,
+                    "Int"
+                )
+                if lastStatus = 0 {
+                    image := Pillow.WrapImageHandle(outHandle)
+                    image.Format := format
+                    return image
+                }
+                if outHandle
+                    Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", outHandle, "Int"))
+            }
+            Pillow.CheckStatus(lastStatus)
         }
 
         static New(modeName, size, color := unset) {
@@ -2522,12 +2530,21 @@ class Pillow {
         }
 
         static ResolveOpenFormat(path, formats := unset) {
+            return Pillow.Image.ResolveOpenFormats(path, IsSet(formats) ? formats : unset)[1]
+        }
+
+        static ResolveOpenFormats(path, formats := unset) {
             if IsSet(formats) {
-                if !IsObject(formats) || formats.Length != 1
-                    throw Error("Pillow.Image.Open currently supports one explicit format", -1)
-                return Pillow.Image.NormalizeFileFormat(formats[1])
+                if !IsObject(formats)
+                    throw Error("Pillow.Image.Open formats expects an array", -1)
+                if formats.Length < 1
+                    throw Error("Pillow.Image.Open formats must not be empty", -1)
+                normalized := []
+                for format in formats
+                    normalized.Push(Pillow.Image.NormalizeFileFormat(format))
+                return normalized
             }
-            return Pillow.Image.FormatFromPath(path)
+            return [Pillow.Image.FormatFromPath(path)]
         }
 
         static ResolveSaveFormat(path, format := unset) {
