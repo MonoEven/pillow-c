@@ -3041,6 +3041,8 @@ class Pillow {
         static FormatFromPath(path) {
             if RegExMatch(path, "i)\.bmp$")
                 return "BMP"
+            if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
+                return "PPM"
             if RegExMatch(path, "i)\.png$")
                 return "PNG"
             if RegExMatch(path, "i)\.jpe?g$")
@@ -3058,7 +3060,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF"
+            if name = "BMP" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }

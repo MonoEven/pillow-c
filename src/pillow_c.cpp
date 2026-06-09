@@ -1540,6 +1540,176 @@ bool write_binary_file(const char* path, const std::vector<std::uint8_t>& data)
     return ok;
 }
 
+bool ppm_is_space(std::uint8_t value)
+{
+    return value == ' ' || value == '\t' || value == '\r' || value == '\n' || value == '\f' || value == '\v';
+}
+
+bool ppm_skip_space_and_comments(const std::vector<std::uint8_t>& data, std::size_t* offset)
+{
+    if (!offset) {
+        return false;
+    }
+    while (*offset < data.size()) {
+        if (ppm_is_space(data[*offset])) {
+            ++(*offset);
+            continue;
+        }
+        if (data[*offset] == '#') {
+            while (*offset < data.size() && data[*offset] != '\n' && data[*offset] != '\r') {
+                ++(*offset);
+            }
+            continue;
+        }
+        break;
+    }
+    return *offset < data.size();
+}
+
+bool ppm_read_positive_int(const std::vector<std::uint8_t>& data, std::size_t* offset, int* out)
+{
+    if (!offset || !out || !ppm_skip_space_and_comments(data, offset)) {
+        return false;
+    }
+    std::uint64_t value = 0;
+    bool has_digit = false;
+    while (*offset < data.size()) {
+        const std::uint8_t ch = data[*offset];
+        if (ch < '0' || ch > '9') {
+            break;
+        }
+        has_digit = true;
+        value = value * 10u + static_cast<std::uint64_t>(ch - '0');
+        if (value > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
+            return false;
+        }
+        ++(*offset);
+    }
+    if (!has_digit || value == 0) {
+        return false;
+    }
+    *out = static_cast<int>(value);
+    return true;
+}
+
+int ppm_data_offset_after_header(const std::vector<std::uint8_t>& data, std::size_t offset, std::size_t* out_offset)
+{
+    if (!out_offset || offset >= data.size() || !ppm_is_space(data[offset])) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (data[offset] == '\r' && offset + 1u < data.size() && data[offset + 1u] == '\n') {
+        offset += 2u;
+    } else {
+        ++offset;
+    }
+    if (offset >= data.size()) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    *out_offset = offset;
+    return PILLOW_C_OK;
+}
+
+void append_ascii_int(std::vector<std::uint8_t>& out, int value)
+{
+    char buf[32] = {};
+    const int written = std::snprintf(buf, sizeof(buf), "%d", value);
+    for (int i = 0; i < written; ++i) {
+        out.push_back(static_cast<std::uint8_t>(buf[i]));
+    }
+}
+
+int open_ppm_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data) || data.size() < 3u || data[0] != 'P' || (data[1] != '5' && data[1] != '6')) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        const int mode = data[1] == '5' ? PILLOW_C_MODE_L : PILLOW_C_MODE_RGB;
+        const int channels = mode == PILLOW_C_MODE_L ? 1 : 3;
+        std::size_t offset = 2u;
+        int width = 0;
+        int height = 0;
+        int max_value = 0;
+        if (!ppm_read_positive_int(data, &offset, &width) ||
+            !ppm_read_positive_int(data, &offset, &height) ||
+            !ppm_read_positive_int(data, &offset, &max_value)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (max_value != 255) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::size_t pixel_offset = 0;
+        int status = ppm_data_offset_after_header(data, offset, &pixel_offset);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::size_t stride = 0;
+        std::size_t size = 0;
+        if (!checked_image_size(width, height, channels, &stride, &size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (size > data.size() - pixel_offset) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+
+        auto* image = new PillowCImage{
+            width,
+            height,
+            mode,
+            channels,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        std::memcpy(image->pixels.data(), data.data() + pixel_offset, size);
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int save_ppm_image(const PillowCImage* image, const char* path)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!((image->mode == PILLOW_C_MODE_L && image->channels == 1) ||
+          (image->mode == PILLOW_C_MODE_RGB && image->channels == 3))) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        std::vector<std::uint8_t> out;
+        out.reserve(32u + image->pixels.size());
+        out.push_back('P');
+        out.push_back(image->mode == PILLOW_C_MODE_L ? '5' : '6');
+        out.push_back('\n');
+        append_ascii_int(out, image->width);
+        out.push_back(' ');
+        append_ascii_int(out, image->height);
+        out.push_back('\n');
+        out.push_back('2');
+        out.push_back('5');
+        out.push_back('5');
+        out.push_back('\n');
+        out.insert(out.end(), image->pixels.begin(), image->pixels.end());
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 int bmp_row_stride(int width, int bits_per_pixel, std::size_t* out_stride)
 {
     if (width <= 0 || bits_per_pixel <= 0 || !out_stride) {
@@ -12504,6 +12674,20 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_bmp(
     const char* path)
 {
     return save_bmp_image(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_ppm(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_ppm_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_ppm(
+    const PillowCImage* image,
+    const char* path)
+{
+    return save_ppm_image(image, path);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_png(

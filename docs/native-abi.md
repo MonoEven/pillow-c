@@ -76,6 +76,8 @@ Image lifecycle and metadata:
 - `pillow_c_image_put_data`
 - `pillow_c_image_open_bmp`
 - `pillow_c_image_save_bmp`
+- `pillow_c_image_open_ppm`
+- `pillow_c_image_save_ppm`
 - `pillow_c_image_open_png`
 - `pillow_c_image_save_png`
 - `pillow_c_image_save_png_compress_level`
@@ -297,6 +299,8 @@ Reusable target operations:
 `pillow_c_image_set_raw_bytes` and `pillow_c_image_get_raw_bytes` implement common Pillow raw decoder/encoder modes without AHK-side byte reordering. The current raw decode support covers `1`->`1`, `L`->`L`, `LA`->`LA`, `CMYK`->`CMYK`, `RGB` target raw modes `RGB`, `RGBX`, `BGR`, `BGRX`, `XBGR`, and `RGBA` target raw modes `RGBA`, `BGRA`, `ARGB`, `ABGR`, `BGR`. Mode `1` raw bytes are bit-packed most-significant-bit first per row, while native image storage remains one byte per pixel. Decode accepts a non-negative source stride, where `0` means tightly packed, and negative orientation reads rows bottom-up. Raw encode support covers matching direct modes plus common `RGB`/`RGBA` BGR-family packers; callers can first pass a null output pointer to query the required byte size.
 
 `pillow_c_image_open_bmp` and `pillow_c_image_save_bmp` are the first native file-format entry points. Paths are UTF-8 strings from AHK and are opened through Windows wide-path APIs. The current BMP support is intentionally uncompressed Windows BMP: open accepts 8-bit indexed/grayscale, 24-bit BGR, and 32-bit BGRA; save supports `L`, `RGB`, and `RGBA`. `RGB` save bytes match Pillow's 24-bit BMP output, `L` saves with a grayscale palette, and `RGBA` saves as 32-bit BGRA like Pillow, which opens back as `RGB`.
+
+`pillow_c_image_open_ppm` and `pillow_c_image_save_ppm` keep binary Netpbm PGM/PPM files in the DLL. The current PPM path supports `P5` grayscale as mode `L` and `P6` truecolor as mode `RGB`, requires `maxval=255`, accepts standard Netpbm whitespace and comments in headers, and writes Pillow-style `P5`/`P6` headers for `L` and `RGB` handles. Plain-text `P1`/`P2`/`P3`, bitmap `P4`, and high-bit-depth Netpbm variants remain future surfaces.
 
 `pillow_c_image_open_png`, `pillow_c_image_save_png`, `pillow_c_image_save_png_compress_level`, and `pillow_c_image_save_png_options` keep PNG decode/encode inside the DLL. The current PNG path supports `L`, `LA`, `P`, `RGB`, and `RGBA` image handles. Native open converts supported source PNG pixel formats into the DLL's row-major public modes, preserves short RGB palettes for `P`, and reads `pHYs` DPI metadata into the handle. Native save writes valid PNG files from those modes after any required RGB/BGR channel packing inside C++; `LA` and `P` default saves use native PNG chunk writing so they reopen with Pillow-style mode and palette semantics. `pillow_c_image_save_png_compress_level` accepts Pillow-style `-1` default plus `0..9`; level `0` writes native stored zlib output for supported modes, while nonzero levels currently reuse the existing encoder path. `pillow_c_image_save_png_options` is the extensible PNG save-options ABI used by the facade for `compress_level` and `dpi`; positive DPI values are converted to PNG `pHYs` pixels-per-meter values with Pillow's rounding formula, and invalid or partial DPI values return `-3`.
 

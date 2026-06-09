@@ -181,6 +181,10 @@ PillowTestTempGifPath(name) {
     return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) ".gif"
 }
 
+PillowTestTempPpmPath(name, ext := "ppm") {
+    return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) "." ext
+}
+
 PillowTestDeleteFile(path) {
     try FileDelete path
 }
@@ -802,6 +806,88 @@ PillowTestImageOpenSaveBmpRejectsUnsupportedInputs(*) {
 }
 
 AhkTest.Test("Pillow Image.Open and Save BMP reject unsupported inputs", PillowTestImageOpenSaveBmpRejectsUnsupportedInputs)
+
+PillowTestImageSaveAndOpenPpmUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    l := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 64, 128, 255]))
+    rgb := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    lPath := PillowTestTempPpmPath("save-l", "pgm")
+    rgbPath := PillowTestTempPpmPath("save-rgb", "ppm")
+    pnmPath := PillowTestTempPpmPath("save-rgb-alias", "pnm")
+    loadedL := 0
+    loadedRgb := 0
+    loadedPnm := 0
+    try {
+        l.Save(lPath)
+        rgb.Save(rgbPath, "PPM")
+        rgb.Save(pnmPath)
+
+        AhkTest.AssertEqual([
+            0x50, 0x35, 0x0A,
+            0x34, 0x20, 0x31, 0x0A,
+            0x32, 0x35, 0x35, 0x0A,
+            0, 64, 128, 255,
+        ], PillowTestReadFileBytes(lPath))
+        AhkTest.AssertEqual([
+            0x50, 0x36, 0x0A,
+            0x32, 0x20, 0x31, 0x0A,
+            0x32, 0x35, 0x35, 0x0A,
+            1, 2, 3, 4, 5, 6,
+        ], PillowTestReadFileBytes(rgbPath))
+
+        loadedL := Pillow.Image.Open(lPath)
+        loadedRgb := Pillow.Image.Open(rgbPath, ["PPM"])
+        loadedPnm := Pillow.Image.Open(pnmPath)
+
+        AhkTest.AssertEqual("PPM", loadedL.Format)
+        AhkTest.AssertEqual("L", loadedL.Mode)
+        AhkTest.AssertEqual([4, 1], loadedL.Size)
+        AhkTest.AssertEqual([0, 64, 128, 255], PillowTestBufferToArray(loadedL.ToBytes()))
+
+        AhkTest.AssertEqual("PPM", loadedRgb.Format)
+        AhkTest.AssertEqual("RGB", loadedRgb.Mode)
+        AhkTest.AssertEqual([2, 1], loadedRgb.Size)
+        AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowTestBufferToArray(loadedRgb.ToBytes()))
+        AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowTestBufferToArray(loadedPnm.ToBytes()))
+    } finally {
+        for image in [loadedPnm, loadedRgb, loadedL, rgb, l] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(pnmPath)
+        PillowTestDeleteFile(rgbPath)
+        PillowTestDeleteFile(lPath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save and Image.Open support PPM through native path", PillowTestImageSaveAndOpenPpmUsesNativePath)
+
+PillowTestImageOpenSavePpmRejectsUnsupportedInputs(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
+    badPath := PillowTestTempPpmPath("bad")
+    try {
+        try {
+            image.Save(badPath, "PPM")
+            AhkTest.Fail("Expected Image.Save to reject unsupported RGBA PPM")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+
+        PillowTestWriteFileBytes(badPath, [0x50, 0x36, 0x0A, 0x31, 0x20, 0x31, 0x0A, 0x31, 0x32, 0x37, 0x0A, 1, 2, 3])
+        try {
+            Pillow.Image.Open(badPath, ["PPM"])
+            AhkTest.Fail("Expected Image.Open to reject invalid PPM")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+    } finally {
+        PillowTestDeleteFile(badPath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Open and Save PPM reject unsupported inputs", PillowTestImageOpenSavePpmRejectsUnsupportedInputs)
 
 PillowTestImageSaveAndOpenPngUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
