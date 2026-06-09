@@ -7390,6 +7390,26 @@ PillowTestImageSplitPreservesPaletteMode(*) {
 
 AhkTest.Test("Pillow Image.Split preserves P mode and palette", PillowTestImageSplitPreservesPaletteMode)
 
+PillowTestImageSplitCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([1, 2, 3, 4, 10, 20, 30, 40]))
+    bands := []
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        bands := source.Split()
+
+        for index, band in bands
+            PillowTestAssertDerivedInfoCopy(source, band, "split_" index)
+    } finally {
+        for band in bands
+            band.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Split copies info metadata", PillowTestImageSplitCopiesInfoMetadata)
+
 PillowTestImageMergeStaticUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     r := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([1, 2]))
@@ -7437,6 +7457,35 @@ PillowTestImageMergeSupportsLaMode(*) {
 }
 
 AhkTest.Test("Pillow Image.Merge supports LA mode", PillowTestImageMergeSupportsLaMode)
+
+PillowTestImageMergeCopiesFirstBandInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    r := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([1, 2]))
+    g := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([3, 4]))
+    b := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([5, 6]))
+    merged := 0
+    try {
+        r.Format := "PNG"
+        r.Info["author"] := "ahk"
+        r.Info["first_only"] := 1
+        g.Format := "JPEG"
+        g.Info["author"] := "g"
+        g.Info["g_only"] := 1
+        merged := Pillow.Image.Merge("RGB", [r, g, b])
+
+        PillowTestAssertDerivedInfoCopy(r, merged, "merge")
+        AhkTest.AssertEqual(1, merged.Info["first_only"])
+        AhkTest.AssertTrue(!merged.Info.Has("g_only"))
+    } finally {
+        if IsObject(merged)
+            merged.Close()
+        b.Close()
+        g.Close()
+        r.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Merge copies first band info metadata", PillowTestImageMergeCopiesFirstBandInfoMetadata)
 
 PillowTestImagePutAlphaUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -7493,6 +7542,36 @@ PillowTestImagePutAlphaReturnsLaForLMode(*) {
 }
 
 AhkTest.Test("Pillow Image.PutAlpha returns LA for L and LA sources", PillowTestImagePutAlphaReturnsLaForLMode)
+
+PillowTestImagePutAlphaCopiesInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 10, 20, 30]))
+    alpha := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([50, 60]))
+    byValue := 0
+    byImage := 0
+    try {
+        source.Format := "PNG"
+        source.Info["author"] := "ahk"
+        alpha.Format := "TIFF"
+        alpha.Info["author"] := "alpha"
+        alpha.Info["alpha_only"] := 1
+        byValue := source.PutAlpha(7)
+        byImage := source.PutAlpha(alpha)
+
+        PillowTestAssertDerivedInfoCopy(source, byValue, "putalpha_value")
+        PillowTestAssertDerivedInfoCopy(source, byImage, "putalpha_image")
+        AhkTest.AssertTrue(!byImage.Info.Has("alpha_only"))
+    } finally {
+        if IsObject(byImage)
+            byImage.Close()
+        if IsObject(byValue)
+            byValue.Close()
+        alpha.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.PutAlpha copies info metadata", PillowTestImagePutAlphaCopiesInfoMetadata)
 
 PillowTestImagePasteMutatesTargetThroughNativeHandleOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -9118,6 +9197,33 @@ PillowTestImageAlphaCompositeStaticUsesNativeHandles(*) {
 }
 
 AhkTest.Test("Pillow Image.AlphaComposite composites RGBA images through native handles", PillowTestImageAlphaCompositeStaticUsesNativeHandles)
+
+PillowTestImageAlphaCompositeCopiesDstInfoMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    dst := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([10, 20, 30, 255]))
+    src := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([200, 210, 220, 128]))
+    composited := 0
+    try {
+        dst.Format := "PNG"
+        dst.Info["author"] := "ahk"
+        dst.Info["dst_only"] := 1
+        src.Format := "TIFF"
+        src.Info["author"] := "src"
+        src.Info["src_only"] := 1
+        composited := Pillow.Image.AlphaComposite(dst, src)
+
+        PillowTestAssertDerivedInfoCopy(dst, composited, "alpha_composite")
+        AhkTest.AssertEqual(1, composited.Info["dst_only"])
+        AhkTest.AssertTrue(!composited.Info.Has("src_only"))
+    } finally {
+        if IsObject(composited)
+            composited.Close()
+        src.Close()
+        dst.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.AlphaComposite copies dst info metadata", PillowTestImageAlphaCompositeCopiesDstInfoMetadata)
 
 PillowTestImageAlphaCompositeMutatesThroughNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

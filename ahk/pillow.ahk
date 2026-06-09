@@ -2230,7 +2230,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return dst.WrapDerivedHandle(outHandle)
         }
 
         static Merge(modeName, bands) {
@@ -2246,7 +2246,7 @@ class Pillow {
                 "Ptr*", &outHandle,
                 "Int"
             ))
-            return Pillow.WrapImageHandle(outHandle)
+            return bands[1].WrapDerivedHandle(outHandle)
         }
 
         static RoundClipU8(value) {
@@ -3196,7 +3196,7 @@ class Pillow {
             ))
             bands := []
             loop bandCount
-                bands.Push(Pillow.WrapImageHandle(NumGet(outHandles, (A_Index - 1) * A_PtrSize, "Ptr")))
+                bands.Push(this.WrapDerivedHandle(NumGet(outHandles, (A_Index - 1) * A_PtrSize, "Ptr")))
             return bands
         }
 
@@ -3259,7 +3259,7 @@ class Pillow {
                     "Int"
                 ))
             }
-            return Pillow.WrapImageHandle(outHandle)
+            return this.WrapDerivedHandle(outHandle)
         }
 
         Copy() {
