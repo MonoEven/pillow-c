@@ -123,6 +123,8 @@ The future `pillow.ahk` layer should feel close to Python Pillow:
 - `Pillow.ImageEnhance.Brightness(...).Enhance(...)`
 - `Pillow.ImageEnhance.Sharpness(...).Enhance(...)`
 - `Pillow.ImageStat.Stat(...)`
+- `Pillow.ImageColor.getrgb(...)`
+- `Pillow.ImageColor.getcolor(...)`
 - `image.GetBands(...)`
 - `image.GetChannel(...)`
 - `image.Split(...)`
@@ -158,6 +160,8 @@ Resize behavior follows Pillow 11.3.0 for the supported 8-bit modes, including v
 `Image.open` and `image.save` expose native file-format paths for BMP, PNG, JPEG, TIFF, and GIF. The BMP layer parses and writes uncompressed Windows BMP files, including Pillow-compatible 24-bit RGB save bytes, 8-bit grayscale BMP, and Pillow-style 32-bit RGBA BMP saves that reopen as RGB. The PNG layer keeps `L`, `LA`, `P`, `RGB`, and `RGBA` decode/encode work inside the DLL; WIC handles the common codec path while native chunk writing preserves Pillow-style `LA` and palette-mode PNG semantics. The JPEG layer keeps lossy `L` and `RGB` decode/encode in the DLL through WIC, with component-count probing so grayscale JPEGs reopen as `L` instead of being promoted by the wrapper. The TIFF layer keeps WIC-backed `L`, `RGB`, and `RGBA` open/save in the DLL for lossless interchange and exposes native frame count plus frame-open ABI so the facade can implement `n_frames`, `is_animated`, `tell`, and `seek` for basic multiframe TIFF files. The GIF layer opens frame `0` as mode `P` with palette metadata, opens verified later frames as `RGB`, and exposes native frame count plus frame-open ABI for basic sequence navigation; full animation composition, duration/disposal metadata, and `save_all` remain future surfaces.
 
 `Image.getdata` and `Image.putdata` expose Pillow-like pixel sequence ergonomics while keeping the native handle as the storage authority. `GetData` exports a bulk byte snapshot, and `PutData` packs AHK values once before calling the native `put_data` prefix-writer instead of crossing the DLL boundary per pixel.
+
+`ImageColor.getrgb` and `ImageColor.getcolor` live in the AHK facade because color parsing is call-boundary normalization, not an image hot path. The facade follows Pillow's named CSS colors, hex, `rgb(...)`, `rgba(...)`, `hsl(...)`, and `hsv(...)` string parsing, converts to the target mode once, and then passes caller-packed bytes into native fill, draw, paste, expand, pad, and transform operations.
 
 `ImageOps.expand`, `ImageOps.pad`, and related facade fill parsing support Pillow-style scalar and tuple fill colors for current core modes, including `LA` single-value fills as transparent luminance and two-value `[l, a]` fills before dispatching to native geometry paths.
 

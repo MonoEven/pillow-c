@@ -150,6 +150,71 @@ PillowTestImageModeHelpersMatchPillowModeTable(*) {
 
 AhkTest.Test("Pillow Image mode helpers match Pillow mode table", PillowTestImageModeHelpersMatchPillowModeTable)
 
+PillowTestImageColorParsesPillowColorStrings(*) {
+    AhkTest.AssertEqual([255, 0, 0], Pillow.ImageColor.GetRgb("red"))
+    AhkTest.AssertEqual([170, 187, 204], Pillow.ImageColor.GetRgb("#abc"))
+    AhkTest.AssertEqual([170, 187, 204, 221], Pillow.ImageColor.GetRgb("#abcd"))
+    AhkTest.AssertEqual([10, 20, 30], Pillow.ImageColor.GetRgb("rgb(10, 20, 30)"))
+    AhkTest.AssertEqual([26, 51, 77], Pillow.ImageColor.GetRgb("rgb(10%,20%,30%)"))
+    AhkTest.AssertEqual([10, 20, 30, 40], Pillow.ImageColor.GetRgb("rgba(10,20,30,40)"))
+    AhkTest.AssertEqual([0, 255, 0], Pillow.ImageColor.GetRgb("hsl(120,100%,50%)"))
+    AhkTest.AssertEqual([0, 0, 128], Pillow.ImageColor.GetRgb("hsv(240,100%,50%)"))
+
+    AhkTest.AssertEqual(76, Pillow.ImageColor.GetColor("red", "L"))
+    AhkTest.AssertEqual([76, 255], Pillow.ImageColor.GetColor("red", "LA"))
+    AhkTest.AssertEqual([255, 0, 0, 40], Pillow.ImageColor.GetColor("rgba(255,0,0,40)", "RGBA"))
+    AhkTest.AssertEqual([255, 0, 0], Pillow.ImageColor.getrgb("Red"))
+    AhkTest.AssertEqual(184, Pillow.ImageColor.getcolor("#aabbccdd", "L"))
+
+    try {
+        Pillow.ImageColor.GetRgb("red ")
+        AhkTest.Fail("Expected ImageColor to reject unknown color strings")
+    } catch Error as err {
+        AhkTest.AssertTrue(InStr(err.Message, "unknown color specifier") > 0)
+    }
+}
+
+AhkTest.Test("Pillow ImageColor parses Pillow color strings", PillowTestImageColorParsesPillowColorStrings)
+
+PillowTestColorStringsFlowThroughNativeImageOperations(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := 0
+    rgba := 0
+    gray := 0
+    expanded := 0
+    drawn := 0
+    try {
+        rgb := Pillow.Image.New("RGB", [2, 1], "red")
+        AhkTest.AssertEqual([255, 0, 0, 255, 0, 0], PillowTestBufferToArray(rgb.ToBytes()))
+
+        rgba := Pillow.Image.New("RGBA", [1, 1], "#01020304")
+        AhkTest.AssertEqual([1, 2, 3, 4], PillowTestBufferToArray(rgba.ToBytes()))
+
+        gray := Pillow.Image.New("L", [1, 1], 3)
+        expanded := Pillow.ImageOps.Expand(gray, 1, "red")
+        AhkTest.AssertEqual([
+            76, 76, 76,
+            76, 3, 76,
+            76, 76, 76,
+        ], PillowTestBufferToArray(expanded.ToBytes()))
+
+        drawn := Pillow.Image.New("RGB", [4, 3], "black")
+        Pillow.ImageDraw.Draw(drawn).Rectangle([0, 0, 3, 2], "rgb(10,20,30)", "white", 1)
+        AhkTest.AssertEqual([
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 10, 20, 30, 10, 20, 30, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+        ], PillowTestBufferToArray(drawn.ToBytes()))
+    } finally {
+        for image in [drawn, expanded, gray, rgba, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow color strings flow through native image operations", PillowTestColorStringsFlowThroughNativeImageOperations)
+
 PillowTestPythonStyleUnderscoreAliasesUseNativePaths(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     dst := Pillow.Image.FromBytes("RGBA", [1, 1], PillowTestBuffer([1, 2, 3, 255]))
