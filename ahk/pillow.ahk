@@ -62,6 +62,19 @@ class Pillow {
             return image.Transpose(Pillow.Transpose.FLIP_TOP_BOTTOM)
         }
 
+        static ExifTranspose(image, in_place := false) {
+            Pillow.ImageOps.RequireImageHandle(image, "ExifTranspose")
+            if image.Info.Has("exif")
+                throw Error("Pillow.ImageOps.ExifTranspose currently supports only images without EXIF orientation metadata", -1)
+            if in_place
+                return
+            return image.Copy()
+        }
+
+        static exif_transpose(image, in_place := false) {
+            return Pillow.ImageOps.ExifTranspose(image, in_place)
+        }
+
         static Deform(image, deformer, resample := unset) {
             Pillow.ImageOps.RequireImageHandle(image, "Deform")
             if !IsObject(deformer) || !HasMethod(deformer, "getmesh")

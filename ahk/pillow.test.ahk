@@ -191,6 +191,41 @@ PillowTestPythonStyleGeneratorAndDrawAliasesUseNativePaths(*) {
 
 AhkTest.Test("Pillow Python-style generator and draw aliases use native paths", PillowTestPythonStyleGeneratorAndDrawAliasesUseNativePaths)
 
+PillowTestImageOpsExifTransposeNoExifUsesNativeCopyPath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([1, 2, 3, 4, 5, 6]))
+    copied := 0
+    try {
+        source.Info["author"] := "ahk"
+        copied := Pillow.ImageOps.exif_transpose(source)
+        AhkTest.AssertTrue(copied != source)
+        AhkTest.AssertEqual("RGB", copied.Mode)
+        AhkTest.AssertEqual([2, 1], copied.Size)
+        AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowTestBufferToArray(copied.ToBytes()))
+        PillowTestAssertDerivedInfoCopy(source, copied, "exif_transpose")
+        copied.PutPixel([0, 0], [9, 8, 7])
+        AhkTest.AssertEqual([1, 2, 3], PillowTestArraySlice(PillowTestBufferToArray(source.ToBytes()), 1, 3))
+
+        returned := Pillow.ImageOps.exif_transpose(source, true)
+        AhkTest.AssertEqual("", returned)
+        AhkTest.AssertEqual([1, 2, 3, 4, 5, 6], PillowTestBufferToArray(source.ToBytes()))
+
+        source.Info["exif"] := "orientation bytes"
+        try {
+            Pillow.ImageOps.exif_transpose(source)
+            AhkTest.Fail("Expected ImageOps.exif_transpose to reject explicit EXIF metadata until orientation parsing is implemented")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "EXIF orientation") > 0)
+        }
+    } finally {
+        if IsObject(copied)
+            copied.Close()
+        source.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.exif_transpose copies no-EXIF images through native path", PillowTestImageOpsExifTransposeNoExifUsesNativeCopyPath)
+
 PillowTestImageNewCreatesModeAwareNativeImage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("RGB", [2, 1])
