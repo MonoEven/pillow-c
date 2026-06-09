@@ -992,6 +992,13 @@ struct PngHeaderInfo {
     int color_type;
 };
 
+struct GifMetadata {
+    int duration_ms = -1;
+    int loop = -1;
+    int disposal = 0;
+    int background = -1;
+};
+
 bool read_png_header_info(const char* path, PngHeaderInfo* info)
 {
     if (!path || !info) {
@@ -1016,6 +1023,164 @@ bool read_png_header_info(const char* path, PngHeaderInfo* info)
     info->bit_depth = header[24];
     info->color_type = header[25];
     return true;
+}
+
+bool skip_gif_sub_blocks(const std::vector<std::uint8_t>& data, std::size_t* pos)
+{
+    if (!pos) {
+        return false;
+    }
+    while (*pos < data.size()) {
+        const std::size_t block_size = data[(*pos)++];
+        if (block_size == 0u) {
+            return true;
+        }
+        if (block_size > data.size() - *pos) {
+            return false;
+        }
+        *pos += block_size;
+    }
+    return false;
+}
+
+bool gif_app_extension_is_looping(const std::uint8_t* data, std::size_t size)
+{
+    return size == 11u &&
+           (std::memcmp(data, "NETSCAPE2.0", 11u) == 0 ||
+            std::memcmp(data, "ANIMEXTS1.0", 11u) == 0);
+}
+
+bool read_gif_metadata(const char* path, int frame_index, GifMetadata* out)
+{
+    if (!path || frame_index < 0 || !out) {
+        return false;
+    }
+    *out = GifMetadata{};
+
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data) || data.size() < 13u) {
+        return false;
+    }
+    if (!(std::memcmp(data.data(), "GIF87a", 6u) == 0 ||
+          std::memcmp(data.data(), "GIF89a", 6u) == 0)) {
+        return false;
+    }
+
+    const std::uint8_t logical_packed = data[10];
+    out->background = data[11];
+
+    std::size_t pos = 13u;
+    if ((logical_packed & 0x80u) != 0u) {
+        const std::size_t global_color_count = std::size_t{1} << ((logical_packed & 0x07u) + 1u);
+        const std::size_t global_color_table_size = global_color_count * 3u;
+        if (global_color_table_size > data.size() - pos) {
+            return false;
+        }
+        pos += global_color_table_size;
+    }
+
+    int pending_duration_cs = -1;
+    int pending_disposal = 0;
+    int loop_count = -1;
+    int current_frame = 0;
+
+    while (pos < data.size()) {
+        const std::uint8_t introducer = data[pos++];
+        if (introducer == 0x3bu) {
+            return false;
+        }
+        if (introducer == 0x21u) {
+            if (pos >= data.size()) {
+                return false;
+            }
+            const std::uint8_t label = data[pos++];
+            if (label == 0xf9u) {
+                if (pos >= data.size()) {
+                    return false;
+                }
+                const std::size_t block_size = data[pos++];
+                if (block_size < 4u || block_size > data.size() - pos) {
+                    return false;
+                }
+                const std::uint8_t packed = data[pos];
+                pending_disposal = (packed >> 2) & 0x07;
+                pending_duration_cs = static_cast<int>(read_le16(data.data() + pos + 1u));
+                pos += block_size;
+                if (pos >= data.size() || data[pos] != 0u) {
+                    return false;
+                }
+                ++pos;
+            } else if (label == 0xffu) {
+                if (pos >= data.size()) {
+                    return false;
+                }
+                const std::size_t app_size = data[pos++];
+                if (app_size > data.size() - pos) {
+                    return false;
+                }
+                const std::uint8_t* app = data.data() + pos;
+                const bool is_looping_app = gif_app_extension_is_looping(app, app_size);
+                pos += app_size;
+                bool terminated = false;
+                while (pos < data.size()) {
+                    const std::size_t block_size = data[pos++];
+                    if (block_size == 0u) {
+                        terminated = true;
+                        break;
+                    }
+                    if (block_size > data.size() - pos) {
+                        return false;
+                    }
+                    if (is_looping_app && block_size >= 3u && data[pos] == 1u) {
+                        loop_count = static_cast<int>(read_le16(data.data() + pos + 1u));
+                    }
+                    pos += block_size;
+                }
+                if (!terminated) {
+                    return false;
+                }
+            } else if (!skip_gif_sub_blocks(data, &pos)) {
+                return false;
+            }
+            continue;
+        }
+        if (introducer != 0x2cu) {
+            return false;
+        }
+
+        if (9u > data.size() - pos) {
+            return false;
+        }
+        const std::uint8_t image_packed = data[pos + 8u];
+        pos += 9u;
+        if ((image_packed & 0x80u) != 0u) {
+            const std::size_t local_color_count = std::size_t{1} << ((image_packed & 0x07u) + 1u);
+            const std::size_t local_color_table_size = local_color_count * 3u;
+            if (local_color_table_size > data.size() - pos) {
+                return false;
+            }
+            pos += local_color_table_size;
+        }
+        if (pos >= data.size()) {
+            return false;
+        }
+        ++pos; // LZW minimum code size.
+        if (!skip_gif_sub_blocks(data, &pos)) {
+            return false;
+        }
+
+        if (current_frame == frame_index) {
+            out->duration_ms = pending_duration_cs >= 0 ? pending_duration_cs * 10 : -1;
+            out->loop = loop_count;
+            out->disposal = pending_disposal;
+            return true;
+        }
+        ++current_frame;
+        pending_duration_cs = -1;
+        pending_disposal = 0;
+    }
+
+    return false;
 }
 
 bool jpeg_is_sof_marker(std::uint8_t marker)
@@ -11739,6 +11904,39 @@ extern "C" __declspec(dllexport) int pillow_c_image_frame_count_gif(
     int* out_count)
 {
     return wic_container_frame_count(path, GUID_ContainerFormatGif, out_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_gif_metadata(
+    const char* path,
+    int frame_index,
+    int* out_duration_ms,
+    int* out_loop,
+    int* out_disposal,
+    int* out_background)
+{
+    if (!path || !out_duration_ms || !out_loop || !out_disposal || !out_background) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_duration_ms = -1;
+    *out_loop = -1;
+    *out_disposal = -1;
+    *out_background = -1;
+    if (frame_index < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    try {
+        GifMetadata metadata;
+        if (!read_gif_metadata(path, frame_index, &metadata)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        *out_duration_ms = metadata.duration_ms;
+        *out_loop = metadata.loop;
+        *out_disposal = metadata.disposal;
+        *out_background = metadata.background;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_gif(

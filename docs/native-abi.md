@@ -86,6 +86,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_open_gif`
 - `pillow_c_image_open_gif_frame`
 - `pillow_c_image_frame_count_gif`
+- `pillow_c_image_gif_metadata`
 - `pillow_c_image_save_gif`
 - `pillow_c_image_linear_gradient`
 - `pillow_c_image_radial_gradient`
@@ -297,7 +298,7 @@ Reusable target operations:
 
 `pillow_c_image_open_tiff`, `pillow_c_image_open_tiff_frame`, `pillow_c_image_frame_count_tiff`, and `pillow_c_image_save_tiff` keep TIFF decode/encode inside the DLL through WIC. The current TIFF path supports lossless `L`, `RGB`, and `RGBA` image handles. Native open converts supported TIFF pixel formats into the DLL's public row-major byte order. `pillow_c_image_open_tiff` opens frame `0`; `pillow_c_image_open_tiff_frame` opens a zero-based frame index and returns `-3` for negative or out-of-range frames. `pillow_c_image_frame_count_tiff` returns WIC's decoded frame count after validating the container. Native save packs RGB/RGBA to WIC's BGR/BGRA encoder formats inside C++ and rejects palette, LA, mode `1`, and CMYK modes with `-3`.
 
-`pillow_c_image_open_gif`, `pillow_c_image_open_gif_frame`, `pillow_c_image_frame_count_gif`, and `pillow_c_image_save_gif` keep GIF decode/encode inside the DLL through WIC. Frame `0` opens as mode `P` with RGB palette metadata preserved. Later frames currently open as public `RGB` byte data through WIC frame conversion, matching the verified simple Pillow sequence fixture. `pillow_c_image_open_gif_frame` uses zero-based indexes and returns `-3` for negative or out-of-range frames. Native save remains single-frame mode `P` only and requires an attached RGB palette; it rejects non-`P` modes with `-3`. Full animated GIF composition semantics, duration/disposal metadata, RGB/RGBA quantization, and `save_all` are separate future ABI surfaces.
+`pillow_c_image_open_gif`, `pillow_c_image_open_gif_frame`, `pillow_c_image_frame_count_gif`, `pillow_c_image_gif_metadata`, and `pillow_c_image_save_gif` keep GIF decode/encode and basic animation metadata inside the DLL. Frame `0` opens as mode `P` with RGB palette metadata preserved. Later frames currently open as public `RGB` byte data through WIC frame conversion, matching the verified simple Pillow sequence fixture. `pillow_c_image_open_gif_frame` uses zero-based indexes and returns `-3` for negative or out-of-range frames. `pillow_c_image_gif_metadata` parses GIF blocks directly and returns frame duration in milliseconds, NETSCAPE loop count, Graphic Control Extension disposal method, and logical-screen background index. Missing optional values return `-1` except disposal, which defaults to `0`. Native save remains single-frame mode `P` only and requires an attached RGB palette; it rejects non-`P` modes with `-3`. Full animated GIF composition semantics, RGB/RGBA quantization, and `save_all` are separate future ABI surfaces.
 
 `pillow_c_image_linear_gradient` and `pillow_c_image_linear_gradient_into` implement Pillow's fixed-size top-to-bottom `256x256` `Image.linear_gradient` generator for modes `1`, `L`, and `P`. Internal storage writes the row value `0..255` across each row; mode `1` still uses the existing raw encoder when callers request Pillow's bit-packed external bytes. Unsupported modes return `-3`, and `_into` target shape or mode mismatches return `-5`.
 

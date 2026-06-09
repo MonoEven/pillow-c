@@ -1371,6 +1371,43 @@ PillowTestImageSequenceIteratorHandlesSingleFrameImages(*) {
 
 AhkTest.Test("Pillow ImageSequence.Iterator handles single-frame images", PillowTestImageSequenceIteratorHandlesSingleFrameImages)
 
+PillowTestImageOpenGifExposesAnimationMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempGifPath("metadata")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            71, 73, 70, 56, 57, 97, 2, 0, 1, 0, 129, 0, 0, 0, 0, 0,
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 33, 255, 11, 78, 69, 84, 83,
+            67, 65, 80, 69, 50, 46, 48, 3, 1, 3, 0, 0, 33, 249, 4, 0,
+            1, 0, 0, 0, 44, 0, 0, 0, 0, 2, 0, 1, 0, 0, 8, 5,
+            0, 1, 4, 8, 8, 0, 33, 249, 4, 9, 2, 0, 2, 0, 44, 0,
+            0, 0, 0, 2, 0, 1, 0, 129, 0, 0, 0, 10, 20, 30, 0, 0,
+            0, 0, 0, 0, 8, 5, 0, 3, 0, 8, 8, 0, 59
+        ])
+
+        image := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(10, image.Info["duration"])
+        AhkTest.AssertEqual(3, image.Info["loop"])
+        AhkTest.AssertEqual(0, image.Info["background"])
+        AhkTest.AssertEqual(0, image.DisposalMethod)
+        AhkTest.AssertEqual(0, image.disposal_method)
+
+        image.Seek(1)
+        AhkTest.AssertEqual(20, image.Info["duration"])
+        AhkTest.AssertEqual(3, image.Info["loop"])
+        AhkTest.AssertEqual(0, image.Info["background"])
+        AhkTest.AssertEqual(2, image.DisposalMethod)
+        AhkTest.AssertEqual(2, image.disposal_method)
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open GIF exposes animation metadata", PillowTestImageOpenGifExposesAnimationMetadata)
+
 PillowTestImageOpenSaveGifRejectsUnsupportedInputs(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))

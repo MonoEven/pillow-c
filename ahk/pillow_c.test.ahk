@@ -522,6 +522,26 @@ PillowCImageFrameCountGif(path) {
     return count
 }
 
+PillowCImageGifMetadata(path, frame) {
+    duration := -1
+    loopCount := -1
+    disposal := -1
+    background := -1
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_gif_metadata",
+        "Ptr", pathBytes,
+        "Int", frame,
+        "Int*", &duration,
+        "Int*", &loopCount,
+        "Int*", &disposal,
+        "Int*", &background,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return { Duration: duration, Loop: loopCount, Disposal: disposal, Background: background }
+}
+
 PillowCImageSaveGif(handle, path) {
     pathBytes := PillowCUtf8Buffer(path)
     status := DllCall(
@@ -4259,6 +4279,52 @@ PillowCTestImageOpenGifFramesReadsMultiframeImages(*) {
 }
 
 AhkTest.Test("pillow_c image open_gif_frame reads multiframe GIF images", PillowCTestImageOpenGifFramesReadsMultiframeImages)
+
+PillowCTestImageGifMetadataReadsLoopDurationAndDisposal(*) {
+    path := PillowCTempGifPath("metadata")
+    try {
+        PillowCWriteFileBytes(path, [
+            71, 73, 70, 56, 57, 97, 2, 0, 1, 0, 129, 0, 0, 0, 0, 0,
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 33, 255, 11, 78, 69, 84, 83,
+            67, 65, 80, 69, 50, 46, 48, 3, 1, 3, 0, 0, 33, 249, 4, 0,
+            1, 0, 0, 0, 44, 0, 0, 0, 0, 2, 0, 1, 0, 0, 8, 5,
+            0, 1, 4, 8, 8, 0, 33, 249, 4, 9, 2, 0, 2, 0, 44, 0,
+            0, 0, 0, 2, 0, 1, 0, 129, 0, 0, 0, 10, 20, 30, 0, 0,
+            0, 0, 0, 0, 8, 5, 0, 3, 0, 8, 8, 0, 59
+        ])
+
+        first := PillowCImageGifMetadata(path, 0)
+        second := PillowCImageGifMetadata(path, 1)
+        AhkTest.AssertEqual(10, first.Duration)
+        AhkTest.AssertEqual(20, second.Duration)
+        AhkTest.AssertEqual(3, first.Loop)
+        AhkTest.AssertEqual(3, second.Loop)
+        AhkTest.AssertEqual(0, first.Disposal)
+        AhkTest.AssertEqual(2, second.Disposal)
+        AhkTest.AssertEqual(0, first.Background)
+        AhkTest.AssertEqual(0, second.Background)
+
+        outDuration := 0
+        outLoop := 0
+        outDisposal := 0
+        outBackground := 0
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_gif_metadata",
+            "Ptr", PillowCUtf8Buffer(path),
+            "Int", 2,
+            "Int*", &outDuration,
+            "Int*", &outLoop,
+            "Int*", &outDisposal,
+            "Int*", &outBackground,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+    } finally {
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image gif metadata reads loop duration and disposal", PillowCTestImageGifMetadataReadsLoopDurationAndDisposal)
 
 PillowCTestImageSaveGifRoundTripsPaletteMode(*) {
     image := PillowCCreateImageMode(2, 2, 6)

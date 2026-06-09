@@ -2463,6 +2463,7 @@ class Pillow {
             this.FrameFormat := ""
             this.FrameIndex := 0
             this.FrameCount := 1
+            this.DisposalMethod := 0
         }
 
         __Delete() {
@@ -2586,6 +2587,7 @@ class Pillow {
                         image.FrameFormat := format
                         image.FrameIndex := 0
                         image.FrameCount := Pillow.Image.FrameCountForOpen(pathBytes, format)
+                        image.ApplyFrameMetadata()
                     } catch {
                         image.Close()
                         throw
@@ -3087,9 +3089,52 @@ class Pillow {
                 Pillow.CheckStatus(status)
             }
             oldHandle := this.Handle
+            oldFrameIndex := this.FrameIndex
             this.Handle := outHandle
             this.FrameIndex := frame
+            try {
+                this.ApplyFrameMetadata()
+            } catch {
+                this.Handle := oldHandle
+                this.FrameIndex := oldFrameIndex
+                Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", outHandle, "Int"))
+                throw
+            }
             Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", oldHandle, "Int"))
+        }
+
+        ApplyFrameMetadata() {
+            this.RequireHandle()
+            if !(this.FrameFormat = "GIF" && this.FramePath != "")
+                return
+
+            duration := -1
+            loopCount := -1
+            disposal := -1
+            background := -1
+            pathBytes := Pillow.Image.Utf8Buffer(this.FramePath)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_gif_metadata",
+                "Ptr", pathBytes,
+                "Int", this.FrameIndex,
+                "Int*", &duration,
+                "Int*", &loopCount,
+                "Int*", &disposal,
+                "Int*", &background,
+                "Int"
+            ))
+            Pillow.Image.SetOptionalInfo(this.Info, "duration", duration)
+            Pillow.Image.SetOptionalInfo(this.Info, "loop", loopCount)
+            Pillow.Image.SetOptionalInfo(this.Info, "background", background)
+            this.DisposalMethod := disposal >= 0 ? disposal : 0
+        }
+
+        static SetOptionalInfo(info, key, value) {
+            if value >= 0 {
+                info[key] := value
+            } else if info.Has(key) {
+                info.Delete(key)
+            }
         }
 
         NFrames {
@@ -3109,6 +3154,10 @@ class Pillow {
 
         is_animated {
             get => this.IsAnimated
+        }
+
+        disposal_method {
+            get => this.DisposalMethod
         }
 
         Verify() {
