@@ -5,6 +5,8 @@ build/x64/*
 build/x64/Release/*
 !build/x64/Release/pillow_c.dll
 .codex/
+AGENTS.md
+docs/codex-goal-plan.md
 *.user
 *.suo
 *.VC.db
