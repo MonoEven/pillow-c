@@ -20,6 +20,15 @@ PillowCBufferToArray(buf) {
     return values
 }
 
+PillowCTextBytes(text) {
+    buf := Buffer(StrPut(text, "UTF-8"), 0)
+    StrPut(text, buf, "UTF-8")
+    values := []
+    loop buf.Size - 1
+        values.Push(NumGet(buf, A_Index - 1, "UChar"))
+    return values
+}
+
 PillowCArraySlice(values, firstIndex, lastIndex) {
     out := []
     loop lastIndex - firstIndex + 1
@@ -31,6 +40,87 @@ PillowCAssertArrayNear(expected, actual, tolerance) {
     AhkTest.AssertEqual(expected.Length, actual.Length)
     for index, expectedValue in expected
         AhkTest.AssertTrue(Abs(expectedValue - actual[index]) <= tolerance)
+}
+
+PillowCQuantizeStressRgbBytes(width := 17, height := 17) {
+    values := []
+    loop height {
+        y := A_Index - 1
+        loop width {
+            x := A_Index - 1
+            values.Push(x * 15)
+            values.Push(y * 15)
+            values.Push(Mod((x * 9 + y * 7) * 3, 256))
+        }
+    }
+    return values
+}
+
+PillowCQuantizeStressRgbaBytes(width := 18, height := 18) {
+    values := []
+    loop height {
+        y := A_Index - 1
+        loop width {
+            x := A_Index - 1
+            if (x = 0 && y = 0) || (x = 5 && y = 7) || (x = 17 && y = 17) {
+                values.Push(1 + x)
+                values.Push(2 + y)
+                values.Push(3 + x + y)
+                values.Push(0)
+            } else {
+                values.Push(Mod(x * 13 + y * 5, 256))
+                values.Push(Mod(x * 17 + y * 11, 256))
+                values.Push(Mod((x * 7 + y * 19) * 3, 256))
+                values.Push(Mod(x + y, 5) = 0 ? 1 : 255)
+            }
+        }
+    }
+    return values
+}
+
+PillowCAssertRgbApproximation(source, actual, maxChannelLimit, maxAverageManhattan) {
+    AhkTest.AssertEqual(source.Length, actual.Length)
+    maxChannel := 0
+    totalManhattan := 0
+    pixelCount := source.Length // 3
+    loop source.Length // 3 {
+        offset := (A_Index - 1) * 3
+        manhattan := 0
+        loop 3 {
+            delta := Abs(source[offset + A_Index] - actual[offset + A_Index])
+            if delta > maxChannel
+                maxChannel := delta
+            manhattan += delta
+        }
+        totalManhattan += manhattan
+    }
+    AhkTest.AssertTrue(maxChannel <= maxChannelLimit)
+    AhkTest.AssertTrue(totalManhattan <= maxAverageManhattan * pixelCount)
+}
+
+PillowCAssertRgbaGifApproximation(source, actual, maxChannelLimit, maxAverageManhattan) {
+    AhkTest.AssertEqual((source.Length // 4) * 3, actual.Length)
+    maxChannel := 0
+    totalManhattan := 0
+    comparedPixels := 0
+    loop source.Length // 4 {
+        sourceOffset := (A_Index - 1) * 4
+        actualOffset := (A_Index - 1) * 3
+        if source[sourceOffset + 4] = 0
+            continue
+        manhattan := 0
+        loop 3 {
+            delta := Abs(source[sourceOffset + A_Index] - actual[actualOffset + A_Index])
+            if delta > maxChannel
+                maxChannel := delta
+            manhattan += delta
+        }
+        totalManhattan += manhattan
+        comparedPixels += 1
+    }
+    AhkTest.AssertTrue(comparedPixels > 0)
+    AhkTest.AssertTrue(maxChannel <= maxChannelLimit)
+    AhkTest.AssertTrue(totalManhattan <= maxAverageManhattan * comparedPixels)
 }
 
 PillowCWriteFileBytes(path, values) {
@@ -65,6 +155,122 @@ PillowCReadFileBytes(path) {
     }
 }
 
+PillowCReadLe32(values, offset) {
+    return values[offset]
+        | (values[offset + 1] << 8)
+        | (values[offset + 2] << 16)
+        | (values[offset + 3] << 24)
+}
+
+PillowCReadLe16(values, offset) {
+    return values[offset] | (values[offset + 1] << 8)
+}
+
+PillowCGifFrameDescriptors(path) {
+    bytes := PillowCReadFileBytes(path)
+    AhkTest.AssertTrue(bytes.Length >= 13)
+    AhkTest.AssertEqual([71, 73, 70], PillowCArraySlice(bytes, 1, 3))
+    pos := 14
+    logicalPacked := bytes[11]
+    backgroundIndex := bytes[12]
+    globalColorCount := 0
+    globalPaletteHead := []
+    if logicalPacked & 0x80 {
+        globalColorCount := 1 << ((logicalPacked & 0x07) + 1)
+        globalPaletteBytes := globalColorCount * 3
+        headLength := Min(globalPaletteBytes, 12)
+        if headLength > 0
+            globalPaletteHead := PillowCArraySlice(bytes, pos, pos + headLength - 1)
+        pos += globalPaletteBytes
+    }
+
+    frames := []
+    pendingGce := { Packed: 0, DurationCs: -1, Disposal: 0, Transparency: -1 }
+    while pos <= bytes.Length {
+        introducer := bytes[pos]
+        pos += 1
+        if introducer = 0x3b
+            break
+        if introducer = 0x21 {
+            label := bytes[pos]
+            pos += 1
+            if label = 0xf9 {
+                blockSize := bytes[pos]
+                pos += 1
+                packed := bytes[pos]
+                durationCs := PillowCReadLe16(bytes, pos + 1)
+                transparency := (packed & 0x01) ? bytes[pos + 3] : -1
+                pendingGce := {
+                    Packed: packed,
+                    DurationCs: durationCs,
+                    Disposal: (packed >> 2) & 0x07,
+                    Transparency: transparency
+                }
+                pos += blockSize
+                AhkTest.AssertEqual(0, bytes[pos])
+                pos += 1
+            } else {
+                blockSize := bytes[pos]
+                pos += 1 + blockSize
+                while pos <= bytes.Length {
+                    subBlockSize := bytes[pos]
+                    pos += 1
+                    if subBlockSize = 0
+                        break
+                    pos += subBlockSize
+                }
+            }
+            continue
+        }
+
+        AhkTest.AssertEqual(0x2c, introducer)
+        left := PillowCReadLe16(bytes, pos)
+        top := PillowCReadLe16(bytes, pos + 2)
+        width := PillowCReadLe16(bytes, pos + 4)
+        height := PillowCReadLe16(bytes, pos + 6)
+        flags := bytes[pos + 8]
+        pos += 9
+        localColorCount := 0
+        localPaletteHead := []
+        if flags & 0x80 {
+            localColorCount := 1 << ((flags & 0x07) + 1)
+            localPaletteBytes := localColorCount * 3
+            headLength := Min(localPaletteBytes, 12)
+            if headLength > 0
+                localPaletteHead := PillowCArraySlice(bytes, pos, pos + headLength - 1)
+            pos += localColorCount * 3
+        }
+        lzwMin := bytes[pos]
+        pos += 1
+        dataBytes := 0
+        while pos <= bytes.Length {
+            subBlockSize := bytes[pos]
+            pos += 1
+            if subBlockSize = 0
+                break
+            dataBytes += subBlockSize
+            pos += subBlockSize
+        }
+        frames.Push({
+            Left: left,
+            Top: top,
+            Width: width,
+            Height: height,
+            Flags: flags,
+            BackgroundIndex: backgroundIndex,
+            GlobalColorCount: globalColorCount,
+            GlobalPaletteHead: globalPaletteHead,
+            LocalColorCount: localColorCount,
+            LocalPaletteHead: localPaletteHead,
+            LzwMin: lzwMin,
+            DataBytes: dataBytes,
+            Gce: pendingGce
+        })
+        pendingGce := { Packed: 0, DurationCs: -1, Disposal: 0, Transparency: -1 }
+    }
+    return frames
+}
+
 PillowCReadBe32(values, offset) {
     return (values[offset] << 24)
         | (values[offset + 1] << 16)
@@ -74,6 +280,48 @@ PillowCReadBe32(values, offset) {
 
 PillowCReadBe16(values, offset) {
     return (values[offset] << 8) | values[offset + 1]
+}
+
+PillowCIcoEntrySizes(path) {
+    bytes := PillowCReadFileBytes(path)
+    AhkTest.AssertEqual([0, 0, 1, 0], PillowCArraySlice(bytes, 1, 4))
+    count := PillowCReadLe16(bytes, 5)
+    sizes := []
+    loop count {
+        entryStart := 7 + (A_Index - 1) * 16
+        width := bytes[entryStart] = 0 ? 256 : bytes[entryStart]
+        height := bytes[entryStart + 1] = 0 ? 256 : bytes[entryStart + 1]
+        payloadOffset := PillowCReadLe32(bytes, entryStart + 12)
+        AhkTest.AssertEqual([137, 80, 78, 71, 13, 10, 26, 10], PillowCArraySlice(bytes, payloadOffset + 1, payloadOffset + 8))
+        sizes.Push([width, height])
+    }
+    return sizes
+}
+
+PillowCAssertIcoDibPayload(path, expectedWidth, expectedHeight, expectedBitCount, expectedImageBytes, expectedPayloadBytes) {
+    bytes := PillowCReadFileBytes(path)
+    AhkTest.AssertEqual([0, 0, 1, 0], PillowCArraySlice(bytes, 1, 4))
+    AhkTest.AssertEqual(1, PillowCReadLe16(bytes, 5))
+    entryStart := 7
+    AhkTest.AssertEqual(expectedWidth, bytes[entryStart] = 0 ? 256 : bytes[entryStart])
+    AhkTest.AssertEqual(expectedHeight, bytes[entryStart + 1] = 0 ? 256 : bytes[entryStart + 1])
+    AhkTest.AssertEqual(0, bytes[entryStart + 3])
+    AhkTest.AssertEqual(0, PillowCReadLe16(bytes, entryStart + 4))
+    AhkTest.AssertEqual(expectedBitCount, PillowCReadLe16(bytes, entryStart + 6))
+    payloadLength := PillowCReadLe32(bytes, entryStart + 8)
+    payloadOffset := PillowCReadLe32(bytes, entryStart + 12)
+    payloadStart := payloadOffset + 1
+    AhkTest.AssertEqual(expectedPayloadBytes, payloadLength)
+    AhkTest.AssertEqual(40, PillowCReadLe32(bytes, payloadStart))
+    AhkTest.AssertEqual(expectedWidth, PillowCReadLe32(bytes, payloadStart + 4))
+    AhkTest.AssertEqual(expectedHeight * 2, PillowCReadLe32(bytes, payloadStart + 8))
+    AhkTest.AssertEqual(1, PillowCReadLe16(bytes, payloadStart + 12))
+    AhkTest.AssertEqual(expectedBitCount, PillowCReadLe16(bytes, payloadStart + 14))
+    AhkTest.AssertEqual(0, PillowCReadLe32(bytes, payloadStart + 16))
+    AhkTest.AssertEqual(expectedImageBytes, PillowCReadLe32(bytes, payloadStart + 20))
+    AhkTest.AssertEqual(3780, PillowCReadLe32(bytes, payloadStart + 24))
+    AhkTest.AssertEqual(3780, PillowCReadLe32(bytes, payloadStart + 28))
+    return { Bytes: bytes, PayloadOffset: payloadOffset, PayloadStart: payloadStart }
 }
 
 PillowCArrayEquals(left, right) {
@@ -190,8 +438,31 @@ PillowCTempQoiPath(name) {
     return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) ".qoi"
 }
 
+PillowCTempTgaPath(name) {
+    return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) ".tga"
+}
+
+PillowCTempXbmPath(name) {
+    return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) ".xbm"
+}
+
+PillowCTempIcoPath(name) {
+    return A_Temp "\pillow-c-" name "-" A_TickCount "-" Random(1, 1000000) ".ico"
+}
+
 PillowCDeleteFile(path) {
     try FileDelete path
+}
+
+PillowCTestIcoRgbaFixtureBytes() {
+    return [
+        0, 0, 1, 0, 1, 0, 2, 2, 0, 0, 1, 0, 32, 0, 64, 0,
+        0, 0, 22, 0, 0, 0, 40, 0, 0, 0, 2, 0, 0, 0, 4, 0,
+        0, 0, 1, 0, 32, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        255, 0, 0, 0, 255, 255, 255, 255, 0, 0, 255, 255,
+        0, 255, 0, 128, 0, 0, 0, 0, 0, 0, 0, 0
+    ]
 }
 
 PillowCDoubleBuffer(values) {
@@ -518,6 +789,150 @@ PillowCImageSaveQoi(handle, path) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageOpenTga(path) {
+    handle := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_open_tga",
+        "Ptr", pathBytes,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
+PillowCImageSaveTga(handle, path) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_tga",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageSaveTgaOptions(handle, path, rle) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_tga_options",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int", rle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageOpenXbm(path) {
+    handle := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_open_xbm",
+        "Ptr", pathBytes,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
+PillowCImageOpenIco(path) {
+    handle := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_open_ico",
+        "Ptr", pathBytes,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
+PillowCImageSaveIco(handle, path) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_ico",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageSaveIcoOptions(handle, path, sizes) {
+    flat := []
+    for size in sizes {
+        flat.Push(size[1])
+        flat.Push(size[2])
+    }
+    sizeBytes := PillowCIntBuffer(flat)
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_ico_options",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Ptr", sizeBytes,
+        "UPtr", sizes.Length,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageSaveIcoFormatOptions(handle, path, sizes, bitmapFormat, hasSizes := true) {
+    flat := []
+    if hasSizes {
+        for size in sizes {
+            flat.Push(size[1])
+            flat.Push(size[2])
+        }
+    }
+    sizeBytes := PillowCIntBuffer(flat)
+    pathBytes := PillowCUtf8Buffer(path)
+    bitmapFormatBytes := PillowCUtf8Buffer(bitmapFormat)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_ico_format_options",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Ptr", flat.Length ? sizeBytes : 0,
+        "UPtr", hasSizes ? sizes.Length : 0,
+        "Int", hasSizes ? 1 : 0,
+        "Ptr", bitmapFormatBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageSaveXbm(handle, path) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_xbm",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageSaveXbmOptions(handle, path, hasHotspot, hotspotX, hotspotY) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_xbm_options",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int", hasHotspot,
+        "Int", hotspotX,
+        "Int", hotspotY,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageOpenPng(path) {
     handle := 0
     pathBytes := PillowCUtf8Buffer(path)
@@ -707,12 +1122,53 @@ PillowCImageGifMetadata(path, frame) {
     return { Duration: duration, Loop: loopCount, Disposal: disposal, Background: background }
 }
 
+PillowCImageGifMetadataEx(path, frame) {
+    duration := -1
+    loopCount := -1
+    disposal := -1
+    background := -1
+    transparency := -1
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_gif_metadata_ex",
+        "Ptr", pathBytes,
+        "Int", frame,
+        "Int*", &duration,
+        "Int*", &loopCount,
+        "Int*", &disposal,
+        "Int*", &background,
+        "Int*", &transparency,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return {
+        Duration: duration,
+        Loop: loopCount,
+        Disposal: disposal,
+        Background: background,
+        Transparency: transparency
+    }
+}
+
 PillowCImageSaveGif(handle, path) {
     pathBytes := PillowCUtf8Buffer(path)
     status := DllCall(
         PillowCDllPath() "\pillow_c_image_save_gif",
         "Ptr", handle,
         "Ptr", pathBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageSaveGifOptions(handle, path, hasTransparency, transparency) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_gif_options",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int", hasTransparency,
+        "Int", transparency,
         "Int"
     )
     PillowCAssertStatus(status)
@@ -743,6 +1199,138 @@ PillowCImageSaveGifAnimation(handles, path, durations := unset, loopCount := -1,
         "Int", loopCount,
         "Ptr", disposalBuffer,
         "UPtr", disposalCount,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageSaveGifAnimationOptions(
+    handles,
+    path,
+    durations := unset,
+    loopCount := -1,
+    disposals := unset,
+    includeColorTable := -1,
+    optimize := -1
+) {
+    pathBytes := PillowCUtf8Buffer(path)
+    handleArray := PillowCImageHandleArray(handles)
+    durationBuffer := 0
+    durationCount := 0
+    disposalBuffer := 0
+    disposalCount := 0
+    if IsSet(durations) {
+        durationBuffer := PillowCIntBuffer(durations)
+        durationCount := durations.Length
+    }
+    if IsSet(disposals) {
+        disposalBuffer := PillowCIntBuffer(disposals)
+        disposalCount := disposals.Length
+    }
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_gif_animation_options",
+        "Ptr", handleArray,
+        "UPtr", handles.Length,
+        "Ptr", pathBytes,
+        "Ptr", durationBuffer,
+        "UPtr", durationCount,
+        "Int", loopCount,
+        "Ptr", disposalBuffer,
+        "UPtr", disposalCount,
+        "Int", includeColorTable,
+        "Int", optimize,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageSaveGifAnimationMetadataOptions(
+    handles,
+    path,
+    durations := unset,
+    loopCount := -1,
+    disposals := unset,
+    includeColorTable := -1,
+    optimize := -1,
+    hasTransparency := 0,
+    transparency := 0
+) {
+    pathBytes := PillowCUtf8Buffer(path)
+    handleArray := PillowCImageHandleArray(handles)
+    durationBuffer := 0
+    durationCount := 0
+    disposalBuffer := 0
+    disposalCount := 0
+    if IsSet(durations) {
+        durationBuffer := PillowCIntBuffer(durations)
+        durationCount := durations.Length
+    }
+    if IsSet(disposals) {
+        disposalBuffer := PillowCIntBuffer(disposals)
+        disposalCount := disposals.Length
+    }
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_gif_animation_metadata_options",
+        "Ptr", handleArray,
+        "UPtr", handles.Length,
+        "Ptr", pathBytes,
+        "Ptr", durationBuffer,
+        "UPtr", durationCount,
+        "Int", loopCount,
+        "Ptr", disposalBuffer,
+        "UPtr", disposalCount,
+        "Int", includeColorTable,
+        "Int", optimize,
+        "Int", hasTransparency,
+        "Int", transparency,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageSaveGifAnimationBackgroundOptions(
+    handles,
+    path,
+    durations := unset,
+    loopCount := -1,
+    disposals := unset,
+    includeColorTable := -1,
+    optimize := -1,
+    hasTransparency := 0,
+    transparency := 0,
+    hasBackground := 0,
+    background := 0
+) {
+    pathBytes := PillowCUtf8Buffer(path)
+    handleArray := PillowCImageHandleArray(handles)
+    durationBuffer := 0
+    durationCount := 0
+    disposalBuffer := 0
+    disposalCount := 0
+    if IsSet(durations) {
+        durationBuffer := PillowCIntBuffer(durations)
+        durationCount := durations.Length
+    }
+    if IsSet(disposals) {
+        disposalBuffer := PillowCIntBuffer(disposals)
+        disposalCount := disposals.Length
+    }
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_gif_animation_background_options",
+        "Ptr", handleArray,
+        "UPtr", handles.Length,
+        "Ptr", pathBytes,
+        "Ptr", durationBuffer,
+        "UPtr", durationCount,
+        "Int", loopCount,
+        "Ptr", disposalBuffer,
+        "UPtr", disposalCount,
+        "Int", includeColorTable,
+        "Int", optimize,
+        "Int", hasTransparency,
+        "Int", transparency,
+        "Int", hasBackground,
+        "Int", background,
         "Int"
     )
     PillowCAssertStatus(status)
@@ -1068,6 +1656,643 @@ PillowCImageDrawPolygon(handle, points, fill := unset, outline := unset, width :
     PillowCAssertStatus(status)
 }
 
+PillowCImageDrawText(handle, xy, text, fill) {
+    textBytes := PillowCUtf8Buffer(text)
+    fillBuffer := PillowCBuffer(fill)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_text",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageDrawTextAnchor(handle, xy, text, fill, anchor) {
+    textBytes := PillowCUtf8Buffer(text)
+    fillBuffer := PillowCBuffer(fill)
+    anchorBytes := PillowCUtf8Buffer(anchor)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_text_anchor",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Ptr", anchorBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageDrawTextStroke(handle, xy, text, fill, strokeWidth, strokeFill) {
+    textBytes := PillowCUtf8Buffer(text)
+    fillBuffer := PillowCBuffer(fill)
+    strokeFillBuffer := PillowCBuffer(strokeFill)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_text_stroke",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int", strokeWidth,
+        "Ptr", strokeFillBuffer,
+        "UPtr", strokeFillBuffer.Size,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageDrawMultilineText(handle, xy, text, fill, spacing := 4) {
+    textBytes := PillowCUtf8Buffer(text)
+    fillBuffer := PillowCBuffer(fill)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_multiline_text",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int", spacing,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageDrawMultilineTextAlign(handle, xy, text, fill, spacing, align) {
+    textBytes := PillowCUtf8Buffer(text)
+    fillBuffer := PillowCBuffer(fill)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_multiline_text_align",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int", spacing,
+        "Int", align,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageDrawMultilineTextAnchor(handle, xy, text, fill, spacing, align, anchor) {
+    textBytes := PillowCUtf8Buffer(text)
+    fillBuffer := PillowCBuffer(fill)
+    anchorBytes := PillowCUtf8Buffer(anchor)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_multiline_text_anchor",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int", spacing,
+        "Int", align,
+        "Ptr", anchorBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageDrawMultilineTextStroke(handle, xy, text, fill, spacing, align, strokeWidth, strokeFill) {
+    textBytes := PillowCUtf8Buffer(text)
+    fillBuffer := PillowCBuffer(fill)
+    strokeFillBuffer := PillowCBuffer(strokeFill)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_multiline_text_align_stroke",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int", spacing,
+        "Int", align,
+        "Int", strokeWidth,
+        "Ptr", strokeFillBuffer,
+        "UPtr", strokeFillBuffer.Size,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageTextLength(text) {
+    textBytes := PillowCUtf8Buffer(text)
+    length := 0.0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_textlength",
+        "Ptr", textBytes,
+        "Double*", &length,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return length
+}
+
+PillowCImageTextBbox(xy, text) {
+    textBytes := PillowCUtf8Buffer(text)
+    left := 0
+    top := 0
+    right := 0
+    bottom := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_textbbox",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Int*", &left,
+        "Int*", &top,
+        "Int*", &right,
+        "Int*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCImageTextBboxAnchor(xy, text, anchor) {
+    textBytes := PillowCUtf8Buffer(text)
+    anchorBytes := PillowCUtf8Buffer(anchor)
+    left := 0
+    top := 0
+    right := 0
+    bottom := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_textbbox_anchor",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", anchorBytes,
+        "Int*", &left,
+        "Int*", &top,
+        "Int*", &right,
+        "Int*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCImageTextBboxStroke(xy, text, strokeWidth) {
+    textBytes := PillowCUtf8Buffer(text)
+    left := 0
+    top := 0
+    right := 0
+    bottom := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_textbbox_stroke",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Int", strokeWidth,
+        "Int*", &left,
+        "Int*", &top,
+        "Int*", &right,
+        "Int*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCImageMultilineTextBbox(xy, text, spacing := 4) {
+    textBytes := PillowCUtf8Buffer(text)
+    left := 0
+    top := 0
+    right := 0
+    bottom := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_multiline_textbbox",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Int", spacing,
+        "Int*", &left,
+        "Int*", &top,
+        "Int*", &right,
+        "Int*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCImageMultilineTextBboxAlign(xy, text, spacing, align) {
+    textBytes := PillowCUtf8Buffer(text)
+    left := 0
+    top := 0
+    right := 0
+    bottom := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_multiline_textbbox_align",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Int", spacing,
+        "Int", align,
+        "Int*", &left,
+        "Int*", &top,
+        "Int*", &right,
+        "Int*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCImageMultilineTextBboxStroke(xy, text, spacing, align, strokeWidth) {
+    textBytes := PillowCUtf8Buffer(text)
+    left := 0
+    top := 0
+    right := 0
+    bottom := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_multiline_textbbox_align_stroke",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Int", spacing,
+        "Int", align,
+        "Int", strokeWidth,
+        "Int*", &left,
+        "Int*", &top,
+        "Int*", &right,
+        "Int*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCImageMultilineTextBboxStrokeF64(xy, text, spacing, align, strokeWidth) {
+    textBytes := PillowCUtf8Buffer(text)
+    left := 0.0
+    top := 0.0
+    right := 0.0
+    bottom := 0.0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_multiline_textbbox_align_stroke_f64",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Int", spacing,
+        "Int", align,
+        "Int", strokeWidth,
+        "Double*", &left,
+        "Double*", &top,
+        "Double*", &right,
+        "Double*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCImageMultilineTextBboxAlignF64(xy, text, spacing, align) {
+    textBytes := PillowCUtf8Buffer(text)
+    left := 0.0
+    top := 0.0
+    right := 0.0
+    bottom := 0.0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_multiline_textbbox_align_f64",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Int", spacing,
+        "Int", align,
+        "Double*", &left,
+        "Double*", &top,
+        "Double*", &right,
+        "Double*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCImageMultilineTextBboxAnchorF64Status(xy, text, spacing, align, anchor, &left, &top, &right, &bottom) {
+    textBytes := PillowCUtf8Buffer(text)
+    anchorBytes := PillowCUtf8Buffer(anchor)
+    return DllCall(
+        PillowCDllPath() "\pillow_c_image_multiline_textbbox_anchor_f64",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Int", spacing,
+        "Int", align,
+        "Ptr", anchorBytes,
+        "Double*", &left,
+        "Double*", &top,
+        "Double*", &right,
+        "Double*", &bottom,
+        "Int"
+    )
+}
+
+PillowCImageMultilineTextBboxAnchorF64(xy, text, spacing, align, anchor) {
+    left := 0.0
+    top := 0.0
+    right := 0.0
+    bottom := 0.0
+    status := PillowCImageMultilineTextBboxAnchorF64Status(
+        xy,
+        text,
+        spacing,
+        align,
+        anchor,
+        &left,
+        &top,
+        &right,
+        &bottom)
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCFontLoadDefault() {
+    font := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_font_load_default",
+        "Ptr*", &font,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(font != 0)
+    return font
+}
+
+PillowCFontFree(font) {
+    return DllCall(PillowCDllPath() "\pillow_c_font_free", "Ptr", font, "Int")
+}
+
+PillowCFontGetLength(font, text) {
+    textBytes := PillowCUtf8Buffer(text)
+    length := 0.0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_font_getlength",
+        "Ptr", font,
+        "Ptr", textBytes,
+        "Double*", &length,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return length
+}
+
+PillowCFontGetBbox(font, text) {
+    textBytes := PillowCUtf8Buffer(text)
+    left := 0
+    top := 0
+    right := 0
+    bottom := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_font_getbbox",
+        "Ptr", font,
+        "Ptr", textBytes,
+        "Int*", &left,
+        "Int*", &top,
+        "Int*", &right,
+        "Int*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCFontGetMetrics(font) {
+    ascent := 0
+    descent := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_font_getmetrics",
+        "Ptr", font,
+        "Int*", &ascent,
+        "Int*", &descent,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [ascent, descent]
+}
+
+PillowCFontGetName(font) {
+    family := Buffer(64, 0)
+    style := Buffer(64, 0)
+    familyRequired := 0
+    styleRequired := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_font_getname",
+        "Ptr", font,
+        "Ptr", family,
+        "UPtr", family.Size,
+        "UPtr*", &familyRequired,
+        "Ptr", style,
+        "UPtr", style.Size,
+        "UPtr*", &styleRequired,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [
+        StrGet(family.Ptr, familyRequired - 1, "UTF-8"),
+        StrGet(style.Ptr, styleRequired - 1, "UTF-8"),
+    ]
+}
+
+PillowCFontVariant(font) {
+    variant := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_font_variant",
+        "Ptr", font,
+        "Ptr*", &variant,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(variant != 0)
+    AhkTest.AssertTrue(variant != font)
+    return variant
+}
+
+PillowCImageDrawTextFont(handle, xy, text, font, fill) {
+    textBytes := PillowCUtf8Buffer(text)
+    fillBuffer := PillowCBuffer(fill)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_text_font",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", font,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageDrawMultilineTextFont(handle, xy, text, font, fill, spacing := 4) {
+    textBytes := PillowCUtf8Buffer(text)
+    fillBuffer := PillowCBuffer(fill)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_multiline_text_font",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", font,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int", spacing,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageDrawMultilineTextFontAlign(handle, xy, text, font, fill, spacing, align) {
+    textBytes := PillowCUtf8Buffer(text)
+    fillBuffer := PillowCBuffer(fill)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_multiline_text_font_align",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", font,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int", spacing,
+        "Int", align,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageDrawMultilineTextFontAnchor(handle, xy, text, font, fill, spacing, align, anchor) {
+    textBytes := PillowCUtf8Buffer(text)
+    fillBuffer := PillowCBuffer(fill)
+    anchorBytes := PillowCUtf8Buffer(anchor)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_draw_multiline_text_font_anchor",
+        "Ptr", handle,
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", font,
+        "Ptr", fillBuffer,
+        "UPtr", fillBuffer.Size,
+        "Int", spacing,
+        "Int", align,
+        "Ptr", anchorBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
+PillowCImageMultilineTextBboxFont(xy, text, font, spacing := 4) {
+    textBytes := PillowCUtf8Buffer(text)
+    left := 0
+    top := 0
+    right := 0
+    bottom := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_multiline_textbbox_font",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", font,
+        "Int", spacing,
+        "Int*", &left,
+        "Int*", &top,
+        "Int*", &right,
+        "Int*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCImageMultilineTextBboxFontAlign(xy, text, font, spacing, align) {
+    textBytes := PillowCUtf8Buffer(text)
+    left := 0
+    top := 0
+    right := 0
+    bottom := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_multiline_textbbox_font_align",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", font,
+        "Int", spacing,
+        "Int", align,
+        "Int*", &left,
+        "Int*", &top,
+        "Int*", &right,
+        "Int*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCImageMultilineTextBboxFontAlignF64(xy, text, font, spacing, align) {
+    textBytes := PillowCUtf8Buffer(text)
+    left := 0.0
+    top := 0.0
+    right := 0.0
+    bottom := 0.0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_multiline_textbbox_font_align_f64",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", font,
+        "Int", spacing,
+        "Int", align,
+        "Double*", &left,
+        "Double*", &top,
+        "Double*", &right,
+        "Double*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
+PillowCImageMultilineTextBboxFontAnchorF64(xy, text, font, spacing, align, anchor) {
+    textBytes := PillowCUtf8Buffer(text)
+    anchorBytes := PillowCUtf8Buffer(anchor)
+    left := 0.0
+    top := 0.0
+    right := 0.0
+    bottom := 0.0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_multiline_textbbox_font_anchor_f64",
+        "Int", xy[1],
+        "Int", xy[2],
+        "Ptr", textBytes,
+        "Ptr", font,
+        "Int", spacing,
+        "Int", align,
+        "Ptr", anchorBytes,
+        "Double*", &left,
+        "Double*", &top,
+        "Double*", &right,
+        "Double*", &bottom,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return [left, top, right, bottom]
+}
+
 PillowCFreeImage(handle) {
     return DllCall(PillowCDllPath() "\pillow_c_image_free", "Ptr", handle, "Int")
 }
@@ -1120,6 +2345,35 @@ PillowCImageGetRawBytes(handle, rawMode) {
         PillowCDllPath() "\pillow_c_image_get_raw_bytes",
         "Ptr", handle,
         "Ptr", modeBytes,
+        "Ptr", out,
+        "UPtr", out.Size,
+        "UPtr*", &required,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return PillowCBufferToArray(out)
+}
+
+PillowCImageToBitmap(handle, name := "image") {
+    nameBytes := PillowCUtf8Buffer(name)
+    required := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_tobitmap",
+        "Ptr", handle,
+        "Ptr", nameBytes,
+        "Ptr", 0,
+        "UPtr", 0,
+        "UPtr*", &required,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    out := Buffer(required, 0)
+    if required = 0
+        return []
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_tobitmap",
+        "Ptr", handle,
+        "Ptr", nameBytes,
         "Ptr", out,
         "UPtr", out.Size,
         "UPtr*", &required,
@@ -1198,6 +2452,34 @@ PillowCImageToArray(handle, expectedSize) {
     return PillowCBufferToArray(out)
 }
 
+PillowCImageRowSums(handle, width, height) {
+    values := PillowCImageToArray(handle, width * height)
+    rows := []
+    loop height {
+        rowStart := (A_Index - 1) * width
+        total := 0
+        loop width
+            total += values[rowStart + A_Index]
+        rows.Push(total)
+    }
+    return rows
+}
+
+PillowCImageColumnSums(handle, width, height, startRow := 0, endRow := unset) {
+    if !IsSet(endRow)
+        endRow := height
+    values := PillowCImageToArray(handle, width * height)
+    cols := []
+    loop width {
+        x := A_Index - 1
+        total := 0
+        loop endRow - startRow
+            total += values[(startRow + A_Index - 1) * width + x + 1]
+        cols.Push(total)
+    }
+    return cols
+}
+
 PillowCImageInt(handle, exportName) {
     value := 0
     status := DllCall(PillowCDllPath() "\" exportName, "Ptr", handle, "Int*", &value, "Int")
@@ -1258,6 +2540,22 @@ PillowCImageMetadataResolution(handle) {
         JfifUnit: jfifUnit,
         JfifDensity: [jfifDensityX, jfifDensityY],
     }
+}
+
+PillowCImageMetadataHotspot(handle) {
+    hasHotspot := 0
+    hotspotX := 0
+    hotspotY := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_metadata_hotspot",
+        "Ptr", handle,
+        "Int*", &hasHotspot,
+        "Int*", &hotspotX,
+        "Int*", &hotspotY,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    return { HasHotspot: hasHotspot, X: hotspotX, Y: hotspotY }
 }
 
 PillowCImageHistogram(handle, expectedCount) {
@@ -3275,7 +4573,8 @@ AhkTest.Test("pillow_c maps core Pillow mode names to native mode ids", (*) => (
     AhkTest.AssertEqual(3, PillowCModeFromString("RGB")),
     AhkTest.AssertEqual(4, PillowCModeFromString("RGBA")),
     AhkTest.AssertEqual(6, PillowCModeFromString("P")),
-    AhkTest.AssertEqual(7, PillowCModeFromString("CMYK"))
+    AhkTest.AssertEqual(7, PillowCModeFromString("CMYK")),
+    AhkTest.AssertEqual(8, PillowCModeFromString("I"))
 ))
 
 AhkTest.Test("pillow_c maps native mode ids back to Pillow mode names", (*) => (
@@ -3286,6 +4585,7 @@ AhkTest.Test("pillow_c maps native mode ids back to Pillow mode names", (*) => (
     rgba := PillowCModeName(4),
     p := PillowCModeName(6),
     cmyk := PillowCModeName(7),
+    i := PillowCModeName(8),
     AhkTest.AssertEqual("1", one.Text),
     AhkTest.AssertEqual(2, one.Required),
     AhkTest.AssertEqual("L", l.Text),
@@ -3299,7 +4599,9 @@ AhkTest.Test("pillow_c maps native mode ids back to Pillow mode names", (*) => (
     AhkTest.AssertEqual("P", p.Text),
     AhkTest.AssertEqual(2, p.Required),
     AhkTest.AssertEqual("CMYK", cmyk.Text),
-    AhkTest.AssertEqual(5, cmyk.Required)
+    AhkTest.AssertEqual(5, cmyk.Required),
+    AhkTest.AssertEqual("I", i.Text),
+    AhkTest.AssertEqual(2, i.Required)
 ))
 
 AhkTest.Test("pillow_c_blend_u8 matches Pillow L alpha 0.25", (*) =>
@@ -3981,6 +5283,52 @@ PillowCTestImageOpenPpmScalesLowMaxvalBinaryImages(*) {
 
 AhkTest.Test("pillow_c image open_ppm scales low maxval binary images", PillowCTestImageOpenPpmScalesLowMaxvalBinaryImages)
 
+PillowCTestImageOpenPpmReadsHighMaxvalGrayscaleAsI(*) {
+    binaryPath := PillowCTempPpmPath("open-high-max-i-binary", "pgm")
+    plainPath := PillowCTempPpmPath("open-high-max-i-plain", "pgm")
+    binary := 0
+    plain := 0
+    try {
+        PillowCWriteFileBytes(binaryPath, [
+            0x50, 0x35, 0x0A,
+            0x35, 0x20, 0x31, 0x0A,
+            0x36, 0x35, 0x35, 0x33, 0x35, 0x0A,
+            0, 0, 0, 1, 0, 255, 1, 0, 255, 255,
+        ])
+        PillowCWriteFileText(plainPath, "P2`n3 1`n1023`n0 255 1023`n")
+
+        binary := PillowCImageOpenPpm(binaryPath)
+        plain := PillowCImageOpenPpm(plainPath)
+
+        AhkTest.AssertEqual(8, PillowCImageMode(binary))
+        AhkTest.AssertEqual(4, PillowCImageInt(binary, "pillow_c_image_channels"))
+        AhkTest.AssertEqual(20, PillowCImageInt(binary, "pillow_c_image_size"))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0,
+            1, 0, 0, 0,
+            255, 0, 0, 0,
+            0, 1, 0, 0,
+            255, 255, 0, 0,
+        ], PillowCImageToArray(binary, 20))
+
+        AhkTest.AssertEqual(8, PillowCImageMode(plain))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0,
+            0xD0, 0x3F, 0, 0,
+            255, 255, 0, 0,
+        ], PillowCImageToArray(plain, 12))
+    } finally {
+        if plain
+            PillowCFreeImage(plain)
+        if binary
+            PillowCFreeImage(binary)
+        PillowCDeleteFile(plainPath)
+        PillowCDeleteFile(binaryPath)
+    }
+}
+
+AhkTest.Test("pillow_c image open_ppm reads high maxval grayscale as mode I", PillowCTestImageOpenPpmReadsHighMaxvalGrayscaleAsI)
+
 PillowCTestImageSavePpmWritesPillowBinaryPgmAndPpm(*) {
     l := PillowCCreateImageMode(4, 1, 1)
     rgb := PillowCCreateImageMode(2, 1, 3)
@@ -4034,6 +5382,57 @@ PillowCTestImageSavePpmWritesPillowBinaryPbmBytes(*) {
 
 AhkTest.Test("pillow_c image save_ppm writes Pillow binary PBM bytes", PillowCTestImageSavePpmWritesPillowBinaryPbmBytes)
 
+PillowCTestImageSavePpmWritesPillowModeIPgmBytes(*) {
+    image := PillowCCreateImageMode(7, 1, 8)
+    path := PillowCTempPpmPath("save-i", "pgm")
+    loaded := 0
+    try {
+        PillowCImageSetRawBytes(image, [
+            255, 255, 255, 255,
+            0, 0, 0, 0,
+            1, 0, 0, 0,
+            2, 1, 0, 0,
+            255, 255, 0, 0,
+            0, 0, 1, 0,
+            0x70, 0x11, 0x01, 0,
+        ], "I")
+
+        PillowCImageSavePpm(image, path)
+
+        AhkTest.AssertEqual([
+            0x50, 0x35, 0x0A,
+            0x37, 0x20, 0x31, 0x0A,
+            0x36, 0x35, 0x35, 0x33, 0x35, 0x0A,
+            0, 0,
+            0, 0,
+            0, 1,
+            1, 2,
+            255, 255,
+            255, 255,
+            255, 255,
+        ], PillowCReadFileBytes(path))
+
+        loaded := PillowCImageOpenPpm(path)
+        AhkTest.AssertEqual(8, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            1, 0, 0, 0,
+            2, 1, 0, 0,
+            255, 255, 0, 0,
+            255, 255, 0, 0,
+            255, 255, 0, 0,
+        ], PillowCImageToArray(loaded, 28))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        PillowCDeleteFile(path)
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image save_ppm writes Pillow mode I PGM bytes", PillowCTestImageSavePpmWritesPillowModeIPgmBytes)
+
 PillowCTestImagePpmRejectsUnsupportedModesAndInvalidFiles(*) {
     rgba := PillowCCreateImageMode(1, 1, 4)
     badPath := PillowCTempPpmPath("bad")
@@ -4052,7 +5451,7 @@ PillowCTestImagePpmRejectsUnsupportedModesAndInvalidFiles(*) {
         PillowCWriteFileBytes(badPath, [
             0x50, 0x35, 0x0A,
             0x31, 0x20, 0x31, 0x0A,
-            0x36, 0x35, 0x35, 0x33, 0x35, 0x0A,
+            0x36, 0x35, 0x35, 0x33, 0x36, 0x0A,
             0, 0,
         ])
         status := DllCall(
@@ -4217,6 +5616,753 @@ PillowCTestImageQoiRejectsUnsupportedModesAndInvalidFiles(*) {
 }
 
 AhkTest.Test("pillow_c QOI IO rejects unsupported modes and invalid files", PillowCTestImageQoiRejectsUnsupportedModesAndInvalidFiles)
+
+PillowCTestImageSaveTgaMatchesPillowDefaultBytes(*) {
+    l := PillowCCreateImageMode(2, 2, 1)
+    rgb := PillowCCreateImageMode(2, 2, 3)
+    rgba := PillowCCreateImageMode(2, 2, 4)
+    lPath := PillowCTempTgaPath("save-l")
+    rgbPath := PillowCTempTgaPath("save-rgb")
+    rgbaPath := PillowCTempTgaPath("save-rgba")
+    try {
+        PillowCImageSetBytes(l, [0, 127, 255, 64])
+        PillowCImageSetBytes(rgb, [
+            255, 0, 0, 0, 255, 0,
+            0, 0, 255, 12, 34, 56,
+        ])
+        PillowCImageSetBytes(rgba, [
+            255, 0, 0, 255, 0, 255, 0, 128,
+            0, 0, 255, 0, 12, 34, 56, 78,
+        ])
+
+        PillowCImageSaveTga(l, lPath)
+        PillowCImageSaveTga(rgb, rgbPath)
+        PillowCImageSaveTga(rgba, rgbaPath)
+
+        AhkTest.AssertEqual([
+            0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 8, 0,
+            255, 64, 0, 127,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ], PillowCReadFileBytes(lPath))
+        AhkTest.AssertEqual([
+            0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 24, 0,
+            255, 0, 0, 56, 34, 12, 0, 0, 255, 0, 255, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ], PillowCReadFileBytes(rgbPath))
+        AhkTest.AssertEqual([
+            0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 32, 8,
+            255, 0, 0, 0, 56, 34, 12, 78, 0, 0, 255, 255, 0, 255, 0, 128,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ], PillowCReadFileBytes(rgbaPath))
+    } finally {
+        PillowCDeleteFile(rgbaPath)
+        PillowCDeleteFile(rgbPath)
+        PillowCDeleteFile(lPath)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image save_tga matches Pillow default bytes", PillowCTestImageSaveTgaMatchesPillowDefaultBytes)
+
+PillowCTestImageOpenTgaReadsPillowDefaultFiles(*) {
+    lPath := PillowCTempTgaPath("open-l")
+    rgbPath := PillowCTempTgaPath("open-rgb")
+    rgbaPath := PillowCTempTgaPath("open-rgba")
+    l := 0
+    rgb := 0
+    rgba := 0
+    try {
+        PillowCWriteFileBytes(lPath, [
+            0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 8, 0,
+            255, 64, 0, 127,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ])
+        PillowCWriteFileBytes(rgbPath, [
+            0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 24, 0,
+            255, 0, 0, 56, 34, 12, 0, 0, 255, 0, 255, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ])
+        PillowCWriteFileBytes(rgbaPath, [
+            0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 32, 8,
+            255, 0, 0, 0, 56, 34, 12, 78, 0, 0, 255, 255, 0, 255, 0, 128,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ])
+
+        l := PillowCImageOpenTga(lPath)
+        rgb := PillowCImageOpenTga(rgbPath)
+        rgba := PillowCImageOpenTga(rgbaPath)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(l))
+        AhkTest.AssertEqual([2, 2], [PillowCImageInt(l, "pillow_c_image_width"), PillowCImageInt(l, "pillow_c_image_height")])
+        AhkTest.AssertEqual([0, 127, 255, 64], PillowCImageToArray(l, 4))
+        AhkTest.AssertEqual(3, PillowCImageMode(rgb))
+        AhkTest.AssertEqual([255, 0, 0, 0, 255, 0, 0, 0, 255, 12, 34, 56], PillowCImageToArray(rgb, 12))
+        AhkTest.AssertEqual(4, PillowCImageMode(rgba))
+        AhkTest.AssertEqual([255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 12, 34, 56, 78], PillowCImageToArray(rgba, 16))
+    } finally {
+        if rgba
+            PillowCFreeImage(rgba)
+        if rgb
+            PillowCFreeImage(rgb)
+        if l
+            PillowCFreeImage(l)
+        PillowCDeleteFile(rgbaPath)
+        PillowCDeleteFile(rgbPath)
+        PillowCDeleteFile(lPath)
+    }
+}
+
+AhkTest.Test("pillow_c image open_tga reads Pillow default files", PillowCTestImageOpenTgaReadsPillowDefaultFiles)
+
+PillowCTestImageSaveTgaRleMatchesPillowBytes(*) {
+    l := PillowCCreateImageMode(4, 2, 1)
+    rgb := PillowCCreateImageMode(4, 1, 3)
+    rgba := PillowCCreateImageMode(4, 1, 4)
+    lPath := PillowCTempTgaPath("save-rle-l")
+    rgbPath := PillowCTempTgaPath("save-rle-rgb")
+    rgbaPath := PillowCTempTgaPath("save-rle-rgba")
+    try {
+        PillowCImageSetBytes(l, [1, 1, 1, 2, 3, 4, 4, 4])
+        PillowCImageSetBytes(rgb, [
+            10, 20, 30, 10, 20, 30, 1, 2, 3, 4, 5, 6,
+        ])
+        PillowCImageSetBytes(rgba, [
+            10, 20, 30, 40, 10, 20, 30, 40, 1, 2, 3, 4, 4, 5, 6, 7,
+        ])
+
+        PillowCImageSaveTgaOptions(l, lPath, 1)
+        PillowCImageSaveTgaOptions(rgb, rgbPath, 1)
+        PillowCImageSaveTgaOptions(rgba, rgbaPath, 1)
+
+        AhkTest.AssertEqual([
+            0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 8, 0,
+            0, 3, 130, 4, 130, 1, 0, 2,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ], PillowCReadFileBytes(lPath))
+        AhkTest.AssertEqual([
+            0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 1, 0, 24, 0,
+            129, 30, 20, 10, 1, 3, 2, 1, 6, 5, 4,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ], PillowCReadFileBytes(rgbPath))
+        AhkTest.AssertEqual([
+            0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 1, 0, 32, 8,
+            129, 30, 20, 10, 40, 1, 3, 2, 1, 4, 6, 5, 4, 7,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ], PillowCReadFileBytes(rgbaPath))
+    } finally {
+        PillowCDeleteFile(rgbaPath)
+        PillowCDeleteFile(rgbPath)
+        PillowCDeleteFile(lPath)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c image save_tga_options writes Pillow RLE bytes", PillowCTestImageSaveTgaRleMatchesPillowBytes)
+
+PillowCTestImageOpenTgaReadsRleFiles(*) {
+    lPath := PillowCTempTgaPath("open-rle-l")
+    rgbPath := PillowCTempTgaPath("open-rle-rgb")
+    rgbaPath := PillowCTempTgaPath("open-rle-rgba")
+    l := 0
+    rgb := 0
+    rgba := 0
+    try {
+        PillowCWriteFileBytes(lPath, [
+            0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 0, 8, 0,
+            0, 3, 130, 4, 130, 1, 0, 2,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ])
+        PillowCWriteFileBytes(rgbPath, [
+            0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 1, 0, 24, 0,
+            129, 30, 20, 10, 1, 3, 2, 1, 6, 5, 4,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ])
+        PillowCWriteFileBytes(rgbaPath, [
+            0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 1, 0, 32, 8,
+            129, 30, 20, 10, 40, 1, 3, 2, 1, 4, 6, 5, 4, 7,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ])
+
+        l := PillowCImageOpenTga(lPath)
+        rgb := PillowCImageOpenTga(rgbPath)
+        rgba := PillowCImageOpenTga(rgbaPath)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(l))
+        AhkTest.AssertEqual([4, 2], [PillowCImageInt(l, "pillow_c_image_width"), PillowCImageInt(l, "pillow_c_image_height")])
+        AhkTest.AssertEqual([1, 1, 1, 2, 3, 4, 4, 4], PillowCImageToArray(l, 8))
+        AhkTest.AssertEqual(3, PillowCImageMode(rgb))
+        AhkTest.AssertEqual([10, 20, 30, 10, 20, 30, 1, 2, 3, 4, 5, 6], PillowCImageToArray(rgb, 12))
+        AhkTest.AssertEqual(4, PillowCImageMode(rgba))
+        AhkTest.AssertEqual([10, 20, 30, 40, 10, 20, 30, 40, 1, 2, 3, 4, 4, 5, 6, 7], PillowCImageToArray(rgba, 16))
+    } finally {
+        if rgba
+            PillowCFreeImage(rgba)
+        if rgb
+            PillowCFreeImage(rgb)
+        if l
+            PillowCFreeImage(l)
+        PillowCDeleteFile(rgbaPath)
+        PillowCDeleteFile(rgbPath)
+        PillowCDeleteFile(lPath)
+    }
+}
+
+AhkTest.Test("pillow_c image open_tga reads Pillow RLE files", PillowCTestImageOpenTgaReadsRleFiles)
+
+PillowCTestImageOpenTgaRejectsTruncatedRlePackets(*) {
+    badPath := PillowCTempTgaPath("bad-rle")
+    outHandle := 0
+    try {
+        PillowCWriteFileBytes(badPath, [
+            0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 1, 0, 8, 0,
+            3, 1, 2,
+        ])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_open_tga",
+            "Ptr", PillowCUtf8Buffer(badPath),
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCDeleteFile(badPath)
+    }
+}
+
+AhkTest.Test("pillow_c image open_tga rejects truncated RLE packets", PillowCTestImageOpenTgaRejectsTruncatedRlePackets)
+
+PillowCTestImageSaveTgaPaletteMatchesPillowBytes(*) {
+    p := PillowCCreateImageMode(4, 2, 6)
+    defaultPath := PillowCTempTgaPath("save-p")
+    rlePath := PillowCTempTgaPath("save-p-rle")
+    try {
+        PillowCImageSetBytes(p, [0, 1, 2, 1, 2, 2, 1, 0])
+        PillowCImagePutPaletteRgb(p, [10, 20, 30, 40, 50, 60, 70, 80, 90])
+
+        PillowCImageSaveTga(p, defaultPath)
+        PillowCImageSaveTgaOptions(p, rlePath, 1)
+
+        AhkTest.AssertEqual([
+            0, 1, 1, 0, 0, 3, 0, 24, 0, 0, 0, 0, 4, 0, 2, 0, 8, 0,
+            30, 20, 10, 60, 50, 40, 90, 80, 70,
+            2, 2, 1, 0, 0, 1, 2, 1,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ], PillowCReadFileBytes(defaultPath))
+        AhkTest.AssertEqual([
+            0, 1, 9, 0, 0, 3, 0, 24, 0, 0, 0, 0, 4, 0, 2, 0, 8, 0,
+            30, 20, 10, 60, 50, 40, 90, 80, 70,
+            129, 2, 1, 1, 0, 3, 0, 1, 2, 1,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ], PillowCReadFileBytes(rlePath))
+    } finally {
+        PillowCDeleteFile(rlePath)
+        PillowCDeleteFile(defaultPath)
+        PillowCFreeImage(p)
+    }
+}
+
+AhkTest.Test("pillow_c image save_tga writes Pillow P mode color-mapped bytes", PillowCTestImageSaveTgaPaletteMatchesPillowBytes)
+
+PillowCTestImageOpenTgaReadsPaletteFiles(*) {
+    defaultPath := PillowCTempTgaPath("open-p")
+    rlePath := PillowCTempTgaPath("open-p-rle")
+    p := 0
+    rle := 0
+    try {
+        PillowCWriteFileBytes(defaultPath, [
+            0, 1, 1, 0, 0, 3, 0, 24, 0, 0, 0, 0, 4, 0, 2, 0, 8, 0,
+            30, 20, 10, 60, 50, 40, 90, 80, 70,
+            2, 2, 1, 0, 0, 1, 2, 1,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ])
+        PillowCWriteFileBytes(rlePath, [
+            0, 1, 9, 0, 0, 3, 0, 24, 0, 0, 0, 0, 4, 0, 2, 0, 8, 0,
+            30, 20, 10, 60, 50, 40, 90, 80, 70,
+            129, 2, 1, 1, 0, 3, 0, 1, 2, 1,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            84, 82, 85, 69, 86, 73, 83, 73, 79, 78, 45, 88, 70, 73, 76, 69, 46, 0,
+        ])
+
+        p := PillowCImageOpenTga(defaultPath)
+        rle := PillowCImageOpenTga(rlePath)
+
+        AhkTest.AssertEqual(6, PillowCImageMode(p))
+        AhkTest.AssertEqual([4, 2], [PillowCImageInt(p, "pillow_c_image_width"), PillowCImageInt(p, "pillow_c_image_height")])
+        AhkTest.AssertEqual([0, 1, 2, 1, 2, 2, 1, 0], PillowCImageToArray(p, 8))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90], PillowCImageGetPaletteRgb(p))
+        AhkTest.AssertEqual(6, PillowCImageMode(rle))
+        AhkTest.AssertEqual([0, 1, 2, 1, 2, 2, 1, 0], PillowCImageToArray(rle, 8))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60, 70, 80, 90], PillowCImageGetPaletteRgb(rle))
+    } finally {
+        if rle
+            PillowCFreeImage(rle)
+        if p
+            PillowCFreeImage(p)
+        PillowCDeleteFile(rlePath)
+        PillowCDeleteFile(defaultPath)
+    }
+}
+
+AhkTest.Test("pillow_c image open_tga reads Pillow P mode color-mapped files", PillowCTestImageOpenTgaReadsPaletteFiles)
+
+PillowCTestImageSaveXbmMatchesPillowBytes(*) {
+    one8 := PillowCCreateImageMode(8, 1, 5)
+    one10 := PillowCCreateImageMode(10, 2, 5)
+    path8 := PillowCTempXbmPath("save-8")
+    path10 := PillowCTempXbmPath("save-10")
+    try {
+        PillowCImageSetBytes(one8, [0, 255, 0, 255, 255, 0, 0, 255])
+        PillowCImageSetBytes(one10, [
+            0, 255, 0, 255, 255, 0, 0, 255, 255, 0,
+            255, 0, 255, 0, 0, 255, 255, 0, 0, 255,
+        ])
+
+        PillowCImageSaveXbm(one8, path8)
+        PillowCImageSaveXbm(one10, path10)
+
+        AhkTest.AssertEqual([
+            35, 100, 101, 102, 105, 110, 101, 32, 105, 109, 95, 119, 105, 100, 116, 104, 32, 56, 10,
+            35, 100, 101, 102, 105, 110, 101, 32, 105, 109, 95, 104, 101, 105, 103, 104, 116, 32, 49, 10,
+            115, 116, 97, 116, 105, 99, 32, 99, 104, 97, 114, 32, 105, 109, 95, 98, 105, 116, 115, 91, 93, 32, 61, 32, 123, 10,
+            48, 120, 57, 97, 10,
+            125, 59, 10,
+        ], PillowCReadFileBytes(path8))
+        AhkTest.AssertEqual([
+            35, 100, 101, 102, 105, 110, 101, 32, 105, 109, 95, 119, 105, 100, 116, 104, 32, 49, 48, 10,
+            35, 100, 101, 102, 105, 110, 101, 32, 105, 109, 95, 104, 101, 105, 103, 104, 116, 32, 50, 10,
+            115, 116, 97, 116, 105, 99, 32, 99, 104, 97, 114, 32, 105, 109, 95, 98, 105, 116, 115, 91, 93, 32, 61, 32, 123, 10,
+            48, 120, 57, 97, 44, 48, 120, 48, 49, 44, 48, 120, 54, 53, 44, 48, 120, 48, 50, 10,
+            125, 59, 10,
+        ], PillowCReadFileBytes(path10))
+    } finally {
+        PillowCDeleteFile(path10)
+        PillowCDeleteFile(path8)
+        PillowCFreeImage(one10)
+        PillowCFreeImage(one8)
+    }
+}
+
+AhkTest.Test("pillow_c image save_xbm matches Pillow mode 1 bytes", PillowCTestImageSaveXbmMatchesPillowBytes)
+
+PillowCTestImageToBitmapMatchesPillowBytes(*) {
+    one4 := PillowCCreateImageMode(4, 2, 5)
+    one9 := PillowCCreateImageMode(9, 1, 5)
+    try {
+        PillowCImageSetBytes(one4, [0, 255, 0, 255, 255, 0, 255, 0])
+        PillowCImageSetBytes(one9, [255, 0, 255, 0, 255, 0, 255, 0, 255])
+
+        AhkTest.AssertEqual(
+            PillowCTextBytes("#define image_width 4`n#define image_height 2`nstatic char image_bits[] = {`n0x0a,0x05`n};"),
+            PillowCImageToBitmap(one4)
+        )
+        AhkTest.AssertEqual(
+            PillowCTextBytes("#define foo_width 4`n#define foo_height 2`nstatic char foo_bits[] = {`n0x0a,0x05`n};"),
+            PillowCImageToBitmap(one4, "foo")
+        )
+        AhkTest.AssertEqual(
+            PillowCTextBytes("#define image_width 9`n#define image_height 1`nstatic char image_bits[] = {`n0x55,0x01`n};"),
+            PillowCImageToBitmap(one9)
+        )
+    } finally {
+        PillowCFreeImage(one9)
+        PillowCFreeImage(one4)
+    }
+}
+
+AhkTest.Test("pillow_c image tobitmap matches Pillow X11 bitmap bytes", PillowCTestImageToBitmapMatchesPillowBytes)
+
+PillowCTestImageToBitmapHandlesEmptyAndRejectsNonBitmaps(*) {
+    source := PillowCCreateImageMode(1, 1, 5)
+    empty := 0
+    l := PillowCCreateImageMode(1, 1, 1)
+    required := 0
+    try {
+        empty := PillowCImageCrop(source, 1, 0, 1, 1)
+        AhkTest.AssertEqual(
+            PillowCTextBytes("#define image_width 0`n#define image_height 1`nstatic char image_bits[] = {`n};"),
+            PillowCImageToBitmap(empty)
+        )
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_tobitmap",
+            "Ptr", l,
+            "Ptr", PillowCUtf8Buffer("image"),
+            "Ptr", 0,
+            "UPtr", 0,
+            "UPtr*", &required,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_tobitmap",
+            "Ptr", empty,
+            "Ptr", PillowCUtf8Buffer("image"),
+            "Ptr", Buffer(1, 0),
+            "UPtr", 1,
+            "UPtr*", &required,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+    } finally {
+        PillowCFreeImage(l)
+        if empty
+            PillowCFreeImage(empty)
+        PillowCFreeImage(source)
+    }
+}
+
+AhkTest.Test("pillow_c image tobitmap handles empty bitmaps and rejects invalid calls", PillowCTestImageToBitmapHandlesEmptyAndRejectsNonBitmaps)
+
+PillowCTestImageOpenXbmReadsPillowFiles(*) {
+    path := PillowCTempXbmPath("open")
+    image := 0
+    try {
+        PillowCWriteFileText(path, "#define test_width 10`n#define test_height 2`nstatic char test_bits[] = {`n0x96,0x01,0x69,0x02};`n")
+
+        image := PillowCImageOpenXbm(path)
+
+        AhkTest.AssertEqual(5, PillowCImageMode(image))
+        AhkTest.AssertEqual([10, 2], [PillowCImageInt(image, "pillow_c_image_width"), PillowCImageInt(image, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            0, 255, 255, 0, 255, 0, 0, 255, 255, 0,
+            255, 0, 0, 255, 0, 255, 255, 0, 0, 255,
+        ], PillowCImageToArray(image, 20))
+        AhkTest.AssertEqual([0x69, 0x80, 0x96, 0x40], PillowCImageGetRawBytes(image, "1"))
+    } finally {
+        if image
+            PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_xbm reads Pillow mode 1 files", PillowCTestImageOpenXbmReadsPillowFiles)
+
+PillowCTestImageOpenXbmReadsHotspotMetadata(*) {
+    path := PillowCTempXbmPath("open-hotspot")
+    image := 0
+    try {
+        PillowCWriteFileText(path, "#define test_width 3`n#define test_height 1`n#define test_x_hot 1`n#define test_y_hot 2`nstatic char test_bits[] = {`n0x06`n};`n")
+
+        image := PillowCImageOpenXbm(path)
+        hotspot := PillowCImageMetadataHotspot(image)
+
+        AhkTest.AssertEqual(1, hotspot.HasHotspot)
+        AhkTest.AssertEqual([1, 2], [hotspot.X, hotspot.Y])
+        AhkTest.AssertEqual([0x60], PillowCImageGetRawBytes(image, "1"))
+    } finally {
+        if image
+            PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_xbm reads hotspot metadata", PillowCTestImageOpenXbmReadsHotspotMetadata)
+
+PillowCTestImageSaveXbmOptionsWritesHotspotBytes(*) {
+    path := PillowCTempXbmPath("save-hotspot")
+    image := PillowCCreateImageMode(3, 1, 5)
+    try {
+        PillowCImageSetRawBytes(image, [0x60], "1")
+        PillowCImageSaveXbmOptions(image, path, 1, 1, 2)
+
+        AhkTest.AssertEqual([
+            35, 100, 101, 102, 105, 110, 101, 32, 105, 109, 95, 119, 105, 100, 116, 104, 32, 51, 10,
+            35, 100, 101, 102, 105, 110, 101, 32, 105, 109, 95, 104, 101, 105, 103, 104, 116, 32, 49, 10,
+            35, 100, 101, 102, 105, 110, 101, 32, 105, 109, 95, 120, 95, 104, 111, 116, 32, 49, 10,
+            35, 100, 101, 102, 105, 110, 101, 32, 105, 109, 95, 121, 95, 104, 111, 116, 32, 50, 10,
+            115, 116, 97, 116, 105, 99, 32, 99, 104, 97, 114, 32, 105, 109, 95, 98, 105, 116, 115, 91, 93, 32, 61, 32, 123, 10,
+            48, 120, 48, 54, 10,
+            125, 59, 10,
+        ], PillowCReadFileBytes(path))
+    } finally {
+        PillowCDeleteFile(path)
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image save_xbm_options writes hotspot bytes", PillowCTestImageSaveXbmOptionsWritesHotspotBytes)
+
+PillowCTestImageXbmRejectsUnsupportedModesAndInvalidFiles(*) {
+    l := PillowCCreateImageMode(1, 1, 1)
+    badPath := PillowCTempXbmPath("bad")
+    missingPath := PillowCTempXbmPath("missing")
+    outHandle := 0
+    try {
+        PillowCImageSetBytes(l, [255])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_xbm",
+            "Ptr", l,
+            "Ptr", PillowCUtf8Buffer(badPath),
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        PillowCWriteFileText(badPath, "#define test_width 10`n#define test_height 2`nstatic char test_bits[] = {`n0x96,0x01};`n")
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_open_xbm",
+            "Ptr", PillowCUtf8Buffer(badPath),
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+        AhkTest.AssertEqual(0, outHandle)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_open_xbm",
+            "Ptr", PillowCUtf8Buffer(missingPath),
+            "Ptr*", &outHandle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, outHandle)
+    } finally {
+        if outHandle
+            PillowCFreeImage(outHandle)
+        PillowCDeleteFile(badPath)
+        PillowCFreeImage(l)
+    }
+}
+
+AhkTest.Test("pillow_c XBM IO rejects unsupported modes and invalid files", PillowCTestImageXbmRejectsUnsupportedModesAndInvalidFiles)
+
+PillowCTestImageOpenIcoReadsRgbaIcon(*) {
+    path := PillowCTempIcoPath("open-rgba")
+    image := 0
+    try {
+        PillowCWriteFileBytes(path, PillowCTestIcoRgbaFixtureBytes())
+
+        image := PillowCImageOpenIco(path)
+
+        AhkTest.AssertEqual(4, PillowCImageMode(image))
+        AhkTest.AssertEqual([2, 2], [PillowCImageInt(image, "pillow_c_image_width"), PillowCImageInt(image, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            0, 255, 255, 0,
+            0, 255, 255, 255,
+            255, 0, 0, 0,
+            255, 0, 0, 255,
+        ], PillowCImageToArray(image, 16))
+    } finally {
+        if image
+            PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_ico reads Pillow RGBA icons", PillowCTestImageOpenIcoReadsRgbaIcon)
+
+PillowCTestImageSaveIcoWritesPngBackedIcon(*) {
+    path := PillowCTempIcoPath("save-rgba")
+    image := PillowCCreateImageMode(16, 16, 4)
+    loaded := 0
+    try {
+        values := []
+        loop 256
+            values.Push(10, 20, 30, 40)
+        PillowCImageSetBytes(image, values)
+
+        try {
+            PillowCImageSaveIco(image, path)
+        } catch Error as err {
+            AhkTest.Fail("Expected pillow_c_image_save_ico to save an RGBA icon: " err.Message)
+        }
+
+        bytes := PillowCReadFileBytes(path)
+        AhkTest.AssertEqual([0, 0, 1, 0, 1, 0, 16, 16], PillowCArraySlice(bytes, 1, 8))
+        AhkTest.AssertEqual([137, 80, 78, 71, 13, 10, 26, 10], PillowCArraySlice(bytes, 23, 30))
+
+        loaded := PillowCImageOpenIco(path)
+        AhkTest.AssertEqual(4, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([16, 16], [PillowCImageInt(loaded, "pillow_c_image_width"), PillowCImageInt(loaded, "pillow_c_image_height")])
+        AhkTest.AssertEqual([10, 20, 30, 40, 10, 20, 30, 40], PillowCArraySlice(PillowCImageToArray(loaded, 16 * 16 * 4), 1, 8))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_ico writes PNG-backed RGBA icons", PillowCTestImageSaveIcoWritesPngBackedIcon)
+
+PillowCTestImageSaveIcoUsesPillowDefaultSizes(*) {
+    path := PillowCTempIcoPath("save-default-sizes")
+    image := PillowCCreateImageMode(64, 64, 4)
+    loaded := 0
+    try {
+        values := []
+        loop 64 * 64 {
+            x := Mod(A_Index - 1, 64)
+            y := Floor((A_Index - 1) / 64)
+            values.Push(Mod(x * 3, 256), Mod(y * 5, 256), Mod(x + y, 256), 255)
+        }
+        PillowCImageSetBytes(image, values)
+        PillowCImageSaveIco(image, path)
+
+        bytes := PillowCReadFileBytes(path)
+        AhkTest.AssertEqual([0, 0, 1, 0], PillowCArraySlice(bytes, 1, 4))
+        AhkTest.AssertEqual(5, PillowCReadLe16(bytes, 5))
+        expectedSizes := [16, 24, 32, 48, 64]
+        previousOffset := 0
+        for index, expectedSize in expectedSizes {
+            entryStart := 7 + (index - 1) * 16
+            AhkTest.AssertEqual(expectedSize, bytes[entryStart])
+            AhkTest.AssertEqual(expectedSize, bytes[entryStart + 1])
+            AhkTest.AssertEqual(0, bytes[entryStart + 2])
+            AhkTest.AssertEqual(0, bytes[entryStart + 3])
+            AhkTest.AssertEqual(0, PillowCReadLe16(bytes, entryStart + 4))
+            AhkTest.AssertEqual(32, PillowCReadLe16(bytes, entryStart + 6))
+            payloadLength := PillowCReadLe32(bytes, entryStart + 8)
+            payloadOffset := PillowCReadLe32(bytes, entryStart + 12)
+            AhkTest.AssertTrue(payloadOffset > previousOffset)
+            AhkTest.AssertTrue(payloadLength > 0)
+            AhkTest.AssertEqual([137, 80, 78, 71, 13, 10, 26, 10], PillowCArraySlice(bytes, payloadOffset + 1, payloadOffset + 8))
+            previousOffset := payloadOffset
+        }
+
+        loaded := PillowCImageOpenIco(path)
+        AhkTest.AssertEqual(4, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([64, 64], [PillowCImageInt(loaded, "pillow_c_image_width"), PillowCImageInt(loaded, "pillow_c_image_height")])
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_ico uses Pillow default icon sizes", PillowCTestImageSaveIcoUsesPillowDefaultSizes)
+
+PillowCTestImageSaveIcoOptionsUseCustomSizes(*) {
+    path := PillowCTempIcoPath("save-custom-sizes")
+    image := PillowCCreateImageMode(64, 64, 4)
+    loaded := 0
+    try {
+        values := []
+        loop 64 * 64 {
+            x := Mod(A_Index - 1, 64)
+            y := Floor((A_Index - 1) / 64)
+            values.Push(Mod(x * 7, 256), Mod(y * 11, 256), Mod(x + y * 2, 256), 255)
+        }
+        PillowCImageSetBytes(image, values)
+        PillowCImageSaveIcoOptions(image, path, [[48, 48], [16, 16], [16, 16], [999, 999], [24, 24]])
+
+        AhkTest.AssertEqual([[16, 16], [24, 24], [48, 48]], PillowCIcoEntrySizes(path))
+        loaded := PillowCImageOpenIco(path)
+        AhkTest.AssertEqual(4, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([48, 48], [PillowCImageInt(loaded, "pillow_c_image_width"), PillowCImageInt(loaded, "pillow_c_image_height")])
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_ico_options uses custom icon sizes", PillowCTestImageSaveIcoOptionsUseCustomSizes)
+
+PillowCTestImageSaveIcoOptionsAllowsEmptySizesWithoutEncoding(*) {
+    path := PillowCTempIcoPath("save-empty-sizes")
+    image := PillowCCreateImageMode(16, 16, 7)
+    try {
+        PillowCImageSaveIcoOptions(image, path, [])
+
+        AhkTest.AssertEqual([0, 0, 1, 0, 0, 0], PillowCReadFileBytes(path))
+    } finally {
+        PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_ico_options allows empty sizes without pixel encoding", PillowCTestImageSaveIcoOptionsAllowsEmptySizesWithoutEncoding)
+
+PillowCTestImageSaveIcoFormatOptionsWritesRgbaDibPayload(*) {
+    path := PillowCTempIcoPath("save-format-bmp-rgba")
+    image := PillowCCreateImageMode(16, 16, 4)
+    try {
+        values := []
+        loop 16 * 16
+            values.Push(1, 2, 3, 4)
+        PillowCImageSetBytes(image, values)
+
+        PillowCImageSaveIcoFormatOptions(image, path, [[16, 16]], "bmp")
+
+        info := PillowCAssertIcoDibPayload(path, 16, 16, 32, 16 * 16 * 4, 40 + 16 * 16 * 4)
+        firstPixel := info.PayloadStart + 40
+        AhkTest.AssertEqual([3, 2, 1, 4], PillowCArraySlice(info.Bytes, firstPixel, firstPixel + 3))
+    } finally {
+        PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_ico_format_options writes RGBA DIB payload", PillowCTestImageSaveIcoFormatOptionsWritesRgbaDibPayload)
+
+PillowCTestImageSaveIcoFormatOptionsWritesRgbDibPayloadAndMask(*) {
+    path := PillowCTempIcoPath("save-format-bmp-rgb")
+    image := PillowCCreateImageMode(16, 16, 3)
+    try {
+        values := []
+        loop 16 * 16
+            values.Push(1, 2, 3)
+        PillowCImageSetBytes(image, values)
+
+        PillowCImageSaveIcoFormatOptions(image, path, [[16, 16]], "bmp")
+
+        info := PillowCAssertIcoDibPayload(path, 16, 16, 24, 16 * 16 * 3, 40 + 16 * 16 * 3 + 16 * 2)
+        firstPixel := info.PayloadStart + 40
+        AhkTest.AssertEqual([3, 2, 1], PillowCArraySlice(info.Bytes, firstPixel, firstPixel + 2))
+        maskStart := info.PayloadStart + 40 + 16 * 16 * 3
+        AhkTest.AssertEqual([0, 0], PillowCArraySlice(info.Bytes, maskStart, maskStart + 1))
+    } finally {
+        PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_ico_format_options writes RGB DIB payload and mask", PillowCTestImageSaveIcoFormatOptionsWritesRgbDibPayloadAndMask)
+
+PillowCTestImageSaveIcoFormatOptionsUppercaseBmpFallsBackToPng(*) {
+    path := PillowCTempIcoPath("save-format-uppercase-bmp")
+    image := PillowCCreateImageMode(16, 16, 4)
+    try {
+        values := []
+        loop 16 * 16
+            values.Push(1, 2, 3, 4)
+        PillowCImageSetBytes(image, values)
+
+        PillowCImageSaveIcoFormatOptions(image, path, [[16, 16]], "BMP")
+
+        AhkTest.AssertEqual([[16, 16]], PillowCIcoEntrySizes(path))
+    } finally {
+        PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_ico_format_options treats uppercase BMP as PNG", PillowCTestImageSaveIcoFormatOptionsUppercaseBmpFallsBackToPng)
 
 PillowCTestImageOpenPngReadsPillowCoreModes(*) {
     rgbPath := PillowCTempPngPath("open-rgb")
@@ -5174,6 +7320,205 @@ PillowCTestImageOpenGifFramesReadsMultiframeImages(*) {
 
 AhkTest.Test("pillow_c image open_gif_frame reads multiframe GIF images", PillowCTestImageOpenGifFramesReadsMultiframeImages)
 
+PillowCGifLocalDisposalFixtureBytes() {
+    return [
+        0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x03, 0x00, 0x03, 0x00, 0x81, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x21, 0xff, 0x0b, 0x4e, 0x45, 0x54, 0x53, 0x43, 0x41, 0x50, 0x45, 0x32,
+        0x2e, 0x30, 0x03, 0x01, 0x00, 0x00, 0x00,
+        0x21, 0xf9, 0x04, 0x00, 0x01, 0x00, 0x00, 0x00,
+        0x2c, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x03, 0x00, 0x00, 0x08, 0x07,
+        0x00, 0x01, 0x08, 0x1c, 0x38, 0x30, 0x20, 0x00,
+        0x21, 0xf9, 0x04, 0x04, 0x02, 0x00, 0x00, 0x00,
+        0x2c, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x81, 0x00, 0x00,
+        0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x04,
+        0x00, 0x03, 0x04, 0x04, 0x00,
+        0x21, 0xf9, 0x04, 0x00, 0x03, 0x00, 0x00, 0x00,
+        0x2c, 0x02, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x81, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x04,
+        0x00, 0x03, 0x04, 0x04, 0x00, 0x3b
+    ]
+}
+
+PillowCGifDisposalRestoreFixtureBytes(disposal) {
+    return [
+        0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x03, 0x00, 0x03, 0x00, 0x81, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff,
+        0x21, 0xff, 0x0b, 0x4e, 0x45, 0x54, 0x53, 0x43, 0x41, 0x50, 0x45, 0x32,
+        0x2e, 0x30, 0x03, 0x01, 0x00, 0x00, 0x00,
+        0x21, 0xf9, 0x04, 0x00, 0x01, 0x00, 0x00, 0x00,
+        0x2c, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x03, 0x00, 0x00, 0x08, 0x0d,
+        0x00, 0x03, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x00, 0x01, 0x02, 0x04,
+        0x04, 0x00,
+        0x21, 0xf9, 0x04, disposal << 2, 0x02, 0x00, 0x00, 0x00,
+        0x2c, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x08, 0x04,
+        0x00, 0x05, 0x04, 0x04, 0x00,
+        0x21, 0xf9, 0x04, 0x00, 0x03, 0x00, 0x00, 0x00,
+        0x2c, 0x02, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x08, 0x04,
+        0x00, 0x07, 0x04, 0x04, 0x00, 0x3b
+    ]
+}
+
+PillowCGifDisposalRestoreExpectedFrameBytes(disposal) {
+    if disposal = 2 {
+        return [
+            0, 255, 0, 0, 255, 0, 0, 255, 0,
+            0, 255, 0, 0, 0, 0, 0, 0, 255,
+            0, 255, 0, 0, 255, 0, 0, 255, 0,
+        ]
+    }
+    if disposal = 3 {
+        return [
+            0, 255, 0, 0, 255, 0, 0, 255, 0,
+            0, 255, 0, 0, 255, 0, 0, 0, 255,
+            0, 255, 0, 0, 255, 0, 0, 255, 0,
+        ]
+    }
+    throw Error("Unsupported GIF disposal fixture", -1)
+}
+
+PillowCGifTransparentLocalFixtureBytes(disposal) {
+    return [
+        0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x03, 0x00, 0x03, 0x00, 0x81, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff,
+        0x21, 0xff, 0x0b, 0x4e, 0x45, 0x54, 0x53, 0x43, 0x41, 0x50, 0x45, 0x32,
+        0x2e, 0x30, 0x03, 0x01, 0x00, 0x00, 0x00,
+        0x21, 0xf9, 0x04, 0x00, 0x01, 0x00, 0x00, 0x00,
+        0x2c, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x03, 0x00, 0x00, 0x08, 0x0d,
+        0x00, 0x03, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x00, 0x01, 0x02, 0x04,
+        0x04, 0x00,
+        0x21, 0xf9, 0x04, (disposal << 2) | 1, 0x02, 0x00, 0x00, 0x00,
+        0x2c, 0x01, 0x00, 0x01, 0x00, 0x02, 0x00, 0x01, 0x00, 0x00, 0x08, 0x05,
+        0x00, 0x05, 0x00, 0x08, 0x08, 0x00,
+        0x21, 0xf9, 0x04, 0x00, 0x03, 0x00, 0x00, 0x00,
+        0x2c, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x08, 0x04,
+        0x00, 0x07, 0x04, 0x04, 0x00, 0x3b
+    ]
+}
+
+PillowCGifTransparentLocalExpectedSecondBytes() {
+    return [
+        0, 255, 0, 0, 255, 0, 0, 255, 0,
+        0, 255, 0, 255, 0, 0, 0, 255, 0,
+        0, 255, 0, 0, 255, 0, 0, 255, 0,
+    ]
+}
+
+PillowCGifTransparentLocalExpectedThirdBytes(disposal) {
+    if disposal = 1 {
+        return [
+            0, 255, 0, 0, 255, 0, 0, 255, 0,
+            0, 0, 255, 255, 0, 0, 0, 255, 0,
+            0, 255, 0, 0, 255, 0, 0, 255, 0,
+        ]
+    }
+    if disposal = 2 {
+        return [
+            0, 255, 0, 0, 255, 0, 0, 255, 0,
+            0, 0, 255, 0, 0, 0, 0, 0, 0,
+            0, 255, 0, 0, 255, 0, 0, 255, 0,
+        ]
+    }
+    throw Error("Unsupported GIF transparent local fixture", -1)
+}
+
+PillowCTestImageOpenGifFrameComposesLocalDisposalFrames(*) {
+    path := PillowCTempGifPath("local-disposal")
+    second := 0
+    third := 0
+    try {
+        PillowCWriteFileBytes(path, PillowCGifLocalDisposalFixtureBytes())
+
+        AhkTest.AssertEqual(3, PillowCImageFrameCountGif(path))
+        second := PillowCImageOpenGifFrame(path, 1)
+        third := PillowCImageOpenGifFrame(path, 2)
+
+        AhkTest.AssertEqual(3, PillowCImageMode(second))
+        AhkTest.AssertEqual([3, 3], [PillowCImageInt(second, "pillow_c_image_width"), PillowCImageInt(second, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 255, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(second, 27))
+
+        AhkTest.AssertEqual(3, PillowCImageMode(third))
+        AhkTest.AssertEqual([3, 3], [PillowCImageInt(third, "pillow_c_image_width"), PillowCImageInt(third, "pillow_c_image_height")])
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 255, 0, 0, 0, 0, 255,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(third, 27))
+    } finally {
+        for handle in [third, second] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_gif_frame composes local disposal frames", PillowCTestImageOpenGifFrameComposesLocalDisposalFrames)
+
+PillowCTestImageOpenGifFrameRestoresDisposalBackgroundAndPrevious(*) {
+    for disposal in [2, 3] {
+        path := PillowCTempGifPath("disposal-restore-" . disposal)
+        second := 0
+        third := 0
+        try {
+            PillowCWriteFileBytes(path, PillowCGifDisposalRestoreFixtureBytes(disposal))
+
+            second := PillowCImageOpenGifFrame(path, 1)
+            third := PillowCImageOpenGifFrame(path, 2)
+
+            AhkTest.AssertEqual(3, PillowCImageMode(second))
+            AhkTest.AssertEqual([
+                0, 255, 0, 0, 255, 0, 0, 255, 0,
+                0, 255, 0, 255, 0, 0, 0, 255, 0,
+                0, 255, 0, 0, 255, 0, 0, 255, 0,
+            ], PillowCImageToArray(second, 27))
+
+            AhkTest.AssertEqual(3, PillowCImageMode(third))
+            AhkTest.AssertEqual(PillowCGifDisposalRestoreExpectedFrameBytes(disposal), PillowCImageToArray(third, 27))
+        } finally {
+            for handle in [third, second] {
+                if handle
+                    PillowCFreeImage(handle)
+            }
+            PillowCDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image open_gif_frame restores disposal background and previous canvas", PillowCTestImageOpenGifFrameRestoresDisposalBackgroundAndPrevious)
+
+PillowCTestImageOpenGifFrameComposesTransparentLocalRectangles(*) {
+    for disposal in [1, 2] {
+        path := PillowCTempGifPath("transparent-local-" . disposal)
+        second := 0
+        third := 0
+        try {
+            PillowCWriteFileBytes(path, PillowCGifTransparentLocalFixtureBytes(disposal))
+
+            second := PillowCImageOpenGifFrame(path, 1)
+            third := PillowCImageOpenGifFrame(path, 2)
+
+            AhkTest.AssertEqual(3, PillowCImageMode(second))
+            AhkTest.AssertEqual(PillowCGifTransparentLocalExpectedSecondBytes(), PillowCImageToArray(second, 27))
+
+            AhkTest.AssertEqual(3, PillowCImageMode(third))
+            AhkTest.AssertEqual(PillowCGifTransparentLocalExpectedThirdBytes(disposal), PillowCImageToArray(third, 27))
+        } finally {
+            for handle in [third, second] {
+                if handle
+                    PillowCFreeImage(handle)
+            }
+            PillowCDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image open_gif_frame composes transparent local rectangles", PillowCTestImageOpenGifFrameComposesTransparentLocalRectangles)
+
 PillowCTestImageGifMetadataReadsLoopDurationAndDisposal(*) {
     path := PillowCTempGifPath("metadata")
     try {
@@ -5220,6 +7565,28 @@ PillowCTestImageGifMetadataReadsLoopDurationAndDisposal(*) {
 
 AhkTest.Test("pillow_c image gif metadata reads loop duration and disposal", PillowCTestImageGifMetadataReadsLoopDurationAndDisposal)
 
+PillowCTestImageGifMetadataExReadsTransparencyIndex(*) {
+    path := PillowCTempGifPath("metadata-transparency")
+    try {
+        PillowCWriteFileBytes(path, [
+            71, 73, 70, 56, 57, 97, 2, 0, 1, 0, 129, 0, 0, 0, 0, 0,
+            10, 20, 30, 0, 0, 0, 0, 0, 0, 33, 249, 4, 1, 0, 0,
+            1, 0, 44, 0, 0, 0, 0, 2, 0, 1, 0, 0, 8, 5, 0, 1,
+            4, 8, 8, 0, 59
+        ])
+
+        metadata := PillowCImageGifMetadataEx(path, 0)
+        AhkTest.AssertEqual(0, metadata.Duration)
+        AhkTest.AssertEqual(0, metadata.Disposal)
+        AhkTest.AssertEqual(0, metadata.Background)
+        AhkTest.AssertEqual(1, metadata.Transparency)
+    } finally {
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image gif metadata_ex reads transparency index", PillowCTestImageGifMetadataExReadsTransparencyIndex)
+
 PillowCTestImageSaveGifRoundTripsPaletteMode(*) {
     image := PillowCCreateImageMode(2, 2, 6)
     path := PillowCTempGifPath("save-p")
@@ -5243,6 +7610,35 @@ PillowCTestImageSaveGifRoundTripsPaletteMode(*) {
 }
 
 AhkTest.Test("pillow_c image save_gif round-trips P mode images", PillowCTestImageSaveGifRoundTripsPaletteMode)
+
+PillowCTestImageSaveGifOptionsWritesTransparencyIndex(*) {
+    image := PillowCCreateImageMode(2, 1, 6)
+    path := PillowCTempGifPath("save-p-transparency")
+    try {
+        PillowCImageSetBytes(image, [0, 1])
+        PillowCImagePutPaletteRgb(image, [0, 0, 0, 10, 20, 30])
+
+        PillowCImageSaveGifOptions(image, path, 1, 1)
+        bytes := PillowCReadFileBytes(path)
+        AhkTest.AssertEqual([71, 73, 70, 56, 57, 97], PillowCArraySlice(bytes, 1, 6))
+        AhkTest.AssertEqual([33, 249, 4, 1, 0, 0, 1, 0], PillowCArraySlice(bytes, 20, 27))
+
+        metadata := PillowCImageGifMetadataEx(path, 0)
+        AhkTest.AssertEqual(0, metadata.Duration)
+        AhkTest.AssertEqual(1, metadata.Transparency)
+
+        PillowCImageSaveGifOptions(image, path, 1, 256)
+        bytes := PillowCReadFileBytes(path)
+        AhkTest.AssertEqual([33, 249, 4, 1, 0, 0, 0, 0], PillowCArraySlice(bytes, 20, 27))
+        metadata := PillowCImageGifMetadataEx(path, 0)
+        AhkTest.AssertEqual(0, metadata.Transparency)
+    } finally {
+        PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif_options writes transparency index", PillowCTestImageSaveGifOptionsWritesTransparencyIndex)
 
 PillowCTestImageSaveGifQuantizesExactLAndRgbImages(*) {
     l := PillowCCreateImageMode(4, 1, 1)
@@ -5286,6 +7682,168 @@ PillowCTestImageSaveGifQuantizesExactLAndRgbImages(*) {
 }
 
 AhkTest.Test("pillow_c image save_gif quantizes exact L and RGB images", PillowCTestImageSaveGifQuantizesExactLAndRgbImages)
+
+PillowCTestImageSaveGifQuantizesExactRgbaTransparency(*) {
+    rgba := PillowCCreateImageMode(3, 1, 4)
+    partial := PillowCCreateImageMode(2, 1, 4)
+    path := PillowCTempGifPath("save-rgba-transparency")
+    partialPath := PillowCTempGifPath("save-rgba-partial-alpha")
+    loaded := 0
+    rgb := 0
+    partialLoaded := 0
+    partialRgb := 0
+    try {
+        PillowCImageSetBytes(rgba, [
+            255, 0, 0, 255,
+            1, 2, 3, 0,
+            0, 255, 0, 255,
+        ])
+
+        PillowCImageSaveGif(rgba, path)
+
+        metadata := PillowCImageGifMetadataEx(path, 0)
+        AhkTest.AssertEqual(0, metadata.Duration)
+        AhkTest.AssertEqual(0, metadata.Transparency)
+
+        loaded := PillowCImageOpenGif(path)
+        AhkTest.AssertEqual(6, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([1, 0, 2], PillowCImageToArray(loaded, 3))
+        AhkTest.AssertEqual([
+            1, 2, 3,
+            255, 0, 0,
+            0, 255, 0,
+        ], PillowCArraySlice(PillowCImageGetPaletteRgb(loaded), 1, 9))
+
+        rgb := PillowCImageConvertMode(loaded, 3)
+        AhkTest.AssertEqual([
+            255, 0, 0,
+            1, 2, 3,
+            0, 255, 0,
+        ], PillowCImageToArray(rgb, 9))
+
+        PillowCImageSetBytes(partial, [
+            255, 0, 0, 1,
+            0, 255, 0, 254,
+        ])
+        PillowCImageSaveGif(partial, partialPath)
+        metadata := PillowCImageGifMetadataEx(partialPath, 0)
+        AhkTest.AssertEqual(-1, metadata.Transparency)
+        partialLoaded := PillowCImageOpenGif(partialPath)
+        partialRgb := PillowCImageConvertMode(partialLoaded, 3)
+        AhkTest.AssertEqual([
+            255, 0, 0,
+            0, 255, 0,
+        ], PillowCImageToArray(partialRgb, 6))
+    } finally {
+        for handle in [partialRgb, partialLoaded, rgb, loaded, partial, rgba] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCDeleteFile(partialPath)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif quantizes exact RGBA transparency", PillowCTestImageSaveGifQuantizesExactRgbaTransparency)
+
+PillowCTestImageSaveGifQuantizesRgbAbove256Colors(*) {
+    image := PillowCCreateImageMode(17, 17, 3)
+    path := PillowCTempGifPath("save-rgb-quantize-289")
+    loaded := 0
+    rgb := 0
+    source := PillowCQuantizeStressRgbBytes()
+    try {
+        PillowCImageSetBytes(image, source)
+
+        PillowCImageSaveGif(image, path)
+
+        metadata := PillowCImageGifMetadataEx(path, 0)
+        AhkTest.AssertEqual(-1, metadata.Transparency)
+        loaded := PillowCImageOpenGif(path)
+        AhkTest.AssertEqual(6, PillowCImageMode(loaded))
+        AhkTest.AssertTrue(PillowCImageGetPaletteRgb(loaded).Length <= 768)
+
+        rgb := PillowCImageConvertMode(loaded, 3)
+        PillowCAssertRgbApproximation(source, PillowCImageToArray(rgb, source.Length), 24, 8)
+    } finally {
+        for handle in [rgb, loaded, image] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif quantizes RGB images above 256 colors", PillowCTestImageSaveGifQuantizesRgbAbove256Colors)
+
+PillowCTestImageSaveGifQuantizesRgbaAbove256Colors(*) {
+    image := PillowCCreateImageMode(18, 18, 4)
+    path := PillowCTempGifPath("save-rgba-quantize-324")
+    loaded := 0
+    rgb := 0
+    source := PillowCQuantizeStressRgbaBytes()
+    try {
+        PillowCImageSetBytes(image, source)
+
+        PillowCImageSaveGif(image, path)
+
+        metadata := PillowCImageGifMetadataEx(path, 0)
+        AhkTest.AssertTrue(metadata.Transparency >= 0)
+        loaded := PillowCImageOpenGif(path)
+        AhkTest.AssertEqual(6, PillowCImageMode(loaded))
+        AhkTest.AssertTrue(PillowCImageGetPaletteRgb(loaded).Length <= 768)
+
+        pBytes := PillowCImageToArray(loaded, 18 * 18)
+        AhkTest.AssertEqual(metadata.Transparency, pBytes[1])
+        AhkTest.AssertEqual(metadata.Transparency, pBytes[132])
+        AhkTest.AssertEqual(metadata.Transparency, pBytes[324])
+
+        rgb := PillowCImageConvertMode(loaded, 3)
+        PillowCAssertRgbaGifApproximation(source, PillowCImageToArray(rgb, 18 * 18 * 3), 64, 18)
+    } finally {
+        for handle in [rgb, loaded, image] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif quantizes RGBA images above 256 colors", PillowCTestImageSaveGifQuantizesRgbaAbove256Colors)
+
+PillowCTestImageSaveGifQuantizationIsDeterministic(*) {
+    rgb := PillowCCreateImageMode(17, 17, 3)
+    rgba := PillowCCreateImageMode(18, 18, 4)
+    rgbPath := PillowCTempGifPath("save-rgb-quantize-default")
+    rgbRepeatPath := PillowCTempGifPath("save-rgb-quantize-repeat")
+    rgbOptionsPath := PillowCTempGifPath("save-rgb-quantize-options")
+    rgbaPath := PillowCTempGifPath("save-rgba-quantize-default")
+    rgbaRepeatPath := PillowCTempGifPath("save-rgba-quantize-repeat")
+    try {
+        PillowCImageSetBytes(rgb, PillowCQuantizeStressRgbBytes())
+        PillowCImageSetBytes(rgba, PillowCQuantizeStressRgbaBytes())
+
+        PillowCImageSaveGif(rgb, rgbPath)
+        PillowCImageSaveGif(rgb, rgbRepeatPath)
+        PillowCImageSaveGifOptions(rgb, rgbOptionsPath, 0, 255)
+        AhkTest.AssertEqual(PillowCReadFileBytes(rgbPath), PillowCReadFileBytes(rgbRepeatPath))
+        AhkTest.AssertEqual(PillowCReadFileBytes(rgbPath), PillowCReadFileBytes(rgbOptionsPath))
+
+        PillowCImageSaveGif(rgba, rgbaPath)
+        PillowCImageSaveGif(rgba, rgbaRepeatPath)
+        AhkTest.AssertEqual(PillowCReadFileBytes(rgbaPath), PillowCReadFileBytes(rgbaRepeatPath))
+    } finally {
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(rgb)
+        PillowCDeleteFile(rgbaRepeatPath)
+        PillowCDeleteFile(rgbaPath)
+        PillowCDeleteFile(rgbOptionsPath)
+        PillowCDeleteFile(rgbRepeatPath)
+        PillowCDeleteFile(rgbPath)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif quantization output is deterministic", PillowCTestImageSaveGifQuantizationIsDeterministic)
 
 PillowCTestImageSaveGifAnimationWritesFramesAndMetadata(*) {
     first := PillowCCreateImageMode(2, 1, 6)
@@ -5331,16 +7889,365 @@ PillowCTestImageSaveGifAnimationWritesFramesAndMetadata(*) {
 
 AhkTest.Test("pillow_c image save_gif_animation writes frames and metadata", PillowCTestImageSaveGifAnimationWritesFramesAndMetadata)
 
+PillowCTestImageSaveGifAnimationWritesOptimizedLocalRectangles(*) {
+    first := PillowCCreateImageMode(3, 3, 6)
+    second := PillowCCreateImageMode(3, 3, 6)
+    path := PillowCTempGifPath("save-animation-local-rect")
+    loadedSecond := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0]
+        PillowCImageSetBytes(first, [
+            0, 0, 0,
+            0, 0, 0,
+            0, 0, 0,
+        ])
+        PillowCImageSetBytes(second, [
+            0, 0, 0,
+            0, 1, 0,
+            0, 0, 0,
+        ])
+        PillowCImagePutPaletteRgb(first, palette)
+        PillowCImagePutPaletteRgb(second, palette)
+
+        PillowCImageSaveGifAnimation([first, second], path, [10, 20], 3, [0, 0])
+
+        descriptors := PillowCGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual([0, 0, 3, 3], [
+            descriptors[1].Left, descriptors[1].Top, descriptors[1].Width, descriptors[1].Height
+        ])
+        AhkTest.AssertEqual([1, 1, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertTrue((descriptors[2].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.DurationCs)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+
+        secondMetadata := PillowCImageGifMetadataEx(path, 1)
+        AhkTest.AssertEqual(20, secondMetadata.Duration)
+        AhkTest.AssertEqual(0, secondMetadata.Disposal)
+        AhkTest.AssertEqual(2, secondMetadata.Transparency)
+
+        loadedSecond := PillowCImageOpenGifFrame(path, 1)
+        AhkTest.AssertEqual(3, PillowCImageMode(loadedSecond))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 255, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(loadedSecond, 27))
+    } finally {
+        if loadedSecond
+            PillowCFreeImage(loadedSecond)
+        PillowCFreeImage(second)
+        PillowCFreeImage(first)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif_animation writes optimized local rectangles", PillowCTestImageSaveGifAnimationWritesOptimizedLocalRectangles)
+
+PillowCTestImageSaveGifAnimationWritesPerFrameLocalPalette(*) {
+    first := PillowCCreateImageMode(3, 1, 6)
+    second := PillowCCreateImageMode(3, 1, 6)
+    path := PillowCTempGifPath("save-animation-local-palette")
+    loadedSecond := 0
+    try {
+        firstPalette := [0, 0, 0, 255, 0, 0]
+        secondPalette := [0, 0, 0, 0, 0, 255]
+        PillowCImageSetBytes(first, [0, 0, 0])
+        PillowCImageSetBytes(second, [0, 1, 0])
+        PillowCImagePutPaletteRgb(first, firstPalette)
+        PillowCImagePutPaletteRgb(second, secondPalette)
+
+        PillowCImageSaveGifAnimation([first, second], path, [10, 20], 3, [0, 0])
+
+        descriptors := PillowCGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual([1, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertTrue((descriptors[2].Flags & 0x80) != 0)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], descriptors[2].LocalPaletteHead)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+
+        loadedSecond := PillowCImageOpenGifFrame(path, 1)
+        AhkTest.AssertEqual(3, PillowCImageMode(loadedSecond))
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0], PillowCImageToArray(loadedSecond, 9))
+    } finally {
+        if loadedSecond
+            PillowCFreeImage(loadedSecond)
+        PillowCFreeImage(second)
+        PillowCFreeImage(first)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif_animation writes per-frame local palette", PillowCTestImageSaveGifAnimationWritesPerFrameLocalPalette)
+
+PillowCTestImageSaveGifAnimationOptionsControlColorTablesAndOptimize(*) {
+    first := PillowCCreateImageMode(3, 1, 6)
+    second := PillowCCreateImageMode(3, 1, 6)
+    path := PillowCTempGifPath("save-animation-options")
+    optimizedPath := PillowCTempGifPath("save-animation-options-optimized")
+    loadedSecond := 0
+    try {
+        firstPalette := [0, 0, 0, 255, 0, 0]
+        secondPalette := [0, 0, 0, 0, 0, 255]
+        PillowCImageSetBytes(first, [0, 0, 0])
+        PillowCImageSetBytes(second, [0, 1, 0])
+        PillowCImagePutPaletteRgb(first, firstPalette)
+        PillowCImagePutPaletteRgb(second, secondPalette)
+
+        PillowCImageSaveGifAnimationOptions([first, second], path, [10, 20], 3, [0, 0], 1, 0)
+
+        descriptors := PillowCGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual(4, descriptors[1].GlobalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[1].GlobalPaletteHead)
+        AhkTest.AssertTrue((descriptors[1].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(4, descriptors[1].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[1].LocalPaletteHead)
+        AhkTest.AssertEqual(8, descriptors[1].LzwMin)
+        AhkTest.AssertEqual([1, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertTrue((descriptors[2].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], descriptors[2].LocalPaletteHead)
+        AhkTest.AssertEqual(8, descriptors[2].LzwMin)
+        AhkTest.AssertEqual(-1, descriptors[2].Gce.Transparency)
+
+        loadedSecond := PillowCImageOpenGifFrame(path, 1)
+        AhkTest.AssertEqual(3, PillowCImageMode(loadedSecond))
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0], PillowCImageToArray(loadedSecond, 9))
+        PillowCFreeImage(loadedSecond)
+        loadedSecond := 0
+
+        PillowCImageSaveGifAnimationOptions([first, second], optimizedPath, [10, 20], 3, [0, 0], 0, 1)
+
+        descriptors := PillowCGifFrameDescriptors(optimizedPath)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual(0, descriptors[1].Flags & 0x80)
+        AhkTest.AssertEqual([1, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertTrue((descriptors[2].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], descriptors[2].LocalPaletteHead)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+    } finally {
+        if loadedSecond
+            PillowCFreeImage(loadedSecond)
+        PillowCFreeImage(second)
+        PillowCFreeImage(first)
+        PillowCDeleteFile(optimizedPath)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif_animation_options controls color tables and optimize", PillowCTestImageSaveGifAnimationOptionsControlColorTablesAndOptimize)
+
+PillowCTestImageSaveGifAnimationMetadataOptionsHonorsTransparency(*) {
+    first := PillowCCreateImageMode(3, 1, 6)
+    second := PillowCCreateImageMode(3, 1, 6)
+    path := PillowCTempGifPath("save-animation-transparency")
+    loadedSecond := 0
+    try {
+        firstPalette := [0, 0, 0, 255, 0, 0]
+        secondPalette := [0, 0, 0, 0, 0, 255]
+        PillowCImageSetBytes(first, [0, 0, 0])
+        PillowCImageSetBytes(second, [0, 1, 0])
+        PillowCImagePutPaletteRgb(first, firstPalette)
+        PillowCImagePutPaletteRgb(second, secondPalette)
+
+        PillowCImageSaveGifAnimationMetadataOptions([first, second], path, [10, 20], 3, [0, 0], -1, -1, 1, 1)
+
+        descriptors := PillowCGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual(-1, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([1, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertTrue((descriptors[2].Flags & 0x80) != 0)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], descriptors[2].LocalPaletteHead)
+        AhkTest.AssertEqual(1, descriptors[2].Gce.Transparency)
+
+        loadedSecond := PillowCImageOpenGifFrame(path, 1)
+        AhkTest.AssertEqual(3, PillowCImageMode(loadedSecond))
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0], PillowCImageToArray(loadedSecond, 9))
+    } finally {
+        if loadedSecond
+            PillowCFreeImage(loadedSecond)
+        PillowCFreeImage(second)
+        PillowCFreeImage(first)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif_animation_metadata_options honors transparency", PillowCTestImageSaveGifAnimationMetadataOptionsHonorsTransparency)
+
+PillowCTestImageSaveGifAnimationMetadataOptionsHonorsTransparencyOptimizeFalse(*) {
+    first := PillowCCreateImageMode(3, 1, 6)
+    second := PillowCCreateImageMode(3, 1, 6)
+    path := PillowCTempGifPath("save-animation-transparency-optimize-false")
+    loadedSecond := 0
+    try {
+        firstPalette := [0, 0, 0, 255, 0, 0]
+        secondPalette := [0, 0, 0, 0, 0, 255]
+        PillowCImageSetBytes(first, [0, 0, 0])
+        PillowCImageSetBytes(second, [0, 1, 0])
+        PillowCImagePutPaletteRgb(first, firstPalette)
+        PillowCImagePutPaletteRgb(second, secondPalette)
+
+        PillowCImageSaveGifAnimationMetadataOptions([first, second], path, [10, 20], 3, [0, 0], -1, 0, 1, 1)
+
+        descriptors := PillowCGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual(4, descriptors[1].GlobalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[1].GlobalPaletteHead)
+        AhkTest.AssertEqual(0, descriptors[1].Flags & 0x80)
+        AhkTest.AssertEqual(8, descriptors[1].LzwMin)
+        AhkTest.AssertEqual(1, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([1, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertTrue((descriptors[2].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], descriptors[2].LocalPaletteHead)
+        AhkTest.AssertEqual(8, descriptors[2].LzwMin)
+        AhkTest.AssertEqual(1, descriptors[2].Gce.Transparency)
+
+        loadedSecond := PillowCImageOpenGifFrame(path, 1)
+        AhkTest.AssertEqual(3, PillowCImageMode(loadedSecond))
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0], PillowCImageToArray(loadedSecond, 9))
+    } finally {
+        if loadedSecond
+            PillowCFreeImage(loadedSecond)
+        PillowCFreeImage(second)
+        PillowCFreeImage(first)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif_animation_metadata_options honors transparency with optimize false", PillowCTestImageSaveGifAnimationMetadataOptionsHonorsTransparencyOptimizeFalse)
+
+PillowCTestImageSaveGifAnimationBackgroundOptionsHonorsBackground(*) {
+    first := PillowCCreateImageMode(3, 1, 6)
+    second := PillowCCreateImageMode(3, 1, 6)
+    path := PillowCTempGifPath("save-animation-background")
+    loadedSecond := 0
+    try {
+        firstPalette := [0, 0, 0, 255, 0, 0]
+        secondPalette := [0, 0, 0, 0, 0, 255]
+        PillowCImageSetBytes(first, [0, 0, 0])
+        PillowCImageSetBytes(second, [0, 1, 0])
+        PillowCImagePutPaletteRgb(first, firstPalette)
+        PillowCImagePutPaletteRgb(second, secondPalette)
+
+        PillowCImageSaveGifAnimationBackgroundOptions([first, second], path, [10, 20], 3, [0, 0], -1, -1, 0, 0, 1, 1)
+
+        descriptors := PillowCGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual(1, descriptors[1].BackgroundIndex)
+        AhkTest.AssertEqual(1, descriptors[2].BackgroundIndex)
+        AhkTest.AssertEqual(4, descriptors[1].GlobalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[1].GlobalPaletteHead)
+        AhkTest.AssertEqual(-1, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([1, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertTrue((descriptors[2].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], descriptors[2].LocalPaletteHead)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+
+        firstMetadata := PillowCImageGifMetadataEx(path, 0)
+        secondMetadata := PillowCImageGifMetadataEx(path, 1)
+        AhkTest.AssertEqual(1, firstMetadata.Background)
+        AhkTest.AssertEqual(1, secondMetadata.Background)
+
+        loadedSecond := PillowCImageOpenGifFrame(path, 1)
+        AhkTest.AssertEqual(3, PillowCImageMode(loadedSecond))
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0], PillowCImageToArray(loadedSecond, 9))
+    } finally {
+        if loadedSecond
+            PillowCFreeImage(loadedSecond)
+        PillowCFreeImage(second)
+        PillowCFreeImage(first)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_gif_animation_background_options honors background", PillowCTestImageSaveGifAnimationBackgroundOptionsHonorsBackground)
+
+PillowCTestImageSaveGifAnimationMetadataOptionsRediffsAfterDisposalBackgroundWithTransparency(*) {
+    first := PillowCCreateImageMode(3, 1, 6)
+    second := PillowCCreateImageMode(3, 1, 6)
+    third := PillowCCreateImageMode(3, 1, 6)
+    path := PillowCTempGifPath("save-animation-disposal2-transparency-rediff")
+    loadedThird := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0]
+        PillowCImageSetBytes(first, [0, 0, 0])
+        PillowCImageSetBytes(second, [1, 0, 0])
+        PillowCImageSetBytes(third, [0, 1, 0])
+        PillowCImagePutPaletteRgb(first, palette)
+        PillowCImagePutPaletteRgb(second, palette)
+        PillowCImagePutPaletteRgb(third, palette)
+
+        PillowCImageSaveGifAnimationMetadataOptions(
+            [first, second, third],
+            path,
+            [10, 20, 30],
+            0,
+            [0, 2, 0],
+            -1,
+            -1,
+            1,
+            2
+        )
+
+        descriptors := PillowCGifFrameDescriptors(path)
+        AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual([1, 0, 1, 1], [
+            descriptors[3].Left, descriptors[3].Top, descriptors[3].Width, descriptors[3].Height
+        ])
+        AhkTest.AssertTrue((descriptors[3].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(-1, descriptors[3].Gce.Transparency)
+
+        loadedThird := PillowCImageOpenGifFrame(path, 2)
+        AhkTest.AssertEqual(3, PillowCImageMode(loadedThird))
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 0, 0], PillowCImageToArray(loadedThird, 9))
+    } finally {
+        if loadedThird
+            PillowCFreeImage(loadedThird)
+        PillowCFreeImage(third)
+        PillowCFreeImage(second)
+        PillowCFreeImage(first)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "pillow_c image save_gif_animation_metadata_options re-diffs after disposal 2 with transparency",
+    PillowCTestImageSaveGifAnimationMetadataOptionsRediffsAfterDisposalBackgroundWithTransparency
+)
+
 PillowCTestImageGifRejectsUnsupportedModesAndInvalidFiles(*) {
-    rgba := PillowCCreateImageMode(1, 1, 4)
+    cmyk := PillowCCreateImageMode(1, 1, 7)
     badPath := PillowCTempGifPath("bad")
     missingPath := PillowCTempGifPath("missing")
     outHandle := 0
     try {
-        PillowCImageSetBytes(rgba, [1, 2, 3, 4])
+        PillowCImageSetBytes(cmyk, [1, 2, 3, 4])
         status := DllCall(
             PillowCDllPath() "\pillow_c_image_save_gif",
-            "Ptr", rgba,
+            "Ptr", cmyk,
             "Ptr", PillowCUtf8Buffer(badPath),
             "Int"
         )
@@ -5368,7 +8275,7 @@ PillowCTestImageGifRejectsUnsupportedModesAndInvalidFiles(*) {
         if outHandle
             PillowCFreeImage(outHandle)
         PillowCDeleteFile(badPath)
-        PillowCFreeImage(rgba)
+        PillowCFreeImage(cmyk)
     }
 }
 
@@ -6731,6 +9638,429 @@ PillowCTestImageDrawPolygonClipsAndRejectsInvalidArguments(*) {
 }
 
 AhkTest.Test("pillow_c image draw_polygon clips and rejects invalid arguments", PillowCTestImageDrawPolygonClipsAndRejectsInvalidArguments)
+
+PillowCTestImageDrawTextUsesPillowDefaultFont(*) {
+    image := PillowCCreateImageMode(16, 14, 1)
+    anchored := PillowCCreateImageMode(24, 24, 1)
+    try {
+        PillowCImageDrawText(image, [0, 0], "Hi", [255])
+
+        AhkTest.AssertEqual(11.0, PillowCImageTextLength("Hi"))
+        AhkTest.AssertEqual([0, 2, 11, 10], PillowCImageTextBbox([0, 0], "Hi"))
+        AhkTest.AssertEqual([5, 5, 16, 13], PillowCImageTextBbox([5, 3], "Hi"))
+        AhkTest.AssertEqual([4, 6, 15, 14], PillowCImageTextBboxAnchor([10, 10], "Hi", "mm"))
+        AhkTest.AssertEqual([-1, 12, 10, 20], PillowCImageTextBboxAnchor([10, 10], "Hi", "ra"))
+        AhkTest.AssertEqual([10, 2, 21, 10], PillowCImageTextBboxAnchor([10, 10], "Hi", "ls"))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 43, 105, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0,
+            0, 246, 192, 192, 192, 192, 246, 0, 0, 240, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(image, 16 * 14))
+
+        PillowCImageDrawTextAnchor(anchored, [10, 10], "Hi", [255], "mm")
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 240, 0, 0, 0, 0, 240, 0, 43, 105, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 240, 0, 0, 0, 0, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 246, 192, 192, 192, 192, 246, 0, 0, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(anchored, 24 * 24))
+    } finally {
+        PillowCFreeImage(anchored)
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image draw_text uses Pillow default font", PillowCTestImageDrawTextUsesPillowDefaultFont)
+
+PillowCTestImageDrawTextSupportsDefaultFontStroke(*) {
+    image := PillowCCreateImageMode(20, 18, 1)
+    try {
+        AhkTest.AssertEqual([3, 5, 16, 15], PillowCImageTextBboxStroke([4, 4], "Hi", 1))
+        AhkTest.AssertEqual([3, 3, 5, 5], PillowCImageTextBboxStroke([4, 4], "", 1))
+
+        PillowCImageDrawTextStroke(image, [4, 4], "Hi", [128], 1, [255])
+        strokePixel := PillowCImageGetPixel(image, 5, 5, 1)[1]
+        fillPixel := PillowCImageGetPixel(image, 5, 6, 1)[1]
+        AhkTest.AssertTrue(strokePixel > 0)
+        AhkTest.AssertTrue(strokePixel > fillPixel)
+        AhkTest.AssertTrue(fillPixel > 0)
+
+        left := 0
+        top := 0
+        right := 0
+        bottom := 0
+        badStatus := DllCall(
+            PillowCDllPath() "\pillow_c_image_textbbox_stroke",
+            "Int", 4,
+            "Int", 4,
+            "Ptr", PillowCUtf8Buffer("Hi"),
+            "Int", -1,
+            "Int*", &left,
+            "Int*", &top,
+            "Int*", &right,
+            "Int*", &bottom,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, badStatus)
+    } finally {
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image draw_text supports default-font stroke", PillowCTestImageDrawTextSupportsDefaultFontStroke)
+
+PillowCTestImageDrawMultilineTextSupportsDefaultFontStroke(*) {
+    image := PillowCCreateImageMode(24, 34, 1)
+    centerImage := PillowCCreateImageMode(24, 34, 1)
+    try {
+        AhkTest.AssertEqual([3, 5, 20, 31], PillowCImageMultilineTextBboxStroke([4, 4], "Hi`nA0!", 4, 0, 1))
+        PillowCAssertArrayNear([2.5, 7.0, 10.0, 31.0], PillowCImageMultilineTextBboxStrokeF64([4, 4], "a`ns", 4, 1, 1), 0.0000001)
+        AhkTest.AssertEqual([3, 3, 5, 5], PillowCImageMultilineTextBboxStroke([4, 4], "", 4, 0, 1))
+
+        PillowCImageDrawMultilineTextStroke(image, [4, 4], "Hi`nA0!", [128], 4, 0, 1, [255])
+        strokePixel := PillowCImageGetPixel(image, 5, 5, 1)[1]
+        fillPixel := PillowCImageGetPixel(image, 5, 6, 1)[1]
+        secondLineStrokePixel := PillowCImageGetPixel(image, 5, 21, 1)[1]
+        AhkTest.AssertTrue(strokePixel > 0)
+        AhkTest.AssertTrue(strokePixel > fillPixel)
+        AhkTest.AssertTrue(fillPixel > 0)
+        AhkTest.AssertTrue(secondLineStrokePixel > 0)
+
+        PillowCImageDrawMultilineTextStroke(centerImage, [0, 0], "A0!`nHi", [128], 4, 1, 1, [255])
+        AhkTest.AssertTrue(PillowCImageGetPixel(centerImage, 3, 17, 1)[1] > 0)
+    } finally {
+        PillowCFreeImage(centerImage)
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image draw_multiline_text supports default-font stroke", PillowCTestImageDrawMultilineTextSupportsDefaultFontStroke)
+
+PillowCTestImageDrawMultilineTextUsesPillowDefaultFont(*) {
+    image := PillowCCreateImageMode(20, 30, 1)
+    trailing := PillowCCreateImageMode(16, 20, 1)
+    newlineOnly := PillowCCreateImageMode(4, 20, 1)
+    centerImage := PillowCCreateImageMode(24, 30, 1)
+    rightImage := PillowCCreateImageMode(24, 30, 1)
+    justifyImage := PillowCCreateImageMode(30, 45, 1)
+    anchoredImage := PillowCCreateImageMode(30, 30, 1)
+    try {
+        AhkTest.AssertEqual([0, 2, 15, 24], PillowCImageMultilineTextBbox([0, 0], "Hi`nA0!", 4))
+        AhkTest.AssertEqual([5, 5, 20, 27], PillowCImageMultilineTextBbox([5, 3], "Hi`nA0!", 4))
+        AhkTest.AssertEqual([0, 2, 11, 14], PillowCImageMultilineTextBbox([0, 0], "Hi`n", 4))
+        AhkTest.AssertEqual([0, 0, 0, 14], PillowCImageMultilineTextBbox([0, 0], "`n", 4))
+        AhkTest.AssertEqual([0, 0, 0, 0], PillowCImageMultilineTextBbox([0, 0], "", 4))
+
+        PillowCImageDrawMultilineText(image, [0, 0], "Hi`nA0!", [255], 4)
+        AhkTest.AssertEqual([
+            0, 0, 628, 480, 720, 720, 1500, 720, 720, 720,
+            0, 0, 0, 0, 0, 0,
+            1190, 1156, 1126, 1121, 1581, 1133, 953, 1220,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageRowSums(image, 20, 30))
+
+        PillowCImageDrawMultilineText(trailing, [0, 0], "Hi`n", [255], 4)
+        AhkTest.AssertEqual([
+            0, 0, 628, 480, 720, 720, 1500, 720, 720, 720,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageRowSums(trailing, 16, 20))
+
+        PillowCImageDrawMultilineText(newlineOnly, [0, 0], "`n", [255], 4)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageRowSums(newlineOnly, 4, 20))
+
+        AhkTest.AssertEqual([0, 2, 15, 24], PillowCImageMultilineTextBboxAlign([0, 0], "A0!`nHi", 4, 1))
+        PillowCAssertArrayNear([-0.5, 4.0, 5.0, 24.0], PillowCImageMultilineTextBboxAlignF64([0, 0], "a`ns", 4, 1), 0.0000001)
+        PillowCImageDrawMultilineTextAlign(centerImage, [0, 0], "A0!`nHi", [255], 4, 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 1926, 192, 192, 192, 192, 1926, 0, 43, 1545,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageColumnSums(centerImage, 24, 30, 16, 24))
+
+        AhkTest.AssertEqual([0, 2, 15, 24], PillowCImageMultilineTextBboxAlign([0, 0], "A0!`nHi", 4, 2))
+        PillowCImageDrawMultilineTextAlign(rightImage, [0, 0], "A0!`nHi", [255], 4, 2)
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 1926, 192, 192, 192, 192, 1926, 0,
+            43, 1545, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageColumnSums(rightImage, 24, 30, 16, 24))
+
+        AhkTest.AssertEqual([0, 2, 24, 38], PillowCImageMultilineTextBboxAlign([0, 0], "A B`nC D E`nF", 4, 3))
+        PillowCAssertArrayNear([0.0, 2.0, 24.0, 38.0], PillowCImageMultilineTextBboxAlignF64([0, 0], "A B`nC D E`nF", 4, 3), 0.0000001)
+        PillowCImageDrawMultilineTextAlign(justifyImage, [0, 0], "A B`nC D E`nF", [255], 4, 3)
+        AhkTest.AssertEqual([
+            1199, 3344, 1607, 1395, 1707, 1502, 46, 0, 0, 0,
+            1932, 384, 382, 421, 694, 986, 0, 0, 0, 3876,
+            1152, 1158, 1411, 1589, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageColumnSums(justifyImage, 30, 45))
+
+        try {
+            PillowCAssertArrayNear(
+                [2.0, -1.0, 17.0, 21.0],
+                PillowCImageMultilineTextBboxAnchorF64([10, 10], "Hi`nA0!", 4, 0, "mm"),
+                0.0000001)
+        } catch Error as err {
+            AhkTest.Fail("Expected pillow_c_image_multiline_textbbox_anchor_f64 export: " err.Message)
+        }
+        PillowCAssertArrayNear(
+            [7.0, 1.0, 12.0, 21.0],
+            PillowCImageMultilineTextBboxAnchorF64([10, 10], "a`ns", 4, 1, "mm"),
+            0.0000001)
+        PillowCAssertArrayNear(
+            [7.0, 1.0, 12.5, 21.0],
+            PillowCImageMultilineTextBboxAnchorF64([10, 10], "a`ns", 4, 2, "mm"),
+            0.0000001)
+        PillowCImageDrawMultilineTextAnchor(anchoredImage, [10, 10], "Hi`nA0!", [255], 4, 0, "mm")
+        AhkTest.AssertEqual([
+            480, 720, 720, 1500, 720, 720, 720, 0, 0, 0,
+            0, 0, 0, 1190, 1156, 1126, 1121, 1581, 1133, 953,
+            1220, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageRowSums(anchoredImage, 30, 30))
+        AhkTest.AssertEqual([
+            0, 0, 206, 2371, 981, 819, 1002, 820, 2925, 636,
+            392, 2080, 1193, 0, 0, 1635, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageColumnSums(anchoredImage, 30, 30))
+
+        invalidLeft := 0.0
+        invalidTop := 0.0
+        invalidRight := 0.0
+        invalidBottom := 0.0
+        AhkTest.AssertEqual(
+            -3,
+            PillowCImageMultilineTextBboxAnchorF64Status(
+                [10, 10],
+                "Hi`nA0!",
+                4,
+                0,
+                "lt",
+                &invalidLeft,
+                &invalidTop,
+                &invalidRight,
+                &invalidBottom))
+    } finally {
+        for handle in [anchoredImage, justifyImage, rightImage, centerImage, newlineOnly, trailing, image] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image draw_multiline_text uses Pillow default font", PillowCTestImageDrawMultilineTextUsesPillowDefaultFont)
+
+PillowCTestDefaultFontHandleMeasuresAndDrawsText(*) {
+    image := PillowCCreateImageMode(16, 14, 1)
+    font := 0
+    try {
+        font := PillowCFontLoadDefault()
+        PillowCImageDrawTextFont(image, [0, 0], "Hi", font, [255])
+
+        AhkTest.AssertEqual(11.0, PillowCFontGetLength(font, "Hi"))
+        AhkTest.AssertEqual([0, 2, 11, 10], PillowCFontGetBbox(font, "Hi"))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 43, 105, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0,
+            0, 246, 192, 192, 192, 192, 246, 0, 0, 240, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0,
+            0, 240, 0, 0, 0, 0, 240, 0, 0, 240, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(image, 16 * 14))
+    } finally {
+        if font
+            PillowCFontFree(font)
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c default font handle measures and draws text", PillowCTestDefaultFontHandleMeasuresAndDrawsText)
+
+PillowCTestDefaultFontHandleDrawsMultilineText(*) {
+    image := PillowCCreateImageMode(20, 30, 1)
+    centerImage := PillowCCreateImageMode(24, 30, 1)
+    anchoredImage := PillowCCreateImageMode(30, 30, 1)
+    font := 0
+    try {
+        font := PillowCFontLoadDefault()
+        PillowCImageDrawMultilineTextFont(image, [0, 0], "Hi`nA0!", font, [255], 4)
+
+        AhkTest.AssertEqual([0, 2, 15, 24], PillowCImageMultilineTextBboxFont([0, 0], "Hi`nA0!", font, 4))
+        AhkTest.AssertEqual([
+            0, 0, 628, 480, 720, 720, 1500, 720, 720, 720,
+            0, 0, 0, 0, 0, 0,
+            1190, 1156, 1126, 1121, 1581, 1133, 953, 1220,
+            0, 0, 0, 0, 0, 0,
+        ], PillowCImageRowSums(image, 20, 30))
+
+        AhkTest.AssertEqual([0, 2, 15, 24], PillowCImageMultilineTextBboxFontAlign([0, 0], "A0!`nHi", font, 4, 1))
+        PillowCAssertArrayNear([-0.5, 4.0, 5.0, 24.0], PillowCImageMultilineTextBboxFontAlignF64([0, 0], "a`ns", font, 4, 1), 0.0000001)
+        PillowCImageDrawMultilineTextFontAlign(centerImage, [0, 0], "A0!`nHi", font, [255], 4, 1)
+        AhkTest.AssertEqual([
+            0, 0, 0, 1926, 192, 192, 192, 192, 1926, 0, 43, 1545,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageColumnSums(centerImage, 24, 30, 16, 24))
+
+        try {
+            PillowCAssertArrayNear(
+                [2.0, -1.0, 17.0, 21.0],
+                PillowCImageMultilineTextBboxFontAnchorF64([10, 10], "Hi`nA0!", font, 4, 0, "mm"),
+                0.0000001)
+        } catch Error as err {
+            AhkTest.Fail("Expected pillow_c_image_multiline_textbbox_font_anchor_f64 export: " err.Message)
+        }
+        PillowCImageDrawMultilineTextFontAnchor(anchoredImage, [10, 10], "Hi`nA0!", font, [255], 4, 0, "mm")
+        AhkTest.AssertEqual([
+            480, 720, 720, 1500, 720, 720, 720, 0, 0, 0,
+            0, 0, 0, 1190, 1156, 1126, 1121, 1581, 1133, 953,
+            1220, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageRowSums(anchoredImage, 30, 30))
+    } finally {
+        if font
+            PillowCFontFree(font)
+        PillowCFreeImage(anchoredImage)
+        PillowCFreeImage(centerImage)
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c default font handle draws multiline text", PillowCTestDefaultFontHandleDrawsMultilineText)
+
+PillowCTestDefaultFontSupportsAsciiText(*) {
+    image := PillowCCreateImageMode(17, 16, 1)
+    font := 0
+    try {
+        font := PillowCFontLoadDefault()
+        PillowCImageDrawTextFont(image, [0, 0], "A0!", font, [255])
+
+        AhkTest.AssertEqual(15.0, PillowCFontGetLength(font, "A0!"))
+        AhkTest.AssertEqual([0, 2, 15, 10], PillowCFontGetBbox(font, "A0!"))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 100, 249, 23, 0, 15, 176, 196, 176, 15, 0, 0, 240, 0, 0, 0,
+            0, 0, 177, 139, 97, 0, 138, 114, 0, 115, 136, 0, 0, 240, 0, 0, 0,
+            0, 10, 188, 39, 173, 0, 212, 26, 0, 27, 211, 0, 0, 240, 0, 0, 0,
+            0, 81, 116, 0, 205, 6, 235, 2, 0, 2, 234, 0, 0, 240, 0, 0, 0,
+            0, 160, 208, 200, 231, 69, 235, 2, 0, 2, 234, 0, 0, 240, 0, 0, 0,
+            3, 198, 0, 0, 71, 145, 212, 26, 0, 27, 211, 0, 0, 240, 0, 0, 0,
+            62, 151, 0, 0, 10, 215, 138, 114, 0, 115, 137, 0, 0, 11, 0, 0, 0,
+            141, 85, 0, 0, 0, 193, 54, 176, 196, 176, 15, 0, 0, 184, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ], PillowCImageToArray(image, 17 * 16))
+    } finally {
+        if font
+            PillowCFontFree(font)
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c default font supports ASCII text", PillowCTestDefaultFontSupportsAsciiText)
+
+PillowCTestDefaultFontMetadataAndVariantMatchPillow(*) {
+    font := 0
+    variant := 0
+    try {
+        font := PillowCFontLoadDefault()
+        variant := PillowCFontVariant(font)
+
+        AhkTest.AssertEqual([10, 3], PillowCFontGetMetrics(font))
+        AhkTest.AssertEqual(["Aileron", "Regular"], PillowCFontGetName(font))
+        AhkTest.AssertEqual([10, 3], PillowCFontGetMetrics(variant))
+        AhkTest.AssertEqual(["Aileron", "Regular"], PillowCFontGetName(variant))
+        AhkTest.AssertEqual(15.0, PillowCFontGetLength(variant, "A0!"))
+        AhkTest.AssertEqual([0, 2, 15, 10], PillowCFontGetBbox(variant, "A0!"))
+
+        PillowCFontFree(font)
+        font := 0
+        AhkTest.AssertEqual(11.0, PillowCFontGetLength(variant, "Hi"))
+    } finally {
+        if variant
+            PillowCFontFree(variant)
+        if font
+            PillowCFontFree(font)
+    }
+}
+
+AhkTest.Test("pillow_c default font metadata and variant match Pillow", PillowCTestDefaultFontMetadataAndVariantMatchPillow)
+
+PillowCTestImageDrawTextRejectsUnsupportedInputs(*) {
+    image := PillowCCreateImageMode(4, 4, 1)
+    textBytes := PillowCUtf8Buffer("é")
+    fill := PillowCBuffer([255])
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_text",
+            "Ptr", image,
+            "Int", 0,
+            "Int", 0,
+            "Ptr", textBytes,
+            "Ptr", fill,
+            "UPtr", fill.Size,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_draw_text",
+            "Ptr", image,
+            "Int", 0,
+            "Int", 0,
+            "Ptr", PillowCUtf8Buffer("Hi"),
+            "Ptr", fill,
+            "UPtr", 2,
+            "Int"
+        )
+        AhkTest.AssertEqual(-2, status)
+    } finally {
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image draw_text rejects unsupported inputs", PillowCTestImageDrawTextRejectsUnsupportedInputs)
 
 PillowCTestImageBlendOperatesOnNativeHandles(*) {
     left := PillowCCreateImage(2, 1, 3)
@@ -8567,6 +11897,184 @@ PillowCTestImageModeOneRawBytesRejectShortPackedInput(*) {
 }
 
 AhkTest.Test("pillow_c image mode 1 raw bytes reject short packed input", PillowCTestImageModeOneRawBytesRejectShortPackedInput)
+
+PillowCTestImageModeIRawBytesRoundTripLittleEndianInt32(*) {
+    image := PillowCCreateImageMode(4, 1, 8)
+    try {
+        PillowCImageSetRawBytes(image, [
+            0, 0, 0, 0,
+            1, 0, 0, 0,
+            255, 255, 255, 255,
+            0, 0, 0, 128,
+        ], "I")
+
+        AhkTest.AssertEqual([
+            0, 0, 0, 0,
+            1, 0, 0, 0,
+            255, 255, 255, 255,
+            0, 0, 0, 128,
+        ], PillowCImageToArray(image, 16))
+        AhkTest.AssertEqual([255, 255, 255, 255], PillowCImageGetPixel(image, 2, 0, 4))
+        AhkTest.AssertEqual([
+            0, 0, 0, 0,
+            1, 0, 0, 0,
+            255, 255, 255, 255,
+            0, 0, 0, 128,
+        ], PillowCImageGetRawBytes(image, "I"))
+    } finally {
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image mode I raw bytes round-trip little-endian int32", PillowCTestImageModeIRawBytesRoundTripLittleEndianInt32)
+
+PillowCTestImageModeIRawBytesSupportPillow16BitAliases(*) {
+    image := PillowCCreateImageMode(3, 1, 8)
+    try {
+        PillowCImageSetRawBytes(image, [1, 2, 255, 255, 0, 128], "I;16")
+        AhkTest.AssertEqual([
+            1, 2, 0, 0,
+            255, 255, 0, 0,
+            0, 128, 0, 0,
+        ], PillowCImageToArray(image, 12))
+
+        PillowCImageSetRawBytes(image, [1, 2, 255, 255, 0, 128], "I;16B")
+        AhkTest.AssertEqual([
+            2, 1, 0, 0,
+            255, 255, 0, 0,
+            128, 0, 0, 0,
+        ], PillowCImageToArray(image, 12))
+
+        PillowCImageSetRawBytes(image, [1, 2, 255, 255, 0, 128], "I;16N")
+        AhkTest.AssertEqual([
+            1, 2, 0, 0,
+            255, 255, 0, 0,
+            0, 128, 0, 0,
+        ], PillowCImageToArray(image, 12))
+
+        AhkTest.AssertEqual([2, 1, 255, 255, 128, 0], PillowCImageGetRawBytes(image, "I;16B"))
+
+        data := PillowCBuffer([1, 2, 255, 255, 0, 128])
+        mode := PillowCRawModeBuffer("I;16L")
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_set_raw_bytes",
+            "Ptr", image,
+            "Ptr", data,
+            "UPtr", data.Size,
+            "Ptr", mode,
+            "Int", 0,
+            "Int", 1,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+    } finally {
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image mode I raw bytes support Pillow 16-bit aliases", PillowCTestImageModeIRawBytesSupportPillow16BitAliases)
+
+PillowCTestImageModeIRawBytesSupportPillow32BitAliases(*) {
+    image := PillowCCreateImageMode(4, 1, 8)
+    try {
+        littleBytes := [
+            255, 255, 255, 255,
+            0, 0, 0, 0,
+            120, 86, 52, 18,
+            0, 0, 0, 128,
+        ]
+        bigBytes := [
+            255, 255, 255, 255,
+            0, 0, 0, 0,
+            18, 52, 86, 120,
+            128, 0, 0, 0,
+        ]
+        expectedStorage := [
+            255, 255, 255, 255,
+            0, 0, 0, 0,
+            120, 86, 52, 18,
+            0, 0, 0, 128,
+        ]
+
+        PillowCImageSetRawBytes(image, littleBytes, "I;32")
+        AhkTest.AssertEqual(expectedStorage, PillowCImageToArray(image, 16))
+
+        PillowCImageSetRawBytes(image, bigBytes, "I;32B")
+        AhkTest.AssertEqual(expectedStorage, PillowCImageToArray(image, 16))
+
+        PillowCImageSetRawBytes(image, littleBytes, "I;32N")
+        AhkTest.AssertEqual(expectedStorage, PillowCImageToArray(image, 16))
+        AhkTest.AssertEqual(expectedStorage, PillowCImageGetRawBytes(image, "I"))
+    } finally {
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image mode I raw bytes support Pillow 32-bit aliases", PillowCTestImageModeIRawBytesSupportPillow32BitAliases)
+
+PillowCTestImageModeFRawBytesRoundTripFloat32(*) {
+    AhkTest.AssertEqual(9, PillowCModeFromString("F"))
+    modeName := PillowCModeName(9)
+    AhkTest.AssertEqual("F", modeName.Text)
+    AhkTest.AssertEqual(2, modeName.Required)
+    image := PillowCCreateImageMode(3, 1, 9)
+    try {
+        PillowCImageSetRawBytes(image, [
+            0, 0, 192, 191,
+            0, 0, 0, 0,
+            0, 0, 160, 63,
+        ], "F")
+
+        AhkTest.AssertEqual(9, PillowCImageMode(image))
+        AhkTest.AssertEqual(12, PillowCImageSize(image))
+        AhkTest.AssertEqual([
+            0, 0, 192, 191,
+            0, 0, 0, 0,
+            0, 0, 160, 63,
+        ], PillowCImageToArray(image, 12))
+        AhkTest.AssertEqual([0, 0, 160, 63], PillowCImageGetPixel(image, 2, 0, 4))
+
+        PillowCImagePutPixel(image, 1, 0, [0, 0, 32, 64])
+        AhkTest.AssertEqual([
+            0, 0, 192, 191,
+            0, 0, 32, 64,
+            0, 0, 160, 63,
+        ], PillowCImageGetRawBytes(image, "F"))
+    } finally {
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image mode F raw bytes round-trip float32", PillowCTestImageModeFRawBytesRoundTripFloat32)
+
+PillowCTestImageModeFRawBytesSupportPillowEndianAliases(*) {
+    image := PillowCCreateImageMode(4, 1, 9)
+    try {
+        littleBytes := [
+            0, 0, 192, 191,
+            0, 0, 0, 0,
+            0, 0, 160, 63,
+            0, 0, 32, 64,
+        ]
+        bigBytes := [
+            191, 192, 0, 0,
+            0, 0, 0, 0,
+            63, 160, 0, 0,
+            64, 32, 0, 0,
+        ]
+
+        PillowCImageSetRawBytes(image, bigBytes, "F;32BF")
+        AhkTest.AssertEqual(littleBytes, PillowCImageToArray(image, 16))
+
+        PillowCImageSetRawBytes(image, littleBytes, "F;32NF")
+        AhkTest.AssertEqual(littleBytes, PillowCImageToArray(image, 16))
+        AhkTest.AssertEqual(littleBytes, PillowCImageGetRawBytes(image, "F;32NF"))
+    } finally {
+        PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image mode F raw bytes support Pillow endian aliases", PillowCTestImageModeFRawBytesSupportPillowEndianAliases)
 
 PillowCTestImageRawBytesRejectInvalidArguments(*) {
     rgb := PillowCCreateImageMode(2, 1, 3)

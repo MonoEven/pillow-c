@@ -25,6 +25,8 @@ Current mode IDs:
 5 1
 6 P
 7 CMYK
+8 I
+9 F
 ```
 
 `pillow_c_mode_from_string`, `pillow_c_mode_name`, `pillow_c_image_create_mode`, and `pillow_c_image_mode` keep handles mode-aware. Channel count is storage layout; mode is wrapper-visible Pillow semantics.
@@ -36,6 +38,10 @@ Mode `1` uses one unpacked byte per pixel internally for native operations and d
 Mode `P` uses one palette index byte per pixel internally. RGB palette metadata lives on the image handle and is exposed through `pillow_c_image_put_palette_rgb` and `pillow_c_image_get_palette_rgb`; optional palette alpha metadata is exposed through `pillow_c_image_put_palette_rgba`, `pillow_c_image_get_palette_rgba`, and `pillow_c_image_palette_alpha_mode`. `pillow_c_image_put_palette_rgb` and `pillow_c_image_put_palette_rgba` also mirror Pillow's `L.putpalette(...)` behavior by converting an `L` handle to mode `P` while keeping its one-byte pixel indexes. Same-mode pixel-copy, point/LUT, reorder, expand, offset, resize, transform, and rotate paths preserve that palette so later conversion still resolves indexes like Pillow.
 
 Mode `CMYK` uses four direct channel bytes per pixel. The current verified CMYK foundation covers mode mapping, raw byte import/export, getdata/putdata facade packing, getpixel/putpixel, copy, `ImageChops.invert`, and non-logical `ImageChops` binary operations.
+
+Mode `I` uses four bytes per pixel as a little-endian signed 32-bit Pillow integer storage slot. The current verified `I` surface is intentionally narrow: mode mapping, byte-size/data export, raw `I` byte import/export, Pillow-compatible unsigned 16-bit raw decode aliases, `I;16B` raw encode, high-bit-depth Netpbm grayscale open/save, and facade scalar `getpixel`/`putpixel`/`getdata`/`putdata` semantics. General `I` arithmetic, conversion, full public `I;16*` modes, and non-Netpbm file paths are future ABI surfaces.
+
+Mode `F` uses four bytes per pixel as a little-endian 32-bit float storage slot. The current verified `F` surface is intentionally narrow: mode mapping, byte-size/data export, raw `F`/`F;32F` byte import/export, and facade scalar `getpixel`/`putpixel`/`getdata`/`putdata` semantics. General `F` arithmetic, conversion, filtering, and file-format paths are future ABI surfaces.
 
 ## Export Groups
 
@@ -52,6 +58,17 @@ Buffer primitives:
 - `pillow_c_rgb_to_l`
 - `pillow_c_alpha_composite_rgba`
 
+Font lifecycle and default-font metrics:
+
+- `pillow_c_font_load_default`
+- `pillow_c_font_free`
+- `pillow_c_font_getlength`
+- `pillow_c_font_getbbox`
+- `pillow_c_font_getbbox_anchor`
+- `pillow_c_font_getmetrics`
+- `pillow_c_font_getname`
+- `pillow_c_font_variant`
+
 Image lifecycle and metadata:
 
 - `pillow_c_image_create`
@@ -61,6 +78,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_height`
 - `pillow_c_image_mode`
 - `pillow_c_image_metadata_resolution`
+- `pillow_c_image_metadata_hotspot`
 - `pillow_c_image_channels`
 - `pillow_c_image_stride`
 - `pillow_c_image_size`
@@ -80,6 +98,16 @@ Image lifecycle and metadata:
 - `pillow_c_image_save_ppm`
 - `pillow_c_image_open_qoi`
 - `pillow_c_image_save_qoi`
+- `pillow_c_image_open_tga`
+- `pillow_c_image_save_tga`
+- `pillow_c_image_save_tga_options`
+- `pillow_c_image_open_xbm`
+- `pillow_c_image_save_xbm`
+- `pillow_c_image_save_xbm_options`
+- `pillow_c_image_open_ico`
+- `pillow_c_image_save_ico`
+- `pillow_c_image_save_ico_options`
+- `pillow_c_image_save_ico_format_options`
 - `pillow_c_image_open_png`
 - `pillow_c_image_save_png`
 - `pillow_c_image_save_png_compress_level`
@@ -96,8 +124,12 @@ Image lifecycle and metadata:
 - `pillow_c_image_open_gif_frame`
 - `pillow_c_image_frame_count_gif`
 - `pillow_c_image_gif_metadata`
+- `pillow_c_image_gif_metadata_ex`
 - `pillow_c_image_save_gif`
+- `pillow_c_image_save_gif_options`
 - `pillow_c_image_save_gif_animation`
+- `pillow_c_image_save_gif_animation_options`
+- `pillow_c_image_save_gif_animation_metadata_options`
 - `pillow_c_image_linear_gradient`
 - `pillow_c_image_radial_gradient`
 - `pillow_c_image_effect_mandelbrot`
@@ -118,6 +150,45 @@ Image lifecycle and metadata:
 - `pillow_c_image_draw_line_joint`
 - `pillow_c_image_draw_points`
 - `pillow_c_image_draw_polygon`
+- `pillow_c_image_draw_text`
+- `pillow_c_image_draw_text_anchor`
+- `pillow_c_image_draw_text_stroke`
+- `pillow_c_image_draw_text_anchor_stroke`
+- `pillow_c_image_draw_text_font`
+- `pillow_c_image_draw_text_font_stroke`
+- `pillow_c_image_draw_text_font_anchor`
+- `pillow_c_image_draw_text_font_anchor_stroke`
+- `pillow_c_image_draw_multiline_text`
+- `pillow_c_image_draw_multiline_text_align`
+- `pillow_c_image_draw_multiline_text_anchor`
+- `pillow_c_image_draw_multiline_text_align_stroke`
+- `pillow_c_image_draw_multiline_text_anchor_stroke`
+- `pillow_c_image_draw_multiline_text_font`
+- `pillow_c_image_draw_multiline_text_font_align`
+- `pillow_c_image_draw_multiline_text_font_align_stroke`
+- `pillow_c_image_draw_multiline_text_font_anchor`
+- `pillow_c_image_draw_multiline_text_font_anchor_stroke`
+- `pillow_c_image_textlength`
+- `pillow_c_image_textbbox`
+- `pillow_c_image_textbbox_stroke`
+- `pillow_c_image_textbbox_anchor`
+- `pillow_c_image_textbbox_anchor_stroke`
+- `pillow_c_image_textbbox_font_anchor`
+- `pillow_c_image_textbbox_font_anchor_stroke`
+- `pillow_c_image_multiline_textbbox`
+- `pillow_c_image_multiline_textbbox_align`
+- `pillow_c_image_multiline_textbbox_align_f64`
+- `pillow_c_image_multiline_textbbox_align_stroke`
+- `pillow_c_image_multiline_textbbox_align_stroke_f64`
+- `pillow_c_image_multiline_textbbox_anchor_f64`
+- `pillow_c_image_multiline_textbbox_anchor_stroke_f64`
+- `pillow_c_image_multiline_textbbox_font`
+- `pillow_c_image_multiline_textbbox_font_align`
+- `pillow_c_image_multiline_textbbox_font_align_stroke`
+- `pillow_c_image_multiline_textbbox_font_align_f64`
+- `pillow_c_image_multiline_textbbox_font_align_stroke_f64`
+- `pillow_c_image_multiline_textbbox_font_anchor_f64`
+- `pillow_c_image_multiline_textbbox_font_anchor_stroke_f64`
 - `pillow_c_image_get_bytes`
 - `pillow_c_image_get_raw_bytes`
 - `pillow_c_image_histogram`
@@ -290,6 +361,8 @@ Reusable target operations:
 
 `pillow_c_image_draw_polygon` mutates one image handle in place for Pillow `ImageDraw.polygon` calls. It accepts packed `int x, y` vertices, optional caller-packed fill and outline colors, and an outline width. The verified path supports fill and outlines using Pillow's scanline edge rules and closed-outline behavior, clips to the image bounds, and accepts two-point line-like polygons. For `width > 1`, it follows Pillow 11.3.0's wrapper strategy: fill a same-size mode `1` polygon mask, draw `width * 2 - 1` wide outline segments, and apply those segments only where the mask is nonzero so the outline does not expand outside the polygon.
 
+`pillow_c_font_load_default`, `pillow_c_font_free`, `pillow_c_font_getlength`, `pillow_c_font_getbbox`, `pillow_c_font_getbbox_anchor`, `pillow_c_font_getmetrics`, `pillow_c_font_getname`, and `pillow_c_font_variant` establish the initial native `ImageFont` handle ABI. The current font backend embeds Pillow 11.3.0's default font masks and metrics for printable ASCII (`0x20..0x7E`), reports default `FreeTypeFont` metadata as ascent/descent `10/3` and name `Aileron`/`Regular`, clones independent default-font handles through `font_variant`, and rejects non-ASCII text with `-3`. `pillow_c_image_draw_text` keeps the legacy implicit-default-font call, while `pillow_c_image_draw_text_font` accepts an explicit native font handle so the AHK facade can pass `Pillow.ImageFont.LoadDefault()` into draw calls. The single-line anchor exports (`pillow_c_image_draw_text_anchor`, `pillow_c_image_draw_text_font_anchor`, `pillow_c_image_textbbox_anchor`, and `pillow_c_image_textbbox_font_anchor`) support Pillow's default-font anchor pairs with horizontal `l/m/r` and vertical `a/t/m/b/d/s`. The single-line stroke exports add bounded default-font `stroke_width`/`stroke_fill` drawing and bbox expansion. `pillow_c_image_draw_multiline_text`, `pillow_c_image_draw_multiline_text_font`, `pillow_c_image_multiline_textbbox`, and `pillow_c_image_multiline_textbbox_font` keep the legacy left-aligned multiline path. The `_align` variants add an integer alignment id (`0=left`, `1=center`, `2=right`) for Pillow-style default-font multiline text with integer `spacing`, including trailing empty-line bbox behavior and center/right per-line drawing offsets. The legacy aligned bbox exports return integer-expanded boxes, while `_align_f64` exports preserve Pillow's fractional bbox coordinates for center/right alignment. The multiline anchor exports (`pillow_c_image_draw_multiline_text_anchor`, `pillow_c_image_draw_multiline_text_font_anchor`, `pillow_c_image_multiline_textbbox_anchor_f64`, and `pillow_c_image_multiline_textbbox_font_anchor_f64`) mirror Pillow's horizontal-text multiline anchor handling for horizontal `l/m/r` and vertical `a/m/d/s`; vertical `t/b` anchors return invalid argument like Pillow's unsupported multiline-anchor path. The multiline stroke exports add the same bounded default-font stroke path and use Pillow's stroke-aware line spacing (`10 + spacing + 2 * stroke_width`) for drawing and bbox calculations. Full FreeType loading, Unicode glyph coverage, `justify`, direction/features/language, and variation axes/names remain future ABI surfaces.
+
 `pillow_c_image_remap_palette` and `pillow_c_image_remap_palette_into` implement Pillow's `Image.remap_palette` for mode `P` and `L` images over RGB palettes. The native path builds the new palette from `dest_map`, remaps all one-byte pixels in one pass, returns a mode `P` image, and uses Pillow's default grayscale source palette for `L` inputs. RGBA palette remapping is intentionally outside the current RGB palette ABI.
 
 `pillow_c_image_put_palette_rgba` accepts normalized RGBA palette bytes plus an alpha-mode id: `0` means no stored alpha metadata, `1` means Pillow `RGBA` palette semantics, and `2` means Pillow `RGBX` palette semantics. `pillow_c_image_get_palette_rgba` returns RGB plus stored alpha bytes, or `255` alpha when no alpha metadata exists. `pillow_c_image_palette_alpha_mode` lets the AHK facade reproduce Pillow's rawmode restrictions, including `getpalette("RGBX")`/`getpalette("BGRX")` rejection for true `RGBA` palettes.
@@ -298,13 +371,19 @@ Reusable target operations:
 
 `pillow_c_image_resize_reducing_gap` and `pillow_c_image_resize_reducing_gap_into` expose Pillow-style `Image.resize(..., box=..., reducing_gap=...)` as one native operation. `reducing_gap` must be finite and at least `1.0`; when the computed factor is greater than one for either axis, the DLL computes Pillow's safe reduce box, runs native integer `reduce`, then runs final box resize against the reduced temporary. Modes `1` and `P` force `NEAREST` like Pillow, so palette images avoid reduce and preserve palette metadata. Invalid boxes or gaps return `-3`, and `_into` target shape or mode mismatches return `-5`.
 
-`pillow_c_image_set_raw_bytes` and `pillow_c_image_get_raw_bytes` implement common Pillow raw decoder/encoder modes without AHK-side byte reordering. The current raw decode support covers `1`->`1`, `L`->`L`, `LA`->`LA`, `CMYK`->`CMYK`, `RGB` target raw modes `RGB`, `RGBX`, `BGR`, `BGRX`, `XBGR`, and `RGBA` target raw modes `RGBA`, `BGRA`, `ARGB`, `ABGR`, `BGR`. Mode `1` raw bytes are bit-packed most-significant-bit first per row, while native image storage remains one byte per pixel. Decode accepts a non-negative source stride, where `0` means tightly packed, and negative orientation reads rows bottom-up. Raw encode support covers matching direct modes plus common `RGB`/`RGBA` BGR-family packers; callers can first pass a null output pointer to query the required byte size.
+`pillow_c_image_set_raw_bytes` and `pillow_c_image_get_raw_bytes` implement common Pillow raw decoder/encoder modes without AHK-side byte reordering. The current raw decode support covers `1`->`1`, `L`->`L`, `LA`->`LA`, `CMYK`->`CMYK`, `I`/`I;32`/`I;32B`/`I;32N` raw input into mode `I`, `I;16`/`I;16B`/`I;16N` raw input into mode `I`, `F`/`F;32F`/`F;32BF`/`F;32NF` raw input into mode `F`, `RGB` target raw modes `RGB`, `RGBX`, `BGR`, `BGRX`, `XBGR`, and `RGBA` target raw modes `RGBA`, `BGRA`, `ARGB`, `ABGR`, `BGR`. Mode `1` raw bytes are bit-packed most-significant-bit first per row, while native image storage remains one byte per pixel. Mode `I` raw bytes are stored as little-endian 32-bit slots; 16-bit raw decoders expand unsigned samples into those 32-bit slots, and big/native-endian 32-bit aliases normalize into the same internal storage. Mode `F` raw bytes are stored as little-endian float32 slots, with big/native-endian aliases normalized during decode. Decode accepts a non-negative source stride, where `0` means tightly packed, and negative orientation reads rows bottom-up. Raw encode support covers matching direct modes, mode `I` to `I;16B` with Pillow-style `0..65535` clipping, direct `F`/`F;32F` plus native-endian `F;32NF`, and common `RGB`/`RGBA` BGR-family packers; callers can first pass a null output pointer to query the required byte size.
 
 `pillow_c_image_open_bmp` and `pillow_c_image_save_bmp` are the first native file-format entry points. Paths are UTF-8 strings from AHK and are opened through Windows wide-path APIs. The current BMP support is intentionally uncompressed Windows BMP: open accepts 8-bit indexed/grayscale, 24-bit BGR, and 32-bit BGRA; save supports `L`, `RGB`, and `RGBA`. `RGB` save bytes match Pillow's 24-bit BMP output, `L` saves with a grayscale palette, and `RGBA` saves as 32-bit BGRA like Pillow, which opens back as `RGB`.
 
-`pillow_c_image_open_ppm` and `pillow_c_image_save_ppm` keep Netpbm PBM/PGM/PPM files in the DLL. Native open supports plain `P1` and binary `P4` bitmap as mode `1`, plain `P2` and binary `P5` grayscale as mode `L` when `maxval <= 255`, and plain `P3` plus binary `P6` truecolor as mode `RGB` when `maxval < 65536`. Non-255 samples are scaled to 8-bit with Pillow's half-even rounding, binary over-range samples clamp through that scaling path, and plain over-range samples reject like Pillow. PBM bits are inverted relative to Pillow's external mode `1` raw bytes: Netpbm bit `1` is black and Pillow raw bit `1` is white. Native save writes Pillow-style binary `P4`/`P5`/`P6` headers for `1`, `L`, and `RGB` handles. High-bit-depth grayscale Netpbm remains a future surface because Pillow maps it to `I`/`I;16B`, which is not a native storage mode yet.
+`pillow_c_image_open_ppm` and `pillow_c_image_save_ppm` keep Netpbm PBM/PGM/PPM files in the DLL. Native open supports plain `P1` and binary `P4` bitmap as mode `1`, plain `P2` and binary `P5` grayscale as mode `L` when `maxval <= 255`, high-bit-depth `P2`/`P5` grayscale as mode `I`, and plain `P3` plus binary `P6` truecolor as mode `RGB` when `maxval < 65536`. Non-255 8-bit samples are scaled to 8-bit with Pillow's half-even rounding. High-bit-depth grayscale samples are scaled to Pillow's `0..65535` `I` range with half-even rounding and stored as little-endian 32-bit values; `maxval=65535` keeps the sample value directly. Binary over-range samples clamp through the scaling path, while plain over-range samples reject like Pillow. PBM bits are inverted relative to Pillow's external mode `1` raw bytes: Netpbm bit `1` is black and Pillow raw bit `1` is white. Native save writes Pillow-style binary `P4`/`P5`/`P6` headers for `1`, `L`, `I`, and `RGB` handles. Mode `I` writes `P5`, `maxval=65535`, and big-endian unsigned 16-bit samples after clipping signed int32 pixels to Pillow's `0..65535` PGM save range.
 
 `pillow_c_image_open_qoi` and `pillow_c_image_save_qoi` keep Quite OK Image encode/decode inside the DLL. The current path supports Pillow-compatible `RGB` and `RGBA` QOI files, writes Pillow's default colorspace byte, and rejects unsupported modes such as `L`, `P`, and `CMYK` with `-3`.
+
+`pillow_c_image_open_tga`, `pillow_c_image_save_tga`, and `pillow_c_image_save_tga_options` keep Truevision TGA decode/encode inside the DLL. The current path supports Pillow-compatible uncompressed and RLE `L`, `RGB`, `RGBA`, and 24-bit color-mapped `P` files: default save writes uncompressed image types `3`, `2`, and `1`; option save with `rle != 0` writes image types `11`, `10`, and `9`; both save paths write TGA 2.0 footer bytes, bottom-left origin rows, BGR/BGRA channel order for color images, and BGR palette entries for `P`. RLE encoding is row-bounded to match Pillow's TGA encoder packet boundaries. Open accepts 8-bit grayscale, 24/32-bit truecolor, and 8-bit indexed files with 24-bit color maps for both uncompressed and RLE files, handles top/bottom plus left/right origin descriptor bits, preserves RGB palette metadata on `P` handles, and rejects truncated RLE packets with `-2`. Non-24-bit palettes and advanced TGA metadata remain future surfaces.
+
+`pillow_c_image_open_xbm`, `pillow_c_image_save_xbm`, and `pillow_c_image_save_xbm_options` keep X11 bitmap files in the DLL for Pillow mode `1` images. Native save writes Pillow-style `im_width`, `im_height`, and `im_bits[]` text with low-bit-first XBM bytes and 15 byte literals per line. The options path writes `im_x_hot` and `im_y_hot` between height and bits for non-negative integer hotspot pairs, matching Pillow's stable round-trippable XBM metadata path. Native open accepts ordinary Pillow XBM headers, decodes low-bit-first file bytes into the DLL's unpacked mode `1` storage where nonzero bits become `255`, stores non-negative integer hotspot pairs on the image handle, and reports truncated bitmap data with `-2`.
+
+`pillow_c_image_open_ico`, `pillow_c_image_save_ico`, `pillow_c_image_save_ico_options`, and `pillow_c_image_save_ico_format_options` keep the current ICO path inside the DLL. Native open decodes through WIC and returns the largest available frame as a public `RGBA` handle. Native save writes PNG-backed ICO entries generated by the native PNG chunk writer, with ICO directory bit depth set to Pillow's PNG-backed default `32`. The default save path mirrors Pillow's built-in square icon sizes `16`, `24`, `32`, `48`, `64`, `128`, and `256`, skipping any size that does not fit inside the source image and using native LANCZOS resize for generated frames. The size options path accepts a pointer to `size_count` integer pairs, sorts and de-duplicates requested pairs like Pillow's `sorted(set(sizes))`, skips pairs larger than the source image or ICO's `256x256` limit, and uses thumbnail-style contained LANCZOS resizing for non-square requested boxes. A zero explicit `size_count` writes an empty ICO directory. `pillow_c_image_save_ico_format_options` adds a `has_sizes` flag so callers can distinguish default sizes from explicit `sizes=[]`, and only exact lowercase `bitmap_format="bmp"` selects Pillow-style DIB-backed ICO payloads. The BMP-backed path supports Pillow's `1`, `L`, `P`, `RGB`, and `RGBA` modes, writes doubled DIB heights, BGRA/BGR pixel rows, palette entries where Pillow writes them, and raw 1-bit zero AND masks for non-32-bit entries; other bitmap format strings fall back to PNG-backed entries like Pillow. The current verified path covers facade `Image.Open(..., "ICO")`, `Image.Save(..., "ICO")`, `Image.Save(..., "ICO", { Sizes: [...] })`, `Image.Save(..., "ICO", { BitmapFormat: "bmp" })`, raw DLL round-tripping for `RGBA`, default multi-entry directories, custom size directories, DIB-backed `RGBA`/`RGB` entries, and uppercase `"BMP"` fallback. ICO `append_images` and frame selection by caller-requested size remain future ABI surfaces.
 
 `pillow_c_image_open_png`, `pillow_c_image_save_png`, `pillow_c_image_save_png_compress_level`, and `pillow_c_image_save_png_options` keep PNG decode/encode inside the DLL. The current PNG path supports `L`, `LA`, `P`, `RGB`, and `RGBA` image handles. Native open converts supported source PNG pixel formats into the DLL's row-major public modes, preserves short RGB palettes for `P`, and reads `pHYs` DPI metadata into the handle. Native save writes valid PNG files from those modes after any required RGB/BGR channel packing inside C++; `LA` and `P` default saves use native PNG chunk writing so they reopen with Pillow-style mode and palette semantics. `pillow_c_image_save_png_compress_level` accepts Pillow-style `-1` default plus `0..9`; level `0` writes native stored zlib output for supported modes, while nonzero levels currently reuse the existing encoder path. `pillow_c_image_save_png_options` is the extensible PNG save-options ABI used by the facade for `compress_level` and `dpi`; positive DPI values are converted to PNG `pHYs` pixels-per-meter values with Pillow's rounding formula, and invalid or partial DPI values return `-3`.
 
@@ -312,9 +391,119 @@ Reusable target operations:
 
 `pillow_c_image_metadata_resolution` exposes resolution metadata already attached to an image handle. It returns a boolean DPI flag plus double `dpi_x`/`dpi_y`, and returns JFIF version, density unit, and density pair when JPEG APP0 JFIF metadata is present. Non-JPEG images report `jfif=0`; images without usable DPI report `has_dpi=0` without clearing other handle metadata.
 
+`pillow_c_image_metadata_hotspot` exposes XBM hotspot metadata already attached to an image handle. It returns a boolean hotspot flag plus integer `x` and `y` coordinates; images without hotspot metadata report `has_hotspot=0` and zero coordinates.
+
 `pillow_c_image_open_tiff`, `pillow_c_image_open_tiff_frame`, `pillow_c_image_frame_count_tiff`, and `pillow_c_image_save_tiff` keep TIFF decode/encode inside the DLL through WIC. The current TIFF path supports lossless `L`, `RGB`, and `RGBA` image handles. Native open converts supported TIFF pixel formats into the DLL's public row-major byte order. `pillow_c_image_open_tiff` opens frame `0`; `pillow_c_image_open_tiff_frame` opens a zero-based frame index and returns `-3` for negative or out-of-range frames. `pillow_c_image_frame_count_tiff` returns WIC's decoded frame count after validating the container. Native save packs RGB/RGBA to WIC's BGR/BGRA encoder formats inside C++ and rejects palette, LA, mode `1`, and CMYK modes with `-3`.
 
-`pillow_c_image_open_gif`, `pillow_c_image_open_gif_frame`, `pillow_c_image_frame_count_gif`, `pillow_c_image_gif_metadata`, `pillow_c_image_save_gif`, and `pillow_c_image_save_gif_animation` keep GIF decode/encode and basic animation metadata inside the DLL. Frame `0` opens as mode `P` with RGB palette metadata preserved. Later frames currently open as public `RGB` byte data through WIC frame conversion, matching the verified simple Pillow sequence fixture. `pillow_c_image_open_gif_frame` uses zero-based indexes and returns `-3` for negative or out-of-range frames. `pillow_c_image_gif_metadata` parses GIF blocks directly and returns frame duration in milliseconds, NETSCAPE loop count, Graphic Control Extension disposal method, and logical-screen background index. Missing optional values return `-1` except disposal, which defaults to `0`. Native single-frame save writes mode `P` images with an attached RGB palette directly; mode `L` and `RGB` inputs are accepted when they contain no more than 256 unique colors and are first exact-quantized into a native `P` temporary. `pillow_c_image_save_gif_animation` writes a simple full-frame GIF89a sequence for same-size mode `P` images with identical RGB palettes, accepts optional duration and disposal arrays of length `1` or frame count, and writes an optional NETSCAPE loop extension. It rejects non-`P` frames, size mismatches, palette mismatches, invalid disposal values, and unsupported loop counts with stable status codes. Full animated GIF composition semantics, local rectangles, transparency optimization, RGBA GIF save, and general lossy GIF quantization remain future ABI surfaces.
+`pillow_c_image_open_gif`, `pillow_c_image_open_gif_frame`,
+`pillow_c_image_frame_count_gif`, `pillow_c_image_gif_metadata`,
+`pillow_c_image_gif_metadata_ex`, `pillow_c_image_save_gif`,
+`pillow_c_image_save_gif_options`, `pillow_c_image_save_gif_animation`, and
+`pillow_c_image_save_gif_animation_options`, and
+`pillow_c_image_save_gif_animation_metadata_options` keep GIF decode/encode
+and basic animation metadata inside the DLL. Frame `0` opens as mode `P` with
+RGB palette metadata preserved. Later frames first try native GIF block parsing
+and LZW decode to compose local image rectangles onto the logical RGB canvas
+with transparency and disposal handling.
+
+Verified read-side coverage includes disposal `1` preservation, disposal `2`
+restoration to the logical-screen background color, disposal `3` restoration to
+the pre-frame canvas for local rectangles that the next frame does not
+overwrite, and transparent local-rectangle pixels that preserve the existing
+canvas while drawing; unsupported parser cases fall back to WIC frame
+conversion. `pillow_c_image_open_gif_frame` uses zero-based indexes and returns
+`-3` for negative or out-of-range frames. `pillow_c_image_gif_metadata` parses
+GIF blocks directly and returns frame duration in milliseconds, NETSCAPE loop
+count, Graphic Control Extension disposal method, and logical-screen background
+index. `pillow_c_image_gif_metadata_ex` preserves that ABI and adds the Graphic
+Control Extension transparent color index as an optional integer output.
+Missing optional values return `-1` except disposal, which defaults to `0`.
+
+Native single-frame save writes mode `P` images with an attached RGB palette
+directly; mode `L` inputs and `RGB` inputs with no more than 256 unique colors
+are first exact-quantized into a native `P` temporary. `RGB` inputs with more
+than 256 unique colors use the current bounded weighted median-cut fallback,
+preserving the exact path for smaller palettes and targeting approximate
+reopened RGB pixels rather than byte-identical Pillow palette order. Mode
+`RGBA` inputs are accepted for the verified exact-color path when the effective
+palette fits in 256 entries: `alpha == 0` pixels share one transparent palette
+index, the first transparent pixel's RGB becomes that palette entry, and all
+nonzero alpha values are treated as opaque RGB. When an RGBA single-frame save
+exceeds 256 effective colors, the current bounded fallback reserves one
+transparent palette slot if any fully transparent pixel exists, quantizes
+non-transparent RGB pixels into the remaining 255 or 256 slots with the same
+deterministic weighted median-cut style path, maps all `alpha == 0` pixels to
+the transparent index, and keeps partial alpha opaque. RGBA saves without fully
+transparent pixels write no GIF transparency extension.
+
+`pillow_c_image_save_gif_options` currently adds P-mode single-frame
+transparency: nonzero `has_transparency` writes a GIF89a Graphic Control
+Extension with packed flag `0x01`, zero delay, and `transparency & 0xff` as
+the transparent color index. The no-transparency options path delegates to
+`pillow_c_image_save_gif`.
+
+`pillow_c_image_save_gif_animation` writes same-size mode `P` sequences,
+accepts optional duration and disposal arrays of length `1` or frame count,
+writes an optional NETSCAPE loop extension, and merges visually identical
+consecutive frames by accumulating duration. The first frame uses the global
+color table from the first image. Later changed frames may use their own RGB
+palette as a local color table, so P-frame animations with different per-frame
+palettes can preserve each frame's colors. Delta rectangles and
+unchanged-pixel transparency decisions compare resolved palette RGB values
+rather than raw palette indexes; for the verified optimized paths, changed
+sub-rectangles are written as local image descriptors with local color tables
+and an unused transparency index for unchanged pixels. The GIF LZW encoder
+follows the reader-compatible code-size transition by growing code size after
+`next_code > (1 << code_size)`. It rejects non-`P` animation frames, size
+mismatches, invalid palettes, invalid disposal values, and unsupported loop
+counts with stable status codes. Facade `ImageSequence.Iterator` coverage now
+includes Pillow's live seek-state frame references over a complex transparent
+local-rectangle GIF fixture. Caller-provided animation transparency is covered
+for optimized and `optimize=False` bounded P-mode fixtures, and caller
+`background` is covered for the bounded logical-screen background-byte slice.
+The first bounded post-`disposal=2` optimized parity gap is now covered: when
+caller transparency is known, the native writer can re-diff the following
+frame against the restored background instead of forcing full size on the
+selected `3x1` fixture. Animation RGBA quantization and full Pillow quantize
+algorithm parity remain future ABI surfaces.
+
+`pillow_c_image_save_gif_animation_options` preserves the animation save
+argument list and adds two tri-state integers after `disposal_count`:
+`include_color_table` and `optimize`, where `-1` means unset/default, `0`
+means false, and `1` means true. For the covered P-mode animation fixtures,
+`include_color_table=True` forces frame 0 to write a local color table,
+`include_color_table=False` keeps frame 0 on the global color table without
+suppressing later bbox-frame local tables, `optimize=True` keeps the existing
+optimized local-rectangle transparency behavior, and `optimize=False` writes
+4-entry global/local color tables with `LzwMin=8` for the bounded 2-color
+fixtures while disabling unchanged-pixel transparency substitution when no
+caller transparency is supplied.
+
+`pillow_c_image_save_gif_animation_metadata_options` extends the same argument
+list with `has_transparency` and `transparency` after the tri-state animation
+options. `has_transparency` must be `0` or `1`; when it is `1`,
+`transparency` must be in `0..255`. For the covered optimized P-mode animation
+fixture, caller transparency replaces the native unused-index transparency on
+later local frames, while frame 0 keeps Pillow's no-transparency GCE default.
+If the caller index already exists in the later frame palette, the writer pads
+one extra zero-color palette entry before computing the local color-table size,
+matching the covered Pillow 11.3.0 4-entry local table. With
+`optimize=False`, caller transparency is covered for the same bounded fixture:
+frame 0 and changed later frames write a transparency GCE, color tables stay at
+4 entries for the selected palettes, and `LzwMin=8` is preserved. `background`,
+broader disposal interactions, animation RGBA quantization, and full Pillow
+quantize parity remain future ABI surfaces.
+
+`pillow_c_image_save_gif_animation_background_options` preserves the same
+argument list as the metadata-options export and appends `has_background` plus
+`background`. When `has_background == 1`, `background` must be in `0..255` and
+is written to the GIF logical-screen descriptor background byte. For the
+covered bounded `3x1` fixture, this matches Pillow 11.3.0's logical-screen
+background metadata without changing the already-covered optimized local-frame
+geometry. Local Pillow 11.3.0 source/probes did not show logical-screen
+`background` alone driving next-frame bbox optimization on the covered
+fixtures. The first bounded post-`disposal=2` transparency-aware re-diff path
+is now covered; remaining work is the next bounded edge case after that path.
 
 `pillow_c_image_linear_gradient` and `pillow_c_image_linear_gradient_into` implement Pillow's fixed-size top-to-bottom `256x256` `Image.linear_gradient` generator for modes `1`, `L`, and `P`. Internal storage writes the row value `0..255` across each row; mode `1` still uses the existing raw encoder when callers request Pillow's bit-packed external bytes. Unsupported modes return `-3`, and `_into` target shape or mode mismatches return `-5`.
 

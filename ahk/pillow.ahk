@@ -1626,6 +1626,168 @@ class Pillow {
         }
     }
 
+    class ImageFont {
+        static LoadDefault() {
+            handle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_font_load_default",
+                "Ptr*", &handle,
+                "Int"
+            ))
+            return Pillow.ImageFont.FreeTypeFont(handle)
+        }
+
+        static load_default() {
+            return Pillow.ImageFont.LoadDefault()
+        }
+
+        class FreeTypeFont {
+            __New(handle) {
+                if handle = 0
+                    throw Error("pillow_c returned a null font handle", -2)
+                this.Handle := handle
+            }
+
+            __Delete() {
+                this.Close()
+            }
+
+            Close() {
+                handle := this.HasOwnProp("Handle") ? this.Handle : 0
+                if handle {
+                    this.Handle := 0
+                    Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_font_free", "Ptr", handle, "Int"))
+                }
+            }
+
+            RequireHandle() {
+                if !this.Handle
+                    throw Error("Pillow.ImageFont font is closed", -1)
+                return this.Handle
+            }
+
+            GetLength(text) {
+                if !(text is String)
+                    throw Error("Pillow.ImageFont.GetLength text expects a string", -1)
+                textBytes := Pillow.Image.Utf8Buffer(text)
+                length := 0.0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_getlength",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", textBytes,
+                    "Double*", &length,
+                    "Int"
+                ))
+                return length
+            }
+
+            GetBbox(text, anchor := unset) {
+                if !(text is String)
+                    throw Error("Pillow.ImageFont.GetBbox text expects a string", -1)
+                textBytes := Pillow.Image.Utf8Buffer(text)
+                anchorBytes := 0
+                if IsSet(anchor) {
+                    if !(anchor is String)
+                        throw Error("Pillow.ImageFont.GetBbox anchor expects a string", -1)
+                    anchorBytes := Pillow.Image.Utf8Buffer(anchor)
+                }
+                left := 0
+                top := 0
+                right := 0
+                bottom := 0
+                if IsSet(anchor) {
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_font_getbbox_anchor",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", textBytes,
+                        "Ptr", anchorBytes,
+                        "Int*", &left,
+                        "Int*", &top,
+                        "Int*", &right,
+                        "Int*", &bottom,
+                        "Int"
+                    ))
+                } else {
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_font_getbbox",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", textBytes,
+                        "Int*", &left,
+                        "Int*", &top,
+                        "Int*", &right,
+                        "Int*", &bottom,
+                        "Int"
+                    ))
+                }
+                return [left, top, right, bottom]
+            }
+
+            GetMetrics() {
+                ascent := 0
+                descent := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_getmetrics",
+                    "Ptr", this.RequireHandle(),
+                    "Int*", &ascent,
+                    "Int*", &descent,
+                    "Int"
+                ))
+                return [ascent, descent]
+            }
+
+            GetName() {
+                familyRequired := 0
+                styleRequired := 0
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_getname",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", 0,
+                    "UPtr", 0,
+                    "UPtr*", &familyRequired,
+                    "Ptr", 0,
+                    "UPtr", 0,
+                    "UPtr*", &styleRequired,
+                    "Int"
+                )
+                if status != -1 || familyRequired <= 0 || styleRequired <= 0
+                    Pillow.CheckStatus(status)
+
+                family := Buffer(familyRequired, 0)
+                style := Buffer(styleRequired, 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_getname",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", family,
+                    "UPtr", family.Size,
+                    "UPtr*", &familyRequired,
+                    "Ptr", style,
+                    "UPtr", style.Size,
+                    "UPtr*", &styleRequired,
+                    "Int"
+                ))
+                return [
+                    StrGet(family.Ptr, familyRequired - 1, "UTF-8"),
+                    StrGet(style.Ptr, styleRequired - 1, "UTF-8"),
+                ]
+            }
+
+            FontVariant() {
+                handle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_variant",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr*", &handle,
+                    "Int"
+                ))
+                return Pillow.ImageFont.FreeTypeFont(handle)
+            }
+
+            font_variant() {
+                return this.FontVariant()
+            }
+        }
+    }
+
     class ImageDraw {
         static Draw(image) {
             return Pillow.ImageDraw.DrawHandle(image)
@@ -1664,6 +1826,37 @@ class Pillow {
                 "Int"
             ))
             return image
+        }
+
+        static TextAlignId(align, operationName) {
+            if align = "left"
+                return 0
+            if align = "center"
+                return 1
+            if align = "right"
+                return 2
+            if align = "justify"
+                return 3
+            throw Error("Pillow.ImageDraw." operationName ' align must be "left", "center", "right" or "justify"', -1)
+        }
+
+        static ValidateMultilineAnchor(anchor) {
+            if StrLen(anchor) != 2
+                throw Error("anchor must be a 2 character string", -1)
+            horizontal := SubStr(anchor, 1, 1)
+            vertical := SubStr(anchor, 2, 1)
+            if !InStr("lmr", horizontal) || !InStr("atmbds", vertical)
+                throw Error("bad anchor specified: " anchor, -1)
+            if vertical = "t" || vertical = "b"
+                throw Error("anchor not supported for multiline text", -1)
+        }
+
+        static StrokeWidth(strokeWidth, operationName) {
+            if !(strokeWidth is Integer)
+                throw Error("Pillow.ImageDraw." operationName " strokeWidth must be an integer", -1)
+            if strokeWidth < 0
+                throw Error("Pillow.ImageDraw." operationName " strokeWidth must be >= 0", -1)
+            return strokeWidth
         }
 
         class DrawHandle {
@@ -1959,6 +2152,744 @@ class Pillow {
                     "Int"
                 ))
                 return this
+            }
+
+            Text(xy, text, fill := unset, font := unset, anchor := unset, strokeWidth := 0, strokeFill := unset) {
+                if !IsObject(xy) || xy.Length != 2
+                    throw Error("Pillow.ImageDraw.Text xy expects [x, y]", -1)
+                if !(xy[1] is Number) || !(xy[2] is Number)
+                    throw Error("Pillow.ImageDraw.Text xy coordinates must be numeric", -1)
+                if !(text is String)
+                    throw Error("Pillow.ImageDraw.Text text expects a string", -1)
+                strokeWidth := Pillow.ImageDraw.StrokeWidth(strokeWidth, "Text")
+
+                textBytes := Pillow.Image.Utf8Buffer(text)
+                anchorBytes := 0
+                if IsSet(anchor) {
+                    if !(anchor is String)
+                        throw Error("Pillow.ImageDraw.Text anchor expects a string", -1)
+                    anchorBytes := Pillow.Image.Utf8Buffer(anchor)
+                }
+                color := this.Image.PasteColorBuffer(IsSet(fill) ? fill : 0)
+                strokeColor := 0
+                if strokeWidth > 0
+                    strokeColor := this.Image.PasteColorBuffer(IsSet(strokeFill) ? strokeFill : (IsSet(fill) ? fill : 0))
+                if IsSet(font) {
+                    if !(IsObject(font) && font is Pillow.ImageFont.FreeTypeFont)
+                        throw Error("Pillow.ImageDraw.Text currently supports only Pillow.ImageFont fonts", -1)
+                    if strokeWidth > 0 && IsSet(anchor) {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_text_font_anchor_stroke",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Ptr", anchorBytes,
+                            "Int", strokeWidth,
+                            "Ptr", strokeColor,
+                            "UPtr", strokeColor.Size,
+                            "Int"
+                        ))
+                    } else if strokeWidth > 0 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_text_font_stroke",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int", strokeWidth,
+                            "Ptr", strokeColor,
+                            "UPtr", strokeColor.Size,
+                            "Int"
+                        ))
+                    } else if IsSet(anchor) {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_text_font_anchor",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Ptr", anchorBytes,
+                            "Int"
+                        ))
+                    } else {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_text_font",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int"
+                        ))
+                    }
+                } else {
+                    if strokeWidth > 0 && IsSet(anchor) {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_text_anchor_stroke",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Ptr", anchorBytes,
+                            "Int", strokeWidth,
+                            "Ptr", strokeColor,
+                            "UPtr", strokeColor.Size,
+                            "Int"
+                        ))
+                    } else if strokeWidth > 0 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_text_stroke",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int", strokeWidth,
+                            "Ptr", strokeColor,
+                            "UPtr", strokeColor.Size,
+                            "Int"
+                        ))
+                    } else if IsSet(anchor) {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_text_anchor",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Ptr", anchorBytes,
+                            "Int"
+                        ))
+                    } else {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_text",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int"
+                        ))
+                    }
+                }
+                return this
+            }
+
+            TextLength(text, font := unset) {
+                if !(text is String)
+                    throw Error("Pillow.ImageDraw.TextLength text expects a string", -1)
+                if IsSet(font) {
+                    if !(IsObject(font) && font is Pillow.ImageFont.FreeTypeFont)
+                        throw Error("Pillow.ImageDraw.TextLength currently supports only Pillow.ImageFont fonts", -1)
+                    return font.GetLength(text)
+                }
+
+                textBytes := Pillow.Image.Utf8Buffer(text)
+                length := 0.0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_textlength",
+                    "Ptr", textBytes,
+                    "Double*", &length,
+                    "Int"
+                ))
+                return length
+            }
+
+            TextBbox(xy, text, font := unset, anchor := unset, strokeWidth := 0) {
+                if !IsObject(xy) || xy.Length != 2
+                    throw Error("Pillow.ImageDraw.TextBbox xy expects [x, y]", -1)
+                if !(xy[1] is Number) || !(xy[2] is Number)
+                    throw Error("Pillow.ImageDraw.TextBbox xy coordinates must be numeric", -1)
+                if !(text is String)
+                    throw Error("Pillow.ImageDraw.TextBbox text expects a string", -1)
+                strokeWidth := Pillow.ImageDraw.StrokeWidth(strokeWidth, "TextBbox")
+
+                textBytes := Pillow.Image.Utf8Buffer(text)
+                anchorBytes := 0
+                if IsSet(anchor) {
+                    if !(anchor is String)
+                        throw Error("Pillow.ImageDraw.TextBbox anchor expects a string", -1)
+                    anchorBytes := Pillow.Image.Utf8Buffer(anchor)
+                }
+                left := 0
+                top := 0
+                right := 0
+                bottom := 0
+                if IsSet(font) {
+                    if !(IsObject(font) && font is Pillow.ImageFont.FreeTypeFont)
+                        throw Error("Pillow.ImageDraw.TextBbox currently supports only Pillow.ImageFont fonts", -1)
+                    if strokeWidth > 0 && IsSet(anchor) {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_textbbox_font_anchor_stroke",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Ptr", anchorBytes,
+                            "Int", strokeWidth,
+                            "Int*", &left,
+                            "Int*", &top,
+                            "Int*", &right,
+                            "Int*", &bottom,
+                            "Int"
+                        ))
+                        return [left, top, right, bottom]
+                    }
+                    if strokeWidth > 0 {
+                        bbox := font.GetBbox(text)
+                        return [
+                            xy[1] + bbox[1] - strokeWidth,
+                            xy[2] + bbox[2] - strokeWidth,
+                            xy[1] + bbox[3] + strokeWidth,
+                            xy[2] + bbox[4] + strokeWidth
+                        ]
+                    }
+                    if IsSet(anchor) {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_textbbox_font_anchor",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Ptr", anchorBytes,
+                            "Int*", &left,
+                            "Int*", &top,
+                            "Int*", &right,
+                            "Int*", &bottom,
+                            "Int"
+                        ))
+                        return [left, top, right, bottom]
+                    }
+                    bbox := font.GetBbox(text)
+                    return [xy[1] + bbox[1], xy[2] + bbox[2], xy[1] + bbox[3], xy[2] + bbox[4]]
+                } else {
+                    if strokeWidth > 0 && IsSet(anchor) {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_textbbox_anchor_stroke",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", anchorBytes,
+                            "Int", strokeWidth,
+                            "Int*", &left,
+                            "Int*", &top,
+                            "Int*", &right,
+                            "Int*", &bottom,
+                            "Int"
+                        ))
+                    } else if strokeWidth > 0 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_textbbox_stroke",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Int", strokeWidth,
+                            "Int*", &left,
+                            "Int*", &top,
+                            "Int*", &right,
+                            "Int*", &bottom,
+                            "Int"
+                        ))
+                    } else if IsSet(anchor) {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_textbbox_anchor",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", anchorBytes,
+                            "Int*", &left,
+                            "Int*", &top,
+                            "Int*", &right,
+                            "Int*", &bottom,
+                            "Int"
+                        ))
+                    } else {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_textbbox",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Int*", &left,
+                            "Int*", &top,
+                            "Int*", &right,
+                            "Int*", &bottom,
+                            "Int"
+                        ))
+                    }
+                    return [left, top, right, bottom]
+                }
+            }
+
+            MultilineText(xy, text, fill := unset, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, strokeFill := unset) {
+                if !IsObject(xy) || xy.Length != 2
+                    throw Error("Pillow.ImageDraw.MultilineText xy expects [x, y]", -1)
+                if !(xy[1] is Number) || !(xy[2] is Number)
+                    throw Error("Pillow.ImageDraw.MultilineText xy coordinates must be numeric", -1)
+                if !(text is String)
+                    throw Error("Pillow.ImageDraw.MultilineText text expects a string", -1)
+                if !(spacing is Integer)
+                    throw Error("Pillow.ImageDraw.MultilineText spacing must be an integer", -1)
+                strokeWidth := Pillow.ImageDraw.StrokeWidth(strokeWidth, "MultilineText")
+
+                alignId := Pillow.ImageDraw.TextAlignId(align, "MultilineText")
+                textBytes := Pillow.Image.Utf8Buffer(text)
+                anchorBytes := 0
+                if IsSet(anchor) {
+                    if !(anchor is String)
+                        throw Error("Pillow.ImageDraw.MultilineText anchor expects a string", -1)
+                    Pillow.ImageDraw.ValidateMultilineAnchor(anchor)
+                    anchorBytes := Pillow.Image.Utf8Buffer(anchor)
+                }
+                color := this.Image.PasteColorBuffer(IsSet(fill) ? fill : 0)
+                strokeColor := 0
+                if strokeWidth > 0
+                    strokeColor := this.Image.PasteColorBuffer(IsSet(strokeFill) ? strokeFill : (IsSet(fill) ? fill : 0))
+                if IsSet(font) {
+                    if !(IsObject(font) && font is Pillow.ImageFont.FreeTypeFont)
+                        throw Error("Pillow.ImageDraw.MultilineText currently supports only Pillow.ImageFont fonts", -1)
+                    if strokeWidth > 0 && IsSet(anchor) {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_font_anchor_stroke",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Ptr", anchorBytes,
+                            "Int", strokeWidth,
+                            "Ptr", strokeColor,
+                            "UPtr", strokeColor.Size,
+                            "Int"
+                        ))
+                    } else if strokeWidth > 0 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_font_align_stroke",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Int", strokeWidth,
+                            "Ptr", strokeColor,
+                            "UPtr", strokeColor.Size,
+                            "Int"
+                        ))
+                    } else if IsSet(anchor) {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_font_anchor",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Ptr", anchorBytes,
+                            "Int"
+                        ))
+                    } else if alignId = 0 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_font",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int", spacing,
+                            "Int"
+                        ))
+                    } else {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_font_align",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Int"
+                        ))
+                    }
+                } else {
+                    if strokeWidth > 0 && IsSet(anchor) {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_anchor_stroke",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Ptr", anchorBytes,
+                            "Int", strokeWidth,
+                            "Ptr", strokeColor,
+                            "UPtr", strokeColor.Size,
+                            "Int"
+                        ))
+                    } else if strokeWidth > 0 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_align_stroke",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Int", strokeWidth,
+                            "Ptr", strokeColor,
+                            "UPtr", strokeColor.Size,
+                            "Int"
+                        ))
+                    } else if IsSet(anchor) {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_anchor",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Ptr", anchorBytes,
+                            "Int"
+                        ))
+                    } else if alignId = 0 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int", spacing,
+                            "Int"
+                        ))
+                    } else {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_align",
+                            "Ptr", this.Image.RequireHandle(),
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", color,
+                            "UPtr", color.Size,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Int"
+                        ))
+                    }
+                }
+                return this
+            }
+
+            multiline_text(xy, text, fill := unset, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, strokeFill := unset) {
+                return this.MultilineText(
+                    xy,
+                    text,
+                    IsSet(fill) ? fill : unset,
+                    IsSet(font) ? font : unset,
+                    spacing,
+                    align,
+                    IsSet(anchor) ? anchor : unset,
+                    strokeWidth,
+                    IsSet(strokeFill) ? strokeFill : unset)
+            }
+
+            MultilineTextBbox(xy, text, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0) {
+                if !IsObject(xy) || xy.Length != 2
+                    throw Error("Pillow.ImageDraw.MultilineTextBbox xy expects [x, y]", -1)
+                if !(xy[1] is Number) || !(xy[2] is Number)
+                    throw Error("Pillow.ImageDraw.MultilineTextBbox xy coordinates must be numeric", -1)
+                if !(text is String)
+                    throw Error("Pillow.ImageDraw.MultilineTextBbox text expects a string", -1)
+                if !(spacing is Integer)
+                    throw Error("Pillow.ImageDraw.MultilineTextBbox spacing must be an integer", -1)
+                strokeWidth := Pillow.ImageDraw.StrokeWidth(strokeWidth, "MultilineTextBbox")
+
+                alignId := Pillow.ImageDraw.TextAlignId(align, "MultilineTextBbox")
+                textBytes := Pillow.Image.Utf8Buffer(text)
+                anchorBytes := 0
+                if IsSet(anchor) {
+                    if !(anchor is String)
+                        throw Error("Pillow.ImageDraw.MultilineTextBbox anchor expects a string", -1)
+                    Pillow.ImageDraw.ValidateMultilineAnchor(anchor)
+                    anchorBytes := Pillow.Image.Utf8Buffer(anchor)
+                }
+                left := 0
+                top := 0
+                right := 0
+                bottom := 0
+                if IsSet(font) {
+                    if !(IsObject(font) && font is Pillow.ImageFont.FreeTypeFont)
+                        throw Error("Pillow.ImageDraw.MultilineTextBbox currently supports only Pillow.ImageFont fonts", -1)
+                    if strokeWidth > 0 && IsSet(anchor) {
+                        left := 0.0
+                        top := 0.0
+                        right := 0.0
+                        bottom := 0.0
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_font_anchor_stroke_f64",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Ptr", anchorBytes,
+                            "Int", strokeWidth,
+                            "Double*", &left,
+                            "Double*", &top,
+                            "Double*", &right,
+                            "Double*", &bottom,
+                            "Int"
+                        ))
+                    } else if strokeWidth > 0 && alignId = 0 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_font_align_stroke",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Int", strokeWidth,
+                            "Int*", &left,
+                            "Int*", &top,
+                            "Int*", &right,
+                            "Int*", &bottom,
+                            "Int"
+                        ))
+                    } else if strokeWidth > 0 {
+                        left := 0.0
+                        top := 0.0
+                        right := 0.0
+                        bottom := 0.0
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_font_align_stroke_f64",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Int", strokeWidth,
+                            "Double*", &left,
+                            "Double*", &top,
+                            "Double*", &right,
+                            "Double*", &bottom,
+                            "Int"
+                        ))
+                    } else if IsSet(anchor) {
+                        left := 0.0
+                        top := 0.0
+                        right := 0.0
+                        bottom := 0.0
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_font_anchor_f64",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Ptr", anchorBytes,
+                            "Double*", &left,
+                            "Double*", &top,
+                            "Double*", &right,
+                            "Double*", &bottom,
+                            "Int"
+                        ))
+                    } else if alignId = 0 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_font",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Int", spacing,
+                            "Int*", &left,
+                            "Int*", &top,
+                            "Int*", &right,
+                            "Int*", &bottom,
+                            "Int"
+                        ))
+                    } else {
+                        left := 0.0
+                        top := 0.0
+                        right := 0.0
+                        bottom := 0.0
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_font_align_f64",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Ptr", font.RequireHandle(),
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Double*", &left,
+                            "Double*", &top,
+                            "Double*", &right,
+                            "Double*", &bottom,
+                            "Int"
+                        ))
+                    }
+                } else {
+                    if strokeWidth > 0 && IsSet(anchor) {
+                        left := 0.0
+                        top := 0.0
+                        right := 0.0
+                        bottom := 0.0
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_anchor_stroke_f64",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Ptr", anchorBytes,
+                            "Int", strokeWidth,
+                            "Double*", &left,
+                            "Double*", &top,
+                            "Double*", &right,
+                            "Double*", &bottom,
+                            "Int"
+                        ))
+                    } else if strokeWidth > 0 && alignId = 0 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_align_stroke",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Int", strokeWidth,
+                            "Int*", &left,
+                            "Int*", &top,
+                            "Int*", &right,
+                            "Int*", &bottom,
+                            "Int"
+                        ))
+                    } else if strokeWidth > 0 {
+                        left := 0.0
+                        top := 0.0
+                        right := 0.0
+                        bottom := 0.0
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_align_stroke_f64",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Int", strokeWidth,
+                            "Double*", &left,
+                            "Double*", &top,
+                            "Double*", &right,
+                            "Double*", &bottom,
+                            "Int"
+                        ))
+                    } else if IsSet(anchor) {
+                        left := 0.0
+                        top := 0.0
+                        right := 0.0
+                        bottom := 0.0
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_anchor_f64",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Ptr", anchorBytes,
+                            "Double*", &left,
+                            "Double*", &top,
+                            "Double*", &right,
+                            "Double*", &bottom,
+                            "Int"
+                        ))
+                    } else if alignId = 0 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Int", spacing,
+                            "Int*", &left,
+                            "Int*", &top,
+                            "Int*", &right,
+                            "Int*", &bottom,
+                            "Int"
+                        ))
+                    } else {
+                        left := 0.0
+                        top := 0.0
+                        right := 0.0
+                        bottom := 0.0
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_align_f64",
+                            "Int", xy[1],
+                            "Int", xy[2],
+                            "Ptr", textBytes,
+                            "Int", spacing,
+                            "Int", alignId,
+                            "Double*", &left,
+                            "Double*", &top,
+                            "Double*", &right,
+                            "Double*", &bottom,
+                            "Int"
+                        ))
+                    }
+                }
+                return [left, top, right, bottom]
+            }
+
+            multiline_textbbox(xy, text, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0) {
+                return this.MultilineTextBbox(
+                    xy,
+                    text,
+                    IsSet(font) ? font : unset,
+                    spacing,
+                    align,
+                    IsSet(anchor) ? anchor : unset,
+                    strokeWidth)
             }
 
             Line(xy, fill := unset, width := 0, joint := unset) {
@@ -2847,6 +3778,26 @@ class Pillow {
             return value
         }
 
+        static ReadI32(buf, offset) {
+            return NumGet(buf, offset, "Int")
+        }
+
+        static WriteI32(buf, offset, value, operationName := "Pillow.Image") {
+            if !(value is Number)
+                throw Error(operationName " expects numeric I-mode pixel values", -1)
+            NumPut("UInt", Integer(value) & 0xFFFFFFFF, buf, offset)
+        }
+
+        static ReadF32(buf, offset) {
+            return NumGet(buf, offset, "Float")
+        }
+
+        static WriteF32(buf, offset, value, operationName := "Pillow.Image") {
+            if !(value is Number)
+                throw Error(operationName " expects numeric F-mode pixel values", -1)
+            NumPut("Float", value + 0.0, buf, offset)
+        }
+
         static ByteBuffer(values, operationName) {
             if !IsObject(values)
                 throw Error(operationName " expects an array of byte values", -1)
@@ -3045,6 +3996,12 @@ class Pillow {
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
                 return "QOI"
+            if RegExMatch(path, "i)\.tga$")
+                return "TGA"
+            if RegExMatch(path, "i)\.xbm$")
+                return "XBM"
+            if RegExMatch(path, "i)\.ico$")
+                return "ICO"
             if RegExMatch(path, "i)\.png$")
                 return "PNG"
             if RegExMatch(path, "i)\.jpe?g$")
@@ -3062,7 +4019,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI"
+            if name = "BMP" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -3128,6 +4085,47 @@ class Pillow {
             if requirePositive && (values[1] <= 0 || values[2] <= 0)
                 throw Error("Pillow.Image.Save dpi values must be greater than 0", -1)
             return values
+        }
+
+        static SaveHotspotPair(value) {
+            if !IsObject(value)
+                throw Error("Pillow.Image.Save hotspot expects [x, y]", -1)
+            values := []
+            for item in value {
+                if !(item is Integer)
+                    throw Error("Pillow.Image.Save hotspot values must be integers", -1)
+                if item < 0
+                    throw Error("Pillow.Image.Save hotspot values must be non-negative", -1)
+                values.Push(item)
+            }
+            if values.Length != 2
+                throw Error("Pillow.Image.Save hotspot expects [x, y]", -1)
+            return values
+        }
+
+        static SaveIcoSizePairs(value) {
+            if !IsObject(value)
+                throw Error("Pillow.Image.Save sizes expects an array of [width, height] pairs", -1)
+            flat := []
+            for size in value {
+                if !IsObject(size)
+                    throw Error("Pillow.Image.Save sizes expects [width, height] pairs", -1)
+                pair := []
+                for item in size {
+                    if !(item is Integer)
+                        throw Error("Pillow.Image.Save sizes values must be integers", -1)
+                    if item <= 0
+                        throw Error("Pillow.Image.Save sizes values must be greater than 0", -1)
+                    pair.Push(item)
+                }
+                if pair.Length != 2
+                    throw Error("Pillow.Image.Save sizes expects [width, height] pairs", -1)
+                flat.Push(pair[1], pair[2])
+            }
+            return {
+                Buffer: flat.Length ? Pillow.Image.IntBuffer(flat, "Pillow.Image.Save sizes") : Buffer(0),
+                Count: flat.Length // 2,
+            }
         }
 
         Close() {
@@ -3231,6 +4229,22 @@ class Pillow {
                 this.Info["jfif_unit"] := jfifUnit
                 this.Info["jfif_density"] := [jfifDensityX, jfifDensityY]
             }
+
+            hasHotspot := 0
+            hotspotX := 0
+            hotspotY := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_hotspot",
+                "Ptr", this.RequireHandle(),
+                "Int*", &hasHotspot,
+                "Int*", &hotspotX,
+                "Int*", &hotspotY,
+                "Int"
+            ))
+            if hasHotspot
+                this.Info["hotspot"] := [hotspotX, hotspotY]
+            else if this.Info.Has("hotspot")
+                this.Info.Delete("hotspot")
         }
 
         ApplyFrameMetadata() {
@@ -3242,20 +4256,27 @@ class Pillow {
             loopCount := -1
             disposal := -1
             background := -1
+            transparency := -1
             pathBytes := Pillow.Image.Utf8Buffer(this.FramePath)
             Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_gif_metadata",
+                Pillow.RequireDllPath() "\pillow_c_image_gif_metadata_ex",
                 "Ptr", pathBytes,
                 "Int", this.FrameIndex,
                 "Int*", &duration,
                 "Int*", &loopCount,
                 "Int*", &disposal,
                 "Int*", &background,
+                "Int*", &transparency,
                 "Int"
             ))
             Pillow.Image.SetOptionalInfo(this.Info, "duration", duration)
             Pillow.Image.SetOptionalInfo(this.Info, "loop", loopCount)
             Pillow.Image.SetOptionalInfo(this.Info, "background", background)
+            if this.Mode = "P" {
+                Pillow.Image.SetOptionalInfo(this.Info, "transparency", transparency)
+            } else if this.Info.Has("transparency") {
+                this.Info.Delete("transparency")
+            }
             this.DisposalMethod := disposal >= 0 ? disposal : 0
         }
 
@@ -3395,6 +4416,33 @@ class Pillow {
             return out
         }
 
+        ToBitmap(name := "image") {
+            nameBytes := Pillow.Image.Utf8Buffer(String(name))
+            required := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_tobitmap",
+                "Ptr", this.RequireHandle(),
+                "Ptr", nameBytes,
+                "Ptr", 0,
+                "UPtr", 0,
+                "UPtr*", &required,
+                "Int"
+            ))
+            out := Buffer(required, 0)
+            if required = 0
+                return out
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_tobitmap",
+                "Ptr", this.RequireHandle(),
+                "Ptr", nameBytes,
+                "Ptr", out,
+                "UPtr", out.Size,
+                "UPtr*", &required,
+                "Int"
+            ))
+            return out
+        }
+
         Save(path, format := unset, options := unset) {
             if !(path is String)
                 throw Error("Pillow.Image.Save expects a file path", -1)
@@ -3423,6 +4471,23 @@ class Pillow {
             }
 
             pathBytes := Pillow.Image.Utf8Buffer(path)
+            if IsSet(saveOptions) && resolvedFormat = "GIF" {
+                transparencyOption := Pillow.Image.SaveOption(saveOptions, "Transparency", "transparency")
+                if transparencyOption.Set {
+                    if !(transparencyOption.Value is Integer)
+                        throw Error("Pillow.Image.Save transparency must be an integer", -1)
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_gif_options",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Int", 1,
+                        "Int", transparencyOption.Value,
+                        "Int"
+                    ))
+                    return
+                }
+            }
+
             if IsSet(saveOptions) && resolvedFormat = "PNG" {
                 compressLevelOption := Pillow.Image.SaveOption(saveOptions, "CompressLevel", "compress_level")
                 dpiOption := Pillow.Image.SaveOption(saveOptions, "Dpi", "dpi")
@@ -3486,6 +4551,76 @@ class Pillow {
                 }
             }
 
+            if IsSet(saveOptions) && resolvedFormat = "TGA" {
+                rleOption := Pillow.Image.SaveOption(saveOptions, "Rle", "rle")
+                compressionOption := Pillow.Image.SaveOption(saveOptions, "Compression", "compression")
+                if rleOption.Set || compressionOption.Set {
+                    rle := 0
+                    if rleOption.Set {
+                        rle := !!rleOption.Value
+                    } else if compressionOption.Set {
+                        rle := StrLower(String(compressionOption.Value)) = "tga_rle"
+                    }
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_tga_options",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Int", rle,
+                        "Int"
+                    ))
+                    return
+                }
+            }
+
+            if IsSet(saveOptions) && resolvedFormat = "XBM" {
+                hotspotOption := Pillow.Image.SaveOption(saveOptions, "Hotspot", "hotspot")
+                if hotspotOption.Set {
+                    hotspot := Pillow.Image.SaveHotspotPair(hotspotOption.Value)
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_xbm_options",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Int", 1,
+                        "Int", hotspot[1],
+                        "Int", hotspot[2],
+                        "Int"
+                    ))
+                    return
+                }
+            }
+
+            if IsSet(saveOptions) && resolvedFormat = "ICO" {
+                sizesOption := Pillow.Image.SaveOption(saveOptions, "Sizes", "sizes")
+                bitmapFormatOption := Pillow.Image.SaveOption(saveOptions, "BitmapFormat", "bitmap_format")
+                if sizesOption.Set || bitmapFormatOption.Set {
+                    if sizesOption.Set {
+                        sizes := Pillow.Image.SaveIcoSizePairs(sizesOption.Value)
+                        sizePtr := sizes.Count ? sizes.Buffer : 0
+                        sizeCount := sizes.Count
+                        hasSizes := 1
+                    } else {
+                        sizePtr := 0
+                        sizeCount := 0
+                        hasSizes := 0
+                    }
+                    bitmapFormat := ""
+                    if bitmapFormatOption.Set && bitmapFormatOption.Value is String
+                        bitmapFormat := bitmapFormatOption.Value
+                    bitmapFormatBytes := Pillow.Image.Utf8Buffer(bitmapFormat)
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_ico_format_options",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Ptr", sizePtr,
+                        "UPtr", sizeCount,
+                        "Int", hasSizes,
+                        "Ptr", bitmapFormatBytes,
+                        "Int"
+                    ))
+                    return
+                }
+            }
+
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_save_" StrLower(resolvedFormat),
                 "Ptr", this.RequireHandle(),
@@ -3535,20 +4670,105 @@ class Pillow {
             if !(loopCount is Integer)
                 throw Error("Pillow.Image.Save loop must be an integer", -1)
 
+            includeColorTableOption := Pillow.Image.SaveOption(options, "IncludeColorTable", "include_color_table")
+            includeColorTable := -1
+            if includeColorTableOption.Set
+                includeColorTable := !!includeColorTableOption.Value ? 1 : 0
+
+            optimizeOption := Pillow.Image.SaveOption(options, "Optimize", "optimize")
+            optimize := -1
+            if optimizeOption.Set
+                optimize := !!optimizeOption.Value ? 1 : 0
+
+            transparencyOption := Pillow.Image.SaveOption(options, "Transparency", "transparency")
+            hasTransparency := 0
+            transparency := 0
+            if transparencyOption.Set {
+                if !(transparencyOption.Value is Integer)
+                    throw Error("Pillow.Image.Save transparency must be an integer", -1)
+                hasTransparency := 1
+                transparency := transparencyOption.Value
+            }
+
+            backgroundOption := Pillow.Image.SaveOption(options, "Background", "background")
+            hasBackground := 0
+            background := 0
+            if backgroundOption.Set {
+                if !(backgroundOption.Value is Integer)
+                    throw Error("Pillow.Image.Save background must be an integer", -1)
+                if backgroundOption.Value < 0 || backgroundOption.Value > 255
+                    throw Error("Pillow.Image.Save background must be in 0..255", -1)
+                hasBackground := 1
+                background := backgroundOption.Value
+            }
+
             pathBytes := Pillow.Image.Utf8Buffer(path)
             handles := Pillow.Image.HandleArray(images)
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_save_gif_animation",
-                "Ptr", handles,
-                "UPtr", images.Length,
-                "Ptr", pathBytes,
-                "Ptr", durationPtr,
-                "UPtr", durationCount,
-                "Int", loopCount,
-                "Ptr", disposalPtr,
-                "UPtr", disposalCount,
-                "Int"
-            ))
+            if backgroundOption.Set {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_gif_animation_background_options",
+                    "Ptr", handles,
+                    "UPtr", images.Length,
+                    "Ptr", pathBytes,
+                    "Ptr", durationPtr,
+                    "UPtr", durationCount,
+                    "Int", loopCount,
+                    "Ptr", disposalPtr,
+                    "UPtr", disposalCount,
+                    "Int", includeColorTable,
+                    "Int", optimize,
+                    "Int", hasTransparency,
+                    "Int", transparency,
+                    "Int", hasBackground,
+                    "Int", background,
+                    "Int"
+                ))
+            } else if transparencyOption.Set {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_gif_animation_metadata_options",
+                    "Ptr", handles,
+                    "UPtr", images.Length,
+                    "Ptr", pathBytes,
+                    "Ptr", durationPtr,
+                    "UPtr", durationCount,
+                    "Int", loopCount,
+                    "Ptr", disposalPtr,
+                    "UPtr", disposalCount,
+                    "Int", includeColorTable,
+                    "Int", optimize,
+                    "Int", hasTransparency,
+                    "Int", transparency,
+                    "Int"
+                ))
+            } else if includeColorTableOption.Set || optimizeOption.Set {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_gif_animation_options",
+                    "Ptr", handles,
+                    "UPtr", images.Length,
+                    "Ptr", pathBytes,
+                    "Ptr", durationPtr,
+                    "UPtr", durationCount,
+                    "Int", loopCount,
+                    "Ptr", disposalPtr,
+                    "UPtr", disposalCount,
+                    "Int", includeColorTable,
+                    "Int", optimize,
+                    "Int"
+                ))
+            } else {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_gif_animation",
+                    "Ptr", handles,
+                    "UPtr", images.Length,
+                    "Ptr", pathBytes,
+                    "Ptr", durationPtr,
+                    "UPtr", durationCount,
+                    "Int", loopCount,
+                    "Ptr", disposalPtr,
+                    "UPtr", disposalCount,
+                    "Int"
+                ))
+            }
         }
 
         DataPointer() {
@@ -3565,6 +4785,21 @@ class Pillow {
         }
 
         GetData(band := unset) {
+            if this.Mode = "I" || this.Mode = "F" {
+                if IsSet(band)
+                    throw Error("image has wrong mode", -1)
+                bytes := this.InternalBytes()
+                pixelCount := this.Width * this.Height
+                values := []
+                loop pixelCount {
+                    offset := (A_Index - 1) * 4
+                    values.Push(this.Mode = "F"
+                        ? Pillow.Image.ReadF32(bytes, offset)
+                        : Pillow.Image.ReadI32(bytes, offset))
+                }
+                return values
+            }
+
             bytes := this.Mode = "1" ? this.InternalBytes() : this.ToBytes()
             channels := this.Channels
             pixelCount := this.Width * this.Height
@@ -3677,6 +4912,27 @@ class Pillow {
             return Pillow.Image.ConvertRgbPaletteValues(values, rawmode, "Pillow.Image.GetPalette")
         }
 
+        ApplyTransparency() {
+            this.RequireHandle()
+            if this.Mode != "P" || !this.Info.Has("transparency")
+                return
+
+            palette := this.GetPalette("RGBA")
+            transparency := this.Info["transparency"]
+            if transparency is Integer {
+                palette[transparency * 4 + 4] := 0
+            } else {
+                loop transparency.Size
+                    palette[(A_Index - 1) * 4 + 4] := NumGet(transparency, A_Index - 1, "UChar")
+            }
+            this.PutPalette(palette, "RGBA")
+            this.Info.Delete("transparency")
+        }
+
+        apply_transparency() {
+            return this.ApplyTransparency()
+        }
+
         PaletteAlphaMode() {
             mode := 0
             Pillow.CheckStatus(DllCall(
@@ -3782,6 +5038,19 @@ class Pillow {
         WritePutDataPixel(buf, pixelIndex, value, scale, offset) {
             channels := this.Channels
             base := pixelIndex * channels
+            if this.Mode = "I" {
+                if IsObject(value)
+                    throw Error("sequence must be flattened", -1)
+                Pillow.Image.WriteI32(buf, base, value * scale + offset, "Pillow.Image.PutData")
+                return
+            }
+            if this.Mode = "F" {
+                if IsObject(value)
+                    throw Error("sequence must be flattened", -1)
+                Pillow.Image.WriteF32(buf, base, value * scale + offset, "Pillow.Image.PutData")
+                return
+            }
+
             if channels = 1 {
                 if IsObject(value)
                     throw Error("sequence must be flattened", -1)
@@ -3877,6 +5146,10 @@ class Pillow {
         }
 
         PixelBufferToValue(buf) {
+            if this.Mode = "I"
+                return Pillow.Image.ReadI32(buf, 0)
+            if this.Mode = "F"
+                return Pillow.Image.ReadF32(buf, 0)
             if this.Channels = 1
                 return NumGet(buf, 0, "UChar")
             values := []
@@ -3888,6 +5161,26 @@ class Pillow {
         PixelValueBuffer(value) {
             if value is String
                 value := Pillow.ImageColor.GetColor(value, this.Mode)
+            if this.Mode = "I" {
+                if IsObject(value) {
+                    if value.Length != 1
+                        throw Error("Pillow.Image.PutPixel color must be int or single-element array", -1)
+                    value := value[1]
+                }
+                buf := Buffer(4, 0)
+                Pillow.Image.WriteI32(buf, 0, value, "Pillow.Image.PutPixel")
+                return buf
+            }
+            if this.Mode = "F" {
+                if IsObject(value) {
+                    if value.Length != 1
+                        throw Error("Pillow.Image.PutPixel color must be float or single-element array", -1)
+                    value := value[1]
+                }
+                buf := Buffer(4, 0)
+                Pillow.Image.WriteF32(buf, 0, value, "Pillow.Image.PutPixel")
+                return buf
+            }
             if IsObject(value) {
                 if this.Channels = 1 {
                     if value.Length != 1
@@ -3920,6 +5213,26 @@ class Pillow {
         ColorBuffer(color) {
             if color is String
                 color := Pillow.ImageColor.GetColor(color, this.Mode)
+            if this.Mode = "I" {
+                if IsObject(color) {
+                    if color.Length != 1
+                        throw Error("Pillow color length must match image channels", -1)
+                    color := color[1]
+                }
+                buf := Buffer(4, 0)
+                Pillow.Image.WriteI32(buf, 0, color, "Pillow color")
+                return buf
+            }
+            if this.Mode = "F" {
+                if IsObject(color) {
+                    if color.Length != 1
+                        throw Error("Pillow color length must match image channels", -1)
+                    color := color[1]
+                }
+                buf := Buffer(4, 0)
+                Pillow.Image.WriteF32(buf, 0, color, "Pillow color")
+                return buf
+            }
             channels := this.Channels
             if IsObject(color) {
                 if color.Length != channels
