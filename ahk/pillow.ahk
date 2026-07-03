@@ -2,6 +2,7 @@
 
 class Pillow {
     static DllPath := ""
+    static DllHandle := 0
 
     class Transpose {
         static FLIP_LEFT_RIGHT := 0
@@ -149,6 +150,71 @@ class Pillow {
             static IsEndError(err) {
                 return InStr(err.Message, "attempt to seek outside sequence") > 0
                     || InStr(err.Message, "no more images in file") > 0
+            }
+        }
+    }
+
+    class PngImagePlugin {
+        class PngInfo {
+            __New() {
+                this.TextEntries := []
+                this.ChunkEntries := []
+            }
+
+            AddText(key, value, zip := false) {
+                return this.add_text(key, value, zip)
+            }
+
+            add_text(key, value, zip := false) {
+                if !(key is String)
+                    throw Error("Pillow.PngInfo.add_text key expects a string", -1)
+                if value is String {
+                    this.TextEntries.Push({ Key: key, Value: value, Zip: zip ? true : false, Kind: 0, RawLatin1: false })
+                    return
+                }
+                if IsObject(value) && Type(value) = "Buffer" {
+                    valueCopy := Buffer(value.Size, 0)
+                    hasEmbeddedNul := false
+                    loop value.Size {
+                        byte := NumGet(value, A_Index - 1, "UChar")
+                        if byte = 0
+                            hasEmbeddedNul := true
+                        NumPut("UChar", byte, valueCopy, A_Index - 1)
+                    }
+                    this.TextEntries.Push({ Key: key, Value: valueCopy, Zip: zip ? true : false, Kind: 0, RawLatin1: true, HasEmbeddedNul: hasEmbeddedNul })
+                    return
+                }
+                throw Error("Pillow.PngInfo.add_text value expects a string or Buffer", -1)
+            }
+
+            AddIText(key, value, lang := "", tkey := "", zip := false) {
+                return this.add_itxt(key, value, lang, tkey, zip)
+            }
+
+            add_itxt(key, value, lang := "", tkey := "", zip := false) {
+                if !(key is String)
+                    throw Error("Pillow.PngInfo.add_itxt key expects a string", -1)
+                if !(value is String)
+                    throw Error("Pillow.PngInfo.add_itxt value expects a string", -1)
+                if !(lang is String)
+                    throw Error("Pillow.PngInfo.add_itxt lang expects a string", -1)
+                if !(tkey is String)
+                    throw Error("Pillow.PngInfo.add_itxt tkey expects a string", -1)
+                this.TextEntries.Push({ Key: key, Value: value, Zip: zip ? true : false, Kind: 1, Lang: lang, TKey: tkey })
+            }
+
+            add(cid, data, after_idat := false) {
+                if cid is String
+                    return
+                typeBuffer := Pillow.Image.BinaryBuffer(cid, "Pillow.PngInfo.add cid")
+                dataBuffer := Pillow.Image.BinaryBuffer(data, "Pillow.PngInfo.add data")
+                typeCopy := Buffer(typeBuffer.Size, 0)
+                dataCopy := Buffer(dataBuffer.Size, 0)
+                loop typeBuffer.Size
+                    NumPut("UChar", NumGet(typeBuffer, A_Index - 1, "UChar"), typeCopy, A_Index - 1)
+                loop dataBuffer.Size
+                    NumPut("UChar", NumGet(dataBuffer, A_Index - 1, "UChar"), dataCopy, A_Index - 1)
+                this.ChunkEntries.Push({ Type: typeCopy, Data: dataCopy, AfterIdat: after_idat ? true : false })
             }
         }
     }
@@ -378,7 +444,15 @@ class Pillow {
 
     class ImageOps {
         static Invert(image) {
-            return Pillow.ImageOps.NativeUnaryImageOp(image, "pillow_c_image_invert")
+            outHandle := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_invert",
+                "Ptr", Pillow.ImageOps.RequireImageHandle(image, "Invert"),
+                "Ptr*", &outHandle,
+                "Int"
+            )
+            Pillow.ImageOps.CheckLutTransformStatus(status, image, true)
+            return image.WrapDerivedHandle(outHandle)
         }
 
         static Grayscale(image) {
@@ -461,13 +535,14 @@ class Pillow {
                 throw Error("Pillow.ImageOps.Posterize bits is out of native range", -1)
 
             outHandle := 0
-            Pillow.CheckStatus(DllCall(
+            status := DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_posterize",
                 "Ptr", Pillow.ImageOps.RequireImageHandle(image, "Posterize"),
                 "Int", bits,
                 "Ptr*", &outHandle,
                 "Int"
-            ))
+            )
+            Pillow.ImageOps.CheckLutTransformStatus(status, image)
             return image.WrapDerivedHandle(outHandle)
         }
 
@@ -476,13 +551,14 @@ class Pillow {
                 throw Error("Pillow.ImageOps.Solarize threshold must be numeric", -1)
 
             outHandle := 0
-            Pillow.CheckStatus(DllCall(
+            status := DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_solarize",
                 "Ptr", Pillow.ImageOps.RequireImageHandle(image, "Solarize"),
                 "Double", threshold,
                 "Ptr*", &outHandle,
                 "Int"
-            ))
+            )
+            Pillow.ImageOps.CheckLutTransformStatus(status, image)
             return image.WrapDerivedHandle(outHandle)
         }
 
@@ -523,16 +599,25 @@ class Pillow {
         static Equalize(image, mask := unset) {
             if IsSet(mask) {
                 outHandle := 0
-                Pillow.CheckStatus(DllCall(
+                status := DllCall(
                     Pillow.RequireDllPath() "\pillow_c_image_equalize_masked",
                     "Ptr", Pillow.ImageOps.RequireImageHandle(image, "Equalize"),
                     "Ptr", Pillow.ImageOps.RequireImageHandle(mask, "Equalize mask"),
                     "Ptr*", &outHandle,
                     "Int"
-                ))
+                )
+                Pillow.ImageOps.CheckHistogramTransformStatus(status, image, true)
                 return image.WrapDerivedHandle(outHandle)
             }
-            return Pillow.ImageOps.NativeUnaryImageOp(image, "pillow_c_image_equalize")
+            outHandle := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_equalize",
+                "Ptr", Pillow.ImageOps.RequireImageHandle(image, "Equalize"),
+                "Ptr*", &outHandle,
+                "Int"
+            )
+            Pillow.ImageOps.CheckHistogramTransformStatus(status, image)
+            return image.WrapDerivedHandle(outHandle)
         }
 
         static Crop(image, border := 0) {
@@ -647,7 +732,7 @@ class Pillow {
                 maskHandle := Pillow.ImageOps.RequireImageHandle(mask, "Autocontrast mask")
 
             outHandle := 0
-            Pillow.CheckStatus(DllCall(
+            status := DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_autocontrast",
                 "Ptr", Pillow.ImageOps.RequireImageHandle(image, "Autocontrast"),
                 "Double", cuts[1],
@@ -658,7 +743,8 @@ class Pillow {
                 "Int", preserveTone,
                 "Ptr*", &outHandle,
                 "Int"
-            ))
+            )
+            Pillow.ImageOps.CheckHistogramTransformStatus(status, image, IsSet(mask), preserveTone)
             return image.WrapDerivedHandle(outHandle)
         }
 
@@ -687,6 +773,25 @@ class Pillow {
                 "Int"
             ))
             return image.WrapDerivedHandle(outHandle)
+        }
+
+        static CheckLutTransformStatus(status, image, allowModeOne := false) {
+            if status = -3 && !Pillow.ImageOps.SupportsLutTransformMode(image.Mode, allowModeOne)
+                throw Error("not supported for mode " image.Mode, -1)
+            Pillow.CheckStatus(status)
+        }
+
+        static CheckHistogramTransformStatus(status, image, masked := false, preserveTone := false) {
+            if status = -3 && (image.Mode = "I" || image.Mode = "F") {
+                if masked && !preserveTone
+                    throw Error("image has wrong mode", -1)
+                throw Error("not supported for mode " image.Mode, -1)
+            }
+            Pillow.CheckStatus(status)
+        }
+
+        static SupportsLutTransformMode(mode, allowModeOne := false) {
+            return mode = "L" || mode = "RGB" || (allowModeOne && mode = "1")
         }
 
         static RequireImageHandle(image, operationName) {
@@ -805,6 +910,40 @@ class Pillow {
             return Pillow.Image.Composite(image1, image2, mask)
         }
 
+        static CheckBinaryStatus(status, left, right) {
+            if status != 0 && left.Mode = right.Mode && (left.Mode = "I" || left.Mode = "F")
+                throw Error("image has wrong mode", -1)
+            Pillow.CheckStatus(status)
+        }
+
+        static BinaryOperation(exportName, left, right, operationName) {
+            outHandle := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\" exportName,
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, operationName),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, operationName),
+                "Ptr*", &outHandle,
+                "Int"
+            )
+            Pillow.ImageChops.CheckBinaryStatus(status, left, right)
+            return left.WrapDerivedHandle(outHandle)
+        }
+
+        static ScaledBinaryOperation(exportName, left, right, scale, offset, operationName) {
+            outHandle := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\" exportName,
+                "Ptr", Pillow.ImageChops.RequireImageHandle(left, operationName),
+                "Ptr", Pillow.ImageChops.RequireImageHandle(right, operationName),
+                "Double", scale,
+                "Double", offset,
+                "Ptr*", &outHandle,
+                "Int"
+            )
+            Pillow.ImageChops.CheckBinaryStatus(status, left, right)
+            return left.WrapDerivedHandle(outHandle)
+        }
+
         static Constant(image, value) {
             if !(value is Integer)
                 throw Error("Pillow.ImageChops.Constant value must be an integer", -1)
@@ -843,99 +982,35 @@ class Pillow {
         }
 
         static Difference(left, right) {
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_difference",
-                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Difference"),
-                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Difference"),
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            return left.WrapDerivedHandle(outHandle)
+            return Pillow.ImageChops.BinaryOperation("pillow_c_image_difference", left, right, "Difference")
         }
 
         static Multiply(left, right) {
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_multiply",
-                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Multiply"),
-                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Multiply"),
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            return left.WrapDerivedHandle(outHandle)
+            return Pillow.ImageChops.BinaryOperation("pillow_c_image_multiply", left, right, "Multiply")
         }
 
         static Screen(left, right) {
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_screen",
-                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Screen"),
-                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Screen"),
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            return left.WrapDerivedHandle(outHandle)
+            return Pillow.ImageChops.BinaryOperation("pillow_c_image_screen", left, right, "Screen")
         }
 
         static Lighter(left, right) {
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_lighter",
-                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Lighter"),
-                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Lighter"),
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            return left.WrapDerivedHandle(outHandle)
+            return Pillow.ImageChops.BinaryOperation("pillow_c_image_lighter", left, right, "Lighter")
         }
 
         static Darker(left, right) {
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_darker",
-                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Darker"),
-                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Darker"),
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            return left.WrapDerivedHandle(outHandle)
+            return Pillow.ImageChops.BinaryOperation("pillow_c_image_darker", left, right, "Darker")
         }
 
         static SoftLight(left, right) {
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_soft_light",
-                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "SoftLight"),
-                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "SoftLight"),
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            return left.WrapDerivedHandle(outHandle)
+            return Pillow.ImageChops.BinaryOperation("pillow_c_image_soft_light", left, right, "SoftLight")
         }
 
         static HardLight(left, right) {
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_hard_light",
-                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "HardLight"),
-                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "HardLight"),
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            return left.WrapDerivedHandle(outHandle)
+            return Pillow.ImageChops.BinaryOperation("pillow_c_image_hard_light", left, right, "HardLight")
         }
 
         static Overlay(left, right) {
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_overlay",
-                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Overlay"),
-                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Overlay"),
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            return left.WrapDerivedHandle(outHandle)
+            return Pillow.ImageChops.BinaryOperation("pillow_c_image_overlay", left, right, "Overlay")
         }
 
         static LogicalAnd(left, right) {
@@ -1002,17 +1077,7 @@ class Pillow {
             if !(offset is Number)
                 throw Error("Pillow.ImageChops.Add offset must be numeric", -1)
 
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_add",
-                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Add"),
-                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Add"),
-                "Double", scale,
-                "Double", offset,
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            return left.WrapDerivedHandle(outHandle)
+            return Pillow.ImageChops.ScaledBinaryOperation("pillow_c_image_add", left, right, scale, offset, "Add")
         }
 
         static Subtract(left, right, scale := 1.0, offset := 0) {
@@ -1021,41 +1086,15 @@ class Pillow {
             if !(offset is Number)
                 throw Error("Pillow.ImageChops.Subtract offset must be numeric", -1)
 
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_subtract",
-                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "Subtract"),
-                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "Subtract"),
-                "Double", scale,
-                "Double", offset,
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            return left.WrapDerivedHandle(outHandle)
+            return Pillow.ImageChops.ScaledBinaryOperation("pillow_c_image_subtract", left, right, scale, offset, "Subtract")
         }
 
         static AddModulo(left, right) {
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_add_modulo",
-                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "AddModulo"),
-                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "AddModulo"),
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            return left.WrapDerivedHandle(outHandle)
+            return Pillow.ImageChops.BinaryOperation("pillow_c_image_add_modulo", left, right, "AddModulo")
         }
 
         static SubtractModulo(left, right) {
-            outHandle := 0
-            Pillow.CheckStatus(DllCall(
-                Pillow.RequireDllPath() "\pillow_c_image_subtract_modulo",
-                "Ptr", Pillow.ImageChops.RequireImageHandle(left, "SubtractModulo"),
-                "Ptr", Pillow.ImageChops.RequireImageHandle(right, "SubtractModulo"),
-                "Ptr*", &outHandle,
-                "Int"
-            ))
-            return left.WrapDerivedHandle(outHandle)
+            return Pillow.ImageChops.BinaryOperation("pillow_c_image_subtract_modulo", left, right, "SubtractModulo")
         }
 
         static add_modulo(left, right) {
@@ -1125,6 +1164,8 @@ class Pillow {
                     throw Error("Pillow.ImageFilter.Kernel expects a Pillow.Image", -1)
                 if !((this.Size[1] = 3 && this.Size[2] = 3) || (this.Size[1] = 5 && this.Size[2] = 5))
                     throw Error("bad kernel size", -1)
+                if image.Mode = "F"
+                    throw Error("image has wrong mode", -1)
 
                 kernelBuffer := Buffer(this.Kernel.Length * 8, 0)
                 for index, value in this.Kernel {
@@ -1215,13 +1256,16 @@ class Pillow {
                     throw Error("Pillow.ImageFilter.ModeFilter expects a Pillow.Image", -1)
 
                 outHandle := 0
-                Pillow.CheckStatus(DllCall(
+                status := DllCall(
                     Pillow.RequireDllPath() "\pillow_c_image_filter_mode",
                     "Ptr", image.RequireHandle(),
                     "Int", this.Size,
                     "Ptr*", &outHandle,
                     "Int"
-                ))
+                )
+                if status != 0 && (image.Mode = "I" || image.Mode = "F")
+                    throw Error("image has wrong mode", -1)
+                Pillow.CheckStatus(status)
                 return Pillow.WrapImageHandle(outHandle)
             }
         }
@@ -1242,14 +1286,17 @@ class Pillow {
                     throw Error("Pillow.ImageFilter.BoxBlur expects a Pillow.Image", -1)
 
                 outHandle := 0
-                Pillow.CheckStatus(DllCall(
+                status := DllCall(
                     Pillow.RequireDllPath() "\pillow_c_image_filter_box_blur",
                     "Ptr", image.RequireHandle(),
                     "Double", this.XRadius,
                     "Double", this.YRadius,
                     "Ptr*", &outHandle,
                     "Int"
-                ))
+                )
+                if status != 0 && (image.Mode = "I" || image.Mode = "F")
+                    throw Error("image has wrong mode", -1)
+                Pillow.CheckStatus(status)
                 return Pillow.WrapImageHandle(outHandle)
             }
         }
@@ -1268,14 +1315,17 @@ class Pillow {
                     throw Error("Pillow.ImageFilter.GaussianBlur expects a Pillow.Image", -1)
 
                 outHandle := 0
-                Pillow.CheckStatus(DllCall(
+                status := DllCall(
                     Pillow.RequireDllPath() "\pillow_c_image_filter_gaussian_blur",
                     "Ptr", image.RequireHandle(),
                     "Double", this.XRadius,
                     "Double", this.YRadius,
                     "Ptr*", &outHandle,
                     "Int"
-                ))
+                )
+                if status != 0 && (image.Mode = "I" || image.Mode = "F")
+                    throw Error("image has wrong mode", -1)
+                Pillow.CheckStatus(status)
                 return Pillow.WrapImageHandle(outHandle)
             }
         }
@@ -1299,7 +1349,7 @@ class Pillow {
                     throw Error("Pillow.ImageFilter.UnsharpMask expects a Pillow.Image", -1)
 
                 outHandle := 0
-                Pillow.CheckStatus(DllCall(
+                status := DllCall(
                     Pillow.RequireDllPath() "\pillow_c_image_filter_unsharp_mask",
                     "Ptr", image.RequireHandle(),
                     "Double", this.Radius,
@@ -1307,7 +1357,10 @@ class Pillow {
                     "Int", this.Threshold,
                     "Ptr*", &outHandle,
                     "Int"
-                ))
+                )
+                if status != 0 && (image.Mode = "I" || image.Mode = "F")
+                    throw Error("image has wrong mode", -1)
+                Pillow.CheckStatus(status)
                 return Pillow.WrapImageHandle(outHandle)
             }
         }
@@ -3075,6 +3128,9 @@ class Pillow {
         class Stat {
             __New(imageOrList, mask := unset) {
                 if IsObject(imageOrList) && imageOrList is Pillow.Image {
+                    size := imageOrList.Size
+                    if !IsSet(mask) && (imageOrList.Mode = "I" || imageOrList.Mode = "F") && (size[1] = 0 || size[2] = 0)
+                        throw Error("min/max not given", -1)
                     this.Histogram := IsSet(mask) ? imageOrList.Histogram(mask) : imageOrList.Histogram()
                 } else if IsObject(imageOrList) {
                     if IsSet(mask)
@@ -3252,8 +3308,13 @@ class Pillow {
     }
 
     static Configure(options := unset) {
-        if IsSet(options) && options.HasOwnProp("DllPath")
-            Pillow.DllPath := options.DllPath
+        if IsSet(options) && options.HasOwnProp("DllPath") {
+            path := options.DllPath
+            if Pillow.DllHandle && Pillow.DllPath != "" && path != Pillow.DllPath
+                throw Error("Pillow.Configure cannot change DllPath after pillow_c.dll is loaded", -1)
+            Pillow.DllPath := path
+            Pillow.EnsureDllLoaded()
+        }
     }
 
     static RequireDllPath() {
@@ -3261,7 +3322,18 @@ class Pillow {
             SplitPath A_LineFile, , &ahkDir
             Pillow.DllPath := ahkDir "\..\build\x64\Release\pillow_c.dll"
         }
+        Pillow.EnsureDllLoaded()
         return Pillow.DllPath
+    }
+
+    static EnsureDllLoaded() {
+        if Pillow.DllHandle
+            return Pillow.DllHandle
+        handle := DllCall("kernel32\LoadLibraryW", "Str", Pillow.DllPath, "Ptr")
+        if !handle
+            throw Error("pillow_c: failed to load DLL " Pillow.DllPath " (GetLastError " A_LastError ")", -1)
+        Pillow.DllHandle := handle
+        return handle
     }
 
     static AbiVersion() {
@@ -3422,6 +3494,1002 @@ class Pillow {
             }
         }
 
+        class Exif {
+            __New(orientation := unset, hasOrientation := false, asciiTags := unset, intTags := unset, rationalTags := unset, shortArrayTags := unset, byteArrayTags := unset, signedRationalTags := unset, undefinedTags := unset) {
+                this.HasOrientation := hasOrientation ? true : false
+                this.Orientation := this.HasOrientation ? Pillow.Image.Exif.NormalizeOrientation(orientation) : 0
+                this.AsciiTags := Map()
+                if IsSet(asciiTags) {
+                    for tag, value in asciiTags
+                        this.AsciiTags[Pillow.Image.Exif.NormalizeAsciiTag(tag)] := Pillow.Image.Exif.NormalizeAsciiValue(value)
+                }
+                this.IntTags := Map()
+                if IsSet(intTags) {
+                    for tag, value in intTags
+                        this.IntTags[Pillow.Image.Exif.NormalizeUintTag(tag)] := Pillow.Image.Exif.NormalizeUintValue(value, Pillow.Image.Exif.UintTagType(tag))
+                }
+                this.RationalTags := Map()
+                if IsSet(rationalTags) {
+                    for tag, value in rationalTags
+                        this.RationalTags[Pillow.Image.Exif.NormalizeRationalTag(tag)] := Pillow.Image.Exif.NormalizeRationalValue(value)
+                }
+                this.ShortArrayTags := Map()
+                if IsSet(shortArrayTags) {
+                    for tag, value in shortArrayTags
+                        this.ShortArrayTags[Pillow.Image.Exif.NormalizeShortArrayTag(tag)] := Pillow.Image.Exif.NormalizeShortArrayValue(tag, value)
+                }
+                this.ByteArrayTags := Map()
+                if IsSet(byteArrayTags) {
+                    for tag, value in byteArrayTags
+                        this.ByteArrayTags[Pillow.Image.Exif.NormalizeByteArrayTag(tag)] := Pillow.Image.Exif.NormalizeByteArrayValue(value)
+                }
+                this.SignedRationalTags := Map()
+                if IsSet(signedRationalTags) {
+                    for tag, value in signedRationalTags
+                        this.SignedRationalTags[Pillow.Image.Exif.NormalizeSignedRationalTag(tag)] := Pillow.Image.Exif.NormalizeSignedRationalValue(value)
+                }
+                this.UndefinedTags := Map()
+                if IsSet(undefinedTags) {
+                    for tag, value in undefinedTags
+                        this.UndefinedTags[Pillow.Image.Exif.NormalizeUndefinedTag(tag)] := Pillow.Image.Exif.NormalizeUndefinedValue(value)
+                }
+            }
+
+            static FromImage(image) {
+                orientation := image.ExifOrientation()
+                exif := Pillow.Image.Exif(orientation, orientation != 0)
+                exifBlob := 0
+                if image.Info.Has("exif") {
+                    exifBlob := image.Info["exif"]
+                } else if image.Format = "TIFF" {
+                    exifBlob := Pillow.Image.NativeMetadataBlob(image.RequireHandle(), "pillow_c_image_metadata_tiff_exif")
+                }
+                if IsObject(exifBlob) {
+                    for tag in [270, 271, 272, 305, 306] {
+                        parsed := Pillow.Image.Exif.ReadAsciiTag(exifBlob, tag)
+                        if parsed.Has
+                            exif.AsciiTags[tag] := parsed.Value
+                    }
+                    for tag in [256, 257, 296, 531] {
+                        parsed := Pillow.Image.Exif.ReadUintTag(exifBlob, tag)
+                        if parsed.Has
+                            exif.IntTags[tag] := parsed.Value
+                    }
+                    for tag in [282, 283] {
+                        parsed := Pillow.Image.Exif.ReadRationalTag(exifBlob, tag)
+                        if parsed.Has
+                            exif.RationalTags[tag] := parsed.Value
+                    }
+                    for tag in [530] {
+                        parsed := Pillow.Image.Exif.ReadUshortArrayTag(exifBlob, tag)
+                        if parsed.Has
+                            exif.ShortArrayTags[tag] := parsed.Value
+                    }
+                    for tag in [37510, 40091] {
+                        parsed := Pillow.Image.Exif.ReadByteArrayTag(exifBlob, tag)
+                        if parsed.Has
+                            exif.ByteArrayTags[tag] := parsed.Value
+                    }
+                    for tag in [36864] {
+                        parsed := Pillow.Image.Exif.ReadUndefinedTag(exifBlob, tag)
+                        if parsed.Has
+                            exif.UndefinedTags[tag] := parsed.Value
+                    }
+                    for tag in [37380] {
+                        parsed := Pillow.Image.Exif.ReadSignedRationalTag(exifBlob, tag)
+                        if parsed.Has
+                            exif.SignedRationalTags[tag] := parsed.Value
+                    }
+                }
+                return exif
+            }
+
+            static NormalizeTag(tag) {
+                if !(tag is Integer)
+                    throw Error("Pillow.Image.Exif tag must be an integer", -1)
+                if tag < 1 || tag > 65535
+                    throw Error("Pillow.Image.Exif tag must be an integer in range 1..65535", -1)
+                return tag
+            }
+
+            static NormalizeAsciiTag(tag) {
+                Pillow.Image.Exif.NormalizeTag(tag)
+                if tag = 274
+                    throw Error("Pillow.Image.Exif orientation tag must use integer orientation values", -1)
+                return tag
+            }
+
+            static NormalizeAsciiValue(value) {
+                if !(value is String)
+                    throw Error("Pillow.Image.Exif ASCII tag value must be a string", -1)
+                return value
+            }
+
+            static NormalizeUintTag(tag) {
+                Pillow.Image.Exif.NormalizeTag(tag)
+                if !Pillow.Image.Exif.UintTagType(tag)
+                    throw Error("Pillow.Image.Exif integer tag is not covered by this native route", -1)
+                return tag
+            }
+
+            static NormalizeUintValue(value, type) {
+                if !(value is Integer)
+                    throw Error("Pillow.Image.Exif integer tag value must be an integer", -1)
+                limit := type = 3 ? 65535 : 4294967295
+                if value < 0 || value > limit
+                    throw Error("Pillow.Image.Exif integer tag value out of range", -1)
+                return value
+            }
+
+            static UintTagType(tag) {
+                switch tag {
+                    case 256, 257:
+                        return 4
+                    case 296, 531:
+                        return 3
+                    default:
+                        return 0
+                }
+            }
+
+            static NormalizeRationalTag(tag) {
+                Pillow.Image.Exif.NormalizeTag(tag)
+                if !Pillow.Image.Exif.RationalTagType(tag)
+                    throw Error("Pillow.Image.Exif rational tag is not covered by this native route", -1)
+                return tag
+            }
+
+            static NormalizeRationalValue(value) {
+                if !IsObject(value) || !(value is Array) || value.Length != 2
+                    throw Error("Pillow.Image.Exif rational tag value must be [numerator, denominator]", -1)
+                numerator := value[1]
+                denominator := value[2]
+                if !(numerator is Integer) || !(denominator is Integer)
+                    throw Error("Pillow.Image.Exif rational tag values must be integers", -1)
+                if numerator < 0 || numerator > 4294967295 || denominator < 1 || denominator > 4294967295
+                    throw Error("Pillow.Image.Exif rational tag value out of range", -1)
+                return [numerator, denominator]
+            }
+
+            static RationalTagType(tag) {
+                switch tag {
+                    case 282, 283:
+                        return 5
+                    default:
+                        return 0
+                }
+            }
+
+            static NormalizeSignedRationalTag(tag) {
+                Pillow.Image.Exif.NormalizeTag(tag)
+                if !Pillow.Image.Exif.SignedRationalTagType(tag)
+                    throw Error("Pillow.Image.Exif signed rational tag is not covered by this native route", -1)
+                return tag
+            }
+
+            static NormalizeSignedRationalValue(value) {
+                if !IsObject(value) || !(value is Array) || value.Length != 2
+                    throw Error("Pillow.Image.Exif signed rational tag value must be [numerator, denominator]", -1)
+                numerator := value[1]
+                denominator := value[2]
+                if !(numerator is Integer) || !(denominator is Integer)
+                    throw Error("Pillow.Image.Exif signed rational tag values must be integers", -1)
+                if numerator < -2147483648 || numerator > 2147483647 || denominator < 1 || denominator > 2147483647
+                    throw Error("Pillow.Image.Exif signed rational tag value out of range", -1)
+                return [numerator, denominator]
+            }
+
+            static SignedRationalTagType(tag) {
+                switch tag {
+                    case 37380:
+                        return 10
+                    default:
+                        return 0
+                }
+            }
+
+            static NormalizeShortArrayTag(tag) {
+                Pillow.Image.Exif.NormalizeTag(tag)
+                if !Pillow.Image.Exif.ShortArrayTagLength(tag)
+                    throw Error("Pillow.Image.Exif SHORT array tag is not covered by this native route", -1)
+                return tag
+            }
+
+            static NormalizeShortArrayValue(tag, value) {
+                expectedLength := Pillow.Image.Exif.ShortArrayTagLength(tag)
+                if !IsObject(value) || !(value is Array) || value.Length != expectedLength
+                    throw Error("Pillow.Image.Exif SHORT array tag value length is not covered by this native route", -1)
+                result := []
+                for item in value {
+                    if !(item is Integer)
+                        throw Error("Pillow.Image.Exif SHORT array tag values must be integers", -1)
+                    if item < 0 || item > 65535
+                        throw Error("Pillow.Image.Exif SHORT array tag value out of range", -1)
+                    result.Push(item)
+                }
+                return result
+            }
+
+            static ShortArrayTagLength(tag) {
+                switch tag {
+                    case 530:
+                        return 2
+                    default:
+                        return 0
+                }
+            }
+
+            static NormalizeByteArrayTag(tag) {
+                Pillow.Image.Exif.NormalizeTag(tag)
+                if !Pillow.Image.Exif.ByteArrayTagCovered(tag)
+                    throw Error("Pillow.Image.Exif BYTE array tag is not covered by this native route", -1)
+                return tag
+            }
+
+            static NormalizeByteArrayValue(value) {
+                if !IsObject(value) || Type(value) != "Buffer"
+                    throw Error("Pillow.Image.Exif BYTE array tag value must be a Buffer", -1)
+                if value.Size <= 0
+                    throw Error("Pillow.Image.Exif BYTE array tag value length is not covered by this native route", -1)
+                result := Buffer(value.Size, 0)
+                loop value.Size
+                    NumPut("UChar", NumGet(value, A_Index - 1, "UChar"), result, A_Index - 1)
+                return result
+            }
+
+            static ByteArrayTagCovered(tag) {
+                switch tag {
+                    case 37510, 40091:
+                        return true
+                    default:
+                        return false
+                }
+            }
+
+            static NormalizeUndefinedTag(tag) {
+                Pillow.Image.Exif.NormalizeTag(tag)
+                if !Pillow.Image.Exif.UndefinedTagCovered(tag)
+                    throw Error("Pillow.Image.Exif UNDEFINED tag is not covered by this native route", -1)
+                return tag
+            }
+
+            static NormalizeUndefinedValue(value) {
+                if !IsObject(value) || Type(value) != "Buffer"
+                    throw Error("Pillow.Image.Exif UNDEFINED tag value must be a Buffer", -1)
+                if value.Size <= 0
+                    throw Error("Pillow.Image.Exif UNDEFINED tag value length is not covered by this native route", -1)
+                result := Buffer(value.Size, 0)
+                loop value.Size
+                    NumPut("UChar", NumGet(value, A_Index - 1, "UChar"), result, A_Index - 1)
+                return result
+            }
+
+            static UndefinedTagCovered(tag) {
+                switch tag {
+                    case 36864:
+                        return true
+                    default:
+                        return false
+                }
+            }
+
+            static NormalizeOrientation(value) {
+                if !(value is Integer) || value < 1 || value > 65535
+                    throw Error("Pillow.Image.Exif orientation must be an integer in range 1..65535", -1)
+                return value
+            }
+
+            static ReadAsciiTag(exif, tag) {
+                if !IsObject(exif) || Type(exif) != "Buffer"
+                    return { Has: false, Value: "" }
+                hasTag := 0
+                required := 0
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_ascii_tag",
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int", tag,
+                    "Int*", &hasTag,
+                    "Ptr", 0,
+                    "UPtr", 0,
+                    "UPtr*", &required,
+                    "Int"
+                )
+                if status != -1
+                    Pillow.CheckStatus(status)
+                if !hasTag
+                    return { Has: false, Value: "" }
+                value := Buffer(required, 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_ascii_tag",
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int", tag,
+                    "Int*", &hasTag,
+                    "Ptr", value,
+                    "UPtr", value.Size,
+                    "UPtr*", &required,
+                    "Int"
+                ))
+                return { Has: hasTag != 0, Value: StrGet(value, "UTF-8") }
+            }
+
+            static ReadUintTag(exif, tag) {
+                if !IsObject(exif) || Type(exif) != "Buffer"
+                    return { Has: false, Value: 0 }
+                hasTag := 0
+                value := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_uint_tag",
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int", tag,
+                    "Int*", &hasTag,
+                    "UInt*", &value,
+                    "Int"
+                ))
+                return { Has: hasTag != 0, Value: value }
+            }
+
+            static ReadRationalTag(exif, tag) {
+                if !IsObject(exif) || Type(exif) != "Buffer"
+                    return { Has: false, Value: [] }
+                hasTag := 0
+                numerator := 0
+                denominator := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_rational_tag",
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int", tag,
+                    "Int*", &hasTag,
+                    "UInt*", &numerator,
+                    "UInt*", &denominator,
+                    "Int"
+                ))
+                return { Has: hasTag != 0, Value: hasTag ? [numerator, denominator] : [] }
+            }
+
+            static ReadSignedRationalTag(exif, tag) {
+                if !IsObject(exif) || Type(exif) != "Buffer"
+                    return { Has: false, Value: [] }
+                hasTag := 0
+                numerator := 0
+                denominator := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_signed_rational_tag",
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int", tag,
+                    "Int*", &hasTag,
+                    "Int*", &numerator,
+                    "Int*", &denominator,
+                    "Int"
+                ))
+                return { Has: hasTag != 0, Value: hasTag ? [numerator, denominator] : [] }
+            }
+
+            static ReadUshortArrayTag(exif, tag) {
+                if !IsObject(exif) || Type(exif) != "Buffer"
+                    return { Has: false, Value: [] }
+                hasTag := 0
+                required := 0
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_ushort_array_tag",
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int", tag,
+                    "Int*", &hasTag,
+                    "Ptr", 0,
+                    "UPtr", 0,
+                    "UPtr*", &required,
+                    "Int"
+                )
+                if status != -1
+                    Pillow.CheckStatus(status)
+                if !hasTag
+                    return { Has: false, Value: [] }
+                values := Buffer(required * 4, 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_ushort_array_tag",
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int", tag,
+                    "Int*", &hasTag,
+                    "Ptr", values,
+                    "UPtr", required,
+                    "UPtr*", &required,
+                    "Int"
+                ))
+                result := []
+                Loop required
+                    result.Push(NumGet(values, (A_Index - 1) * 4, "UInt"))
+                return { Has: hasTag != 0, Value: result }
+            }
+
+            static ReadByteArrayTag(exif, tag) {
+                if !IsObject(exif) || Type(exif) != "Buffer"
+                    return { Has: false, Value: Buffer(0, 0) }
+                hasTag := 0
+                required := 0
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_byte_array_tag",
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int", tag,
+                    "Int*", &hasTag,
+                    "Ptr", 0,
+                    "UPtr", 0,
+                    "UPtr*", &required,
+                    "Int"
+                )
+                if status != -1
+                    Pillow.CheckStatus(status)
+                if !hasTag
+                    return { Has: false, Value: Buffer(0, 0) }
+                value := Buffer(required, 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_byte_array_tag",
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int", tag,
+                    "Int*", &hasTag,
+                    "Ptr", value,
+                    "UPtr", value.Size,
+                    "UPtr*", &required,
+                    "Int"
+                ))
+                return { Has: hasTag != 0, Value: value }
+            }
+
+            static ReadUndefinedTag(exif, tag) {
+                if !IsObject(exif) || Type(exif) != "Buffer"
+                    return { Has: false, Value: Buffer(0, 0) }
+                hasTag := 0
+                required := 0
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_undefined_tag",
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int", tag,
+                    "Int*", &hasTag,
+                    "Ptr", 0,
+                    "UPtr", 0,
+                    "UPtr*", &required,
+                    "Int"
+                )
+                if status != -1
+                    Pillow.CheckStatus(status)
+                if !hasTag
+                    return { Has: false, Value: Buffer(0, 0) }
+                value := Buffer(required, 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_undefined_tag",
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int", tag,
+                    "Int*", &hasTag,
+                    "Ptr", value,
+                    "UPtr", value.Size,
+                    "UPtr*", &required,
+                    "Int"
+                ))
+                return { Has: hasTag != 0, Value: value }
+            }
+
+            Length {
+                get => (this.HasOrientation ? 1 : 0) + this.AsciiTags.Count + this.IntTags.Count + this.RationalTags.Count + this.ShortArrayTags.Count + this.ByteArrayTags.Count + this.SignedRationalTags.Count + this.UndefinedTags.Count
+            }
+
+            Has(tag) {
+                Pillow.Image.Exif.NormalizeTag(tag)
+                if tag = 274
+                    return this.HasOrientation
+                return this.AsciiTags.Has(tag) || this.IntTags.Has(tag) || this.RationalTags.Has(tag) || this.ShortArrayTags.Has(tag) || this.ByteArrayTags.Has(tag) || this.SignedRationalTags.Has(tag) || this.UndefinedTags.Has(tag)
+            }
+
+            Get(tag, defaultValue := unset) {
+                Pillow.Image.Exif.NormalizeTag(tag)
+                if tag = 274 && this.HasOrientation
+                    return this.Orientation
+                if tag != 274 && this.AsciiTags.Has(tag)
+                    return this.AsciiTags[tag]
+                if tag != 274 && this.IntTags.Has(tag)
+                    return this.IntTags[tag]
+                if tag != 274 && this.RationalTags.Has(tag)
+                    return this.RationalTags[tag]
+                if tag != 274 && this.ShortArrayTags.Has(tag)
+                    return this.ShortArrayTags[tag]
+                if tag != 274 && this.ByteArrayTags.Has(tag)
+                    return this.ByteArrayTags[tag]
+                if tag != 274 && this.SignedRationalTags.Has(tag)
+                    return this.SignedRationalTags[tag]
+                if tag != 274 && this.UndefinedTags.Has(tag)
+                    return this.UndefinedTags[tag]
+                return IsSet(defaultValue) ? defaultValue : ""
+            }
+
+            Delete(tag) {
+                Pillow.Image.Exif.NormalizeTag(tag)
+                if tag = 274 {
+                    this.HasOrientation := false
+                    this.Orientation := 0
+                } else if this.AsciiTags.Has(tag) {
+                    this.AsciiTags.Delete(tag)
+                } else if this.IntTags.Has(tag) {
+                    this.IntTags.Delete(tag)
+                } else if this.RationalTags.Has(tag) {
+                    this.RationalTags.Delete(tag)
+                } else if this.ShortArrayTags.Has(tag) {
+                    this.ShortArrayTags.Delete(tag)
+                } else if this.ByteArrayTags.Has(tag) {
+                    this.ByteArrayTags.Delete(tag)
+                } else if this.SignedRationalTags.Has(tag) {
+                    this.SignedRationalTags.Delete(tag)
+                } else if this.UndefinedTags.Has(tag) {
+                    this.UndefinedTags.Delete(tag)
+                }
+            }
+
+            __Item[tag] {
+                get {
+                    Pillow.Image.Exif.NormalizeTag(tag)
+                    if tag = 274 {
+                        if !this.HasOrientation
+                            throw Error("Pillow.Image.Exif tag not found", -1)
+                        return this.Orientation
+                    }
+                    if !this.AsciiTags.Has(tag)
+                        if !this.IntTags.Has(tag)
+                            if !this.RationalTags.Has(tag)
+                                if !this.ShortArrayTags.Has(tag)
+                                    if !this.ByteArrayTags.Has(tag)
+                                        if !this.SignedRationalTags.Has(tag)
+                                            if !this.UndefinedTags.Has(tag)
+                                                throw Error("Pillow.Image.Exif tag not found", -1)
+                    if this.AsciiTags.Has(tag)
+                        return this.AsciiTags[tag]
+                    if this.IntTags.Has(tag)
+                        return this.IntTags[tag]
+                    if this.RationalTags.Has(tag)
+                        return this.RationalTags[tag]
+                    if this.ShortArrayTags.Has(tag)
+                        return this.ShortArrayTags[tag]
+                    if this.ByteArrayTags.Has(tag)
+                        return this.ByteArrayTags[tag]
+                    if this.SignedRationalTags.Has(tag)
+                        return this.SignedRationalTags[tag]
+                    return this.UndefinedTags[tag]
+                }
+                set {
+                    Pillow.Image.Exif.NormalizeTag(tag)
+                    if tag = 274 {
+                        this.Orientation := Pillow.Image.Exif.NormalizeOrientation(value)
+                        this.HasOrientation := true
+                    } else if IsObject(value) && Type(value) = "Buffer" {
+                        isUndefinedTag := Pillow.Image.Exif.UndefinedTagCovered(tag)
+                        if isUndefinedTag
+                            this.UndefinedTags[Pillow.Image.Exif.NormalizeUndefinedTag(tag)] := Pillow.Image.Exif.NormalizeUndefinedValue(value)
+                        else
+                            this.ByteArrayTags[Pillow.Image.Exif.NormalizeByteArrayTag(tag)] := Pillow.Image.Exif.NormalizeByteArrayValue(value)
+                        if this.AsciiTags.Has(tag)
+                            this.AsciiTags.Delete(tag)
+                        if this.IntTags.Has(tag)
+                            this.IntTags.Delete(tag)
+                        if this.RationalTags.Has(tag)
+                            this.RationalTags.Delete(tag)
+                        if this.ShortArrayTags.Has(tag)
+                            this.ShortArrayTags.Delete(tag)
+                        if isUndefinedTag && this.ByteArrayTags.Has(tag)
+                            this.ByteArrayTags.Delete(tag)
+                        if !isUndefinedTag && this.UndefinedTags.Has(tag)
+                            this.UndefinedTags.Delete(tag)
+                        if this.SignedRationalTags.Has(tag)
+                            this.SignedRationalTags.Delete(tag)
+                    } else if IsObject(value) && value is Array && Pillow.Image.Exif.SignedRationalTagType(tag) {
+                        this.SignedRationalTags[tag] := Pillow.Image.Exif.NormalizeSignedRationalValue(value)
+                        if this.AsciiTags.Has(tag)
+                            this.AsciiTags.Delete(tag)
+                        if this.IntTags.Has(tag)
+                            this.IntTags.Delete(tag)
+                        if this.RationalTags.Has(tag)
+                            this.RationalTags.Delete(tag)
+                        if this.ShortArrayTags.Has(tag)
+                            this.ShortArrayTags.Delete(tag)
+                        if this.ByteArrayTags.Has(tag)
+                            this.ByteArrayTags.Delete(tag)
+                        if this.UndefinedTags.Has(tag)
+                            this.UndefinedTags.Delete(tag)
+                    } else if IsObject(value) && value is Array && Pillow.Image.Exif.ShortArrayTagLength(tag) {
+                        this.ShortArrayTags[tag] := Pillow.Image.Exif.NormalizeShortArrayValue(tag, value)
+                        if this.AsciiTags.Has(tag)
+                            this.AsciiTags.Delete(tag)
+                        if this.IntTags.Has(tag)
+                            this.IntTags.Delete(tag)
+                        if this.RationalTags.Has(tag)
+                            this.RationalTags.Delete(tag)
+                        if this.ByteArrayTags.Has(tag)
+                            this.ByteArrayTags.Delete(tag)
+                        if this.SignedRationalTags.Has(tag)
+                            this.SignedRationalTags.Delete(tag)
+                        if this.UndefinedTags.Has(tag)
+                            this.UndefinedTags.Delete(tag)
+                    } else if IsObject(value) && value is Array && Pillow.Image.Exif.RationalTagType(tag) {
+                        this.RationalTags[tag] := Pillow.Image.Exif.NormalizeRationalValue(value)
+                        if this.AsciiTags.Has(tag)
+                            this.AsciiTags.Delete(tag)
+                        if this.IntTags.Has(tag)
+                            this.IntTags.Delete(tag)
+                        if this.ShortArrayTags.Has(tag)
+                            this.ShortArrayTags.Delete(tag)
+                        if this.ByteArrayTags.Has(tag)
+                            this.ByteArrayTags.Delete(tag)
+                        if this.SignedRationalTags.Has(tag)
+                            this.SignedRationalTags.Delete(tag)
+                        if this.UndefinedTags.Has(tag)
+                            this.UndefinedTags.Delete(tag)
+                    } else if value is Integer && Pillow.Image.Exif.UintTagType(tag) {
+                        uintType := Pillow.Image.Exif.UintTagType(tag)
+                        this.IntTags[tag] := Pillow.Image.Exif.NormalizeUintValue(value, uintType)
+                        if this.AsciiTags.Has(tag)
+                            this.AsciiTags.Delete(tag)
+                        if this.RationalTags.Has(tag)
+                            this.RationalTags.Delete(tag)
+                        if this.ShortArrayTags.Has(tag)
+                            this.ShortArrayTags.Delete(tag)
+                        if this.ByteArrayTags.Has(tag)
+                            this.ByteArrayTags.Delete(tag)
+                        if this.SignedRationalTags.Has(tag)
+                            this.SignedRationalTags.Delete(tag)
+                        if this.UndefinedTags.Has(tag)
+                            this.UndefinedTags.Delete(tag)
+                    } else {
+                        this.AsciiTags[tag] := Pillow.Image.Exif.NormalizeAsciiValue(value)
+                        if this.IntTags.Has(tag)
+                            this.IntTags.Delete(tag)
+                        if this.RationalTags.Has(tag)
+                            this.RationalTags.Delete(tag)
+                        if this.ShortArrayTags.Has(tag)
+                            this.ShortArrayTags.Delete(tag)
+                        if this.ByteArrayTags.Has(tag)
+                            this.ByteArrayTags.Delete(tag)
+                        if this.SignedRationalTags.Has(tag)
+                            this.SignedRationalTags.Delete(tag)
+                        if this.UndefinedTags.Has(tag)
+                            this.UndefinedTags.Delete(tag)
+                    }
+                }
+            }
+
+            ToBytes() {
+                orientation := this.HasOrientation ? this.Orientation : 0
+                asciiCount := this.AsciiTags.Count
+                intCount := this.IntTags.Count
+                rationalCount := this.RationalTags.Count
+                shortArrayCount := this.ShortArrayTags.Count
+                byteArrayCount := this.ByteArrayTags.Count
+                signedRationalCount := this.SignedRationalTags.Count
+                undefinedCount := this.UndefinedTags.Count
+                tags := asciiCount ? Buffer(asciiCount * 4, 0) : 0
+                valuePtrs := asciiCount ? Buffer(asciiCount * A_PtrSize, 0) : 0
+                valueBuffers := []
+                index := 0
+                for tag, value in this.AsciiTags {
+                    index += 1
+                    valueBuffers.Push(Pillow.Image.Utf8Buffer(value))
+                    NumPut("Int", tag, tags, (index - 1) * 4)
+                    NumPut("Ptr", valueBuffers[index].Ptr, valuePtrs, (index - 1) * A_PtrSize)
+                }
+                intTags := intCount ? Buffer(intCount * 4, 0) : 0
+                intValues := intCount ? Buffer(intCount * 4, 0) : 0
+                intTypes := intCount ? Buffer(intCount * 4, 0) : 0
+                index := 0
+                for tag, value in this.IntTags {
+                    index += 1
+                    type := Pillow.Image.Exif.UintTagType(tag)
+                    NumPut("Int", tag, intTags, (index - 1) * 4)
+                    NumPut("UInt", value, intValues, (index - 1) * 4)
+                    NumPut("Int", type, intTypes, (index - 1) * 4)
+                }
+                rationalTags := rationalCount ? Buffer(rationalCount * 4, 0) : 0
+                rationalNumerators := rationalCount ? Buffer(rationalCount * 4, 0) : 0
+                rationalDenominators := rationalCount ? Buffer(rationalCount * 4, 0) : 0
+                index := 0
+                for tag, value in this.RationalTags {
+                    index += 1
+                    NumPut("Int", tag, rationalTags, (index - 1) * 4)
+                    NumPut("UInt", value[1], rationalNumerators, (index - 1) * 4)
+                    NumPut("UInt", value[2], rationalDenominators, (index - 1) * 4)
+                }
+                shortArrayTags := shortArrayCount ? Buffer(shortArrayCount * 4, 0) : 0
+                shortArrayOffsets := shortArrayCount ? Buffer(shortArrayCount * A_PtrSize, 0) : 0
+                shortArrayCounts := shortArrayCount ? Buffer(shortArrayCount * A_PtrSize, 0) : 0
+                flatShortArrayValues := []
+                index := 0
+                for tag, value in this.ShortArrayTags {
+                    index += 1
+                    NumPut("Int", tag, shortArrayTags, (index - 1) * 4)
+                    NumPut("UPtr", flatShortArrayValues.Length, shortArrayOffsets, (index - 1) * A_PtrSize)
+                    NumPut("UPtr", value.Length, shortArrayCounts, (index - 1) * A_PtrSize)
+                    for item in value
+                        flatShortArrayValues.Push(item)
+                }
+                shortArrayValues := flatShortArrayValues.Length ? Buffer(flatShortArrayValues.Length * 4, 0) : 0
+                for index, value in flatShortArrayValues
+                    NumPut("UInt", value, shortArrayValues, (index - 1) * 4)
+                byteArrayTags := byteArrayCount ? Buffer(byteArrayCount * 4, 0) : 0
+                byteArrayOffsets := byteArrayCount ? Buffer(byteArrayCount * A_PtrSize, 0) : 0
+                byteArrayCounts := byteArrayCount ? Buffer(byteArrayCount * A_PtrSize, 0) : 0
+                flatByteArrayValues := []
+                index := 0
+                for tag, value in this.ByteArrayTags {
+                    index += 1
+                    NumPut("Int", tag, byteArrayTags, (index - 1) * 4)
+                    NumPut("UPtr", flatByteArrayValues.Length, byteArrayOffsets, (index - 1) * A_PtrSize)
+                    NumPut("UPtr", value.Size, byteArrayCounts, (index - 1) * A_PtrSize)
+                    loop value.Size
+                        flatByteArrayValues.Push(NumGet(value, A_Index - 1, "UChar"))
+                }
+                byteArrayValues := flatByteArrayValues.Length ? Buffer(flatByteArrayValues.Length, 0) : 0
+                for index, value in flatByteArrayValues
+                    NumPut("UChar", value, byteArrayValues, index - 1)
+                signedRationalTags := signedRationalCount ? Buffer(signedRationalCount * 4, 0) : 0
+                signedRationalNumerators := signedRationalCount ? Buffer(signedRationalCount * 4, 0) : 0
+                signedRationalDenominators := signedRationalCount ? Buffer(signedRationalCount * 4, 0) : 0
+                index := 0
+                for tag, value in this.SignedRationalTags {
+                    index += 1
+                    NumPut("Int", tag, signedRationalTags, (index - 1) * 4)
+                    NumPut("Int", value[1], signedRationalNumerators, (index - 1) * 4)
+                    NumPut("Int", value[2], signedRationalDenominators, (index - 1) * 4)
+                }
+                undefinedTags := undefinedCount ? Buffer(undefinedCount * 4, 0) : 0
+                undefinedOffsets := undefinedCount ? Buffer(undefinedCount * A_PtrSize, 0) : 0
+                undefinedCounts := undefinedCount ? Buffer(undefinedCount * A_PtrSize, 0) : 0
+                flatUndefinedValues := []
+                index := 0
+                for tag, value in this.UndefinedTags {
+                    index += 1
+                    NumPut("Int", tag, undefinedTags, (index - 1) * 4)
+                    NumPut("UPtr", flatUndefinedValues.Length, undefinedOffsets, (index - 1) * A_PtrSize)
+                    NumPut("UPtr", value.Size, undefinedCounts, (index - 1) * A_PtrSize)
+                    loop value.Size
+                        flatUndefinedValues.Push(NumGet(value, A_Index - 1, "UChar"))
+                }
+                undefinedValues := flatUndefinedValues.Length ? Buffer(flatUndefinedValues.Length, 0) : 0
+                for index, value in flatUndefinedValues
+                    NumPut("UChar", value, undefinedValues, index - 1)
+                required := 0
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_entries_undefined_bytes",
+                    "Int", orientation,
+                    "Ptr", tags,
+                    "Ptr", valuePtrs,
+                    "UPtr", asciiCount,
+                    "Ptr", intTags,
+                    "Ptr", intValues,
+                    "Ptr", intTypes,
+                    "UPtr", intCount,
+                    "Ptr", rationalTags,
+                    "Ptr", rationalNumerators,
+                    "Ptr", rationalDenominators,
+                    "UPtr", rationalCount,
+                    "Ptr", shortArrayTags,
+                    "Ptr", shortArrayValues,
+                    "UPtr", flatShortArrayValues.Length,
+                    "Ptr", shortArrayOffsets,
+                    "Ptr", shortArrayCounts,
+                    "UPtr", shortArrayCount,
+                    "Ptr", byteArrayTags,
+                    "Ptr", byteArrayValues,
+                    "UPtr", flatByteArrayValues.Length,
+                    "Ptr", byteArrayOffsets,
+                    "Ptr", byteArrayCounts,
+                    "UPtr", byteArrayCount,
+                    "Ptr", signedRationalTags,
+                    "Ptr", signedRationalNumerators,
+                    "Ptr", signedRationalDenominators,
+                    "UPtr", signedRationalCount,
+                    "Ptr", undefinedTags,
+                    "Ptr", undefinedValues,
+                    "UPtr", flatUndefinedValues.Length,
+                    "Ptr", undefinedOffsets,
+                    "Ptr", undefinedCounts,
+                    "UPtr", undefinedCount,
+                    "Ptr", 0,
+                    "UPtr", 0,
+                    "UPtr*", &required,
+                    "Int"
+                )
+                if status != -1
+                    Pillow.CheckStatus(status)
+                bytes := Buffer(required, 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_exif_entries_undefined_bytes",
+                    "Int", orientation,
+                    "Ptr", tags,
+                    "Ptr", valuePtrs,
+                    "UPtr", asciiCount,
+                    "Ptr", intTags,
+                    "Ptr", intValues,
+                    "Ptr", intTypes,
+                    "UPtr", intCount,
+                    "Ptr", rationalTags,
+                    "Ptr", rationalNumerators,
+                    "Ptr", rationalDenominators,
+                    "UPtr", rationalCount,
+                    "Ptr", shortArrayTags,
+                    "Ptr", shortArrayValues,
+                    "UPtr", flatShortArrayValues.Length,
+                    "Ptr", shortArrayOffsets,
+                    "Ptr", shortArrayCounts,
+                    "UPtr", shortArrayCount,
+                    "Ptr", byteArrayTags,
+                    "Ptr", byteArrayValues,
+                    "UPtr", flatByteArrayValues.Length,
+                    "Ptr", byteArrayOffsets,
+                    "Ptr", byteArrayCounts,
+                    "UPtr", byteArrayCount,
+                    "Ptr", signedRationalTags,
+                    "Ptr", signedRationalNumerators,
+                    "Ptr", signedRationalDenominators,
+                    "UPtr", signedRationalCount,
+                    "Ptr", undefinedTags,
+                    "Ptr", undefinedValues,
+                    "UPtr", flatUndefinedValues.Length,
+                    "Ptr", undefinedOffsets,
+                    "Ptr", undefinedCounts,
+                    "UPtr", undefinedCount,
+                    "Ptr", bytes,
+                    "UPtr", bytes.Size,
+                    "UPtr*", &required,
+                    "Int"
+                ))
+                return bytes
+            }
+
+        }
+
+        class IcoFile {
+            __New(image) {
+                if !(image is Pillow.Image) || image.Format != "ICO" || image.FramePath = ""
+                    throw Error("Pillow.Image.ico is only available on opened ICO images", -1)
+                this.Image := image
+                this.Path := image.FramePath
+            }
+
+            sizes() {
+                return Pillow.Image.IcoSizes(this.Path)
+            }
+
+            getimage(size) {
+                sizes := this.sizes()
+                width := 0
+                height := 0
+                useRequestedSize := false
+                if IsObject(size) && size.Length = 2 && size[1] is Integer && size[2] is Integer {
+                    width := size[1]
+                    height := size[2]
+                    for available in sizes {
+                        if available[1] = width && available[2] = height {
+                            useRequestedSize := true
+                            break
+                        }
+                    }
+                }
+
+                outHandle := 0
+                pathBytes := Pillow.Image.Utf8Buffer(this.Path)
+                if useRequestedSize {
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_ico_size",
+                        "Ptr", pathBytes,
+                        "Int", width,
+                        "Int", height,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    ))
+                } else {
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_ico",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    ))
+                }
+                result := Pillow.WrapImageHandle(outHandle)
+                result.Format := Pillow.Image.IcoPayloadFormat(this.Path, width, height, useRequestedSize)
+                Pillow.Image.ApplyIcoPayloadDibMetadata(result, this.Path, width, height, useRequestedSize)
+                return result
+            }
+        }
+
+        static IcoSizes(path) {
+            pathBytes := Pillow.Image.Utf8Buffer(path)
+            required := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_ico_sizes",
+                "Ptr", pathBytes,
+                "Ptr", 0,
+                "UPtr", 0,
+                "UPtr*", &required,
+                "Int"
+            )
+            if status != -1
+                Pillow.CheckStatus(status)
+            pairs := Buffer(required * 2 * 4, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_ico_sizes",
+                "Ptr", pathBytes,
+                "Ptr", pairs,
+                "UPtr", required,
+                "UPtr*", &required,
+                "Int"
+            ))
+            sizes := []
+            loop required
+                sizes.Push([NumGet(pairs, (A_Index - 1) * 8, "Int"), NumGet(pairs, (A_Index - 1) * 8 + 4, "Int")])
+            return sizes
+        }
+
+        static IcoPayloadFormat(path, width, height, requireRequestedSize) {
+            pathBytes := Pillow.Image.Utf8Buffer(path)
+            required := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_ico_payload_format",
+                "Ptr", pathBytes,
+                "Int", width,
+                "Int", height,
+                "Int", requireRequestedSize ? 1 : 0,
+                "Ptr", 0,
+                "UPtr", 0,
+                "UPtr*", &required,
+                "Int"
+            ))
+            if required = 0
+                return ""
+            formatBytes := Buffer(required, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_ico_payload_format",
+                "Ptr", pathBytes,
+                "Int", width,
+                "Int", height,
+                "Int", requireRequestedSize ? 1 : 0,
+                "Ptr", formatBytes,
+                "UPtr", formatBytes.Size,
+                "UPtr*", &required,
+                "Int"
+            ))
+            return StrGet(formatBytes.Ptr, required - 1, "UTF-8")
+        }
+
+        static ApplyIcoPayloadDibMetadata(image, path, width, height, requireRequestedSize) {
+            pathBytes := Pillow.Image.Utf8Buffer(path)
+            hasDib := 0
+            hasDpi := 0
+            dpiX := 0.0
+            dpiY := 0.0
+            compression := -1
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_ico_payload_dib_metadata",
+                "Ptr", pathBytes,
+                "Int", width,
+                "Int", height,
+                "Int", requireRequestedSize ? 1 : 0,
+                "Int*", &hasDib,
+                "Int*", &hasDpi,
+                "Double*", &dpiX,
+                "Double*", &dpiY,
+                "Int*", &compression,
+                "Int"
+            ))
+            if hasDib {
+                if hasDpi
+                    image.Info["dpi"] := [dpiX, dpiY]
+                image.Info["compression"] := compression
+            }
+        }
+
         __New(handle) {
             this.Handle := handle
             this.Format := ""
@@ -3431,6 +4499,7 @@ class Pillow {
             this.FrameIndex := 0
             this.FrameCount := 1
             this.DisposalMethod := 0
+            this.BufferViewSource := 0
         }
 
         __Delete() {
@@ -3632,7 +4701,41 @@ class Pillow {
             }
         }
 
+        static FromBuffer(modeName, size, data, decoder := "raw", rawmode := unset, stride := 0, orientation := 1) {
+            if size.Length != 2
+                throw Error("Pillow.Image.FromBuffer expects size [width, height]", -1)
+            if decoder != "raw"
+                throw Error("Pillow.Image.FromBuffer currently supports only the raw decoder", -1)
+            if !IsSet(rawmode)
+                rawmode := modeName
+            if !(modeName = "L" || modeName = "RGB" || modeName = "RGBA" || modeName = "RGBX")
+                throw Error("Pillow.Image.FromBuffer currently supports L, RGB, RGBA, and RGBX", -1)
+
+            dataBuffer := Pillow.Image.BinaryBuffer(data, "Pillow.Image.FromBuffer")
+            rawModeBytes := Pillow.Image.RawModeBuffer(rawmode)
+            aliasSource := (rawmode = "L" || rawmode = "RGBA" || rawmode = "RGBX") ? 1 : 0
+            handle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_frombuffer_raw",
+                "Int", size[1],
+                "Int", size[2],
+                "Int", Pillow.ModeId(modeName),
+                "Ptr", dataBuffer,
+                "UPtr", dataBuffer.Size,
+                "Ptr", rawModeBytes,
+                "Int", stride,
+                "Int", orientation,
+                "Int", aliasSource,
+                "Ptr*", &handle,
+                "Int"
+            ))
+            image := Pillow.WrapImageHandle(handle)
+            image.BufferViewSource := aliasSource ? dataBuffer : 0
+            return image
+        }
+
         FromBytes(bytes, decoder := unset, rawmode := unset, stride := 0, orientation := 1) {
+            this.DetachBufferView()
             if IsSet(decoder) {
                 if decoder != "raw"
                     throw Error("Pillow.Image.FromBytes currently supports only the raw decoder", -1)
@@ -3676,14 +4779,17 @@ class Pillow {
 
         static Blend(left, right, alpha) {
             outHandle := 0
-            Pillow.CheckStatus(DllCall(
+            status := DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_blend",
                 "Ptr", left.RequireHandle(),
                 "Ptr", right.RequireHandle(),
                 "Double", alpha,
                 "Ptr*", &outHandle,
                 "Int"
-            ))
+            )
+            if status != 0 && left.Mode = right.Mode && (left.Mode = "I" || left.Mode = "F")
+                throw Error("image has wrong mode", -1)
+            Pillow.CheckStatus(status)
             return left.WrapDerivedHandle(outHandle)
         }
 
@@ -3808,6 +4914,211 @@ class Pillow {
                 NumPut("UChar", value, buf, index - 1)
             }
             return buf
+        }
+
+        static BinaryBuffer(value, operationName) {
+            if IsObject(value) {
+                if Type(value) = "Buffer"
+                    return value
+                if Type(value) = "Pillow.Image.Exif"
+                    return value.ToBytes()
+            }
+            return Pillow.Image.ByteBuffer(value, operationName)
+        }
+
+        static NativeMetadataBlob(handle, exportName) {
+            hasBlob := 0
+            required := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\" exportName,
+                "Ptr", handle,
+                "Int*", &hasBlob,
+                "Ptr", 0,
+                "UPtr", 0,
+                "UPtr*", &required,
+                "Int"
+            )
+            if status != -1
+                Pillow.CheckStatus(status)
+            if !hasBlob
+                return 0
+            blob := Buffer(required, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\" exportName,
+                "Ptr", handle,
+                "Int*", &hasBlob,
+                "Ptr", blob,
+                "UPtr", blob.Size,
+                "UPtr*", &required,
+                "Int"
+            ))
+            return blob
+        }
+
+        static XmpNodeLocalName(node) {
+            name := node.baseName
+            if name != ""
+                return name
+            name := node.nodeName
+            colon := InStr(name, ":")
+            return colon ? SubStr(name, colon + 1) : name
+        }
+
+        static XmpElementToMap(node) {
+            result := Map()
+            attrs := node.attributes
+            loop attrs.length {
+                attr := attrs.item(A_Index - 1)
+                attrName := attr.nodeName
+                if attrName = "xmlns" || SubStr(attrName, 1, 6) = "xmlns:"
+                    continue
+                result[Pillow.Image.XmpNodeLocalName(attr)] := attr.text
+            }
+
+            textValue := ""
+            children := node.childNodes
+            loop children.length {
+                child := children.item(A_Index - 1)
+                if child.nodeType = 1 {
+                    childName := Pillow.Image.XmpNodeLocalName(child)
+                    childValue := Pillow.Image.XmpElementToMap(child)
+                    if result.Has(childName) {
+                        existingValue := result[childName]
+                        if !(existingValue is Array)
+                            result[childName] := [existingValue]
+                        result[childName].Push(childValue)
+                    } else {
+                        result[childName] := childValue
+                    }
+                } else if child.nodeType = 3 || child.nodeType = 4 {
+                    textValue .= child.nodeValue
+                }
+            }
+            textValue := Trim(textValue, " `t`r`n")
+            if textValue != ""
+                result["text"] := textValue
+            if result.Count = 1 && result.Has("text")
+                return result["text"]
+            return result
+        }
+
+        static ParseXmpBuffer(xmpBuffer) {
+            doc := ComObject("MSXML2.DOMDocument.6.0")
+            doc.async := false
+            doc.validateOnParse := false
+            doc.resolveExternals := false
+            xmpText := StrGet(xmpBuffer.Ptr, xmpBuffer.Size, "UTF-8")
+            if !doc.loadXML(xmpText)
+                throw Error("Pillow.Image.getxmp could not parse XMP packet: " doc.parseError.reason, -1)
+            root := doc.documentElement
+            if !IsObject(root)
+                throw Error("Pillow.Image.getxmp could not parse XMP packet", -1)
+            parsed := Map()
+            parsed[Pillow.Image.XmpNodeLocalName(root)] := Pillow.Image.XmpElementToMap(root)
+            return parsed
+        }
+
+        static NativeJpegQTables(handle) {
+            count := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_jpeg_qtable_count",
+                "Ptr", handle,
+                "UPtr*", &count,
+                "Int"
+            )
+            if status != -1
+                Pillow.CheckStatus(status)
+            if count < 1
+                throw Error("Cannot use 'keep' when original image is not a JPEG", -1)
+            if count > 2
+                throw Error("Pillow.Image.Save JPEG keep currently supports one or two quantization tables", -1)
+            buf := Buffer(count * 64 * 4, 0)
+            loop count {
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_metadata_jpeg_qtable",
+                    "Ptr", handle,
+                    "UPtr", A_Index - 1,
+                    "Ptr", buf.Ptr + ((A_Index - 1) * 64 * 4),
+                    "UPtr", 64,
+                    "Int"
+                )
+                if status != -1
+                    Pillow.CheckStatus(status)
+            }
+            return { Buffer: buf, Count: count }
+        }
+
+        static NativeJpegSubsampling(handle) {
+            subsampling := -1
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_jpeg_subsampling",
+                "Ptr", handle,
+                "Int*", &subsampling,
+                "Int"
+            )
+            if status != -1
+                Pillow.CheckStatus(status)
+            return subsampling
+        }
+
+        static SaveJpegCommentBuffer(commentOption, handle, useOpenedComment) {
+            if commentOption.Set {
+                if commentOption.Value is String {
+                    comment := Pillow.Image.Utf8Buffer(commentOption.Value)
+                    return { Buffer: comment, Size: comment.Size - 1 }
+                }
+                comment := Pillow.Image.BinaryBuffer(commentOption.Value, "Pillow.Image.Save comment")
+                return { Buffer: comment, Size: comment.Size }
+            }
+            if useOpenedComment {
+                comment := Pillow.Image.NativeMetadataBlob(handle, "pillow_c_image_metadata_jpeg_comment")
+                if comment
+                    return { Buffer: comment, Size: comment.Size }
+            }
+            return { Buffer: 0, Size: 0 }
+        }
+
+        static SaveGifCommentBuffer(commentOption) {
+            if !commentOption.Set
+                return { Buffer: 0, Size: 0 }
+            if commentOption.Value is String {
+                comment := Pillow.Image.Utf8Buffer(commentOption.Value)
+                return { Buffer: comment, Size: comment.Size - 1 }
+            }
+            comment := Pillow.Image.BinaryBuffer(commentOption.Value, "Pillow.Image.Save comment")
+            return { Buffer: comment, Size: comment.Size }
+        }
+
+        static NativeGifComment(path, frameIndex) {
+            hasComment := 0
+            required := 0
+            pathBytes := Pillow.Image.Utf8Buffer(path)
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_gif_comment",
+                "Ptr", pathBytes,
+                "Int", frameIndex,
+                "Int*", &hasComment,
+                "Ptr", 0,
+                "UPtr", 0,
+                "UPtr*", &required,
+                "Int"
+            )
+            if status != -1
+                Pillow.CheckStatus(status)
+            if !hasComment
+                return 0
+            comment := Buffer(required, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_gif_comment",
+                "Ptr", pathBytes,
+                "Int", frameIndex,
+                "Int*", &hasComment,
+                "Ptr", comment,
+                "UPtr", comment.Size,
+                "UPtr*", &required,
+                "Int"
+            ))
+            return comment
         }
 
         static NormalizePaletteRawmode(rawmode, operationName, allowExpanded := false) {
@@ -3952,6 +5263,78 @@ class Pillow {
             return buf
         }
 
+        static Utf8StringFromBytes(buf, byteCount, operationName) {
+            text := ""
+            offset := 0
+            while offset < byteCount {
+                b1 := NumGet(buf, offset, "UChar")
+                if b1 < 0x80 {
+                    codepoint := b1
+                    offset += 1
+                } else if b1 >= 0xC2 && b1 <= 0xDF {
+                    if offset + 1 >= byteCount
+                        throw Error(operationName " contains truncated UTF-8", -1)
+                    b2 := NumGet(buf, offset + 1, "UChar")
+                    if (b2 & 0xC0) != 0x80
+                        throw Error(operationName " contains invalid UTF-8", -1)
+                    codepoint := ((b1 & 0x1F) << 6) | (b2 & 0x3F)
+                    offset += 2
+                } else if b1 >= 0xE0 && b1 <= 0xEF {
+                    if offset + 2 >= byteCount
+                        throw Error(operationName " contains truncated UTF-8", -1)
+                    b2 := NumGet(buf, offset + 1, "UChar")
+                    b3 := NumGet(buf, offset + 2, "UChar")
+                    if (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80
+                        throw Error(operationName " contains invalid UTF-8", -1)
+                    codepoint := ((b1 & 0x0F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
+                    if codepoint < 0x800 || (codepoint >= 0xD800 && codepoint <= 0xDFFF)
+                        throw Error(operationName " contains invalid UTF-8", -1)
+                    offset += 3
+                } else if b1 >= 0xF0 && b1 <= 0xF4 {
+                    if offset + 3 >= byteCount
+                        throw Error(operationName " contains truncated UTF-8", -1)
+                    b2 := NumGet(buf, offset + 1, "UChar")
+                    b3 := NumGet(buf, offset + 2, "UChar")
+                    b4 := NumGet(buf, offset + 3, "UChar")
+                    if (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80 || (b4 & 0xC0) != 0x80
+                        throw Error(operationName " contains invalid UTF-8", -1)
+                    codepoint := ((b1 & 0x07) << 18) | ((b2 & 0x3F) << 12) | ((b3 & 0x3F) << 6) | (b4 & 0x3F)
+                    if codepoint < 0x10000 || codepoint > 0x10FFFF
+                        throw Error(operationName " contains invalid UTF-8", -1)
+                    offset += 4
+                } else {
+                    throw Error(operationName " contains invalid UTF-8", -1)
+                }
+                text .= Chr(codepoint)
+            }
+            return text
+        }
+
+        static Latin1Buffer(value, operationName) {
+            length := StrLen(value)
+            buf := Buffer(length + 1, 0)
+            loop length {
+                codepoint := Ord(SubStr(value, A_Index, 1))
+                if codepoint > 255
+                    throw Error(operationName " contains characters outside Latin-1", -1)
+                NumPut("UChar", codepoint, buf, A_Index - 1)
+            }
+            return buf
+        }
+
+        static NulTerminatedByteBuffer(value, operationName) {
+            if !(IsObject(value) && Type(value) = "Buffer")
+                throw Error(operationName " expects a Buffer", -1)
+            buf := Buffer(value.Size + 1, 0)
+            loop value.Size {
+                byte := NumGet(value, A_Index - 1, "UChar")
+                if byte = 0
+                    throw Error(operationName " bytes with embedded NUL are not supported", -1)
+                NumPut("UChar", byte, buf, A_Index - 1)
+            }
+            return buf
+        }
+
         static ResolveOpenFormat(path, formats := unset) {
             return Pillow.Image.ResolveOpenFormats(path, IsSet(formats) ? formats : unset)[1]
         }
@@ -4002,6 +5385,8 @@ class Pillow {
                 return "XBM"
             if RegExMatch(path, "i)\.ico$")
                 return "ICO"
+            if RegExMatch(path, "i)\.cur$")
+                return "CUR"
             if RegExMatch(path, "i)\.png$")
                 return "PNG"
             if RegExMatch(path, "i)\.jpe?g$")
@@ -4019,9 +5404,31 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO"
+            if name = "BMP" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
+        }
+
+        static FormatDescription(format) {
+            descriptions := Map(
+                "BMP", "Windows Bitmap",
+                "CUR", "Windows Cursor",
+                "GIF", "Compuserve GIF",
+                "ICO", "Windows Icon",
+                "JPEG", "JPEG (ISO 10918)",
+                "PNG", "Portable network graphics",
+                "PPM", "Pbmplus image",
+                "QOI", "Quite OK Image",
+                "TGA", "Targa",
+                "TIFF", "Adobe TIFF",
+                "XBM", "X11 Bitmap"
+            )
+            normalized := StrUpper(format)
+            if normalized = "JPG"
+                normalized := "JPEG"
+            if normalized = "TIF"
+                normalized := "TIFF"
+            return descriptions.Has(normalized) ? descriptions[normalized] : ""
         }
 
         static HandleArray(images) {
@@ -4087,6 +5494,449 @@ class Pillow {
             return values
         }
 
+        static SaveTiffCompression(value) {
+            if value is Integer {
+                if value = 1 || value = 32773
+                    return value
+                throw Error("Pillow.Image.Save TIFF compression is not supported", -1)
+            }
+            text := StrLower(String(value))
+            if text = "raw" || text = "none"
+                return 1
+            if text = "tiff_lzw" || text = "lzw"
+                return 5
+            if text = "tiff_adobe_deflate" || text = "tiff_deflate"
+                return 8
+            if text = "packbits"
+                return 32773
+            throw Error("Pillow.Image.Save TIFF compression is not supported", -1)
+        }
+
+        static SaveJpegSubsampling(value) {
+            if value is Integer {
+                if value >= -1 && value <= 2
+                    return value
+                throw Error("Pillow.Image.Save subsampling must be -1, 0, 1, or 2", -1)
+            }
+            text := StrLower(String(value))
+            if text = "4:4:4" || text = "web_high" || text = "web_very_high" || text = "web_maximum" || text = "high" || text = "maximum"
+                return 0
+            if text = "4:2:2"
+                return 1
+            if text = "4:2:0" || text = "4:1:1" || text = "web_low" || text = "web_medium" || text = "low" || text = "medium"
+                return 2
+            if text = "keep"
+                return -2
+            throw Error("Pillow.Image.Save subsampling expects 0, 1, 2, a Pillow JPEG subsampling alias, or keep", -1)
+        }
+
+        static SaveJpegQTables(value) {
+            if !IsObject(value) || Type(value) = "Buffer"
+                throw Error("Pillow.Image.Save qtables expects one or two 64-entry integer arrays", -1)
+            tables := []
+            for table in value {
+                if !IsObject(table) || Type(table) = "Buffer"
+                    throw Error("Pillow.Image.Save qtables expects one or two 64-entry integer arrays", -1)
+                entries := []
+                for item in table {
+                    if !(item is Integer) || item < 1 || item > 255
+                        throw Error("Pillow.Image.Save qtables values must be integers in range 1..255", -1)
+                    entries.Push(item)
+                }
+                if entries.Length != 64
+                    throw Error("Pillow.Image.Save qtables entries must contain exactly 64 values", -1)
+                tables.Push(entries)
+            }
+            if !(tables.Length = 1 || tables.Length = 2)
+                throw Error("Pillow.Image.Save qtables expects one or two tables", -1)
+
+            buf := Buffer(tables.Length * 64 * 4, 0)
+            for tableIndex, table in tables {
+                for valueIndex, item in table
+                    NumPut("Int", item, buf, ((tableIndex - 1) * 64 + valueIndex - 1) * 4)
+            }
+            return { Buffer: buf, Count: tables.Length }
+        }
+
+        static SaveJpegQualityPreset(value) {
+            text := StrLower(String(value))
+            if text = "web_low"
+                return Pillow.Image.SaveJpegQualityPresetInfo(2,
+                    [20, 16, 25, 39, 50, 46, 62, 68, 16, 18, 23, 38, 38, 53, 65, 68, 25, 23, 31, 38, 53, 65, 68, 68, 39, 38, 38, 53, 65, 68, 68, 68, 50, 38, 53, 65, 68, 68, 68, 68, 46, 53, 65, 68, 68, 68, 68, 68, 62, 65, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68],
+                    [21, 25, 32, 38, 54, 68, 68, 68, 25, 28, 24, 38, 54, 68, 68, 68, 32, 24, 32, 43, 66, 68, 68, 68, 38, 38, 43, 53, 68, 68, 68, 68, 54, 54, 66, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68],
+                )
+            if text = "web_medium"
+                return Pillow.Image.SaveJpegQualityPresetInfo(2,
+                    [16, 11, 11, 16, 23, 27, 31, 30, 11, 12, 12, 15, 20, 23, 23, 30, 11, 12, 13, 16, 23, 26, 35, 47, 16, 15, 16, 23, 26, 37, 47, 64, 23, 20, 23, 26, 39, 51, 64, 64, 27, 23, 26, 37, 51, 64, 64, 64, 31, 23, 35, 47, 64, 64, 64, 64, 30, 30, 47, 64, 64, 64, 64, 64],
+                    [17, 15, 17, 21, 20, 26, 38, 48, 15, 19, 18, 17, 20, 26, 35, 43, 17, 18, 20, 22, 26, 30, 46, 53, 21, 17, 22, 28, 30, 39, 53, 64, 20, 20, 26, 30, 39, 48, 64, 64, 26, 26, 30, 39, 48, 63, 64, 64, 38, 35, 46, 53, 64, 64, 64, 64, 48, 43, 53, 64, 64, 64, 64, 64],
+                )
+            if text = "web_high"
+                return Pillow.Image.SaveJpegQualityPresetInfo(0,
+                    [6, 4, 4, 6, 9, 11, 12, 16, 4, 5, 5, 6, 8, 10, 12, 12, 4, 5, 5, 6, 10, 12, 14, 19, 6, 6, 6, 11, 12, 15, 19, 28, 9, 8, 10, 12, 16, 20, 27, 31, 11, 10, 12, 15, 20, 27, 31, 31, 12, 12, 14, 19, 27, 31, 31, 31, 16, 12, 19, 28, 31, 31, 31, 31],
+                    [7, 7, 13, 24, 26, 31, 31, 31, 7, 12, 16, 21, 31, 31, 31, 31, 13, 16, 17, 31, 31, 31, 31, 31, 24, 21, 31, 31, 31, 31, 31, 31, 26, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31],
+                )
+            if text = "web_very_high"
+                return Pillow.Image.SaveJpegQualityPresetInfo(0,
+                    [2, 2, 2, 2, 3, 4, 5, 6, 2, 2, 2, 2, 3, 4, 5, 6, 2, 2, 2, 2, 4, 5, 7, 9, 2, 2, 2, 4, 5, 7, 9, 12, 3, 3, 4, 5, 8, 10, 12, 12, 4, 4, 5, 7, 10, 12, 12, 12, 5, 5, 7, 9, 12, 12, 12, 12, 6, 6, 9, 12, 12, 12, 12, 12],
+                    [3, 3, 5, 9, 13, 15, 15, 15, 3, 4, 6, 11, 14, 12, 12, 12, 5, 6, 9, 14, 12, 12, 12, 12, 9, 11, 14, 12, 12, 12, 12, 12, 13, 14, 12, 12, 12, 12, 12, 12, 15, 12, 12, 12, 12, 12, 12, 12, 15, 12, 12, 12, 12, 12, 12, 12, 15, 12, 12, 12, 12, 12, 12, 12],
+                )
+            if text = "web_maximum"
+                return Pillow.Image.SaveJpegQualityPresetInfo(0,
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 2, 2, 3, 1, 1, 1, 1, 2, 2, 3, 3, 1, 1, 1, 2, 2, 3, 3, 3, 1, 1, 2, 2, 3, 3, 3, 3],
+                    [1, 1, 1, 2, 2, 3, 3, 3, 1, 1, 1, 2, 3, 3, 3, 3, 1, 1, 1, 3, 3, 3, 3, 3, 2, 2, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+                )
+            if text = "low"
+                return Pillow.Image.SaveJpegQualityPresetInfo(2,
+                    [18, 14, 14, 21, 30, 35, 34, 17, 14, 16, 16, 19, 26, 23, 12, 12, 14, 16, 17, 21, 23, 12, 12, 12, 21, 19, 21, 23, 12, 12, 12, 12, 30, 26, 23, 12, 12, 12, 12, 12, 35, 23, 12, 12, 12, 12, 12, 12, 34, 12, 12, 12, 12, 12, 12, 12, 17, 12, 12, 12, 12, 12, 12, 12],
+                    [20, 19, 22, 27, 20, 20, 17, 17, 19, 25, 23, 14, 14, 12, 12, 12, 22, 23, 14, 14, 12, 12, 12, 12, 27, 14, 14, 12, 12, 12, 12, 12, 20, 14, 12, 12, 12, 12, 12, 12, 20, 12, 12, 12, 12, 12, 12, 12, 17, 12, 12, 12, 12, 12, 12, 12, 17, 12, 12, 12, 12, 12, 12, 12],
+                )
+            if text = "medium"
+                return Pillow.Image.SaveJpegQualityPresetInfo(2,
+                    [12, 8, 8, 12, 17, 21, 24, 17, 8, 9, 9, 11, 15, 19, 12, 12, 8, 9, 10, 12, 19, 12, 12, 12, 12, 11, 12, 21, 12, 12, 12, 12, 17, 15, 19, 12, 12, 12, 12, 12, 21, 19, 12, 12, 12, 12, 12, 12, 24, 12, 12, 12, 12, 12, 12, 12, 17, 12, 12, 12, 12, 12, 12, 12],
+                    [13, 11, 13, 16, 20, 20, 17, 17, 11, 14, 14, 14, 14, 12, 12, 12, 13, 14, 14, 14, 12, 12, 12, 12, 16, 14, 14, 12, 12, 12, 12, 12, 20, 14, 12, 12, 12, 12, 12, 12, 20, 12, 12, 12, 12, 12, 12, 12, 17, 12, 12, 12, 12, 12, 12, 12, 17, 12, 12, 12, 12, 12, 12, 12],
+                )
+            if text = "high"
+                return Pillow.Image.SaveJpegQualityPresetInfo(0,
+                    [6, 4, 4, 6, 9, 11, 12, 16, 4, 5, 5, 6, 8, 10, 12, 12, 4, 5, 5, 6, 10, 12, 12, 12, 6, 6, 6, 11, 12, 12, 12, 12, 9, 8, 10, 12, 12, 12, 12, 12, 11, 10, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 16, 12, 12, 12, 12, 12, 12, 12],
+                    [7, 7, 13, 24, 20, 20, 17, 17, 7, 12, 16, 14, 14, 12, 12, 12, 13, 16, 14, 14, 12, 12, 12, 12, 24, 14, 14, 12, 12, 12, 12, 12, 20, 14, 12, 12, 12, 12, 12, 12, 20, 12, 12, 12, 12, 12, 12, 12, 17, 12, 12, 12, 12, 12, 12, 12, 17, 12, 12, 12, 12, 12, 12, 12],
+                )
+            if text = "maximum"
+                return Pillow.Image.SaveJpegQualityPresetInfo(0,
+                    [2, 2, 2, 2, 3, 4, 5, 6, 2, 2, 2, 2, 3, 4, 5, 6, 2, 2, 2, 2, 4, 5, 7, 9, 2, 2, 2, 4, 5, 7, 9, 12, 3, 3, 4, 5, 8, 10, 12, 12, 4, 4, 5, 7, 10, 12, 12, 12, 5, 5, 7, 9, 12, 12, 12, 12, 6, 6, 9, 12, 12, 12, 12, 12],
+                    [3, 3, 5, 9, 13, 15, 15, 15, 3, 4, 6, 10, 14, 12, 12, 12, 5, 6, 9, 14, 12, 12, 12, 12, 9, 10, 14, 12, 12, 12, 12, 12, 13, 14, 12, 12, 12, 12, 12, 12, 15, 12, 12, 12, 12, 12, 12, 12, 15, 12, 12, 12, 12, 12, 12, 12, 15, 12, 12, 12, 12, 12, 12, 12],
+                )
+            throw Error("Pillow.Image.Save quality must be an integer, 'keep', or a Pillow JPEG quality preset", -1)
+        }
+
+        static SaveJpegQualityPresetInfo(subsampling, luma, chroma) {
+            return { Subsampling: subsampling, QTables: Pillow.Image.SaveJpegQTables([luma, chroma]) }
+        }
+
+        static SaveTransparencyRgbTuple(value) {
+            if !IsObject(value)
+                throw Error("Pillow.Image.Save transparency expects an integer or [r, g, b]", -1)
+            if Type(value) = "Buffer"
+                throw Error("Pillow.Image.Save transparency expects [r, g, b]", -1)
+            values := []
+            for item in value {
+                if !(item is Integer)
+                    throw Error("Pillow.Image.Save transparency values must be integers", -1)
+                if item < 0 || item > 255
+                    throw Error("Pillow.Image.Save transparency values must be in 0..255", -1)
+                values.Push(item)
+            }
+            if values.Length != 3
+                throw Error("Pillow.Image.Save transparency expects [r, g, b]", -1)
+            return values
+        }
+
+        static SaveTransparencyByteTable(value) {
+            buf := Pillow.Image.BinaryBuffer(value, "Pillow.Image.Save transparency")
+            if buf.Size > 256
+                throw Error("Pillow.Image.Save transparency byte table must contain at most 256 values", -1)
+            return buf
+        }
+
+        static IsPngPrivateChunkType(typeBuffer) {
+            return typeBuffer.Size = 4
+                && NumGet(typeBuffer, 1, "UChar") >= 0x61
+                && NumGet(typeBuffer, 1, "UChar") <= 0x7A
+        }
+
+        static SavePngTextEntries(value) {
+            if !(IsObject(value) && value is Pillow.PngImagePlugin.PngInfo)
+                throw Error("Pillow.Image.Save pnginfo expects Pillow.PngImagePlugin.PngInfo", -1)
+            hasGama := false
+            gamaRaw := 0
+            customChunk := 0
+            customChunkKind := ""
+            customChunks := []
+            for index, entry in value.ChunkEntries {
+                if entry.AfterIdat && !Pillow.Image.IsPngPrivateChunkType(entry.Type)
+                    throw Error("Pillow.Image.Save pnginfo after_idat chunk is not supported", -1)
+                if !entry.AfterIdat
+                    && entry.Type.Size = 4
+                    && NumGet(entry.Type, 0, "UChar") = 0x67
+                    && NumGet(entry.Type, 1, "UChar") = 0x41
+                    && NumGet(entry.Type, 2, "UChar") = 0x4D
+                    && NumGet(entry.Type, 3, "UChar") = 0x41
+                    && entry.Data.Size = 4
+                    && !hasGama {
+                    hasGama := true
+                    gamaRaw := (NumGet(entry.Data, 0, "UChar") << 24)
+                        | (NumGet(entry.Data, 1, "UChar") << 16)
+                        | (NumGet(entry.Data, 2, "UChar") << 8)
+                        | NumGet(entry.Data, 3, "UChar")
+                } else if entry.Type.Size = 4
+                    && NumGet(entry.Type, 0, "UChar") = 0x63
+                    && NumGet(entry.Type, 1, "UChar") = 0x48
+                    && NumGet(entry.Type, 2, "UChar") = 0x52
+                    && NumGet(entry.Type, 3, "UChar") = 0x4D
+                    && entry.Data.Size = 32
+                    && !IsObject(customChunk)
+                    && customChunks.Length = 0 {
+                    customChunk := entry
+                    customChunkKind := "cHRM"
+                } else if !entry.AfterIdat
+                    && entry.Type.Size = 4
+                    && NumGet(entry.Type, 0, "UChar") = 0x63
+                    && NumGet(entry.Type, 1, "UChar") = 0x49
+                    && NumGet(entry.Type, 2, "UChar") = 0x43
+                    && NumGet(entry.Type, 3, "UChar") = 0x50
+                    && entry.Data.Size = 4
+                    && !IsObject(customChunk)
+                    && customChunks.Length = 0 {
+                    customChunk := entry
+                    customChunkKind := "cICP"
+                } else if !entry.AfterIdat
+                    && entry.Type.Size = 4
+                    && NumGet(entry.Type, 0, "UChar") = 0x73
+                    && NumGet(entry.Type, 1, "UChar") = 0x52
+                    && NumGet(entry.Type, 2, "UChar") = 0x47
+                    && NumGet(entry.Type, 3, "UChar") = 0x42
+                    && entry.Data.Size = 1
+                    && !IsObject(customChunk)
+                    && customChunks.Length = 0 {
+                    customChunk := entry
+                    customChunkKind := "sRGB"
+                } else if !entry.AfterIdat
+                    && entry.Type.Size = 4
+                    && NumGet(entry.Type, 0, "UChar") = 0x73
+                    && NumGet(entry.Type, 1, "UChar") = 0x42
+                    && NumGet(entry.Type, 2, "UChar") = 0x49
+                    && NumGet(entry.Type, 3, "UChar") = 0x54
+                    && entry.Data.Size = 3
+                    && !IsObject(customChunk)
+                    && customChunks.Length = 0 {
+                    customChunk := entry
+                    customChunkKind := "sBIT"
+                } else if !entry.AfterIdat
+                    && entry.Type.Size = 4
+                    && NumGet(entry.Type, 0, "UChar") = 0x73
+                    && NumGet(entry.Type, 1, "UChar") = 0x50
+                    && NumGet(entry.Type, 2, "UChar") = 0x4C
+                    && NumGet(entry.Type, 3, "UChar") = 0x54
+                    && !IsObject(customChunk)
+                    && customChunks.Length = 0 {
+                    customChunk := entry
+                    customChunkKind := "sPLT"
+                } else if !entry.AfterIdat
+                    && entry.Type.Size = 4
+                    && NumGet(entry.Type, 0, "UChar") = 0x62
+                    && NumGet(entry.Type, 1, "UChar") = 0x4B
+                    && NumGet(entry.Type, 2, "UChar") = 0x47
+                    && NumGet(entry.Type, 3, "UChar") = 0x44
+                    && (entry.Data.Size = 1 || entry.Data.Size = 6)
+                    && !IsObject(customChunk)
+                    && customChunks.Length = 0 {
+                    customChunk := entry
+                    customChunkKind := "bKGD"
+                } else if !entry.AfterIdat
+                    && entry.Type.Size = 4
+                    && NumGet(entry.Type, 0, "UChar") = 0x68
+                    && NumGet(entry.Type, 1, "UChar") = 0x49
+                    && NumGet(entry.Type, 2, "UChar") = 0x53
+                    && NumGet(entry.Type, 3, "UChar") = 0x54
+                    && entry.Data.Size >= 2
+                    && entry.Data.Size <= 512
+                    && Mod(entry.Data.Size, 2) = 0
+                    && !IsObject(customChunk)
+                    && customChunks.Length = 0 {
+                    customChunk := entry
+                    customChunkKind := "hIST"
+                } else if !entry.AfterIdat
+                    && entry.Type.Size = 4
+                    && NumGet(entry.Type, 0, "UChar") = 0x74
+                    && NumGet(entry.Type, 1, "UChar") = 0x49
+                    && NumGet(entry.Type, 2, "UChar") = 0x4D
+                    && NumGet(entry.Type, 3, "UChar") = 0x45
+                    && entry.Data.Size = 7
+                    && !IsObject(customChunk)
+                    && customChunks.Length = 0 {
+                    customChunk := entry
+                    customChunkKind := "tIME"
+                } else if Pillow.Image.IsPngPrivateChunkType(entry.Type) {
+                    if IsObject(customChunk) && customChunks.Length = 0
+                        throw Error("Pillow.Image.Save pnginfo multiple chunks are not supported", -1)
+                    customChunks.Push(entry)
+                    if !IsObject(customChunk) {
+                        customChunk := entry
+                        customChunkKind := "private"
+                    }
+                } else {
+                    throw Error("Pillow.Image.Save pnginfo chunk is not supported", -1)
+                }
+            }
+            if hasGama && value.TextEntries.Length > 0
+                throw Error("Pillow.Image.Save pnginfo gAMA with text is not supported", -1)
+            if hasGama && IsObject(customChunk)
+                throw Error("Pillow.Image.Save pnginfo multiple chunks are not supported", -1)
+            if value.TextEntries.Length = 0 {
+                if hasGama {
+                    return {
+                        Set: true,
+                        Count: 0,
+                        HasITextFields: false,
+                        HasGama: true,
+                        GamaRaw: gamaRaw,
+                        HasCustomChunk: false,
+                        CustomChunkAfterIdat: false
+                    }
+                }
+                if IsObject(customChunk) {
+                    if customChunks.Length > 1 {
+                        typeBytes := Buffer(customChunks.Length * 4, 0)
+                        dataBuffers := []
+                        dataPtrs := Buffer(customChunks.Length * A_PtrSize, 0)
+                        dataSizes := Buffer(customChunks.Length * A_PtrSize, 0)
+                        afterIdat := Buffer(customChunks.Length * 4, 0)
+                        for index, chunk in customChunks {
+                            dataBuffers.Push(chunk.Data)
+                            loop 4
+                                NumPut("UChar", NumGet(chunk.Type, A_Index - 1, "UChar"), typeBytes, (index - 1) * 4 + A_Index - 1)
+                            NumPut("Ptr", chunk.Data.Ptr, dataPtrs, (index - 1) * A_PtrSize)
+                            NumPut("UPtr", chunk.Data.Size, dataSizes, (index - 1) * A_PtrSize)
+                            NumPut("Int", chunk.AfterIdat ? 1 : 0, afterIdat, (index - 1) * 4)
+                        }
+                        return {
+                            Set: true,
+                            Count: 0,
+                            HasITextFields: false,
+                            HasGama: false,
+                            GamaRaw: 0,
+                            HasCustomChunk: false,
+                            HasCustomChunks: true,
+                            CustomChunkCount: customChunks.Length,
+                            CustomChunkTypes: typeBytes,
+                            CustomChunkDataBuffers: dataBuffers,
+                            CustomChunkDataPtrs: dataPtrs,
+                            CustomChunkDataSizes: dataSizes,
+                            CustomChunkAfterIdat: afterIdat
+                        }
+                    }
+                    return {
+                        Set: true,
+                        Count: 0,
+                        HasITextFields: false,
+                        HasGama: false,
+                        GamaRaw: 0,
+                        HasCustomChunk: true,
+                        HasCustomChunks: false,
+                        CustomChunkKind: customChunkKind,
+                        CustomChunkType: customChunk.Type,
+                        CustomChunkData: customChunk.Data,
+                        CustomChunkAfterIdat: customChunk.AfterIdat ? true : false
+                    }
+                }
+                return { Set: false, Count: 0 }
+            }
+            keyBuffers := []
+            valueBuffers := []
+            keyPtrs := Buffer(value.TextEntries.Length * A_PtrSize, 0)
+            valuePtrs := Buffer(value.TextEntries.Length * A_PtrSize, 0)
+            valueSizes := Buffer(value.TextEntries.Length * A_PtrSize, 0)
+            langBuffers := []
+            tkeyBuffers := []
+            langPtrs := Buffer(value.TextEntries.Length * A_PtrSize, 0)
+            tkeyPtrs := Buffer(value.TextEntries.Length * A_PtrSize, 0)
+            kinds := Buffer(value.TextEntries.Length * 4, 0)
+            compressed := Buffer(value.TextEntries.Length * 4, 0)
+            hasITextFields := false
+            hasITextText := false
+            hasCompressedText := false
+            hasValueSizes := false
+            for index, entry in value.TextEntries {
+                kind := entry.HasOwnProp("Kind") ? entry.Kind : 0
+                keyBuffers.Push(Pillow.Image.Utf8Buffer(entry.Key))
+                valueSize := 0
+                if kind = 0 && entry.HasOwnProp("RawLatin1") && entry.RawLatin1 {
+                    if entry.HasOwnProp("HasEmbeddedNul") && entry.HasEmbeddedNul {
+                        valueBuffers.Push(entry.Value)
+                        valueSize := entry.Value.Size
+                        hasValueSizes := true
+                    } else {
+                        valueBuffer := Pillow.Image.NulTerminatedByteBuffer(entry.Value, "Pillow.PngInfo.add_text")
+                        valueBuffers.Push(valueBuffer)
+                        valueSize := valueBuffer.Size - 1
+                    }
+                } else if kind = 0 {
+                    valueBuffer := Pillow.Image.Latin1Buffer(entry.Value, "Pillow.PngInfo.add_text value")
+                    valueBuffers.Push(valueBuffer)
+                    valueSize := valueBuffer.Size - 1
+                } else {
+                    valueBuffer := Pillow.Image.Utf8Buffer(entry.Value)
+                    valueBuffers.Push(valueBuffer)
+                    valueSize := valueBuffer.Size - 1
+                }
+                lang := entry.HasOwnProp("Lang") ? entry.Lang : ""
+                tkey := entry.HasOwnProp("TKey") ? entry.TKey : ""
+                langBuffers.Push(Pillow.Image.Utf8Buffer(lang))
+                tkeyBuffers.Push(Pillow.Image.Utf8Buffer(tkey))
+                NumPut("Ptr", keyBuffers[index].Ptr, keyPtrs, (index - 1) * A_PtrSize)
+                NumPut("Ptr", valueBuffers[index].Ptr, valuePtrs, (index - 1) * A_PtrSize)
+                NumPut("UPtr", valueSize, valueSizes, (index - 1) * A_PtrSize)
+                NumPut("Ptr", langBuffers[index].Ptr, langPtrs, (index - 1) * A_PtrSize)
+                NumPut("Ptr", tkeyBuffers[index].Ptr, tkeyPtrs, (index - 1) * A_PtrSize)
+                NumPut("Int", kind, kinds, (index - 1) * 4)
+                NumPut("Int", entry.Zip ? 1 : 0, compressed, (index - 1) * 4)
+                if kind = 1
+                    hasITextText := true
+                if entry.Zip
+                    hasCompressedText := true
+                if kind = 1 && (lang != "" || tkey != "")
+                    hasITextFields := true
+            }
+            hasCustomChunks := customChunks.Length > 1
+            if hasCustomChunks {
+                typeBytes := Buffer(customChunks.Length * 4, 0)
+                dataBuffers := []
+                dataPtrs := Buffer(customChunks.Length * A_PtrSize, 0)
+                dataSizes := Buffer(customChunks.Length * A_PtrSize, 0)
+                afterIdat := Buffer(customChunks.Length * 4, 0)
+                for index, chunk in customChunks {
+                    dataBuffers.Push(chunk.Data)
+                    loop 4
+                        NumPut("UChar", NumGet(chunk.Type, A_Index - 1, "UChar"), typeBytes, (index - 1) * 4 + A_Index - 1)
+                    NumPut("Ptr", chunk.Data.Ptr, dataPtrs, (index - 1) * A_PtrSize)
+                    NumPut("UPtr", chunk.Data.Size, dataSizes, (index - 1) * A_PtrSize)
+                    NumPut("Int", chunk.AfterIdat ? 1 : 0, afterIdat, (index - 1) * 4)
+                }
+            }
+            return {
+                Set: true,
+                Count: value.TextEntries.Length,
+                HasITextFields: hasITextFields,
+                HasITextText: hasITextText,
+                HasCompressedText: hasCompressedText,
+                HasValueSizes: hasValueSizes,
+                HasGama: false,
+                GamaRaw: 0,
+                HasCustomChunk: IsObject(customChunk) && !hasCustomChunks,
+                HasCustomChunks: hasCustomChunks,
+                CustomChunkKind: customChunkKind,
+                CustomChunkType: IsObject(customChunk) && !hasCustomChunks ? customChunk.Type : 0,
+                CustomChunkData: IsObject(customChunk) && !hasCustomChunks ? customChunk.Data : 0,
+                CustomChunkAfterIdat: IsObject(customChunk) && !hasCustomChunks && customChunk.AfterIdat ? true : false,
+                CustomChunkCount: hasCustomChunks ? customChunks.Length : 0,
+                CustomChunkTypes: hasCustomChunks ? typeBytes : 0,
+                CustomChunkDataBuffers: hasCustomChunks ? dataBuffers : [],
+                CustomChunkDataPtrs: hasCustomChunks ? dataPtrs : 0,
+                CustomChunkDataSizes: hasCustomChunks ? dataSizes : 0,
+                CustomChunkAfterIdatArray: hasCustomChunks ? afterIdat : 0,
+                KeyBuffers: keyBuffers,
+                ValueBuffers: valueBuffers,
+                ValueSizes: valueSizes,
+                LangBuffers: langBuffers,
+                TKeyBuffers: tkeyBuffers,
+                KeyPtrs: keyPtrs,
+                ValuePtrs: valuePtrs,
+                LangPtrs: langPtrs,
+                TKeyPtrs: tkeyPtrs,
+                Kinds: kinds,
+                Compressed: compressed
+            }
+        }
+
         static SaveHotspotPair(value) {
             if !IsObject(value)
                 throw Error("Pillow.Image.Save hotspot expects [x, y]", -1)
@@ -4140,6 +5990,23 @@ class Pillow {
             if !this.HasOwnProp("Handle") || this.Handle = 0
                 throw Error("Pillow.Image handle is closed", -1)
             return this.Handle
+        }
+
+        RefreshBufferView() {
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_refresh_buffer",
+                "Ptr", this.RequireHandle(),
+                "Int"
+            ))
+        }
+
+        DetachBufferView() {
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_detach_buffer",
+                "Ptr", this.RequireHandle(),
+                "Int"
+            ))
+            this.BufferViewSource := 0
         }
 
         Load() {
@@ -4245,6 +6112,241 @@ class Pillow {
                 this.Info["hotspot"] := [hotspotX, hotspotY]
             else if this.Info.Has("hotspot")
                 this.Info.Delete("hotspot")
+
+            hasDibCompression := 0
+            dibCompression := -1
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_dib_compression",
+                "Ptr", this.RequireHandle(),
+                "Int*", &hasDibCompression,
+                "Int*", &dibCompression,
+                "Int"
+            ))
+            if hasDibCompression
+                this.Info["compression"] := dibCompression
+            else if this.Info.Has("compression") && this.Format = "CUR"
+                this.Info.Delete("compression")
+
+            hasGamma := 0
+            gamma := 0.0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_png_gamma",
+                "Ptr", this.RequireHandle(),
+                "Int*", &hasGamma,
+                "Double*", &gamma,
+                "Int"
+            ))
+            if hasGamma
+                this.Info["gamma"] := gamma
+            else if this.Info.Has("gamma")
+                this.Info.Delete("gamma")
+
+            hasSrgb := 0
+            srgb := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_png_srgb",
+                "Ptr", this.RequireHandle(),
+                "Int*", &hasSrgb,
+                "Int*", &srgb,
+                "Int"
+            ))
+            if hasSrgb
+                this.Info["srgb"] := srgb
+            else if this.Info.Has("srgb") && this.Format = "PNG"
+                this.Info.Delete("srgb")
+
+            hasChromaticity := 0
+            chromaticityBuffer := Buffer(8 * 8, 0)
+            chromaticityStatus := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_png_chromaticity",
+                "Ptr", this.RequireHandle(),
+                "Int*", &hasChromaticity,
+                "Ptr", chromaticityBuffer,
+                "UPtr", 8,
+                "Int"
+            )
+            if chromaticityStatus != -1
+                Pillow.CheckStatus(chromaticityStatus)
+            if hasChromaticity {
+                chromaticity := []
+                loop 8
+                    chromaticity.Push(NumGet(chromaticityBuffer, (A_Index - 1) * 8, "Double"))
+                this.Info["chromaticity"] := chromaticity
+            } else if this.Info.Has("chromaticity") && this.Format = "PNG" {
+                this.Info.Delete("chromaticity")
+            }
+
+            textCount := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_png_text_count",
+                "Ptr", this.RequireHandle(),
+                "UPtr*", &textCount,
+                "Int"
+            ))
+            if this.Format = "PNG"
+                this.Text := Map()
+            loop textCount {
+                keyRequired := 0
+                valueRequired := 0
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_metadata_png_text",
+                    "Ptr", this.RequireHandle(),
+                    "UPtr", A_Index - 1,
+                    "Ptr", 0,
+                    "UPtr", 0,
+                    "UPtr*", &keyRequired,
+                    "Ptr", 0,
+                    "UPtr", 0,
+                    "UPtr*", &valueRequired,
+                    "Int"
+                )
+                if status != -1
+                    Pillow.CheckStatus(status)
+                key := Buffer(keyRequired, 0)
+                value := Buffer(valueRequired, 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_metadata_png_text",
+                    "Ptr", this.RequireHandle(),
+                    "UPtr", A_Index - 1,
+                    "Ptr", key,
+                    "UPtr", key.Size,
+                    "UPtr*", &keyRequired,
+                    "Ptr", value,
+                    "UPtr", value.Size,
+                    "UPtr*", &valueRequired,
+                    "Int"
+                ))
+                textKey := Pillow.Image.Utf8StringFromBytes(key, keyRequired - 1, "Pillow.Image PNG text key")
+                textValue := Pillow.Image.Utf8StringFromBytes(value, valueRequired - 1, "Pillow.Image PNG text value")
+                this.Info[textKey] := textValue
+                if this.Format = "PNG"
+                    this.Text[textKey] := textValue
+            }
+
+            xmp := Pillow.Image.NativeMetadataBlob(this.RequireHandle(), "pillow_c_image_metadata_xmp")
+            if IsObject(xmp)
+                this.Info["xmp"] := xmp
+            else if this.Info.Has("xmp") && (this.Format = "PNG" || this.Format = "JPEG")
+                this.Info.Delete("xmp")
+
+            hasIccProfile := 0
+            iccRequired := 0
+            iccStatus := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_png_icc_profile",
+                "Ptr", this.RequireHandle(),
+                "Int*", &hasIccProfile,
+                "Ptr", 0,
+                "UPtr", 0,
+                "UPtr*", &iccRequired,
+                "Int"
+            )
+            if iccStatus != -1
+                Pillow.CheckStatus(iccStatus)
+            if hasIccProfile {
+                iccProfile := Buffer(iccRequired, 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_metadata_png_icc_profile",
+                    "Ptr", this.RequireHandle(),
+                    "Int*", &hasIccProfile,
+                    "Ptr", iccProfile,
+                    "UPtr", iccProfile.Size,
+                    "UPtr*", &iccRequired,
+                    "Int"
+                ))
+                this.Info["icc_profile"] := iccProfile
+            } else if this.Info.Has("icc_profile") && this.Format = "PNG" {
+                this.Info.Delete("icc_profile")
+            }
+
+            hasExif := 0
+            exifRequired := 0
+            exifStatus := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_png_exif",
+                "Ptr", this.RequireHandle(),
+                "Int*", &hasExif,
+                "Ptr", 0,
+                "UPtr", 0,
+                "UPtr*", &exifRequired,
+                "Int"
+            )
+            if exifStatus != -1
+                Pillow.CheckStatus(exifStatus)
+            if hasExif {
+                exif := Buffer(exifRequired, 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_metadata_png_exif",
+                    "Ptr", this.RequireHandle(),
+                    "Int*", &hasExif,
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "UPtr*", &exifRequired,
+                    "Int"
+                ))
+                this.Info["exif"] := exif
+            } else if this.Info.Has("exif") && this.Format = "PNG" {
+                this.Info.Delete("exif")
+            }
+
+            if this.Format = "JPEG" {
+                jpegComment := Pillow.Image.NativeMetadataBlob(this.RequireHandle(), "pillow_c_image_metadata_jpeg_comment")
+                if IsObject(jpegComment)
+                    this.Info["comment"] := jpegComment
+                else if this.Info.Has("comment")
+                    this.Info.Delete("comment")
+
+                jpegIccProfile := Pillow.Image.NativeMetadataBlob(this.RequireHandle(), "pillow_c_image_metadata_jpeg_icc_profile")
+                if IsObject(jpegIccProfile)
+                    this.Info["icc_profile"] := jpegIccProfile
+                else if this.Info.Has("icc_profile")
+                    this.Info.Delete("icc_profile")
+
+                jpegExif := Pillow.Image.NativeMetadataBlob(this.RequireHandle(), "pillow_c_image_metadata_jpeg_exif")
+                if IsObject(jpegExif)
+                    this.Info["exif"] := jpegExif
+                else if this.Info.Has("exif")
+                    this.Info.Delete("exif")
+            }
+
+            hasPngTransparency := 0
+            pngTransparency := -1
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_png_transparency",
+                "Ptr", this.RequireHandle(),
+                "Int*", &hasPngTransparency,
+                "Int*", &pngTransparency,
+                "Int"
+            ))
+            if hasPngTransparency && (this.Mode = "P" || this.Mode = "L")
+                this.Info["transparency"] := pngTransparency
+            else if this.Info.Has("transparency") && this.Format = "PNG"
+                this.Info.Delete("transparency")
+
+            pngTransparencyTable := Pillow.Image.NativeMetadataBlob(this.RequireHandle(), "pillow_c_image_metadata_png_transparency_table")
+            if IsObject(pngTransparencyTable) && this.Mode = "P"
+                this.Info["transparency"] := pngTransparencyTable
+
+            hasPngRgbTransparency := 0
+            pngTransparencyR := -1
+            pngTransparencyG := -1
+            pngTransparencyB := -1
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_metadata_png_rgb_transparency",
+                "Ptr", this.RequireHandle(),
+                "Int*", &hasPngRgbTransparency,
+                "Int*", &pngTransparencyR,
+                "Int*", &pngTransparencyG,
+                "Int*", &pngTransparencyB,
+                "Int"
+            ))
+            if hasPngRgbTransparency && this.Mode = "RGB"
+                this.Info["transparency"] := [pngTransparencyR, pngTransparencyG, pngTransparencyB]
+            else if this.Info.Has("transparency") && this.Format = "PNG" && this.Mode != "P" && this.Mode != "L"
+                this.Info.Delete("transparency")
+
+            if this.Format = "ICO" && this.FramePath != ""
+                this.Info["sizes"] := Pillow.Image.IcoSizes(this.FramePath)
+            else if this.Info.Has("sizes") && this.Format != "ICO"
+                this.Info.Delete("sizes")
         }
 
         ApplyFrameMetadata() {
@@ -4272,6 +6374,12 @@ class Pillow {
             Pillow.Image.SetOptionalInfo(this.Info, "duration", duration)
             Pillow.Image.SetOptionalInfo(this.Info, "loop", loopCount)
             Pillow.Image.SetOptionalInfo(this.Info, "background", background)
+            gifComment := Pillow.Image.NativeGifComment(this.FramePath, this.FrameIndex)
+            if IsObject(gifComment) {
+                this.Info["comment"] := gifComment
+            } else if this.Info.Has("comment") {
+                this.Info.Delete("comment")
+            }
             if this.Mode = "P" {
                 Pillow.Image.SetOptionalInfo(this.Info, "transparency", transparency)
             } else if this.Info.Has("transparency") {
@@ -4307,6 +6415,38 @@ class Pillow {
             get => this.IsAnimated
         }
 
+        ico {
+            get => Pillow.Image.IcoFile(this)
+        }
+
+        FormatDescription {
+            get => this.Format = "" ? "" : Pillow.Image.FormatDescription(this.Format)
+        }
+
+        format_description {
+            get => this.FormatDescription
+        }
+
+        HasTransparencyData {
+            get {
+                mode := this.Mode
+                return mode = "RGBA" || mode = "LA" || mode = "PA" || this.Info.Has("transparency")
+            }
+        }
+
+        has_transparency_data {
+            get => this.HasTransparencyData
+        }
+
+        GetChildImages() {
+            this.RequireHandle()
+            return []
+        }
+
+        get_child_images() {
+            return this.GetChildImages()
+        }
+
         disposal_method {
             get => this.DisposalMethod
         }
@@ -4327,10 +6467,35 @@ class Pillow {
             }
         }
 
+        ReadOnly {
+            get {
+                readonly := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_readonly",
+                    "Ptr", this.RequireHandle(),
+                    "Int*", &readonly,
+                    "Int"
+                ))
+                return readonly
+            }
+        }
+
         ExifOrientation() {
             orientation := 0
             Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_exif_orientation", "Ptr", this.RequireHandle(), "Int*", &orientation, "Int"))
             return orientation
+        }
+
+        GetExif() {
+            this.RequireHandle()
+            return Pillow.Image.Exif.FromImage(this)
+        }
+
+        GetXmp() {
+            this.RequireHandle()
+            if !this.Info.Has("xmp")
+                return Map()
+            return Pillow.Image.ParseXmpBuffer(this.Info["xmp"])
         }
 
         Width {
@@ -4343,6 +6508,43 @@ class Pillow {
 
         Size {
             get => [this.Width, this.Height]
+            set {
+                this.RequireHandle()
+                if this.Format != "ICO" || this.FramePath = ""
+                    throw Error("Pillow.Image.Size setter currently supports ICO images", -1)
+                if !IsObject(value) || value.Length != 2
+                    throw Error("Pillow.Image.Size expects [width, height]", -1)
+                if !(value[1] is Integer) || !(value[2] is Integer)
+                    throw Error("Pillow.Image.Size values must be integers", -1)
+
+                outHandle := 0
+                pathBytes := Pillow.Image.Utf8Buffer(this.FramePath)
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_open_ico_size",
+                    "Ptr", pathBytes,
+                    "Int", value[1],
+                    "Int", value[2],
+                    "Ptr*", &outHandle,
+                    "Int"
+                )
+                if status != 0 {
+                    if outHandle
+                        Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", outHandle, "Int"))
+                    Pillow.CheckStatus(status)
+                }
+
+                oldHandle := this.Handle
+                this.Handle := outHandle
+                try {
+                    this.ApplyNativeMetadata()
+                    this.ApplyFrameMetadata()
+                } catch {
+                    this.Handle := oldHandle
+                    Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", outHandle, "Int"))
+                    throw
+                }
+                Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", oldHandle, "Int"))
+            }
         }
 
         Channels {
@@ -4368,6 +6570,7 @@ class Pillow {
         }
 
         ToBytes(encoder := unset, rawmode := unset) {
+            this.RefreshBufferView()
             if IsSet(encoder) {
                 if encoder != "raw"
                     throw Error("Pillow.Image.ToBytes currently supports only the raw encoder", -1)
@@ -4463,16 +6666,50 @@ class Pillow {
                 saveOptions := options
 
             resolvedFormat := Pillow.Image.ResolveSaveFormat(path, IsSet(saveFormat) ? saveFormat : unset)
+            if resolvedFormat = "CUR"
+                throw Error("Pillow.Image.Save CUR is not supported", -1)
             if IsSet(saveOptions) && Pillow.Image.SaveOptionBool(saveOptions, false, "SaveAll", "save_all") {
-                if resolvedFormat != "GIF"
-                    throw Error("Pillow.Image.Save save_all currently supports GIF only", -1)
-                this.SaveGifAnimation(path, saveOptions)
+                if resolvedFormat = "GIF" {
+                    this.SaveGifAnimation(path, saveOptions)
+                } else if resolvedFormat = "TIFF" {
+                    this.SaveTiffFrames(path, saveOptions)
+                } else {
+                    throw Error("Pillow.Image.Save save_all currently supports GIF and TIFF only", -1)
+                }
                 return
             }
 
             pathBytes := Pillow.Image.Utf8Buffer(path)
             if IsSet(saveOptions) && resolvedFormat = "GIF" {
                 transparencyOption := Pillow.Image.SaveOption(saveOptions, "Transparency", "transparency")
+                commentOption := Pillow.Image.SaveOption(saveOptions, "Comment", "comment")
+                if commentOption.Set {
+                    commentState := Pillow.Image.SaveGifCommentBuffer(commentOption)
+                    if transparencyOption.Set {
+                        if !(transparencyOption.Value is Integer)
+                            throw Error("Pillow.Image.Save transparency must be an integer", -1)
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_gif_comment_options",
+                            "Ptr", this.RequireHandle(),
+                            "Ptr", pathBytes,
+                            "Int", 1,
+                            "Int", transparencyOption.Value,
+                            "Ptr", commentState.Buffer,
+                            "UPtr", commentState.Size,
+                            "Int"
+                        ))
+                        return
+                    }
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_gif_comment",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Ptr", commentState.Buffer,
+                        "UPtr", commentState.Size,
+                        "Int"
+                    ))
+                    return
+                }
                 if transparencyOption.Set {
                     if !(transparencyOption.Value is Integer)
                         throw Error("Pillow.Image.Save transparency must be an integer", -1)
@@ -4488,10 +6725,57 @@ class Pillow {
                 }
             }
 
+            if IsSet(saveOptions) && resolvedFormat = "TIFF" {
+                dpiOption := Pillow.Image.SaveOption(saveOptions, "Dpi", "dpi")
+                compressionOption := Pillow.Image.SaveOption(saveOptions, "Compression", "compression")
+                if dpiOption.Set || compressionOption.Set {
+                    hasDpi := 0
+                    dpiX := 0.0
+                    dpiY := 0.0
+                    if dpiOption.Set {
+                        dpi := Pillow.Image.SaveDpiPair(dpiOption.Value)
+                        hasDpi := 1
+                        dpiX := dpi[1]
+                        dpiY := dpi[2]
+                    }
+                    if compressionOption.Set {
+                        compression := Pillow.Image.SaveTiffCompression(compressionOption.Value)
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_tiff_compression_options",
+                            "Ptr", this.RequireHandle(),
+                            "Ptr", pathBytes,
+                            "Int", hasDpi,
+                            "Double", dpiX,
+                            "Double", dpiY,
+                            "Int", compression,
+                            "Int"
+                        ))
+                        return
+                    }
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_tiff_options",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Int", hasDpi,
+                        "Double", dpiX,
+                        "Double", dpiY,
+                        "Int"
+                    ))
+                    return
+                }
+            }
+
             if IsSet(saveOptions) && resolvedFormat = "PNG" {
                 compressLevelOption := Pillow.Image.SaveOption(saveOptions, "CompressLevel", "compress_level")
                 dpiOption := Pillow.Image.SaveOption(saveOptions, "Dpi", "dpi")
-                if compressLevelOption.Set || dpiOption.Set {
+                transparencyOption := Pillow.Image.SaveOption(saveOptions, "Transparency", "transparency")
+                pngInfoOption := Pillow.Image.SaveOption(saveOptions, "PngInfo", "pnginfo")
+                iccProfileOption := Pillow.Image.SaveOption(saveOptions, "IccProfile", "icc_profile")
+                exifOption := Pillow.Image.SaveOption(saveOptions, "Exif", "exif")
+                interlaceOption := Pillow.Image.SaveOption(saveOptions, "Interlace", "interlace")
+                gammaOption := Pillow.Image.SaveOption(saveOptions, "Gamma", "gamma")
+                optimizeOption := Pillow.Image.SaveOption(saveOptions, "Optimize", "optimize")
+                if compressLevelOption.Set || dpiOption.Set || transparencyOption.Set || pngInfoOption.Set || iccProfileOption.Set || exifOption.Set || interlaceOption.Set || gammaOption.Set || optimizeOption.Set {
                     compressLevel := -1
                     if compressLevelOption.Set {
                         if !(compressLevelOption.Value is Integer)
@@ -4504,6 +6788,336 @@ class Pillow {
                         dpi := Pillow.Image.SaveDpiPair(dpiOption.Value)
                         dpiX := dpi[1]
                         dpiY := dpi[2]
+                    }
+                    hasTransparency := 0
+                    transparency := 0
+                    hasTransparencyTable := 0
+                    transparencyTable := 0
+                    hasRgbTransparency := 0
+                    rgbTransparency := [0, 0, 0]
+                    hasRgbTransparencyBytes := 0
+                    rgbTransparencyBytes := 0
+                    if transparencyOption.Set {
+                        if transparencyOption.Value is Integer {
+                            hasTransparency := 1
+                            transparency := transparencyOption.Value
+                        } else if IsObject(transparencyOption.Value) && Type(transparencyOption.Value) = "Buffer" {
+                            if this.Mode = "P" {
+                                hasTransparencyTable := 1
+                                transparencyTable := Pillow.Image.SaveTransparencyByteTable(transparencyOption.Value)
+                            } else if this.Mode = "RGB" && transparencyOption.Value.Size = 3 {
+                                hasRgbTransparencyBytes := 1
+                                rgbTransparencyBytes := Pillow.Image.SaveTransparencyByteTable(transparencyOption.Value)
+                            } else {
+                                throw Error("Pillow.Image.Save PNG byte transparency expects P mode or RGB with 3 bytes", -1)
+                            }
+                        } else {
+                            hasRgbTransparency := 1
+                            rgbTransparency := Pillow.Image.SaveTransparencyRgbTuple(transparencyOption.Value)
+                        }
+                    }
+                    pngText := { Set: false }
+                    pngTextCanUseIccExifRgbTransparency := false
+                    if pngInfoOption.Set {
+                        pngText := Pillow.Image.SavePngTextEntries(pngInfoOption.Value)
+                        pngTextHasCustomChunk := pngText.HasOwnProp("HasCustomChunk") && pngText.HasCustomChunk
+                        pngTextHasMultipleCustomChunks := pngText.HasOwnProp("HasCustomChunks") && pngText.HasCustomChunks
+                        pngTextHasAdvancedText := pngText.HasOwnProp("HasCompressedText") && (pngText.HasCompressedText || pngText.HasITextText)
+                        customChunkHasAdvancedText := pngTextHasCustomChunk && pngTextHasAdvancedText
+                        pngTextCanUseRgbTransparency := (((pngText.Count > 0 && !pngTextHasCustomChunk) || (pngTextHasCustomChunk && pngText.Count > 0)) && hasRgbTransparency)
+                        if pngText.Count > 0
+                            && hasRgbTransparencyBytes
+                            pngTextCanUseRgbTransparency := true
+                        pngTextCanUseMultipleCustomChunksIccExifRgbTransparency := pngTextHasMultipleCustomChunks
+                            && pngText.Count > 0
+                            && pngTextHasAdvancedText
+                            && iccProfileOption.Set
+                            && exifOption.Set
+                            && (hasRgbTransparency || hasRgbTransparencyBytes)
+                            && (optimizeOption.Set && optimizeOption.Value)
+                            && !interlaceOption.Set
+                            && !gammaOption.Set
+                        pngTextCanUseIccExifRgbTransparency := (pngTextHasCustomChunk
+                                && pngText.Count > 0
+                                && pngTextHasAdvancedText
+                                && (hasRgbTransparency || hasRgbTransparencyBytes))
+                            || (!pngTextHasCustomChunk
+                                && !pngTextHasMultipleCustomChunks
+                                && pngText.Count > 0
+                                && iccProfileOption.Set
+                                && exifOption.Set
+                                && (hasRgbTransparency || hasRgbTransparencyBytes))
+                            || pngTextCanUseMultipleCustomChunksIccExifRgbTransparency
+                        if pngText.Set
+                            && transparencyOption.Set
+                            && !pngTextCanUseRgbTransparency
+                            && !(pngText.HasCustomChunk && pngText.Count = 0 && (hasRgbTransparency || hasRgbTransparencyBytes))
+                            throw Error("Pillow.Image.Save pnginfo with transparency is not supported", -1)
+                    }
+                    iccProfile := 0
+                    if iccProfileOption.Set {
+                        iccProfile := Pillow.Image.BinaryBuffer(iccProfileOption.Value, "Pillow.Image.Save icc_profile")
+                        if iccProfile.Size = 0
+                            throw Error("Pillow.Image.Save icc_profile must not be empty", -1)
+                        if transparencyOption.Set {
+                            if !(hasRgbTransparency || hasRgbTransparencyBytes)
+                                throw Error("Pillow.Image.Save icc_profile with transparency is not supported", -1)
+                            if pngText.Set && !pngTextCanUseIccExifRgbTransparency
+                                throw Error("Pillow.Image.Save pnginfo with icc_profile and transparency is not supported", -1)
+                        }
+                    }
+                    exif := 0
+                    if exifOption.Set {
+                        exif := Pillow.Image.BinaryBuffer(exifOption.Value, "Pillow.Image.Save exif")
+                        if exif.Size = 0
+                            throw Error("Pillow.Image.Save exif must not be empty", -1)
+                        if transparencyOption.Set {
+                            if !(hasRgbTransparency || hasRgbTransparencyBytes)
+                                throw Error("Pillow.Image.Save exif with transparency is not supported", -1)
+                            if pngText.Set && !pngTextCanUseIccExifRgbTransparency
+                                throw Error("Pillow.Image.Save pnginfo with exif and transparency is not supported", -1)
+                        }
+                    }
+                    if optimizeOption.Set && optimizeOption.Value {
+                        optimizeAllowsIccExifRgbTransparency := pngTextCanUseIccExifRgbTransparency
+                            && (iccProfileOption.Set || exifOption.Set)
+                        if (transparencyOption.Set && !optimizeAllowsIccExifRgbTransparency) || interlaceOption.Set || gammaOption.Set
+                            throw Error("Pillow.Image.Save optimize with this PNG option combination is not supported", -1)
+                        if pngText.Set {
+                            optimizeAllowsCustomTextKind := (pngText.HasCustomChunk
+                                    && pngText.Count > 0
+                                    && pngTextHasAdvancedText)
+                                || (!pngTextHasCustomChunk
+                                    && !pngTextHasMultipleCustomChunks
+                                    && pngText.Count > 0
+                                    && pngTextHasAdvancedText
+                                    && pngTextCanUseIccExifRgbTransparency)
+                                || pngTextCanUseMultipleCustomChunksIccExifRgbTransparency
+                            if pngText.HasGama || (pngText.HasCustomChunk && !optimizeAllowsCustomTextKind)
+                                throw Error("Pillow.Image.Save optimize with pnginfo chunks is not supported", -1)
+                            if pngText.Count > 0 && (pngText.HasCompressedText || pngText.HasITextText) && !optimizeAllowsCustomTextKind
+                                throw Error("Pillow.Image.Save optimize with compressed or iTXt pnginfo is not supported", -1)
+                        }
+                    }
+                    if hasRgbTransparencyBytes {
+                        rgbTransparency := [
+                            NumGet(rgbTransparencyBytes, 0, "UChar"),
+                            NumGet(rgbTransparencyBytes, 1, "UChar"),
+                            NumGet(rgbTransparencyBytes, 2, "UChar"),
+                        ]
+                    }
+                    if pngText.Set && pngText.HasGama {
+                        if iccProfileOption.Set || exifOption.Set || transparencyOption.Set || interlaceOption.Set || gammaOption.Set
+                            throw Error("Pillow.Image.Save pnginfo gAMA with other metadata or transparency options is not supported", -1)
+                    }
+                    if pngText.Set
+                        && pngText.HasOwnProp("CustomChunkKind")
+                        && (pngText.CustomChunkKind = "sRGB" || pngText.CustomChunkKind = "sBIT" || pngText.CustomChunkKind = "sPLT" || pngText.CustomChunkKind = "cICP" || pngText.CustomChunkKind = "bKGD" || pngText.CustomChunkKind = "hIST" || pngText.CustomChunkKind = "tIME") {
+                        if pngText.Count > 0 || iccProfileOption.Set || exifOption.Set || transparencyOption.Set || interlaceOption.Set || gammaOption.Set || compressLevelOption.Set || dpiOption.Set || (optimizeOption.Set && optimizeOption.Value)
+                            throw Error("Pillow.Image.Save pnginfo public chunk with other metadata or options is not supported", -1)
+                    }
+                    if pngText.Set && pngText.HasCustomChunk && pngText.Count = 0 {
+                        if (transparencyOption.Set && !(hasRgbTransparency || hasRgbTransparencyBytes)) || interlaceOption.Set || gammaOption.Set
+                            throw Error("Pillow.Image.Save pnginfo custom chunk with other metadata or transparency options is not supported", -1)
+                        if iccProfileOption.Set && exifOption.Set
+                            throw Error("Pillow.Image.Save pnginfo custom chunk with icc_profile and exif is not supported", -1)
+                    }
+                    if pngText.Set && pngText.Count > 0 {
+                        if pngText.HasCustomChunk {
+                            if interlaceOption.Set || gammaOption.Set || (transparencyOption.Set && !(hasRgbTransparency || hasRgbTransparencyBytes))
+                                throw Error("Pillow.Image.Save pnginfo custom chunk with other metadata or transparency options is not supported", -1)
+                            if pngTextHasAdvancedText && (transparencyOption.Set && !(hasRgbTransparency || hasRgbTransparencyBytes))
+                                throw Error("Pillow.Image.Save pnginfo custom chunk with advanced text and other metadata is not supported", -1)
+                        }
+                    }
+                    if pngText.Set && pngText.HasOwnProp("HasValueSizes") && pngText.HasValueSizes {
+                        if pngText.HasITextText
+                            throw Error("Pillow.Image.Save pnginfo bytes with embedded NUL currently supports only tEXt/zTXt entries", -1)
+                        if pngText.HasCustomChunk || pngText.HasCustomChunks || iccProfileOption.Set || exifOption.Set || transparencyOption.Set || interlaceOption.Set || gammaOption.Set || (optimizeOption.Set && optimizeOption.Value)
+                            throw Error("Pillow.Image.Save pnginfo bytes with embedded NUL and other PNG options is not supported", -1)
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_png_text_entries_value_sizes_options",
+                            "Ptr", this.RequireHandle(),
+                            "Ptr", pathBytes,
+                            "Int", compressLevel,
+                            "Double", dpiX,
+                            "Double", dpiY,
+                            "Ptr", pngText.KeyPtrs,
+                            "Ptr", pngText.ValuePtrs,
+                            "Ptr", pngText.ValueSizes,
+                            "Ptr", pngText.Compressed,
+                            "UPtr", pngText.Count,
+                            "Int"
+                        ))
+                        return
+                    }
+                    if pngText.Set && pngText.HasOwnProp("HasCustomChunks") && pngText.HasCustomChunks {
+                        pngTextMultipleCustomChunksSupportedText := !pngTextHasAdvancedText
+                            || (iccProfileOption.Set && exifOption.Set)
+                        pngTextCanUseMetadataCustomChunks := pngText.Count > 0
+                            && pngTextMultipleCustomChunksSupportedText
+                            && (iccProfileOption.Set || exifOption.Set)
+                            && (!transparencyOption.Set || pngTextCanUseMultipleCustomChunksIccExifRgbTransparency)
+                            && !interlaceOption.Set
+                            && !gammaOption.Set
+                            && (!(optimizeOption.Set && optimizeOption.Value) || pngTextCanUseMultipleCustomChunksIccExifRgbTransparency)
+                        if (iccProfileOption.Set || exifOption.Set || transparencyOption.Set || interlaceOption.Set || gammaOption.Set || (optimizeOption.Set && optimizeOption.Value)) && !pngTextCanUseMetadataCustomChunks
+                            throw Error("Pillow.Image.Save pnginfo multiple custom chunks with other metadata or options is not supported", -1)
+                        if pngTextCanUseMetadataCustomChunks {
+                            pngMetadataCustomChunkFlags := 0
+                            if exifOption.Set
+                                pngMetadataCustomChunkFlags |= 0x04
+                            if optimizeOption.Set && optimizeOption.Value
+                                pngMetadataCustomChunkFlags |= 0x08
+                            if hasTransparency
+                                pngMetadataCustomChunkFlags |= 0x10
+                            if hasRgbTransparency || hasRgbTransparencyBytes
+                                pngMetadataCustomChunkFlags |= 0x20
+                            Pillow.CheckStatus(DllCall(
+                                Pillow.RequireDllPath() "\pillow_c_image_save_png_metadata_custom_chunks_options",
+                                "Ptr", this.RequireHandle(),
+                                "Ptr", pathBytes,
+                                "Int", compressLevel,
+                                "Double", dpiX,
+                                "Double", dpiY,
+                                "Ptr", pngText.KeyPtrs,
+                                "Ptr", pngText.ValuePtrs,
+                                "Ptr", pngText.Kinds,
+                                "Ptr", pngText.Compressed,
+                                "Ptr", pngText.LangPtrs,
+                                "Ptr", pngText.TKeyPtrs,
+                                "UPtr", pngText.Count,
+                                "Ptr", iccProfileOption.Set ? iccProfile : 0,
+                                "UPtr", iccProfileOption.Set ? iccProfile.Size : 0,
+                                "Ptr", exifOption.Set ? exif : 0,
+                                "UPtr", exifOption.Set ? exif.Size : 0,
+                                "Ptr", pngText.CustomChunkTypes,
+                                "Ptr", pngText.CustomChunkDataPtrs,
+                                "Ptr", pngText.CustomChunkDataSizes,
+                                "Ptr", pngText.CustomChunkAfterIdatArray,
+                                "UPtr", pngText.CustomChunkCount,
+                                "UInt", pngMetadataCustomChunkFlags,
+                                "UInt", 0,
+                                "Int", transparency,
+                                "Ptr", hasTransparencyTable ? transparencyTable : 0,
+                                "UPtr", hasTransparencyTable ? transparencyTable.Size : 0,
+                                "Int", rgbTransparency[1],
+                                "Int", rgbTransparency[2],
+                                "Int", rgbTransparency[3],
+                                "Int"
+                            ))
+                            return
+                        }
+                        if pngText.Count > 0 {
+                            if pngText.HasCompressedText || pngText.HasITextText {
+                                Pillow.CheckStatus(DllCall(
+                                    Pillow.RequireDllPath() "\pillow_c_image_save_png_text_entries_custom_chunks_kind_options",
+                                    "Ptr", this.RequireHandle(),
+                                    "Ptr", pathBytes,
+                                    "Int", compressLevel,
+                                    "Double", dpiX,
+                                    "Double", dpiY,
+                                    "Ptr", pngText.KeyPtrs,
+                                    "Ptr", pngText.ValuePtrs,
+                                    "Ptr", pngText.Kinds,
+                                    "Ptr", pngText.Compressed,
+                                    "Ptr", pngText.LangPtrs,
+                                    "Ptr", pngText.TKeyPtrs,
+                                    "UPtr", pngText.Count,
+                                    "Ptr", pngText.CustomChunkTypes,
+                                    "Ptr", pngText.CustomChunkDataPtrs,
+                                    "Ptr", pngText.CustomChunkDataSizes,
+                                    "Ptr", pngText.CustomChunkAfterIdatArray,
+                                    "UPtr", pngText.CustomChunkCount,
+                                    "Int"
+                                ))
+                            } else {
+                                Pillow.CheckStatus(DllCall(
+                                    Pillow.RequireDllPath() "\pillow_c_image_save_png_text_entries_custom_chunks_options",
+                                    "Ptr", this.RequireHandle(),
+                                    "Ptr", pathBytes,
+                                    "Int", compressLevel,
+                                    "Double", dpiX,
+                                    "Double", dpiY,
+                                    "Ptr", pngText.KeyPtrs,
+                                    "Ptr", pngText.ValuePtrs,
+                                    "UPtr", pngText.Count,
+                                    "Ptr", pngText.CustomChunkTypes,
+                                    "Ptr", pngText.CustomChunkDataPtrs,
+                                    "Ptr", pngText.CustomChunkDataSizes,
+                                    "Ptr", pngText.CustomChunkAfterIdatArray,
+                                    "UPtr", pngText.CustomChunkCount,
+                                    "Int"
+                                ))
+                            }
+                            return
+                        }
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_png_custom_chunks_options",
+                            "Ptr", this.RequireHandle(),
+                            "Ptr", pathBytes,
+                            "Int", compressLevel,
+                            "Double", dpiX,
+                            "Double", dpiY,
+                            "Ptr", pngText.CustomChunkTypes,
+                            "Ptr", pngText.CustomChunkDataPtrs,
+                            "Ptr", pngText.CustomChunkDataSizes,
+                            "Ptr", pngText.CustomChunkAfterIdat,
+                            "UPtr", pngText.CustomChunkCount,
+                            "Int"
+                        ))
+                        return
+                    }
+                    if pngText.Set || iccProfileOption.Set || exifOption.Set || transparencyOption.Set || interlaceOption.Set || gammaOption.Set || (optimizeOption.Set && optimizeOption.Value) {
+                        pngMetadataFlags := 0
+                        if pngText.Set && pngText.HasGama
+                            pngMetadataFlags |= 0x01
+                        if pngText.Set && pngText.HasCustomChunk && iccProfileOption.Set
+                            pngMetadataFlags |= 0x02
+                        if exifOption.Set && pngText.Set && pngText.Count > 0
+                            pngMetadataFlags |= 0x04
+                        if optimizeOption.Set && optimizeOption.Value
+                            pngMetadataFlags |= 0x08
+                        if hasTransparency
+                            pngMetadataFlags |= 0x10
+                        if hasRgbTransparency || hasRgbTransparencyBytes
+                            pngMetadataFlags |= 0x20
+                        if pngText.Set && pngText.HasCustomChunk && pngText.CustomChunkAfterIdat
+                            pngMetadataFlags |= 0x40
+                        textCount := pngText.Set ? pngText.Count : 0
+                        customChunkDataSize := (pngText.Set && pngText.HasCustomChunk) ? pngText.CustomChunkData.Size : 0
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_png_metadata_options",
+                            "Ptr", this.RequireHandle(),
+                            "Ptr", pathBytes,
+                            "Int", compressLevel,
+                            "Double", dpiX,
+                            "Double", dpiY,
+                            "Ptr", textCount ? pngText.KeyPtrs : 0,
+                            "Ptr", textCount ? pngText.ValuePtrs : 0,
+                            "Ptr", textCount ? pngText.Kinds : 0,
+                            "Ptr", textCount ? pngText.Compressed : 0,
+                            "Ptr", textCount ? pngText.LangPtrs : 0,
+                            "Ptr", textCount ? pngText.TKeyPtrs : 0,
+                            "UPtr", textCount,
+                            "Ptr", iccProfileOption.Set ? iccProfile : 0,
+                            "UPtr", iccProfileOption.Set ? iccProfile.Size : 0,
+                            "Ptr", exifOption.Set ? exif : 0,
+                            "UPtr", exifOption.Set ? exif.Size : 0,
+                            "Ptr", (pngText.Set && pngText.HasCustomChunk) ? pngText.CustomChunkType : 0,
+                            "Ptr", (pngText.Set && pngText.HasCustomChunk) ? pngText.CustomChunkData : 0,
+                            "UPtr", customChunkDataSize,
+                            "UInt", pngMetadataFlags,
+                            "UInt", (pngText.Set && pngText.HasGama) ? pngText.GamaRaw : 0,
+                            "Int", transparency,
+                            "Ptr", hasTransparencyTable ? transparencyTable : 0,
+                            "UPtr", hasTransparencyTable ? transparencyTable.Size : 0,
+                            "Int", rgbTransparency[1],
+                            "Int", rgbTransparency[2],
+                            "Int", rgbTransparency[3],
+                            "Int"
+                        ))
+                        return
                     }
                     Pillow.CheckStatus(DllCall(
                         Pillow.RequireDllPath() "\pillow_c_image_save_png_options",
@@ -4521,12 +7135,37 @@ class Pillow {
             if IsSet(saveOptions) && resolvedFormat = "JPEG" {
                 qualityOption := Pillow.Image.SaveOption(saveOptions, "Quality", "quality")
                 dpiOption := Pillow.Image.SaveOption(saveOptions, "Dpi", "dpi")
-                if qualityOption.Set || dpiOption.Set {
+                commentOption := Pillow.Image.SaveOption(saveOptions, "Comment", "comment")
+                iccProfileOption := Pillow.Image.SaveOption(saveOptions, "IccProfile", "icc_profile")
+                exifOption := Pillow.Image.SaveOption(saveOptions, "Exif", "exif")
+                xmpOption := Pillow.Image.SaveOption(saveOptions, "Xmp", "xmp")
+                subsamplingOption := Pillow.Image.SaveOption(saveOptions, "Subsampling", "subsampling")
+                progressiveOption := Pillow.Image.SaveOption(saveOptions, "Progressive", "progressive")
+                progressionOption := Pillow.Image.SaveOption(saveOptions, "Progression", "progression")
+                optimizeOption := Pillow.Image.SaveOption(saveOptions, "Optimize", "optimize")
+                keepRgbOption := Pillow.Image.SaveOption(saveOptions, "KeepRgb", "keep_rgb")
+                qtablesOption := Pillow.Image.SaveOption(saveOptions, "QTables", "qtables")
+                if qualityOption.Set || dpiOption.Set || commentOption.Set || iccProfileOption.Set || exifOption.Set || xmpOption.Set || subsamplingOption.Set || progressiveOption.Set || progressionOption.Set || optimizeOption.Set || keepRgbOption.Set || qtablesOption.Set {
                     quality := -1
+                    qualityKeep := false
+                    qualityPreset := 0
+                    qualityPresetSet := false
                     if qualityOption.Set {
-                        if !(qualityOption.Value is Integer)
-                            throw Error("Pillow.Image.Save quality must be an integer", -1)
-                        quality := qualityOption.Value
+                        if qualityOption.Value is String {
+                            qualityText := StrLower(qualityOption.Value)
+                            if qualityText = "keep" {
+                                qualityKeep := true
+                                quality := -1
+                            } else {
+                                qualityPreset := Pillow.Image.SaveJpegQualityPreset(qualityText)
+                                qualityPresetSet := true
+                                quality := -1
+                            }
+                        } else {
+                            if !(qualityOption.Value is Integer)
+                                throw Error("Pillow.Image.Save quality must be an integer, 'keep', or a Pillow JPEG quality preset", -1)
+                            quality := qualityOption.Value
+                        }
                     }
                     hasDpi := 0
                     dpiX := 0.0
@@ -4537,16 +7176,704 @@ class Pillow {
                         dpiX := dpi[1]
                         dpiY := dpi[2]
                     }
-                    Pillow.CheckStatus(DllCall(
-                        Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_options",
-                        "Ptr", this.RequireHandle(),
-                        "Ptr", pathBytes,
-                        "Int", quality,
-                        "Int", hasDpi,
-                        "Double", dpiX,
-                        "Double", dpiY,
-                        "Int"
-                    ))
+                    subsampling := -1
+                    subsamplingKeep := false
+                    if subsamplingOption.Set
+                        subsampling := Pillow.Image.SaveJpegSubsampling(subsamplingOption.Value)
+                    if subsampling = -2
+                        subsamplingKeep := true
+                    progressive := -1
+                    if progressiveOption.Set || progressionOption.Set {
+                        progressive := 0
+                        if (progressiveOption.Set && progressiveOption.Value) || (progressionOption.Set && progressionOption.Value)
+                            progressive := 1
+                    }
+                    optimize := -1
+                    if optimizeOption.Set {
+                        optimize := optimizeOption.Value ? 1 : 0
+                    }
+                    keepRgb := -1
+                    if keepRgbOption.Set {
+                        keepRgb := keepRgbOption.Value ? 1 : 0
+                    }
+                    qtables := 0
+                    hasJpegQTables := false
+                    qtablesKeep := false
+                    if qtablesOption.Set {
+                        if qtablesOption.Value is String && StrLower(qtablesOption.Value) = "keep" {
+                            qtablesKeep := true
+                        } else {
+                            qtables := Pillow.Image.SaveJpegQTables(qtablesOption.Value)
+                            hasJpegQTables := true
+                        }
+                    }
+                    if qualityPresetSet {
+                        qtables := qualityPreset.QTables
+                        hasJpegQTables := true
+                        qtablesKeep := false
+                        if this.Mode = "L"
+                            subsampling := -1
+                        else
+                            subsampling := qualityPreset.Subsampling
+                        subsamplingKeep := false
+                    }
+                    if qualityKeep || qtablesKeep {
+                        if !(this.Format = "JPEG" && (this.Mode = "CMYK" || this.Mode = "RGB" || this.Mode = "L"))
+                            throw Error("Pillow.Image.Save JPEG keep currently supports opened L, RGB, or CMYK JPEG images", -1)
+                        if !hasJpegQTables {
+                            qtables := Pillow.Image.NativeJpegQTables(this.RequireHandle())
+                            hasJpegQTables := true
+                        }
+                        if !subsamplingOption.Set && qtablesKeep && keepRgb = 1 && !qualityKeep {
+                            subsampling := -1
+                        } else if !subsamplingOption.Set {
+                            nativeSubsampling := Pillow.Image.NativeJpegSubsampling(this.RequireHandle())
+                            if nativeSubsampling >= 0
+                                subsampling := nativeSubsampling
+                        }
+                    }
+                    if subsamplingKeep {
+                        if this.Format != "JPEG"
+                            throw Error("Cannot use subsampling='keep' when original image is not a JPEG", -1)
+                        nativeSubsampling := Pillow.Image.NativeJpegSubsampling(this.RequireHandle())
+                        if nativeSubsampling < 0
+                            throw Error("Pillow.Image.Save JPEG subsampling='keep' requires opened RGB JPEG subsampling metadata", -1)
+                        subsampling := nativeSubsampling
+                    }
+                    if this.Mode = "CMYK" {
+                        hasJpegMetadata := commentOption.Set || iccProfileOption.Set || exifOption.Set || xmpOption.Set
+                        hasCmykProgressive := progressive = 1
+                        hasCmykQTablesProgressiveSubsampling := hasJpegQTables && hasCmykProgressive
+                        hasCmykQTablesKeepRgbSubsampling := hasJpegQTables && keepRgb = 1 && (!hasCmykProgressive || !hasDpi)
+                        hasCmykQTablesBaselineMetadataSubsampling := hasJpegQTables && hasJpegMetadata && keepRgb != 1 && !hasCmykProgressive && !(optimizeOption.Set && optimizeOption.Value)
+                        hasCmykQTablesOptimizedMetadataSubsampling := hasJpegQTables && hasJpegMetadata && keepRgb != 1 && !hasCmykProgressive && (optimizeOption.Set && optimizeOption.Value)
+                        hasCmykQTablesMetadataSubsampling := hasJpegQTables && hasJpegMetadata && keepRgb != 1 && (hasCmykQTablesBaselineMetadataSubsampling || hasCmykQTablesOptimizedMetadataSubsampling || hasCmykQTablesProgressiveSubsampling)
+                        if subsamplingOption.Set && !qualityPresetSet && ((hasJpegMetadata && keepRgb != 1 && !hasCmykQTablesMetadataSubsampling) || (hasJpegQTables && !hasCmykQTablesKeepRgbSubsampling && !hasCmykQTablesMetadataSubsampling && !hasCmykQTablesProgressiveSubsampling) || (hasCmykProgressive && !hasCmykQTablesKeepRgbSubsampling && !hasCmykQTablesProgressiveSubsampling) || (optimizeOption.Set && optimizeOption.Value && !hasCmykQTablesKeepRgbSubsampling && !hasCmykQTablesMetadataSubsampling && !hasCmykQTablesProgressiveSubsampling))
+                            throw Error("Pillow.Image.Save JPEG CMYK subsampling currently supports only baseline quality and dpi saves", -1)
+                        if hasJpegMetadata {
+                            commentState := Pillow.Image.SaveJpegCommentBuffer(commentOption, this.RequireHandle(), qualityKeep || qtablesKeep)
+                            comment := commentState.Buffer
+                            commentSize := commentState.Size
+                            iccProfile := 0
+                            iccProfileSize := 0
+                            if iccProfileOption.Set {
+                                iccProfile := Pillow.Image.BinaryBuffer(iccProfileOption.Value, "Pillow.Image.Save icc_profile")
+                                iccProfileSize := iccProfile.Size
+                            }
+                            exif := 0
+                            exifSize := 0
+                            if exifOption.Set {
+                                exif := Pillow.Image.BinaryBuffer(exifOption.Value, "Pillow.Image.Save exif")
+                                exifSize := exif.Size
+                            }
+                            xmp := 0
+                            xmpSize := 0
+                            if xmpOption.Set {
+                                xmp := Pillow.Image.BinaryBuffer(xmpOption.Value, "Pillow.Image.Save xmp")
+                                xmpSize := xmp.Size
+                            }
+                            if hasJpegQTables {
+                                if keepRgb = 1 {
+                                    if xmpOption.Set {
+                                        Pillow.CheckStatus(DllCall(
+                                            Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_xmp_encode_options",
+                                            "Ptr", this.RequireHandle(),
+                                            "Ptr", pathBytes,
+                                            "Int", quality,
+                                            "Int", hasDpi,
+                                            "Double", dpiX,
+                                            "Double", dpiY,
+                                            "Ptr", comment,
+                                            "UPtr", commentSize,
+                                            "Ptr", iccProfile,
+                                            "UPtr", iccProfileSize,
+                                            "Ptr", exif,
+                                            "UPtr", exifSize,
+                                            "Ptr", xmp,
+                                            "UPtr", xmpSize,
+                                            "Ptr", qtables.Buffer,
+                                            "UPtr", qtables.Count,
+                                            "Int", subsampling,
+                                            "Int", progressive,
+                                            "Int", optimize,
+                                            "Int", keepRgb,
+                                            "Int"
+                                        ))
+                                    } else {
+                                        Pillow.CheckStatus(DllCall(
+                                            Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_encode_options",
+                                            "Ptr", this.RequireHandle(),
+                                            "Ptr", pathBytes,
+                                            "Int", quality,
+                                            "Int", hasDpi,
+                                            "Double", dpiX,
+                                            "Double", dpiY,
+                                            "Ptr", comment,
+                                            "UPtr", commentSize,
+                                            "Ptr", iccProfile,
+                                            "UPtr", iccProfileSize,
+                                            "Ptr", exif,
+                                            "UPtr", exifSize,
+                                            "Ptr", qtables.Buffer,
+                                            "UPtr", qtables.Count,
+                                            "Int", subsampling,
+                                            "Int", progressive,
+                                            "Int", optimize,
+                                            "Int", keepRgb,
+                                            "Int"
+                                        ))
+                                    }
+                                } else if xmpOption.Set {
+                                    Pillow.CheckStatus(DllCall(
+                                        Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_qtables_metadata_xmp_encode_options",
+                                        "Ptr", this.RequireHandle(),
+                                        "Ptr", pathBytes,
+                                        "Int", quality,
+                                        "Int", hasDpi,
+                                        "Double", dpiX,
+                                        "Double", dpiY,
+                                        "Ptr", comment,
+                                        "UPtr", commentSize,
+                                        "Ptr", iccProfile,
+                                        "UPtr", iccProfileSize,
+                                        "Ptr", exif,
+                                        "UPtr", exifSize,
+                                        "Ptr", xmp,
+                                        "UPtr", xmpSize,
+                                        "Ptr", qtables.Buffer,
+                                        "UPtr", qtables.Count,
+                                        "Int", subsampling,
+                                        "Int", progressive,
+                                        "Int", optimize,
+                                        "Int"
+                                    ))
+                                } else {
+                                    Pillow.CheckStatus(DllCall(
+                                        Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_qtables_metadata_encode_options",
+                                        "Ptr", this.RequireHandle(),
+                                        "Ptr", pathBytes,
+                                        "Int", quality,
+                                        "Int", hasDpi,
+                                        "Double", dpiX,
+                                        "Double", dpiY,
+                                        "Ptr", comment,
+                                        "UPtr", commentSize,
+                                        "Ptr", iccProfile,
+                                        "UPtr", iccProfileSize,
+                                        "Ptr", exif,
+                                        "UPtr", exifSize,
+                                        "Ptr", qtables.Buffer,
+                                        "UPtr", qtables.Count,
+                                        "Int", subsampling,
+                                        "Int", progressive,
+                                        "Int", optimize,
+                                        "Int"
+                                    ))
+                                }
+                            } else if keepRgb = 1 {
+                                if xmpOption.Set {
+                                    Pillow.CheckStatus(DllCall(
+                                        Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_metadata_keep_rgb_xmp_encode_options",
+                                        "Ptr", this.RequireHandle(),
+                                        "Ptr", pathBytes,
+                                        "Int", quality,
+                                        "Int", hasDpi,
+                                        "Double", dpiX,
+                                        "Double", dpiY,
+                                        "Ptr", comment,
+                                        "UPtr", commentSize,
+                                        "Ptr", iccProfile,
+                                        "UPtr", iccProfileSize,
+                                        "Ptr", exif,
+                                        "UPtr", exifSize,
+                                        "Ptr", xmp,
+                                        "UPtr", xmpSize,
+                                        "Int", subsampling,
+                                        "Int", progressive,
+                                        "Int", optimize,
+                                        "Int", keepRgb,
+                                        "Int"
+                                    ))
+                                } else {
+                                    Pillow.CheckStatus(DllCall(
+                                        Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_metadata_keep_rgb_encode_options",
+                                        "Ptr", this.RequireHandle(),
+                                        "Ptr", pathBytes,
+                                        "Int", quality,
+                                        "Int", hasDpi,
+                                        "Double", dpiX,
+                                        "Double", dpiY,
+                                        "Ptr", comment,
+                                        "UPtr", commentSize,
+                                        "Ptr", iccProfile,
+                                        "UPtr", iccProfileSize,
+                                        "Ptr", exif,
+                                        "UPtr", exifSize,
+                                        "Int", subsampling,
+                                        "Int", progressive,
+                                        "Int", optimize,
+                                        "Int", keepRgb,
+                                        "Int"
+                                    ))
+                                }
+                            } else if xmpOption.Set {
+                                Pillow.CheckStatus(DllCall(
+                                    Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_metadata_xmp_encode_options",
+                                    "Ptr", this.RequireHandle(),
+                                    "Ptr", pathBytes,
+                                    "Int", quality,
+                                    "Int", hasDpi,
+                                    "Double", dpiX,
+                                    "Double", dpiY,
+                                    "Ptr", comment,
+                                    "UPtr", commentSize,
+                                    "Ptr", iccProfile,
+                                    "UPtr", iccProfileSize,
+                                    "Ptr", exif,
+                                    "UPtr", exifSize,
+                                    "Ptr", xmp,
+                                    "UPtr", xmpSize,
+                                    "Int", subsampling,
+                                    "Int", progressive,
+                                    "Int", optimize,
+                                    "Int"
+                                ))
+                            } else if hasCmykProgressive || (optimizeOption.Set && optimizeOption.Value) {
+                                Pillow.CheckStatus(DllCall(
+                                    Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_metadata_encode_options",
+                                    "Ptr", this.RequireHandle(),
+                                    "Ptr", pathBytes,
+                                    "Int", quality,
+                                    "Int", hasDpi,
+                                    "Double", dpiX,
+                                    "Double", dpiY,
+                                    "Ptr", comment,
+                                    "UPtr", commentSize,
+                                    "Ptr", iccProfile,
+                                    "UPtr", iccProfileSize,
+                                    "Ptr", exif,
+                                    "UPtr", exifSize,
+                                    "Int", subsampling,
+                                    "Int", progressive,
+                                    "Int", optimize,
+                                    "Int"
+                                ))
+                            } else {
+                                Pillow.CheckStatus(DllCall(
+                                    Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_metadata_options",
+                                    "Ptr", this.RequireHandle(),
+                                    "Ptr", pathBytes,
+                                    "Int", quality,
+                                    "Int", hasDpi,
+                                    "Double", dpiX,
+                                    "Double", dpiY,
+                                    "Ptr", comment,
+                                    "UPtr", commentSize,
+                                    "Ptr", iccProfile,
+                                    "UPtr", iccProfileSize,
+                                    "Ptr", exif,
+                                    "UPtr", exifSize,
+                                    "Int"
+                                ))
+                            }
+                        } else if hasJpegQTables {
+                            if keepRgb = 1 {
+                                Pillow.CheckStatus(DllCall(
+                                    Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_qtables_keep_rgb_encode_options",
+                                    "Ptr", this.RequireHandle(),
+                                    "Ptr", pathBytes,
+                                    "Int", quality,
+                                    "Int", hasDpi,
+                                    "Double", dpiX,
+                                    "Double", dpiY,
+                                    "Ptr", qtables.Buffer,
+                                    "UPtr", qtables.Count,
+                                    "Int", subsampling,
+                                    "Int", progressive,
+                                    "Int", optimize,
+                                    "Int", keepRgb,
+                                    "Int"
+                                ))
+                            } else {
+                                Pillow.CheckStatus(DllCall(
+                                    Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_qtables_encode_options",
+                                    "Ptr", this.RequireHandle(),
+                                    "Ptr", pathBytes,
+                                    "Int", quality,
+                                    "Int", hasDpi,
+                                    "Double", dpiX,
+                                    "Double", dpiY,
+                                    "Ptr", qtables.Buffer,
+                                    "UPtr", qtables.Count,
+                                    "Int", subsampling,
+                                    "Int", progressive,
+                                    "Int", optimize,
+                                    "Int"
+                                ))
+                            }
+                        } else if keepRgb = 1 {
+                            Pillow.CheckStatus(DllCall(
+                                Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_encode_keep_rgb_options",
+                                "Ptr", this.RequireHandle(),
+                                "Ptr", pathBytes,
+                                "Int", quality,
+                                "Int", hasDpi,
+                                "Double", dpiX,
+                                "Double", dpiY,
+                                "Int", subsampling,
+                                "Int", progressive,
+                                "Int", optimize,
+                                "Int", keepRgb,
+                                "Int"
+                            ))
+                        } else if subsamplingOption.Set || progressiveOption.Set || progressionOption.Set || optimizeOption.Set {
+                            Pillow.CheckStatus(DllCall(
+                                Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_encode_options",
+                                "Ptr", this.RequireHandle(),
+                                "Ptr", pathBytes,
+                                "Int", quality,
+                                "Int", hasDpi,
+                                "Double", dpiX,
+                                "Double", dpiY,
+                                "Int", subsampling,
+                                "Int", progressive,
+                                "Int", optimize,
+                                "Int"
+                            ))
+                        } else {
+                            Pillow.CheckStatus(DllCall(
+                                Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_options",
+                                "Ptr", this.RequireHandle(),
+                                "Ptr", pathBytes,
+                                "Int", quality,
+                                "Int", hasDpi,
+                                "Double", dpiX,
+                                "Double", dpiY,
+                                "Int"
+                            ))
+                        }
+                        return
+                    }
+                    if commentOption.Set || iccProfileOption.Set || exifOption.Set || xmpOption.Set {
+                        commentState := Pillow.Image.SaveJpegCommentBuffer(commentOption, this.RequireHandle(), qualityKeep || qtablesKeep || subsamplingKeep)
+                        comment := commentState.Buffer
+                        commentSize := commentState.Size
+                        iccProfile := 0
+                        iccProfileSize := 0
+                        if iccProfileOption.Set {
+                            iccProfile := Pillow.Image.BinaryBuffer(iccProfileOption.Value, "Pillow.Image.Save icc_profile")
+                            iccProfileSize := iccProfile.Size
+                        }
+                        exif := 0
+                        exifSize := 0
+                        if exifOption.Set {
+                            exif := Pillow.Image.BinaryBuffer(exifOption.Value, "Pillow.Image.Save exif")
+                            exifSize := exif.Size
+                        }
+                        xmp := 0
+                        xmpSize := 0
+                        if xmpOption.Set {
+                            xmp := Pillow.Image.BinaryBuffer(xmpOption.Value, "Pillow.Image.Save xmp")
+                            xmpSize := xmp.Size
+                        }
+                        if keepRgb = 1 {
+                            if hasJpegQTables {
+                                if xmpOption.Set {
+                                    Pillow.CheckStatus(DllCall(
+                                        Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_xmp_encode_options",
+                                        "Ptr", this.RequireHandle(),
+                                        "Ptr", pathBytes,
+                                        "Int", quality,
+                                        "Int", hasDpi,
+                                        "Double", dpiX,
+                                        "Double", dpiY,
+                                        "Ptr", comment,
+                                        "UPtr", commentSize,
+                                        "Ptr", iccProfile,
+                                        "UPtr", iccProfileSize,
+                                        "Ptr", exif,
+                                        "UPtr", exifSize,
+                                        "Ptr", xmp,
+                                        "UPtr", xmpSize,
+                                        "Ptr", qtables.Buffer,
+                                        "UPtr", qtables.Count,
+                                        "Int", subsampling,
+                                        "Int", progressive,
+                                        "Int", optimize,
+                                        "Int", keepRgb,
+                                        "Int"
+                                    ))
+                                } else {
+                                    Pillow.CheckStatus(DllCall(
+                                        Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_encode_options",
+                                        "Ptr", this.RequireHandle(),
+                                        "Ptr", pathBytes,
+                                        "Int", quality,
+                                        "Int", hasDpi,
+                                        "Double", dpiX,
+                                        "Double", dpiY,
+                                        "Ptr", comment,
+                                        "UPtr", commentSize,
+                                        "Ptr", iccProfile,
+                                        "UPtr", iccProfileSize,
+                                        "Ptr", exif,
+                                        "UPtr", exifSize,
+                                        "Ptr", qtables.Buffer,
+                                        "UPtr", qtables.Count,
+                                        "Int", subsampling,
+                                        "Int", progressive,
+                                        "Int", optimize,
+                                        "Int", keepRgb,
+                                        "Int"
+                                    ))
+                                }
+                            } else if xmpOption.Set {
+                                Pillow.CheckStatus(DllCall(
+                                    Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_metadata_keep_rgb_xmp_encode_options",
+                                    "Ptr", this.RequireHandle(),
+                                    "Ptr", pathBytes,
+                                    "Int", quality,
+                                    "Int", hasDpi,
+                                    "Double", dpiX,
+                                    "Double", dpiY,
+                                    "Ptr", comment,
+                                    "UPtr", commentSize,
+                                    "Ptr", iccProfile,
+                                    "UPtr", iccProfileSize,
+                                    "Ptr", exif,
+                                    "UPtr", exifSize,
+                                    "Ptr", xmp,
+                                    "UPtr", xmpSize,
+                                    "Int", subsampling,
+                                    "Int", progressive,
+                                    "Int", optimize,
+                                    "Int", keepRgb,
+                                    "Int"
+                                ))
+                            } else {
+                                Pillow.CheckStatus(DllCall(
+                                    Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_metadata_keep_rgb_encode_options",
+                                    "Ptr", this.RequireHandle(),
+                                    "Ptr", pathBytes,
+                                    "Int", quality,
+                                    "Int", hasDpi,
+                                    "Double", dpiX,
+                                    "Double", dpiY,
+                                    "Ptr", comment,
+                                    "UPtr", commentSize,
+                                    "Ptr", iccProfile,
+                                    "UPtr", iccProfileSize,
+                                    "Ptr", exif,
+                                    "UPtr", exifSize,
+                                    "Int", subsampling,
+                                    "Int", progressive,
+                                    "Int", optimize,
+                                    "Int", keepRgb,
+                                    "Int"
+                                ))
+                            }
+                        } else if hasJpegQTables {
+                            if xmpOption.Set {
+                                Pillow.CheckStatus(DllCall(
+                                    Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_qtables_metadata_xmp_encode_options",
+                                    "Ptr", this.RequireHandle(),
+                                    "Ptr", pathBytes,
+                                    "Int", quality,
+                                    "Int", hasDpi,
+                                    "Double", dpiX,
+                                    "Double", dpiY,
+                                    "Ptr", comment,
+                                    "UPtr", commentSize,
+                                    "Ptr", iccProfile,
+                                    "UPtr", iccProfileSize,
+                                    "Ptr", exif,
+                                    "UPtr", exifSize,
+                                    "Ptr", xmp,
+                                    "UPtr", xmpSize,
+                                    "Ptr", qtables.Buffer,
+                                    "UPtr", qtables.Count,
+                                    "Int", subsampling,
+                                    "Int", progressive,
+                                    "Int", optimize,
+                                    "Int"
+                                ))
+                            } else {
+                                Pillow.CheckStatus(DllCall(
+                                    Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_qtables_metadata_encode_options",
+                                    "Ptr", this.RequireHandle(),
+                                    "Ptr", pathBytes,
+                                    "Int", quality,
+                                    "Int", hasDpi,
+                                    "Double", dpiX,
+                                    "Double", dpiY,
+                                    "Ptr", comment,
+                                    "UPtr", commentSize,
+                                    "Ptr", iccProfile,
+                                    "UPtr", iccProfileSize,
+                                    "Ptr", exif,
+                                    "UPtr", exifSize,
+                                    "Ptr", qtables.Buffer,
+                                    "UPtr", qtables.Count,
+                                    "Int", subsampling,
+                                    "Int", progressive,
+                                    "Int", optimize,
+                                    "Int"
+                                ))
+                            }
+                        } else if xmpOption.Set {
+                            Pillow.CheckStatus(DllCall(
+                                Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_metadata_xmp_encode_options",
+                                "Ptr", this.RequireHandle(),
+                                "Ptr", pathBytes,
+                                "Int", quality,
+                                "Int", hasDpi,
+                                "Double", dpiX,
+                                "Double", dpiY,
+                                "Ptr", comment,
+                                "UPtr", commentSize,
+                                "Ptr", iccProfile,
+                                "UPtr", iccProfileSize,
+                                "Ptr", exif,
+                                "UPtr", exifSize,
+                                "Ptr", xmp,
+                                "UPtr", xmpSize,
+                                "Int", subsampling,
+                                "Int", progressive,
+                                "Int", optimize,
+                                "Int"
+                            ))
+                        } else if progressiveOption.Set || progressionOption.Set || optimizeOption.Set {
+                            Pillow.CheckStatus(DllCall(
+                                Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_metadata_encode_options",
+                                "Ptr", this.RequireHandle(),
+                                "Ptr", pathBytes,
+                                "Int", quality,
+                                "Int", hasDpi,
+                                "Double", dpiX,
+                                "Double", dpiY,
+                                "Ptr", comment,
+                                "UPtr", commentSize,
+                                "Ptr", iccProfile,
+                                "UPtr", iccProfileSize,
+                                "Ptr", exif,
+                                "UPtr", exifSize,
+                                "Int", subsampling,
+                                "Int", progressive,
+                                "Int", optimize,
+                                "Int"
+                            ))
+                        } else if subsamplingOption.Set {
+                            Pillow.CheckStatus(DllCall(
+                                Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_metadata_subsampling_options",
+                                "Ptr", this.RequireHandle(),
+                                "Ptr", pathBytes,
+                                "Int", quality,
+                                "Int", hasDpi,
+                                "Double", dpiX,
+                                "Double", dpiY,
+                                "Ptr", comment,
+                                "UPtr", commentSize,
+                                "Ptr", iccProfile,
+                                "UPtr", iccProfileSize,
+                                "Ptr", exif,
+                                "UPtr", exifSize,
+                                "Int", subsampling,
+                                "Int"
+                            ))
+                        } else {
+                            Pillow.CheckStatus(DllCall(
+                                Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_metadata_options",
+                                "Ptr", this.RequireHandle(),
+                                "Ptr", pathBytes,
+                                "Int", quality,
+                                "Int", hasDpi,
+                                "Double", dpiX,
+                                "Double", dpiY,
+                                "Ptr", comment,
+                                "UPtr", commentSize,
+                                "Ptr", iccProfile,
+                                "UPtr", iccProfileSize,
+                                "Ptr", exif,
+                                "UPtr", exifSize,
+                                "Int"
+                            ))
+                        }
+                    } else if keepRgb = 1 {
+                        if hasJpegQTables {
+                            Pillow.CheckStatus(DllCall(
+                                Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_qtables_keep_rgb_encode_options",
+                                "Ptr", this.RequireHandle(),
+                                "Ptr", pathBytes,
+                                "Int", quality,
+                                "Int", hasDpi,
+                                "Double", dpiX,
+                                "Double", dpiY,
+                                "Ptr", qtables.Buffer,
+                                "UPtr", qtables.Count,
+                                "Int", subsampling,
+                                "Int", progressive,
+                                "Int", optimize,
+                                "Int", keepRgb,
+                                "Int"
+                            ))
+                        } else {
+                            Pillow.CheckStatus(DllCall(
+                                Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_encode_keep_rgb_options",
+                                "Ptr", this.RequireHandle(),
+                                "Ptr", pathBytes,
+                                "Int", quality,
+                                "Int", hasDpi,
+                                "Double", dpiX,
+                                "Double", dpiY,
+                                "Int", subsampling,
+                                "Int", progressive,
+                                "Int", optimize,
+                                "Int", keepRgb,
+                                "Int"
+                            ))
+                        }
+                    } else if hasJpegQTables {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_qtables_encode_options",
+                            "Ptr", this.RequireHandle(),
+                            "Ptr", pathBytes,
+                            "Int", quality,
+                            "Int", hasDpi,
+                            "Double", dpiX,
+                            "Double", dpiY,
+                            "Ptr", qtables.Buffer,
+                            "UPtr", qtables.Count,
+                            "Int", subsampling,
+                            "Int", progressive,
+                            "Int", optimize,
+                            "Int"
+                        ))
+                    } else if subsamplingOption.Set || progressiveOption.Set || progressionOption.Set || optimizeOption.Set {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_encode_options",
+                            "Ptr", this.RequireHandle(),
+                            "Ptr", pathBytes,
+                            "Int", quality,
+                            "Int", hasDpi,
+                            "Double", dpiX,
+                            "Double", dpiY,
+                            "Int", subsampling,
+                            "Int", progressive,
+                            "Int", optimize,
+                            "Int"
+                        ))
+                    } else {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_options",
+                            "Ptr", this.RequireHandle(),
+                            "Ptr", pathBytes,
+                            "Int", quality,
+                            "Int", hasDpi,
+                            "Double", dpiX,
+                            "Double", dpiY,
+                            "Int"
+                        ))
+                    }
                     return
                 }
             }
@@ -4592,7 +7919,8 @@ class Pillow {
             if IsSet(saveOptions) && resolvedFormat = "ICO" {
                 sizesOption := Pillow.Image.SaveOption(saveOptions, "Sizes", "sizes")
                 bitmapFormatOption := Pillow.Image.SaveOption(saveOptions, "BitmapFormat", "bitmap_format")
-                if sizesOption.Set || bitmapFormatOption.Set {
+                appendOption := Pillow.Image.SaveOption(saveOptions, "AppendImages", "append_images")
+                if sizesOption.Set || bitmapFormatOption.Set || appendOption.Set {
                     if sizesOption.Set {
                         sizes := Pillow.Image.SaveIcoSizePairs(sizesOption.Value)
                         sizePtr := sizes.Count ? sizes.Buffer : 0
@@ -4607,6 +7935,34 @@ class Pillow {
                     if bitmapFormatOption.Set && bitmapFormatOption.Value is String
                         bitmapFormat := bitmapFormatOption.Value
                     bitmapFormatBytes := Pillow.Image.Utf8Buffer(bitmapFormat)
+                    if appendOption.Set {
+                        images := [this]
+                        appendImages := appendOption.Value
+                        if IsObject(appendImages) && appendImages is Pillow.Image {
+                            images.Push(appendImages)
+                        } else if IsObject(appendImages) {
+                            for image in appendImages {
+                                if !(IsObject(image) && image is Pillow.Image)
+                                    throw Error("Pillow.Image.Save append_images expects Pillow.Image values", -1)
+                                images.Push(image)
+                            }
+                        } else {
+                            throw Error("Pillow.Image.Save append_images expects an image or image array", -1)
+                        }
+                        handles := Pillow.Image.HandleArray(images)
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_ico_frames_format_options",
+                            "Ptr", handles,
+                            "UPtr", images.Length,
+                            "Ptr", pathBytes,
+                            "Ptr", sizePtr,
+                            "UPtr", sizeCount,
+                            "Int", hasSizes,
+                            "Ptr", bitmapFormatBytes,
+                            "Int"
+                        ))
+                        return
+                    }
                     Pillow.CheckStatus(DllCall(
                         Pillow.RequireDllPath() "\pillow_c_image_save_ico_format_options",
                         "Ptr", this.RequireHandle(),
@@ -4624,6 +7980,35 @@ class Pillow {
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_save_" StrLower(resolvedFormat),
                 "Ptr", this.RequireHandle(),
+                "Ptr", pathBytes,
+                "Int"
+            ))
+        }
+
+        SaveTiffFrames(path, options) {
+            appendOption := Pillow.Image.SaveOption(options, "AppendImages", "append_images")
+            images := [this]
+            if appendOption.Set {
+                appendImages := appendOption.Value
+                if IsObject(appendImages) && appendImages is Pillow.Image {
+                    images.Push(appendImages)
+                } else if IsObject(appendImages) {
+                    for image in appendImages {
+                        if !(IsObject(image) && image is Pillow.Image)
+                            throw Error("Pillow.Image.Save append_images expects Pillow.Image values", -1)
+                        images.Push(image)
+                    }
+                } else {
+                    throw Error("Pillow.Image.Save append_images expects an image or image array", -1)
+                }
+            }
+
+            pathBytes := Pillow.Image.Utf8Buffer(path)
+            handles := Pillow.Image.HandleArray(images)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_save_tiff_frames",
+                "Ptr", handles,
+                "UPtr", images.Length,
                 "Ptr", pathBytes,
                 "Int"
             ))
@@ -4702,9 +8087,33 @@ class Pillow {
                 background := backgroundOption.Value
             }
 
+            commentOption := Pillow.Image.SaveOption(options, "Comment", "comment")
+            commentState := Pillow.Image.SaveGifCommentBuffer(commentOption)
+
             pathBytes := Pillow.Image.Utf8Buffer(path)
             handles := Pillow.Image.HandleArray(images)
-            if backgroundOption.Set {
+            if commentOption.Set && (backgroundOption.Set || includeColorTableOption.Set || optimizeOption.Set) {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_gif_animation_comment_background_options",
+                    "Ptr", handles,
+                    "UPtr", images.Length,
+                    "Ptr", pathBytes,
+                    "Ptr", durationPtr,
+                    "UPtr", durationCount,
+                    "Int", loopCount,
+                    "Ptr", disposalPtr,
+                    "UPtr", disposalCount,
+                    "Int", includeColorTable,
+                    "Int", optimize,
+                    "Int", hasTransparency,
+                    "Int", transparency,
+                    "Int", hasBackground,
+                    "Int", background,
+                    "Ptr", commentState.Buffer,
+                    "UPtr", commentState.Size,
+                    "Int"
+                ))
+            } else if backgroundOption.Set {
                 Pillow.CheckStatus(DllCall(
                     Pillow.RequireDllPath() "\pillow_c_image_save_gif_animation_background_options",
                     "Ptr", handles,
@@ -4723,6 +8132,25 @@ class Pillow {
                     "Int", background,
                     "Int"
                 ))
+            } else if commentOption.Set && transparencyOption.Set {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_gif_animation_comment_metadata_options",
+                    "Ptr", handles,
+                    "UPtr", images.Length,
+                    "Ptr", pathBytes,
+                    "Ptr", durationPtr,
+                    "UPtr", durationCount,
+                    "Int", loopCount,
+                    "Ptr", disposalPtr,
+                    "UPtr", disposalCount,
+                    "Int", includeColorTable,
+                    "Int", optimize,
+                    "Int", hasTransparency,
+                    "Int", transparency,
+                    "Ptr", commentState.Buffer,
+                    "UPtr", commentState.Size,
+                    "Int"
+                ))
             } else if transparencyOption.Set {
                 Pillow.CheckStatus(DllCall(
                     Pillow.RequireDllPath() "\pillow_c_image_save_gif_animation_metadata_options",
@@ -4738,6 +8166,21 @@ class Pillow {
                     "Int", optimize,
                     "Int", hasTransparency,
                     "Int", transparency,
+                    "Int"
+                ))
+            } else if commentOption.Set {
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_gif_animation_comment",
+                    "Ptr", handles,
+                    "UPtr", images.Length,
+                    "Ptr", pathBytes,
+                    "Ptr", durationPtr,
+                    "UPtr", durationCount,
+                    "Int", loopCount,
+                    "Ptr", disposalPtr,
+                    "UPtr", disposalCount,
+                    "Ptr", commentState.Buffer,
+                    "UPtr", commentState.Size,
                     "Int"
                 ))
             } else if includeColorTableOption.Set || optimizeOption.Set {
@@ -4772,6 +8215,7 @@ class Pillow {
         }
 
         DataPointer() {
+            this.RefreshBufferView()
             dataPtr := 0
             size := 0
             Pillow.CheckStatus(DllCall(
@@ -5010,6 +8454,7 @@ class Pillow {
         }
 
         PutData(data, scale := 1.0, offset := 0.0) {
+            this.DetachBufferView()
             if !IsObject(data)
                 throw Error("Pillow.Image.PutData expects an array of pixel values", -1)
             if !(scale is Number) || !(offset is Number)
@@ -5103,6 +8548,7 @@ class Pillow {
         }
 
         Fill(color) {
+            this.DetachBufferView()
             colorBytes := this.ColorBuffer(color)
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_fill",
@@ -5131,6 +8577,7 @@ class Pillow {
         }
 
         PutPixel(xy, value) {
+            this.DetachBufferView()
             if !IsObject(xy) || xy.Length != 2
                 throw Error("Pillow.Image.PutPixel expects xy [x, y]", -1)
             color := this.PixelValueBuffer(value)
@@ -5408,7 +8855,7 @@ class Pillow {
         }
 
         Histogram(mask := unset) {
-            count := this.Channels * 256
+            count := Pillow.Image.GetModeBands(this.Mode) * 256
             out := Buffer(count * 8, 0)
             if IsSet(mask) {
                 if !(IsObject(mask) && mask is Pillow.Image)
@@ -5444,17 +8891,47 @@ class Pillow {
                     throw Error("Pillow.Image.Entropy mask expects a Pillow.Image", -1)
                 maskHandle := mask.RequireHandle()
             }
-            Pillow.CheckStatus(DllCall(
+            status := DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_entropy",
                 "Ptr", this.RequireHandle(),
                 "Ptr", maskHandle,
                 "Double*", &value,
                 "Int"
-            ))
+            )
+            if status = -3 && IsSet(mask) && (this.Mode = "I" || this.Mode = "F")
+                throw Error("image has wrong mode", -1)
+            Pillow.CheckStatus(status)
             return value
         }
 
         GetExtrema() {
+            if this.Mode = "I" || this.Mode = "F" {
+                bandCount := Pillow.Image.GetModeBands(this.Mode)
+                minBuf := Buffer(bandCount * 8, 0)
+                maxBuf := Buffer(bandCount * 8, 0)
+                hasBuf := Buffer(bandCount, 0)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_get_extrema_numeric",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", minBuf,
+                    "Ptr", maxBuf,
+                    "Ptr", hasBuf,
+                    "UPtr", bandCount,
+                    "Int"
+                ))
+                if !NumGet(hasBuf, 0, "UChar")
+                    return 0
+                if this.Mode = "F"
+                    return [
+                        NumGet(minBuf, 0, "Double"),
+                        NumGet(maxBuf, 0, "Double"),
+                    ]
+                return [
+                    Integer(NumGet(minBuf, 0, "Double")),
+                    Integer(NumGet(maxBuf, 0, "Double")),
+                ]
+            }
+
             bandCount := this.Channels
             minBuf := Buffer(bandCount, 0)
             maxBuf := Buffer(bandCount, 0)
@@ -5522,6 +8999,9 @@ class Pillow {
         }
 
         GetColors(maxcolors := 256) {
+            if this.Mode = "I" || this.Mode = "F"
+                return this.GetColorsNumeric(maxcolors)
+
             count := 0
             exceeded := 0
             Pillow.CheckStatus(DllCall(
@@ -5556,6 +9036,41 @@ class Pillow {
             return this.ColorCountsToArray(counts, colors, count)
         }
 
+        GetColorsNumeric(maxcolors) {
+            count := 0
+            exceeded := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_getcolors_numeric",
+                "Ptr", this.RequireHandle(),
+                "Int", maxcolors,
+                "Ptr", 0,
+                "Ptr", 0,
+                "UPtr", 0,
+                "UPtr*", &count,
+                "Int*", &exceeded,
+                "Int"
+            ))
+            if exceeded
+                return 0
+
+            counts := Buffer(count * 8, 0)
+            values := Buffer(count * 8, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_getcolors_numeric",
+                "Ptr", this.RequireHandle(),
+                "Int", maxcolors,
+                "Ptr", counts,
+                "Ptr", values,
+                "UPtr", count,
+                "UPtr*", &count,
+                "Int*", &exceeded,
+                "Int"
+            ))
+            if exceeded
+                return 0
+            return this.NumericColorCountsToArray(counts, values, count)
+        }
+
         ColorCountsToArray(counts, colors, count) {
             out := []
             channels := this.Channels
@@ -5570,6 +9085,18 @@ class Pillow {
                         pixel.Push(NumGet(colors, itemIndex * channels + A_Index - 1, "UChar"))
                 }
                 out.Push([NumGet(counts, itemIndex * 8, "Int64"), pixel])
+            }
+            return out
+        }
+
+        NumericColorCountsToArray(counts, values, count) {
+            out := []
+            loop count {
+                itemIndex := A_Index - 1
+                value := NumGet(values, itemIndex * 8, "Double")
+                if this.Mode = "I"
+                    value := Round(value)
+                out.Push([NumGet(counts, itemIndex * 8, "Int64"), value])
             }
             return out
         }
@@ -5596,22 +9123,7 @@ class Pillow {
         }
 
         BandNames() {
-            mode := this.Mode
-            if mode = "1"
-                return ["1"]
-            if mode = "P"
-                return ["P"]
-            if mode = "L"
-                return ["L"]
-            if mode = "LA"
-                return ["L", "A"]
-            if mode = "RGB"
-                return ["R", "G", "B"]
-            if mode = "RGBA"
-                return ["R", "G", "B", "A"]
-            if mode = "CMYK"
-                return ["C", "M", "Y", "K"]
-            return []
+            return Pillow.Image.GetModeBandNames(this.Mode)
         }
 
         ChannelIndex(channel) {

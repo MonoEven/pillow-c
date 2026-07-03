@@ -21,6 +21,20 @@ PillowTestBufferToArray(buf) {
     return values
 }
 
+PillowTestBytesFromI32(values) {
+    buf := Buffer(values.Length * 4, 0)
+    for index, value in values
+        NumPut("Int", value, buf, (index - 1) * 4)
+    return PillowTestBufferToArray(buf)
+}
+
+PillowTestBytesFromF32(values) {
+    buf := Buffer(values.Length * 4, 0)
+    for index, value in values
+        NumPut("Float", value, buf, (index - 1) * 4)
+    return PillowTestBufferToArray(buf)
+}
+
 PillowTestRowSums(values, width, height) {
     rows := []
     loop height {
@@ -61,6 +75,33 @@ PillowTestArraySlice(values, firstIndex, lastIndex) {
     loop lastIndex - firstIndex + 1
         out.Push(values[firstIndex + A_Index - 1])
     return out
+}
+
+PillowTestFindBytePattern(values, pattern, startIndex := 1) {
+    if pattern.Length = 0
+        return startIndex
+    maxStart := values.Length - pattern.Length + 1
+    index := startIndex
+    while index <= maxStart {
+        matched := true
+        for patternIndex, value in pattern {
+            if values[index + patternIndex - 1] != value {
+                matched := false
+                break
+            }
+        }
+        if matched
+            return index
+        index += 1
+    }
+    return 0
+}
+
+PillowTestSumArray(values) {
+    total := 0
+    for value in values
+        total += value
+    return total
 }
 
 PillowTestAssertArrayNear(expected, actual, tolerance) {
@@ -202,6 +243,443 @@ PillowTestReadLe16(values, offset) {
     return values[offset] | (values[offset + 1] << 8)
 }
 
+PillowTestAppendLe16(values, value) {
+    values.Push(value & 0xff)
+    values.Push((value >> 8) & 0xff)
+}
+
+PillowTestAppendLe32(values, value) {
+    values.Push(value & 0xff)
+    values.Push((value >> 8) & 0xff)
+    values.Push((value >> 16) & 0xff)
+    values.Push((value >> 24) & 0xff)
+}
+
+PillowTestAppendAsciiZ(values, text, padEven := false) {
+    loop StrLen(text)
+        values.Push(Ord(SubStr(text, A_Index, 1)) & 0xff)
+    values.Push(0)
+    if padEven && Mod(values.Length, 2)
+        values.Push(0)
+}
+
+PillowTestStringCodepoints(text) {
+    values := []
+    loop StrLen(text)
+        values.Push(Ord(SubStr(text, A_Index, 1)))
+    return values
+}
+
+PillowTestReadTiffIfd0Entries(bytes) {
+    ifdOffset := PillowTestReadLe32(bytes, 5)
+    ifdStart := ifdOffset + 1
+    entryCount := PillowTestReadLe16(bytes, ifdStart)
+    entries := Map()
+    loop entryCount {
+        entryStart := ifdStart + 2 + (A_Index - 1) * 12
+        tag := PillowTestReadLe16(bytes, entryStart)
+        entries[tag] := {
+            Type: PillowTestReadLe16(bytes, entryStart + 2),
+            Count: PillowTestReadLe32(bytes, entryStart + 4),
+            Value: PillowTestReadLe32(bytes, entryStart + 8),
+        }
+    }
+    return entries
+}
+
+PillowTestReadTiffIfd0EntriesEndian(bytes, littleEndian) {
+    ifdOffset := littleEndian ? PillowTestReadLe32(bytes, 5) : PillowTestReadBe32(bytes, 5)
+    ifdStart := ifdOffset + 1
+    entryCount := littleEndian ? PillowTestReadLe16(bytes, ifdStart) : PillowTestReadBe16(bytes, ifdStart)
+    entries := Map()
+    loop entryCount {
+        entryStart := ifdStart + 2 + (A_Index - 1) * 12
+        tag := littleEndian ? PillowTestReadLe16(bytes, entryStart) : PillowTestReadBe16(bytes, entryStart)
+        type := littleEndian ? PillowTestReadLe16(bytes, entryStart + 2) : PillowTestReadBe16(bytes, entryStart + 2)
+        count := littleEndian ? PillowTestReadLe32(bytes, entryStart + 4) : PillowTestReadBe32(bytes, entryStart + 4)
+        value := littleEndian ? PillowTestReadLe32(bytes, entryStart + 8) : PillowTestReadBe32(bytes, entryStart + 8)
+        if type = 3 && count = 1
+            value := littleEndian ? PillowTestReadLe16(bytes, entryStart + 8) : PillowTestReadBe16(bytes, entryStart + 8)
+        entries[tag] := {
+            Type: type,
+            Count: count,
+            Value: value,
+        }
+    }
+    return entries
+}
+
+PillowTestAssertTiffDpiTags(path, expectedX, expectedY) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0Entries(bytes)
+    AhkTest.AssertTrue(entries.Has(282))
+    AhkTest.AssertTrue(entries.Has(283))
+    AhkTest.AssertTrue(entries.Has(296))
+    xEntry := entries[282]
+    yEntry := entries[283]
+    unitEntry := entries[296]
+    AhkTest.AssertEqual(5, xEntry.Type)
+    AhkTest.AssertEqual(1, xEntry.Count)
+    AhkTest.AssertEqual(expectedX, PillowTestReadLe32(bytes, xEntry.Value + 1))
+    AhkTest.AssertEqual(1, PillowTestReadLe32(bytes, xEntry.Value + 5))
+    AhkTest.AssertEqual(5, yEntry.Type)
+    AhkTest.AssertEqual(1, yEntry.Count)
+    AhkTest.AssertEqual(expectedY, PillowTestReadLe32(bytes, yEntry.Value + 1))
+    AhkTest.AssertEqual(1, PillowTestReadLe32(bytes, yEntry.Value + 5))
+    AhkTest.AssertEqual(3, unitEntry.Type)
+    AhkTest.AssertEqual(1, unitEntry.Count)
+    AhkTest.AssertEqual(2, unitEntry.Value)
+}
+
+PillowTestAssertTiffCompressionTag(path, expectedCompression) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0Entries(bytes)
+    AhkTest.AssertTrue(entries.Has(259))
+    compressionEntry := entries[259]
+    AhkTest.AssertEqual(3, compressionEntry.Type)
+    AhkTest.AssertEqual(1, compressionEntry.Count)
+    AhkTest.AssertEqual(expectedCompression, compressionEntry.Value)
+}
+
+PillowTestAssertTiffStripPrefix(path, expectedPrefix) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0Entries(bytes)
+    AhkTest.AssertTrue(entries.Has(273))
+    AhkTest.AssertTrue(entries.Has(279))
+    AhkTest.AssertTrue(entries[279].Value >= expectedPrefix.Length)
+    stripOffset := entries[273].Value + 1
+    AhkTest.AssertEqual(expectedPrefix, PillowTestArraySlice(bytes, stripOffset, stripOffset + expectedPrefix.Length - 1))
+}
+
+PillowTestAssertTiffModeOneTagsAndStrip(path, expectedStripBytes) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0Entries(bytes)
+    AhkTest.AssertTrue(entries.Has(256))
+    AhkTest.AssertTrue(entries.Has(257))
+    AhkTest.AssertTrue(entries.Has(259))
+    AhkTest.AssertTrue(entries.Has(262))
+    AhkTest.AssertTrue(entries.Has(273))
+    AhkTest.AssertTrue(entries.Has(278))
+    AhkTest.AssertTrue(entries.Has(279))
+    AhkTest.AssertFalse(entries.Has(258))
+    AhkTest.AssertFalse(entries.Has(277))
+    AhkTest.AssertEqual(1, entries[259].Value)
+    AhkTest.AssertEqual(1, entries[262].Value)
+    AhkTest.AssertEqual(expectedStripBytes.Length, entries[279].Value)
+    stripOffset := entries[273].Value + 1
+    AhkTest.AssertEqual(expectedStripBytes, PillowTestArraySlice(bytes, stripOffset, stripOffset + expectedStripBytes.Length - 1))
+}
+
+PillowTestAssertTiffPaletteTagsAndStrip(path, expectedStripBytes) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0Entries(bytes)
+    AhkTest.AssertTrue(entries.Has(256))
+    AhkTest.AssertTrue(entries.Has(257))
+    AhkTest.AssertTrue(entries.Has(258))
+    AhkTest.AssertTrue(entries.Has(259))
+    AhkTest.AssertTrue(entries.Has(262))
+    AhkTest.AssertTrue(entries.Has(273))
+    AhkTest.AssertTrue(entries.Has(278))
+    AhkTest.AssertTrue(entries.Has(279))
+    AhkTest.AssertTrue(entries.Has(284))
+    AhkTest.AssertTrue(entries.Has(320))
+    AhkTest.AssertFalse(entries.Has(277))
+    AhkTest.AssertEqual(3, entries[258].Type)
+    AhkTest.AssertEqual(1, entries[258].Count)
+    AhkTest.AssertEqual(8, entries[258].Value)
+    AhkTest.AssertEqual(3, entries[259].Type)
+    AhkTest.AssertEqual(1, entries[259].Count)
+    AhkTest.AssertEqual(1, entries[259].Value)
+    AhkTest.AssertEqual(3, entries[262].Type)
+    AhkTest.AssertEqual(1, entries[262].Count)
+    AhkTest.AssertEqual(3, entries[262].Value)
+    AhkTest.AssertEqual(3, entries[284].Type)
+    AhkTest.AssertEqual(1, entries[284].Count)
+    AhkTest.AssertEqual(1, entries[284].Value)
+    AhkTest.AssertEqual(3, entries[320].Type)
+    AhkTest.AssertEqual(768, entries[320].Count)
+    AhkTest.AssertEqual(expectedStripBytes.Length, entries[279].Value)
+    stripOffset := entries[273].Value + 1
+    AhkTest.AssertEqual(expectedStripBytes, PillowTestArraySlice(bytes, stripOffset, stripOffset + expectedStripBytes.Length - 1))
+
+    colorMapOffset := entries[320].Value + 1
+    AhkTest.AssertEqual([2560, 10240, 17920], [
+        PillowTestReadLe16(bytes, colorMapOffset),
+        PillowTestReadLe16(bytes, colorMapOffset + 2),
+        PillowTestReadLe16(bytes, colorMapOffset + 4)
+    ])
+    AhkTest.AssertEqual([5120, 12800, 20480], [
+        PillowTestReadLe16(bytes, colorMapOffset + 256 * 2),
+        PillowTestReadLe16(bytes, colorMapOffset + 257 * 2),
+        PillowTestReadLe16(bytes, colorMapOffset + 258 * 2)
+    ])
+    AhkTest.AssertEqual([7680, 15360, 23040], [
+        PillowTestReadLe16(bytes, colorMapOffset + 512 * 2),
+        PillowTestReadLe16(bytes, colorMapOffset + 513 * 2),
+        PillowTestReadLe16(bytes, colorMapOffset + 514 * 2)
+    ])
+}
+
+PillowTestAssertTiffLaTagsAndStrip(path, expectedStripBytes, expectedCompression := 1) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0Entries(bytes)
+    AhkTest.AssertTrue(entries.Has(256))
+    AhkTest.AssertTrue(entries.Has(257))
+    AhkTest.AssertTrue(entries.Has(258))
+    AhkTest.AssertTrue(entries.Has(259))
+    AhkTest.AssertTrue(entries.Has(262))
+    AhkTest.AssertTrue(entries.Has(273))
+    AhkTest.AssertTrue(entries.Has(277))
+    AhkTest.AssertTrue(entries.Has(278))
+    AhkTest.AssertTrue(entries.Has(279))
+    AhkTest.AssertTrue(entries.Has(284))
+    AhkTest.AssertTrue(entries.Has(338))
+    AhkTest.AssertEqual(3, entries[258].Type)
+    AhkTest.AssertEqual(2, entries[258].Count)
+    AhkTest.AssertEqual(8 | (8 << 16), entries[258].Value)
+    AhkTest.AssertEqual(3, entries[259].Type)
+    AhkTest.AssertEqual(1, entries[259].Count)
+    AhkTest.AssertEqual(expectedCompression, entries[259].Value)
+    AhkTest.AssertEqual(3, entries[262].Type)
+    AhkTest.AssertEqual(1, entries[262].Count)
+    AhkTest.AssertEqual(1, entries[262].Value)
+    AhkTest.AssertEqual(3, entries[277].Type)
+    AhkTest.AssertEqual(1, entries[277].Count)
+    AhkTest.AssertEqual(2, entries[277].Value)
+    AhkTest.AssertEqual(3, entries[284].Type)
+    AhkTest.AssertEqual(1, entries[284].Count)
+    AhkTest.AssertEqual(1, entries[284].Value)
+    AhkTest.AssertEqual(3, entries[338].Type)
+    AhkTest.AssertEqual(1, entries[338].Count)
+    AhkTest.AssertEqual(2, entries[338].Value)
+    if expectedCompression = 1 {
+        AhkTest.AssertEqual(expectedStripBytes.Length, entries[279].Value)
+        stripOffset := entries[273].Value + 1
+        AhkTest.AssertEqual(expectedStripBytes, PillowTestArraySlice(bytes, stripOffset, stripOffset + expectedStripBytes.Length - 1))
+    } else {
+        AhkTest.AssertTrue(entries[279].Value > 0)
+    }
+}
+
+PillowTestAssertTiffCmykTagsAndStrip(path, expectedStripBytes, expectedCompression := 1) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0Entries(bytes)
+    AhkTest.AssertTrue(entries.Has(256))
+    AhkTest.AssertTrue(entries.Has(257))
+    AhkTest.AssertTrue(entries.Has(258))
+    AhkTest.AssertTrue(entries.Has(259))
+    AhkTest.AssertTrue(entries.Has(262))
+    AhkTest.AssertTrue(entries.Has(273))
+    AhkTest.AssertTrue(entries.Has(277))
+    AhkTest.AssertTrue(entries.Has(278))
+    AhkTest.AssertTrue(entries.Has(279))
+    AhkTest.AssertTrue(entries.Has(284))
+    AhkTest.AssertFalse(entries.Has(338))
+    AhkTest.AssertEqual(3, entries[258].Type)
+    AhkTest.AssertEqual(4, entries[258].Count)
+    bitsOffset := entries[258].Value + 1
+    AhkTest.AssertEqual([8, 8, 8, 8], [
+        PillowTestReadLe16(bytes, bitsOffset),
+        PillowTestReadLe16(bytes, bitsOffset + 2),
+        PillowTestReadLe16(bytes, bitsOffset + 4),
+        PillowTestReadLe16(bytes, bitsOffset + 6)
+    ])
+    AhkTest.AssertEqual(3, entries[259].Type)
+    AhkTest.AssertEqual(1, entries[259].Count)
+    AhkTest.AssertEqual(expectedCompression, entries[259].Value)
+    AhkTest.AssertEqual(3, entries[262].Type)
+    AhkTest.AssertEqual(1, entries[262].Count)
+    AhkTest.AssertEqual(5, entries[262].Value)
+    AhkTest.AssertEqual(3, entries[277].Type)
+    AhkTest.AssertEqual(1, entries[277].Count)
+    AhkTest.AssertEqual(4, entries[277].Value)
+    AhkTest.AssertEqual(3, entries[284].Type)
+    AhkTest.AssertEqual(1, entries[284].Count)
+    AhkTest.AssertEqual(1, entries[284].Value)
+    if expectedCompression = 1 {
+        AhkTest.AssertEqual(expectedStripBytes.Length, entries[279].Value)
+        stripOffset := entries[273].Value + 1
+        AhkTest.AssertEqual(expectedStripBytes, PillowTestArraySlice(bytes, stripOffset, stripOffset + expectedStripBytes.Length - 1))
+    } else {
+        AhkTest.AssertTrue(entries[279].Value > 0)
+    }
+}
+
+PillowTestAssertTiffNumericTagsAndStrip(path, expectedStripBytes, expectedSampleFormat, expectedCompression := 1) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0Entries(bytes)
+    AhkTest.AssertTrue(entries.Has(256))
+    AhkTest.AssertTrue(entries.Has(257))
+    AhkTest.AssertTrue(entries.Has(258))
+    AhkTest.AssertTrue(entries.Has(259))
+    AhkTest.AssertTrue(entries.Has(262))
+    AhkTest.AssertTrue(entries.Has(273))
+    AhkTest.AssertTrue(entries.Has(278))
+    AhkTest.AssertTrue(entries.Has(279))
+    AhkTest.AssertTrue(entries.Has(284))
+    AhkTest.AssertTrue(entries.Has(339))
+    AhkTest.AssertFalse(entries.Has(277))
+    AhkTest.AssertEqual(3, entries[258].Type)
+    AhkTest.AssertEqual(1, entries[258].Count)
+    AhkTest.AssertEqual(32, entries[258].Value)
+    AhkTest.AssertEqual(3, entries[259].Type)
+    AhkTest.AssertEqual(1, entries[259].Count)
+    AhkTest.AssertEqual(expectedCompression, entries[259].Value)
+    AhkTest.AssertEqual(3, entries[262].Type)
+    AhkTest.AssertEqual(1, entries[262].Count)
+    AhkTest.AssertEqual(1, entries[262].Value)
+    AhkTest.AssertEqual(3, entries[284].Type)
+    AhkTest.AssertEqual(1, entries[284].Count)
+    AhkTest.AssertEqual(1, entries[284].Value)
+    AhkTest.AssertEqual(3, entries[339].Type)
+    AhkTest.AssertEqual(1, entries[339].Count)
+    AhkTest.AssertEqual(expectedSampleFormat, entries[339].Value)
+    if expectedCompression = 1 {
+        AhkTest.AssertEqual(expectedStripBytes.Length, entries[279].Value)
+        stripOffset := entries[273].Value + 1
+        AhkTest.AssertEqual(expectedStripBytes, PillowTestArraySlice(bytes, stripOffset, stripOffset + expectedStripBytes.Length - 1))
+    } else {
+        AhkTest.AssertTrue(entries[279].Value > 0)
+    }
+}
+
+PillowTestAssertTiffI16TagsAndStrip(path, expectedStripBytes, expectedCompression := 1) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0Entries(bytes)
+    AhkTest.AssertTrue(entries.Has(256))
+    AhkTest.AssertTrue(entries.Has(257))
+    AhkTest.AssertTrue(entries.Has(258))
+    AhkTest.AssertTrue(entries.Has(259))
+    AhkTest.AssertTrue(entries.Has(262))
+    AhkTest.AssertTrue(entries.Has(273))
+    AhkTest.AssertTrue(entries.Has(278))
+    AhkTest.AssertTrue(entries.Has(279))
+    AhkTest.AssertTrue(entries.Has(284))
+    AhkTest.AssertFalse(entries.Has(277))
+    AhkTest.AssertFalse(entries.Has(339))
+    AhkTest.AssertEqual(3, entries[258].Type)
+    AhkTest.AssertEqual(1, entries[258].Count)
+    AhkTest.AssertEqual(16, entries[258].Value)
+    AhkTest.AssertEqual(3, entries[259].Type)
+    AhkTest.AssertEqual(1, entries[259].Count)
+    AhkTest.AssertEqual(expectedCompression, entries[259].Value)
+    AhkTest.AssertEqual(3, entries[262].Type)
+    AhkTest.AssertEqual(1, entries[262].Count)
+    AhkTest.AssertEqual(1, entries[262].Value)
+    AhkTest.AssertEqual(3, entries[284].Type)
+    AhkTest.AssertEqual(1, entries[284].Count)
+    AhkTest.AssertEqual(1, entries[284].Value)
+    if expectedCompression = 1 {
+        AhkTest.AssertEqual(expectedStripBytes.Length, entries[279].Value)
+        stripOffset := entries[273].Value + 1
+        AhkTest.AssertEqual(expectedStripBytes, PillowTestArraySlice(bytes, stripOffset, stripOffset + expectedStripBytes.Length - 1))
+    } else {
+        AhkTest.AssertTrue(entries[279].Value > 0)
+    }
+}
+
+PillowTestAssertTiffI16BigEndianTagsAndStrip(path, expectedStripBytes) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0EntriesEndian(bytes, false)
+    AhkTest.AssertTrue(entries.Has(256))
+    AhkTest.AssertTrue(entries.Has(257))
+    AhkTest.AssertTrue(entries.Has(258))
+    AhkTest.AssertTrue(entries.Has(259))
+    AhkTest.AssertTrue(entries.Has(262))
+    AhkTest.AssertTrue(entries.Has(273))
+    AhkTest.AssertTrue(entries.Has(278))
+    AhkTest.AssertTrue(entries.Has(279))
+    AhkTest.AssertTrue(entries.Has(284))
+    AhkTest.AssertFalse(entries.Has(277))
+    AhkTest.AssertFalse(entries.Has(339))
+    AhkTest.AssertEqual(3, entries[256].Value)
+    AhkTest.AssertEqual(1, entries[257].Value)
+    AhkTest.AssertEqual(3, entries[258].Type)
+    AhkTest.AssertEqual(1, entries[258].Count)
+    AhkTest.AssertEqual(16, entries[258].Value)
+    AhkTest.AssertEqual(3, entries[259].Type)
+    AhkTest.AssertEqual(1, entries[259].Count)
+    AhkTest.AssertEqual(1, entries[259].Value)
+    AhkTest.AssertEqual(3, entries[262].Type)
+    AhkTest.AssertEqual(1, entries[262].Count)
+    AhkTest.AssertEqual(1, entries[262].Value)
+    AhkTest.AssertEqual(3, entries[284].Type)
+    AhkTest.AssertEqual(1, entries[284].Count)
+    AhkTest.AssertEqual(1, entries[284].Value)
+    AhkTest.AssertEqual(expectedStripBytes.Length, entries[279].Value)
+    stripOffset := entries[273].Value + 1
+    AhkTest.AssertEqual(expectedStripBytes, PillowTestArraySlice(bytes, stripOffset, stripOffset + expectedStripBytes.Length - 1))
+}
+
+PillowTestGifLzwDecodeIndices(data, minCodeSize, expectedCount) {
+    clearCode := 1 << minCodeSize
+    endCode := clearCode + 1
+    codeSize := minCodeSize + 1
+    nextCode := endCode + 1
+    table := Map()
+    loop clearCode
+        table[A_Index - 1] := [A_Index - 1]
+    bitPos := 0
+    previous := []
+    hasPrevious := false
+    out := []
+
+    loop {
+        code := 0
+        hasCode := true
+        loop codeSize {
+            byteIndex := bitPos // 8 + 1
+            if byteIndex > data.Length {
+                hasCode := false
+                break
+            }
+            code := code | (((data[byteIndex] >> (bitPos & 7)) & 1) << (A_Index - 1))
+            bitPos += 1
+        }
+        if !hasCode
+            break
+        if code = clearCode {
+            table := Map()
+            loop clearCode
+                table[A_Index - 1] := [A_Index - 1]
+            codeSize := minCodeSize + 1
+            nextCode := endCode + 1
+            previous := []
+            hasPrevious := false
+            continue
+        }
+        if code = endCode
+            break
+        if table.Has(code) {
+            entry := table[code].Clone()
+        } else if hasPrevious && code = nextCode {
+            entry := previous.Clone()
+            entry.Push(previous[1])
+        } else {
+            AhkTest.Fail("Invalid GIF LZW code")
+        }
+        for value in entry
+            out.Push(value)
+        if hasPrevious {
+            newEntry := previous.Clone()
+            newEntry.Push(entry[1])
+            table[nextCode] := newEntry
+            nextCode += 1
+            if (nextCode = (1 << codeSize) && codeSize < 12)
+                codeSize += 1
+        }
+        previous := entry
+        hasPrevious := true
+        if out.Length >= expectedCount
+            break
+    }
+
+    decoded := []
+    loop Min(expectedCount, out.Length)
+        decoded.Push(out[A_Index])
+    return decoded
+}
+
 PillowTestGifFrameDescriptors(path) {
     bytes := PillowTestReadFileBytes(path)
     AhkTest.AssertTrue(bytes.Length >= 13)
@@ -279,12 +757,15 @@ PillowTestGifFrameDescriptors(path) {
         lzwMin := bytes[pos]
         pos += 1
         dataBytes := 0
+        imageData := []
         while pos <= bytes.Length {
             subBlockSize := bytes[pos]
             pos += 1
             if subBlockSize = 0
                 break
             dataBytes += subBlockSize
+            loop subBlockSize
+                imageData.Push(bytes[pos + A_Index - 1])
             pos += subBlockSize
         }
         frames.Push({
@@ -300,6 +781,7 @@ PillowTestGifFrameDescriptors(path) {
             LocalPaletteHead: localPaletteHead,
             LzwMin: lzwMin,
             DataBytes: dataBytes,
+            Indices: PillowTestGifLzwDecodeIndices(imageData, lzwMin, width * height),
             Gce: pendingGce
         })
         pendingGce := { Packed: 0, DurationCs: -1, Disposal: 0, Transparency: -1 }
@@ -318,6 +800,36 @@ PillowTestReadBe16(values, offset) {
     return (values[offset] << 8) | values[offset + 1]
 }
 
+PillowTestAppendBe16(values, value) {
+    values.Push((value >> 8) & 0xff)
+    values.Push(value & 0xff)
+}
+
+PillowTestXmpPacket() {
+    return '<?xpacket begin=""?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title><rdf:Alt><rdf:li xml:lang="x-default">Hello</rdf:li></rdf:Alt></dc:title></rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>'
+}
+
+PillowTestXmpPacketWithCreatorSeq() {
+    return '<?xpacket begin=""?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:creator><rdf:Seq><rdf:li>Ada</rdf:li><rdf:li>Grace</rdf:li></rdf:Seq></dc:creator><dc:title><rdf:Alt><rdf:li xml:lang="x-default">Hello</rdf:li></rdf:Alt></dc:title></rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>'
+}
+
+PillowTestInsertJpegXmpApp1(bytes, xmpBytes) {
+    AhkTest.AssertTrue(bytes.Length >= 2)
+    AhkTest.AssertEqual([0xFF, 0xD8], PillowTestArraySlice(bytes, 1, 2))
+    header := PillowTestTextBytes("http://ns.adobe.com/xap/1.0/")
+    header.Push(0)
+    segmentLength := header.Length + xmpBytes.Length + 2
+    out := [0xFF, 0xD8, 0xFF, 0xE1]
+    PillowTestAppendBe16(out, segmentLength)
+    for value in header
+        out.Push(value)
+    for value in xmpBytes
+        out.Push(value)
+    loop bytes.Length - 2
+        out.Push(bytes[A_Index + 2])
+    return out
+}
+
 PillowTestArrayEquals(left, right) {
     if left.Length != right.Length
         return false
@@ -326,6 +838,13 @@ PillowTestArrayEquals(left, right) {
             return false
     }
     return true
+}
+
+PillowTestLargeIccProfile() {
+    profile := []
+    loop 70000
+        profile.Push(Mod((A_Index - 1) * 37 + 11, 256))
+    return profile
 }
 
 PillowTestFindPngChunk(values, typeBytes) {
@@ -342,6 +861,21 @@ PillowTestFindPngChunk(values, typeBytes) {
     return { Found: false, DataOffset: 0, Length: 0 }
 }
 
+PillowTestFindPngChunks(values, typeBytes) {
+    chunks := []
+    pos := 9
+    while pos + 11 <= values.Length {
+        length := PillowTestReadBe32(values, pos)
+        typeStart := pos + 4
+        if typeStart + 3 <= values.Length
+            && PillowTestArrayEquals(PillowTestArraySlice(values, typeStart, typeStart + 3), typeBytes) {
+            chunks.Push({ Found: true, DataOffset: pos + 8, Length: length })
+        }
+        pos += 12 + length
+    }
+    return chunks
+}
+
 PillowTestIcoEntrySizes(path) {
     bytes := PillowTestReadFileBytes(path)
     AhkTest.AssertEqual([0, 0, 1, 0], PillowTestArraySlice(bytes, 1, 4))
@@ -356,6 +890,39 @@ PillowTestIcoEntrySizes(path) {
         sizes.Push([width, height])
     }
     return sizes
+}
+
+PillowTestIcoPngEntryPayload(path, expectedWidth, expectedHeight) {
+    bytes := PillowTestReadFileBytes(path)
+    AhkTest.AssertEqual([0, 0, 1, 0], PillowTestArraySlice(bytes, 1, 4))
+    count := PillowTestReadLe16(bytes, 5)
+    loop count {
+        entryStart := 7 + (A_Index - 1) * 16
+        width := bytes[entryStart] = 0 ? 256 : bytes[entryStart]
+        height := bytes[entryStart + 1] = 0 ? 256 : bytes[entryStart + 1]
+        if width != expectedWidth || height != expectedHeight
+            continue
+        payloadLength := PillowTestReadLe32(bytes, entryStart + 8)
+        payloadOffset := PillowTestReadLe32(bytes, entryStart + 12)
+        AhkTest.AssertEqual([137, 80, 78, 71, 13, 10, 26, 10], PillowTestArraySlice(bytes, payloadOffset + 1, payloadOffset + 8))
+        return PillowTestArraySlice(bytes, payloadOffset + 1, payloadOffset + payloadLength)
+    }
+    AhkTest.Fail("Expected ICO PNG entry " expectedWidth "x" expectedHeight)
+}
+
+PillowTestAssertIcoPngEntryFirstPixel(path, expectedWidth, expectedHeight, expectedPixel) {
+    pngPath := PillowTestTempPngPath("ico-entry-" expectedWidth "x" expectedHeight)
+    image := 0
+    try {
+        PillowTestWriteFileBytes(pngPath, PillowTestIcoPngEntryPayload(path, expectedWidth, expectedHeight))
+        image := Pillow.Image.Open(pngPath)
+        AhkTest.AssertEqual([expectedWidth, expectedHeight], image.Size)
+        AhkTest.AssertEqual(expectedPixel, PillowTestArraySlice(PillowTestBufferToArray(image.ToBytes()), 1, 4))
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(pngPath)
+    }
 }
 
 PillowTestAssertIcoDibPayload(path, expectedWidth, expectedHeight, expectedBitCount, expectedImageBytes) {
@@ -382,6 +949,27 @@ PillowTestAssertIcoDibPayload(path, expectedWidth, expectedHeight, expectedBitCo
     AhkTest.AssertEqual(3780, PillowTestReadLe32(bytes, payloadStart + 24))
     AhkTest.AssertEqual(3780, PillowTestReadLe32(bytes, payloadStart + 28))
     AhkTest.AssertEqual(40 + expectedImageBytes, payloadLength)
+}
+
+PillowTestDuplicateSizeIcoPngBytes(firstPng, firstBitCount, secondPng, secondBitCount) {
+    out := [0, 0, 1, 0, 2, 0]
+    firstOffset := 6 + 16 * 2
+    secondOffset := firstOffset + firstPng.Length
+    for entry in [
+        { Data: firstPng, BitCount: firstBitCount, Offset: firstOffset },
+        { Data: secondPng, BitCount: secondBitCount, Offset: secondOffset }
+    ] {
+        out.Push(16, 16, 0, 0)
+        PillowTestAppendLe16(out, 0)
+        PillowTestAppendLe16(out, entry.BitCount)
+        PillowTestAppendLe32(out, entry.Data.Length)
+        PillowTestAppendLe32(out, entry.Offset)
+    }
+    for value in firstPng
+        out.Push(value)
+    for value in secondPng
+        out.Push(value)
+    return out
 }
 
 PillowTestAssertPngPhys(path, expectedX, expectedY) {
@@ -421,6 +1009,335 @@ PillowTestReadJpegJfif(path) {
     AhkTest.Fail("Expected JPEG JFIF metadata")
 }
 
+PillowTestFindJpegSegment(bytes, expectedMarker, prefix := unset) {
+    AhkTest.AssertTrue(bytes.Length >= 4)
+    AhkTest.AssertEqual([0xFF, 0xD8], PillowTestArraySlice(bytes, 1, 2))
+    pos := 3
+    while pos + 3 <= bytes.Length {
+        AhkTest.AssertEqual(0xFF, bytes[pos])
+        markerOffset := pos
+        marker := bytes[pos + 1]
+        pos += 2
+        if marker = 0xD9 || (marker >= 0xD0 && marker <= 0xD7) {
+            if marker = expectedMarker
+                return { Found: true, MarkerOffset: markerOffset, PayloadOffset: pos, Length: 0, PayloadLength: 0 }
+            continue
+        }
+        if marker = 0xDA
+            break
+        length := PillowTestReadBe16(bytes, pos)
+        payloadStart := pos + 2
+        payloadLength := length - 2
+        matches := marker = expectedMarker
+        if matches && IsSet(prefix) {
+            if prefix.Length > payloadLength {
+                matches := false
+            } else {
+                loop prefix.Length {
+                    if bytes[payloadStart + A_Index - 1] != prefix[A_Index] {
+                        matches := false
+                        break
+                    }
+                }
+            }
+        }
+        if matches {
+            return {
+                Found: true,
+                MarkerOffset: markerOffset,
+                PayloadOffset: payloadStart,
+                Length: length,
+                PayloadLength: payloadLength
+            }
+        }
+        pos += length
+    }
+    return { Found: false, MarkerOffset: 0, PayloadOffset: 0, Length: 0, PayloadLength: 0 }
+}
+
+PillowTestFindJpegSegments(bytes, expectedMarker, prefix := unset) {
+    AhkTest.AssertTrue(bytes.Length >= 4)
+    AhkTest.AssertEqual([0xFF, 0xD8], PillowTestArraySlice(bytes, 1, 2))
+    segments := []
+    pos := 3
+    while pos + 3 <= bytes.Length {
+        AhkTest.AssertEqual(0xFF, bytes[pos])
+        markerOffset := pos
+        marker := bytes[pos + 1]
+        pos += 2
+        if marker = 0xD9 || (marker >= 0xD0 && marker <= 0xD7) {
+            if marker = expectedMarker
+                segments.Push({ Found: true, MarkerOffset: markerOffset, PayloadOffset: pos, Length: 0, PayloadLength: 0 })
+            continue
+        }
+        if marker = 0xDA
+            break
+        length := PillowTestReadBe16(bytes, pos)
+        payloadStart := pos + 2
+        payloadLength := length - 2
+        matches := marker = expectedMarker
+        if matches && IsSet(prefix) {
+            if prefix.Length > payloadLength {
+                matches := false
+            } else {
+                loop prefix.Length {
+                    if bytes[payloadStart + A_Index - 1] != prefix[A_Index] {
+                        matches := false
+                        break
+                    }
+                }
+            }
+        }
+        if matches {
+            segments.Push({
+                Found: true,
+                MarkerOffset: markerOffset,
+                PayloadOffset: payloadStart,
+                Length: length,
+                PayloadLength: payloadLength
+            })
+        }
+        pos += length
+    }
+    return segments
+}
+
+PillowTestReadJpegSof0Sampling(path) {
+    return PillowTestReadJpegSofSampling(path, 0xC0)
+}
+
+PillowTestReadJpegSofSampling(path, marker) {
+    bytes := PillowTestReadFileBytes(path)
+    sof := PillowTestFindJpegSegment(bytes, marker)
+    AhkTest.AssertTrue(sof.Found)
+    componentCount := bytes[sof.PayloadOffset + 5]
+    pos := sof.PayloadOffset + 6
+    sampling := []
+    loop componentCount {
+        componentId := bytes[pos]
+        hv := bytes[pos + 1]
+        sampling.Push(componentId)
+        sampling.Push(hv >> 4)
+        sampling.Push(hv & 0x0F)
+        sampling.Push(bytes[pos + 2])
+        pos += 3
+    }
+    return sampling
+}
+
+PillowTestReadJpegSofMarker(path) {
+    bytes := PillowTestReadFileBytes(path)
+    for marker in [0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF] {
+        segment := PillowTestFindJpegSegment(bytes, marker)
+        if segment.Found
+            return marker
+    }
+    AhkTest.Fail("Expected JPEG SOF marker")
+}
+
+PillowTestReadJpegSofComponentCount(path, marker := 0xC0) {
+    bytes := PillowTestReadFileBytes(path)
+    sof := PillowTestFindJpegSegment(bytes, marker)
+    AhkTest.AssertTrue(sof.Found)
+    return bytes[sof.PayloadOffset + 5]
+}
+
+PillowTestReadJpegDhtPayloadLengths(path) {
+    bytes := PillowTestReadFileBytes(path)
+    AhkTest.AssertTrue(bytes.Length >= 4)
+    AhkTest.AssertEqual([0xFF, 0xD8], PillowTestArraySlice(bytes, 1, 2))
+    lengths := []
+    pos := 3
+    while pos + 3 <= bytes.Length {
+        AhkTest.AssertEqual(0xFF, bytes[pos])
+        marker := bytes[pos + 1]
+        pos += 2
+        if marker = 0xD9 || (marker >= 0xD0 && marker <= 0xD7)
+            continue
+        length := PillowTestReadBe16(bytes, pos)
+        if marker = 0xC4
+            lengths.Push(length - 2)
+        pos += length
+        if marker = 0xDA
+            break
+    }
+    return lengths
+}
+
+PillowTestJpegZigzagIndexes() {
+    return [
+        0, 1, 8, 16, 9, 2, 3, 10,
+        17, 24, 32, 25, 18, 11, 4, 5,
+        12, 19, 26, 33, 40, 48, 41, 34,
+        27, 20, 13, 6, 7, 14, 21, 28,
+        35, 42, 49, 56, 57, 50, 43, 36,
+        29, 22, 15, 23, 30, 37, 44, 51,
+        58, 59, 52, 45, 38, 31, 39, 46,
+        53, 60, 61, 54, 47, 55, 62, 63,
+    ]
+}
+
+PillowTestScaleJpegQTable(values, quality) {
+    if quality = -1
+        return values.Clone()
+    q := quality = -1 ? 75 : Max(1, Min(quality, 100))
+    scale := q < 50 ? Floor(5000 / q) : 200 - q * 2
+    out := []
+    for value in values {
+        scaled := Floor((value * scale + 50) / 100)
+        out.Push(Max(1, Min(scaled, 255)))
+    }
+    return out
+}
+
+PillowTestExpectedJpegDqtPayload(values, quality) {
+    scaled := PillowTestScaleJpegQTable(values, quality)
+    zigzag := PillowTestJpegZigzagIndexes()
+    out := []
+    for naturalIndex in zigzag
+        out.Push(scaled[naturalIndex + 1])
+    return out
+}
+
+PillowTestReadJpegDqtPayloads(path) {
+    bytes := PillowTestReadFileBytes(path)
+    AhkTest.AssertTrue(bytes.Length >= 4)
+    AhkTest.AssertEqual([0xFF, 0xD8], PillowTestArraySlice(bytes, 1, 2))
+    payloads := []
+    pos := 3
+    while pos + 3 <= bytes.Length {
+        AhkTest.AssertEqual(0xFF, bytes[pos])
+        marker := bytes[pos + 1]
+        pos += 2
+        if marker = 0xD9 || (marker >= 0xD0 && marker <= 0xD7)
+            continue
+        length := PillowTestReadBe16(bytes, pos)
+        payloadStart := pos + 2
+        payloadLength := length - 2
+        if marker = 0xDB {
+            offset := 0
+            while offset < payloadLength {
+                info := bytes[payloadStart + offset]
+                precision := info >> 4
+                tableId := info & 0x0F
+                AhkTest.AssertEqual(0, precision)
+                values := PillowTestArraySlice(bytes, payloadStart + offset + 1, payloadStart + offset + 64)
+                payloads.Push({ TableId: tableId, Values: values })
+                offset += 65
+            }
+        }
+        pos += length
+        if marker = 0xDA
+            break
+    }
+    return payloads
+}
+
+PillowTestCountJpegSos(path) {
+    bytes := PillowTestReadFileBytes(path)
+    count := 0
+    loop bytes.Length - 1 {
+        if bytes[A_Index] = 0xFF && bytes[A_Index + 1] = 0xDA
+            count += 1
+    }
+    return count
+}
+
+PillowTestReadJpegSosHeaders(path) {
+    bytes := PillowTestReadFileBytes(path)
+    AhkTest.AssertTrue(bytes.Length >= 4)
+    AhkTest.AssertEqual([0xFF, 0xD8], PillowTestArraySlice(bytes, 1, 2))
+    headers := []
+    pos := 3
+    while pos + 3 <= bytes.Length {
+        if bytes[pos] != 0xFF {
+            while pos < bytes.Length {
+                if bytes[pos] = 0xFF && bytes[pos + 1] != 0x00
+                    break
+                pos += 1
+            }
+            continue
+        }
+        marker := bytes[pos + 1]
+        pos += 2
+        if marker = 0xD9
+            break
+        if marker = 0x01 || (marker >= 0xD0 && marker <= 0xD7)
+            continue
+        length := PillowTestReadBe16(bytes, pos)
+        payloadStart := pos + 2
+        if marker = 0xDA {
+            componentCount := bytes[payloadStart]
+            AhkTest.AssertTrue(componentCount >= 1)
+            selector := bytes[payloadStart + 2]
+            spectralStart := bytes[payloadStart + 1 + (componentCount * 2)]
+            spectralEnd := bytes[payloadStart + 2 + (componentCount * 2)]
+            approximation := bytes[payloadStart + 3 + (componentCount * 2)]
+            headers.Push([
+                componentCount,
+                bytes[payloadStart + 1],
+                selector >> 4,
+                selector & 0x0F,
+                spectralStart,
+                spectralEnd,
+                approximation >> 4,
+                approximation & 0x0F
+            ])
+        }
+        pos += length
+    }
+    return headers
+}
+
+PillowTestReadJpegSosComponentHeaders(path) {
+    bytes := PillowTestReadFileBytes(path)
+    AhkTest.AssertTrue(bytes.Length >= 4)
+    AhkTest.AssertEqual([0xFF, 0xD8], PillowTestArraySlice(bytes, 1, 2))
+    headers := []
+    pos := 3
+    while pos + 3 <= bytes.Length {
+        if bytes[pos] != 0xFF {
+            while pos < bytes.Length {
+                if bytes[pos] = 0xFF && bytes[pos + 1] != 0x00
+                    break
+                pos += 1
+            }
+            continue
+        }
+        marker := bytes[pos + 1]
+        pos += 2
+        if marker = 0xD9
+            break
+        if marker = 0x01 || (marker >= 0xD0 && marker <= 0xD7)
+            continue
+        length := PillowTestReadBe16(bytes, pos)
+        payloadStart := pos + 2
+        if marker = 0xDA {
+            componentCount := bytes[payloadStart]
+            row := []
+            spectralStart := bytes[payloadStart + 1 + (componentCount * 2)]
+            spectralEnd := bytes[payloadStart + 2 + (componentCount * 2)]
+            approximation := bytes[payloadStart + 3 + (componentCount * 2)]
+            row.Push(spectralStart)
+            row.Push(spectralEnd)
+            row.Push(approximation >> 4)
+            row.Push(approximation & 0x0F)
+            row.Push(componentCount)
+            componentPos := payloadStart + 1
+            loop componentCount {
+                selector := bytes[componentPos + 1]
+                row.Push(bytes[componentPos])
+                row.Push(selector >> 4)
+                row.Push(selector & 0x0F)
+                componentPos += 2
+            }
+            headers.Push(row)
+        }
+        pos += length
+    }
+    return headers
+}
+
 PillowTestExifOrientationSegment(orientation) {
     return [
         0xFF, 0xE1, 0x00, 0x22,
@@ -444,6 +1361,111 @@ PillowTestWriteJpegWithExifOrientation(sourcePath, targetPath, orientation) {
     loop bytes.Length - 2
         out.Push(bytes[A_Index + 2])
     PillowTestWriteFileBytes(targetPath, out)
+}
+
+PillowTestTiffLWithOrientationBytes(orientation) {
+    bytes := [
+        73, 73, 42, 0, 8, 0, 0, 0, 10, 0,
+        0, 1, 4, 0, 1, 0, 0, 0, 2, 0, 0, 0,
+        1, 1, 4, 0, 1, 0, 0, 0, 3, 0, 0, 0,
+        2, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0,
+        3, 1, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0,
+        6, 1, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0,
+        17, 1, 4, 0, 1, 0, 0, 0, 134, 0, 0, 0,
+        18, 1, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0,
+        22, 1, 4, 0, 1, 0, 0, 0, 3, 0, 0, 0,
+        23, 1, 4, 0, 1, 0, 0, 0, 6, 0, 0, 0,
+        28, 1, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0,
+        0, 0, 0, 0,
+        10, 20, 30, 40, 50, 60,
+    ]
+    bytes[91] := orientation & 0xFF
+    bytes[92] := (orientation >> 8) & 0xFF
+    return bytes
+}
+
+PillowTestTiffLWithOrientationOneBytes() {
+    return PillowTestTiffLWithOrientationBytes(1)
+}
+
+PillowTestTiffLWithOrientationThreeBytes() {
+    return PillowTestTiffLWithOrientationBytes(3)
+}
+
+PillowTestTiffNumericFAdobeDeflateBytes() {
+    return [
+        73, 73, 42, 0, 24, 0, 0, 0, 120, 156, 99, 96, 56, 176, 159, 1, 12, 4, 28, 0,
+        14, 163, 1, 208, 10, 0, 0, 1, 3, 0, 1, 0, 0, 0, 3, 0, 0, 0, 1, 1,
+        3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 1, 3, 0, 1, 0, 0, 0, 32, 0,
+        0, 0, 3, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0, 6, 1, 3, 0, 1, 0,
+        0, 0, 1, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 8, 0, 0, 0, 22, 1,
+        3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 23, 1, 4, 0, 1, 0, 0, 0, 16, 0,
+        0, 0, 28, 1, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 83, 1, 3, 0, 1, 0,
+        0, 0, 3, 0, 0, 0, 0, 0, 0, 0
+    ]
+}
+
+PillowTestTiffLWithOrientationSixBytes() {
+    return PillowTestTiffLWithOrientationBytes(6)
+}
+
+PillowTestTiffLWithOrientationEightBytes() {
+    return PillowTestTiffLWithOrientationBytes(8)
+}
+
+PillowTestTiffLWithCommonAsciiTagsBytes() {
+    descriptionOffset := 194
+    makeOffset := 200
+    modelOffset := 206
+    softwareOffset := 214
+    dateTimeOffset := 224
+    pixelOffset := 244
+    entries := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 3],
+        [258, 3, 1, 8],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [270, 2, 5, descriptionOffset],
+        [271, 2, 5, makeOffset],
+        [272, 2, 7, modelOffset],
+        [273, 4, 1, pixelOffset],
+        [274, 3, 1, 1],
+        [278, 4, 1, 3],
+        [279, 4, 1, 6],
+        [284, 3, 1, 1],
+        [305, 2, 9, softwareOffset],
+        [306, 2, 20, dateTimeOffset],
+    ]
+    bytes := [73, 73, 42, 0]
+    PillowTestAppendLe32(bytes, 8)
+    PillowTestAppendLe16(bytes, entries.Length)
+    for entry in entries {
+        PillowTestAppendLe16(bytes, entry[1])
+        PillowTestAppendLe16(bytes, entry[2])
+        PillowTestAppendLe32(bytes, entry[3])
+        PillowTestAppendLe32(bytes, entry[4])
+    }
+    PillowTestAppendLe32(bytes, 0)
+    while bytes.Length < descriptionOffset
+        bytes.Push(0)
+    PillowTestAppendAsciiZ(bytes, "desc", true)
+    while bytes.Length < makeOffset
+        bytes.Push(0)
+    PillowTestAppendAsciiZ(bytes, "ACME", true)
+    while bytes.Length < modelOffset
+        bytes.Push(0)
+    PillowTestAppendAsciiZ(bytes, "MODEL1", true)
+    while bytes.Length < softwareOffset
+        bytes.Push(0)
+    PillowTestAppendAsciiZ(bytes, "pillow-c", true)
+    while bytes.Length < dateTimeOffset
+        bytes.Push(0)
+    PillowTestAppendAsciiZ(bytes, "2026:07:03 12:34:56", false)
+    while bytes.Length < pixelOffset
+        bytes.Push(0)
+    bytes.Push(10, 20, 30, 40, 50, 60)
+    return bytes
 }
 
 PillowTestTempBmpPath(name) {
@@ -486,8 +1508,23 @@ PillowTestTempIcoPath(name) {
     return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) ".ico"
 }
 
+PillowTestTempCurPath(name) {
+    return A_Temp "\pillow-ahk-" name "-" A_TickCount "-" Random(1, 1000000) ".cur"
+}
+
 PillowTestDeleteFile(path) {
     try FileDelete path
+}
+
+PillowTestWriteCurFromIco(path, curPath, hotspotX, hotspotY) {
+    bytes := PillowTestReadFileBytes(path)
+    bytes[3] := 2
+    bytes[4] := 0
+    bytes[11] := hotspotX & 0xff
+    bytes[12] := (hotspotX >> 8) & 0xff
+    bytes[13] := hotspotY & 0xff
+    bytes[14] := (hotspotY >> 8) & 0xff
+    PillowTestWriteFileBytes(curPath, bytes)
 }
 
 PillowTestIcoRgbaFixtureBytes() {
@@ -504,6 +1541,12 @@ PillowTestIcoRgbaFixtureBytes() {
 AhkTest.Test("Pillow facade exposes native ABI version", (*) => (
     Pillow.Configure({ DllPath: PillowTestDllPath() }),
     AhkTest.AssertEqual([0, 1, 0], Pillow.AbiVersion())
+))
+
+AhkTest.Test("Pillow facade keeps native DLL loaded across calls", (*) => (
+    Pillow.Configure({ DllPath: PillowTestDllPath() }),
+    Pillow.AbiVersion(),
+    AhkTest.AssertTrue(DllCall("kernel32\GetModuleHandleW", "Str", PillowTestDllPath(), "Ptr") != 0)
 ))
 
 PillowTestImageModeHelpersMatchPillowModeTable(*) {
@@ -768,6 +1811,793 @@ PillowTestImageOpsExifTransposeAppliesJpegOrientation(*) {
 }
 
 AhkTest.Test("Pillow ImageOps.exif_transpose applies JPEG EXIF orientation", PillowTestImageOpsExifTransposeAppliesJpegOrientation)
+
+PillowTestImageGetExifObjectSavesOrientationToJpegAndPng(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    plainPath := PillowTestTempJpegPath("getexif-plain")
+    exifPath := PillowTestTempJpegPath("getexif-source")
+    jpegPath := PillowTestTempJpegPath("getexif-save")
+    pngPath := PillowTestTempPngPath("getexif-save")
+    opened := 0
+    jpegLoaded := 0
+    pngLoaded := 0
+    try {
+        source.Save(plainPath, "JPEG")
+        PillowTestWriteJpegWithExifOrientation(plainPath, exifPath, 6)
+
+        opened := Pillow.Image.Open(exifPath, ["JPEG"])
+        exif := opened.GetExif()
+        AhkTest.AssertEqual(1, exif.Length)
+        AhkTest.AssertTrue(exif.Has(274))
+        AhkTest.AssertEqual(6, exif[274])
+        AhkTest.AssertEqual(6, exif.Get(274))
+
+        exif[274] := 3
+        AhkTest.AssertEqual(
+            [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 3, 0, 0, 0, 0, 0, 0],
+            PillowTestBufferToArray(exif.ToBytes())
+        )
+
+        opened.Save(jpegPath, "JPEG", { exif: exif })
+        jpegLoaded := Pillow.Image.Open(jpegPath, ["JPEG"])
+        AhkTest.AssertEqual(3, jpegLoaded.ExifOrientation())
+        AhkTest.AssertEqual(3, jpegLoaded.getexif()[274])
+
+        opened.Save(pngPath, "PNG", { exif: exif })
+        pngLoaded := Pillow.Image.Open(pngPath, ["PNG"])
+        AhkTest.AssertEqual(3, pngLoaded.ExifOrientation())
+        AhkTest.AssertEqual(3, pngLoaded.getexif()[274])
+    } finally {
+        for image in [pngLoaded, jpegLoaded, opened, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [pngPath, jpegPath, exifPath, plainPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getexif object saves orientation to JPEG and PNG", PillowTestImageGetExifObjectSavesOrientationToJpegAndPng)
+
+PillowTestImageGetExifObjectSavesAsciiMakeToJpegAndPng(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    jpegPath := PillowTestTempJpegPath("getexif-make-save")
+    pngPath := PillowTestTempPngPath("getexif-make-save")
+    jpegLoaded := 0
+    pngLoaded := 0
+    try {
+        exif := Pillow.Image.Exif()
+        exif[271] := "ACME"
+
+        AhkTest.AssertEqual(1, exif.Length)
+        AhkTest.AssertTrue(exif.Has(271))
+        AhkTest.AssertEqual("ACME", exif[271])
+        AhkTest.AssertEqual("ACME", exif.Get(271))
+        AhkTest.AssertEqual("fallback", exif.Get(306, "fallback"))
+        AhkTest.AssertEqual(
+            [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 15, 0, 2, 0, 0, 0, 5, 0, 0, 0, 26, 0, 0, 0, 0, 65, 67, 77, 69, 0, 0],
+            PillowTestBufferToArray(exif.ToBytes())
+        )
+
+        source.Save(jpegPath, "JPEG", { exif: exif })
+        source.Save(pngPath, "PNG", { exif: exif })
+
+        jpegLoaded := Pillow.Image.Open(jpegPath, ["JPEG"])
+        pngLoaded := Pillow.Image.Open(pngPath, ["PNG"])
+        jpegExif := jpegLoaded.getexif()
+        pngExif := pngLoaded.GetExif()
+
+        AhkTest.AssertEqual(1, jpegExif.Length)
+        AhkTest.AssertTrue(jpegExif.Has(271))
+        AhkTest.AssertEqual("ACME", jpegExif[271])
+        AhkTest.AssertEqual("ACME", pngExif.Get(271))
+        AhkTest.AssertEqual("fallback", pngExif.Get(274, "fallback"))
+    } finally {
+        for image in [pngLoaded, jpegLoaded, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [pngPath, jpegPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getexif object saves ASCII Make to JPEG and PNG", PillowTestImageGetExifObjectSavesAsciiMakeToJpegAndPng)
+
+PillowTestImageGetExifObjectSavesCommonAsciiTagsToJpegAndPng(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    jpegPath := PillowTestTempJpegPath("getexif-common-ascii-save")
+    pngPath := PillowTestTempPngPath("getexif-common-ascii-save")
+    jpegLoaded := 0
+    pngLoaded := 0
+    try {
+        exif := Pillow.Image.Exif()
+        exif[271] := "ACME"
+        exif[272] := "MODEL1"
+        exif[305] := "pillow-c"
+        exif[306] := "2026:06:28 12:34:56"
+
+        AhkTest.AssertEqual(4, exif.Length)
+        AhkTest.AssertEqual("MODEL1", exif[272])
+        AhkTest.AssertEqual("pillow-c", exif.Get(305))
+        AhkTest.AssertEqual("2026:06:28 12:34:56", exif.Get(306))
+        AhkTest.AssertEqual(
+            [
+                69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 4,
+                1, 15, 0, 2, 0, 0, 0, 5, 0, 0, 0, 62, 1, 16, 0, 2,
+                0, 0, 0, 7, 0, 0, 0, 68, 1, 49, 0, 2, 0, 0, 0, 9,
+                0, 0, 0, 76, 1, 50, 0, 2, 0, 0, 0, 20, 0, 0, 0, 86,
+                0, 0, 0, 0, 65, 67, 77, 69, 0, 0, 77, 79, 68, 69, 76, 49,
+                0, 0, 112, 105, 108, 108, 111, 119, 45, 99, 0, 0, 50, 48, 50, 54,
+                58, 48, 54, 58, 50, 56, 32, 49, 50, 58, 51, 52, 58, 53, 54, 0
+            ],
+            PillowTestBufferToArray(exif.ToBytes())
+        )
+
+        source.Save(jpegPath, "JPEG", { exif: exif })
+        source.Save(pngPath, "PNG", { exif: exif })
+
+        jpegLoaded := Pillow.Image.Open(jpegPath, ["JPEG"])
+        pngLoaded := Pillow.Image.Open(pngPath, ["PNG"])
+        jpegExif := jpegLoaded.getexif()
+        pngExif := pngLoaded.GetExif()
+
+        AhkTest.AssertEqual(4, jpegExif.Length)
+        AhkTest.AssertEqual("ACME", jpegExif[271])
+        AhkTest.AssertEqual("MODEL1", jpegExif[272])
+        AhkTest.AssertEqual("pillow-c", jpegExif[305])
+        AhkTest.AssertEqual("2026:06:28 12:34:56", jpegExif[306])
+        AhkTest.AssertEqual(4, pngExif.Length)
+        AhkTest.AssertEqual("ACME", pngExif[271])
+        AhkTest.AssertEqual("MODEL1", pngExif[272])
+        AhkTest.AssertEqual("pillow-c", pngExif[305])
+        AhkTest.AssertEqual("2026:06:28 12:34:56", pngExif[306])
+    } finally {
+        for image in [pngLoaded, jpegLoaded, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [pngPath, jpegPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getexif object saves common ASCII tags to JPEG and PNG", PillowTestImageGetExifObjectSavesCommonAsciiTagsToJpegAndPng)
+
+PillowTestImageGetExifObjectSavesScalarIntTagsToJpegAndPng(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    jpegPath := PillowTestTempJpegPath("getexif-int-save")
+    pngPath := PillowTestTempPngPath("getexif-int-save")
+    jpegLoaded := 0
+    pngLoaded := 0
+    try {
+        exif := Pillow.Image.Exif()
+        exif[256] := 123
+        exif[257] := 45
+        exif[271] := "ACME"
+        exif[272] := "MODEL1"
+        exif[296] := 2
+        exif[305] := "pillow-c"
+        exif[306] := "2026:06:28 12:34:56"
+        exif[531] := 1
+
+        AhkTest.AssertEqual(8, exif.Length)
+        AhkTest.AssertEqual(123, exif[256])
+        AhkTest.AssertEqual(45, exif.Get(257))
+        AhkTest.AssertEqual(2, exif.Get(296))
+        AhkTest.AssertEqual(1, exif[531])
+        AhkTest.AssertEqual(
+            [
+                69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 8,
+                1, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 123, 1, 1, 0, 4,
+                0, 0, 0, 1, 0, 0, 0, 45, 1, 15, 0, 2, 0, 0, 0, 5,
+                0, 0, 0, 110, 1, 16, 0, 2, 0, 0, 0, 7, 0, 0, 0, 116,
+                1, 40, 0, 3, 0, 0, 0, 1, 0, 2, 0, 0, 1, 49, 0, 2,
+                0, 0, 0, 9, 0, 0, 0, 124, 1, 50, 0, 2, 0, 0, 0, 20,
+                0, 0, 0, 134, 2, 19, 0, 3, 0, 0, 0, 1, 0, 1, 0, 0,
+                0, 0, 0, 0, 65, 67, 77, 69, 0, 0, 77, 79, 68, 69, 76, 49,
+                0, 0, 112, 105, 108, 108, 111, 119, 45, 99, 0, 0, 50, 48, 50, 54,
+                58, 48, 54, 58, 50, 56, 32, 49, 50, 58, 51, 52, 58, 53, 54, 0
+            ],
+            PillowTestBufferToArray(exif.ToBytes())
+        )
+
+        source.Save(jpegPath, "JPEG", { exif: exif })
+        source.Save(pngPath, "PNG", { exif: exif })
+
+        jpegLoaded := Pillow.Image.Open(jpegPath, ["JPEG"])
+        pngLoaded := Pillow.Image.Open(pngPath, ["PNG"])
+        jpegExif := jpegLoaded.getexif()
+        pngExif := pngLoaded.GetExif()
+
+        AhkTest.AssertEqual(8, jpegExif.Length)
+        AhkTest.AssertEqual(123, jpegExif[256])
+        AhkTest.AssertEqual(45, jpegExif[257])
+        AhkTest.AssertEqual("ACME", jpegExif[271])
+        AhkTest.AssertEqual("MODEL1", jpegExif[272])
+        AhkTest.AssertEqual(2, jpegExif[296])
+        AhkTest.AssertEqual("pillow-c", jpegExif[305])
+        AhkTest.AssertEqual("2026:06:28 12:34:56", jpegExif[306])
+        AhkTest.AssertEqual(1, jpegExif[531])
+        AhkTest.AssertEqual(123, pngExif[256])
+        AhkTest.AssertEqual(45, pngExif[257])
+        AhkTest.AssertEqual("ACME", pngExif[271])
+        AhkTest.AssertEqual("MODEL1", pngExif[272])
+        AhkTest.AssertEqual(2, pngExif[296])
+        AhkTest.AssertEqual("pillow-c", pngExif[305])
+        AhkTest.AssertEqual("2026:06:28 12:34:56", pngExif[306])
+        AhkTest.AssertEqual(1, pngExif[531])
+    } finally {
+        for image in [pngLoaded, jpegLoaded, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [pngPath, jpegPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getexif object saves scalar int tags to JPEG and PNG", PillowTestImageGetExifObjectSavesScalarIntTagsToJpegAndPng)
+
+PillowTestImageGetExifObjectSavesRationalTagsToJpegAndPng(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    jpegPath := PillowTestTempJpegPath("getexif-rational-save")
+    pngPath := PillowTestTempPngPath("getexif-rational-save")
+    jpegLoaded := 0
+    pngLoaded := 0
+    try {
+        exif := Pillow.Image.Exif()
+        exif[256] := 123
+        exif[271] := "ACME"
+        exif[282] := [145, 2]
+        exif[283] := [300, 1]
+        exif[296] := 2
+        exif[305] := "pillow-c"
+        exif[306] := "2026:06:28 12:34:56"
+        exif[531] := 1
+
+        AhkTest.AssertEqual(8, exif.Length)
+        AhkTest.AssertEqual([145, 2], exif[282])
+        AhkTest.AssertEqual([300, 1], exif.Get(283))
+        AhkTest.AssertEqual(
+            [
+                69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 8,
+                1, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 123, 1, 15, 0, 2,
+                0, 0, 0, 5, 0, 0, 0, 110, 1, 26, 0, 5, 0, 0, 0, 1,
+                0, 0, 0, 116, 1, 27, 0, 5, 0, 0, 0, 1, 0, 0, 0, 124,
+                1, 40, 0, 3, 0, 0, 0, 1, 0, 2, 0, 0, 1, 49, 0, 2,
+                0, 0, 0, 9, 0, 0, 0, 132, 1, 50, 0, 2, 0, 0, 0, 20,
+                0, 0, 0, 142, 2, 19, 0, 3, 0, 0, 0, 1, 0, 1, 0, 0,
+                0, 0, 0, 0, 65, 67, 77, 69, 0, 0, 0, 0, 0, 145, 0, 0,
+                0, 2, 0, 0, 1, 44, 0, 0, 0, 1, 112, 105, 108, 108, 111, 119,
+                45, 99, 0, 0, 50, 48, 50, 54, 58, 48, 54, 58, 50, 56, 32, 49,
+                50, 58, 51, 52, 58, 53, 54, 0
+            ],
+            PillowTestBufferToArray(exif.ToBytes())
+        )
+
+        source.Save(jpegPath, "JPEG", { exif: exif })
+        source.Save(pngPath, "PNG", { exif: exif })
+
+        jpegLoaded := Pillow.Image.Open(jpegPath, ["JPEG"])
+        pngLoaded := Pillow.Image.Open(pngPath, ["PNG"])
+        jpegExif := jpegLoaded.getexif()
+        pngExif := pngLoaded.GetExif()
+
+        AhkTest.AssertEqual(8, jpegExif.Length)
+        AhkTest.AssertEqual(123, jpegExif[256])
+        AhkTest.AssertEqual("ACME", jpegExif[271])
+        AhkTest.AssertEqual([145, 2], jpegExif[282])
+        AhkTest.AssertEqual([300, 1], jpegExif[283])
+        AhkTest.AssertEqual(2, jpegExif[296])
+        AhkTest.AssertEqual("pillow-c", jpegExif[305])
+        AhkTest.AssertEqual("2026:06:28 12:34:56", jpegExif[306])
+        AhkTest.AssertEqual(1, jpegExif[531])
+        AhkTest.AssertEqual([145, 2], pngExif[282])
+        AhkTest.AssertEqual([300, 1], pngExif[283])
+    } finally {
+        for image in [pngLoaded, jpegLoaded, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [pngPath, jpegPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getexif object saves rational tags to JPEG and PNG", PillowTestImageGetExifObjectSavesRationalTagsToJpegAndPng)
+
+PillowTestImageGetExifObjectSavesShortArrayTagsToJpegAndPng(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    jpegPath := PillowTestTempJpegPath("getexif-short-array-save")
+    pngPath := PillowTestTempPngPath("getexif-short-array-save")
+    jpegLoaded := 0
+    pngLoaded := 0
+    try {
+        exif := Pillow.Image.Exif()
+        exif[256] := 123
+        exif[271] := "ACME"
+        exif[282] := [145, 2]
+        exif[283] := [300, 1]
+        exif[296] := 2
+        exif[305] := "pillow-c"
+        exif[306] := "2026:06:28 12:34:56"
+        exif[530] := [2, 1]
+        exif[531] := 1
+
+        AhkTest.AssertEqual(9, exif.Length)
+        AhkTest.AssertEqual([2, 1], exif[530])
+        AhkTest.AssertEqual(
+            [
+                69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 9,
+                1, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 123, 1, 15, 0, 2,
+                0, 0, 0, 5, 0, 0, 0, 122, 1, 26, 0, 5, 0, 0, 0, 1,
+                0, 0, 0, 128, 1, 27, 0, 5, 0, 0, 0, 1, 0, 0, 0, 136,
+                1, 40, 0, 3, 0, 0, 0, 1, 0, 2, 0, 0, 1, 49, 0, 2,
+                0, 0, 0, 9, 0, 0, 0, 144, 1, 50, 0, 2, 0, 0, 0, 20,
+                0, 0, 0, 154, 2, 18, 0, 3, 0, 0, 0, 2, 0, 2, 0, 1,
+                2, 19, 0, 3, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0,
+                65, 67, 77, 69, 0, 0, 0, 0, 0, 145, 0, 0, 0, 2, 0, 0,
+                1, 44, 0, 0, 0, 1, 112, 105, 108, 108, 111, 119, 45, 99,
+                0, 0, 50, 48, 50, 54, 58, 48, 54, 58, 50, 56, 32, 49,
+                50, 58, 51, 52, 58, 53, 54, 0
+            ],
+            PillowTestBufferToArray(exif.ToBytes())
+        )
+
+        source.Save(jpegPath, "JPEG", { exif: exif })
+        source.Save(pngPath, "PNG", { exif: exif })
+
+        jpegLoaded := Pillow.Image.Open(jpegPath, ["JPEG"])
+        pngLoaded := Pillow.Image.Open(pngPath, ["PNG"])
+        jpegExif := jpegLoaded.getexif()
+        pngExif := pngLoaded.GetExif()
+
+        AhkTest.AssertEqual(9, jpegExif.Length)
+        AhkTest.AssertEqual([2, 1], jpegExif[530])
+        AhkTest.AssertEqual(1, jpegExif[531])
+        AhkTest.AssertEqual([2, 1], pngExif[530])
+    } finally {
+        for image in [pngLoaded, jpegLoaded, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [pngPath, jpegPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getexif object saves short array tags to JPEG and PNG", PillowTestImageGetExifObjectSavesShortArrayTagsToJpegAndPng)
+
+PillowTestImageGetExifObjectSavesByteArrayTagsToJpegAndPng(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    jpegPath := PillowTestTempJpegPath("getexif-byte-array-save")
+    pngPath := PillowTestTempPngPath("getexif-byte-array-save")
+    jpegLoaded := 0
+    pngLoaded := 0
+    try {
+        xpTitle := PillowTestBuffer([72, 0, 105, 0, 0, 0])
+        exif := Pillow.Image.Exif()
+        exif[256] := 123
+        exif[271] := "ACME"
+        exif[282] := [145, 2]
+        exif[283] := [300, 1]
+        exif[296] := 2
+        exif[305] := "pillow-c"
+        exif[306] := "2026:06:28 12:34:56"
+        exif[530] := [2, 1]
+        exif[531] := 1
+        exif[40091] := xpTitle
+
+        AhkTest.AssertEqual(10, exif.Length)
+        AhkTest.AssertEqual([72, 0, 105, 0, 0, 0], PillowTestBufferToArray(exif[40091]))
+        AhkTest.AssertEqual(
+            [
+                69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 10,
+                1, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 123, 1, 15, 0, 2,
+                0, 0, 0, 5, 0, 0, 0, 134, 1, 26, 0, 5, 0, 0, 0, 1,
+                0, 0, 0, 140, 1, 27, 0, 5, 0, 0, 0, 1, 0, 0, 0, 148,
+                1, 40, 0, 3, 0, 0, 0, 1, 0, 2, 0, 0, 1, 49, 0, 2,
+                0, 0, 0, 9, 0, 0, 0, 156, 1, 50, 0, 2, 0, 0, 0, 20,
+                0, 0, 0, 166, 2, 18, 0, 3, 0, 0, 0, 2, 0, 2, 0, 1,
+                2, 19, 0, 3, 0, 0, 0, 1, 0, 1, 0, 0, 156, 155, 0, 1,
+                0, 0, 0, 6, 0, 0, 0, 186, 0, 0, 0, 0, 65, 67, 77, 69,
+                0, 0, 0, 0, 0, 145, 0, 0, 0, 2, 0, 0, 1, 44, 0, 0,
+                0, 1, 112, 105, 108, 108, 111, 119, 45, 99, 0, 0, 50, 48, 50, 54,
+                58, 48, 54, 58, 50, 56, 32, 49, 50, 58, 51, 52, 58, 53, 54, 0,
+                72, 0, 105, 0, 0, 0
+            ],
+            PillowTestBufferToArray(exif.ToBytes())
+        )
+
+        source.Save(jpegPath, "JPEG", { exif: exif })
+        source.Save(pngPath, "PNG", { exif: exif })
+
+        jpegLoaded := Pillow.Image.Open(jpegPath, ["JPEG"])
+        pngLoaded := Pillow.Image.Open(pngPath, ["PNG"])
+        jpegExif := jpegLoaded.getexif()
+        pngExif := pngLoaded.GetExif()
+
+        AhkTest.AssertEqual(10, jpegExif.Length)
+        AhkTest.AssertEqual([72, 0, 105, 0, 0, 0], PillowTestBufferToArray(jpegExif[40091]))
+        AhkTest.AssertEqual([2, 1], jpegExif[530])
+        AhkTest.AssertEqual([72, 0, 105, 0, 0, 0], PillowTestBufferToArray(pngExif[40091]))
+    } finally {
+        for image in [pngLoaded, jpegLoaded, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [pngPath, jpegPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getexif object saves byte array tags to JPEG and PNG", PillowTestImageGetExifObjectSavesByteArrayTagsToJpegAndPng)
+
+PillowTestImageGetExifObjectSavesUserCommentBytesToJpegAndPng(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    jpegPath := PillowTestTempJpegPath("getexif-user-comment-save")
+    pngPath := PillowTestTempPngPath("getexif-user-comment-save")
+    jpegLoaded := 0
+    pngLoaded := 0
+    try {
+        userComment := PillowTestBuffer([99, 111, 109, 109, 101, 110, 116])
+        exif := Pillow.Image.Exif()
+        exif[256] := 123
+        exif[271] := "ACME"
+        exif[282] := [145, 2]
+        exif[283] := [300, 1]
+        exif[296] := 2
+        exif[305] := "pillow-c"
+        exif[306] := "2026:06:28 12:34:56"
+        exif[530] := [2, 1]
+        exif[531] := 1
+        exif[36864] := PillowTestBuffer([48, 50, 51, 48])
+        exif[37380] := [-1, 2]
+        exif[37510] := userComment
+        exif[40091] := PillowTestBuffer([72, 0, 105, 0, 0, 0])
+
+        AhkTest.AssertEqual(13, exif.Length)
+        AhkTest.AssertEqual([99, 111, 109, 109, 101, 110, 116], PillowTestBufferToArray(exif[37510]))
+        AhkTest.AssertEqual(
+            [
+                69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 13,
+                1, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 123, 1, 15, 0, 2,
+                0, 0, 0, 5, 0, 0, 0, 170, 1, 26, 0, 5, 0, 0, 0, 1,
+                0, 0, 0, 176, 1, 27, 0, 5, 0, 0, 0, 1, 0, 0, 0, 184,
+                1, 40, 0, 3, 0, 0, 0, 1, 0, 2, 0, 0, 1, 49, 0, 2,
+                0, 0, 0, 9, 0, 0, 0, 192, 1, 50, 0, 2, 0, 0, 0, 20,
+                0, 0, 0, 202, 2, 18, 0, 3, 0, 0, 0, 2, 0, 2, 0, 1,
+                2, 19, 0, 3, 0, 0, 0, 1, 0, 1, 0, 0, 144, 0, 0, 7,
+                0, 0, 0, 4, 48, 50, 51, 48, 146, 4, 0, 10, 0, 0, 0, 1,
+                0, 0, 0, 222, 146, 134, 0, 1, 0, 0, 0, 7, 0, 0, 0, 230,
+                156, 155, 0, 1, 0, 0, 0, 6, 0, 0, 0, 238, 0, 0, 0, 0,
+                65, 67, 77, 69, 0, 0, 0, 0, 0, 145, 0, 0, 0, 2, 0, 0,
+                1, 44, 0, 0, 0, 1, 112, 105, 108, 108, 111, 119, 45, 99,
+                0, 0, 50, 48, 50, 54, 58, 48, 54, 58, 50, 56, 32, 49,
+                50, 58, 51, 52, 58, 53, 54, 0, 255, 255, 255, 255, 0, 0,
+                0, 2, 99, 111, 109, 109, 101, 110, 116, 0, 72, 0, 105, 0,
+                0, 0
+            ],
+            PillowTestBufferToArray(exif.ToBytes())
+        )
+
+        source.Save(jpegPath, "JPEG", { exif: exif })
+        source.Save(pngPath, "PNG", { exif: exif })
+
+        jpegLoaded := Pillow.Image.Open(jpegPath, ["JPEG"])
+        pngLoaded := Pillow.Image.Open(pngPath, ["PNG"])
+        jpegExif := jpegLoaded.getexif()
+        pngExif := pngLoaded.GetExif()
+
+        AhkTest.AssertEqual(13, jpegExif.Length)
+        AhkTest.AssertEqual([99, 111, 109, 109, 101, 110, 116], PillowTestBufferToArray(jpegExif[37510]))
+        AhkTest.AssertEqual([99, 111, 109, 109, 101, 110, 116], PillowTestBufferToArray(pngExif[37510]))
+        AhkTest.AssertEqual([48, 50, 51, 48], PillowTestBufferToArray(jpegExif[36864]))
+    } finally {
+        for image in [pngLoaded, jpegLoaded, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [pngPath, jpegPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getexif object saves UserComment bytes to JPEG and PNG", PillowTestImageGetExifObjectSavesUserCommentBytesToJpegAndPng)
+
+PillowTestImageGetExifObjectSavesSignedRationalTagsToJpegAndPng(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    jpegPath := PillowTestTempJpegPath("getexif-signed-rational-save")
+    pngPath := PillowTestTempPngPath("getexif-signed-rational-save")
+    jpegLoaded := 0
+    pngLoaded := 0
+    try {
+        exif := Pillow.Image.Exif()
+        exif[256] := 123
+        exif[271] := "ACME"
+        exif[282] := [145, 2]
+        exif[283] := [300, 1]
+        exif[296] := 2
+        exif[305] := "pillow-c"
+        exif[306] := "2026:06:28 12:34:56"
+        exif[530] := [2, 1]
+        exif[531] := 1
+        exif[37380] := [-1, 2]
+        exif[40091] := PillowTestBuffer([72, 0, 105, 0, 0, 0])
+
+        AhkTest.AssertEqual(11, exif.Length)
+        AhkTest.AssertEqual([-1, 2], exif[37380])
+        AhkTest.AssertEqual(
+            [
+                69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 11,
+                1, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 123, 1, 15, 0, 2,
+                0, 0, 0, 5, 0, 0, 0, 146, 1, 26, 0, 5, 0, 0, 0, 1,
+                0, 0, 0, 152, 1, 27, 0, 5, 0, 0, 0, 1, 0, 0, 0, 160,
+                1, 40, 0, 3, 0, 0, 0, 1, 0, 2, 0, 0, 1, 49, 0, 2,
+                0, 0, 0, 9, 0, 0, 0, 168, 1, 50, 0, 2, 0, 0, 0, 20,
+                0, 0, 0, 178, 2, 18, 0, 3, 0, 0, 0, 2, 0, 2, 0, 1,
+                2, 19, 0, 3, 0, 0, 0, 1, 0, 1, 0, 0, 146, 4, 0, 10,
+                0, 0, 0, 1, 0, 0, 0, 198, 156, 155, 0, 1, 0, 0, 0, 6,
+                0, 0, 0, 206, 0, 0, 0, 0, 65, 67, 77, 69, 0, 0, 0, 0,
+                0, 145, 0, 0, 0, 2, 0, 0, 1, 44, 0, 0, 0, 1, 112, 105,
+                108, 108, 111, 119, 45, 99, 0, 0, 50, 48, 50, 54, 58, 48, 54, 58,
+                50, 56, 32, 49, 50, 58, 51, 52, 58, 53, 54, 0, 255, 255, 255, 255,
+                0, 0, 0, 2, 72, 0, 105, 0, 0, 0
+            ],
+            PillowTestBufferToArray(exif.ToBytes())
+        )
+
+        source.Save(jpegPath, "JPEG", { exif: exif })
+        source.Save(pngPath, "PNG", { exif: exif })
+
+        jpegLoaded := Pillow.Image.Open(jpegPath, ["JPEG"])
+        pngLoaded := Pillow.Image.Open(pngPath, ["PNG"])
+        jpegExif := jpegLoaded.getexif()
+        pngExif := pngLoaded.GetExif()
+
+        AhkTest.AssertEqual(11, jpegExif.Length)
+        AhkTest.AssertEqual([-1, 2], jpegExif[37380])
+        AhkTest.AssertEqual([72, 0, 105, 0, 0, 0], PillowTestBufferToArray(jpegExif[40091]))
+        AhkTest.AssertEqual([-1, 2], pngExif[37380])
+    } finally {
+        for image in [pngLoaded, jpegLoaded, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [pngPath, jpegPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getexif object saves signed rational tags to JPEG and PNG", PillowTestImageGetExifObjectSavesSignedRationalTagsToJpegAndPng)
+
+PillowTestImageGetExifObjectSavesUndefinedTagsToJpegAndPng(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    jpegPath := PillowTestTempJpegPath("getexif-undefined-save")
+    pngPath := PillowTestTempPngPath("getexif-undefined-save")
+    jpegLoaded := 0
+    pngLoaded := 0
+    try {
+        exif := Pillow.Image.Exif()
+        exif[256] := 123
+        exif[271] := "ACME"
+        exif[282] := [145, 2]
+        exif[283] := [300, 1]
+        exif[296] := 2
+        exif[305] := "pillow-c"
+        exif[306] := "2026:06:28 12:34:56"
+        exif[530] := [2, 1]
+        exif[531] := 1
+        exif[36864] := PillowTestBuffer([48, 50, 51, 48])
+        exif[37380] := [-1, 2]
+        exif[40091] := PillowTestBuffer([72, 0, 105, 0, 0, 0])
+
+        AhkTest.AssertEqual(12, exif.Length)
+        AhkTest.AssertEqual([48, 50, 51, 48], PillowTestBufferToArray(exif[36864]))
+        AhkTest.AssertEqual(
+            [
+                69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 12,
+                1, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 123, 1, 15, 0, 2,
+                0, 0, 0, 5, 0, 0, 0, 158, 1, 26, 0, 5, 0, 0, 0, 1,
+                0, 0, 0, 164, 1, 27, 0, 5, 0, 0, 0, 1, 0, 0, 0, 172,
+                1, 40, 0, 3, 0, 0, 0, 1, 0, 2, 0, 0, 1, 49, 0, 2,
+                0, 0, 0, 9, 0, 0, 0, 180, 1, 50, 0, 2, 0, 0, 0, 20,
+                0, 0, 0, 190, 2, 18, 0, 3, 0, 0, 0, 2, 0, 2, 0, 1,
+                2, 19, 0, 3, 0, 0, 0, 1, 0, 1, 0, 0, 144, 0, 0, 7,
+                0, 0, 0, 4, 48, 50, 51, 48, 146, 4, 0, 10, 0, 0, 0, 1,
+                0, 0, 0, 210, 156, 155, 0, 1, 0, 0, 0, 6, 0, 0, 0, 218,
+                0, 0, 0, 0, 65, 67, 77, 69, 0, 0, 0, 0, 0, 145, 0, 0,
+                0, 2, 0, 0, 1, 44, 0, 0, 0, 1, 112, 105, 108, 108, 111, 119,
+                45, 99, 0, 0, 50, 48, 50, 54, 58, 48, 54, 58, 50, 56, 32, 49,
+                50, 58, 51, 52, 58, 53, 54, 0, 255, 255, 255, 255, 0, 0, 0, 2,
+                72, 0, 105, 0, 0, 0
+            ],
+            PillowTestBufferToArray(exif.ToBytes())
+        )
+
+        source.Save(jpegPath, "JPEG", { exif: exif })
+        source.Save(pngPath, "PNG", { exif: exif })
+
+        jpegLoaded := Pillow.Image.Open(jpegPath, ["JPEG"])
+        pngLoaded := Pillow.Image.Open(pngPath, ["PNG"])
+        jpegExif := jpegLoaded.getexif()
+        pngExif := pngLoaded.GetExif()
+
+        AhkTest.AssertEqual(12, jpegExif.Length)
+        AhkTest.AssertEqual([48, 50, 51, 48], PillowTestBufferToArray(jpegExif[36864]))
+        AhkTest.AssertEqual([48, 50, 51, 48], PillowTestBufferToArray(pngExif[36864]))
+        AhkTest.AssertEqual([-1, 2], jpegExif[37380])
+    } finally {
+        for image in [pngLoaded, jpegLoaded, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [pngPath, jpegPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getexif object saves undefined tags to JPEG and PNG", PillowTestImageGetExifObjectSavesUndefinedTagsToJpegAndPng)
+
+PillowTestImageGetExifReadsTiffOrientationOne(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempTiffPath("getexif-orientation-one")
+    loaded := 0
+    try {
+        PillowTestWriteFileBytes(path, PillowTestTiffLWithOrientationOneBytes())
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        exif := loaded.GetExif()
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("L", loaded.Mode)
+        AhkTest.AssertEqual([2, 3], loaded.Size)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(1, loaded.ExifOrientation())
+        AhkTest.AssertEqual(1, exif.Length)
+        AhkTest.AssertTrue(exif.Has(274))
+        AhkTest.AssertEqual(1, exif[274])
+        AhkTest.AssertEqual(1, exif.Get(274))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getexif reads TIFF orientation one metadata", PillowTestImageGetExifReadsTiffOrientationOne)
+
+PillowTestImageGetExifReadsTiffCommonAsciiTags(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempTiffPath("getexif-common-ascii")
+    loaded := 0
+    try {
+        PillowTestWriteFileBytes(path, PillowTestTiffLWithCommonAsciiTagsBytes())
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        exif := loaded.GetExif()
+
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("L", loaded.Mode)
+        AhkTest.AssertEqual([2, 3], loaded.Size)
+        AhkTest.AssertFalse(loaded.Info.Has("exif"))
+        AhkTest.AssertEqual(6, exif.Length)
+        AhkTest.AssertEqual(1, exif[274])
+        AhkTest.AssertEqual("desc", exif[270])
+        AhkTest.AssertEqual("ACME", exif[271])
+        AhkTest.AssertEqual("MODEL1", exif[272])
+        AhkTest.AssertEqual("pillow-c", exif[305])
+        AhkTest.AssertEqual("2026:07:03 12:34:56", exif[306])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getexif reads TIFF common ASCII tags", PillowTestImageGetExifReadsTiffCommonAsciiTags)
+
+PillowTestImageOpenTiffAppliesOrientationThree(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempTiffPath("orientation-three")
+    loaded := 0
+    try {
+        PillowTestWriteFileBytes(path, PillowTestTiffLWithOrientationThreeBytes())
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        exif := loaded.GetExif()
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("L", loaded.Mode)
+        AhkTest.AssertEqual([2, 3], loaded.Size)
+        AhkTest.AssertEqual([60, 50, 40, 30, 20, 10], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(0, loaded.ExifOrientation())
+        AhkTest.AssertEqual(0, exif.Length)
+        AhkTest.AssertFalse(exif.Has(274))
+        AhkTest.AssertEqual("missing", exif.Get(274, "missing"))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open TIFF applies orientation three", PillowTestImageOpenTiffAppliesOrientationThree)
+
+PillowTestImageOpenTiffAppliesOrientationSixEight(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    cases := [
+        { Name: "orientation-six", Bytes: PillowTestTiffLWithOrientationSixBytes(), Expected: [50, 30, 10, 60, 40, 20] },
+        { Name: "orientation-eight", Bytes: PillowTestTiffLWithOrientationEightBytes(), Expected: [20, 40, 60, 10, 30, 50] },
+    ]
+    for testCase in cases {
+        path := PillowTestTempTiffPath(testCase.Name)
+        loaded := 0
+        try {
+            PillowTestWriteFileBytes(path, testCase.Bytes)
+
+            loaded := Pillow.Image.Open(path, ["TIFF"])
+            exif := loaded.GetExif()
+            AhkTest.AssertEqual("TIFF", loaded.Format)
+            AhkTest.AssertEqual("L", loaded.Mode)
+            AhkTest.AssertEqual([3, 2], loaded.Size)
+            AhkTest.AssertEqual(testCase.Expected, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertEqual(0, loaded.ExifOrientation())
+            AhkTest.AssertEqual(0, exif.Length)
+            AhkTest.AssertFalse(exif.Has(274))
+            AhkTest.AssertEqual("missing", exif.Get(274, "missing"))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            PillowTestDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Open TIFF applies orientation six eight", PillowTestImageOpenTiffAppliesOrientationSixEight)
+
+PillowTestImageOpenTiffAppliesOrientationMirrorsTransposes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    cases := [
+        { Name: "orientation-two", Bytes: PillowTestTiffLWithOrientationBytes(2), Size: [2, 3], Expected: [20, 10, 40, 30, 60, 50] },
+        { Name: "orientation-four", Bytes: PillowTestTiffLWithOrientationBytes(4), Size: [2, 3], Expected: [50, 60, 30, 40, 10, 20] },
+        { Name: "orientation-five", Bytes: PillowTestTiffLWithOrientationBytes(5), Size: [3, 2], Expected: [10, 30, 50, 20, 40, 60] },
+        { Name: "orientation-seven", Bytes: PillowTestTiffLWithOrientationBytes(7), Size: [3, 2], Expected: [60, 40, 20, 50, 30, 10] },
+    ]
+    for testCase in cases {
+        path := PillowTestTempTiffPath(testCase.Name)
+        loaded := 0
+        try {
+            PillowTestWriteFileBytes(path, testCase.Bytes)
+
+            loaded := Pillow.Image.Open(path, ["TIFF"])
+            exif := loaded.GetExif()
+            AhkTest.AssertEqual("TIFF", loaded.Format)
+            AhkTest.AssertEqual("L", loaded.Mode)
+            AhkTest.AssertEqual(testCase.Size, loaded.Size)
+            AhkTest.AssertEqual(testCase.Expected, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertEqual(0, loaded.ExifOrientation())
+            AhkTest.AssertEqual(0, exif.Length)
+            AhkTest.AssertFalse(exif.Has(274))
+            AhkTest.AssertEqual("missing", exif.Get(274, "missing"))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            PillowTestDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Open TIFF applies orientation mirrors transposes", PillowTestImageOpenTiffAppliesOrientationMirrorsTransposes)
 
 PillowTestImageNewCreatesModeAwareNativeImage(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -1044,6 +2874,1067 @@ PillowTestImageFromBytesOwnsNativeCopy(*) {
 }
 
 AhkTest.Test("Pillow Image.FromBytes copies caller bytes into native storage", PillowTestImageFromBytesOwnsNativeCopy)
+
+PillowTestImageFromBufferAliasesLUntilFirstWrite(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([1, 2, 3, 4])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 0, 1)
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual([1, 2, 3, 4], PillowTestBufferToArray(image.ToBytes()))
+
+        NumPut("UChar", 99, data, 0)
+        AhkTest.AssertEqual([99, 2, 3, 4], PillowTestBufferToArray(image.ToBytes()))
+
+        image.PutPixel([1, 0], 77)
+        AhkTest.AssertEqual(0, image.ReadOnly)
+        AhkTest.AssertEqual([99, 77, 3, 4], PillowTestBufferToArray(image.ToBytes()))
+
+        NumPut("UChar", 88, data, 0)
+        AhkTest.AssertEqual([99, 77, 3, 4], PillowTestBufferToArray(image.ToBytes()))
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer aliases L buffers until first write", PillowTestImageFromBufferAliasesLUntilFirstWrite)
+
+PillowTestImageFromBufferImageDrawDetachesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        1, 2, 9, 9,
+        3, 4, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+
+        NumPut("UChar", 99, data, 0)
+        AhkTest.AssertEqual([99, 2, 3, 4], PillowTestBufferToArray(image.ToBytes()))
+
+        Pillow.ImageDraw.Draw(image).Rectangle([0, 0, 0, 0], 7)
+        AhkTest.AssertEqual(0, image.ReadOnly)
+        AhkTest.AssertEqual([7, 2, 3, 4], PillowTestBufferToArray(image.ToBytes()))
+
+        NumPut("UChar", 11, data, 0)
+        NumPut("UChar", 22, data, 4)
+        AhkTest.AssertEqual([7, 2, 3, 4], PillowTestBufferToArray(image.ToBytes()))
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer detaches readonly view on ImageDraw write", PillowTestImageFromBufferImageDrawDetachesReadonlyView)
+
+PillowTestImageFromBufferPasteDetachesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        1, 2, 9, 9,
+        3, 4, 8, 8
+    ])
+    colorData := PillowTestBuffer([
+        5, 6, 9, 9,
+        7, 8, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    colorImage := Pillow.Image.FromBuffer("L", [2, 2], colorData, "raw", "L", 4, 1)
+    source := Pillow.Image.FromBytes("L", [1, 1], PillowTestBuffer([7]))
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(1, colorImage.ReadOnly)
+
+        NumPut("UChar", 99, data, 0)
+        AhkTest.AssertEqual([99, 2, 3, 4], PillowTestBufferToArray(image.ToBytes()))
+
+        image.Paste(source, [0, 0])
+        AhkTest.AssertEqual(0, image.ReadOnly)
+        AhkTest.AssertEqual([7, 2, 3, 4], PillowTestBufferToArray(image.ToBytes()))
+
+        NumPut("UChar", 11, data, 0)
+        NumPut("UChar", 22, data, 4)
+        AhkTest.AssertEqual([7, 2, 3, 4], PillowTestBufferToArray(image.ToBytes()))
+
+        NumPut("UChar", 66, colorData, 0)
+        AhkTest.AssertEqual([66, 6, 7, 8], PillowTestBufferToArray(colorImage.ToBytes()))
+
+        colorImage.Paste(4, [0, 0, 1, 1])
+        AhkTest.AssertEqual(0, colorImage.ReadOnly)
+        AhkTest.AssertEqual([4, 6, 7, 8], PillowTestBufferToArray(colorImage.ToBytes()))
+
+        NumPut("UChar", 33, colorData, 0)
+        NumPut("UChar", 44, colorData, 4)
+        AhkTest.AssertEqual([4, 6, 7, 8], PillowTestBufferToArray(colorImage.ToBytes()))
+    } finally {
+        source.Close()
+        colorImage.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer detaches readonly view on Paste write", PillowTestImageFromBufferPasteDetachesReadonlyView)
+
+PillowTestImageFromBufferThumbnailRefreshesAndDetachesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        1, 2, 9, 9,
+        3, 4, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+
+        NumPut("UChar", 99, data, 5)
+        image.Thumbnail([1, 1], Pillow.Resampling.NEAREST, unset)
+        AhkTest.AssertEqual([1, 1], image.Size)
+        AhkTest.AssertEqual(0, image.ReadOnly)
+        AhkTest.AssertEqual([99], PillowTestBufferToArray(image.ToBytes()))
+
+        NumPut("UChar", 77, data, 5)
+        AhkTest.AssertEqual([99], PillowTestBufferToArray(image.ToBytes()))
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer thumbnail refreshes and detaches readonly view", PillowTestImageFromBufferThumbnailRefreshesAndDetachesReadonlyView)
+
+PillowTestImageFromBufferHistogramRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        1, 2, 9, 9,
+        3, 4, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+
+        NumPut("UChar", 99, data, 0)
+        NumPut("UChar", 77, data, 5)
+        hist := image.Histogram()
+        AhkTest.AssertEqual(0, hist[2])
+        AhkTest.AssertEqual(1, hist[3])
+        AhkTest.AssertEqual(1, hist[4])
+        AhkTest.AssertEqual(1, hist[78])
+        AhkTest.AssertEqual(1, hist[100])
+        AhkTest.AssertEqual(1, image.ReadOnly)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer histogram refreshes readonly view", PillowTestImageFromBufferHistogramRefreshesReadonlyView)
+
+PillowTestImageFromBufferGetBboxRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, image.GetBbox())
+
+        NumPut("UChar", 77, data, 1)
+        AhkTest.AssertEqual([1, 0, 2, 1], image.GetBbox())
+        AhkTest.AssertEqual(1, image.ReadOnly)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer getbbox refreshes readonly view", PillowTestImageFromBufferGetBboxRefreshesReadonlyView)
+
+PillowTestImageFromBufferGetProjectionRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual([[0, 0], [0, 0]], image.GetProjection())
+
+        NumPut("UChar", 77, data, 1)
+        AhkTest.AssertEqual([[0, 1], [1, 0]], image.GetProjection())
+        AhkTest.AssertEqual(1, image.ReadOnly)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer getprojection refreshes readonly view", PillowTestImageFromBufferGetProjectionRefreshesReadonlyView)
+
+PillowTestImageFromBufferGetColorsRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        initialColors := image.GetColors()
+        AhkTest.AssertEqual(1, initialColors.Length)
+        AhkTest.AssertEqual([4, 0], PillowTestFindColor(initialColors, 0))
+        AhkTest.AssertEqual(0, PillowTestFindColor(initialColors, 77))
+
+        NumPut("UChar", 77, data, 1)
+        refreshedColors := image.GetColors()
+        AhkTest.AssertEqual(2, refreshedColors.Length)
+        AhkTest.AssertEqual([3, 0], PillowTestFindColor(refreshedColors, 0))
+        AhkTest.AssertEqual([1, 77], PillowTestFindColor(refreshedColors, 77))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer getcolors refreshes readonly view", PillowTestImageFromBufferGetColorsRefreshesReadonlyView)
+
+PillowTestImageFromBufferEntropyRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        PillowTestAssertFloatClose(0.0, image.Entropy())
+
+        NumPut("UChar", 77, data, 1)
+        PillowTestAssertFloatClose(0.8112781244591328, image.Entropy())
+        AhkTest.AssertEqual(1, image.ReadOnly)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer entropy refreshes readonly view", PillowTestImageFromBufferEntropyRefreshesReadonlyView)
+
+PillowTestImageFromBufferGetExtremaRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual([0, 0], image.GetExtrema())
+
+        NumPut("UChar", 77, data, 1)
+        AhkTest.AssertEqual([0, 77], image.GetExtrema())
+        AhkTest.AssertEqual(1, image.ReadOnly)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer getextrema refreshes readonly view", PillowTestImageFromBufferGetExtremaRefreshesReadonlyView)
+
+PillowTestImageFromBufferConvertRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    converted := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        converted := image.Convert("RGB")
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(converted.ToBytes()))
+        converted.Close()
+        converted := 0
+
+        NumPut("UChar", 77, data, 1)
+        converted := image.Convert("RGB")
+        AhkTest.AssertEqual([0, 0, 0, 77, 77, 77, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(converted.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, converted.ReadOnly)
+    } finally {
+        if IsObject(converted)
+            converted.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer convert refreshes readonly view", PillowTestImageFromBufferConvertRefreshesReadonlyView)
+
+PillowTestImageFromBufferGetPixelRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, image.GetPixel([1, 0]))
+
+        NumPut("UChar", 77, data, 1)
+        AhkTest.AssertEqual(77, image.GetPixel([1, 0]))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer getpixel refreshes readonly view", PillowTestImageFromBufferGetPixelRefreshesReadonlyView)
+
+PillowTestImageFromBufferCropRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    cropped := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        cropped := image.Crop([0, 0, 2, 1])
+        AhkTest.AssertEqual([0, 0], PillowTestBufferToArray(cropped.ToBytes()))
+        cropped.Close()
+        cropped := 0
+
+        NumPut("UChar", 77, data, 1)
+        cropped := image.Crop([0, 0, 2, 1])
+        AhkTest.AssertEqual([0, 77], PillowTestBufferToArray(cropped.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, cropped.ReadOnly)
+    } finally {
+        if IsObject(cropped)
+            cropped.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer crop refreshes readonly view", PillowTestImageFromBufferCropRefreshesReadonlyView)
+
+PillowTestImageFromBufferCopyRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    copied := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        copied := image.Copy()
+        AhkTest.AssertEqual([0, 0, 0, 0], PillowTestBufferToArray(copied.ToBytes()))
+        copied.Close()
+        copied := 0
+
+        NumPut("UChar", 77, data, 1)
+        copied := image.Copy()
+        AhkTest.AssertEqual([0, 77, 0, 0], PillowTestBufferToArray(copied.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, copied.ReadOnly)
+    } finally {
+        if IsObject(copied)
+            copied.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer copy refreshes readonly view", PillowTestImageFromBufferCopyRefreshesReadonlyView)
+
+PillowTestImageFromBufferGetChannelRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    channel := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        channel := image.GetChannel(0)
+        AhkTest.AssertEqual([0, 0, 0, 0], PillowTestBufferToArray(channel.ToBytes()))
+        channel.Close()
+        channel := 0
+
+        NumPut("UChar", 77, data, 1)
+        channel := image.GetChannel(0)
+        AhkTest.AssertEqual([0, 77, 0, 0], PillowTestBufferToArray(channel.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, channel.ReadOnly)
+    } finally {
+        if IsObject(channel)
+            channel.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer getchannel refreshes readonly view", PillowTestImageFromBufferGetChannelRefreshesReadonlyView)
+
+PillowTestImageFromBufferSplitRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    bands := []
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+
+        NumPut("UChar", 77, data, 1)
+        bands := image.Split()
+        AhkTest.AssertEqual(1, bands.Length)
+        AhkTest.AssertEqual([0, 77, 0, 0], PillowTestBufferToArray(bands[1].ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, bands[1].ReadOnly)
+    } finally {
+        for band in bands
+            band.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer split refreshes readonly view", PillowTestImageFromBufferSplitRefreshesReadonlyView)
+
+PillowTestImageFromBufferMergeRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    merged := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        merged := Pillow.Image.Merge("RGB", [image, image, image])
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(merged.ToBytes()))
+        merged.Close()
+        merged := 0
+
+        NumPut("UChar", 77, data, 1)
+        merged := Pillow.Image.Merge("RGB", [image, image, image])
+        AhkTest.AssertEqual([0, 0, 0, 77, 77, 77, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(merged.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, merged.ReadOnly)
+    } finally {
+        if IsObject(merged)
+            merged.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer merge refreshes readonly view", PillowTestImageFromBufferMergeRefreshesReadonlyView)
+
+PillowTestImageFromBufferFilterRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    filtered := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+
+        NumPut("UChar", 77, data, 1)
+        filtered := image.Filter(Pillow.ImageFilter.Kernel([3, 3], [0, 0, 0, 0, 1, 0, 0, 0, 0], 1.0, 0.0))
+        AhkTest.AssertEqual([0, 77, 0, 0], PillowTestBufferToArray(filtered.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, filtered.ReadOnly)
+    } finally {
+        if IsObject(filtered)
+            filtered.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer filter refreshes readonly view", PillowTestImageFromBufferFilterRefreshesReadonlyView)
+
+PillowTestImageFromBufferPointRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    pointed := 0
+    pointedMode := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+
+        NumPut("UChar", 77, data, 1)
+        pointed := image.Point(PillowTestMakeIdentityLut(1))
+        AhkTest.AssertEqual([0, 77, 0, 0], PillowTestBufferToArray(pointed.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, pointed.ReadOnly)
+
+        NumPut("UChar", 78, data, 5)
+        pointedMode := image.Point(PillowTestMakeIdentityLut(1), "P")
+        AhkTest.AssertEqual("P", pointedMode.Mode)
+        AhkTest.AssertEqual([0, 77, 0, 78], PillowTestBufferToArray(pointedMode.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, pointedMode.ReadOnly)
+    } finally {
+        if IsObject(pointedMode)
+            pointedMode.Close()
+        if IsObject(pointed)
+            pointed.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer point refreshes readonly view", PillowTestImageFromBufferPointRefreshesReadonlyView)
+
+PillowTestImageFromBufferImageOpsLutRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    inverted := 0
+    posterized := 0
+    solarized := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+
+        NumPut("UChar", 77, data, 1)
+        inverted := Pillow.ImageOps.Invert(image)
+        AhkTest.AssertEqual([255, 178, 255, 255], PillowTestBufferToArray(inverted.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, inverted.ReadOnly)
+
+        NumPut("UChar", 78, data, 5)
+        posterized := Pillow.ImageOps.Posterize(image, 4)
+        AhkTest.AssertEqual([0, 64, 0, 64], PillowTestBufferToArray(posterized.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, posterized.ReadOnly)
+
+        NumPut("UChar", 99, data, 0)
+        solarized := Pillow.ImageOps.Solarize(image, 80)
+        AhkTest.AssertEqual([156, 77, 0, 78], PillowTestBufferToArray(solarized.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, solarized.ReadOnly)
+    } finally {
+        for output in [solarized, posterized, inverted] {
+            if IsObject(output)
+                output.Close()
+        }
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer ImageOps LUT transforms refresh readonly view", PillowTestImageFromBufferImageOpsLutRefreshesReadonlyView)
+
+PillowTestWriteImageOpsHistogramRefreshSourceData(data) {
+    loop 400 {
+        value := A_Index <= 300 ? 0 : A_Index <= 350 ? 128 : 255
+        NumPut("UChar", value, data, A_Index - 1)
+    }
+}
+
+PillowTestWriteImageOpsHistogramRefreshMaskData(data) {
+    loop 400 {
+        value := A_Index > 300 ? 255 : 0
+        NumPut("UChar", value, data, A_Index - 1)
+    }
+}
+
+PillowTestImageFromBufferImageOpsHistogramRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := Buffer(400, 0)
+    maskData := Buffer(400, 0)
+    image := Pillow.Image.FromBuffer("L", [400, 1], data, "raw", "L", 400, 1)
+    mask := Pillow.Image.FromBuffer("L", [400, 1], maskData, "raw", "L", 400, 1)
+    equalized := 0
+    autocontrasted := 0
+    maskedAutocontrasted := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(1, mask.ReadOnly)
+
+        PillowTestWriteImageOpsHistogramRefreshSourceData(data)
+        PillowTestWriteImageOpsHistogramRefreshMaskData(maskData)
+        equalized := Pillow.ImageOps.Equalize(image)
+        autocontrasted := Pillow.ImageOps.Autocontrast(image)
+        maskedAutocontrasted := Pillow.ImageOps.Autocontrast(image, , , mask)
+
+        PillowFacadeTestAssertSamples(PillowTestBufferToArray(equalized.ToBytes()), [1, 300, 301, 350, 351, 400], [0, 0, 255, 255, 255, 255])
+        PillowFacadeTestAssertSamples(PillowTestBufferToArray(autocontrasted.ToBytes()), [1, 300, 301, 350, 351, 400], [0, 0, 128, 128, 255, 255])
+        PillowFacadeTestAssertSamples(PillowTestBufferToArray(maskedAutocontrasted.ToBytes()), [1, 300, 301, 350, 351, 400], [0, 0, 0, 0, 255, 255])
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(1, mask.ReadOnly)
+        AhkTest.AssertEqual(0, equalized.ReadOnly)
+        AhkTest.AssertEqual(0, autocontrasted.ReadOnly)
+        AhkTest.AssertEqual(0, maskedAutocontrasted.ReadOnly)
+    } finally {
+        for output in [maskedAutocontrasted, autocontrasted, equalized, mask, image] {
+            if IsObject(output)
+                output.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer ImageOps histogram transforms refresh readonly views", PillowTestImageFromBufferImageOpsHistogramRefreshesReadonlyView)
+
+PillowTestWriteTransposeRefreshSourceData(data) {
+    values := [1, 2, 3, 99, 4, 5, 6, 88]
+    loop values.Length
+        NumPut("UChar", values[A_Index], data, A_Index - 1)
+}
+
+PillowTestImageFromBufferTransposeRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 0, 99,
+        0, 0, 0, 88
+    ])
+    image := Pillow.Image.FromBuffer("L", [3, 2], data, "raw", "L", 4, 1)
+    transposed := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+
+        PillowTestWriteTransposeRefreshSourceData(data)
+        AhkTest.AssertEqual([1, 2, 3, 99, 4, 5, 6, 88], PillowTestBufferToArray(data))
+        transposed := image.Transpose(Pillow.Transpose.ROTATE_90)
+
+        AhkTest.AssertEqual("L", transposed.Mode)
+        AhkTest.AssertEqual([2, 3], transposed.Size)
+        AhkTest.AssertEqual([3, 6, 2, 5, 1, 4], PillowTestBufferToArray(transposed.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, transposed.ReadOnly)
+    } finally {
+        if IsObject(transposed)
+            transposed.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer Transpose refreshes readonly view", PillowTestImageFromBufferTransposeRefreshesReadonlyView)
+
+PillowTestImageFromBufferImageChopsRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    unaryData := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    leftData := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    rightData := PillowTestBuffer([
+        10, 10, 9, 9,
+        10, 10, 8, 8
+    ])
+    unary := Pillow.Image.FromBuffer("L", [2, 2], unaryData, "raw", "L", 4, 1)
+    left := Pillow.Image.FromBuffer("L", [2, 2], leftData, "raw", "L", 4, 1)
+    right := Pillow.Image.FromBuffer("L", [2, 2], rightData, "raw", "L", 4, 1)
+    inverted := 0
+    difference := 0
+    multiplied := 0
+    try {
+        AhkTest.AssertEqual(1, unary.ReadOnly)
+        AhkTest.AssertEqual(1, left.ReadOnly)
+        AhkTest.AssertEqual(1, right.ReadOnly)
+
+        NumPut("UChar", 77, unaryData, 1)
+        inverted := Pillow.ImageChops.Invert(unary)
+        AhkTest.AssertEqual([255, 178, 255, 255], PillowTestBufferToArray(inverted.ToBytes()))
+        AhkTest.AssertEqual(1, unary.ReadOnly)
+        AhkTest.AssertEqual(0, inverted.ReadOnly)
+
+        NumPut("UChar", 77, leftData, 1)
+        NumPut("UChar", 19, rightData, 5)
+        difference := Pillow.ImageChops.Difference(left, right)
+        AhkTest.AssertEqual([10, 67, 10, 19], PillowTestBufferToArray(difference.ToBytes()))
+        AhkTest.AssertEqual(1, left.ReadOnly)
+        AhkTest.AssertEqual(1, right.ReadOnly)
+        AhkTest.AssertEqual(0, difference.ReadOnly)
+
+        multiplied := Pillow.ImageChops.Multiply(left, right)
+        AhkTest.AssertEqual([0, 3, 0, 0], PillowTestBufferToArray(multiplied.ToBytes()))
+        AhkTest.AssertEqual(1, left.ReadOnly)
+        AhkTest.AssertEqual(1, right.ReadOnly)
+        AhkTest.AssertEqual(0, multiplied.ReadOnly)
+    } finally {
+        for output in [multiplied, difference, inverted, right, left, unary] {
+            if IsObject(output)
+                output.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer ImageChops refreshes readonly views", PillowTestImageFromBufferImageChopsRefreshesReadonlyView)
+
+PillowTestImageFromBufferBlendCompositeRefreshesReadonlyViews(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    blendLeftData := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    blendRightData := PillowTestBuffer([
+        100, 100, 9, 9,
+        100, 100, 8, 8
+    ])
+    compLeftData := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    compRightData := PillowTestBuffer([
+        100, 100, 9, 9,
+        100, 100, 8, 8
+    ])
+    maskData := PillowTestBuffer([
+        0, 0, 9, 9,
+        255, 255, 8, 8
+    ])
+    blendLeft := Pillow.Image.FromBuffer("L", [2, 2], blendLeftData, "raw", "L", 4, 1)
+    blendRight := Pillow.Image.FromBuffer("L", [2, 2], blendRightData, "raw", "L", 4, 1)
+    compLeft := Pillow.Image.FromBuffer("L", [2, 2], compLeftData, "raw", "L", 4, 1)
+    compRight := Pillow.Image.FromBuffer("L", [2, 2], compRightData, "raw", "L", 4, 1)
+    mask := Pillow.Image.FromBuffer("L", [2, 2], maskData, "raw", "L", 4, 1)
+    blended := 0
+    composited := 0
+    try {
+        AhkTest.AssertEqual(1, blendLeft.ReadOnly)
+        AhkTest.AssertEqual(1, blendRight.ReadOnly)
+        AhkTest.AssertEqual(1, compLeft.ReadOnly)
+        AhkTest.AssertEqual(1, compRight.ReadOnly)
+        AhkTest.AssertEqual(1, mask.ReadOnly)
+
+        NumPut("UChar", 80, blendLeftData, 1)
+        NumPut("UChar", 20, blendRightData, 5)
+        blended := Pillow.Image.Blend(blendLeft, blendRight, 0.25)
+        AhkTest.AssertEqual([25, 85, 25, 5], PillowTestBufferToArray(blended.ToBytes()))
+        AhkTest.AssertEqual(1, blendLeft.ReadOnly)
+        AhkTest.AssertEqual(1, blendRight.ReadOnly)
+        AhkTest.AssertEqual(0, blended.ReadOnly)
+
+        NumPut("UChar", 80, compLeftData, 1)
+        NumPut("UChar", 20, compRightData, 5)
+        NumPut("UChar", 128, maskData, 1)
+        NumPut("UChar", 64, maskData, 4)
+        composited := Pillow.Image.Composite(compLeft, compRight, mask)
+        AhkTest.AssertEqual([100, 90, 75, 0], PillowTestBufferToArray(composited.ToBytes()))
+        AhkTest.AssertEqual(1, compLeft.ReadOnly)
+        AhkTest.AssertEqual(1, compRight.ReadOnly)
+        AhkTest.AssertEqual(1, mask.ReadOnly)
+        AhkTest.AssertEqual(0, composited.ReadOnly)
+    } finally {
+        for output in [composited, blended, mask, compRight, compLeft, blendRight, blendLeft] {
+            if IsObject(output)
+                output.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer Blend and Composite refresh readonly views", PillowTestImageFromBufferBlendCompositeRefreshesReadonlyViews)
+
+PillowTestImageFromBufferImageChopsOffsetRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        0, 0, 9, 9,
+        0, 0, 8, 8
+    ])
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 4, 1)
+    offset := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+
+        NumPut("UChar", 77, data, 1)
+        NumPut("UChar", 33, data, 4)
+        offset := Pillow.ImageChops.Offset(image, 1, 0)
+        AhkTest.AssertEqual([77, 0, 0, 33], PillowTestBufferToArray(offset.ToBytes()))
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual(0, offset.ReadOnly)
+    } finally {
+        for output in [offset, image] {
+            if IsObject(output)
+                output.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer ImageChops.Offset refreshes readonly view", PillowTestImageFromBufferImageChopsOffsetRefreshesReadonlyView)
+
+PillowTestImageFromBufferSavePngRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([1, 2, 3, 4])
+    path := PillowTestTempPngPath("frombuffer-save-refresh")
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 2, 1)
+    loaded := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+
+        NumPut("UChar", 77, data, 0)
+        image.Save(path, "PNG")
+        loaded := Pillow.Image.Open(path)
+
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual("L", loaded.Mode)
+        AhkTest.AssertEqual([77, 2, 3, 4], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer Save PNG refreshes readonly view", PillowTestImageFromBufferSavePngRefreshesReadonlyView)
+
+PillowTestImageFromBufferSaveJpegRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 64
+        values.Push(1)
+    data := PillowTestBuffer(values)
+    path := PillowTestTempJpegPath("frombuffer-save-refresh")
+    image := Pillow.Image.FromBuffer("L", [8, 8], data, "raw", "L", 8, 1)
+    loaded := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+
+        loop 64
+            NumPut("UChar", 200, data, A_Index - 1)
+        image.Save(path, "JPEG", { Quality: 100 })
+        loaded := Pillow.Image.Open(path)
+
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual("L", loaded.Mode)
+        expected := []
+        loop 64
+            expected.Push(200)
+        AhkTest.AssertEqual(expected, PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer Save JPEG refreshes readonly view", PillowTestImageFromBufferSaveJpegRefreshesReadonlyView)
+
+PillowTestImageFromBufferSaveGifRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([1, 2, 3, 4])
+    path := PillowTestTempGifPath("frombuffer-save-refresh")
+    image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 2, 1)
+    loaded := 0
+    loadedL := 0
+    try {
+        AhkTest.AssertEqual(1, image.ReadOnly)
+
+        NumPut("UChar", 77, data, 0)
+        image.Save(path, "GIF")
+        loaded := Pillow.Image.Open(path)
+        loadedL := loaded.Convert("L")
+
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual([77, 2, 3, 4], PillowTestBufferToArray(loadedL.ToBytes()))
+    } finally {
+        for item in [loadedL, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer Save GIF refreshes readonly view", PillowTestImageFromBufferSaveGifRefreshesReadonlyView)
+
+PillowTestImageFromBufferSaveOtherFormatsRefreshesReadonlyView(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    cases := [
+        { Format: "BMP", Path: PillowTestTempBmpPath("frombuffer-save-refresh") },
+        { Format: "TIFF", Path: PillowTestTempTiffPath("frombuffer-save-refresh") },
+        { Format: "PPM", Path: PillowTestTempPpmPath("frombuffer-save-refresh", "pgm") },
+        { Format: "TGA", Path: PillowTestTempTgaPath("frombuffer-save-refresh") },
+    ]
+
+    for item in cases {
+        data := PillowTestBuffer([1, 2, 3, 4])
+        image := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 2, 1)
+        loaded := 0
+        try {
+            AhkTest.AssertEqual(1, image.ReadOnly)
+
+            NumPut("UChar", 77, data, 0)
+            image.Save(item.Path, item.Format)
+            loaded := Pillow.Image.Open(item.Path)
+
+            AhkTest.AssertEqual(1, image.ReadOnly)
+            AhkTest.AssertEqual("L", loaded.Mode)
+            AhkTest.AssertEqual([77, 2, 3, 4], PillowTestBufferToArray(loaded.ToBytes()))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            image.Close()
+            PillowTestDeleteFile(item.Path)
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer remaining Saves refresh readonly view", PillowTestImageFromBufferSaveOtherFormatsRefreshesReadonlyView)
+
+PillowTestImageFromBufferRawMapModesOverrideRequestedMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    lData := PillowTestBuffer([1, 2, 3, 4])
+    rgbaData := PillowTestBuffer([
+        10, 20, 30, 40, 50, 60, 70, 80,
+        90, 100, 110, 120, 130, 140, 150, 160
+    ])
+    lImage := 0
+    rgbaImage := 0
+    try {
+        lImage := Pillow.Image.FromBuffer("RGB", [2, 2], lData, "raw", "L", 0, 1)
+        AhkTest.AssertEqual("L", lImage.Mode)
+        AhkTest.AssertEqual(1, lImage.ReadOnly)
+        AhkTest.AssertEqual([1, 2, 3, 4], PillowTestBufferToArray(lImage.ToBytes()))
+
+        NumPut("UChar", 99, lData, 0)
+        AhkTest.AssertEqual([99, 2, 3, 4], PillowTestBufferToArray(lImage.ToBytes()))
+
+        rgbaImage := Pillow.Image.FromBuffer("RGB", [2, 2], rgbaData, "raw", "RGBA", 0, 1)
+        AhkTest.AssertEqual("RGBA", rgbaImage.Mode)
+        AhkTest.AssertEqual(1, rgbaImage.ReadOnly)
+        AhkTest.AssertEqual([
+            10, 20, 30, 40, 50, 60, 70, 80,
+            90, 100, 110, 120, 130, 140, 150, 160
+        ], PillowTestBufferToArray(rgbaImage.ToBytes()))
+
+        NumPut("UChar", 77, rgbaData, 4)
+        AhkTest.AssertEqual([
+            10, 20, 30, 40, 77, 60, 70, 80,
+            90, 100, 110, 120, 130, 140, 150, 160
+        ], PillowTestBufferToArray(rgbaImage.ToBytes()))
+    } finally {
+        if IsObject(rgbaImage)
+            rgbaImage.Close()
+        if IsObject(lImage)
+            lImage.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer raw map modes override requested mode", PillowTestImageFromBufferRawMapModesOverrideRequestedMode)
+
+PillowTestImageFromBufferRawRgbxMapModeAliasesUntilWrite(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    data := PillowTestBuffer([
+        1, 2, 3, 4, 5, 6, 7, 8, 99, 98,
+        9, 10, 11, 12, 13, 14, 15, 16, 97, 96
+    ])
+    image := 0
+    try {
+        image := Pillow.Image.FromBuffer("RGB", [2, 2], data, "raw", "RGBX", 10, -1)
+        AhkTest.AssertEqual("RGBX", image.Mode)
+        AhkTest.AssertEqual(["R", "G", "B", "X"], image.GetBands())
+        AhkTest.AssertEqual(1, image.ReadOnly)
+        AhkTest.AssertEqual([
+            9, 10, 11, 12, 13, 14, 15, 16,
+            1, 2, 3, 4, 5, 6, 7, 8
+        ], PillowTestBufferToArray(image.ToBytes()))
+
+        NumPut("UChar", 77, data, 0)
+        NumPut("UChar", 66, data, 10)
+        AhkTest.AssertEqual([
+            66, 10, 11, 12, 13, 14, 15, 16,
+            77, 2, 3, 4, 5, 6, 7, 8
+        ], PillowTestBufferToArray(image.ToBytes()))
+
+        image.PutPixel([0, 0], [30, 31, 32, 33])
+        AhkTest.AssertEqual(0, image.ReadOnly)
+        AhkTest.AssertEqual([
+            30, 31, 32, 33, 13, 14, 15, 16,
+            77, 2, 3, 4, 5, 6, 7, 8
+        ], PillowTestBufferToArray(image.ToBytes()))
+
+        NumPut("UChar", 55, data, 10)
+        AhkTest.AssertEqual([
+            30, 31, 32, 33, 13, 14, 15, 16,
+            77, 2, 3, 4, 5, 6, 7, 8
+        ], PillowTestBufferToArray(image.ToBytes()))
+    } finally {
+        if IsObject(image)
+            image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer raw RGBX map mode aliases source until write", PillowTestImageFromBufferRawRgbxMapModeAliasesUntilWrite)
+
+PillowTestImageFromBufferRgbCopyAndRgbaStrideAlias(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgbData := PillowTestBuffer([
+        1, 2, 3, 4, 5, 6,
+        7, 8, 9, 10, 11, 12
+    ])
+    rgbaData := PillowTestBuffer([
+        1, 2, 3, 4, 5, 6, 7, 8, 99, 98,
+        9, 10, 11, 12, 13, 14, 15, 16, 97, 96
+    ])
+    rgbImage := 0
+    rgbaImage := 0
+    try {
+        rgbImage := Pillow.Image.FromBuffer("RGB", [2, 2], rgbData, "raw", "RGB", 0, 1)
+        AhkTest.AssertEqual("RGB", rgbImage.Mode)
+        AhkTest.AssertEqual(0, rgbImage.ReadOnly)
+        AhkTest.AssertEqual([
+            1, 2, 3, 4, 5, 6,
+            7, 8, 9, 10, 11, 12
+        ], PillowTestBufferToArray(rgbImage.ToBytes()))
+
+        NumPut("UChar", 77, rgbData, 0)
+        AhkTest.AssertEqual([
+            1, 2, 3, 4, 5, 6,
+            7, 8, 9, 10, 11, 12
+        ], PillowTestBufferToArray(rgbImage.ToBytes()))
+
+        rgbImage.PutPixel([0, 0], [30, 31, 32])
+        AhkTest.AssertEqual(0, rgbImage.ReadOnly)
+        AhkTest.AssertEqual([
+            30, 31, 32, 4, 5, 6,
+            7, 8, 9, 10, 11, 12
+        ], PillowTestBufferToArray(rgbImage.ToBytes()))
+
+        rgbaImage := Pillow.Image.FromBuffer("RGBA", [2, 2], rgbaData, "raw", "RGBA", 10, -1)
+        AhkTest.AssertEqual("RGBA", rgbaImage.Mode)
+        AhkTest.AssertEqual(1, rgbaImage.ReadOnly)
+        AhkTest.AssertEqual([
+            9, 10, 11, 12, 13, 14, 15, 16,
+            1, 2, 3, 4, 5, 6, 7, 8
+        ], PillowTestBufferToArray(rgbaImage.ToBytes()))
+
+        NumPut("UChar", 77, rgbaData, 0)
+        NumPut("UChar", 66, rgbaData, 10)
+        AhkTest.AssertEqual([
+            66, 10, 11, 12, 13, 14, 15, 16,
+            77, 2, 3, 4, 5, 6, 7, 8
+        ], PillowTestBufferToArray(rgbaImage.ToBytes()))
+
+        rgbaImage.PutPixel([0, 0], [30, 31, 32, 33])
+        AhkTest.AssertEqual(0, rgbaImage.ReadOnly)
+        AhkTest.AssertEqual([
+            30, 31, 32, 33, 13, 14, 15, 16,
+            77, 2, 3, 4, 5, 6, 7, 8
+        ], PillowTestBufferToArray(rgbaImage.ToBytes()))
+
+        NumPut("UChar", 44, rgbaData, 10)
+        AhkTest.AssertEqual([
+            30, 31, 32, 33, 13, 14, 15, 16,
+            77, 2, 3, 4, 5, 6, 7, 8
+        ], PillowTestBufferToArray(rgbaImage.ToBytes()))
+    } finally {
+        if IsObject(rgbaImage)
+            rgbaImage.Close()
+        if IsObject(rgbImage)
+            rgbImage.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.FromBuffer RGB copies while RGBA stride aliases", PillowTestImageFromBufferRgbCopyAndRgbaStrideAlias)
 
 PillowTestImageSaveAndOpenBmpUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -1843,6 +4734,202 @@ PillowTestImageOpenIcoUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Open supports ICO through native path", PillowTestImageOpenIcoUsesNativePath)
 
+PillowTestImageOpenIcoSizeSetterLoadsRequestedFrame(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    base := Pillow.Image.New("RGBA", [32, 32], [255, 0, 0, 255])
+    small := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])
+    medium := Pillow.Image.New("RGBA", [24, 24], [0, 0, 255, 255])
+    path := PillowTestTempIcoPath("open-size-setter")
+    loaded := 0
+    try {
+        base.Save(path, "ICO", { AppendImages: [small, medium] })
+        loaded := Pillow.Image.Open(path)
+        AhkTest.AssertEqual([32, 32], loaded.Size)
+
+        loaded.Size := [16, 16]
+        loaded.Load()
+
+        AhkTest.AssertEqual([16, 16], loaded.Size)
+        AhkTest.AssertEqual([0, 255, 0, 255], PillowTestArraySlice(PillowTestBufferToArray(loaded.ToBytes()), 1, 4))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        medium.Close()
+        small.Close()
+        base.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open ICO size setter loads requested frame", PillowTestImageOpenIcoSizeSetterLoadsRequestedFrame)
+
+PillowTestImageOpenIcoGetImageReturnsRequestedOrLargestFrame(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    base := Pillow.Image.New("RGBA", [32, 32], [255, 0, 0, 255])
+    small := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])
+    medium := Pillow.Image.New("RGBA", [24, 24], [0, 0, 255, 255])
+    path := PillowTestTempIcoPath("open-ico-getimage")
+    loaded := 0
+    requested := 0
+    fallback := 0
+    try {
+        base.Save(path, "ICO", { AppendImages: [small, medium] })
+        loaded := Pillow.Image.Open(path)
+
+        AhkTest.AssertEqual([[16, 16], [24, 24], [32, 32]], loaded.ico.sizes())
+        requested := loaded.ico.getimage([16, 16])
+        fallback := loaded.ico.getimage([18, 18])
+
+        AhkTest.AssertEqual([32, 32], loaded.Size)
+        AhkTest.AssertEqual([16, 16], requested.Size)
+        AhkTest.AssertEqual([0, 255, 0, 255], PillowTestArraySlice(PillowTestBufferToArray(requested.ToBytes()), 1, 4))
+        AhkTest.AssertEqual([32, 32], fallback.Size)
+        AhkTest.AssertEqual([255, 0, 0, 255], PillowTestArraySlice(PillowTestBufferToArray(fallback.ToBytes()), 1, 4))
+    } finally {
+        for item in [fallback, requested, loaded, medium, small, base] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open ICO getimage returns requested or largest frame", PillowTestImageOpenIcoGetImageReturnsRequestedOrLargestFrame)
+
+PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])
+    low := Pillow.Image.New("RGBA", [16, 16], [255, 0, 0, 255])
+    path := PillowTestTempIcoPath("open-duplicate-size-bpp")
+    highPngPath := PillowTestTempPngPath("ico-duplicate-high")
+    lowPngPath := PillowTestTempPngPath("ico-duplicate-low")
+    loaded := 0
+    requested := 0
+    try {
+        high.Save(highPngPath, "PNG")
+        low.Save(lowPngPath, "PNG")
+        PillowTestWriteFileBytes(path, PillowTestDuplicateSizeIcoPngBytes(
+            PillowTestReadFileBytes(lowPngPath),
+            8,
+            PillowTestReadFileBytes(highPngPath),
+            32
+        ))
+
+        loaded := Pillow.Image.Open(path)
+        requested := loaded.ico.getimage([16, 16])
+
+        AhkTest.AssertEqual([[16, 16]], loaded.ico.sizes())
+        AhkTest.AssertEqual([16, 16], loaded.Size)
+        AhkTest.AssertEqual([255, 0, 0, 255], PillowTestArraySlice(PillowTestBufferToArray(loaded.ToBytes()), 1, 4))
+        AhkTest.AssertEqual([16, 16], requested.Size)
+        AhkTest.AssertEqual([255, 0, 0, 255], PillowTestArraySlice(PillowTestBufferToArray(requested.ToBytes()), 1, 4))
+    } finally {
+        for item in [requested, loaded, low, high] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(lowPngPath)
+        PillowTestDeleteFile(highPngPath)
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open ICO chooses Pillow duplicate-size color depth", PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth)
+
+PillowTestImageOpenIcoGetImageExposesEmbeddedPngFormat(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    base := Pillow.Image.New("RGBA", [32, 32], [255, 0, 0, 255])
+    small := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])
+    path := PillowTestTempIcoPath("open-ico-getimage-format")
+    loaded := 0
+    requested := 0
+    fallback := 0
+    try {
+        base.Save(path, "ICO", { AppendImages: [small] })
+        loaded := Pillow.Image.Open(path)
+        requested := loaded.ico.getimage([16, 16])
+        fallback := loaded.ico.getimage([18, 18])
+
+        AhkTest.AssertEqual("ICO", loaded.Format)
+        AhkTest.AssertEqual("PNG", requested.Format)
+        AhkTest.AssertEqual("Portable network graphics", requested.FormatDescription)
+        AhkTest.AssertEqual("PNG", fallback.Format)
+        loaded.Size := [16, 16]
+        loaded.Load()
+        AhkTest.AssertEqual("ICO", loaded.Format)
+    } finally {
+        for item in [fallback, requested, loaded, small, base] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open ICO getimage exposes embedded PNG format", PillowTestImageOpenIcoGetImageExposesEmbeddedPngFormat)
+
+PillowTestImageOpenIcoGetImageExposesDibMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGBA", [16, 16], [1, 2, 3, 4])
+    path := PillowTestTempIcoPath("open-ico-getimage-dib-metadata")
+    loaded := 0
+    requested := 0
+    fallback := 0
+    try {
+        image.Save(path, "ICO", { Sizes: [[16, 16]], BitmapFormat: "bmp" })
+        loaded := Pillow.Image.Open(path)
+        requested := loaded.ico.getimage([16, 16])
+        fallback := loaded.ico.getimage([18, 18])
+
+        AhkTest.AssertEqual("", requested.Format)
+        AhkTest.AssertEqual("", requested.FormatDescription)
+        AhkTest.AssertEqual(0, requested.Info["compression"])
+        PillowTestAssertFloatArrayClose([96.012, 96.012], requested.Info["dpi"], 0.0001)
+
+        AhkTest.AssertEqual("", fallback.Format)
+        AhkTest.AssertEqual(0, fallback.Info["compression"])
+        PillowTestAssertFloatArrayClose([96.012, 96.012], fallback.Info["dpi"], 0.0001)
+    } finally {
+        for item in [fallback, requested, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open ICO getimage exposes DIB metadata", PillowTestImageOpenIcoGetImageExposesDibMetadata)
+
+PillowTestImageOpenCurUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGBA", [16, 16], [10, 20, 30, 255])
+    icoPath := PillowTestTempIcoPath("cur-source")
+    curPath := PillowTestTempCurPath("open-cur")
+    loaded := 0
+    try {
+        image.Save(icoPath, "ICO", { Sizes: [[16, 16]], BitmapFormat: "bmp" })
+        PillowTestWriteCurFromIco(icoPath, curPath, 5, 7)
+
+        loaded := Pillow.Image.Open(curPath)
+
+        AhkTest.AssertEqual("CUR", loaded.Format)
+        AhkTest.AssertEqual("Windows Cursor", loaded.FormatDescription)
+        AhkTest.AssertEqual("RGBA", loaded.Mode)
+        AhkTest.AssertEqual([16, 16], loaded.Size)
+        AhkTest.AssertEqual([10, 20, 30, 255], PillowTestArraySlice(PillowTestBufferToArray(loaded.ToBytes()), 1, 4))
+        AhkTest.AssertEqual(0, loaded.Info["compression"])
+        PillowTestAssertFloatArrayClose([96.012, 96.012], loaded.Info["dpi"], 0.0001)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(curPath)
+        PillowTestDeleteFile(icoPath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open supports CUR through native path", PillowTestImageOpenCurUsesNativePath)
+
 PillowTestImageSaveAndOpenIcoUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("RGBA", [16, 16], [10, 20, 30, 40])
@@ -1910,6 +4997,29 @@ PillowTestImageSaveIcoBitmapFormatBmpUsesDibPayload(*) {
 }
 
 AhkTest.Test("Pillow Image.Save ICO bitmap_format bmp writes DIB payload", PillowTestImageSaveIcoBitmapFormatBmpUsesDibPayload)
+
+PillowTestImageSaveIcoAppendImagesUseExactSourceSizes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    base := Pillow.Image.New("RGBA", [32, 32], [255, 0, 0, 255])
+    small := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])
+    medium := Pillow.Image.New("RGBA", [24, 24], [0, 0, 255, 255])
+    path := PillowTestTempIcoPath("save-append-images")
+    try {
+        base.Save(path, "ICO", { AppendImages: [small, medium] })
+
+        AhkTest.AssertEqual([[16, 16], [24, 24], [32, 32]], PillowTestIcoEntrySizes(path))
+        PillowTestAssertIcoPngEntryFirstPixel(path, 16, 16, [0, 255, 0, 255])
+        PillowTestAssertIcoPngEntryFirstPixel(path, 24, 24, [0, 0, 255, 255])
+        PillowTestAssertIcoPngEntryFirstPixel(path, 32, 32, [255, 0, 0, 255])
+    } finally {
+        medium.Close()
+        small.Close()
+        base.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save ICO append_images uses exact source sizes", PillowTestImageSaveIcoAppendImagesUseExactSourceSizes)
 
 PillowTestImageSaveAndOpenPngUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -1991,6 +5101,106 @@ PillowTestImageOpenTracksFileFormatMetadata(*) {
 }
 
 AhkTest.Test("Pillow Image.Open tracks file format metadata", PillowTestImageOpenTracksFileFormatMetadata)
+
+PillowTestImageFormatDescriptionMatchesPillowFormats(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    created := Pillow.Image.New("RGB", [1, 1])
+    pngPath := PillowTestTempPngPath("format-description")
+    jpegPath := PillowTestTempJpegPath("format-description")
+    gifPath := PillowTestTempGifPath("format-description")
+    png := 0
+    jpeg := 0
+    gif := 0
+    try {
+        try {
+            AhkTest.AssertEqual("", created.FormatDescription)
+            AhkTest.AssertEqual("", created.format_description)
+        } catch Error as err {
+            AhkTest.Fail("Expected Pillow.Image FormatDescription properties: " err.Message)
+        }
+
+        source.Save(pngPath, "PNG")
+        source.Save(jpegPath, "JPEG")
+        source.Save(gifPath, "GIF")
+
+        png := Pillow.Image.Open(pngPath, ["PNG"])
+        jpeg := Pillow.Image.Open(jpegPath, ["JPEG"])
+        gif := Pillow.Image.Open(gifPath, ["GIF"])
+
+        try {
+            AhkTest.AssertEqual("Portable network graphics", png.FormatDescription)
+            AhkTest.AssertEqual("Portable network graphics", png.format_description)
+            AhkTest.AssertEqual("JPEG (ISO 10918)", jpeg.FormatDescription)
+            AhkTest.AssertEqual("Compuserve GIF", gif.FormatDescription)
+        } catch Error as err {
+            AhkTest.Fail("Expected opened images to expose FormatDescription: " err.Message)
+        }
+    } finally {
+        for image in [gif, jpeg, png, created, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(gifPath)
+        PillowTestDeleteFile(jpegPath)
+        PillowTestDeleteFile(pngPath)
+    }
+}
+
+AhkTest.Test("Pillow Image format_description matches Pillow formats", PillowTestImageFormatDescriptionMatchesPillowFormats)
+
+PillowTestImageHasTransparencyDataMatchesPillowAlphaAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.New("RGB", [1, 1], [10, 20, 30])
+    rgba := Pillow.Image.New("RGBA", [1, 1], [10, 20, 30, 255])
+    la := Pillow.Image.New("LA", [1, 1], [10, 255])
+    p := Pillow.Image.New("P", [1, 1])
+    keyedRgb := Pillow.Image.New("RGB", [1, 1], [10, 20, 30])
+    keyedL := Pillow.Image.New("L", [1, 1], 10)
+    try {
+        keyedRgb.Info["transparency"] := [10, 20, 30]
+        keyedL.Info["transparency"] := 10
+        p.Info["transparency"] := 0
+
+        try {
+            AhkTest.AssertFalse(rgb.HasTransparencyData)
+            AhkTest.AssertFalse(rgb.has_transparency_data)
+            AhkTest.AssertTrue(rgba.HasTransparencyData)
+            AhkTest.AssertTrue(rgba.has_transparency_data)
+            AhkTest.AssertTrue(la.HasTransparencyData)
+            AhkTest.AssertTrue(p.HasTransparencyData)
+            AhkTest.AssertTrue(keyedRgb.HasTransparencyData)
+            AhkTest.AssertTrue(keyedL.HasTransparencyData)
+        } catch Error as err {
+            AhkTest.Fail("Expected Pillow.Image has_transparency_data properties: " err.Message)
+        }
+    } finally {
+        for image in [keyedL, keyedRgb, p, la, rgba, rgb] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image has_transparency_data matches alpha modes and transparency info", PillowTestImageHasTransparencyDataMatchesPillowAlphaAndInfo)
+
+PillowTestImageGetChildImagesReturnsEmptyArray(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGB", [1, 1], [1, 2, 3])
+    try {
+        children := image.GetChildImages()
+        snakeChildren := image.get_child_images()
+
+        AhkTest.AssertTrue(children is Array)
+        AhkTest.AssertEqual(0, children.Length)
+        AhkTest.AssertTrue(snakeChildren is Array)
+        AhkTest.AssertEqual(0, snakeChildren.Length)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image get_child_images returns empty array", PillowTestImageGetChildImagesReturnsEmptyArray)
 
 PillowTestImageOpenTriesExplicitFormatCandidates(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -2088,6 +5298,655 @@ PillowTestImageOpenPngPreservesLaAndPaletteModes(*) {
 }
 
 AhkTest.Test("Pillow Image.Open PNG preserves LA and P modes", PillowTestImageOpenPngPreservesLaAndPaletteModes)
+
+PillowTestImageOpenPngExposesPaletteTransparencyInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempPngPath("open-p-trns")
+    image := 0
+    rgba := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            137, 80, 78, 71, 13, 10, 26, 10,
+            0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 2, 0, 0, 0, 2, 2, 3, 0, 0, 0, 15, 216, 229, 183,
+            0, 0, 0, 12, 80, 76, 84, 69, 10, 20, 30, 40, 50, 60, 70, 80,
+            90, 100, 110, 120, 198, 72, 119, 223,
+            0, 0, 0, 2, 116, 82, 78, 83, 255, 0, 229, 183, 48, 74,
+            0, 0, 0, 12, 73, 68, 65, 84, 120, 156, 99, 16, 96, 216, 0, 0,
+            0, 228, 0, 193, 39, 168, 232, 87,
+            0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+
+        image := Pillow.Image.Open(path, ["PNG"])
+        rgba := image.Convert("RGBA")
+
+        AhkTest.AssertEqual("PNG", image.Format)
+        AhkTest.AssertEqual("P", image.Mode)
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertTrue(image.Info.Has("transparency"))
+        AhkTest.AssertEqual(1, image.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 255,
+            40, 50, 60, 0,
+            70, 80, 90, 255,
+            100, 110, 120, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        if IsObject(rgba)
+            rgba.Close()
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open PNG exposes P mode tRNS transparency", PillowTestImageOpenPngExposesPaletteTransparencyInfo)
+
+PillowTestImageOpenPngExposesRgbTransparencyInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempPngPath("open-rgb-trns")
+    image := 0
+    rgba := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            137, 80, 78, 71, 13, 10, 26, 10,
+            0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 2, 0, 0, 0, 1, 8, 2, 0, 0, 0, 123, 64, 232,
+            221, 0, 0, 0, 6, 116, 82, 78, 83, 0, 10, 0, 20, 0, 30, 197,
+            54, 41, 255, 0, 0, 0, 15, 73, 68, 65, 84, 120, 156, 99, 228, 18,
+            145, 147, 147, 147, 3, 0, 1, 218, 0, 152, 212, 131, 110, 233, 0, 0,
+            0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+
+        image := Pillow.Image.Open(path, ["PNG"])
+        rgba := image.Convert("RGBA")
+
+        AhkTest.AssertEqual("PNG", image.Format)
+        AhkTest.AssertEqual("RGB", image.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertTrue(image.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], image.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        if IsObject(rgba)
+            rgba.Close()
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open PNG exposes RGB tRNS transparency", PillowTestImageOpenPngExposesRgbTransparencyInfo)
+
+PillowTestImageOpenPngExposesGrayscaleTransparencyInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempPngPath("open-l-trns")
+    image := 0
+    rgba := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            137, 80, 78, 71, 13, 10, 26, 10,
+            0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 2, 0, 0, 0, 1, 8, 0, 0, 0, 0, 209, 73, 32,
+            86, 0, 0, 0, 2, 116, 82, 78, 83, 0, 10, 150, 70, 36, 38,
+            0, 0, 0, 11, 73, 68, 65, 84, 120, 156, 99, 228, 146, 3,
+            0, 0, 56, 0, 42, 158, 43, 27, 44,
+            0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+
+        image := Pillow.Image.Open(path, ["PNG"])
+        rgba := image.Convert("RGBA")
+
+        AhkTest.AssertEqual("PNG", image.Format)
+        AhkTest.AssertEqual("L", image.Mode)
+        AhkTest.AssertEqual([10, 40], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertTrue(image.Info.Has("transparency"))
+        AhkTest.AssertEqual(10, image.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 10, 10, 0,
+            40, 40, 40, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        if IsObject(rgba)
+            rgba.Close()
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open PNG exposes L mode tRNS transparency", PillowTestImageOpenPngExposesGrayscaleTransparencyInfo)
+
+PillowTestImageOpenPngExposesGammaInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempPngPath("open-gamma")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            137, 80, 78, 71, 13, 10, 26, 10,
+            0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0, 144, 119, 83, 222,
+            0, 0, 0, 4, 103, 65, 77, 65, 0, 0, 177, 143, 11, 252, 97, 5,
+            0, 0, 0, 12, 73, 68, 65, 84, 120, 156, 99, 224, 18, 145, 3, 0,
+            0, 104, 0, 61, 84, 8, 163, 247,
+            0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+
+        image := Pillow.Image.Open(path, ["PNG"])
+
+        AhkTest.AssertEqual("PNG", image.Format)
+        AhkTest.AssertEqual("RGB", image.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertTrue(image.Info.Has("gamma"))
+        PillowTestAssertFloatClose(0.45455, image.Info["gamma"])
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open PNG exposes gamma info", PillowTestImageOpenPngExposesGammaInfo)
+
+PillowTestImageOpenPngExposesTextInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempPngPath("open-text")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            137, 80, 78, 71, 13, 10, 26, 10,
+            0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0, 144, 119, 83, 222,
+            0, 0, 0, 10, 116, 69, 88, 116, 65, 117, 116, 104, 111, 114, 0, 65, 100, 97, 209, 97, 140, 25,
+            0, 0, 0, 12, 73, 68, 65, 84, 120, 156, 99, 224, 18, 145, 3, 0,
+            0, 104, 0, 61, 84, 8, 163, 247,
+            0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+
+        image := Pillow.Image.Open(path, ["PNG"])
+
+        AhkTest.AssertEqual("PNG", image.Format)
+        AhkTest.AssertEqual("RGB", image.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertTrue(image.Info.Has("Author"))
+        AhkTest.AssertEqual("Ada", image.Info["Author"])
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open PNG exposes text info", PillowTestImageOpenPngExposesTextInfo)
+
+PillowTestImageOpenPngExposesITextInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempPngPath("open-itxt")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            137, 80, 78, 71, 13, 10, 26, 10,
+            0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0, 144, 119, 83, 222,
+            0, 0, 0, 22, 105, 84, 88, 116, 67, 111, 109, 109, 101, 110, 116,
+            0, 0, 0, 0, 0, 72, 101, 108, 108, 111, 32, 85, 84, 70, 56, 145,
+            91, 88, 148,
+            0, 0, 0, 12, 73, 68, 65, 84, 120, 156, 99, 224, 18, 145, 3, 0,
+            0, 104, 0, 61, 84, 8, 163, 247,
+            0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+
+        image := Pillow.Image.Open(path, ["PNG"])
+
+        AhkTest.AssertEqual("PNG", image.Format)
+        AhkTest.AssertEqual("RGB", image.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertTrue(image.Info.Has("Comment"))
+        AhkTest.AssertEqual("Hello UTF8", image.Info["Comment"])
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open PNG exposes iTXt info", PillowTestImageOpenPngExposesITextInfo)
+
+PillowTestImageOpenPngExposesZTextInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempPngPath("open-ztxt")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            137, 80, 78, 71, 13, 10, 26, 10,
+            0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0, 0, 0, 58, 126, 155, 85,
+            0, 0, 0, 30, 122, 84, 88, 116, 78, 111, 116, 101, 0, 0,
+            120, 156, 115, 206, 207, 45, 40, 74, 45, 46, 78, 77, 81,
+            200, 72, 205, 201, 201, 7, 0, 53, 106, 6, 74, 54, 33, 46, 116,
+            0, 0, 0, 10, 73, 68, 65, 84, 120, 156, 99, 96, 7, 0, 0, 9,
+            0, 8, 32, 35, 195, 140,
+            0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+
+        image := Pillow.Image.Open(path, ["PNG"])
+
+        AhkTest.AssertEqual("PNG", image.Format)
+        AhkTest.AssertEqual("L", image.Mode)
+        AhkTest.AssertEqual([7], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertTrue(image.Info.Has("Note"))
+        AhkTest.AssertEqual("Compressed hello", image.Info["Note"])
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open PNG exposes zTXt info", PillowTestImageOpenPngExposesZTextInfo)
+
+PillowTestImageOpenPngExposesCompressedITextInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempPngPath("open-compressed-itxt")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            137, 80, 78, 71, 13, 10, 26, 10,
+            0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0, 0, 0, 58, 126, 155, 85,
+            0, 0, 0, 56, 105, 84, 88, 116, 67, 111, 109, 112, 114,
+            101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116,
+            0, 1, 0, 101, 110, 0, 84, 114, 97, 110, 115, 108, 97, 116,
+            101, 100, 0, 120, 156, 139, 202, 44, 80, 200, 72, 205, 201,
+            201, 87, 8, 13, 113, 179, 0, 0, 37, 46, 4, 175, 243, 1, 76, 127,
+            0, 0, 0, 10, 73, 68, 65, 84, 120, 156, 99, 224, 4, 0, 0, 11,
+            0, 10, 195, 43, 238, 146,
+            0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+
+        image := Pillow.Image.Open(path, ["PNG"])
+
+        AhkTest.AssertEqual("PNG", image.Format)
+        AhkTest.AssertEqual("L", image.Mode)
+        AhkTest.AssertEqual([9], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertTrue(image.Info.Has("CompressedComment"))
+        AhkTest.AssertEqual("Zip hello UTF8", image.Info["CompressedComment"])
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open PNG exposes compressed iTXt info", PillowTestImageOpenPngExposesCompressedITextInfo)
+
+PillowTestImageOpenPngExposesDynamicCompressedTextInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempPngPath("open-dynamic-compressed-text")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0, 0, 0, 58, 126, 155,
+            85, 0, 0, 0, 127, 122, 84, 88, 116, 68, 121, 110, 97, 109, 105, 99,
+            78, 111, 116, 101, 0, 0, 120, 1, 5, 193, 219, 9, 0, 32, 8, 5,
+            208, 85, 238, 46, 77, 34, 169, 24, 248, 136, 164, 143, 182, 239, 156, 81,
+            177, 143, 116, 11, 195, 196, 189, 192, 47, 41, 214, 132, 93, 213, 160, 196,
+            168, 216, 71, 186, 133, 97, 226, 94, 224, 151, 20, 107, 194, 174, 106, 80,
+            98, 84, 236, 35, 221, 194, 48, 113, 47, 240, 75, 138, 53, 97, 87, 53,
+            40, 49, 42, 246, 145, 110, 97, 152, 184, 23, 248, 37, 197, 154, 176, 171,
+            26, 148, 24, 21, 251, 72, 183, 48, 76, 220, 11, 252, 146, 98, 77, 216,
+            85, 13, 74, 124, 69, 111, 62, 64, 250, 200, 230, 245, 0, 0, 0, 145,
+            105, 84, 88, 116, 68, 121, 110, 97, 109, 105, 99, 67, 111, 109, 109, 101,
+            110, 116, 0, 1, 0, 101, 110, 0, 84, 114, 97, 110, 115, 108, 97, 116,
+            101, 100, 0, 120, 1, 5, 193, 219, 9, 0, 32, 8, 5, 208, 85, 238,
+            46, 77, 34, 169, 24, 248, 136, 164, 143, 182, 239, 156, 81, 177, 143, 116,
+            11, 195, 196, 189, 192, 47, 41, 214, 132, 93, 213, 160, 196, 168, 216, 71,
+            186, 133, 97, 226, 94, 224, 151, 20, 107, 194, 174, 106, 80, 98, 84, 236,
+            35, 221, 194, 48, 113, 47, 240, 75, 138, 53, 97, 87, 53, 40, 49, 42,
+            246, 145, 110, 97, 152, 184, 23, 248, 37, 197, 154, 176, 171, 26, 148, 24,
+            21, 251, 72, 183, 48, 76, 220, 11, 252, 146, 98, 77, 216, 85, 13, 74,
+            124, 69, 111, 62, 64, 192, 196, 95, 232, 0, 0, 0, 10, 73, 68, 65,
+            84, 120, 156, 99, 96, 7, 0, 0, 9, 0, 8, 32, 35, 195, 140, 0,
+            0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130
+        ])
+
+        image := Pillow.Image.Open(path, ["PNG"])
+        expected := ""
+        Loop 5
+            expected .= "Compressed hello dynamic huffman "
+
+        AhkTest.AssertEqual("PNG", image.Format)
+        AhkTest.AssertEqual("L", image.Mode)
+        AhkTest.AssertEqual([7], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertTrue(image.Info.Has("DynamicNote"))
+        AhkTest.AssertEqual(expected, image.Info["DynamicNote"])
+        AhkTest.AssertTrue(image.Info.Has("DynamicComment"))
+        AhkTest.AssertEqual(expected, image.Info["DynamicComment"])
+        AhkTest.AssertTrue(HasProp(image, "Text"))
+        AhkTest.AssertEqual(expected, image.Text["DynamicNote"])
+        AhkTest.AssertEqual(expected, image.Text["DynamicComment"])
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open PNG exposes dynamic compressed text info", PillowTestImageOpenPngExposesDynamicCompressedTextInfo)
+
+PillowTestImageGetXmpReadsPngAndJpegPackets(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pngPath := PillowTestTempPngPath("getxmp")
+    jpegPath := PillowTestTempJpegPath("getxmp")
+    pngSource := 0
+    jpegSource := 0
+    pngLoaded := 0
+    jpegLoaded := 0
+    plain := 0
+    try {
+        xmp := PillowTestXmpPacket()
+        xmpBytes := PillowTestTextBytes(xmp)
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_itxt("XML:com.adobe.xmp", xmp)
+
+        pngSource := Pillow.Image.New("RGB", [1, 1], [1, 2, 3])
+        jpegSource := Pillow.Image.New("RGB", [1, 1], [1, 2, 3])
+        plain := Pillow.Image.New("RGB", [1, 1], [1, 2, 3])
+        pngSource.Save(pngPath, "PNG", { PngInfo: pngInfo })
+        jpegSource.Save(jpegPath, "JPEG")
+        PillowTestWriteFileBytes(jpegPath, PillowTestInsertJpegXmpApp1(PillowTestReadFileBytes(jpegPath), xmpBytes))
+
+        pngLoaded := Pillow.Image.Open(pngPath, ["PNG"])
+        jpegLoaded := Pillow.Image.Open(jpegPath, ["JPEG"])
+        for image in [pngLoaded, jpegLoaded] {
+            AhkTest.AssertTrue(image.Info.Has("xmp"))
+            AhkTest.AssertTrue(image.Info["xmp"] is Buffer)
+            AhkTest.AssertEqual(xmpBytes, PillowTestBufferToArray(image.Info["xmp"]))
+            parsed := image.getxmp()
+            li := parsed["xmpmeta"]["RDF"]["Description"]["title"]["Alt"]["li"]
+            AhkTest.AssertEqual("x-default", li["lang"])
+            AhkTest.AssertEqual("Hello", li["text"])
+        }
+        AhkTest.AssertEqual(0, plain.getxmp().Count)
+    } finally {
+        if IsObject(jpegLoaded)
+            jpegLoaded.Close()
+        if IsObject(pngLoaded)
+            pngLoaded.Close()
+        if IsObject(plain)
+            plain.Close()
+        if IsObject(jpegSource)
+            jpegSource.Close()
+        if IsObject(pngSource)
+            pngSource.Close()
+        PillowTestDeleteFile(pngPath)
+        PillowTestDeleteFile(jpegPath)
+    }
+}
+
+AhkTest.Test("Pillow Image.getxmp reads PNG and JPEG XMP packets", PillowTestImageGetXmpReadsPngAndJpegPackets)
+
+PillowTestImageGetXmpParsesRepeatedRdfLiSequences(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempPngPath("getxmp-seq")
+    source := 0
+    loaded := 0
+    try {
+        xmp := PillowTestXmpPacketWithCreatorSeq()
+        xmpBytes := PillowTestTextBytes(xmp)
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_itxt("XML:com.adobe.xmp", xmp)
+        source := Pillow.Image.New("RGB", [1, 1], [1, 2, 3])
+        source.Save(path, "PNG", { PngInfo: pngInfo })
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertTrue(loaded.Info.Has("xmp"))
+        AhkTest.AssertEqual(xmpBytes, PillowTestBufferToArray(loaded.Info["xmp"]))
+        parsed := loaded.getxmp()
+        creatorItems := parsed["xmpmeta"]["RDF"]["Description"]["creator"]["Seq"]["li"]
+        AhkTest.AssertTrue(creatorItems is Array)
+        AhkTest.AssertEqual(2, creatorItems.Length)
+        AhkTest.AssertEqual("Ada", creatorItems[1])
+        AhkTest.AssertEqual("Grace", creatorItems[2])
+        titleLi := parsed["xmpmeta"]["RDF"]["Description"]["title"]["Alt"]["li"]
+        AhkTest.AssertEqual("x-default", titleLi["lang"])
+        AhkTest.AssertEqual("Hello", titleLi["text"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        if IsObject(source)
+            source.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.getxmp parses repeated RDF li sequences", PillowTestImageGetXmpParsesRepeatedRdfLiSequences)
+
+PillowTestImageSaveJpegWithXmpOptionRoundTripsPacket(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempJpegPath("save-xmp")
+    source := 0
+    loaded := 0
+    try {
+        xmp := PillowTestXmpPacket()
+        xmpBytes := PillowTestTextBytes(xmp)
+        source := Pillow.Image.New("RGB", [1, 1], [1, 2, 3])
+        source.Save(path, "JPEG", { xmp: PillowTestBuffer(xmpBytes) })
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertTrue(loaded.Info.Has("xmp"))
+        AhkTest.AssertEqual(xmpBytes, PillowTestBufferToArray(loaded.Info["xmp"]))
+        li := loaded.getxmp()["xmpmeta"]["RDF"]["Description"]["title"]["Alt"]["li"]
+        AhkTest.AssertEqual("x-default", li["lang"])
+        AhkTest.AssertEqual("Hello", li["text"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        if IsObject(source)
+            source.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG xmp option round-trips XMP packet", PillowTestImageSaveJpegWithXmpOptionRoundTripsPacket)
+
+PillowTestImageSaveJpegQTablesWithXmpOptionWritesDqtAndXmp(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempJpegPath("qtables-xmp")
+    source := 0
+    loaded := 0
+    try {
+        values := []
+        loop 16 {
+            y := A_Index - 1
+            loop 16 {
+                x := A_Index - 1
+                values.Push(Mod(x * 17 + y * 11, 256))
+                values.Push(Mod(x * 29 + y * 7, 256))
+                values.Push(Mod(x * 5 + y * 37, 256))
+            }
+        }
+        source := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+        lumaQTable := []
+        chromaQTable := []
+        loop 64 {
+            i := A_Index - 1
+            lumaQTable.Push(2 + Mod(i, 8))
+            chromaQTable.Push(3 + Mod(i, 7))
+        }
+        xmp := PillowTestXmpPacket()
+        xmpBytes := PillowTestTextBytes(xmp)
+
+        try {
+            source.Save(path, "JPEG", {
+                quality: 75,
+                qtables: [lumaQTable, chromaQTable],
+                xmp: PillowTestBuffer(xmpBytes)
+            })
+        } catch Error as err {
+            AhkTest.Fail("Expected JPEG qtables xmp save to succeed, got: " err.Message)
+        }
+
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(2, dqtPayloads.Length)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(lumaQTable, 75), dqtPayloads[1].Values)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(chromaQTable, 75), dqtPayloads[2].Values)
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertTrue(loaded.Info.Has("xmp"))
+        AhkTest.AssertEqual(xmpBytes, PillowTestBufferToArray(loaded.Info["xmp"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        if IsObject(source)
+            source.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG qtables and xmp options write DQT and XMP", PillowTestImageSaveJpegQTablesWithXmpOptionWritesDqtAndXmp)
+
+PillowTestImageSaveJpegKeepRgbWithXmpOptionWritesRgbComponentsAndXmp(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempJpegPath("keep-rgb-xmp")
+    source := 0
+    loaded := 0
+    try {
+        values := []
+        loop 16 {
+            y := A_Index - 1
+            loop 16 {
+                x := A_Index - 1
+                values.Push(Mod(x * 17 + y * 11, 256))
+                values.Push(Mod(x * 29 + y * 7, 256))
+                values.Push(Mod(x * 5 + y * 37, 256))
+            }
+        }
+        source := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+        xmp := PillowTestXmpPacket()
+        xmpBytes := PillowTestTextBytes(xmp)
+
+        try {
+            source.Save(path, "JPEG", {
+                quality: 75,
+                keep_rgb: true,
+                xmp: PillowTestBuffer(xmpBytes)
+            })
+        } catch Error as err {
+            AhkTest.Fail("Expected JPEG keep_rgb xmp save to succeed, got: " err.Message)
+        }
+
+        PillowTestAssertJpegKeepRgbMarkers(path, 0xC0, 1)
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertTrue(loaded.Info.Has("xmp"))
+        AhkTest.AssertEqual(xmpBytes, PillowTestBufferToArray(loaded.Info["xmp"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        if IsObject(source)
+            source.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG keep_rgb and xmp options write RGB components and XMP", PillowTestImageSaveJpegKeepRgbWithXmpOptionWritesRgbComponentsAndXmp)
+
+PillowTestImageSaveJpegQTablesKeepRgbWithXmpOptionWritesRgbDqtAndXmp(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempJpegPath("qtables-keep-rgb-xmp")
+    source := 0
+    loaded := 0
+    try {
+        values := []
+        loop 16 {
+            y := A_Index - 1
+            loop 16 {
+                x := A_Index - 1
+                values.Push(Mod(x * 17 + y * 11, 256))
+                values.Push(Mod(x * 29 + y * 7, 256))
+                values.Push(Mod(x * 5 + y * 37, 256))
+            }
+        }
+        source := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+        lumaQTable := []
+        chromaQTable := []
+        loop 64 {
+            i := A_Index - 1
+            lumaQTable.Push(2 + Mod(i, 8))
+            chromaQTable.Push(3 + Mod(i, 7))
+        }
+        xmp := PillowTestXmpPacket()
+        xmpBytes := PillowTestTextBytes(xmp)
+
+        try {
+            source.Save(path, "JPEG", {
+                quality: 75,
+                qtables: [lumaQTable, chromaQTable],
+                keep_rgb: true,
+                xmp: PillowTestBuffer(xmpBytes)
+            })
+        } catch Error as err {
+            AhkTest.Fail("Expected JPEG qtables keep_rgb xmp save to succeed, got: " err.Message)
+        }
+
+        PillowTestAssertJpegKeepRgbMarkers(path, 0xC0, 1, [82, 1, 1, 0, 71, 1, 1, 1, 66, 1, 1, 1])
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(2, dqtPayloads.Length)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(lumaQTable, 75), dqtPayloads[1].Values)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(chromaQTable, 75), dqtPayloads[2].Values)
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertTrue(loaded.Info.Has("xmp"))
+        AhkTest.AssertEqual(xmpBytes, PillowTestBufferToArray(loaded.Info["xmp"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        if IsObject(source)
+            source.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG qtables keep_rgb and xmp options write RGB DQT and XMP", PillowTestImageSaveJpegQTablesKeepRgbWithXmpOptionWritesRgbDqtAndXmp)
+
+PillowTestImageOpenPngDuplicateTextLastValueWins(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempPngPath("open-duplicate-text")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, [
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
+            0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0, 144, 119, 83,
+            222, 0, 0, 0, 10, 116, 69, 88, 116, 65, 117, 116, 104, 111, 114, 0,
+            65, 100, 97, 157, 149, 11, 244, 0, 0, 0, 12, 116, 69, 88, 116, 65,
+            117, 116, 104, 111, 114, 0, 71, 114, 97, 99, 101, 47, 225, 34, 11, 0,
+            0, 0, 12, 73, 68, 65, 84, 120, 156, 99, 224, 18, 145, 3, 0, 0,
+            104, 0, 61, 84, 8, 163, 247, 0, 0, 0, 0, 73, 69, 78, 68, 174,
+            66, 96, 130
+        ])
+
+        image := Pillow.Image.Open(path, ["PNG"])
+
+        AhkTest.AssertEqual("PNG", image.Format)
+        AhkTest.AssertEqual("RGB", image.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(image.ToBytes()))
+        AhkTest.AssertEqual("Grace", image.Info["Author"])
+        AhkTest.AssertTrue(HasProp(image, "Text"))
+        AhkTest.AssertTrue(image.Text is Map)
+        AhkTest.AssertEqual(1, image.Text.Count)
+        AhkTest.AssertEqual("Grace", image.Text["Author"])
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open PNG duplicate text uses last value", PillowTestImageOpenPngDuplicateTextLastValueWins)
 
 PillowTestImageSavePngPreservesLaAndPaletteModes(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -2204,6 +6063,4946 @@ PillowTestImageSavePngDpiOptionUsesNativePath(*) {
 }
 
 AhkTest.Test("Pillow Image.Save PNG dpi option uses native path", PillowTestImageSavePngDpiOptionUsesNativePath)
+
+PillowTestImageSavePngTransparencyOptionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("P", [2, 2], PillowTestBuffer([0, 1, 1, 0]))
+    path := PillowTestTempPngPath("save-p-transparency")
+    loaded := 0
+    rgba := 0
+    try {
+        image.PutPalette([10, 20, 30, 40, 50, 60])
+
+        image.Save(path, "PNG", { transparency: 1 })
+
+        bytes := PillowTestReadFileBytes(path)
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertEqual(2, trns.Length)
+        AhkTest.AssertEqual([255, 0], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("P", loaded.Mode)
+        AhkTest.AssertEqual([0, 1, 1, 0], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], loaded.GetPalette())
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual(1, loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 255,
+            40, 50, 60, 0,
+            40, 50, 60, 0,
+            10, 20, 30, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG transparency option uses native path", PillowTestImageSavePngTransparencyOptionUsesNativePath)
+
+PillowTestImageSavePngTransparencyOptionWritesPaletteByteTable(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("P", [2, 2], PillowTestBuffer([0, 1, 2, 3]))
+    path := PillowTestTempPngPath("save-p-transparency-table")
+    loaded := 0
+    rgba := 0
+    table := [255, 128, 0, 64]
+    palette := [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
+    try {
+        image.PutPalette(palette)
+
+        image.Save(path, "PNG", { transparency: PillowTestBuffer(table) })
+
+        bytes := PillowTestReadFileBytes(path)
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertEqual(4, trns.Length)
+        AhkTest.AssertEqual(table, PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 3))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("P", loaded.Mode)
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(palette, loaded.GetPalette())
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual(table, PillowTestBufferToArray(loaded.Info["transparency"]))
+        AhkTest.AssertEqual([
+            10, 20, 30, 255,
+            40, 50, 60, 128,
+            70, 80, 90, 0,
+            100, 110, 120, 64,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG transparency option writes P mode byte table", PillowTestImageSavePngTransparencyOptionWritesPaletteByteTable)
+
+PillowTestImageSavePngTransparencyOptionWritesGrayscaleTrns(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([10, 40]))
+    path := PillowTestTempPngPath("save-l-transparency")
+    loaded := 0
+    rgba := 0
+    try {
+        image.Save(path, "PNG", { transparency: 10 })
+
+        bytes := PillowTestReadFileBytes(path)
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertEqual(2, trns.Length)
+        AhkTest.AssertEqual([0, 10], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("L", loaded.Mode)
+        AhkTest.AssertEqual([10, 40], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual(10, loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 10, 10, 0,
+            40, 40, 40, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG transparency option writes L mode tRNS", PillowTestImageSavePngTransparencyOptionWritesGrayscaleTrns)
+
+PillowTestImageSavePngTransparencyOptionWritesRgbTrns(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    path := PillowTestTempPngPath("save-rgb-transparency")
+    loaded := 0
+    rgba := 0
+    try {
+        image.Save(path, "PNG", { transparency: [10, 20, 30] })
+
+        bytes := PillowTestReadFileBytes(path)
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertEqual(6, trns.Length)
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG transparency option writes RGB tRNS", PillowTestImageSavePngTransparencyOptionWritesRgbTrns)
+
+PillowTestImageSavePngTransparencyOptionWritesRgbByteTrns(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    path := PillowTestTempPngPath("save-rgb-transparency-bytes")
+    loaded := 0
+    rgba := 0
+    try {
+        image.Save(path, "PNG", { transparency: PillowTestBuffer([10, 20, 30]) })
+
+        bytes := PillowTestReadFileBytes(path)
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertEqual(6, trns.Length)
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG transparency option writes RGB byte tRNS", PillowTestImageSavePngTransparencyOptionWritesRgbByteTrns)
+
+PillowTestImageSavePngPngInfoTextWritesTextChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempPngPath("save-text")
+    loaded := 0
+    try {
+        try {
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+        } catch Error as err {
+            AhkTest.Fail("Expected Pillow.PngImagePlugin.PngInfo")
+            return
+        }
+        pngInfo.add_text("Author", "Ada")
+
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(text.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(10, text.Length)
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Author"))
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual(1, loaded.Text.Count)
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo text writes tEXt", PillowTestImageSavePngPngInfoTextWritesTextChunk)
+
+PillowTestImageSavePngPngInfoBytesTextWritesLatin1TextChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    expectedText := "caf" Chr(0xE9)
+    cases := [
+        {
+            Suffix: "text",
+            Zip: false,
+            ChunkType: [0x74, 0x45, 0x58, 0x74],
+            Prefix: [76, 97, 116, 105, 110, 0, 99, 97, 102, 233],
+        },
+        {
+            Suffix: "ztxt",
+            Zip: true,
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Prefix: [76, 97, 116, 105, 110, 0, 0, 0x78],
+        },
+    ]
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-bytes-" item.Suffix)
+            loaded := 0
+            try {
+                pngInfo := Pillow.PngImagePlugin.PngInfo()
+                pngInfo.add_text("Latin", PillowTestBuffer([99, 97, 102, 233]), item.Zip)
+
+                image.Save(path, "PNG", { pnginfo: pngInfo })
+
+                bytes := PillowTestReadFileBytes(path)
+                chunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+                idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+                AhkTest.AssertTrue(chunk.Found)
+                AhkTest.AssertTrue(idat.Found)
+                AhkTest.AssertTrue(chunk.DataOffset < idat.DataOffset)
+                AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, chunk.DataOffset, chunk.DataOffset + item.Prefix.Length - 1))
+
+                loaded := Pillow.Image.Open(path, ["PNG"])
+                AhkTest.AssertEqual("PNG", loaded.Format)
+                AhkTest.AssertEqual("RGB", loaded.Mode)
+                AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+                AhkTest.AssertTrue(loaded.Info.Has("Latin"))
+                AhkTest.AssertEqual(expectedText, loaded.Info["Latin"])
+                AhkTest.AssertTrue(loaded.Text is Map)
+                AhkTest.AssertEqual(expectedText, loaded.Text["Latin"])
+            } finally {
+                if IsObject(loaded)
+                    loaded.Close()
+                PillowTestDeleteFile(path)
+            }
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo add_text bytes writes Latin-1 text chunks", PillowTestImageSavePngPngInfoBytesTextWritesLatin1TextChunks)
+
+PillowTestImageSavePngPngInfoBytesTextPreservesEmbeddedNul(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    cases := [
+        {
+            Suffix: "text",
+            Zip: false,
+            ChunkType: [0x74, 0x45, 0x58, 0x74],
+            Prefix: [78, 117, 108, 108, 115, 0, 97, 0, 98],
+        },
+        {
+            Suffix: "ztxt",
+            Zip: true,
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Prefix: [78, 117, 108, 108, 115, 0, 0, 0x78],
+        },
+    ]
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-bytes-nul-" item.Suffix)
+            loaded := 0
+            try {
+                pngInfo := Pillow.PngImagePlugin.PngInfo()
+                pngInfo.add_text("Nulls", PillowTestBuffer([97, 0, 98]), item.Zip)
+
+                image.Save(path, "PNG", { pnginfo: pngInfo })
+
+                bytes := PillowTestReadFileBytes(path)
+                chunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+                idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+                AhkTest.AssertTrue(chunk.Found)
+                AhkTest.AssertTrue(idat.Found)
+                AhkTest.AssertTrue(chunk.DataOffset < idat.DataOffset)
+                AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, chunk.DataOffset, chunk.DataOffset + item.Prefix.Length - 1))
+
+                loaded := Pillow.Image.Open(path, ["PNG"])
+                AhkTest.AssertEqual("PNG", loaded.Format)
+                AhkTest.AssertEqual("RGB", loaded.Mode)
+                AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+                AhkTest.AssertTrue(loaded.Info.Has("Nulls"))
+                AhkTest.AssertEqual([97, 0, 98], PillowTestStringCodepoints(loaded.Info["Nulls"]))
+                AhkTest.AssertTrue(loaded.Text is Map)
+                AhkTest.AssertEqual([97, 0, 98], PillowTestStringCodepoints(loaded.Text["Nulls"]))
+            } finally {
+                if IsObject(loaded)
+                    loaded.Close()
+                PillowTestDeleteFile(path)
+            }
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo add_text bytes preserves embedded NUL", PillowTestImageSavePngPngInfoBytesTextPreservesEmbeddedNul)
+
+PillowTestImageSavePngPngInfoDuplicateTextWritesTextChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempPngPath("save-duplicate-text")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_text("Author", "Ada")
+        pngInfo.add_text("Author", "Grace")
+
+        try {
+            image.Save(path, "PNG", { pnginfo: pngInfo })
+        } catch Error as err {
+            AhkTest.Fail("Expected Image.Save to support duplicate pnginfo text entries")
+            return
+        }
+
+        bytes := PillowTestReadFileBytes(path)
+        chunks := PillowTestFindPngChunks(bytes, [0x74, 0x45, 0x58, 0x74])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertEqual(2, chunks.Length)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(chunks[1].DataOffset < chunks[2].DataOffset)
+        AhkTest.AssertTrue(chunks[2].DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, chunks[1].DataOffset, chunks[1].DataOffset + 9))
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 71, 114, 97, 99, 101], PillowTestArraySlice(bytes, chunks[2].DataOffset, chunks[2].DataOffset + 11))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Author"))
+        AhkTest.AssertEqual("Grace", loaded.Info["Author"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual(1, loaded.Text.Count)
+        AhkTest.AssertEqual("Grace", loaded.Text["Author"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo duplicate text writes tEXt", PillowTestImageSavePngPngInfoDuplicateTextWritesTextChunks)
+
+PillowTestImageSavePngPngInfoCompressedTextWritesZTextChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempPngPath("save-compressed-text")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_text("Note", "Compressed hello", true)
+
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        ztxt := PillowTestFindPngChunk(bytes, [0x7A, 0x54, 0x58, 0x74])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(ztxt.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(ztxt.DataOffset < idat.DataOffset)
+        AhkTest.AssertTrue(ztxt.Length > 7)
+        AhkTest.AssertEqual([78, 111, 116, 101, 0, 0], PillowTestArraySlice(bytes, ztxt.DataOffset, ztxt.DataOffset + 5))
+        AhkTest.AssertEqual(0x78, bytes[ztxt.DataOffset + 6])
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Note"))
+        AhkTest.AssertEqual("Compressed hello", loaded.Info["Note"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Compressed hello", loaded.Text["Note"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo compressed text writes zTXt", PillowTestImageSavePngPngInfoCompressedTextWritesZTextChunk)
+
+PillowTestImageSavePngPngInfoITextWritesITextChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempPngPath("save-itxt")
+    loaded := 0
+    value := "Cafe " Chr(0x2603)
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        try {
+            pngInfo.add_itxt("Comment", value)
+        } catch Error as err {
+            AhkTest.Fail("Expected Pillow.PngInfo.add_itxt")
+            return
+        }
+
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        itxt := PillowTestFindPngChunk(bytes, [0x69, 0x54, 0x58, 0x74])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(itxt.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(itxt.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(20, itxt.Length)
+        AhkTest.AssertEqual([67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 0, 0, 67, 97, 102, 101, 32, 226, 152, 131], PillowTestArraySlice(bytes, itxt.DataOffset, itxt.DataOffset + 19))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Comment"))
+        AhkTest.AssertEqual(value, loaded.Info["Comment"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual(value, loaded.Text["Comment"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo international text writes iTXt", PillowTestImageSavePngPngInfoITextWritesITextChunk)
+
+PillowTestImageSavePngPngInfoCompressedITextWritesITextChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempPngPath("save-compressed-itxt")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true)
+
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        itxt := PillowTestFindPngChunk(bytes, [0x69, 0x54, 0x58, 0x74])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(itxt.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(itxt.DataOffset < idat.DataOffset)
+        AhkTest.AssertTrue(itxt.Length > 23)
+        AhkTest.AssertEqual([67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0], PillowTestArraySlice(bytes, itxt.DataOffset, itxt.DataOffset + 21))
+        AhkTest.AssertEqual(0x78, bytes[itxt.DataOffset + 22])
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("CompressedComment"))
+        AhkTest.AssertEqual("Zip hello UTF8", loaded.Info["CompressedComment"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Zip hello UTF8", loaded.Text["CompressedComment"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo compressed international text writes iTXt", PillowTestImageSavePngPngInfoCompressedITextWritesITextChunk)
+
+PillowTestImageSavePngPngInfoLanguageITextWritesITextChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempPngPath("save-itxt-lang")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire")
+
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        itxt := PillowTestFindPngChunk(bytes, [0x69, 0x54, 0x58, 0x74])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(itxt.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(itxt.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(37, itxt.Length)
+        AhkTest.AssertEqual([67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56], PillowTestArraySlice(bytes, itxt.DataOffset, itxt.DataOffset + 36))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Comment"))
+        AhkTest.AssertEqual("Bonjour UTF8", loaded.Info["Comment"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Bonjour UTF8", loaded.Text["Comment"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo language international text writes iTXt", PillowTestImageSavePngPngInfoLanguageITextWritesITextChunk)
+
+PillowTestImageSavePngIccProfileWritesIccpChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempPngPath("save-icc")
+    loaded := 0
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    try {
+        image.Save(path, "PNG", { icc_profile: PillowTestBuffer(profile) })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < idat.DataOffset)
+        AhkTest.AssertTrue(iccp.Length > 21)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG icc_profile writes iCCP metadata", PillowTestImageSavePngIccProfileWritesIccpChunk)
+
+PillowTestImageSavePngIccProfileAndTransparencyWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-icc-transparency")
+    loaded := 0
+    try {
+        image.Save(path, "PNG", { icc_profile: PillowTestBuffer(profile), transparency: [10, 20, 30] })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([10, 20, 30, 0, 40, 50, 60, 255], PillowTestBufferToArray(loaded.Convert("RGBA").ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG icc_profile and transparency write both metadata chunks", PillowTestImageSavePngIccProfileAndTransparencyWritesBothMetadataChunks)
+
+PillowTestImageSavePngPngInfoTextAndTransparencyWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-text-transparency")
+    loaded := 0
+    rgba := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_text("Author", "Ada")
+
+        image.Save(path, "PNG", { pnginfo: pngInfo, transparency: [10, 20, 30] })
+
+        bytes := PillowTestReadFileBytes(path)
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(text.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Author"))
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo text and transparency write both metadata chunks", PillowTestImageSavePngPngInfoTextAndTransparencyWritesBothMetadataChunks)
+
+PillowTestImageSavePngPngInfoTextAndByteTransparencyWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-text-byte-transparency")
+    loaded := 0
+    rgba := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_text("Author", "Ada")
+
+        image.Save(path, "PNG", { pnginfo: pngInfo, transparency: PillowTestBuffer([10, 20, 30]) })
+
+        bytes := PillowTestReadFileBytes(path)
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(text.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Author"))
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo text and byte transparency write both metadata chunks", PillowTestImageSavePngPngInfoTextAndByteTransparencyWritesBothMetadataChunks)
+
+PillowTestImageSavePngPngInfoCompressedTextAndTransparencyWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-ztxt-transparency")
+    loaded := 0
+    rgba := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_text("Note", "Compressed hello", true)
+
+        image.Save(path, "PNG", { pnginfo: pngInfo, transparency: [10, 20, 30] })
+
+        bytes := PillowTestReadFileBytes(path)
+        ztxt := PillowTestFindPngChunk(bytes, [0x7A, 0x54, 0x58, 0x74])
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(ztxt.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(ztxt.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+        AhkTest.AssertTrue(ztxt.Length > 7)
+        AhkTest.AssertEqual([78, 111, 116, 101, 0, 0], PillowTestArraySlice(bytes, ztxt.DataOffset, ztxt.DataOffset + 5))
+        AhkTest.AssertEqual(0x78, bytes[ztxt.DataOffset + 6])
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Note"))
+        AhkTest.AssertEqual("Compressed hello", loaded.Info["Note"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Compressed hello", loaded.Text["Note"])
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo compressed text and transparency write both metadata chunks", PillowTestImageSavePngPngInfoCompressedTextAndTransparencyWritesBothMetadataChunks)
+
+PillowTestImageSavePngPngInfoITextAndTransparencyWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-itxt-transparency")
+    loaded := 0
+    rgba := 0
+    value := "Cafe " Chr(0x2603)
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_itxt("Comment", value)
+
+        image.Save(path, "PNG", { pnginfo: pngInfo, transparency: [10, 20, 30] })
+
+        bytes := PillowTestReadFileBytes(path)
+        itxt := PillowTestFindPngChunk(bytes, [0x69, 0x54, 0x58, 0x74])
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(itxt.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(itxt.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(20, itxt.Length)
+        AhkTest.AssertEqual([67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 0, 0, 67, 97, 102, 101, 32, 226, 152, 131], PillowTestArraySlice(bytes, itxt.DataOffset, itxt.DataOffset + 19))
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Comment"))
+        AhkTest.AssertEqual(value, loaded.Info["Comment"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual(value, loaded.Text["Comment"])
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo iTXt and transparency write both metadata chunks", PillowTestImageSavePngPngInfoITextAndTransparencyWritesBothMetadataChunks)
+
+PillowTestImageSavePngPngInfoCompressedITextAndTransparencyWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-compressed-itxt-transparency")
+    loaded := 0
+    rgba := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true)
+
+        image.Save(path, "PNG", { pnginfo: pngInfo, transparency: [10, 20, 30] })
+
+        bytes := PillowTestReadFileBytes(path)
+        itxt := PillowTestFindPngChunk(bytes, [0x69, 0x54, 0x58, 0x74])
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(itxt.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(itxt.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+        AhkTest.AssertTrue(itxt.Length > 23)
+        AhkTest.AssertEqual([67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0], PillowTestArraySlice(bytes, itxt.DataOffset, itxt.DataOffset + 21))
+        AhkTest.AssertEqual(0x78, bytes[itxt.DataOffset + 22])
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("CompressedComment"))
+        AhkTest.AssertEqual("Zip hello UTF8", loaded.Info["CompressedComment"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Zip hello UTF8", loaded.Text["CompressedComment"])
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo compressed iTXt and transparency write both metadata chunks", PillowTestImageSavePngPngInfoCompressedITextAndTransparencyWritesBothMetadataChunks)
+
+PillowTestImageSavePngPngInfoLanguageITextAndTransparencyWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-language-itxt-transparency")
+    loaded := 0
+    rgba := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire")
+
+        image.Save(path, "PNG", { pnginfo: pngInfo, transparency: [10, 20, 30] })
+
+        bytes := PillowTestReadFileBytes(path)
+        itxt := PillowTestFindPngChunk(bytes, [0x69, 0x54, 0x58, 0x74])
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(itxt.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(itxt.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(37, itxt.Length)
+        AhkTest.AssertEqual([67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56], PillowTestArraySlice(bytes, itxt.DataOffset, itxt.DataOffset + 36))
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Comment"))
+        AhkTest.AssertEqual("Bonjour UTF8", loaded.Info["Comment"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Bonjour UTF8", loaded.Text["Comment"])
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo language iTXt and transparency write both metadata chunks", PillowTestImageSavePngPngInfoLanguageITextAndTransparencyWritesBothMetadataChunks)
+
+PillowTestImageSavePngPngInfoTextKindsAndByteTransparencyBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    cases := [
+        {
+            Path: PillowTestTempPngPath("save-ztxt-byte-transparency"),
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true)
+        },
+        {
+            Path: PillowTestTempPngPath("save-itxt-byte-transparency"),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Cafe " Chr(0x2603),
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Cafe " Chr(0x2603))
+        },
+        {
+            Path: PillowTestTempPngPath("save-compressed-itxt-byte-transparency"),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true)
+        },
+        {
+            Path: PillowTestTempPngPath("save-language-itxt-byte-transparency"),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire")
+        },
+    ]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    rgba := 0
+    try {
+        for caseInfo in cases {
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            caseInfo.Configure.Call(pngInfo)
+
+            image.Save(caseInfo.Path, "PNG", { pnginfo: pngInfo, transparency: PillowTestBuffer([10, 20, 30]) })
+
+            bytes := PillowTestReadFileBytes(caseInfo.Path)
+            textChunk := PillowTestFindPngChunk(bytes, caseInfo.ChunkType)
+            trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(textChunk.Found)
+            AhkTest.AssertTrue(trns.Found)
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertTrue(textChunk.DataOffset < trns.DataOffset)
+            AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+            AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+            loaded := Pillow.Image.Open(caseInfo.Path, ["PNG"])
+            rgba := loaded.Convert("RGBA")
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertTrue(loaded.Info.Has(caseInfo.Key))
+            AhkTest.AssertEqual(caseInfo.Value, loaded.Info[caseInfo.Key])
+            AhkTest.AssertTrue(loaded.Text is Map)
+            AhkTest.AssertEqual(caseInfo.Value, loaded.Text[caseInfo.Key])
+            AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+            AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+            AhkTest.AssertEqual([
+                10, 20, 30, 0,
+                40, 50, 60, 255,
+            ], PillowTestBufferToArray(rgba.ToBytes()))
+            rgba.Close()
+            rgba := 0
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(rgba)
+            rgba.Close()
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for caseInfo in cases
+            PillowTestDeleteFile(caseInfo.Path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo text kinds and byte transparency batch write metadata chunks", PillowTestImageSavePngPngInfoTextKindsAndByteTransparencyBatchWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoAndIccProfileWritesBothChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempPngPath("save-text-icc")
+    loaded := 0
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_text("Author", "Ada")
+
+        image.Save(path, "PNG", { pnginfo: pngInfo, icc_profile: PillowTestBuffer(profile) })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < text.DataOffset)
+        AhkTest.AssertTrue(text.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Author"))
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo and icc_profile write both metadata chunks", PillowTestImageSavePngPngInfoAndIccProfileWritesBothChunks)
+
+PillowTestImageSavePngPngInfoAndExifWritesBothChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempPngPath("save-text-exif")
+    loaded := 0
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_text("Author", "Ada")
+
+        image.Save(path, "PNG", { pnginfo: pngInfo, exif: PillowTestBuffer(exif) })
+
+        bytes := PillowTestReadFileBytes(path)
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(text.DataOffset < exifChunk.DataOffset)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+        AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Author"))
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo and exif write both metadata chunks", PillowTestImageSavePngPngInfoAndExifWritesBothChunks)
+
+PillowTestImageSavePngIccProfileAndExifWritesBothChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempPngPath("save-icc-exif")
+    loaded := 0
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    try {
+        image.Save(path, "PNG", { icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif) })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < exifChunk.DataOffset)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG icc_profile and exif write both metadata chunks", PillowTestImageSavePngIccProfileAndExifWritesBothChunks)
+
+PillowTestImageSavePngPngInfoIccProfileAndExifWritesAllMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempPngPath("save-text-icc-exif")
+    loaded := 0
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_text("Author", "Ada")
+
+        image.Save(path, "PNG", { pnginfo: pngInfo, icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif) })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < text.DataOffset)
+        AhkTest.AssertTrue(text.DataOffset < exifChunk.DataOffset)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+        AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Author"))
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo icc_profile and exif write all metadata chunks", PillowTestImageSavePngPngInfoIccProfileAndExifWritesAllMetadataChunks)
+
+PillowTestImageSavePngPngInfoLanguageITextIccProfileAndExifWritesAllMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    path := PillowTestTempPngPath("save-lang-itxt-icc-exif")
+    loaded := 0
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire")
+
+        image.Save(path, "PNG", { pnginfo: pngInfo, icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif) })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        itxt := PillowTestFindPngChunk(bytes, [0x69, 0x54, 0x58, 0x74])
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(itxt.Found)
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < itxt.DataOffset)
+        AhkTest.AssertTrue(itxt.DataOffset < exifChunk.DataOffset)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertEqual(37, itxt.Length)
+        AhkTest.AssertEqual([67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56], PillowTestArraySlice(bytes, itxt.DataOffset, itxt.DataOffset + 36))
+        AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Comment"))
+        AhkTest.AssertEqual("Bonjour UTF8", loaded.Info["Comment"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Bonjour UTF8", loaded.Text["Comment"])
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo language iTXt icc_profile and exif write metadata chunks", PillowTestImageSavePngPngInfoLanguageITextIccProfileAndExifWritesAllMetadataChunks)
+
+PillowTestImageSavePngPngInfoLanguageITextIccProfileExifAndTransparencyWritesAllMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-lang-itxt-icc-exif-transparency")
+    loaded := 0
+    rgba := 0
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire")
+
+        image.Save(path, "PNG", {
+            pnginfo: pngInfo,
+            icc_profile: PillowTestBuffer(profile),
+            exif: PillowTestBuffer(exif),
+            transparency: [10, 20, 30]
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        itxt := PillowTestFindPngChunk(bytes, [0x69, 0x54, 0x58, 0x74])
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(itxt.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < itxt.DataOffset)
+        AhkTest.AssertTrue(itxt.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < exifChunk.DataOffset)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertEqual(37, itxt.Length)
+        AhkTest.AssertEqual([67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56], PillowTestArraySlice(bytes, itxt.DataOffset, itxt.DataOffset + 36))
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+        AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("Comment"))
+        AhkTest.AssertEqual("Bonjour UTF8", loaded.Info["Comment"])
+        AhkTest.AssertTrue(loaded.Text is Map)
+        AhkTest.AssertEqual("Bonjour UTF8", loaded.Text["Comment"])
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo language iTXt icc_profile exif and transparency write metadata chunks", PillowTestImageSavePngPngInfoLanguageITextIccProfileExifAndTransparencyWritesAllMetadataChunks)
+
+PillowTestImageSavePngPngInfoOptimizeTextKindsIccProfileExifAndTransparencyWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [
+        10, 20, 30, 40, 50, 60,
+        70, 80, 90, 100, 110, 120,
+    ]
+    image := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer(pixels))
+    loaded := 0
+    rgba := 0
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    cases := [
+        {
+            Name: "ztxt",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true),
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Prefix: [78, 111, 116, 101, 0, 0],
+            ExactPayload: false,
+            ZlibOffset: 6
+        },
+        {
+            Name: "itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Cafe snowman"),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Cafe snowman",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 0, 0, 67, 97, 102, 101, 32, 115, 110, 111, 119, 109, 97, 110],
+            ExactPayload: true
+        },
+        {
+            Name: "compressed-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Prefix: [67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0],
+            ExactPayload: false,
+            ZlibOffset: 22
+        },
+        {
+            Name: "language-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire"),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56],
+            ExactPayload: true
+        },
+    ]
+    try {
+        for caseInfo in cases {
+            path := PillowTestTempPngPath("save-opt-textkind-icc-exif-transparency-" caseInfo.Name)
+            try {
+                pngInfo := Pillow.PngImagePlugin.PngInfo()
+                caseInfo.Configure.Call(pngInfo)
+
+                image.Save(path, "PNG", {
+                    pnginfo: pngInfo,
+                    icc_profile: PillowTestBuffer(profile),
+                    exif: PillowTestBuffer(exif),
+                    transparency: [10, 20, 30],
+                    optimize: true
+                })
+
+                bytes := PillowTestReadFileBytes(path)
+                iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+                textChunk := PillowTestFindPngChunk(bytes, caseInfo.ChunkType)
+                trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+                exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+                idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+                AhkTest.AssertTrue(iccp.Found)
+                AhkTest.AssertTrue(textChunk.Found)
+                AhkTest.AssertTrue(trns.Found)
+                AhkTest.AssertTrue(exifChunk.Found)
+                AhkTest.AssertTrue(idat.Found)
+                AhkTest.AssertTrue(iccp.DataOffset < textChunk.DataOffset)
+                AhkTest.AssertTrue(textChunk.DataOffset < trns.DataOffset)
+                AhkTest.AssertTrue(trns.DataOffset < exifChunk.DataOffset)
+                AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+                AhkTest.AssertEqual([0x78, 0xDA], PillowTestArraySlice(bytes, idat.DataOffset, idat.DataOffset + 1))
+                AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+                AhkTest.AssertTrue(textChunk.Length >= caseInfo.Prefix.Length)
+                AhkTest.AssertEqual(caseInfo.Prefix, PillowTestArraySlice(bytes, textChunk.DataOffset, textChunk.DataOffset + caseInfo.Prefix.Length - 1))
+                if caseInfo.ExactPayload
+                    AhkTest.AssertEqual(caseInfo.Prefix.Length, textChunk.Length)
+                if caseInfo.HasOwnProp("ZlibOffset")
+                    AhkTest.AssertEqual(0x78, bytes[textChunk.DataOffset + caseInfo.ZlibOffset])
+                AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+                AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+                AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+
+                loaded := Pillow.Image.Open(path, ["PNG"])
+                rgba := loaded.Convert("RGBA")
+                AhkTest.AssertEqual("PNG", loaded.Format)
+                AhkTest.AssertEqual("RGB", loaded.Mode)
+                AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+                AhkTest.AssertEqual(caseInfo.Value, loaded.Info[caseInfo.Key])
+                AhkTest.AssertTrue(loaded.Text is Map)
+                AhkTest.AssertEqual(caseInfo.Value, loaded.Text[caseInfo.Key])
+                AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+                AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+                AhkTest.AssertEqual(6, loaded.ExifOrientation())
+                AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+                AhkTest.AssertEqual([
+                    10, 20, 30, 0,
+                    40, 50, 60, 255,
+                    70, 80, 90, 255,
+                    100, 110, 120, 255,
+                ], PillowTestBufferToArray(rgba.ToBytes()))
+                rgba.Close()
+                rgba := 0
+                loaded.Close()
+                loaded := 0
+            } finally {
+                if IsObject(rgba) {
+                    rgba.Close()
+                    rgba := 0
+                }
+                if IsObject(loaded) {
+                    loaded.Close()
+                    loaded := 0
+                }
+                PillowTestDeleteFile(path)
+            }
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo optimize text kinds icc_profile exif and transparency write metadata chunks", PillowTestImageSavePngPngInfoOptimizeTextKindsIccProfileExifAndTransparencyWritesMetadataChunks)
+
+PillowTestImageSavePngOptimizeMetadataBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [
+        10, 20, 30, 40, 50, 60,
+        70, 80, 90, 100, 110, 120,
+    ]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    cases := [
+        {
+            Path: PillowTestTempPngPath("save-optimize-text"),
+            Text: true,
+            Icc: false,
+            Exif: false,
+            Order: ["text"]
+        },
+        {
+            Path: PillowTestTempPngPath("save-optimize-icc"),
+            Text: false,
+            Icc: true,
+            Exif: false,
+            Order: ["icc"]
+        },
+        {
+            Path: PillowTestTempPngPath("save-optimize-exif"),
+            Text: false,
+            Icc: false,
+            Exif: true,
+            Order: ["exif"]
+        },
+        {
+            Path: PillowTestTempPngPath("save-optimize-icc-exif"),
+            Text: false,
+            Icc: true,
+            Exif: true,
+            Order: ["icc", "exif"]
+        },
+        {
+            Path: PillowTestTempPngPath("save-optimize-text-icc-exif"),
+            Text: true,
+            Icc: true,
+            Exif: true,
+            Order: ["icc", "text", "exif"]
+        },
+    ]
+    image := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer(pixels))
+    loaded := 0
+    try {
+        for caseInfo in cases {
+            options := { optimize: true }
+            if caseInfo.Text {
+                pngInfo := Pillow.PngImagePlugin.PngInfo()
+                pngInfo.add_text("Author", "Ada")
+                options.pnginfo := pngInfo
+            }
+            if caseInfo.Icc
+                options.icc_profile := PillowTestBuffer(profile)
+            if caseInfo.Exif
+                options.exif := PillowTestBuffer(exif)
+
+            image.Save(caseInfo.Path, "PNG", options)
+
+            bytes := PillowTestReadFileBytes(caseInfo.Path)
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertEqual([0x78, 0xDA], PillowTestArraySlice(bytes, idat.DataOffset, idat.DataOffset + 1))
+
+            previousOffset := 0
+            for expected in caseInfo.Order {
+                if expected = "icc" {
+                    chunk := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+                    AhkTest.AssertTrue(chunk.Found)
+                    AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, chunk.DataOffset, chunk.DataOffset + 13))
+                } else if expected = "text" {
+                    chunk := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+                    AhkTest.AssertTrue(chunk.Found)
+                    AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, chunk.DataOffset, chunk.DataOffset + 9))
+                } else {
+                    chunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+                    AhkTest.AssertTrue(chunk.Found)
+                    AhkTest.AssertEqual(exifPayload.Length, chunk.Length)
+                    AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, chunk.DataOffset, chunk.DataOffset + chunk.Length - 1))
+                }
+                AhkTest.AssertTrue(chunk.DataOffset > previousOffset)
+                AhkTest.AssertTrue(chunk.DataOffset < idat.DataOffset)
+                previousOffset := chunk.DataOffset
+            }
+
+            loaded := Pillow.Image.Open(caseInfo.Path, ["PNG"])
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertFalse(loaded.Info.Has("optimize"))
+            if caseInfo.Text {
+                AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+                AhkTest.AssertTrue(loaded.Text is Map)
+                AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+            }
+            if caseInfo.Icc {
+                AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+                AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            }
+            if caseInfo.Exif {
+                AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+                AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+                AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            }
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for caseInfo in cases
+            PillowTestDeleteFile(caseInfo.Path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG optimize and metadata batch write metadata chunks", PillowTestImageSavePngOptimizeMetadataBatchWritesMetadataChunks)
+
+PillowTestImageSavePngCompressLevelMetadataBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [
+        10, 20, 30, 40, 50, 60,
+        70, 80, 90, 100, 110, 120,
+    ]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    cases := [
+        {
+            Path: PillowTestTempPngPath("save-compress-level-text"),
+            Text: true,
+            Icc: false,
+            Exif: false,
+            Order: ["text"]
+        },
+        {
+            Path: PillowTestTempPngPath("save-compress-level-icc"),
+            Text: false,
+            Icc: true,
+            Exif: false,
+            Order: ["icc"]
+        },
+        {
+            Path: PillowTestTempPngPath("save-compress-level-exif"),
+            Text: false,
+            Icc: false,
+            Exif: true,
+            Order: ["exif"]
+        },
+        {
+            Path: PillowTestTempPngPath("save-compress-level-icc-exif"),
+            Text: false,
+            Icc: true,
+            Exif: true,
+            Order: ["icc", "exif"]
+        },
+        {
+            Path: PillowTestTempPngPath("save-compress-level-text-icc-exif"),
+            Text: true,
+            Icc: true,
+            Exif: true,
+            Order: ["icc", "text", "exif"]
+        },
+    ]
+    image := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer(pixels))
+    loaded := 0
+    try {
+        for caseInfo in cases {
+            options := { compress_level: 9 }
+            if caseInfo.Text {
+                pngInfo := Pillow.PngImagePlugin.PngInfo()
+                pngInfo.add_text("Author", "Ada")
+                options.pnginfo := pngInfo
+            }
+            if caseInfo.Icc
+                options.icc_profile := PillowTestBuffer(profile)
+            if caseInfo.Exif
+                options.exif := PillowTestBuffer(exif)
+
+            image.Save(caseInfo.Path, "PNG", options)
+
+            bytes := PillowTestReadFileBytes(caseInfo.Path)
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertEqual([0x78, 0xDA], PillowTestArraySlice(bytes, idat.DataOffset, idat.DataOffset + 1))
+
+            previousOffset := 0
+            for expected in caseInfo.Order {
+                if expected = "icc" {
+                    chunk := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+                    AhkTest.AssertTrue(chunk.Found)
+                    AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, chunk.DataOffset, chunk.DataOffset + 13))
+                } else if expected = "text" {
+                    chunk := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+                    AhkTest.AssertTrue(chunk.Found)
+                    AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, chunk.DataOffset, chunk.DataOffset + 9))
+                } else {
+                    chunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+                    AhkTest.AssertTrue(chunk.Found)
+                    AhkTest.AssertEqual(exifPayload.Length, chunk.Length)
+                    AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, chunk.DataOffset, chunk.DataOffset + chunk.Length - 1))
+                }
+                AhkTest.AssertTrue(chunk.DataOffset > previousOffset)
+                AhkTest.AssertTrue(chunk.DataOffset < idat.DataOffset)
+                previousOffset := chunk.DataOffset
+            }
+
+            loaded := Pillow.Image.Open(caseInfo.Path, ["PNG"])
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertFalse(loaded.Info.Has("compress_level"))
+            if caseInfo.Text {
+                AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+                AhkTest.AssertTrue(loaded.Text is Map)
+                AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+            }
+            if caseInfo.Icc {
+                AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+                AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            }
+            if caseInfo.Exif {
+                AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+                AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+                AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            }
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for caseInfo in cases
+            PillowTestDeleteFile(caseInfo.Path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG compress_level and metadata batch write metadata chunks", PillowTestImageSavePngCompressLevelMetadataBatchWritesMetadataChunks)
+
+PillowTestImageSavePngExifWritesExifChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempPngPath("save-exif")
+    loaded := 0
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    try {
+        image.Save(path, "PNG", { exif: PillowTestBuffer(exif) })
+
+        bytes := PillowTestReadFileBytes(path)
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG exif writes eXIf metadata", PillowTestImageSavePngExifWritesExifChunk)
+
+PillowTestImageSavePngExifAndTransparencyWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-exif-transparency")
+    loaded := 0
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    try {
+        image.Save(path, "PNG", { exif: PillowTestBuffer(exif), transparency: [10, 20, 30] })
+
+        bytes := PillowTestReadFileBytes(path)
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(trns.DataOffset < exifChunk.DataOffset)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+        AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([10, 20, 30, 0, 40, 50, 60, 255], PillowTestBufferToArray(loaded.Convert("RGBA").ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG exif and transparency write both metadata chunks", PillowTestImageSavePngExifAndTransparencyWritesBothMetadataChunks)
+
+PillowTestImageSavePngIccProfileExifAndTransparencyWritesAllMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-icc-exif-transparency")
+    loaded := 0
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    try {
+        image.Save(path, "PNG", { icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif), transparency: [10, 20, 30] })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < exifChunk.DataOffset)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+        AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([10, 20, 30, 0, 40, 50, 60, 255], PillowTestBufferToArray(loaded.Convert("RGBA").ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG icc_profile exif and transparency write all metadata chunks", PillowTestImageSavePngIccProfileExifAndTransparencyWritesAllMetadataChunks)
+
+PillowTestImageSavePngMetadataAndByteTransparencyBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    cases := [
+        {
+            Name: "icc-byte",
+            Path: PillowTestTempPngPath("save-icc-byte-transparency"),
+            Options: { icc_profile: PillowTestBuffer(profile), transparency: PillowTestBuffer([10, 20, 30]) },
+            HasIcc: true,
+            HasExif: false
+        },
+        {
+            Name: "exif-byte",
+            Path: PillowTestTempPngPath("save-exif-byte-transparency"),
+            Options: { exif: PillowTestBuffer(exif), transparency: PillowTestBuffer([10, 20, 30]) },
+            HasIcc: false,
+            HasExif: true
+        },
+        {
+            Name: "icc-exif-byte",
+            Path: PillowTestTempPngPath("save-icc-exif-byte-transparency"),
+            Options: { icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif), transparency: PillowTestBuffer([10, 20, 30]) },
+            HasIcc: true,
+            HasExif: true
+        },
+    ]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    try {
+        for caseInfo in cases {
+            image.Save(caseInfo.Path, "PNG", caseInfo.Options)
+
+            bytes := PillowTestReadFileBytes(caseInfo.Path)
+            iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+            trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+            exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(trns.Found)
+            AhkTest.AssertTrue(idat.Found)
+            if caseInfo.HasIcc {
+                AhkTest.AssertTrue(iccp.Found)
+                AhkTest.AssertTrue(iccp.DataOffset < trns.DataOffset)
+                AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+            } else {
+                AhkTest.AssertFalse(iccp.Found)
+            }
+            if caseInfo.HasExif {
+                AhkTest.AssertTrue(exifChunk.Found)
+                AhkTest.AssertTrue(trns.DataOffset < exifChunk.DataOffset)
+                AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+                AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+                AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+            } else {
+                AhkTest.AssertFalse(exifChunk.Found)
+                AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+            }
+            AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+            loaded := Pillow.Image.Open(caseInfo.Path, ["PNG"])
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            if caseInfo.HasIcc {
+                AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+                AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            }
+            if caseInfo.HasExif {
+                AhkTest.AssertTrue(loaded.Info.Has("exif"))
+                AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+                AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            }
+            AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+            AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+            AhkTest.AssertEqual([10, 20, 30, 0, 40, 50, 60, 255], PillowTestBufferToArray(loaded.Convert("RGBA").ToBytes()))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for caseInfo in cases
+            PillowTestDeleteFile(caseInfo.Path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG metadata and byte transparency batch write metadata chunks", PillowTestImageSavePngMetadataAndByteTransparencyBatchWritesMetadataChunks)
+
+PillowTestImageSavePngInterlaceOptionMatchesPillowNoop(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [
+        10, 20, 30, 40, 50, 60, 70, 80, 90,
+        100, 110, 120, 130, 140, 150, 160, 170, 180,
+    ]
+    image := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-interlace")
+    loaded := 0
+    try {
+        image.Save(path, "PNG", { interlace: "yes" })
+
+        bytes := PillowTestReadFileBytes(path)
+        AhkTest.AssertEqual(0, bytes[29])
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("interlace"))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG interlace option matches Pillow no-op", PillowTestImageSavePngInterlaceOptionMatchesPillowNoop)
+
+PillowTestImageSavePngGammaOptionMatchesPillowNoop(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-gamma")
+    loaded := 0
+    try {
+        image.Save(path, "PNG", { gamma: 0.45455 })
+
+        bytes := PillowTestReadFileBytes(path)
+        gamma := PillowTestFindPngChunk(bytes, [0x67, 0x41, 0x4D, 0x41])
+        AhkTest.AssertFalse(gamma.Found)
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("gamma"))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG gamma option matches Pillow no-op", PillowTestImageSavePngGammaOptionMatchesPillowNoop)
+
+PillowTestImageSavePngPngInfoGamaWritesGammaChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-gama")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x67, 0x41, 0x4D, 0x41]), PillowTestBuffer([0, 0, 177, 143]))
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        gamma := PillowTestFindPngChunk(bytes, [0x67, 0x41, 0x4D, 0x41])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(gamma.Found)
+        AhkTest.AssertEqual(4, gamma.Length)
+        AhkTest.AssertTrue(gamma.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([0, 0, 177, 143], PillowTestArraySlice(bytes, gamma.DataOffset, gamma.DataOffset + 3))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("gamma"))
+        PillowTestAssertFloatClose(0.45455, loaded.Info["gamma"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo gAMA writes gamma metadata", PillowTestImageSavePngPngInfoGamaWritesGammaChunk)
+
+PillowTestImageSavePngPngInfoSrgbWritesSrgbChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30]
+    payload := [0]
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-srgb")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x73, 0x52, 0x47, 0x42]), PillowTestBuffer(payload))
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        srgb := PillowTestFindPngChunk(bytes, [0x73, 0x52, 0x47, 0x42])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(srgb.Found)
+        AhkTest.AssertEqual(1, srgb.Length)
+        AhkTest.AssertTrue(srgb.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(payload, PillowTestArraySlice(bytes, srgb.DataOffset, srgb.DataOffset))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("srgb"))
+        AhkTest.AssertEqual(0, loaded.Info["srgb"])
+        AhkTest.AssertEqual(0, loaded.Text.Count)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo sRGB writes srgb metadata", PillowTestImageSavePngPngInfoSrgbWritesSrgbChunk)
+
+PillowTestImageSavePngPngInfoRgbBkgdWritesChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30]
+    payload := [0, 10, 0, 20, 0, 30]
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-bkgd-rgb")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x62, 0x4B, 0x47, 0x44]), PillowTestBuffer(payload))
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        bkgd := PillowTestFindPngChunk(bytes, [0x62, 0x4B, 0x47, 0x44])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(bkgd.Found)
+        AhkTest.AssertEqual(6, bkgd.Length)
+        AhkTest.AssertTrue(bkgd.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(payload, PillowTestArraySlice(bytes, bkgd.DataOffset, bkgd.DataOffset + payload.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("bKGD"))
+        AhkTest.AssertEqual(0, loaded.Text.Count)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo RGB bKGD writes chunk", PillowTestImageSavePngPngInfoRgbBkgdWritesChunk)
+
+PillowTestImageSavePngPngInfoPModeBkgdAfterPlteWritesChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [1]
+    palette := [0, 0, 0, 255, 0, 0]
+    payload := [1]
+    image := Pillow.Image.FromBytes("P", [1, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-bkgd-p")
+    loaded := 0
+    try {
+        image.PutPalette(palette)
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x62, 0x4B, 0x47, 0x44]), PillowTestBuffer(payload))
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        plte := PillowTestFindPngChunk(bytes, [0x50, 0x4C, 0x54, 0x45])
+        bkgd := PillowTestFindPngChunk(bytes, [0x62, 0x4B, 0x47, 0x44])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(plte.Found)
+        AhkTest.AssertTrue(bkgd.Found)
+        AhkTest.AssertEqual(1, bkgd.Length)
+        AhkTest.AssertTrue(plte.DataOffset < bkgd.DataOffset)
+        AhkTest.AssertTrue(bkgd.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(payload, PillowTestArraySlice(bytes, bkgd.DataOffset, bkgd.DataOffset))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("P", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("bKGD"))
+        AhkTest.AssertEqual(0, loaded.Text.Count)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo P mode bKGD writes chunk after PLTE", PillowTestImageSavePngPngInfoPModeBkgdAfterPlteWritesChunk)
+
+PillowTestImageSavePngPngInfoPModeHistAfterPlteWritesChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [0, 1, 2]
+    palette := [10, 20, 30, 40, 50, 60, 70, 80, 90]
+    payload := [0, 1, 0, 2, 0, 3]
+    image := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-hist-p")
+    loaded := 0
+    try {
+        image.PutPalette(palette)
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x68, 0x49, 0x53, 0x54]), PillowTestBuffer(payload))
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        plte := PillowTestFindPngChunk(bytes, [0x50, 0x4C, 0x54, 0x45])
+        hist := PillowTestFindPngChunk(bytes, [0x68, 0x49, 0x53, 0x54])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(plte.Found)
+        AhkTest.AssertTrue(hist.Found)
+        AhkTest.AssertEqual(6, hist.Length)
+        AhkTest.AssertTrue(plte.DataOffset < hist.DataOffset)
+        AhkTest.AssertTrue(hist.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(payload, PillowTestArraySlice(bytes, hist.DataOffset, hist.DataOffset + payload.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("P", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("hIST"))
+        AhkTest.AssertEqual(0, loaded.Text.Count)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo P mode hIST writes chunk after PLTE", PillowTestImageSavePngPngInfoPModeHistAfterPlteWritesChunk)
+
+PillowTestImageSavePngPngInfoTimeWritesChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30]
+    payload := [0x07, 0xE8, 6, 27, 12, 34, 56]
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-time")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x74, 0x49, 0x4D, 0x45]), PillowTestBuffer(payload))
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        time := PillowTestFindPngChunk(bytes, [0x74, 0x49, 0x4D, 0x45])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(time.Found)
+        AhkTest.AssertEqual(7, time.Length)
+        AhkTest.AssertTrue(time.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(payload, PillowTestArraySlice(bytes, time.DataOffset, time.DataOffset + payload.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("tIME"))
+        AhkTest.AssertEqual(0, loaded.Text.Count)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo tIME writes chunk", PillowTestImageSavePngPngInfoTimeWritesChunk)
+
+PillowTestImageSavePngPngInfoSbitWritesChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    payload := [8, 7, 6]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-sbit")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x73, 0x42, 0x49, 0x54]), PillowTestBuffer(payload))
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        sbit := PillowTestFindPngChunk(bytes, [0x73, 0x42, 0x49, 0x54])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(sbit.Found)
+        AhkTest.AssertEqual(3, sbit.Length)
+        AhkTest.AssertTrue(sbit.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(payload, PillowTestArraySlice(bytes, sbit.DataOffset, sbit.DataOffset + payload.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("sBIT"))
+        AhkTest.AssertEqual(0, loaded.Text.Count)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo sBIT writes chunk", PillowTestImageSavePngPngInfoSbitWritesChunk)
+
+PillowTestImageSavePngPngInfoCicpWritesChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    payload := [1, 13, 0, 1]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-cicp")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x63, 0x49, 0x43, 0x50]), PillowTestBuffer(payload))
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        cicp := PillowTestFindPngChunk(bytes, [0x63, 0x49, 0x43, 0x50])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(cicp.Found)
+        AhkTest.AssertEqual(4, cicp.Length)
+        AhkTest.AssertTrue(cicp.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(payload, PillowTestArraySlice(bytes, cicp.DataOffset, cicp.DataOffset + payload.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("cICP"))
+        AhkTest.AssertEqual(0, loaded.Text.Count)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cICP writes chunk", PillowTestImageSavePngPngInfoCicpWritesChunk)
+
+PillowTestImageSavePngPngInfoSpltWritesChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    payload := [0x70, 0x61, 0x6C, 0, 8, 10, 20, 30, 255, 0, 5]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-splt")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x73, 0x50, 0x4C, 0x54]), PillowTestBuffer(payload))
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        splt := PillowTestFindPngChunk(bytes, [0x73, 0x50, 0x4C, 0x54])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(splt.Found)
+        AhkTest.AssertEqual(payload.Length, splt.Length)
+        AhkTest.AssertTrue(splt.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(payload, PillowTestArraySlice(bytes, splt.DataOffset, splt.DataOffset + payload.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("sPLT"))
+        AhkTest.AssertEqual(0, loaded.Text.Count)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo sPLT writes chunk", PillowTestImageSavePngPngInfoSpltWritesChunk)
+
+PillowTestImageSavePngPngInfoChrmWritesChromaticityChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-chrm")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(chrm.Found)
+        AhkTest.AssertEqual(32, chrm.Length)
+        AhkTest.AssertTrue(chrm.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+        PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM writes chromaticity metadata", PillowTestImageSavePngPngInfoChrmWritesChromaticityChunk)
+
+PillowTestImageSavePngPngInfoPrivateChunkWritesRawChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30]
+    payload := [1, 2, 3, 4, 255]
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-private-chunk")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x76, 0x70, 0x41, 0x67]), PillowTestBuffer(payload))
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        chunk := PillowTestFindPngChunk(bytes, [0x76, 0x70, 0x41, 0x67])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(chunk.Found)
+        AhkTest.AssertEqual(payload.Length, chunk.Length)
+        AhkTest.AssertTrue(chunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(payload, PillowTestArraySlice(bytes, chunk.DataOffset, chunk.DataOffset + payload.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("vpAg"))
+        AhkTest.AssertEqual(0, loaded.Text.Count)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo private chunk writes raw chunk", PillowTestImageSavePngPngInfoPrivateChunkWritesRawChunk)
+
+PillowTestImageSavePngPngInfoPrivateChunkAfterIdatWritesLateRawChunk(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30]
+    payload := [5, 4, 3, 2, 1]
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-private-chunk-after-idat")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x76, 0x70, 0x41, 0x67]), PillowTestBuffer(payload), true)
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        chunk := PillowTestFindPngChunk(bytes, [0x76, 0x70, 0x41, 0x67])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        iend := PillowTestFindPngChunk(bytes, [0x49, 0x45, 0x4E, 0x44])
+        AhkTest.AssertTrue(chunk.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iend.Found)
+        AhkTest.AssertEqual(payload.Length, chunk.Length)
+        AhkTest.AssertTrue(idat.DataOffset < chunk.DataOffset)
+        AhkTest.AssertTrue(chunk.DataOffset < iend.DataOffset)
+        AhkTest.AssertEqual(payload, PillowTestArraySlice(bytes, chunk.DataOffset, chunk.DataOffset + payload.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("vpAg"))
+        AhkTest.AssertEqual(0, loaded.Text.Count)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo private chunk after_idat writes late raw chunk", PillowTestImageSavePngPngInfoPrivateChunkAfterIdatWritesLateRawChunk)
+
+PillowTestImageSavePngPngInfoPrivateChunkAllowsZeroLengthPayload(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    cases := [
+        { Name: "pre", AfterIdat: false },
+        { Name: "after", AfterIdat: true },
+    ]
+    for caseInfo in cases {
+        pixels := [10, 20, 30]
+        image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer(pixels))
+        path := PillowTestTempPngPath("save-pnginfo-private-zero-" caseInfo.Name)
+        loaded := 0
+        try {
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            pngInfo.add(PillowTestBuffer([0x76, 0x70, 0x41, 0x67]), PillowTestBuffer([]), caseInfo.AfterIdat)
+            image.Save(path, "PNG", { pnginfo: pngInfo })
+
+            bytes := PillowTestReadFileBytes(path)
+            chunk := PillowTestFindPngChunk(bytes, [0x76, 0x70, 0x41, 0x67])
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            iend := PillowTestFindPngChunk(bytes, [0x49, 0x45, 0x4E, 0x44])
+            AhkTest.AssertTrue(chunk.Found)
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertTrue(iend.Found)
+            AhkTest.AssertEqual(0, chunk.Length)
+            if caseInfo.AfterIdat {
+                AhkTest.AssertTrue(idat.DataOffset < chunk.DataOffset)
+                AhkTest.AssertTrue(chunk.DataOffset < iend.DataOffset)
+            } else {
+                AhkTest.AssertTrue(chunk.DataOffset < idat.DataOffset)
+            }
+
+            loaded := Pillow.Image.Open(path, ["PNG"])
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertFalse(loaded.Info.Has("vpAg"))
+            AhkTest.AssertEqual(0, loaded.Text.Count)
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            image.Close()
+            PillowTestDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo private chunk allows zero-length payload", PillowTestImageSavePngPngInfoPrivateChunkAllowsZeroLengthPayload)
+
+PillowTestImageSavePngPngInfoMultiplePrivateChunksWritesInOrder(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30]
+    chunks := [
+        { Type: [0x76, 0x70, 0x41, 0x67], Data: [1, 2, 3], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x42, 0x67], Data: [4, 5], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x43, 0x67], Data: [6, 7, 8, 9], AfterIdat: true },
+        { Type: [0x76, 0x70, 0x44, 0x67], Data: [10], AfterIdat: true },
+    ]
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-private-chunks")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        for chunk in chunks
+            pngInfo.add(PillowTestBuffer(chunk.Type), PillowTestBuffer(chunk.Data), chunk.AfterIdat)
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        preA := PillowTestFindPngChunk(bytes, chunks[1].Type)
+        preB := PillowTestFindPngChunk(bytes, chunks[2].Type)
+        lateC := PillowTestFindPngChunk(bytes, chunks[3].Type)
+        lateD := PillowTestFindPngChunk(bytes, chunks[4].Type)
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        iend := PillowTestFindPngChunk(bytes, [0x49, 0x45, 0x4E, 0x44])
+        AhkTest.AssertTrue(preA.Found)
+        AhkTest.AssertTrue(preB.Found)
+        AhkTest.AssertTrue(lateC.Found)
+        AhkTest.AssertTrue(lateD.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iend.Found)
+        AhkTest.AssertTrue(preA.DataOffset < preB.DataOffset)
+        AhkTest.AssertTrue(preB.DataOffset < idat.DataOffset)
+        AhkTest.AssertTrue(idat.DataOffset < lateC.DataOffset)
+        AhkTest.AssertTrue(lateC.DataOffset < lateD.DataOffset)
+        AhkTest.AssertTrue(lateD.DataOffset < iend.DataOffset)
+        AhkTest.AssertEqual(chunks[1].Data, PillowTestArraySlice(bytes, preA.DataOffset, preA.DataOffset + preA.Length - 1))
+        AhkTest.AssertEqual(chunks[2].Data, PillowTestArraySlice(bytes, preB.DataOffset, preB.DataOffset + preB.Length - 1))
+        AhkTest.AssertEqual(chunks[3].Data, PillowTestArraySlice(bytes, lateC.DataOffset, lateC.DataOffset + lateC.Length - 1))
+        AhkTest.AssertEqual(chunks[4].Data, PillowTestArraySlice(bytes, lateD.DataOffset, lateD.DataOffset + lateD.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("vpAg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpBg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpCg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpDg"))
+        AhkTest.AssertEqual(0, loaded.Text.Count)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo multiple private chunks writes in order", PillowTestImageSavePngPngInfoMultiplePrivateChunksWritesInOrder)
+
+PillowTestImageSavePngPngInfoTextAndMultiplePrivateChunksWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30]
+    chunks := [
+        { Type: [0x76, 0x70, 0x41, 0x67], Data: [1, 2, 3], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x42, 0x67], Data: [4, 5], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x43, 0x67], Data: [6, 7, 8, 9], AfterIdat: true },
+        { Type: [0x76, 0x70, 0x44, 0x67], Data: [10], AfterIdat: true },
+    ]
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-text-private-chunks")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_text("Author", "Ada")
+        for chunk in chunks
+            pngInfo.add(PillowTestBuffer(chunk.Type), PillowTestBuffer(chunk.Data), chunk.AfterIdat)
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        preA := PillowTestFindPngChunk(bytes, chunks[1].Type)
+        preB := PillowTestFindPngChunk(bytes, chunks[2].Type)
+        lateC := PillowTestFindPngChunk(bytes, chunks[3].Type)
+        lateD := PillowTestFindPngChunk(bytes, chunks[4].Type)
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        iend := PillowTestFindPngChunk(bytes, [0x49, 0x45, 0x4E, 0x44])
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(preA.Found)
+        AhkTest.AssertTrue(preB.Found)
+        AhkTest.AssertTrue(lateC.Found)
+        AhkTest.AssertTrue(lateD.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iend.Found)
+        AhkTest.AssertTrue(text.DataOffset < preA.DataOffset)
+        AhkTest.AssertTrue(preA.DataOffset < preB.DataOffset)
+        AhkTest.AssertTrue(preB.DataOffset < idat.DataOffset)
+        AhkTest.AssertTrue(idat.DataOffset < lateC.DataOffset)
+        AhkTest.AssertTrue(lateC.DataOffset < lateD.DataOffset)
+        AhkTest.AssertTrue(lateD.DataOffset < iend.DataOffset)
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+        AhkTest.AssertEqual(chunks[1].Data, PillowTestArraySlice(bytes, preA.DataOffset, preA.DataOffset + preA.Length - 1))
+        AhkTest.AssertEqual(chunks[2].Data, PillowTestArraySlice(bytes, preB.DataOffset, preB.DataOffset + preB.Length - 1))
+        AhkTest.AssertEqual(chunks[3].Data, PillowTestArraySlice(bytes, lateC.DataOffset, lateC.DataOffset + lateC.Length - 1))
+        AhkTest.AssertEqual(chunks[4].Data, PillowTestArraySlice(bytes, lateD.DataOffset, lateD.DataOffset + lateD.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+        AhkTest.AssertFalse(loaded.Info.Has("vpAg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpBg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpCg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpDg"))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo text and multiple private chunks write metadata chunks", PillowTestImageSavePngPngInfoTextAndMultiplePrivateChunksWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoTextKindAndMultiplePrivateChunksBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    chunks := [
+        { Type: [0x76, 0x70, 0x41, 0x67], Data: [1, 2, 3], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x42, 0x67], Data: [4, 5], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x43, 0x67], Data: [6, 7, 8, 9], AfterIdat: true },
+        { Type: [0x76, 0x70, 0x44, 0x67], Data: [10], AfterIdat: true },
+    ]
+    cafeValue := "Cafe " Chr(0x2603)
+    cases := [
+        {
+            Name: "ztxt",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true),
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Prefix: [78, 111, 116, 101, 0, 0],
+            ExactPayload: false
+        },
+        {
+            Name: "itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", cafeValue),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: cafeValue,
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 0, 0, 67, 97, 102, 101, 32, 226, 152, 131],
+            ExactPayload: true
+        },
+        {
+            Name: "compressed-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Prefix: [67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0],
+            ExactPayload: false
+        },
+        {
+            Name: "language-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire"),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56],
+            ExactPayload: true
+        },
+    ]
+    paths := []
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-pnginfo-text-kind-private-chunks-" item.Name)
+            paths.Push(path)
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            configure := item.Configure
+            configure(pngInfo)
+            for chunk in chunks
+                pngInfo.add(PillowTestBuffer(chunk.Type), PillowTestBuffer(chunk.Data), chunk.AfterIdat)
+
+            image.Save(path, "PNG", { pnginfo: pngInfo })
+
+            bytes := PillowTestReadFileBytes(path)
+            textChunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+            preA := PillowTestFindPngChunk(bytes, chunks[1].Type)
+            preB := PillowTestFindPngChunk(bytes, chunks[2].Type)
+            lateC := PillowTestFindPngChunk(bytes, chunks[3].Type)
+            lateD := PillowTestFindPngChunk(bytes, chunks[4].Type)
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            iend := PillowTestFindPngChunk(bytes, [0x49, 0x45, 0x4E, 0x44])
+            AhkTest.AssertTrue(textChunk.Found)
+            AhkTest.AssertTrue(preA.Found)
+            AhkTest.AssertTrue(preB.Found)
+            AhkTest.AssertTrue(lateC.Found)
+            AhkTest.AssertTrue(lateD.Found)
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertTrue(iend.Found)
+            AhkTest.AssertTrue(textChunk.DataOffset < preA.DataOffset)
+            AhkTest.AssertTrue(preA.DataOffset < preB.DataOffset)
+            AhkTest.AssertTrue(preB.DataOffset < idat.DataOffset)
+            AhkTest.AssertTrue(idat.DataOffset < lateC.DataOffset)
+            AhkTest.AssertTrue(lateC.DataOffset < lateD.DataOffset)
+            AhkTest.AssertTrue(lateD.DataOffset < iend.DataOffset)
+            AhkTest.AssertTrue(textChunk.Length >= item.Prefix.Length)
+            AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, textChunk.DataOffset, textChunk.DataOffset + item.Prefix.Length - 1))
+            if item.ExactPayload
+                AhkTest.AssertEqual(item.Prefix.Length, textChunk.Length)
+            AhkTest.AssertEqual(chunks[1].Data, PillowTestArraySlice(bytes, preA.DataOffset, preA.DataOffset + preA.Length - 1))
+            AhkTest.AssertEqual(chunks[2].Data, PillowTestArraySlice(bytes, preB.DataOffset, preB.DataOffset + preB.Length - 1))
+            AhkTest.AssertEqual(chunks[3].Data, PillowTestArraySlice(bytes, lateC.DataOffset, lateC.DataOffset + lateC.Length - 1))
+            AhkTest.AssertEqual(chunks[4].Data, PillowTestArraySlice(bytes, lateD.DataOffset, lateD.DataOffset + lateD.Length - 1))
+
+            loaded := Pillow.Image.Open(path, ["PNG"])
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertEqual(item.Value, loaded.Info[item.Key])
+            AhkTest.AssertEqual(item.Value, loaded.Text[item.Key])
+            AhkTest.AssertFalse(loaded.Info.Has("vpAg"))
+            AhkTest.AssertFalse(loaded.Info.Has("vpBg"))
+            AhkTest.AssertFalse(loaded.Info.Has("vpCg"))
+            AhkTest.AssertFalse(loaded.Info.Has("vpDg"))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo text-kind and multiple private chunks batch write metadata chunks", PillowTestImageSavePngPngInfoTextKindAndMultiplePrivateChunksBatchWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoIccProfileAndMultiplePrivateChunksWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    chunks := [
+        { Type: [0x76, 0x70, 0x41, 0x67], Data: [1, 2, 3], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x42, 0x67], Data: [4, 5], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x43, 0x67], Data: [6, 7, 8, 9], AfterIdat: true },
+        { Type: [0x76, 0x70, 0x44, 0x67], Data: [10], AfterIdat: true },
+    ]
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-icc-private-chunks")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_text("Author", "Ada")
+        for chunk in chunks
+            pngInfo.add(PillowTestBuffer(chunk.Type), PillowTestBuffer(chunk.Data), chunk.AfterIdat)
+        image.Save(path, "PNG", { pnginfo: pngInfo, icc_profile: PillowTestBuffer(profile) })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        preA := PillowTestFindPngChunk(bytes, chunks[1].Type)
+        preB := PillowTestFindPngChunk(bytes, chunks[2].Type)
+        lateC := PillowTestFindPngChunk(bytes, chunks[3].Type)
+        lateD := PillowTestFindPngChunk(bytes, chunks[4].Type)
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        iend := PillowTestFindPngChunk(bytes, [0x49, 0x45, 0x4E, 0x44])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(preA.Found)
+        AhkTest.AssertTrue(preB.Found)
+        AhkTest.AssertTrue(lateC.Found)
+        AhkTest.AssertTrue(lateD.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iend.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < text.DataOffset)
+        AhkTest.AssertTrue(text.DataOffset < preA.DataOffset)
+        AhkTest.AssertTrue(preA.DataOffset < preB.DataOffset)
+        AhkTest.AssertTrue(preB.DataOffset < idat.DataOffset)
+        AhkTest.AssertTrue(idat.DataOffset < lateC.DataOffset)
+        AhkTest.AssertTrue(lateC.DataOffset < lateD.DataOffset)
+        AhkTest.AssertTrue(lateD.DataOffset < iend.DataOffset)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+        AhkTest.AssertEqual(chunks[1].Data, PillowTestArraySlice(bytes, preA.DataOffset, preA.DataOffset + preA.Length - 1))
+        AhkTest.AssertEqual(chunks[2].Data, PillowTestArraySlice(bytes, preB.DataOffset, preB.DataOffset + preB.Length - 1))
+        AhkTest.AssertEqual(chunks[3].Data, PillowTestArraySlice(bytes, lateC.DataOffset, lateC.DataOffset + lateC.Length - 1))
+        AhkTest.AssertEqual(chunks[4].Data, PillowTestArraySlice(bytes, lateD.DataOffset, lateD.DataOffset + lateD.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertFalse(loaded.Info.Has("vpAg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpBg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpCg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpDg"))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo icc_profile and multiple private chunks write metadata chunks", PillowTestImageSavePngPngInfoIccProfileAndMultiplePrivateChunksWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoExifAndMultiplePrivateChunksWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    chunks := [
+        { Type: [0x76, 0x70, 0x41, 0x67], Data: [1, 2, 3], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x42, 0x67], Data: [4, 5], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x43, 0x67], Data: [6, 7, 8, 9], AfterIdat: true },
+        { Type: [0x76, 0x70, 0x44, 0x67], Data: [10], AfterIdat: true },
+    ]
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-exif-private-chunks")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_text("Author", "Ada")
+        for chunk in chunks
+            pngInfo.add(PillowTestBuffer(chunk.Type), PillowTestBuffer(chunk.Data), chunk.AfterIdat)
+        image.Save(path, "PNG", { pnginfo: pngInfo, exif: PillowTestBuffer(exif) })
+
+        bytes := PillowTestReadFileBytes(path)
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        preA := PillowTestFindPngChunk(bytes, chunks[1].Type)
+        preB := PillowTestFindPngChunk(bytes, chunks[2].Type)
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        lateC := PillowTestFindPngChunk(bytes, chunks[3].Type)
+        lateD := PillowTestFindPngChunk(bytes, chunks[4].Type)
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        iend := PillowTestFindPngChunk(bytes, [0x49, 0x45, 0x4E, 0x44])
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(preA.Found)
+        AhkTest.AssertTrue(preB.Found)
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(lateC.Found)
+        AhkTest.AssertTrue(lateD.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iend.Found)
+        AhkTest.AssertTrue(text.DataOffset < preA.DataOffset)
+        AhkTest.AssertTrue(preA.DataOffset < preB.DataOffset)
+        AhkTest.AssertTrue(preB.DataOffset < exifChunk.DataOffset)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertTrue(idat.DataOffset < lateC.DataOffset)
+        AhkTest.AssertTrue(lateC.DataOffset < lateD.DataOffset)
+        AhkTest.AssertTrue(lateD.DataOffset < iend.DataOffset)
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+        AhkTest.AssertEqual(chunks[1].Data, PillowTestArraySlice(bytes, preA.DataOffset, preA.DataOffset + preA.Length - 1))
+        AhkTest.AssertEqual(chunks[2].Data, PillowTestArraySlice(bytes, preB.DataOffset, preB.DataOffset + preB.Length - 1))
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+        AhkTest.AssertEqual(chunks[3].Data, PillowTestArraySlice(bytes, lateC.DataOffset, lateC.DataOffset + lateC.Length - 1))
+        AhkTest.AssertEqual(chunks[4].Data, PillowTestArraySlice(bytes, lateD.DataOffset, lateD.DataOffset + lateD.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertFalse(loaded.Info.Has("vpAg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpBg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpCg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpDg"))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo exif and multiple private chunks write metadata chunks", PillowTestImageSavePngPngInfoExifAndMultiplePrivateChunksWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoIccProfileExifAndMultiplePrivateChunksWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    chunks := [
+        { Type: [0x76, 0x70, 0x41, 0x67], Data: [1, 2, 3], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x42, 0x67], Data: [4, 5], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x43, 0x67], Data: [6, 7, 8, 9], AfterIdat: true },
+        { Type: [0x76, 0x70, 0x44, 0x67], Data: [10], AfterIdat: true },
+    ]
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-icc-exif-private-chunks")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_text("Author", "Ada")
+        for chunk in chunks
+            pngInfo.add(PillowTestBuffer(chunk.Type), PillowTestBuffer(chunk.Data), chunk.AfterIdat)
+        image.Save(path, "PNG", { pnginfo: pngInfo, icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif) })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        preA := PillowTestFindPngChunk(bytes, chunks[1].Type)
+        preB := PillowTestFindPngChunk(bytes, chunks[2].Type)
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        lateC := PillowTestFindPngChunk(bytes, chunks[3].Type)
+        lateD := PillowTestFindPngChunk(bytes, chunks[4].Type)
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        iend := PillowTestFindPngChunk(bytes, [0x49, 0x45, 0x4E, 0x44])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(preA.Found)
+        AhkTest.AssertTrue(preB.Found)
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(lateC.Found)
+        AhkTest.AssertTrue(lateD.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iend.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < text.DataOffset)
+        AhkTest.AssertTrue(text.DataOffset < preA.DataOffset)
+        AhkTest.AssertTrue(preA.DataOffset < preB.DataOffset)
+        AhkTest.AssertTrue(preB.DataOffset < exifChunk.DataOffset)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertTrue(idat.DataOffset < lateC.DataOffset)
+        AhkTest.AssertTrue(lateC.DataOffset < lateD.DataOffset)
+        AhkTest.AssertTrue(lateD.DataOffset < iend.DataOffset)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+        AhkTest.AssertEqual(chunks[1].Data, PillowTestArraySlice(bytes, preA.DataOffset, preA.DataOffset + preA.Length - 1))
+        AhkTest.AssertEqual(chunks[2].Data, PillowTestArraySlice(bytes, preB.DataOffset, preB.DataOffset + preB.Length - 1))
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+        AhkTest.AssertEqual(chunks[3].Data, PillowTestArraySlice(bytes, lateC.DataOffset, lateC.DataOffset + lateC.Length - 1))
+        AhkTest.AssertEqual(chunks[4].Data, PillowTestArraySlice(bytes, lateD.DataOffset, lateD.DataOffset + lateD.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertFalse(loaded.Info.Has("vpAg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpBg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpCg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpDg"))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo icc_profile exif and multiple private chunks write metadata chunks", PillowTestImageSavePngPngInfoIccProfileExifAndMultiplePrivateChunksWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoAdvancedTextIccProfileExifAndMultiplePrivateChunksWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    chunks := [
+        { Type: [0x76, 0x70, 0x41, 0x67], Data: [1, 2, 3], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x42, 0x67], Data: [4, 5], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x43, 0x67], Data: [6, 7, 8, 9], AfterIdat: true },
+        { Type: [0x76, 0x70, 0x44, 0x67], Data: [10], AfterIdat: true },
+    ]
+    cases := [
+        {
+            Name: "ztxt",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true),
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Prefix: [78, 111, 116, 101, 0, 0],
+            ExactPayload: false
+        },
+        {
+            Name: "itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Hello UTF8"),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Hello UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 0, 0, 72, 101, 108, 108, 111, 32, 85, 84, 70, 56],
+            ExactPayload: true
+        },
+        {
+            Name: "compressed-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Prefix: [67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0],
+            ExactPayload: false
+        },
+        {
+            Name: "language-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire"),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56],
+            ExactPayload: true
+        },
+    ]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    paths := []
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-pnginfo-advanced-icc-exif-private-chunks-" item.Name)
+            paths.Push(path)
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            configure := item.Configure
+            configure(pngInfo)
+            for chunk in chunks
+                pngInfo.add(PillowTestBuffer(chunk.Type), PillowTestBuffer(chunk.Data), chunk.AfterIdat)
+
+            image.Save(path, "PNG", { pnginfo: pngInfo, icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif) })
+
+            bytes := PillowTestReadFileBytes(path)
+            iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+            textChunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+            preA := PillowTestFindPngChunk(bytes, chunks[1].Type)
+            preB := PillowTestFindPngChunk(bytes, chunks[2].Type)
+            exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+            lateC := PillowTestFindPngChunk(bytes, chunks[3].Type)
+            lateD := PillowTestFindPngChunk(bytes, chunks[4].Type)
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            iend := PillowTestFindPngChunk(bytes, [0x49, 0x45, 0x4E, 0x44])
+            AhkTest.AssertTrue(iccp.Found)
+            AhkTest.AssertTrue(textChunk.Found)
+            AhkTest.AssertTrue(preA.Found)
+            AhkTest.AssertTrue(preB.Found)
+            AhkTest.AssertTrue(exifChunk.Found)
+            AhkTest.AssertTrue(lateC.Found)
+            AhkTest.AssertTrue(lateD.Found)
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertTrue(iend.Found)
+            AhkTest.AssertTrue(iccp.DataOffset < textChunk.DataOffset)
+            AhkTest.AssertTrue(textChunk.DataOffset < preA.DataOffset)
+            AhkTest.AssertTrue(preA.DataOffset < preB.DataOffset)
+            AhkTest.AssertTrue(preB.DataOffset < exifChunk.DataOffset)
+            AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+            AhkTest.AssertTrue(idat.DataOffset < lateC.DataOffset)
+            AhkTest.AssertTrue(lateC.DataOffset < lateD.DataOffset)
+            AhkTest.AssertTrue(lateD.DataOffset < iend.DataOffset)
+            AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+            AhkTest.AssertTrue(textChunk.Length >= item.Prefix.Length)
+            AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, textChunk.DataOffset, textChunk.DataOffset + item.Prefix.Length - 1))
+            if item.ExactPayload
+                AhkTest.AssertEqual(item.Prefix.Length, textChunk.Length)
+            AhkTest.AssertEqual(chunks[1].Data, PillowTestArraySlice(bytes, preA.DataOffset, preA.DataOffset + preA.Length - 1))
+            AhkTest.AssertEqual(chunks[2].Data, PillowTestArraySlice(bytes, preB.DataOffset, preB.DataOffset + preB.Length - 1))
+            AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+            AhkTest.AssertEqual(chunks[3].Data, PillowTestArraySlice(bytes, lateC.DataOffset, lateC.DataOffset + lateC.Length - 1))
+            AhkTest.AssertEqual(chunks[4].Data, PillowTestArraySlice(bytes, lateD.DataOffset, lateD.DataOffset + lateD.Length - 1))
+
+            loaded := Pillow.Image.Open(path, ["PNG"])
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertEqual(item.Value, loaded.Info[item.Key])
+            AhkTest.AssertEqual(item.Value, loaded.Text[item.Key])
+            AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+            AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info.Has("exif"))
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertFalse(loaded.Info.Has("vpAg"))
+            AhkTest.AssertFalse(loaded.Info.Has("vpBg"))
+            AhkTest.AssertFalse(loaded.Info.Has("vpCg"))
+            AhkTest.AssertFalse(loaded.Info.Has("vpDg"))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo advanced text icc_profile exif and multiple private chunks write metadata chunks", PillowTestImageSavePngPngInfoAdvancedTextIccProfileExifAndMultiplePrivateChunksWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoCompressedLanguageITextIccProfileExifAndMultiplePrivateChunksWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    chunks := [
+        { Type: [0x76, 0x70, 0x41, 0x67], Data: [1, 2, 3], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x42, 0x67], Data: [4, 5], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x43, 0x67], Data: [6, 7, 8, 9], AfterIdat: true },
+        { Type: [0x76, 0x70, 0x44, 0x67], Data: [10], AfterIdat: true },
+    ]
+    itxtPrefix := [67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-compressed-language-itxt-icc-exif-private-chunks")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_itxt("Comment", "Bonjour zipped UTF8", "fr", "Commentaire", true)
+        for chunk in chunks
+            pngInfo.add(PillowTestBuffer(chunk.Type), PillowTestBuffer(chunk.Data), chunk.AfterIdat)
+
+        image.Save(path, "PNG", { pnginfo: pngInfo, icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif) })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        itxt := PillowTestFindPngChunk(bytes, [0x69, 0x54, 0x58, 0x74])
+        preA := PillowTestFindPngChunk(bytes, chunks[1].Type)
+        preB := PillowTestFindPngChunk(bytes, chunks[2].Type)
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        lateC := PillowTestFindPngChunk(bytes, chunks[3].Type)
+        lateD := PillowTestFindPngChunk(bytes, chunks[4].Type)
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        iend := PillowTestFindPngChunk(bytes, [0x49, 0x45, 0x4E, 0x44])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(itxt.Found)
+        AhkTest.AssertTrue(preA.Found)
+        AhkTest.AssertTrue(preB.Found)
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(lateC.Found)
+        AhkTest.AssertTrue(lateD.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iend.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < itxt.DataOffset)
+        AhkTest.AssertTrue(itxt.DataOffset < preA.DataOffset)
+        AhkTest.AssertTrue(preA.DataOffset < preB.DataOffset)
+        AhkTest.AssertTrue(preB.DataOffset < exifChunk.DataOffset)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertTrue(idat.DataOffset < lateC.DataOffset)
+        AhkTest.AssertTrue(lateC.DataOffset < lateD.DataOffset)
+        AhkTest.AssertTrue(lateD.DataOffset < iend.DataOffset)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertTrue(itxt.Length > itxtPrefix.Length)
+        AhkTest.AssertEqual(itxtPrefix, PillowTestArraySlice(bytes, itxt.DataOffset, itxt.DataOffset + itxtPrefix.Length - 1))
+        AhkTest.AssertEqual(chunks[1].Data, PillowTestArraySlice(bytes, preA.DataOffset, preA.DataOffset + preA.Length - 1))
+        AhkTest.AssertEqual(chunks[2].Data, PillowTestArraySlice(bytes, preB.DataOffset, preB.DataOffset + preB.Length - 1))
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+        AhkTest.AssertEqual(chunks[3].Data, PillowTestArraySlice(bytes, lateC.DataOffset, lateC.DataOffset + lateC.Length - 1))
+        AhkTest.AssertEqual(chunks[4].Data, PillowTestArraySlice(bytes, lateD.DataOffset, lateD.DataOffset + lateD.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual("Bonjour zipped UTF8", loaded.Info["Comment"])
+        AhkTest.AssertEqual("Bonjour zipped UTF8", loaded.Text["Comment"])
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertFalse(loaded.Info.Has("vpAg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpBg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpCg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpDg"))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo compressed language iTXt icc_profile exif and multiple private chunks write metadata chunks", PillowTestImageSavePngPngInfoCompressedLanguageITextIccProfileExifAndMultiplePrivateChunksWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoOptimizedTransparencyCompressedLanguageITextIccProfileExifAndMultiplePrivateChunksWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    chunks := [
+        { Type: [0x76, 0x70, 0x41, 0x67], Data: [1, 2, 3], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x42, 0x67], Data: [4, 5], AfterIdat: false },
+        { Type: [0x76, 0x70, 0x43, 0x67], Data: [6, 7, 8, 9], AfterIdat: true },
+        { Type: [0x76, 0x70, 0x44, 0x67], Data: [10], AfterIdat: true },
+    ]
+    itxtPrefix := [67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 101, 110, 0, 84, 114, 97, 110, 115, 108, 97, 116, 101, 100, 0]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-opt-trns-compressed-language-itxt-icc-exif-private-chunks")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add_itxt("Comment", "Hello zipped", "en", "Translated", true)
+        for chunk in chunks
+            pngInfo.add(PillowTestBuffer(chunk.Type), PillowTestBuffer(chunk.Data), chunk.AfterIdat)
+
+        image.Save(path, "PNG", {
+            pnginfo: pngInfo,
+            icc_profile: PillowTestBuffer(profile),
+            exif: PillowTestBuffer(exif),
+            transparency: [10, 20, 30],
+            optimize: true
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        itxt := PillowTestFindPngChunk(bytes, [0x69, 0x54, 0x58, 0x74])
+        preA := PillowTestFindPngChunk(bytes, chunks[1].Type)
+        preB := PillowTestFindPngChunk(bytes, chunks[2].Type)
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        lateC := PillowTestFindPngChunk(bytes, chunks[3].Type)
+        lateD := PillowTestFindPngChunk(bytes, chunks[4].Type)
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        iend := PillowTestFindPngChunk(bytes, [0x49, 0x45, 0x4E, 0x44])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(itxt.Found)
+        AhkTest.AssertTrue(preA.Found)
+        AhkTest.AssertTrue(preB.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(lateC.Found)
+        AhkTest.AssertTrue(lateD.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iend.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < itxt.DataOffset)
+        AhkTest.AssertTrue(itxt.DataOffset < preA.DataOffset)
+        AhkTest.AssertTrue(preA.DataOffset < preB.DataOffset)
+        AhkTest.AssertTrue(preB.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < exifChunk.DataOffset)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertTrue(idat.DataOffset < lateC.DataOffset)
+        AhkTest.AssertTrue(lateC.DataOffset < lateD.DataOffset)
+        AhkTest.AssertTrue(lateD.DataOffset < iend.DataOffset)
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+        AhkTest.AssertEqual([0x78, 0xDA], PillowTestArraySlice(bytes, idat.DataOffset, idat.DataOffset + 1))
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertTrue(itxt.Length > itxtPrefix.Length)
+        AhkTest.AssertEqual(itxtPrefix, PillowTestArraySlice(bytes, itxt.DataOffset, itxt.DataOffset + itxtPrefix.Length - 1))
+        AhkTest.AssertEqual(chunks[1].Data, PillowTestArraySlice(bytes, preA.DataOffset, preA.DataOffset + preA.Length - 1))
+        AhkTest.AssertEqual(chunks[2].Data, PillowTestArraySlice(bytes, preB.DataOffset, preB.DataOffset + preB.Length - 1))
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+        AhkTest.AssertEqual(chunks[3].Data, PillowTestArraySlice(bytes, lateC.DataOffset, lateC.DataOffset + lateC.Length - 1))
+        AhkTest.AssertEqual(chunks[4].Data, PillowTestArraySlice(bytes, lateD.DataOffset, lateD.DataOffset + lateD.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual("Hello zipped", loaded.Info["Comment"])
+        AhkTest.AssertEqual("Hello zipped", loaded.Text["Comment"])
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertFalse(loaded.Info.Has("vpAg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpBg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpCg"))
+        AhkTest.AssertFalse(loaded.Info.Has("vpDg"))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo optimize RGB tRNS compressed language iTXt icc_profile exif and multiple private chunks write metadata chunks", PillowTestImageSavePngPngInfoOptimizedTransparencyCompressedLanguageITextIccProfileExifAndMultiplePrivateChunksWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoChrmAndTextWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-chrm-text")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+        pngInfo.add_text("Author", "Ada")
+        image.Save(path, "PNG", { pnginfo: pngInfo })
+
+        bytes := PillowTestReadFileBytes(path)
+        chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(chrm.Found)
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertEqual(32, chrm.Length)
+        AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+        AhkTest.AssertEqual(10, text.Length)
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+        AhkTest.AssertTrue(chrm.DataOffset < text.DataOffset)
+        AhkTest.AssertTrue(text.DataOffset < idat.DataOffset)
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+        PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM and text write both metadata chunks", PillowTestImageSavePngPngInfoChrmAndTextWritesBothMetadataChunks)
+
+PillowTestImageSavePngPngInfoChrmTextAndTransparencyWritesAllMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-chrm-text-transparency")
+    loaded := 0
+    rgba := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+        pngInfo.add_text("Author", "Ada")
+        image.Save(path, "PNG", { pnginfo: pngInfo, transparency: [10, 20, 30] })
+
+        bytes := PillowTestReadFileBytes(path)
+        chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(chrm.Found)
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(chrm.DataOffset < text.DataOffset)
+        AhkTest.AssertTrue(text.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(32, chrm.Length)
+        AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+        AhkTest.AssertEqual(10, text.Length)
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+        AhkTest.AssertEqual(6, trns.Length)
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+        PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM text and transparency write all metadata chunks", PillowTestImageSavePngPngInfoChrmTextAndTransparencyWritesAllMetadataChunks)
+
+PillowTestImageSavePngPngInfoChrmAndIccProfileWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-chrm-icc")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+        image.Save(path, "PNG", { pnginfo: pngInfo, icc_profile: PillowTestBuffer(profile) })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(chrm.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < chrm.DataOffset)
+        AhkTest.AssertTrue(chrm.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertEqual(32, chrm.Length)
+        AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+        PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM and icc_profile write both metadata chunks", PillowTestImageSavePngPngInfoChrmAndIccProfileWritesBothMetadataChunks)
+
+PillowTestImageSavePngPngInfoChrmTextAndIccProfileWritesAllMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-chrm-text-icc")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+        pngInfo.add_text("Author", "Ada")
+        image.Save(path, "PNG", { pnginfo: pngInfo, icc_profile: PillowTestBuffer(profile) })
+
+        bytes := PillowTestReadFileBytes(path)
+        iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+        chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+        text := PillowTestFindPngChunk(bytes, [0x74, 0x45, 0x58, 0x74])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(iccp.Found)
+        AhkTest.AssertTrue(chrm.Found)
+        AhkTest.AssertTrue(text.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(iccp.DataOffset < chrm.DataOffset)
+        AhkTest.AssertTrue(chrm.DataOffset < text.DataOffset)
+        AhkTest.AssertTrue(text.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+        AhkTest.AssertEqual(32, chrm.Length)
+        AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+        AhkTest.AssertEqual(10, text.Length)
+        AhkTest.AssertEqual([65, 117, 116, 104, 111, 114, 0, 65, 100, 97], PillowTestArraySlice(bytes, text.DataOffset, text.DataOffset + 9))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+        PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+        AhkTest.AssertEqual("Ada", loaded.Info["Author"])
+        AhkTest.AssertEqual("Ada", loaded.Text["Author"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM text and icc_profile write all metadata chunks", PillowTestImageSavePngPngInfoChrmTextAndIccProfileWritesAllMetadataChunks)
+
+PillowTestImageSavePngPngInfoChrmAndExifWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-chrm-exif")
+    loaded := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+        image.Save(path, "PNG", { pnginfo: pngInfo, exif: PillowTestBuffer(exif) })
+
+        bytes := PillowTestReadFileBytes(path)
+        chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+        exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(chrm.Found)
+        AhkTest.AssertTrue(exifChunk.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(chrm.DataOffset < exifChunk.DataOffset)
+        AhkTest.AssertTrue(exifChunk.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(32, chrm.Length)
+        AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+        AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+        AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+        PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+        AhkTest.AssertTrue(loaded.Info.Has("exif"))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM and exif write both metadata chunks", PillowTestImageSavePngPngInfoChrmAndExifWritesBothMetadataChunks)
+
+PillowTestImageSavePngPngInfoChrmAndTransparencyWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-chrm-transparency")
+    loaded := 0
+    rgba := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+        image.Save(path, "PNG", { pnginfo: pngInfo, transparency: [10, 20, 30] })
+
+        bytes := PillowTestReadFileBytes(path)
+        chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(chrm.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(chrm.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(32, chrm.Length)
+        AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+        AhkTest.AssertEqual(6, trns.Length)
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+        PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM and transparency write both metadata chunks", PillowTestImageSavePngPngInfoChrmAndTransparencyWritesBothMetadataChunks)
+
+PillowTestImageSavePngPngInfoChrmAndByteTransparencyWritesBothMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-pnginfo-chrm-byte-transparency")
+    loaded := 0
+    rgba := 0
+    try {
+        pngInfo := Pillow.PngImagePlugin.PngInfo()
+        pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+        image.Save(path, "PNG", { pnginfo: pngInfo, transparency: PillowTestBuffer([10, 20, 30]) })
+
+        bytes := PillowTestReadFileBytes(path)
+        chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+        trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(chrm.Found)
+        AhkTest.AssertTrue(trns.Found)
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertTrue(chrm.DataOffset < trns.DataOffset)
+        AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+        AhkTest.AssertEqual(32, chrm.Length)
+        AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+        AhkTest.AssertEqual(6, trns.Length)
+        AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+        PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+        AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+        AhkTest.AssertEqual([
+            10, 20, 30, 0,
+            40, 50, 60, 255,
+        ], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM and byte transparency write both metadata chunks", PillowTestImageSavePngPngInfoChrmAndByteTransparencyWritesBothMetadataChunks)
+
+PillowTestImageSavePngPngInfoChrmAndTextKindBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    cafeValue := "Cafe " Chr(0x2603)
+    cases := [
+        {
+            Name: "ztxt",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true),
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Prefix: [78, 111, 116, 101, 0, 0],
+            ExactPayload: false
+        },
+        {
+            Name: "itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", cafeValue),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: cafeValue,
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 0, 0, 67, 97, 102, 101, 32, 226, 152, 131],
+            ExactPayload: true
+        },
+        {
+            Name: "compressed-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Prefix: [67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0],
+            ExactPayload: false
+        },
+        {
+            Name: "language-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire"),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56],
+            ExactPayload: true
+        },
+    ]
+    paths := []
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-pnginfo-chrm-" item.Name)
+            paths.Push(path)
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+            configure := item.Configure
+            configure(pngInfo)
+
+            image.Save(path, "PNG", { pnginfo: pngInfo })
+
+            bytes := PillowTestReadFileBytes(path)
+            chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+            textChunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(chrm.Found)
+            AhkTest.AssertTrue(textChunk.Found)
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertTrue(chrm.DataOffset < textChunk.DataOffset)
+            AhkTest.AssertTrue(textChunk.DataOffset < idat.DataOffset)
+            AhkTest.AssertEqual(32, chrm.Length)
+            AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+            AhkTest.AssertTrue(textChunk.Length >= item.Prefix.Length)
+            AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, textChunk.DataOffset, textChunk.DataOffset + item.Prefix.Length - 1))
+            if item.ExactPayload
+                AhkTest.AssertEqual(item.Prefix.Length, textChunk.Length)
+
+            loaded := Pillow.Image.Open(path, ["PNG"])
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+            PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+            AhkTest.AssertEqual(item.Value, loaded.Info[item.Key])
+            AhkTest.AssertEqual(item.Value, loaded.Text[item.Key])
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM and text-kind batch write metadata chunks", PillowTestImageSavePngPngInfoChrmAndTextKindBatchWritesMetadataChunks)
+
+PillowTestImageSavePngOptimizePngInfoChrmAndTextKindBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    cafeValue := "Cafe " Chr(0x2603)
+    cases := [
+        {
+            Name: "ztxt",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true),
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Prefix: [78, 111, 116, 101, 0, 0],
+            ExactPayload: false
+        },
+        {
+            Name: "itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", cafeValue),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: cafeValue,
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 0, 0, 67, 97, 102, 101, 32, 226, 152, 131],
+            ExactPayload: true
+        },
+        {
+            Name: "compressed-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Prefix: [67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0],
+            ExactPayload: false
+        },
+        {
+            Name: "language-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire"),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56],
+            ExactPayload: true
+        },
+    ]
+    paths := []
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-opt-pnginfo-chrm-" item.Name)
+            paths.Push(path)
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+            configure := item.Configure
+            configure(pngInfo)
+
+            image.Save(path, "PNG", { pnginfo: pngInfo, optimize: true })
+
+            bytes := PillowTestReadFileBytes(path)
+            chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+            textChunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(chrm.Found)
+            AhkTest.AssertTrue(textChunk.Found)
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertTrue(chrm.DataOffset < textChunk.DataOffset)
+            AhkTest.AssertTrue(textChunk.DataOffset < idat.DataOffset)
+            AhkTest.AssertEqual([0x78, 0xDA], PillowTestArraySlice(bytes, idat.DataOffset, idat.DataOffset + 1))
+            AhkTest.AssertEqual(32, chrm.Length)
+            AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+            AhkTest.AssertTrue(textChunk.Length >= item.Prefix.Length)
+            AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, textChunk.DataOffset, textChunk.DataOffset + item.Prefix.Length - 1))
+            if item.ExactPayload
+                AhkTest.AssertEqual(item.Prefix.Length, textChunk.Length)
+
+            loaded := Pillow.Image.Open(path, ["PNG"])
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+            PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+            AhkTest.AssertEqual(item.Value, loaded.Info[item.Key])
+            AhkTest.AssertEqual(item.Value, loaded.Text[item.Key])
+            AhkTest.AssertFalse(loaded.Info.Has("optimize"))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG optimize pnginfo cHRM and text-kind batch write metadata chunks", PillowTestImageSavePngOptimizePngInfoChrmAndTextKindBatchWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoChrmTextKindAndTransparencyBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    cafeValue := "Cafe " Chr(0x2603)
+    cases := [
+        {
+            Name: "ztxt",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true),
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Prefix: [78, 111, 116, 101, 0, 0],
+            ExactPayload: false
+        },
+        {
+            Name: "itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", cafeValue),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: cafeValue,
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 0, 0, 67, 97, 102, 101, 32, 226, 152, 131],
+            ExactPayload: true
+        },
+        {
+            Name: "compressed-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Prefix: [67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0],
+            ExactPayload: false
+        },
+        {
+            Name: "language-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire"),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56],
+            ExactPayload: true
+        },
+    ]
+    paths := []
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    rgba := 0
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-pnginfo-chrm-textkind-transparency-" item.Name)
+            paths.Push(path)
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+            configure := item.Configure
+            configure(pngInfo)
+
+            image.Save(path, "PNG", { pnginfo: pngInfo, transparency: [10, 20, 30] })
+
+            bytes := PillowTestReadFileBytes(path)
+            chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+            textChunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+            trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(chrm.Found)
+            AhkTest.AssertTrue(textChunk.Found)
+            AhkTest.AssertTrue(trns.Found)
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertTrue(chrm.DataOffset < textChunk.DataOffset)
+            AhkTest.AssertTrue(textChunk.DataOffset < trns.DataOffset)
+            AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+            AhkTest.AssertEqual(32, chrm.Length)
+            AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+            AhkTest.AssertTrue(textChunk.Length >= item.Prefix.Length)
+            AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, textChunk.DataOffset, textChunk.DataOffset + item.Prefix.Length - 1))
+            if item.ExactPayload
+                AhkTest.AssertEqual(item.Prefix.Length, textChunk.Length)
+            AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+            loaded := Pillow.Image.Open(path, ["PNG"])
+            rgba := loaded.Convert("RGBA")
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+            PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+            AhkTest.AssertEqual(item.Value, loaded.Info[item.Key])
+            AhkTest.AssertEqual(item.Value, loaded.Text[item.Key])
+            AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+            AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+            AhkTest.AssertEqual([
+                10, 20, 30, 0,
+                40, 50, 60, 255,
+            ], PillowTestBufferToArray(rgba.ToBytes()))
+            rgba.Close()
+            rgba := 0
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM text-kind and transparency batch write metadata chunks", PillowTestImageSavePngPngInfoChrmTextKindAndTransparencyBatchWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoChrmTextKindAndByteTransparencyBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    cafeValue := "Cafe " Chr(0x2603)
+    cases := [
+        {
+            Name: "ztxt",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true),
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Prefix: [78, 111, 116, 101, 0, 0],
+            ExactPayload: false
+        },
+        {
+            Name: "itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", cafeValue),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: cafeValue,
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 0, 0, 67, 97, 102, 101, 32, 226, 152, 131],
+            ExactPayload: true
+        },
+        {
+            Name: "compressed-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Prefix: [67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0],
+            ExactPayload: false
+        },
+        {
+            Name: "language-itxt",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire"),
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56],
+            ExactPayload: true
+        },
+    ]
+    paths := []
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    rgba := 0
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-pnginfo-chrm-textkind-byte-transparency-" item.Name)
+            paths.Push(path)
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+            configure := item.Configure
+            configure(pngInfo)
+
+            image.Save(path, "PNG", { pnginfo: pngInfo, transparency: PillowTestBuffer([10, 20, 30]) })
+
+            bytes := PillowTestReadFileBytes(path)
+            chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+            textChunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+            trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(chrm.Found)
+            AhkTest.AssertTrue(textChunk.Found)
+            AhkTest.AssertTrue(trns.Found)
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertTrue(chrm.DataOffset < textChunk.DataOffset)
+            AhkTest.AssertTrue(textChunk.DataOffset < trns.DataOffset)
+            AhkTest.AssertTrue(trns.DataOffset < idat.DataOffset)
+            AhkTest.AssertEqual(32, chrm.Length)
+            AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+            AhkTest.AssertTrue(textChunk.Length >= item.Prefix.Length)
+            AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, textChunk.DataOffset, textChunk.DataOffset + item.Prefix.Length - 1))
+            if item.ExactPayload
+                AhkTest.AssertEqual(item.Prefix.Length, textChunk.Length)
+            AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+            loaded := Pillow.Image.Open(path, ["PNG"])
+            rgba := loaded.Convert("RGBA")
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+            PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+            AhkTest.AssertEqual(item.Value, loaded.Info[item.Key])
+            AhkTest.AssertEqual(item.Value, loaded.Text[item.Key])
+            AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+            AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+            AhkTest.AssertEqual([
+                10, 20, 30, 0,
+                40, 50, 60, 255,
+            ], PillowTestBufferToArray(rgba.ToBytes()))
+            rgba.Close()
+            rgba := 0
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM text-kind and byte transparency batch write metadata chunks", PillowTestImageSavePngPngInfoChrmTextKindAndByteTransparencyBatchWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoChrmTextKindAndIccExifBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    cases := [
+        {
+            Name: "ztxt-icc",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true),
+            Options: { icc_profile: PillowTestBuffer(profile) },
+            HasIcc: true,
+            HasExif: false,
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Prefix: [78, 111, 116, 101, 0, 0],
+            ExactPayload: false,
+            Order: ["icc", "chrm", "text"]
+        },
+        {
+            Name: "language-itxt-exif",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire"),
+            Options: { exif: PillowTestBuffer(exif) },
+            HasIcc: false,
+            HasExif: true,
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56],
+            ExactPayload: true,
+            Order: ["chrm", "text", "exif"]
+        },
+        {
+            Name: "compressed-itxt-icc-exif",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true),
+            Options: { icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif) },
+            HasIcc: true,
+            HasExif: true,
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Prefix: [67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0],
+            ExactPayload: false,
+            Order: ["icc", "chrm", "text", "exif"]
+        },
+    ]
+    paths := []
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-pnginfo-chrm-textkind-icc-exif-" item.Name)
+            paths.Push(path)
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+            configure := item.Configure
+            configure(pngInfo)
+            options := item.Options
+            options.pnginfo := pngInfo
+
+            image.Save(path, "PNG", options)
+
+            bytes := PillowTestReadFileBytes(path)
+            iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+            chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+            textChunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+            exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(chrm.Found)
+            AhkTest.AssertTrue(textChunk.Found)
+            AhkTest.AssertTrue(idat.Found)
+            if item.HasIcc {
+                AhkTest.AssertTrue(iccp.Found)
+                AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+            } else {
+                AhkTest.AssertFalse(iccp.Found)
+            }
+            if item.HasExif {
+                AhkTest.AssertTrue(exifChunk.Found)
+                AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+                AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+            } else {
+                AhkTest.AssertFalse(exifChunk.Found)
+            }
+            previousOffset := 0
+            for expected in item.Order {
+                chunk := expected = "icc" ? iccp : expected = "chrm" ? chrm : expected = "text" ? textChunk : exifChunk
+                AhkTest.AssertTrue(chunk.DataOffset > previousOffset)
+                AhkTest.AssertTrue(chunk.DataOffset < idat.DataOffset)
+                previousOffset := chunk.DataOffset
+            }
+            AhkTest.AssertEqual(32, chrm.Length)
+            AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+            AhkTest.AssertTrue(textChunk.Length >= item.Prefix.Length)
+            AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, textChunk.DataOffset, textChunk.DataOffset + item.Prefix.Length - 1))
+            if item.ExactPayload
+                AhkTest.AssertEqual(item.Prefix.Length, textChunk.Length)
+
+            loaded := Pillow.Image.Open(path, ["PNG"])
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+            PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+            AhkTest.AssertEqual(item.Value, loaded.Info[item.Key])
+            AhkTest.AssertEqual(item.Value, loaded.Text[item.Key])
+            if item.HasIcc {
+                AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+                AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            }
+            if item.HasExif {
+                AhkTest.AssertTrue(loaded.Info.Has("exif"))
+                AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+                AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            }
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM text-kind and ICC EXIF batch write metadata chunks", PillowTestImageSavePngPngInfoChrmTextKindAndIccExifBatchWritesMetadataChunks)
+
+PillowTestImageSavePngPngInfoChrmTextKindIccExifAndTransparencyBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    cases := [
+        {
+            Name: "ztxt-icc",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true),
+            Options: { icc_profile: PillowTestBuffer(profile), transparency: [10, 20, 30] },
+            HasIcc: true,
+            HasExif: false,
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Prefix: [78, 111, 116, 101, 0, 0],
+            ExactPayload: false,
+            Order: ["icc", "chrm", "text", "trns"]
+        },
+        {
+            Name: "language-itxt-exif",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire"),
+            Options: { exif: PillowTestBuffer(exif), transparency: [10, 20, 30] },
+            HasIcc: false,
+            HasExif: true,
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56],
+            ExactPayload: true,
+            Order: ["chrm", "text", "trns", "exif"]
+        },
+        {
+            Name: "compressed-itxt-icc-exif",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true),
+            Options: { icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif), transparency: [10, 20, 30] },
+            HasIcc: true,
+            HasExif: true,
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Prefix: [67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0],
+            ExactPayload: false,
+            Order: ["icc", "chrm", "text", "trns", "exif"]
+        },
+    ]
+    paths := []
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    rgba := 0
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-pnginfo-chrm-textkind-icc-exif-transparency-" item.Name)
+            paths.Push(path)
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+            configure := item.Configure
+            configure(pngInfo)
+            options := item.Options
+            options.pnginfo := pngInfo
+
+            image.Save(path, "PNG", options)
+
+            bytes := PillowTestReadFileBytes(path)
+            iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+            chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+            textChunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+            trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+            exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(chrm.Found)
+            AhkTest.AssertTrue(textChunk.Found)
+            AhkTest.AssertTrue(trns.Found)
+            AhkTest.AssertTrue(idat.Found)
+            if item.HasIcc {
+                AhkTest.AssertTrue(iccp.Found)
+                AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+            } else {
+                AhkTest.AssertFalse(iccp.Found)
+            }
+            if item.HasExif {
+                AhkTest.AssertTrue(exifChunk.Found)
+                AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+                AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+            } else {
+                AhkTest.AssertFalse(exifChunk.Found)
+            }
+            previousOffset := 0
+            for expected in item.Order {
+                chunk := expected = "icc" ? iccp : expected = "chrm" ? chrm : expected = "text" ? textChunk : expected = "trns" ? trns : exifChunk
+                AhkTest.AssertTrue(chunk.DataOffset > previousOffset)
+                AhkTest.AssertTrue(chunk.DataOffset < idat.DataOffset)
+                previousOffset := chunk.DataOffset
+            }
+            AhkTest.AssertEqual(32, chrm.Length)
+            AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+            AhkTest.AssertTrue(textChunk.Length >= item.Prefix.Length)
+            AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, textChunk.DataOffset, textChunk.DataOffset + item.Prefix.Length - 1))
+            if item.ExactPayload
+                AhkTest.AssertEqual(item.Prefix.Length, textChunk.Length)
+            AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+            loaded := Pillow.Image.Open(path, ["PNG"])
+            rgba := loaded.Convert("RGBA")
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+            PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+            AhkTest.AssertEqual(item.Value, loaded.Info[item.Key])
+            AhkTest.AssertEqual(item.Value, loaded.Text[item.Key])
+            AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+            AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+            AhkTest.AssertEqual([
+                10, 20, 30, 0,
+                40, 50, 60, 255,
+            ], PillowTestBufferToArray(rgba.ToBytes()))
+            rgba.Close()
+            rgba := 0
+            if item.HasIcc {
+                AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+                AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            }
+            if item.HasExif {
+                AhkTest.AssertTrue(loaded.Info.Has("exif"))
+                AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+                AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            }
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG pnginfo cHRM text-kind ICC EXIF and transparency batch write metadata chunks", PillowTestImageSavePngPngInfoChrmTextKindIccExifAndTransparencyBatchWritesMetadataChunks)
+
+PillowTestImageSavePngOptimizePngInfoChrmTextKindAndIccExifBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    cases := [
+        {
+            Name: "ztxt-icc",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true),
+            Options: { icc_profile: PillowTestBuffer(profile), optimize: true },
+            HasIcc: true,
+            HasExif: false,
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Prefix: [78, 111, 116, 101, 0, 0],
+            ExactPayload: false,
+            Order: ["icc", "chrm", "text"]
+        },
+        {
+            Name: "language-itxt-exif",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire"),
+            Options: { exif: PillowTestBuffer(exif), optimize: true },
+            HasIcc: false,
+            HasExif: true,
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56],
+            ExactPayload: true,
+            Order: ["chrm", "text", "exif"]
+        },
+        {
+            Name: "compressed-itxt-icc-exif",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true),
+            Options: { icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif), optimize: true },
+            HasIcc: true,
+            HasExif: true,
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Prefix: [67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0],
+            ExactPayload: false,
+            Order: ["icc", "chrm", "text", "exif"]
+        },
+    ]
+    paths := []
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-opt-pnginfo-chrm-textkind-icc-exif-" item.Name)
+            paths.Push(path)
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+            configure := item.Configure
+            configure(pngInfo)
+            options := item.Options
+            options.pnginfo := pngInfo
+
+            image.Save(path, "PNG", options)
+
+            bytes := PillowTestReadFileBytes(path)
+            iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+            chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+            textChunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+            exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(chrm.Found)
+            AhkTest.AssertTrue(textChunk.Found)
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertEqual([0x78, 0xDA], PillowTestArraySlice(bytes, idat.DataOffset, idat.DataOffset + 1))
+            if item.HasIcc {
+                AhkTest.AssertTrue(iccp.Found)
+                AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+            } else {
+                AhkTest.AssertFalse(iccp.Found)
+            }
+            if item.HasExif {
+                AhkTest.AssertTrue(exifChunk.Found)
+                AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+                AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+            } else {
+                AhkTest.AssertFalse(exifChunk.Found)
+            }
+            previousOffset := 0
+            for expected in item.Order {
+                chunk := expected = "icc" ? iccp : expected = "chrm" ? chrm : expected = "text" ? textChunk : exifChunk
+                AhkTest.AssertTrue(chunk.DataOffset > previousOffset)
+                AhkTest.AssertTrue(chunk.DataOffset < idat.DataOffset)
+                previousOffset := chunk.DataOffset
+            }
+            AhkTest.AssertEqual(32, chrm.Length)
+            AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+            AhkTest.AssertTrue(textChunk.Length >= item.Prefix.Length)
+            AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, textChunk.DataOffset, textChunk.DataOffset + item.Prefix.Length - 1))
+            if item.ExactPayload
+                AhkTest.AssertEqual(item.Prefix.Length, textChunk.Length)
+
+            loaded := Pillow.Image.Open(path, ["PNG"])
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+            PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+            AhkTest.AssertEqual(item.Value, loaded.Info[item.Key])
+            AhkTest.AssertEqual(item.Value, loaded.Text[item.Key])
+            AhkTest.AssertFalse(loaded.Info.Has("optimize"))
+            if item.HasIcc {
+                AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+                AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            }
+            if item.HasExif {
+                AhkTest.AssertTrue(loaded.Info.Has("exif"))
+                AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+                AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            }
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG optimize pnginfo cHRM text-kind and ICC EXIF batch write metadata chunks", PillowTestImageSavePngOptimizePngInfoChrmTextKindAndIccExifBatchWritesMetadataChunks)
+
+PillowTestImageSavePngOptimizePngInfoChrmTextKindIccExifAndTransparencyBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    cases := [
+        {
+            Name: "ztxt-icc",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true),
+            Options: { icc_profile: PillowTestBuffer(profile), transparency: [10, 20, 30], optimize: true },
+            HasIcc: true,
+            HasExif: false,
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Prefix: [78, 111, 116, 101, 0, 0],
+            ExactPayload: false,
+            Order: ["icc", "chrm", "text", "trns"]
+        },
+        {
+            Name: "language-itxt-exif",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire"),
+            Options: { exif: PillowTestBuffer(exif), transparency: [10, 20, 30], optimize: true },
+            HasIcc: false,
+            HasExif: true,
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56],
+            ExactPayload: true,
+            Order: ["chrm", "text", "trns", "exif"]
+        },
+        {
+            Name: "compressed-itxt-icc-exif",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true),
+            Options: { icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif), transparency: [10, 20, 30], optimize: true },
+            HasIcc: true,
+            HasExif: true,
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Prefix: [67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0],
+            ExactPayload: false,
+            Order: ["icc", "chrm", "text", "trns", "exif"]
+        },
+    ]
+    paths := []
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    rgba := 0
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-opt-pnginfo-chrm-textkind-icc-exif-transparency-" item.Name)
+            paths.Push(path)
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+            configure := item.Configure
+            configure(pngInfo)
+            options := item.Options
+            options.pnginfo := pngInfo
+
+            image.Save(path, "PNG", options)
+
+            bytes := PillowTestReadFileBytes(path)
+            iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+            chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+            textChunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+            trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+            exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(chrm.Found)
+            AhkTest.AssertTrue(textChunk.Found)
+            AhkTest.AssertTrue(trns.Found)
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertEqual([0x78, 0xDA], PillowTestArraySlice(bytes, idat.DataOffset, idat.DataOffset + 1))
+            if item.HasIcc {
+                AhkTest.AssertTrue(iccp.Found)
+                AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+            } else {
+                AhkTest.AssertFalse(iccp.Found)
+            }
+            if item.HasExif {
+                AhkTest.AssertTrue(exifChunk.Found)
+                AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+                AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+            } else {
+                AhkTest.AssertFalse(exifChunk.Found)
+            }
+            previousOffset := 0
+            for expected in item.Order {
+                chunk := expected = "icc" ? iccp : expected = "chrm" ? chrm : expected = "text" ? textChunk : expected = "trns" ? trns : exifChunk
+                AhkTest.AssertTrue(chunk.DataOffset > previousOffset)
+                AhkTest.AssertTrue(chunk.DataOffset < idat.DataOffset)
+                previousOffset := chunk.DataOffset
+            }
+            AhkTest.AssertEqual(32, chrm.Length)
+            AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+            AhkTest.AssertTrue(textChunk.Length >= item.Prefix.Length)
+            AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, textChunk.DataOffset, textChunk.DataOffset + item.Prefix.Length - 1))
+            if item.ExactPayload
+                AhkTest.AssertEqual(item.Prefix.Length, textChunk.Length)
+            AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+            loaded := Pillow.Image.Open(path, ["PNG"])
+            rgba := loaded.Convert("RGBA")
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+            PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+            AhkTest.AssertEqual(item.Value, loaded.Info[item.Key])
+            AhkTest.AssertEqual(item.Value, loaded.Text[item.Key])
+            AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+            AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+            AhkTest.AssertEqual([
+                10, 20, 30, 0,
+                40, 50, 60, 255,
+            ], PillowTestBufferToArray(rgba.ToBytes()))
+            rgba.Close()
+            rgba := 0
+            AhkTest.AssertFalse(loaded.Info.Has("optimize"))
+            if item.HasIcc {
+                AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+                AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            }
+            if item.HasExif {
+                AhkTest.AssertTrue(loaded.Info.Has("exif"))
+                AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+                AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            }
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG optimize pnginfo cHRM text-kind ICC EXIF and transparency batch write metadata chunks", PillowTestImageSavePngOptimizePngInfoChrmTextKindIccExifAndTransparencyBatchWritesMetadataChunks)
+
+PillowTestImageSavePngCompressLevelPngInfoChrmTextKindIccExifAndTransparencyBatchWritesMetadataChunks(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 20, 30, 40, 50, 60]
+    profile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := [69, 120, 105, 102, 0, 0, 77, 77, 0, 42, 0, 0, 0, 8, 0, 1, 1, 18, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]
+    exifPayload := PillowTestArraySlice(exif, 7, exif.Length)
+    chrmPayload := [
+        0, 0, 122, 38, 0, 0, 128, 132,
+        0, 0, 250, 0, 0, 0, 128, 232,
+        0, 0, 117, 48, 0, 0, 234, 96,
+        0, 0, 58, 152, 0, 0, 23, 112,
+    ]
+    expectedChromaticity := [0.3127, 0.329, 0.64, 0.33, 0.3, 0.6, 0.15, 0.06]
+    cases := [
+        {
+            Name: "ztxt-icc",
+            Configure: (pngInfo) => pngInfo.add_text("Note", "Compressed hello", true),
+            Options: { icc_profile: PillowTestBuffer(profile), transparency: [10, 20, 30], compress_level: 6 },
+            HasIcc: true,
+            HasExif: false,
+            ChunkType: [0x7A, 0x54, 0x58, 0x74],
+            Key: "Note",
+            Value: "Compressed hello",
+            Prefix: [78, 111, 116, 101, 0, 0],
+            ExactPayload: false,
+            Order: ["icc", "chrm", "text", "trns"]
+        },
+        {
+            Name: "language-itxt-exif",
+            Configure: (pngInfo) => pngInfo.add_itxt("Comment", "Bonjour UTF8", "fr", "Commentaire"),
+            Options: { exif: PillowTestBuffer(exif), transparency: [10, 20, 30], compress_level: 6 },
+            HasIcc: false,
+            HasExif: true,
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "Comment",
+            Value: "Bonjour UTF8",
+            Prefix: [67, 111, 109, 109, 101, 110, 116, 0, 0, 0, 102, 114, 0, 67, 111, 109, 109, 101, 110, 116, 97, 105, 114, 101, 0, 66, 111, 110, 106, 111, 117, 114, 32, 85, 84, 70, 56],
+            ExactPayload: true,
+            Order: ["chrm", "text", "trns", "exif"]
+        },
+        {
+            Name: "compressed-itxt-icc-exif",
+            Configure: (pngInfo) => pngInfo.add_itxt("CompressedComment", "Zip hello UTF8", "", "", true),
+            Options: { icc_profile: PillowTestBuffer(profile), exif: PillowTestBuffer(exif), transparency: [10, 20, 30], compress_level: 6 },
+            HasIcc: true,
+            HasExif: true,
+            ChunkType: [0x69, 0x54, 0x58, 0x74],
+            Key: "CompressedComment",
+            Value: "Zip hello UTF8",
+            Prefix: [67, 111, 109, 112, 114, 101, 115, 115, 101, 100, 67, 111, 109, 109, 101, 110, 116, 0, 1, 0, 0, 0],
+            ExactPayload: false,
+            Order: ["icc", "chrm", "text", "trns", "exif"]
+        },
+    ]
+    paths := []
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer(pixels))
+    loaded := 0
+    rgba := 0
+    try {
+        for item in cases {
+            path := PillowTestTempPngPath("save-compress-pnginfo-chrm-textkind-icc-exif-transparency-" item.Name)
+            paths.Push(path)
+            pngInfo := Pillow.PngImagePlugin.PngInfo()
+            pngInfo.add(PillowTestBuffer([0x63, 0x48, 0x52, 0x4D]), PillowTestBuffer(chrmPayload))
+            configure := item.Configure
+            configure(pngInfo)
+            options := item.Options
+            options.pnginfo := pngInfo
+
+            image.Save(path, "PNG", options)
+
+            bytes := PillowTestReadFileBytes(path)
+            iccp := PillowTestFindPngChunk(bytes, [0x69, 0x43, 0x43, 0x50])
+            chrm := PillowTestFindPngChunk(bytes, [0x63, 0x48, 0x52, 0x4D])
+            textChunk := PillowTestFindPngChunk(bytes, item.ChunkType)
+            trns := PillowTestFindPngChunk(bytes, [0x74, 0x52, 0x4E, 0x53])
+            exifChunk := PillowTestFindPngChunk(bytes, [0x65, 0x58, 0x49, 0x66])
+            idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+            AhkTest.AssertTrue(chrm.Found)
+            AhkTest.AssertTrue(textChunk.Found)
+            AhkTest.AssertTrue(trns.Found)
+            AhkTest.AssertTrue(idat.Found)
+            AhkTest.AssertEqual([0x78, 0x9C], PillowTestArraySlice(bytes, idat.DataOffset, idat.DataOffset + 1))
+            if item.HasIcc {
+                AhkTest.AssertTrue(iccp.Found)
+                AhkTest.AssertEqual([73, 67, 67, 32, 80, 114, 111, 102, 105, 108, 101, 0, 0, 0x78], PillowTestArraySlice(bytes, iccp.DataOffset, iccp.DataOffset + 13))
+            } else {
+                AhkTest.AssertFalse(iccp.Found)
+            }
+            if item.HasExif {
+                AhkTest.AssertTrue(exifChunk.Found)
+                AhkTest.AssertEqual(exifPayload.Length, exifChunk.Length)
+                AhkTest.AssertEqual(exifPayload, PillowTestArraySlice(bytes, exifChunk.DataOffset, exifChunk.DataOffset + exifChunk.Length - 1))
+            } else {
+                AhkTest.AssertFalse(exifChunk.Found)
+            }
+            previousOffset := 0
+            for expected in item.Order {
+                chunk := expected = "icc" ? iccp : expected = "chrm" ? chrm : expected = "text" ? textChunk : expected = "trns" ? trns : exifChunk
+                AhkTest.AssertTrue(chunk.DataOffset > previousOffset)
+                AhkTest.AssertTrue(chunk.DataOffset < idat.DataOffset)
+                previousOffset := chunk.DataOffset
+            }
+            AhkTest.AssertEqual(32, chrm.Length)
+            AhkTest.AssertEqual(chrmPayload, PillowTestArraySlice(bytes, chrm.DataOffset, chrm.DataOffset + 31))
+            AhkTest.AssertTrue(textChunk.Length >= item.Prefix.Length)
+            AhkTest.AssertEqual(item.Prefix, PillowTestArraySlice(bytes, textChunk.DataOffset, textChunk.DataOffset + item.Prefix.Length - 1))
+            if item.ExactPayload
+                AhkTest.AssertEqual(item.Prefix.Length, textChunk.Length)
+            AhkTest.AssertEqual([0, 10, 0, 20, 0, 30], PillowTestArraySlice(bytes, trns.DataOffset, trns.DataOffset + 5))
+
+            loaded := Pillow.Image.Open(path, ["PNG"])
+            rgba := loaded.Convert("RGBA")
+            AhkTest.AssertEqual("PNG", loaded.Format)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertTrue(loaded.Info.Has("chromaticity"))
+            PillowTestAssertArrayNear(expectedChromaticity, loaded.Info["chromaticity"], 0.000001)
+            AhkTest.AssertEqual(item.Value, loaded.Info[item.Key])
+            AhkTest.AssertEqual(item.Value, loaded.Text[item.Key])
+            AhkTest.AssertTrue(loaded.Info.Has("transparency"))
+            AhkTest.AssertEqual([10, 20, 30], loaded.Info["transparency"])
+            AhkTest.AssertFalse(loaded.Info.Has("compress_level"))
+            AhkTest.AssertEqual([
+                10, 20, 30, 0,
+                40, 50, 60, 255,
+            ], PillowTestBufferToArray(rgba.ToBytes()))
+            rgba.Close()
+            rgba := 0
+            if item.HasIcc {
+                AhkTest.AssertTrue(loaded.Info.Has("icc_profile"))
+                AhkTest.AssertEqual(profile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            }
+            if item.HasExif {
+                AhkTest.AssertTrue(loaded.Info.Has("exif"))
+                AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+                AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            }
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        for item in [rgba, loaded, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG compress_level pnginfo cHRM text-kind ICC EXIF and transparency batch write metadata chunks", PillowTestImageSavePngCompressLevelPngInfoChrmTextKindIccExifAndTransparencyBatchWritesMetadataChunks)
+
+PillowTestImageSavePngOptimizeOptionMatchesPillowHeader(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [
+        10, 20, 30, 10, 20, 30, 40, 50, 60,
+        10, 20, 30, 40, 50, 60, 40, 50, 60,
+    ]
+    image := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer(pixels))
+    path := PillowTestTempPngPath("save-optimize")
+    loaded := 0
+    try {
+        image.Save(path, "PNG", { optimize: true })
+
+        bytes := PillowTestReadFileBytes(path)
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertEqual([0x78, 0xDA], PillowTestArraySlice(bytes, idat.DataOffset, idat.DataOffset + 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("optimize"))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG optimize option matches Pillow zlib header", PillowTestImageSavePngOptimizeOptionMatchesPillowHeader)
+
+PillowTestImageSavePngCompressLevelOneMatchesPillowHeader(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 8 {
+            x := A_Index - 1
+            values.Push(Mod(x * 19 + y * 7, 256))
+            values.Push(Mod(x * 3 + y * 29, 256))
+            values.Push(Mod(x * 41 + y * 11, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [8, 8], PillowTestBuffer(values))
+    path := PillowTestTempPngPath("compress-level-one")
+    loaded := 0
+    try {
+        image.Save(path, "PNG", { compress_level: 1 })
+
+        bytes := PillowTestReadFileBytes(path)
+        idat := PillowTestFindPngChunk(bytes, [0x49, 0x44, 0x41, 0x54])
+        AhkTest.AssertTrue(idat.Found)
+        AhkTest.AssertEqual([0x78, 0x01], PillowTestArraySlice(bytes, idat.DataOffset, idat.DataOffset + 1))
+
+        loaded := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertEqual("PNG", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(values, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertFalse(loaded.Info.Has("compress_level"))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG compress_level one matches Pillow zlib header", PillowTestImageSavePngCompressLevelOneMatchesPillowHeader)
 
 PillowTestImageSavePngCompressLevelRejectsInvalidOption(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -2326,6 +11125,4213 @@ PillowTestImageSaveAndOpenJpegUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Save and Image.Open support JPEG through native path", PillowTestImageSaveAndOpenJpegUsesNativePath)
 
+PillowTestCmykJpegFixtureBytes() {
+    return [
+        255, 216, 255, 238, 0, 14, 65, 100, 111, 98, 101, 0, 100, 0, 0, 0,
+        0, 0, 255, 219, 0, 67, 0, 2, 1, 1, 1, 1, 1, 2, 1, 1,
+        1, 2, 2, 2, 2, 2, 4, 3, 2, 2, 2, 2, 5, 4, 4, 3,
+        4, 6, 5, 6, 6, 6, 5, 6, 6, 6, 7, 9, 8, 6, 7, 9,
+        7, 6, 6, 8, 11, 8, 9, 10, 10, 10, 10, 10, 6, 8, 11, 12,
+        11, 10, 12, 9, 10, 10, 10, 255, 192, 0, 20, 8, 0, 1, 0, 2,
+        4, 67, 17, 0, 77, 17, 0, 89, 17, 0, 75, 17, 0, 255, 196, 0,
+        31, 0, 0, 1, 5, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 255, 196,
+        0, 181, 16, 0, 2, 1, 3, 3, 2, 4, 3, 5, 5, 4, 4, 0,
+        0, 1, 125, 1, 2, 3, 0, 4, 17, 5, 18, 33, 49, 65, 6, 19,
+        81, 97, 7, 34, 113, 20, 50, 129, 145, 161, 8, 35, 66, 177, 193, 21,
+        82, 209, 240, 36, 51, 98, 114, 130, 9, 10, 22, 23, 24, 25, 26, 37,
+        38, 39, 40, 41, 42, 52, 53, 54, 55, 56, 57, 58, 67, 68, 69, 70,
+        71, 72, 73, 74, 83, 84, 85, 86, 87, 88, 89, 90, 99, 100, 101, 102,
+        103, 104, 105, 106, 115, 116, 117, 118, 119, 120, 121, 122, 131, 132, 133, 134,
+        135, 136, 137, 138, 146, 147, 148, 149, 150, 151, 152, 153, 154, 162, 163, 164,
+        165, 166, 167, 168, 169, 170, 178, 179, 180, 181, 182, 183, 184, 185, 186, 194,
+        195, 196, 197, 198, 199, 200, 201, 202, 210, 211, 212, 213, 214, 215, 216, 217,
+        218, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 241, 242, 243, 244, 245,
+        246, 247, 248, 249, 250, 255, 218, 0, 14, 4, 67, 0, 77, 0, 89, 0,
+        75, 0, 0, 63, 0, 253, 217, 190, 255, 0, 143, 217, 191, 235, 171, 127,
+        58, 253, 150, 240, 23, 252, 136, 186, 47, 253, 130, 109, 191, 244, 82, 215,
+        234, 159, 236, 239, 255, 0, 38, 255, 0, 224, 95, 251, 19, 180, 207, 253,
+        36, 138, 190, 241, 255, 0, 130, 106, 255, 0, 202, 57, 190, 0, 255, 0,
+        217, 19, 240, 175, 254, 154, 45, 107, 255, 217
+    ]
+}
+
+PillowTestYcckJpegFixtureBytes() {
+    bytes := PillowTestCmykJpegFixtureBytes()
+    bytes[18] := 2
+    return bytes
+}
+
+PillowTestRealYcckJpegFixturePath() {
+    SplitPath A_LineFile, , &ahkDir
+    return ahkDir "\fixtures\pil_sample_cmyk_ycck.jpg"
+}
+
+PillowTestImageOpenJpegReadsCmykFixture(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempJpegPath("open-cmyk")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, PillowTestCmykJpegFixtureBytes())
+
+        image := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", image.Mode)
+        AhkTest.AssertEqual([2, 1], image.Size)
+        AhkTest.AssertEqual([0, 64, 128, 255, 10, 20, 30, 40], PillowTestBufferToArray(image.ToBytes()))
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open reads CMYK JPEG fixture", PillowTestImageOpenJpegReadsCmykFixture)
+
+PillowTestImageOpenJpegReadsYcckAdobeTransform(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempJpegPath("open-ycck")
+    image := 0
+    try {
+        PillowTestWriteFileBytes(path, PillowTestYcckJpegFixtureBytes())
+
+        image := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", image.Mode)
+        AhkTest.AssertEqual([2, 1], image.Size)
+        AhkTest.AssertEqual([254, 234, 255, 255, 255, 139, 255, 40], PillowTestBufferToArray(image.ToBytes()))
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open applies JPEG YCCK Adobe transform", PillowTestImageOpenJpegReadsYcckAdobeTransform)
+
+PillowTestImageOpenJpegReadsRealYcckFixture(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestRealYcckJpegFixturePath()
+    image := 0
+    try {
+        bytes := PillowTestReadFileBytes(path)
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertEqual(2, bytes[app14.PayloadOffset + 11])
+
+        image := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", image.Mode)
+        AhkTest.AssertEqual([100, 100], image.Size)
+
+        actual := PillowTestBufferToArray(image.ToBytes())
+        AhkTest.AssertEqual(40000, actual.Length)
+        AhkTest.AssertEqual([
+            0, 242, 230, 0, 0, 242, 230, 0, 0, 242, 230, 0, 0, 242, 230, 0,
+            0, 242, 230, 0, 0, 242, 230, 0, 0, 242, 230, 0, 0, 242, 230, 0,
+            0, 242, 230, 0, 0, 242, 230, 0
+        ], PillowTestArraySlice(actual, 1, 40))
+        AhkTest.AssertEqual([
+            242, 212, 210, 229, 242, 213, 209, 232, 242, 213, 207, 229,
+            242, 213, 209, 231, 242, 210, 211, 231, 241, 211, 209, 230,
+            243, 212, 209, 230, 241, 212, 208, 230, 240, 215, 211, 230,
+            241, 212, 208, 231
+        ], PillowTestArraySlice(actual, 20201, 20240))
+        AhkTest.AssertEqual([
+            242, 213, 209, 230, 242, 213, 209, 230, 242, 213, 209, 230,
+            242, 213, 209, 230, 242, 213, 209, 230, 242, 213, 209, 230,
+            242, 213, 209, 230, 242, 213, 209, 230, 242, 213, 209, 230,
+            242, 213, 209, 230
+        ], PillowTestArraySlice(actual, 39961, 40000))
+    } finally {
+        if IsObject(image)
+            image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Open reads real YCCK JPEG fixture", PillowTestImageOpenJpegReadsRealYcckFixture)
+
+PillowTestImageSaveJpegQualityKeepNormalizesRealYcckFixture(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    sourcePath := PillowTestRealYcckJpegFixturePath()
+    savePath := PillowTestTempJpegPath("save-ycck-keep")
+    image := 0
+    loaded := 0
+    try {
+        sourceBytes := PillowTestReadFileBytes(sourcePath)
+        sourceApp14 := PillowTestFindJpegSegment(sourceBytes, 0xEE, [65, 100, 111, 98, 101])
+        AhkTest.AssertTrue(sourceApp14.Found)
+        AhkTest.AssertEqual(2, sourceBytes[sourceApp14.PayloadOffset + 11])
+        sourceDqt := PillowTestReadJpegDqtPayloads(sourcePath)
+        AhkTest.AssertEqual(2, sourceDqt.Length)
+
+        image := Pillow.Image.Open(sourcePath, ["JPEG"])
+        image.Save(savePath, "JPEG", { quality: "keep" })
+
+        savedBytes := PillowTestReadFileBytes(savePath)
+        savedApp14 := PillowTestFindJpegSegment(savedBytes, 0xEE, [65, 100, 111, 98, 101])
+        AhkTest.AssertTrue(savedApp14.Found)
+        AhkTest.AssertEqual(0, savedBytes[savedApp14.PayloadOffset + 11])
+        savedDqt := PillowTestReadJpegDqtPayloads(savePath)
+        AhkTest.AssertEqual(2, savedDqt.Length)
+        AhkTest.AssertEqual(sourceDqt[1].Values, savedDqt[1].Values)
+        AhkTest.AssertEqual(sourceDqt[2].Values, savedDqt[2].Values)
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+            PillowTestReadJpegSof0Sampling(savePath))
+
+        loaded := Pillow.Image.Open(savePath, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        AhkTest.AssertEqual([100, 100], loaded.Size)
+        AhkTest.AssertEqual([
+            0, 242, 230, 0, 0, 242, 230, 0, 0, 242, 230, 0, 0, 242, 230, 0
+        ], PillowTestArraySlice(PillowTestBufferToArray(loaded.ToBytes()), 1, 16))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(savePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG quality keep normalizes real YCCK fixture", PillowTestImageSaveJpegQualityKeepNormalizesRealYcckFixture)
+
+PillowTestImageSaveJpegQualityKeepPreservesRgbSubsampling(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 3, 256))
+            values.Push(Mod(x * 5 + y * 31, 256))
+            values.Push(Mod(x * 11 + y * 7, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 8], PillowTestBuffer(values))
+    handles := [image]
+    paths := []
+    try {
+        cases := [
+            {
+                Source: PillowTestTempJpegPath("keep-rgb-source-422"),
+                Save: PillowTestTempJpegPath("keep-rgb-save-422"),
+                Subsampling: 1,
+                Sampling: [1, 2, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1]
+            },
+            {
+                Source: PillowTestTempJpegPath("keep-rgb-source-420"),
+                Save: PillowTestTempJpegPath("keep-rgb-save-420"),
+                Subsampling: 2,
+                Sampling: [1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1]
+            },
+        ]
+        for testCase in cases {
+            paths.Push(testCase.Source)
+            paths.Push(testCase.Save)
+
+            image.Save(testCase.Source, "JPEG", { quality: 70, subsampling: testCase.Subsampling })
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSof0Sampling(testCase.Source))
+            sourceDqt := PillowTestReadJpegDqtPayloads(testCase.Source)
+            AhkTest.AssertEqual(2, sourceDqt.Length)
+
+            opened := Pillow.Image.Open(testCase.Source, ["JPEG"])
+            handles.Push(opened)
+            AhkTest.AssertEqual("RGB", opened.Mode)
+            opened.Save(testCase.Save, "JPEG", { quality: "keep" })
+
+            savedDqt := PillowTestReadJpegDqtPayloads(testCase.Save)
+            AhkTest.AssertEqual(2, savedDqt.Length)
+            AhkTest.AssertEqual(sourceDqt[1].Values, savedDqt[1].Values)
+            AhkTest.AssertEqual(sourceDqt[2].Values, savedDqt[2].Values)
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSof0Sampling(testCase.Save))
+
+            loaded := Pillow.Image.Open(testCase.Save, ["JPEG"])
+            handles.Push(loaded)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual([16, 8], loaded.Size)
+        }
+    } finally {
+        for handle in handles {
+            if IsObject(handle)
+                handle.Close()
+        }
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG quality keep preserves RGB subsampling", PillowTestImageSaveJpegQualityKeepPreservesRgbSubsampling)
+
+PillowTestImageSaveJpegQualityKeepAcceptsSubsamplingKeep(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 3, 256))
+            values.Push(Mod(x * 5 + y * 31, 256))
+            values.Push(Mod(x * 11 + y * 7, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 8], PillowTestBuffer(values))
+    sourcePath := PillowTestTempJpegPath("keep-subsampling-source")
+    savePath := PillowTestTempJpegPath("keep-subsampling-save")
+    comment := PillowTestTextBytes("Keep sub")
+    handles := [image]
+    try {
+        image.Save(sourcePath, "JPEG", { quality: 70, subsampling: 1, comment: "Keep sub" })
+        sourceDqt := PillowTestReadJpegDqtPayloads(sourcePath)
+        AhkTest.AssertEqual(2, sourceDqt.Length)
+        AhkTest.AssertEqual([1, 2, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1], PillowTestReadJpegSof0Sampling(sourcePath))
+
+        opened := Pillow.Image.Open(sourcePath, ["JPEG"])
+        handles.Push(opened)
+        opened.Save(savePath, "JPEG", { quality: "keep", subsampling: "keep" })
+
+        savedDqt := PillowTestReadJpegDqtPayloads(savePath)
+        AhkTest.AssertEqual(2, savedDqt.Length)
+        AhkTest.AssertEqual(sourceDqt[1].Values, savedDqt[1].Values)
+        AhkTest.AssertEqual(sourceDqt[2].Values, savedDqt[2].Values)
+        AhkTest.AssertEqual([1, 2, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1], PillowTestReadJpegSof0Sampling(savePath))
+
+        loaded := Pillow.Image.Open(savePath, ["JPEG"])
+        handles.Push(loaded)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+    } finally {
+        for handle in handles {
+            if IsObject(handle)
+                handle.Close()
+        }
+        PillowTestDeleteFile(savePath)
+        PillowTestDeleteFile(sourcePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG quality keep accepts subsampling keep", PillowTestImageSaveJpegQualityKeepAcceptsSubsamplingKeep)
+
+PillowTestImageSaveJpegExplicitQualitySubsamplingKeepExplicitIccExifPreservesOpenedComment(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 3, 256))
+            values.Push(Mod(x * 5 + y * 31, 256))
+            values.Push(Mod(x * 11 + y * 7, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 8], PillowTestBuffer(values))
+    sourcePath := PillowTestTempJpegPath("explicit-quality-keep-subsampling-source")
+    savePath := PillowTestTempJpegPath("explicit-quality-keep-subsampling-save")
+    comment := PillowTestTextBytes("Keep sub")
+    iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+    handles := [image]
+    try {
+        image.Save(sourcePath, "JPEG", {
+            quality: 70,
+            subsampling: 2,
+            comment: "Keep sub",
+            icc_profile: PillowTestBuffer(iccProfile),
+            exif: PillowTestBuffer(exif)
+        })
+        sourceDqt := PillowTestReadJpegDqtPayloads(sourcePath)
+        AhkTest.AssertEqual(2, sourceDqt.Length)
+        AhkTest.AssertEqual([1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1], PillowTestReadJpegSof0Sampling(sourcePath))
+
+        opened := Pillow.Image.Open(sourcePath, ["JPEG"])
+        handles.Push(opened)
+        opened.Save(savePath, "JPEG", {
+            quality: 80,
+            subsampling: "keep",
+            icc_profile: opened.Info["icc_profile"],
+            exif: opened.Info["exif"]
+        })
+
+        savedBytes := PillowTestReadFileBytes(savePath)
+        savedComment := PillowTestFindJpegSegment(savedBytes, 0xFE)
+        savedIcc := PillowTestFindJpegSegment(savedBytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        savedExif := PillowTestFindJpegSegment(savedBytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        AhkTest.AssertTrue(savedComment.Found)
+        AhkTest.AssertTrue(savedIcc.Found)
+        AhkTest.AssertTrue(savedExif.Found)
+        savedDqt := PillowTestReadJpegDqtPayloads(savePath)
+        AhkTest.AssertEqual(2, savedDqt.Length)
+        AhkTest.AssertTrue(!PillowTestArrayEquals(sourceDqt[1].Values, savedDqt[1].Values))
+        AhkTest.AssertTrue(!PillowTestArrayEquals(sourceDqt[2].Values, savedDqt[2].Values))
+        AhkTest.AssertEqual([1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1], PillowTestReadJpegSof0Sampling(savePath))
+
+        loaded := Pillow.Image.Open(savePath, ["JPEG"])
+        handles.Push(loaded)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+    } finally {
+        for handle in handles {
+            if IsObject(handle)
+                handle.Close()
+        }
+        PillowTestDeleteFile(savePath)
+        PillowTestDeleteFile(sourcePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG explicit quality subsampling keep explicit ICC EXIF preserves opened comment", PillowTestImageSaveJpegExplicitQualitySubsamplingKeepExplicitIccExifPreservesOpenedComment)
+
+PillowTestImageSaveJpegQualityKeepPreservesLuminanceDqt(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 23, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("L", [16, 8], PillowTestBuffer(values))
+    handles := [image]
+    sourcePath := PillowTestTempJpegPath("keep-l-source")
+    savePath := PillowTestTempJpegPath("keep-l-save")
+    try {
+        image.Save(sourcePath, "JPEG", { quality: 70 })
+        sourceDqt := PillowTestReadJpegDqtPayloads(sourcePath)
+        AhkTest.AssertEqual(1, sourceDqt.Length)
+        AhkTest.AssertEqual([1, 1, 1, 0], PillowTestReadJpegSof0Sampling(sourcePath))
+        AhkTest.AssertEqual([[1, 1, 0, 0, 0, 63, 0, 0]], PillowTestReadJpegSosHeaders(sourcePath))
+
+        opened := Pillow.Image.Open(sourcePath, ["JPEG"])
+        handles.Push(opened)
+        AhkTest.AssertEqual("L", opened.Mode)
+        opened.Save(savePath, "JPEG", { quality: "keep" })
+
+        savedDqt := PillowTestReadJpegDqtPayloads(savePath)
+        AhkTest.AssertEqual(1, savedDqt.Length)
+        AhkTest.AssertEqual(sourceDqt[1].Values, savedDqt[1].Values)
+        AhkTest.AssertEqual([1, 1, 1, 0], PillowTestReadJpegSof0Sampling(savePath))
+        AhkTest.AssertEqual([[1, 1, 0, 0, 0, 63, 0, 0]], PillowTestReadJpegSosHeaders(savePath))
+
+        loaded := Pillow.Image.Open(savePath, ["JPEG"])
+        handles.Push(loaded)
+        AhkTest.AssertEqual("L", loaded.Mode)
+        AhkTest.AssertEqual([16, 8], loaded.Size)
+    } finally {
+        for handle in handles {
+            if IsObject(handle)
+                handle.Close()
+        }
+        PillowTestDeleteFile(savePath)
+        PillowTestDeleteFile(sourcePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG quality keep preserves L DQT", PillowTestImageSaveJpegQualityKeepPreservesLuminanceDqt)
+
+PillowTestImageSaveJpegQualityKeepPreservesOpenedComment(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 3, 256))
+            values.Push(Mod(x * 5 + y * 31, 256))
+            values.Push(Mod(x * 11 + y * 7, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 8], PillowTestBuffer(values))
+    sourcePath := PillowTestTempJpegPath("keep-comment-source")
+    savePath := PillowTestTempJpegPath("keep-comment-save")
+    comment := [75, 101, 101, 112, 32, 99, 111, 109, 109, 101, 110, 116]
+    handles := [image]
+    try {
+        image.Save(sourcePath, "JPEG", { quality: 70, subsampling: 2, comment: "Keep comment" })
+        sourceDqt := PillowTestReadJpegDqtPayloads(sourcePath)
+        AhkTest.AssertEqual(2, sourceDqt.Length)
+        sourceComment := PillowTestFindJpegSegment(PillowTestReadFileBytes(sourcePath), 0xFE)
+        AhkTest.AssertTrue(sourceComment.Found)
+        AhkTest.AssertEqual(comment, PillowTestArraySlice(PillowTestReadFileBytes(sourcePath), sourceComment.PayloadOffset, sourceComment.PayloadOffset + sourceComment.PayloadLength - 1))
+
+        opened := Pillow.Image.Open(sourcePath, ["JPEG"])
+        handles.Push(opened)
+        AhkTest.AssertEqual("RGB", opened.Mode)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(opened.Info["comment"]))
+        opened.Save(savePath, "JPEG", { quality: "keep" })
+
+        savedBytes := PillowTestReadFileBytes(savePath)
+        savedComment := PillowTestFindJpegSegment(savedBytes, 0xFE)
+        AhkTest.AssertTrue(savedComment.Found)
+        AhkTest.AssertEqual(comment, PillowTestArraySlice(savedBytes, savedComment.PayloadOffset, savedComment.PayloadOffset + savedComment.PayloadLength - 1))
+        savedDqt := PillowTestReadJpegDqtPayloads(savePath)
+        AhkTest.AssertEqual(sourceDqt[1].Values, savedDqt[1].Values)
+        AhkTest.AssertEqual(sourceDqt[2].Values, savedDqt[2].Values)
+
+        loaded := Pillow.Image.Open(savePath, ["JPEG"])
+        handles.Push(loaded)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+    } finally {
+        for handle in handles {
+            if IsObject(handle)
+                handle.Close()
+        }
+        PillowTestDeleteFile(savePath)
+        PillowTestDeleteFile(sourcePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG quality keep preserves opened comment", PillowTestImageSaveJpegQualityKeepPreservesOpenedComment)
+
+PillowTestImageSaveJpegQTablesKeepRgbPreservesOpenedDqtAndComment(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 3, 256))
+            values.Push(Mod(x * 5 + y * 31, 256))
+            values.Push(Mod(x * 11 + y * 7, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 8], PillowTestBuffer(values))
+    sourcePath := PillowTestTempJpegPath("qtables-keep-rgb-opened-source")
+    savePath := PillowTestTempJpegPath("qtables-keep-rgb-opened-save")
+    comment := PillowTestTextBytes("Keep RGB qtables")
+    handles := [image]
+    try {
+        image.Save(sourcePath, "JPEG", { quality: 70, subsampling: 2, comment: "Keep RGB qtables" })
+        sourceDqt := PillowTestReadJpegDqtPayloads(sourcePath)
+        AhkTest.AssertEqual(2, sourceDqt.Length)
+        AhkTest.AssertEqual([1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1], PillowTestReadJpegSof0Sampling(sourcePath))
+
+        opened := Pillow.Image.Open(sourcePath, ["JPEG"])
+        handles.Push(opened)
+        opened.Save(savePath, "JPEG", { qtables: "keep", keep_rgb: true })
+
+        savedBytes := PillowTestReadFileBytes(savePath)
+        app14 := PillowTestFindJpegSegment(savedBytes, 0xEE, [65, 100, 111, 98, 101])
+        jfif := PillowTestFindJpegSegment(savedBytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        savedComment := PillowTestFindJpegSegment(savedBytes, 0xFE)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertEqual(0, savedBytes[app14.PayloadOffset + 11])
+        AhkTest.AssertFalse(jfif.Found)
+        AhkTest.AssertTrue(savedComment.Found)
+        AhkTest.AssertEqual(comment, PillowTestArraySlice(savedBytes, savedComment.PayloadOffset, savedComment.PayloadOffset + savedComment.PayloadLength - 1))
+        AhkTest.AssertEqual([82, 1, 1, 0, 71, 1, 1, 1, 66, 1, 1, 1], PillowTestReadJpegSof0Sampling(savePath))
+
+        savedDqt := PillowTestReadJpegDqtPayloads(savePath)
+        AhkTest.AssertEqual(sourceDqt[1].Values, savedDqt[1].Values)
+        AhkTest.AssertEqual(sourceDqt[2].Values, savedDqt[2].Values)
+
+        loaded := Pillow.Image.Open(savePath, ["JPEG"])
+        handles.Push(loaded)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+    } finally {
+        for handle in handles {
+            if IsObject(handle)
+                handle.Close()
+        }
+        PillowTestDeleteFile(savePath)
+        PillowTestDeleteFile(sourcePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG qtables keep_rgb preserves opened DQT and comment", PillowTestImageSaveJpegQTablesKeepRgbPreservesOpenedDqtAndComment)
+
+PillowTestImageSaveJpegQualityKeepDropsOpenedIccExifImplicitly(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 3, 256))
+            values.Push(Mod(x * 5 + y * 31, 256))
+            values.Push(Mod(x * 11 + y * 7, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 8], PillowTestBuffer(values))
+    sourcePath := PillowTestTempJpegPath("keep-metadata-source")
+    savePath := PillowTestTempJpegPath("keep-metadata-save")
+    comment := PillowTestTextBytes("Keep metadata boundary")
+    iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+    handles := [image]
+    try {
+        image.Save(sourcePath, "JPEG", {
+            quality: 70,
+            subsampling: 2,
+            comment: "Keep metadata boundary",
+            icc_profile: PillowTestBuffer(iccProfile),
+            exif: PillowTestBuffer(exif)
+        })
+
+        sourceBytes := PillowTestReadFileBytes(sourcePath)
+        sourceComment := PillowTestFindJpegSegment(sourceBytes, 0xFE)
+        sourceIcc := PillowTestFindJpegSegment(sourceBytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        sourceExif := PillowTestFindJpegSegment(sourceBytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        AhkTest.AssertTrue(sourceComment.Found)
+        AhkTest.AssertTrue(sourceIcc.Found)
+        AhkTest.AssertTrue(sourceExif.Found)
+
+        opened := Pillow.Image.Open(sourcePath, ["JPEG"])
+        handles.Push(opened)
+        AhkTest.AssertEqual("RGB", opened.Mode)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(opened.Info["comment"]))
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(opened.Info["icc_profile"]))
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(opened.Info["exif"]))
+        opened.Save(savePath, "JPEG", { quality: "keep" })
+
+        savedBytes := PillowTestReadFileBytes(savePath)
+        savedComment := PillowTestFindJpegSegment(savedBytes, 0xFE)
+        savedIcc := PillowTestFindJpegSegment(savedBytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        savedExif := PillowTestFindJpegSegment(savedBytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        AhkTest.AssertTrue(savedComment.Found)
+        AhkTest.AssertEqual(comment, PillowTestArraySlice(savedBytes, savedComment.PayloadOffset, savedComment.PayloadOffset + savedComment.PayloadLength - 1))
+        AhkTest.AssertFalse(savedIcc.Found)
+        AhkTest.AssertFalse(savedExif.Found)
+
+        loaded := Pillow.Image.Open(savePath, ["JPEG"])
+        handles.Push(loaded)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(!loaded.Info.Has("icc_profile"))
+        AhkTest.AssertTrue(!loaded.Info.Has("exif"))
+    } finally {
+        for handle in handles {
+            if IsObject(handle)
+                handle.Close()
+        }
+        PillowTestDeleteFile(savePath)
+        PillowTestDeleteFile(sourcePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG quality keep drops opened ICC EXIF implicitly", PillowTestImageSaveJpegQualityKeepDropsOpenedIccExifImplicitly)
+
+PillowTestImageSaveJpegQualityKeepExplicitIccExifPreservesOpenedComment(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 3, 256))
+            values.Push(Mod(x * 5 + y * 31, 256))
+            values.Push(Mod(x * 11 + y * 7, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 8], PillowTestBuffer(values))
+    sourcePath := PillowTestTempJpegPath("keep-explicit-metadata-source")
+    savePath := PillowTestTempJpegPath("keep-explicit-metadata-save")
+    comment := PillowTestTextBytes("Implicit comment")
+    iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+    handles := [image]
+    try {
+        image.Save(sourcePath, "JPEG", {
+            quality: 70,
+            subsampling: 2,
+            comment: "Implicit comment",
+            icc_profile: PillowTestBuffer(iccProfile),
+            exif: PillowTestBuffer(exif)
+        })
+        sourceDqt := PillowTestReadJpegDqtPayloads(sourcePath)
+        AhkTest.AssertEqual(2, sourceDqt.Length)
+
+        opened := Pillow.Image.Open(sourcePath, ["JPEG"])
+        handles.Push(opened)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(opened.Info["comment"]))
+        opened.Save(savePath, "JPEG", {
+            quality: "keep",
+            icc_profile: opened.Info["icc_profile"],
+            exif: opened.Info["exif"]
+        })
+
+        savedBytes := PillowTestReadFileBytes(savePath)
+        savedComment := PillowTestFindJpegSegment(savedBytes, 0xFE)
+        savedIcc := PillowTestFindJpegSegment(savedBytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        savedExif := PillowTestFindJpegSegment(savedBytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        AhkTest.AssertTrue(savedComment.Found)
+        AhkTest.AssertEqual(comment, PillowTestArraySlice(savedBytes, savedComment.PayloadOffset, savedComment.PayloadOffset + savedComment.PayloadLength - 1))
+        AhkTest.AssertTrue(savedIcc.Found)
+        AhkTest.AssertTrue(savedExif.Found)
+        savedDqt := PillowTestReadJpegDqtPayloads(savePath)
+        AhkTest.AssertEqual(sourceDqt[1].Values, savedDqt[1].Values)
+        AhkTest.AssertEqual(sourceDqt[2].Values, savedDqt[2].Values)
+
+        loaded := Pillow.Image.Open(savePath, ["JPEG"])
+        handles.Push(loaded)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+    } finally {
+        for handle in handles {
+            if IsObject(handle)
+                handle.Close()
+        }
+        PillowTestDeleteFile(savePath)
+        PillowTestDeleteFile(sourcePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG quality keep explicit ICC EXIF preserves opened comment", PillowTestImageSaveJpegQualityKeepExplicitIccExifPreservesOpenedComment)
+
+PillowTestImageSaveJpegQualityKeepProgressivePreservesOpenedRgbJpegMarkers(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 3, 256))
+            values.Push(Mod(x * 5 + y * 31, 256))
+            values.Push(Mod(x * 11 + y * 7, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 8], PillowTestBuffer(values))
+    sourcePath := PillowTestTempJpegPath("keep-progressive-source")
+    savePath := PillowTestTempJpegPath("keep-progressive-save")
+    comment := [75, 101, 101, 112, 32, 112, 114, 111, 103, 114, 101, 115, 115, 105, 118, 101]
+    handles := [image]
+    try {
+        image.Save(sourcePath, "JPEG", { quality: 70, subsampling: 2, comment: "Keep progressive" })
+        sourceDqt := PillowTestReadJpegDqtPayloads(sourcePath)
+        AhkTest.AssertEqual(2, sourceDqt.Length)
+        AhkTest.AssertEqual([1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1], PillowTestReadJpegSof0Sampling(sourcePath))
+
+        opened := Pillow.Image.Open(sourcePath, ["JPEG"])
+        handles.Push(opened)
+        AhkTest.AssertEqual("RGB", opened.Mode)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(opened.Info["comment"]))
+        opened.Save(savePath, "JPEG", { quality: "keep", progressive: true })
+
+        savedBytes := PillowTestReadFileBytes(savePath)
+        savedComment := PillowTestFindJpegSegment(savedBytes, 0xFE)
+        AhkTest.AssertTrue(savedComment.Found)
+        AhkTest.AssertEqual(comment, PillowTestArraySlice(savedBytes, savedComment.PayloadOffset, savedComment.PayloadOffset + savedComment.PayloadLength - 1))
+        savedDqt := PillowTestReadJpegDqtPayloads(savePath)
+        AhkTest.AssertEqual(2, savedDqt.Length)
+        AhkTest.AssertEqual(sourceDqt[1].Values, savedDqt[1].Values)
+        AhkTest.AssertEqual(sourceDqt[2].Values, savedDqt[2].Values)
+        AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(savePath))
+        AhkTest.AssertEqual([1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1], PillowTestReadJpegSofSampling(savePath, 0xC2))
+        AhkTest.AssertEqual(PillowTestJpegRgbProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(savePath))
+
+        loaded := Pillow.Image.Open(savePath, ["JPEG"])
+        handles.Push(loaded)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([16, 8], loaded.Size)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+    } finally {
+        for handle in handles {
+            if IsObject(handle)
+                handle.Close()
+        }
+        PillowTestDeleteFile(savePath)
+        PillowTestDeleteFile(sourcePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG quality keep progressive preserves opened RGB JPEG markers", PillowTestImageSaveJpegQualityKeepProgressivePreservesOpenedRgbJpegMarkers)
+
+PillowTestImageSaveJpegWritesCmykMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("save-cmyk")
+    loaded := 0
+    try {
+        image.Save(path, "JPEG", { quality: 95 })
+
+        app14 := PillowTestFindJpegSegment(PillowTestReadFileBytes(path), 0xEE, [65, 100, 111, 98, 101])
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0], PillowTestReadJpegSof0Sampling(path))
+        AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(path))
+        AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]], PillowTestReadJpegSosComponentHeaders(path))
+
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(1, dqtPayloads.Length)
+        AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+        lumaQTable := [
+            16, 11, 10, 16, 24, 40, 51, 61,
+            12, 12, 14, 19, 26, 58, 60, 55,
+            14, 13, 16, 24, 40, 57, 69, 56,
+            14, 17, 22, 29, 51, 87, 80, 62,
+            18, 22, 37, 56, 68, 109, 103, 77,
+            24, 35, 55, 64, 81, 104, 113, 92,
+            49, 64, 78, 87, 103, 121, 120, 101,
+            72, 92, 95, 98, 112, 100, 103, 99,
+        ]
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(lumaQTable, 95), dqtPayloads[1].Values)
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        AhkTest.AssertEqual(expected, PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG writes CMYK mode", PillowTestImageSaveJpegWritesCmykMode)
+
+PillowTestImageSaveJpegOptimizeWritesCmykHuffman(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("optimize-cmyk")
+    loaded := 0
+    try {
+        image.Save(path, "JPEG", { quality: 95, optimize: true })
+
+        bytes := PillowTestReadFileBytes(path)
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0], PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0], PillowTestReadJpegSof0Sampling(path))
+        AhkTest.AssertEqual([19, 38], PillowTestReadJpegDhtPayloadLengths(path))
+        AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]], PillowTestReadJpegSosComponentHeaders(path))
+
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(1, dqtPayloads.Length)
+        AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+        lumaQTable := [
+            16, 11, 10, 16, 24, 40, 51, 61,
+            12, 12, 14, 19, 26, 58, 60, 55,
+            14, 13, 16, 24, 40, 57, 69, 56,
+            14, 17, 22, 29, 51, 87, 80, 62,
+            18, 22, 37, 56, 68, 109, 103, 77,
+            24, 35, 55, 64, 81, 104, 113, 92,
+            49, 64, 78, 87, 103, 121, 120, 101,
+            72, 92, 95, 98, 112, 100, 103, 99,
+        ]
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(lumaQTable, 95), dqtPayloads[1].Values)
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        AhkTest.AssertEqual(expected, PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG optimize writes CMYK Huffman tables", PillowTestImageSaveJpegOptimizeWritesCmykHuffman)
+
+PillowTestJpegCmykProgressiveSosComponentHeaders() {
+    return [
+        [0, 0, 0, 1, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0],
+        [1, 5, 0, 2, 1, 67, 0, 0],
+        [1, 5, 0, 2, 1, 77, 0, 0],
+        [1, 5, 0, 2, 1, 89, 0, 0],
+        [1, 5, 0, 2, 1, 75, 0, 0],
+        [6, 63, 0, 2, 1, 67, 0, 0],
+        [6, 63, 0, 2, 1, 77, 0, 0],
+        [6, 63, 0, 2, 1, 89, 0, 0],
+        [6, 63, 0, 2, 1, 75, 0, 0],
+        [1, 63, 2, 1, 1, 67, 0, 0],
+        [1, 63, 2, 1, 1, 77, 0, 0],
+        [1, 63, 2, 1, 1, 89, 0, 0],
+        [1, 63, 2, 1, 1, 75, 0, 0],
+        [0, 0, 1, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0],
+        [1, 63, 1, 0, 1, 67, 0, 0],
+        [1, 63, 1, 0, 1, 77, 0, 0],
+        [1, 63, 1, 0, 1, 89, 0, 0],
+        [1, 63, 1, 0, 1, 75, 0, 0],
+    ]
+}
+
+PillowTestImageSaveJpegProgressiveWritesCmykScans(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("progressive-cmyk")
+    loaded := 0
+    try {
+        image.Save(path, "JPEG", { quality: 95, progressive: true })
+
+        bytes := PillowTestReadFileBytes(path)
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+            PillowTestReadJpegSofSampling(path, 0xC2))
+        AhkTest.AssertEqual(18, PillowTestCountJpegSos(path))
+        AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG progressive writes CMYK scans", PillowTestImageSaveJpegProgressiveWritesCmykScans)
+
+PillowTestImageSaveJpegOptimizedProgressiveWritesCmykScans(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("progressive-optimize-cmyk")
+    loaded := 0
+    try {
+        try {
+            image.Save(path, "JPEG", { quality: 95, progressive: true, optimize: true })
+        } catch as err {
+            AhkTest.Fail("Expected CMYK JPEG progressive optimize save to succeed, got: " err.Message)
+        }
+
+        bytes := PillowTestReadFileBytes(path)
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+            PillowTestReadJpegSofSampling(path, 0xC2))
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(1, dqtPayloads.Length)
+        AhkTest.AssertEqual(18, PillowTestCountJpegSos(path))
+        AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG optimized progressive writes CMYK scans", PillowTestImageSaveJpegOptimizedProgressiveWritesCmykScans)
+
+PillowTestImageSaveJpegCmykMetadataWritesMarkersAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("metadata-cmyk")
+    loaded := 0
+    try {
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        image.Save(path, "JPEG", {
+            quality: 95,
+            comment: "Hello CMYK",
+            icc_profile: PillowTestBuffer(iccProfile),
+            exif: PillowTestBuffer(exif)
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertFalse(jfif.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+        AhkTest.AssertEqual(iccProfile,
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+            PillowTestReadJpegSof0Sampling(path))
+        AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(path))
+        AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+            PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        AhkTest.AssertEqual(expected, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK metadata writes markers and info", PillowTestImageSaveJpegCmykMetadataWritesMarkersAndInfo)
+
+PillowTestImageSaveJpegCmykDpiMetadataWritesMarkersAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("metadata-dpi-cmyk")
+    loaded := 0
+    try {
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        try {
+            image.Save(path, "JPEG", {
+                quality: 95,
+                dpi: [300, 150],
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            })
+        } catch Error as err {
+            AhkTest.Fail("Expected CMYK JPEG dpi metadata save to succeed, got: " err.Message)
+            return
+        }
+
+        bytes := PillowTestReadFileBytes(path)
+        jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(jfifSegment.Found)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+        AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        jfif := PillowTestReadJpegJfif(path)
+        AhkTest.AssertEqual(1, jfif.Unit)
+        AhkTest.AssertEqual(300, jfif.XDensity)
+        AhkTest.AssertEqual(150, jfif.YDensity)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+        AhkTest.AssertEqual(iccProfile,
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+            PillowTestReadJpegSof0Sampling(path))
+        AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(path))
+        AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+            PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        AhkTest.AssertEqual(expected, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(257, loaded.Info["jfif"])
+        AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+        AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK dpi metadata writes markers and info", PillowTestImageSaveJpegCmykDpiMetadataWritesMarkersAndInfo)
+
+PillowTestImageSaveJpegCmykDpiMetadataOptimizeWritesMarkersAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("metadata-dpi-cmyk-optimize")
+    loaded := 0
+    try {
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        try {
+            image.Save(path, "JPEG", {
+                quality: 95,
+                dpi: [300, 150],
+                optimize: true,
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            })
+        } catch Error as err {
+            AhkTest.Fail("Expected CMYK JPEG dpi optimize metadata save to succeed, got: " err.Message)
+            return
+        }
+
+        bytes := PillowTestReadFileBytes(path)
+        jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(jfifSegment.Found)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+        AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        jfif := PillowTestReadJpegJfif(path)
+        AhkTest.AssertEqual(1, jfif.Unit)
+        AhkTest.AssertEqual(300, jfif.XDensity)
+        AhkTest.AssertEqual(150, jfif.YDensity)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+        AhkTest.AssertEqual(iccProfile,
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+            PillowTestReadJpegSof0Sampling(path))
+        AhkTest.AssertEqual([19, 38], PillowTestReadJpegDhtPayloadLengths(path))
+        AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+            PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        AhkTest.AssertEqual(expected, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(257, loaded.Info["jfif"])
+        AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+        AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK dpi metadata optimize writes markers and info", PillowTestImageSaveJpegCmykDpiMetadataOptimizeWritesMarkersAndInfo)
+
+PillowTestImageSaveJpegCmykDpiMetadataProgressiveWritesMarkersAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("metadata-dpi-cmyk-progressive")
+    loaded := 0
+    try {
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        try {
+            image.Save(path, "JPEG", {
+                quality: 95,
+                dpi: [300, 150],
+                progressive: true,
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            })
+        } catch Error as err {
+            AhkTest.Fail("Expected CMYK JPEG dpi progressive metadata save to succeed, got: " err.Message)
+            return
+        }
+
+        bytes := PillowTestReadFileBytes(path)
+        jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(jfifSegment.Found)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+        AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        jfif := PillowTestReadJpegJfif(path)
+        AhkTest.AssertEqual(1, jfif.Unit)
+        AhkTest.AssertEqual(300, jfif.XDensity)
+        AhkTest.AssertEqual(150, jfif.YDensity)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+        AhkTest.AssertEqual(iccProfile,
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+        AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+            PillowTestReadJpegSofSampling(path, 0xC2))
+        AhkTest.AssertEqual(18, PillowTestCountJpegSos(path))
+        AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+        AhkTest.AssertEqual(257, loaded.Info["jfif"])
+        AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+        AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK dpi metadata progressive writes markers and info", PillowTestImageSaveJpegCmykDpiMetadataProgressiveWritesMarkersAndInfo)
+
+PillowTestImageSaveJpegCmykMetadataOptimizeWritesMarkersAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("metadata-cmyk-optimize")
+    loaded := 0
+    try {
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        image.Save(path, "JPEG", {
+            quality: 95,
+            optimize: true,
+            comment: "Hello CMYK",
+            icc_profile: PillowTestBuffer(iccProfile),
+            exif: PillowTestBuffer(exif)
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertFalse(jfif.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+        AhkTest.AssertEqual(iccProfile,
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+            PillowTestReadJpegSof0Sampling(path))
+        AhkTest.AssertEqual([19, 38], PillowTestReadJpegDhtPayloadLengths(path))
+        AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+            PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        AhkTest.AssertEqual(expected, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK metadata optimize writes markers and info", PillowTestImageSaveJpegCmykMetadataOptimizeWritesMarkersAndInfo)
+
+PillowTestImageSaveJpegCmykMetadataProgressiveWritesMarkersAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("metadata-cmyk-progressive")
+    loaded := 0
+    try {
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        image.Save(path, "JPEG", {
+            quality: 95,
+            progressive: true,
+            comment: "Hello CMYK",
+            icc_profile: PillowTestBuffer(iccProfile),
+            exif: PillowTestBuffer(exif)
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertFalse(jfif.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+        AhkTest.AssertEqual(iccProfile,
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+        AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+            PillowTestReadJpegSofSampling(path, 0xC2))
+        AhkTest.AssertEqual(18, PillowTestCountJpegSos(path))
+        AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK metadata progressive writes markers and info", PillowTestImageSaveJpegCmykMetadataProgressiveWritesMarkersAndInfo)
+
+PillowTestImageSaveJpegCmykMetadataOptimizedProgressiveWritesMarkersAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("metadata-cmyk-progressive-optimize")
+    loaded := 0
+    try {
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        try {
+            image.Save(path, "JPEG", {
+                quality: 95,
+                progressive: true,
+                optimize: true,
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            })
+        } catch Error as err {
+            AhkTest.Fail("Expected CMYK JPEG metadata progressive optimize save to succeed, got: " err.Message)
+            return
+        }
+
+        bytes := PillowTestReadFileBytes(path)
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertFalse(jfif.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+        AhkTest.AssertEqual(iccProfile,
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+        AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+            PillowTestReadJpegSofSampling(path, 0xC2))
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(1, dqtPayloads.Length)
+        AhkTest.AssertEqual(18, PillowTestCountJpegSos(path))
+        AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK metadata optimized progressive writes markers and info", PillowTestImageSaveJpegCmykMetadataOptimizedProgressiveWritesMarkersAndInfo)
+
+PillowTestImageSaveJpegCmykDpiMetadataOptimizedProgressiveWritesMarkersAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("metadata-dpi-cmyk-progressive-optimize")
+    loaded := 0
+    try {
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        try {
+            image.Save(path, "JPEG", {
+                quality: 95,
+                dpi: [300, 150],
+                progressive: true,
+                optimize: true,
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            })
+        } catch Error as err {
+            AhkTest.Fail("Expected CMYK JPEG dpi metadata progressive optimize save to succeed, got: " err.Message)
+            return
+        }
+
+        bytes := PillowTestReadFileBytes(path)
+        jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(jfifSegment.Found)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+        AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        jfif := PillowTestReadJpegJfif(path)
+        AhkTest.AssertEqual(1, jfif.Unit)
+        AhkTest.AssertEqual(300, jfif.XDensity)
+        AhkTest.AssertEqual(150, jfif.YDensity)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+        AhkTest.AssertEqual(iccProfile,
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+        AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+            PillowTestReadJpegSofSampling(path, 0xC2))
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(1, dqtPayloads.Length)
+        AhkTest.AssertEqual(18, PillowTestCountJpegSos(path))
+        AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+        AhkTest.AssertEqual(257, loaded.Info["jfif"])
+        AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+        AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK dpi metadata optimized progressive writes markers and info", PillowTestImageSaveJpegCmykDpiMetadataOptimizedProgressiveWritesMarkersAndInfo)
+
+PillowTestImageSaveJpegCmykDpiOptimizedProgressiveWritesMarkersAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("dpi-cmyk-progressive-optimize")
+    loaded := 0
+    try {
+        try {
+            image.Save(path, "JPEG", {
+                quality: 95,
+                dpi: [300, 150],
+                progressive: true,
+                optimize: true
+            })
+        } catch Error as err {
+            AhkTest.Fail("Expected CMYK JPEG dpi progressive optimize save to succeed, got: " err.Message)
+            return
+        }
+
+        bytes := PillowTestReadFileBytes(path)
+        jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(jfifSegment.Found)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertFalse(exifSegment.Found)
+        AhkTest.AssertFalse(iccSegment.Found)
+        AhkTest.AssertFalse(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+        AhkTest.AssertTrue(app14.MarkerOffset < dqtSegment.MarkerOffset)
+        jfif := PillowTestReadJpegJfif(path)
+        AhkTest.AssertEqual(1, jfif.Unit)
+        AhkTest.AssertEqual(300, jfif.XDensity)
+        AhkTest.AssertEqual(150, jfif.YDensity)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+            PillowTestReadJpegSofSampling(path, 0xC2))
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(1, dqtPayloads.Length)
+        AhkTest.AssertEqual(18, PillowTestCountJpegSos(path))
+        AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+        AhkTest.AssertEqual(257, loaded.Info["jfif"])
+        AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+        AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+        AhkTest.AssertFalse(loaded.Info.Has("comment"))
+        AhkTest.AssertFalse(loaded.Info.Has("icc_profile"))
+        AhkTest.AssertFalse(loaded.Info.Has("exif"))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK dpi optimized progressive writes markers and info", PillowTestImageSaveJpegCmykDpiOptimizedProgressiveWritesMarkersAndInfo)
+
+PillowTestImageSaveJpegQTablesWritesCmykCustomDqt(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    oneTablePath := PillowTestTempJpegPath("qtables-cmyk-one-table")
+    twoTablePath := PillowTestTempJpegPath("qtables-cmyk-two-tables")
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+
+        image.Save(oneTablePath, "JPEG", { quality: 75, qtables: [cQTable] })
+
+        dqtPayloads := PillowTestReadJpegDqtPayloads(oneTablePath)
+        AhkTest.AssertEqual(1, dqtPayloads.Length)
+        AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 75), dqtPayloads[1].Values)
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0], PillowTestReadJpegSof0Sampling(oneTablePath))
+        AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(oneTablePath))
+        AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]], PillowTestReadJpegSosComponentHeaders(oneTablePath))
+
+        loaded := Pillow.Image.Open(oneTablePath, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        AhkTest.AssertEqual(expected, PillowTestBufferToArray(loaded.ToBytes()))
+        loaded.Close()
+        loaded := 0
+
+        image.Save(twoTablePath, "JPEG", { quality: 95, qtables: [cQTable, mykQTable], optimize: false, progressive: false })
+
+        dqtPayloads := PillowTestReadJpegDqtPayloads(twoTablePath)
+        AhkTest.AssertEqual(2, dqtPayloads.Length)
+        AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+        AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1], PillowTestReadJpegSof0Sampling(twoTablePath))
+        AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(twoTablePath))
+
+        loaded := Pillow.Image.Open(twoTablePath, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        AhkTest.AssertEqual([2, 1], loaded.Size)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(oneTablePath)
+        PillowTestDeleteFile(twoTablePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables writes custom DQT", PillowTestImageSaveJpegQTablesWritesCmykCustomDqt)
+
+PillowTestImageSaveJpegCmykQTablesOptimizedAndProgressiveWritesCustomDqt(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-cmyk-optimize"), Progressive: 0, Optimize: 1, Sof: 0xC0, SosCount: 1, DhtLengths: [20, 33] },
+            { Path: PillowTestTempJpegPath("qtables-cmyk-progressive"), Progressive: 1, Optimize: -1, Sof: 0xC2, SosCount: 18, ProgressiveHeaders: true },
+            { Path: PillowTestTempJpegPath("qtables-cmyk-progressive-optimize"), Progressive: 1, Optimize: 1, Sof: 0xC2, SosCount: 18, ProgressiveHeaders: true }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := { quality: 95, qtables: [cQTable, mykQTable] }
+            if testCase.Progressive != -1
+                options.progressive := testCase.Progressive = 1
+            if testCase.Optimize != -1
+                options.optimize := testCase.Optimize = 1
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables optimized/progressive save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, testCase.Sof)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertFalse(jfif.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(app14.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sof, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                PillowTestReadJpegSofSampling(testCase.Path, testCase.Sof))
+            AhkTest.AssertEqual(testCase.SosCount, PillowTestCountJpegSos(testCase.Path))
+            if testCase.HasOwnProp("DhtLengths") {
+                AhkTest.AssertEqual(testCase.DhtLengths, PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+                AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+            } else {
+                AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(),
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+            }
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables optimized and progressive writes custom DQT", PillowTestImageSaveJpegCmykQTablesOptimizedAndProgressiveWritesCustomDqt)
+
+PillowTestImageSaveJpegCmykQTablesKeepRgbAliasesNativeCmykOutput(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-keep-rgb-cmyk-baseline"), Progressive: 0, Optimize: 0, Sof: 0xC0, SosCount: 1, DhtLengths: [29, 179] },
+            { Path: PillowTestTempJpegPath("qtables-keep-rgb-cmyk-optimize"), Progressive: 0, Optimize: 1, Sof: 0xC0, SosCount: 1, DhtLengths: [20, 33] },
+            { Path: PillowTestTempJpegPath("qtables-keep-rgb-cmyk-progressive"), Progressive: 1, Optimize: -1, Sof: 0xC2, SosCount: 18, ProgressiveHeaders: true },
+            { Path: PillowTestTempJpegPath("qtables-keep-rgb-cmyk-progressive-optimize"), Progressive: 1, Optimize: 1, Sof: 0xC2, SosCount: 18, ProgressiveHeaders: true }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := { quality: 95, qtables: [cQTable, mykQTable], keep_rgb: true }
+            if testCase.Progressive != -1
+                options.progressive := testCase.Progressive = 1
+            if testCase.Optimize != -1
+                options.optimize := testCase.Optimize = 1
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables keep_rgb save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, testCase.Sof)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertFalse(jfif.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(app14.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sof, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                PillowTestReadJpegSofSampling(testCase.Path, testCase.Sof))
+            AhkTest.AssertEqual(testCase.SosCount, PillowTestCountJpegSos(testCase.Path))
+            if testCase.HasOwnProp("DhtLengths") {
+                AhkTest.AssertEqual(testCase.DhtLengths, PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+                AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+            } else {
+                AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(),
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+            }
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables keep_rgb aliases native CMYK output", PillowTestImageSaveJpegCmykQTablesKeepRgbAliasesNativeCmykOutput)
+
+PillowTestImageSaveJpegCmykQTablesKeepRgbSubsamplingAliasesNativeCmykOutput(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    subsampledExpected := [0, 42, 79, 148, 10, 42, 79, 148]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-keep-rgb-cmyk-subsampling-1"), Subsampling: 1, Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] },
+            { Path: PillowTestTempJpegPath("qtables-keep-rgb-cmyk-subsampling-2"), Subsampling: 2, Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := {
+                quality: 95,
+                qtables: [cQTable, mykQTable],
+                keep_rgb: true,
+                subsampling: testCase.Subsampling
+            }
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables keep_rgb subsampling save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, 0xC0)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertFalse(jfif.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(app14.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, 0xC0))
+            AhkTest.AssertEqual(1, PillowTestCountJpegSos(testCase.Path))
+            AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+            AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+                PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(subsampledExpected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables keep_rgb subsampling aliases native CMYK output", PillowTestImageSaveJpegCmykQTablesKeepRgbSubsamplingAliasesNativeCmykOutput)
+
+PillowTestImageSaveJpegCmykQTablesKeepRgbDpiSubsamplingAliasesNativeCmykOutput(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    subsampledExpected := [0, 42, 79, 148, 10, 42, 79, 148]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-dpi-keep-rgb-cmyk-subsampling-1"), Subsampling: 1, Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] },
+            { Path: PillowTestTempJpegPath("qtables-dpi-keep-rgb-cmyk-subsampling-2"), Subsampling: 2, Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := {
+                quality: 95,
+                dpi: [300, 150],
+                qtables: [cQTable, mykQTable],
+                keep_rgb: true,
+                subsampling: testCase.Subsampling
+            }
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables keep_rgb dpi subsampling save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, 0xC0)
+            AhkTest.AssertTrue(jfifSegment.Found)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+            AhkTest.AssertTrue(app14.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            jfif := PillowTestReadJpegJfif(testCase.Path)
+            AhkTest.AssertEqual(1, jfif.Unit)
+            AhkTest.AssertEqual(300, jfif.XDensity)
+            AhkTest.AssertEqual(150, jfif.YDensity)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, 0xC0))
+            AhkTest.AssertEqual(1, PillowTestCountJpegSos(testCase.Path))
+            AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(subsampledExpected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+            AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+            AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables keep_rgb dpi subsampling aliases native CMYK output", PillowTestImageSaveJpegCmykQTablesKeepRgbDpiSubsamplingAliasesNativeCmykOutput)
+
+PillowTestImageSaveJpegCmykQTablesMetadataKeepRgbSubsamplingAliasesNativeCmykOutput(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    subsampledExpected := [0, 42, 79, 148, 10, 42, 79, 148]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-metadata-keep-rgb-cmyk-subsampling-1"), Subsampling: 1, Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] },
+            { Path: PillowTestTempJpegPath("qtables-metadata-keep-rgb-cmyk-subsampling-2"), Subsampling: 2, Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := {
+                quality: 95,
+                qtables: [cQTable, mykQTable],
+                keep_rgb: true,
+                subsampling: testCase.Subsampling,
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            }
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables metadata keep_rgb subsampling save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, 0xC0)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertFalse(jfif.Found)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, 0xC0))
+            AhkTest.AssertEqual(1, PillowTestCountJpegSos(testCase.Path))
+            AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+            AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+                PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(subsampledExpected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables metadata keep_rgb subsampling aliases native CMYK output", PillowTestImageSaveJpegCmykQTablesMetadataKeepRgbSubsamplingAliasesNativeCmykOutput)
+
+PillowTestImageSaveJpegCmykQTablesMetadataSubsamplingWritesCustomDqtAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    subsampledExpected := [0, 42, 79, 148, 10, 42, 79, 148]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-metadata-cmyk-subsampling-1"), HasDpi: false, Subsampling: 1, Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] },
+            { Path: PillowTestTempJpegPath("qtables-metadata-cmyk-subsampling-2"), HasDpi: false, Subsampling: 2, Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] },
+            { Path: PillowTestTempJpegPath("qtables-dpi-metadata-cmyk-subsampling-1"), HasDpi: true, Subsampling: 1, Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] },
+            { Path: PillowTestTempJpegPath("qtables-dpi-metadata-cmyk-subsampling-2"), HasDpi: true, Subsampling: 2, Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := {
+                quality: 95,
+                qtables: [cQTable, mykQTable],
+                subsampling: testCase.Subsampling,
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            }
+            if testCase.HasDpi
+                options.dpi := [300, 150]
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables metadata subsampling save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, 0xC0)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertEqual(testCase.HasDpi ? 1 : 0, jfifSegment.Found ? 1 : 0)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            if testCase.HasDpi
+                AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+            AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            if testCase.HasDpi {
+                jfif := PillowTestReadJpegJfif(testCase.Path)
+                AhkTest.AssertEqual(1, jfif.Unit)
+                AhkTest.AssertEqual(300, jfif.XDensity)
+                AhkTest.AssertEqual(150, jfif.YDensity)
+            }
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, 0xC0))
+            AhkTest.AssertEqual(1, PillowTestCountJpegSos(testCase.Path))
+            AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+            AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+                PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(subsampledExpected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            if testCase.HasDpi {
+                AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+                AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+                AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+            }
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables metadata subsampling writes custom DQT and info", PillowTestImageSaveJpegCmykQTablesMetadataSubsamplingWritesCustomDqtAndInfo)
+
+PillowTestImageSaveJpegCmykQTablesMetadataOptimizedSubsamplingWritesCustomDqtAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    subsampledExpected := [0, 42, 79, 148, 10, 42, 79, 148]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-metadata-optimize-cmyk-subsampling-1"), HasDpi: false, Subsampling: 1, Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] },
+            { Path: PillowTestTempJpegPath("qtables-metadata-optimize-cmyk-subsampling-2"), HasDpi: false, Subsampling: 2, Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] },
+            { Path: PillowTestTempJpegPath("qtables-dpi-metadata-optimize-cmyk-subsampling-1"), HasDpi: true, Subsampling: 1, Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] },
+            { Path: PillowTestTempJpegPath("qtables-dpi-metadata-optimize-cmyk-subsampling-2"), HasDpi: true, Subsampling: 2, Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := {
+                quality: 95,
+                qtables: [cQTable, mykQTable],
+                subsampling: testCase.Subsampling,
+                optimize: true,
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            }
+            if testCase.HasDpi
+                options.dpi := [300, 150]
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables metadata optimized subsampling save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, 0xC0)
+            AhkTest.AssertEqual(testCase.HasDpi ? 1 : 0, jfifSegment.Found ? 1 : 0)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            if testCase.HasDpi
+                AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+            AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            if testCase.HasDpi {
+                jfif := PillowTestReadJpegJfif(testCase.Path)
+                AhkTest.AssertEqual(1, jfif.Unit)
+                AhkTest.AssertEqual(300, jfif.XDensity)
+                AhkTest.AssertEqual(150, jfif.YDensity)
+            }
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, 0xC0))
+            AhkTest.AssertEqual(1, PillowTestCountJpegSos(testCase.Path))
+            dhtLengths := PillowTestReadJpegDhtPayloadLengths(testCase.Path)
+            AhkTest.AssertEqual(2, dhtLengths.Length)
+            AhkTest.AssertTrue(dhtLengths[1] < 29)
+            AhkTest.AssertTrue(dhtLengths[2] < 179)
+            AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+                PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(subsampledExpected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            if testCase.HasDpi {
+                AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+                AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+                AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+            }
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables metadata optimized subsampling writes custom DQT and info", PillowTestImageSaveJpegCmykQTablesMetadataOptimizedSubsamplingWritesCustomDqtAndInfo)
+
+PillowTestImageSaveJpegCmykQTablesMetadataKeepRgbDpiSubsamplingAliasesNativeCmykOutput(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    subsampledExpected := [0, 42, 79, 148, 10, 42, 79, 148]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-metadata-dpi-keep-rgb-cmyk-subsampling-1"), Subsampling: 1, Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] },
+            { Path: PillowTestTempJpegPath("qtables-metadata-dpi-keep-rgb-cmyk-subsampling-2"), Subsampling: 2, Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := {
+                quality: 95,
+                dpi: [300, 150],
+                qtables: [cQTable, mykQTable],
+                keep_rgb: true,
+                subsampling: testCase.Subsampling,
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            }
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables metadata keep_rgb dpi subsampling save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, 0xC0)
+            AhkTest.AssertTrue(jfifSegment.Found)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+            AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            jfif := PillowTestReadJpegJfif(testCase.Path)
+            AhkTest.AssertEqual(1, jfif.Unit)
+            AhkTest.AssertEqual(300, jfif.XDensity)
+            AhkTest.AssertEqual(150, jfif.YDensity)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, 0xC0))
+            AhkTest.AssertEqual(1, PillowTestCountJpegSos(testCase.Path))
+            AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(subsampledExpected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+            AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+            AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables metadata keep_rgb dpi subsampling aliases native CMYK output", PillowTestImageSaveJpegCmykQTablesMetadataKeepRgbDpiSubsamplingAliasesNativeCmykOutput)
+
+PillowTestImageSaveJpegCmykQTablesKeepRgbOptimizedSubsamplingAliasesNativeCmykOutput(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    subsampledExpected := [0, 42, 79, 148, 10, 42, 79, 148]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-optimize-keep-rgb-cmyk-subsampling-1"), Subsampling: 1, Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] },
+            { Path: PillowTestTempJpegPath("qtables-optimize-keep-rgb-cmyk-subsampling-2"), Subsampling: 2, Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := {
+                quality: 95,
+                qtables: [cQTable, mykQTable],
+                keep_rgb: true,
+                subsampling: testCase.Subsampling,
+                optimize: true
+            }
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables keep_rgb optimized subsampling save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, 0xC0)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertFalse(jfif.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(app14.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, 0xC0))
+            AhkTest.AssertEqual(1, PillowTestCountJpegSos(testCase.Path))
+            dhtLengths := PillowTestReadJpegDhtPayloadLengths(testCase.Path)
+            AhkTest.AssertEqual(2, dhtLengths.Length)
+            AhkTest.AssertTrue(dhtLengths[1] < 29)
+            AhkTest.AssertTrue(dhtLengths[2] < 179)
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(subsampledExpected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables keep_rgb optimized subsampling aliases native CMYK output", PillowTestImageSaveJpegCmykQTablesKeepRgbOptimizedSubsamplingAliasesNativeCmykOutput)
+
+PillowTestImageSaveJpegCmykQTablesMetadataKeepRgbOptimizedSubsamplingAliasesNativeCmykOutput(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    subsampledExpected := [0, 42, 79, 148, 10, 42, 79, 148]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-metadata-optimize-keep-rgb-cmyk-subsampling-1"), Subsampling: 1, Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] },
+            { Path: PillowTestTempJpegPath("qtables-metadata-optimize-keep-rgb-cmyk-subsampling-2"), Subsampling: 2, Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1] }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := {
+                quality: 95,
+                qtables: [cQTable, mykQTable],
+                keep_rgb: true,
+                subsampling: testCase.Subsampling,
+                optimize: true,
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            }
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables metadata keep_rgb optimized subsampling save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, 0xC0)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertFalse(jfif.Found)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, 0xC0))
+            AhkTest.AssertEqual(1, PillowTestCountJpegSos(testCase.Path))
+            dhtLengths := PillowTestReadJpegDhtPayloadLengths(testCase.Path)
+            AhkTest.AssertEqual(2, dhtLengths.Length)
+            AhkTest.AssertTrue(dhtLengths[1] < 29)
+            AhkTest.AssertTrue(dhtLengths[2] < 179)
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(subsampledExpected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables metadata keep_rgb optimized subsampling aliases native CMYK output", PillowTestImageSaveJpegCmykQTablesMetadataKeepRgbOptimizedSubsamplingAliasesNativeCmykOutput)
+
+PillowTestImageSaveJpegCmykQTablesMetadataKeepRgbAliasesNativeCmykOutput(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-metadata-keep-rgb-cmyk-baseline"), Progressive: 0, Optimize: 0, Sof: 0xC0, SosCount: 1, DhtLengths: [29, 179] },
+            { Path: PillowTestTempJpegPath("qtables-metadata-keep-rgb-cmyk-optimize"), Progressive: 0, Optimize: 1, Sof: 0xC0, SosCount: 1, DhtLengths: [20, 33] },
+            { Path: PillowTestTempJpegPath("qtables-metadata-keep-rgb-cmyk-progressive"), Progressive: 1, Optimize: -1, Sof: 0xC2, SosCount: 18, ProgressiveHeaders: true },
+            { Path: PillowTestTempJpegPath("qtables-metadata-keep-rgb-cmyk-progressive-optimize"), Progressive: 1, Optimize: 1, Sof: 0xC2, SosCount: 18, ProgressiveHeaders: true }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := {
+                quality: 95,
+                qtables: [cQTable, mykQTable],
+                keep_rgb: true,
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            }
+            if testCase.Progressive != -1
+                options.progressive := testCase.Progressive = 1
+            if testCase.Optimize != -1
+                options.optimize := testCase.Optimize = 1
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables metadata keep_rgb save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, testCase.Sof)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertFalse(jfif.Found)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sof, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                PillowTestReadJpegSofSampling(testCase.Path, testCase.Sof))
+            AhkTest.AssertEqual(testCase.SosCount, PillowTestCountJpegSos(testCase.Path))
+            if testCase.HasOwnProp("DhtLengths") {
+                AhkTest.AssertEqual(testCase.DhtLengths, PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+                AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+            } else {
+                AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(),
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+            }
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables metadata keep_rgb aliases native CMYK output", PillowTestImageSaveJpegCmykQTablesMetadataKeepRgbAliasesNativeCmykOutput)
+
+PillowTestImageSaveJpegCmykQTablesKeepRgbProgressiveSubsamplingAliasesNativeCmykOutput(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    subsampledExpected := [0, 42, 79, 148, 10, 42, 79, 148]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    plainPath := PillowTestTempJpegPath("qtables-progressive-keep-rgb-cmyk-subsampling")
+    metadataPath := PillowTestTempJpegPath("qtables-metadata-progressive-keep-rgb-cmyk-subsampling")
+    loadedImages := []
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            {
+                Path: plainPath,
+                Options: {
+                    quality: 95,
+                    qtables: [cQTable, mykQTable],
+                    keep_rgb: true,
+                    progressive: true,
+                    subsampling: "4:2:2"
+                },
+                Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                HasMetadata: false
+            },
+            {
+                Path: metadataPath,
+                Options: {
+                    quality: 95,
+                    qtables: [cQTable, mykQTable],
+                    keep_rgb: true,
+                    progressive: true,
+                    optimize: true,
+                    subsampling: 2,
+                    comment: "Hello CMYK",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif)
+                },
+                Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                HasMetadata: true
+            }
+        ]
+
+        for testCase in cases {
+            try {
+                image.Save(testCase.Path, "JPEG", testCase.Options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables keep_rgb progressive subsampling save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, 0xC2)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertFalse(jfif.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(app14.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            if testCase.HasMetadata {
+                AhkTest.AssertTrue(exifSegment.Found)
+                AhkTest.AssertTrue(iccSegment.Found)
+                AhkTest.AssertTrue(commentSegment.Found)
+                AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+                AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+                AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+                AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            } else {
+                AhkTest.AssertFalse(exifSegment.Found)
+                AhkTest.AssertFalse(iccSegment.Found)
+                AhkTest.AssertFalse(commentSegment.Found)
+            }
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, 0xC2))
+            AhkTest.AssertEqual(18, PillowTestCountJpegSos(testCase.Path))
+            AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(),
+                PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            loadedImages.Push(loaded)
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(subsampledExpected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            if testCase.HasMetadata {
+                AhkTest.AssertEqual(6, loaded.ExifOrientation())
+                AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+                AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+                AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            }
+        }
+    } finally {
+        for loaded in loadedImages {
+            if IsObject(loaded)
+                loaded.Close()
+        }
+        for path in [plainPath, metadataPath]
+            PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables keep_rgb progressive subsampling aliases native CMYK output", PillowTestImageSaveJpegCmykQTablesKeepRgbProgressiveSubsamplingAliasesNativeCmykOutput)
+
+PillowTestImageSaveJpegCmykQTablesProgressiveSubsamplingWritesCustomDqtAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    subsampledExpected := [0, 42, 79, 148, 10, 42, 79, 148]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    plainPath := PillowTestTempJpegPath("qtables-progressive-cmyk-subsampling")
+    metadataPath := PillowTestTempJpegPath("qtables-metadata-progressive-cmyk-subsampling")
+    loadedImages := []
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            {
+                Path: plainPath,
+                Options: {
+                    quality: 95,
+                    qtables: [cQTable, mykQTable],
+                    progressive: true,
+                    subsampling: "4:2:2"
+                },
+                Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                HasMetadata: false
+            },
+            {
+                Path: metadataPath,
+                Options: {
+                    quality: 95,
+                    qtables: [cQTable, mykQTable],
+                    progressive: true,
+                    optimize: true,
+                    subsampling: 2,
+                    comment: "Hello CMYK",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif)
+                },
+                Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                HasMetadata: true
+            }
+        ]
+
+        for testCase in cases {
+            try {
+                image.Save(testCase.Path, "JPEG", testCase.Options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables progressive subsampling save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, 0xC2)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertFalse(jfif.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(app14.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            if testCase.HasMetadata {
+                AhkTest.AssertTrue(exifSegment.Found)
+                AhkTest.AssertTrue(iccSegment.Found)
+                AhkTest.AssertTrue(commentSegment.Found)
+                AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+                AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+                AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+                AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            } else {
+                AhkTest.AssertFalse(exifSegment.Found)
+                AhkTest.AssertFalse(iccSegment.Found)
+                AhkTest.AssertFalse(commentSegment.Found)
+            }
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, 0xC2))
+            AhkTest.AssertEqual(18, PillowTestCountJpegSos(testCase.Path))
+            AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(),
+                PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            loadedImages.Push(loaded)
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(subsampledExpected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            if testCase.HasMetadata {
+                AhkTest.AssertEqual(6, loaded.ExifOrientation())
+                AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+                AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+                AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            }
+        }
+    } finally {
+        for loaded in loadedImages {
+            if IsObject(loaded)
+                loaded.Close()
+        }
+        for path in [plainPath, metadataPath]
+            PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables progressive subsampling writes custom DQT and info", PillowTestImageSaveJpegCmykQTablesProgressiveSubsamplingWritesCustomDqtAndInfo)
+
+PillowTestImageSaveJpegCmykQTablesDpiProgressiveSubsamplingWritesCustomDqtAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    subsampledExpected := [0, 42, 79, 148, 10, 42, 79, 148]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loadedImages := []
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            {
+                Path: PillowTestTempJpegPath("qtables-dpi-progressive-cmyk-subsampling"),
+                Options: {
+                    quality: 95,
+                    dpi: [300, 150],
+                    qtables: [cQTable, mykQTable],
+                    progressive: true,
+                    subsampling: "4:2:2"
+                },
+                Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                HasMetadata: false
+            },
+            {
+                Path: PillowTestTempJpegPath("qtables-dpi-metadata-progressive-cmyk-subsampling"),
+                Options: {
+                    quality: 95,
+                    dpi: [300, 150],
+                    qtables: [cQTable, mykQTable],
+                    progressive: true,
+                    optimize: true,
+                    subsampling: 2,
+                    comment: "Hello CMYK",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif)
+                },
+                Sampling: [67, 2, 2, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                HasMetadata: true
+            },
+            {
+                Path: PillowTestTempJpegPath("qtables-dpi-progressive-keep-rgb-cmyk-subsampling"),
+                Options: {
+                    quality: 95,
+                    dpi: [300, 150],
+                    qtables: [cQTable, mykQTable],
+                    keep_rgb: true,
+                    progressive: true,
+                    subsampling: 1
+                },
+                Sampling: [67, 2, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                HasMetadata: false
+            }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            try {
+                image.Save(testCase.Path, "JPEG", testCase.Options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables dpi progressive subsampling save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, 0xC2)
+            AhkTest.AssertTrue(jfifSegment.Found)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+            AhkTest.AssertTrue(app14.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            if testCase.HasMetadata {
+                AhkTest.AssertTrue(exifSegment.Found)
+                AhkTest.AssertTrue(iccSegment.Found)
+                AhkTest.AssertTrue(commentSegment.Found)
+                AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+                AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+                AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+                AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            } else {
+                AhkTest.AssertFalse(exifSegment.Found)
+                AhkTest.AssertFalse(iccSegment.Found)
+                AhkTest.AssertFalse(commentSegment.Found)
+            }
+            jfif := PillowTestReadJpegJfif(testCase.Path)
+            AhkTest.AssertEqual(1, jfif.Unit)
+            AhkTest.AssertEqual(300, jfif.XDensity)
+            AhkTest.AssertEqual(150, jfif.YDensity)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, 0xC2))
+            AhkTest.AssertEqual(18, PillowTestCountJpegSos(testCase.Path))
+            AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(),
+                PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            loadedImages.Push(loaded)
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(subsampledExpected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            AhkTest.AssertEqual(257, loaded.Info["jfif"])
+            AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+            AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+            AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+            AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+            if testCase.HasMetadata {
+                AhkTest.AssertEqual(6, loaded.ExifOrientation())
+                AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+                AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+                AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+                AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+                AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+                AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            }
+        }
+    } finally {
+        for loaded in loadedImages {
+            if IsObject(loaded)
+                loaded.Close()
+        }
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables dpi progressive subsampling writes custom DQT and info", PillowTestImageSaveJpegCmykQTablesDpiProgressiveSubsamplingWritesCustomDqtAndInfo)
+
+PillowTestImageSaveJpegCmykQTablesMetadataDpiKeepRgbAliasesNativeCmykOutput(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-metadata-dpi-keep-rgb-cmyk-baseline"), Progressive: 0, Optimize: 0, Sof: 0xC0, SosCount: 1, DhtLengths: [29, 179] },
+            { Path: PillowTestTempJpegPath("qtables-metadata-dpi-keep-rgb-cmyk-optimize"), Progressive: 0, Optimize: 1, Sof: 0xC0, SosCount: 1, DhtLengths: [20, 33] },
+            { Path: PillowTestTempJpegPath("qtables-metadata-dpi-keep-rgb-cmyk-progressive"), Progressive: 1, Optimize: -1, Sof: 0xC2, SosCount: 18, ProgressiveHeaders: true },
+            { Path: PillowTestTempJpegPath("qtables-metadata-dpi-keep-rgb-cmyk-progressive-optimize"), Progressive: 1, Optimize: 1, Sof: 0xC2, SosCount: 18, ProgressiveHeaders: true }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := {
+                quality: 95,
+                dpi: [300, 150],
+                qtables: [cQTable, mykQTable],
+                keep_rgb: true,
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            }
+            if testCase.Progressive != -1
+                options.progressive := testCase.Progressive = 1
+            if testCase.Optimize != -1
+                options.optimize := testCase.Optimize = 1
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables metadata dpi keep_rgb save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, testCase.Sof)
+            AhkTest.AssertTrue(jfifSegment.Found)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+            AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            jfif := PillowTestReadJpegJfif(testCase.Path)
+            AhkTest.AssertEqual(1, jfif.Unit)
+            AhkTest.AssertEqual(300, jfif.XDensity)
+            AhkTest.AssertEqual(150, jfif.YDensity)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sof, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                PillowTestReadJpegSofSampling(testCase.Path, testCase.Sof))
+            AhkTest.AssertEqual(testCase.SosCount, PillowTestCountJpegSos(testCase.Path))
+            if testCase.HasOwnProp("DhtLengths") {
+                AhkTest.AssertEqual(testCase.DhtLengths, PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+                AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+            } else {
+                AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(),
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+            }
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+            AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+            AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables metadata dpi keep_rgb aliases native CMYK output", PillowTestImageSaveJpegCmykQTablesMetadataDpiKeepRgbAliasesNativeCmykOutput)
+
+PillowTestImageSaveJpegCmykQTablesMetadataOptimizedAndProgressiveWritesCustomDqtAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-cmyk-metadata-optimize"), Progressive: 0, Optimize: 1, Sof: 0xC0, SosCount: 1, DhtLengths: [20, 33] },
+            { Path: PillowTestTempJpegPath("qtables-cmyk-metadata-progressive"), Progressive: 1, Optimize: -1, Sof: 0xC2, SosCount: 18, ProgressiveHeaders: true },
+            { Path: PillowTestTempJpegPath("qtables-cmyk-metadata-progressive-optimize"), Progressive: 1, Optimize: 1, Sof: 0xC2, SosCount: 18, ProgressiveHeaders: true }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := {
+                quality: 95,
+                qtables: [cQTable, mykQTable],
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            }
+            if testCase.Progressive != -1
+                options.progressive := testCase.Progressive = 1
+            if testCase.Optimize != -1
+                options.optimize := testCase.Optimize = 1
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables metadata optimized/progressive save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, testCase.Sof)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertFalse(jfif.Found)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+            AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+            AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+                PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+            AhkTest.AssertEqual(iccProfile,
+                PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+            AhkTest.AssertEqual(comment,
+                PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sof, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                PillowTestReadJpegSofSampling(testCase.Path, testCase.Sof))
+            AhkTest.AssertEqual(testCase.SosCount, PillowTestCountJpegSos(testCase.Path))
+            if testCase.HasOwnProp("DhtLengths") {
+                AhkTest.AssertEqual(testCase.DhtLengths, PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+                AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+            } else {
+                AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(),
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+            }
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables metadata optimized and progressive writes custom DQT", PillowTestImageSaveJpegCmykQTablesMetadataOptimizedAndProgressiveWritesCustomDqtAndInfo)
+
+PillowTestImageSaveJpegCmykQTablesDpiWritesCustomDqtAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("qtables-dpi-cmyk")
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+
+        try {
+            image.Save(path, "JPEG", {
+                quality: 95,
+                dpi: [300, 150],
+                qtables: [cQTable, mykQTable]
+            })
+        } catch Error as err {
+            AhkTest.Fail("Expected CMYK JPEG qtables dpi save to succeed, got: " err.Message)
+            return
+        }
+
+        bytes := PillowTestReadFileBytes(path)
+        jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        sofSegment := PillowTestFindJpegSegment(bytes, 0xC0)
+        AhkTest.AssertTrue(jfifSegment.Found)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(sofSegment.Found)
+        AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+        AhkTest.AssertTrue(app14.MarkerOffset < dqtSegment.MarkerOffset)
+        AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+        jfif := PillowTestReadJpegJfif(path)
+        AhkTest.AssertEqual(1, jfif.Unit)
+        AhkTest.AssertEqual(300, jfif.XDensity)
+        AhkTest.AssertEqual(150, jfif.YDensity)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(2, dqtPayloads.Length)
+        AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+        AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+            PillowTestReadJpegSof0Sampling(path))
+        AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(path))
+        AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+            PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+        AhkTest.AssertEqual(257, loaded.Info["jfif"])
+        AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+        AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables dpi writes custom DQT and info", PillowTestImageSaveJpegCmykQTablesDpiWritesCustomDqtAndInfo)
+
+PillowTestImageSaveJpegCmykQTablesDpiMetadataWritesCustomDqtAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("qtables-dpi-cmyk-metadata")
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        try {
+            image.Save(path, "JPEG", {
+                quality: 95,
+                dpi: [300, 150],
+                qtables: [cQTable, mykQTable],
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            })
+        } catch Error as err {
+            AhkTest.Fail("Expected CMYK JPEG qtables dpi metadata save to succeed, got: " err.Message)
+            return
+        }
+
+        bytes := PillowTestReadFileBytes(path)
+        jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(jfifSegment.Found)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+        AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        jfif := PillowTestReadJpegJfif(path)
+        AhkTest.AssertEqual(1, jfif.Unit)
+        AhkTest.AssertEqual(300, jfif.XDensity)
+        AhkTest.AssertEqual(150, jfif.YDensity)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+        AhkTest.AssertEqual(iccProfile,
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(2, dqtPayloads.Length)
+        AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+        AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+        AhkTest.AssertEqual(0xC0, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+            PillowTestReadJpegSof0Sampling(path))
+        AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(path))
+        AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+            PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+        AhkTest.AssertEqual(257, loaded.Info["jfif"])
+        AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+        AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables dpi metadata writes custom DQT and info", PillowTestImageSaveJpegCmykQTablesDpiMetadataWritesCustomDqtAndInfo)
+
+PillowTestImageSaveJpegCmykQTablesDpiMetadataOptimizedAndProgressiveWritesCustomDqtAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    paths := []
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            { Path: PillowTestTempJpegPath("qtables-dpi-cmyk-metadata-optimize"), Progressive: 0, Optimize: 1, Sof: 0xC0, SosCount: 1, DhtLengths: [20, 33] },
+            { Path: PillowTestTempJpegPath("qtables-dpi-cmyk-metadata-progressive"), Progressive: 1, Optimize: -1, Sof: 0xC2, SosCount: 18 },
+            { Path: PillowTestTempJpegPath("qtables-dpi-cmyk-metadata-progressive-optimize"), Progressive: 1, Optimize: 1, Sof: 0xC2, SosCount: 18 }
+        ]
+        for testCase in cases
+            paths.Push(testCase.Path)
+
+        for testCase in cases {
+            options := {
+                quality: 95,
+                dpi: [300, 150],
+                qtables: [cQTable, mykQTable],
+                comment: "Hello CMYK",
+                icc_profile: PillowTestBuffer(iccProfile),
+                exif: PillowTestBuffer(exif)
+            }
+            if testCase.Progressive != -1
+                options.progressive := testCase.Progressive = 1
+            if testCase.Optimize != -1
+                options.optimize := testCase.Optimize = 1
+
+            try {
+                image.Save(testCase.Path, "JPEG", options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG qtables dpi metadata optimized/progressive save to succeed, got: " err.Message)
+                return
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            sofSegment := PillowTestFindJpegSegment(bytes, testCase.Sof)
+            AhkTest.AssertTrue(jfifSegment.Found)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(sofSegment.Found)
+            AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+            AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertTrue(dqtSegment.MarkerOffset < sofSegment.MarkerOffset)
+            jfif := PillowTestReadJpegJfif(testCase.Path)
+            AhkTest.AssertEqual(1, jfif.Unit)
+            AhkTest.AssertEqual(300, jfif.XDensity)
+            AhkTest.AssertEqual(150, jfif.YDensity)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+            AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+            AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+                PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+            AhkTest.AssertEqual(iccProfile,
+                PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+            AhkTest.AssertEqual(comment,
+                PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sof, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+                PillowTestReadJpegSofSampling(testCase.Path, testCase.Sof))
+            AhkTest.AssertEqual(testCase.SosCount, PillowTestCountJpegSos(testCase.Path))
+            if testCase.HasOwnProp("DhtLengths") {
+                AhkTest.AssertEqual(testCase.DhtLengths, PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+                AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+            } else {
+                AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(),
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+            }
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+            AhkTest.AssertEqual(257, loaded.Info["jfif"])
+            AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+            AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+            AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+            AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        for path in paths
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables dpi metadata optimized and progressive writes custom DQT", PillowTestImageSaveJpegCmykQTablesDpiMetadataOptimizedAndProgressiveWritesCustomDqtAndInfo)
+
+PillowTestImageSaveJpegCmykQTablesMetadataWritesCustomDqtAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("qtables-cmyk-metadata")
+    loaded := 0
+    try {
+        cQTable := []
+        mykQTable := []
+        loop 64 {
+            cQTable.Push(A_Index)
+            mykQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello CMYK")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        image.Save(path, "JPEG", {
+            quality: 95,
+            qtables: [cQTable, mykQTable],
+            comment: "Hello CMYK",
+            icc_profile: PillowTestBuffer(iccProfile),
+            exif: PillowTestBuffer(exif)
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertFalse(jfif.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+        AhkTest.AssertEqual(iccProfile,
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(2, dqtPayloads.Length)
+        AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+        AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(cQTable, 95), dqtPayloads[1].Values)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(mykQTable, 95), dqtPayloads[2].Values)
+        AhkTest.AssertEqual(0xC0, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 1, 89, 1, 1, 1, 75, 1, 1, 1],
+            PillowTestReadJpegSof0Sampling(path))
+        AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(path))
+        AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+            PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        PillowTestAssertArrayNear(expected, PillowTestBufferToArray(loaded.ToBytes()), 1)
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK qtables metadata writes custom DQT and info", PillowTestImageSaveJpegCmykQTablesMetadataWritesCustomDqtAndInfo)
+
+PillowTestImageSaveJpegCmykDpiWritesJfifAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    expected := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(expected))
+    path := PillowTestTempJpegPath("dpi-cmyk")
+    loaded := 0
+    try {
+        try {
+            image.Save(path, "JPEG", { quality: 95, dpi: [300, 150] })
+        } catch Error as err {
+            AhkTest.Fail("Expected CMYK JPEG dpi save to succeed, got: " err.Message)
+            return
+        }
+
+        bytes := PillowTestReadFileBytes(path)
+        jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        AhkTest.AssertTrue(jfifSegment.Found)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+        jfif := PillowTestReadJpegJfif(path)
+        AhkTest.AssertEqual(1, jfif.Unit)
+        AhkTest.AssertEqual(300, jfif.XDensity)
+        AhkTest.AssertEqual(150, jfif.YDensity)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual([67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+            PillowTestReadJpegSof0Sampling(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        AhkTest.AssertEqual(expected, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(257, loaded.Info["jfif"])
+        AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+        AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK dpi writes JFIF and info", PillowTestImageSaveJpegCmykDpiWritesJfifAndInfo)
+
+PillowTestImageSaveJpegCmykSubsamplingAndDpiWritesSamplingAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    sourceBytes := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(sourceBytes))
+    path444 := PillowTestTempJpegPath("subsampling-dpi-cmyk-444")
+    path422 := PillowTestTempJpegPath("subsampling-dpi-cmyk-422")
+    path420 := PillowTestTempJpegPath("subsampling-dpi-cmyk-420")
+    loadedImages := []
+    try {
+        cases := [
+            { Path: path444, Options: { quality: 95, dpi: [300, 150], subsampling: 0 }, Sampling: [67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0], Bytes: sourceBytes },
+            { Path: path422, Options: { quality: 95, dpi: [300, 150], subsampling: "4:2:2" }, Sampling: [67, 2, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0], Bytes: [0, 42, 79, 148, 10, 42, 79, 148] },
+            { Path: path420, Options: { quality: 95, dpi: [300, 150], subsampling: 2 }, Sampling: [67, 2, 2, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0], Bytes: [0, 42, 79, 148, 10, 42, 79, 148] },
+        ]
+        for testCase in cases {
+            try {
+                image.Save(testCase.Path, "JPEG", testCase.Options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG subsampling dpi save to succeed, got: " err.Message)
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            AhkTest.AssertTrue(jfifSegment.Found)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+            jfif := PillowTestReadJpegJfif(testCase.Path)
+            AhkTest.AssertEqual(1, jfif.Unit)
+            AhkTest.AssertEqual(300, jfif.XDensity)
+            AhkTest.AssertEqual(150, jfif.YDensity)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSof0Sampling(testCase.Path))
+            AhkTest.AssertEqual([[0, 63, 0, 0, 4, 67, 0, 0, 77, 0, 0, 89, 0, 0, 75, 0, 0]],
+                PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            loadedImages.Push(loaded)
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            AhkTest.AssertEqual(testCase.Bytes, PillowTestBufferToArray(loaded.ToBytes()))
+            PillowTestAssertFloatArrayClose([300.0, 150.0], loaded.Info["dpi"])
+            AhkTest.AssertEqual(257, loaded.Info["jfif"])
+            AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+            AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+            AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+        }
+    } finally {
+        for loaded in loadedImages {
+            if IsObject(loaded)
+                loaded.Close()
+        }
+        for path in [path420, path422, path444]
+            PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK subsampling and dpi writes sampling and info", PillowTestImageSaveJpegCmykSubsamplingAndDpiWritesSamplingAndInfo)
+
+PillowTestImageSaveJpegCmykKeepRgbAliasWritesNativeCmykOutput(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    sourceBytes := [0, 64, 128, 255, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(sourceBytes))
+    dpiPath := PillowTestTempJpegPath("keep-rgb-cmyk-dpi")
+    subsamplingPath := PillowTestTempJpegPath("keep-rgb-cmyk-subsampling")
+    optimizePath := PillowTestTempJpegPath("keep-rgb-cmyk-optimize")
+    progressivePath := PillowTestTempJpegPath("keep-rgb-cmyk-progressive")
+    progressiveOptimizePath := PillowTestTempJpegPath("keep-rgb-cmyk-progressive-optimize")
+    dpiProgressiveOptimizePath := PillowTestTempJpegPath("keep-rgb-cmyk-dpi-progressive-optimize")
+    loadedImages := []
+    try {
+        cases := [
+            {
+                Path: dpiPath,
+                Options: { quality: 95, keep_rgb: true, dpi: [300, 150], subsampling: 0 },
+                Sof: 0xC0,
+                Sampling: [67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+                SosCount: 1,
+                Bytes: sourceBytes,
+                HasDpi: true,
+                Tolerance: 0
+            },
+            {
+                Path: subsamplingPath,
+                Options: { quality: 95, keep_rgb: true, dpi: [300, 150], subsampling: "4:2:2" },
+                Sof: 0xC0,
+                Sampling: [67, 2, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+                SosCount: 1,
+                Bytes: [0, 42, 79, 148, 10, 42, 79, 148],
+                HasDpi: true,
+                Tolerance: 0
+            },
+            {
+                Path: optimizePath,
+                Options: { quality: 95, keep_rgb: true, optimize: true },
+                Sof: 0xC0,
+                Sampling: [67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+                SosCount: 1,
+                Bytes: sourceBytes,
+                HasDpi: false,
+                Tolerance: 0
+            },
+            {
+                Path: progressivePath,
+                Options: { quality: 95, keep_rgb: true, progressive: true },
+                Sof: 0xC2,
+                Sampling: [67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+                SosCount: 18,
+                Bytes: sourceBytes,
+                HasDpi: false,
+                Tolerance: 1
+            },
+            {
+                Path: progressiveOptimizePath,
+                Options: { quality: 95, keep_rgb: true, progressive: true, optimize: true },
+                Sof: 0xC2,
+                Sampling: [67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+                SosCount: 18,
+                Bytes: sourceBytes,
+                HasDpi: false,
+                Tolerance: 1
+            },
+            {
+                Path: dpiProgressiveOptimizePath,
+                Options: { quality: 95, keep_rgb: true, dpi: [300, 150], progressive: true, optimize: true },
+                Sof: 0xC2,
+                Sampling: [67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+                SosCount: 18,
+                Bytes: sourceBytes,
+                HasDpi: true,
+                Tolerance: 1
+            },
+        ]
+        for testCase in cases {
+            try {
+                image.Save(testCase.Path, "JPEG", testCase.Options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG keep_rgb save to succeed, got: " err.Message)
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+            AhkTest.AssertEqual(testCase.Sof, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, testCase.Sof))
+            AhkTest.AssertEqual(testCase.SosCount, PillowTestCountJpegSos(testCase.Path))
+
+            if testCase.HasDpi {
+                jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+                AhkTest.AssertTrue(jfifSegment.Found)
+                AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+                jfif := PillowTestReadJpegJfif(testCase.Path)
+                AhkTest.AssertEqual(1, jfif.Unit)
+                AhkTest.AssertEqual(300, jfif.XDensity)
+                AhkTest.AssertEqual(150, jfif.YDensity)
+            }
+            if testCase.Options.HasOwnProp("optimize") && !testCase.Options.HasOwnProp("progressive")
+                AhkTest.AssertEqual([19, 38], PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+            if testCase.Options.HasOwnProp("progressive")
+                AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            loadedImages.Push(loaded)
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            if testCase.Tolerance
+                PillowTestAssertArrayNear(testCase.Bytes, PillowTestBufferToArray(loaded.ToBytes()), testCase.Tolerance)
+            else
+                AhkTest.AssertEqual(testCase.Bytes, PillowTestBufferToArray(loaded.ToBytes()))
+        }
+    } finally {
+        for loaded in loadedImages {
+            if IsObject(loaded)
+                loaded.Close()
+        }
+        for path in [dpiProgressiveOptimizePath, progressiveOptimizePath, progressivePath, optimizePath, subsamplingPath, dpiPath]
+            PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK keep_rgb aliases native CMYK output", PillowTestImageSaveJpegCmykKeepRgbAliasWritesNativeCmykOutput)
+
+PillowTestImageSaveJpegCmykKeepRgbMetadataAliasesNativeCmykOutput(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    sourceBytes := [0, 64, 128, 255, 10, 20, 30, 40]
+    comment := PillowTestTextBytes("Hello CMYK")
+    iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+    exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(sourceBytes))
+    baselinePath := PillowTestTempJpegPath("metadata-keep-rgb-cmyk-baseline")
+    subsamplingPath := PillowTestTempJpegPath("metadata-keep-rgb-cmyk-subsampling")
+    optimizePath := PillowTestTempJpegPath("metadata-keep-rgb-cmyk-optimize")
+    progressivePath := PillowTestTempJpegPath("metadata-keep-rgb-cmyk-progressive")
+    progressiveOptimizePath := PillowTestTempJpegPath("metadata-keep-rgb-cmyk-progressive-optimize")
+    dpiProgressiveOptimizePath := PillowTestTempJpegPath("metadata-dpi-keep-rgb-cmyk-progressive-optimize")
+    loadedImages := []
+    try {
+        cases := [
+            {
+                Path: baselinePath,
+                Options: {
+                    quality: 95,
+                    keep_rgb: true,
+                    comment: "Hello CMYK",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif)
+                },
+                Sof: 0xC0,
+                Sampling: [67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+                SosCount: 1,
+                DhtLengths: [29, 179],
+                Bytes: sourceBytes,
+                HasDpi: false,
+                Tolerance: 0
+            },
+            {
+                Path: subsamplingPath,
+                Options: {
+                    quality: 95,
+                    keep_rgb: true,
+                    comment: "Hello CMYK",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif),
+                    dpi: [300, 150],
+                    subsampling: "4:2:2"
+                },
+                Sof: 0xC0,
+                Sampling: [67, 2, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+                SosCount: 1,
+                DhtLengths: [29, 179],
+                Bytes: [0, 42, 79, 148, 10, 42, 79, 148],
+                HasDpi: true,
+                Tolerance: 0
+            },
+            {
+                Path: optimizePath,
+                Options: {
+                    quality: 95,
+                    keep_rgb: true,
+                    comment: "Hello CMYK",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif),
+                    optimize: true
+                },
+                Sof: 0xC0,
+                Sampling: [67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+                SosCount: 1,
+                DhtLengths: [19, 38],
+                Bytes: sourceBytes,
+                HasDpi: false,
+                Tolerance: 0
+            },
+            {
+                Path: progressivePath,
+                Options: {
+                    quality: 95,
+                    keep_rgb: true,
+                    comment: "Hello CMYK",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif),
+                    progressive: true
+                },
+                Sof: 0xC2,
+                Sampling: [67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+                SosCount: 18,
+                Bytes: sourceBytes,
+                HasDpi: false,
+                Tolerance: 1
+            },
+            {
+                Path: progressiveOptimizePath,
+                Options: {
+                    quality: 95,
+                    keep_rgb: true,
+                    comment: "Hello CMYK",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif),
+                    progressive: true,
+                    optimize: true
+                },
+                Sof: 0xC2,
+                Sampling: [67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+                SosCount: 18,
+                Bytes: sourceBytes,
+                HasDpi: false,
+                Tolerance: 1
+            },
+            {
+                Path: dpiProgressiveOptimizePath,
+                Options: {
+                    quality: 95,
+                    keep_rgb: true,
+                    comment: "Hello CMYK",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif),
+                    dpi: [300, 150],
+                    progressive: true,
+                    optimize: true
+                },
+                Sof: 0xC2,
+                Sampling: [67, 1, 1, 0, 77, 1, 1, 0, 89, 1, 1, 0, 75, 1, 1, 0],
+                SosCount: 18,
+                Bytes: sourceBytes,
+                HasDpi: true,
+                Tolerance: 1
+            },
+        ]
+        for testCase in cases {
+            try {
+                image.Save(testCase.Path, "JPEG", testCase.Options)
+            } catch Error as err {
+                AhkTest.Fail("Expected CMYK JPEG keep_rgb metadata save to succeed, got: " err.Message)
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+                PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+            AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+            AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+                PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+            AhkTest.AssertEqual(iccProfile,
+                PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+            AhkTest.AssertEqual(comment,
+                PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+            if testCase.HasDpi {
+                AhkTest.AssertTrue(jfif.Found)
+                AhkTest.AssertTrue(jfif.MarkerOffset < app14.MarkerOffset)
+                jfifData := PillowTestReadJpegJfif(testCase.Path)
+                AhkTest.AssertEqual(1, jfifData.Unit)
+                AhkTest.AssertEqual(300, jfifData.XDensity)
+                AhkTest.AssertEqual(150, jfifData.YDensity)
+            } else {
+                AhkTest.AssertFalse(jfif.Found)
+            }
+            AhkTest.AssertEqual(testCase.Sof, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, testCase.Sof))
+            AhkTest.AssertEqual(testCase.SosCount, PillowTestCountJpegSos(testCase.Path))
+            if testCase.HasOwnProp("DhtLengths")
+                AhkTest.AssertEqual(testCase.DhtLengths, PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+            if testCase.Options.HasOwnProp("progressive")
+                AhkTest.AssertEqual(PillowTestJpegCmykProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            loadedImages.Push(loaded)
+            AhkTest.AssertEqual("CMYK", loaded.Mode)
+            if testCase.Tolerance
+                PillowTestAssertArrayNear(testCase.Bytes, PillowTestBufferToArray(loaded.ToBytes()), testCase.Tolerance)
+            else
+                AhkTest.AssertEqual(testCase.Bytes, PillowTestBufferToArray(loaded.ToBytes()))
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+            if testCase.HasDpi {
+                PillowTestAssertFloatArrayClose([300.0, 150.0], loaded.Info["dpi"])
+                AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+            }
+        }
+    } finally {
+        for loaded in loadedImages {
+            if IsObject(loaded)
+                loaded.Close()
+        }
+        for path in [dpiProgressiveOptimizePath, progressiveOptimizePath, progressivePath, optimizePath, subsamplingPath, baselinePath]
+            PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG CMYK keep_rgb metadata aliases native CMYK output", PillowTestImageSaveJpegCmykKeepRgbMetadataAliasesNativeCmykOutput)
+
 PillowTestImageSaveJpegQualityOptionUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     values := []
@@ -2426,6 +15432,1525 @@ PillowTestImageSaveJpegDpiOptionUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Save JPEG dpi option uses native path", PillowTestImageSaveJpegDpiOptionUsesNativePath)
 
+PillowTestImageSaveJpegSubsamplingOptionMatchesPillowSofSampling(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 8 {
+            x := A_Index - 1
+            values.Push(Mod(x * 31 + y * 7, 256))
+            values.Push(Mod(x * 13 + y * 23, 256))
+            values.Push(Mod(x * 17 + y * 3, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [8, 8], PillowTestBuffer(values))
+    path444 := PillowTestTempJpegPath("subsampling-444")
+    path422 := PillowTestTempJpegPath("subsampling-422")
+    path420 := PillowTestTempJpegPath("subsampling-420")
+    try {
+        image.Save(path444, "JPEG", { quality: 75, subsampling: 0 })
+        image.Save(path422, "JPEG", { quality: 75, subsampling: "4:2:2" })
+        image.Save(path420, "JPEG", { quality: 75, subsampling: 2 })
+
+        AhkTest.AssertEqual([1, 1, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1], PillowTestReadJpegSof0Sampling(path444))
+        AhkTest.AssertEqual([1, 2, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1], PillowTestReadJpegSof0Sampling(path422))
+        AhkTest.AssertEqual([1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1], PillowTestReadJpegSof0Sampling(path420))
+    } finally {
+        for path in [path420, path422, path444]
+            PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG subsampling option matches Pillow SOF sampling", PillowTestImageSaveJpegSubsamplingOptionMatchesPillowSofSampling)
+
+PillowTestImageSaveJpegSubsamplingPresetAliasesMatchPillowSofSampling(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 16 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 3, 256))
+            values.Push(Mod(x * 5 + y * 31, 256))
+            values.Push(Mod(x * 11 + y * 7, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+    paths := []
+    try {
+        cases := [
+            { Name: "4:1:1", Sampling: [1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Name: "web_low", Sampling: [1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Name: "web_medium", Sampling: [1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Name: "low", Sampling: [1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Name: "medium", Sampling: [1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Name: "web_high", Sampling: [1, 1, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Name: "web_very_high", Sampling: [1, 1, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Name: "web_maximum", Sampling: [1, 1, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Name: "high", Sampling: [1, 1, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Name: "maximum", Sampling: [1, 1, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+        ]
+        for testCase in cases {
+            path := PillowTestTempJpegPath("subsampling-preset-" StrReplace(testCase.Name, ":", "-"))
+            paths.Push(path)
+            image.Save(path, "JPEG", { quality: 75, subsampling: testCase.Name })
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSof0Sampling(path))
+        }
+    } finally {
+        for path in paths
+            PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG subsampling preset aliases match Pillow SOF sampling", PillowTestImageSaveJpegSubsamplingPresetAliasesMatchPillowSofSampling)
+
+PillowTestImageSaveJpegQualityPresetAliasesWritePresetDqtAndSampling(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 16 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 19 + y * 5, 256))
+            values.Push(Mod(x * 7 + y * 29, 256))
+            values.Push(Mod(x * 13 + y * 11, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+    paths := []
+    try {
+        customLuma := []
+        customChroma := []
+        loop 64 {
+            customLuma.Push(1)
+            customChroma.Push(2)
+        }
+
+        webLowLuma := [
+            20, 16, 25, 39, 50, 46, 62, 68,
+            16, 18, 23, 38, 38, 53, 65, 68,
+            25, 23, 31, 38, 53, 65, 68, 68,
+            39, 38, 38, 53, 65, 68, 68, 68,
+            50, 38, 53, 65, 68, 68, 68, 68,
+            46, 53, 65, 68, 68, 68, 68, 68,
+            62, 65, 68, 68, 68, 68, 68, 68,
+            68, 68, 68, 68, 68, 68, 68, 68,
+        ]
+        webLowChroma := [
+            21, 25, 32, 38, 54, 68, 68, 68,
+            25, 28, 24, 38, 54, 68, 68, 68,
+            32, 24, 32, 43, 66, 68, 68, 68,
+            38, 38, 43, 53, 68, 68, 68, 68,
+            54, 54, 66, 68, 68, 68, 68, 68,
+            68, 68, 68, 68, 68, 68, 68, 68,
+            68, 68, 68, 68, 68, 68, 68, 68,
+            68, 68, 68, 68, 68, 68, 68, 68,
+        ]
+        highLuma := [
+            6, 4, 4, 6, 9, 11, 12, 16,
+            4, 5, 5, 6, 8, 10, 12, 12,
+            4, 5, 5, 6, 10, 12, 12, 12,
+            6, 6, 6, 11, 12, 12, 12, 12,
+            9, 8, 10, 12, 12, 12, 12, 12,
+            11, 10, 12, 12, 12, 12, 12, 12,
+            12, 12, 12, 12, 12, 12, 12, 12,
+            16, 12, 12, 12, 12, 12, 12, 12,
+        ]
+        highChroma := [
+            7, 7, 13, 24, 20, 20, 17, 17,
+            7, 12, 16, 14, 14, 12, 12, 12,
+            13, 16, 14, 14, 12, 12, 12, 12,
+            24, 14, 14, 12, 12, 12, 12, 12,
+            20, 14, 12, 12, 12, 12, 12, 12,
+            20, 12, 12, 12, 12, 12, 12, 12,
+            17, 12, 12, 12, 12, 12, 12, 12,
+            17, 12, 12, 12, 12, 12, 12, 12,
+        ]
+
+        sampling420 := [1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1]
+        sampling444 := [1, 1, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1]
+        cases := [
+            { Name: "web_low", Options: { quality: "web_low", subsampling: 0, qtables: [customLuma, customChroma] }, Sampling: sampling420, Luma: webLowLuma, Chroma: webLowChroma },
+            { Name: "web_medium", Options: { quality: "web_medium" }, Sampling: sampling420 },
+            { Name: "low", Options: { quality: "low" }, Sampling: sampling420 },
+            { Name: "medium", Options: { quality: "medium" }, Sampling: sampling420 },
+            { Name: "web_high", Options: { quality: "web_high" }, Sampling: sampling444 },
+            { Name: "web_very_high", Options: { quality: "web_very_high" }, Sampling: sampling444 },
+            { Name: "web_maximum", Options: { quality: "web_maximum" }, Sampling: sampling444 },
+            { Name: "high", Options: { quality: "high" }, Sampling: sampling444, Luma: highLuma, Chroma: highChroma },
+            { Name: "maximum", Options: { quality: "maximum" }, Sampling: sampling444 },
+        ]
+        for testCase in cases {
+            path := PillowTestTempJpegPath("quality-preset-" StrReplace(testCase.Name, "_", "-"))
+            paths.Push(path)
+            image.Save(path, "JPEG", testCase.Options)
+
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSof0Sampling(path))
+            dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            if testCase.HasOwnProp("Luma") {
+                AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(testCase.Luma, -1), dqtPayloads[1].Values)
+                AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(testCase.Chroma, -1), dqtPayloads[2].Values)
+            }
+        }
+    } finally {
+        for path in paths
+            PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG quality preset aliases write preset DQT and sampling", PillowTestImageSaveJpegQualityPresetAliasesWritePresetDqtAndSampling)
+
+PillowTestJpegRgbProgressiveSosComponentHeaders() {
+    return [
+        [0, 0, 0, 1, 3, 1, 0, 0, 2, 1, 0, 3, 1, 0],
+        [1, 5, 0, 2, 1, 1, 0, 0],
+        [1, 63, 0, 1, 1, 3, 0, 1],
+        [1, 63, 0, 1, 1, 2, 0, 1],
+        [6, 63, 0, 2, 1, 1, 0, 0],
+        [1, 63, 2, 1, 1, 1, 0, 0],
+        [0, 0, 1, 0, 3, 1, 0, 0, 2, 0, 0, 3, 0, 0],
+        [1, 63, 1, 0, 1, 3, 0, 1],
+        [1, 63, 1, 0, 1, 2, 0, 1],
+        [1, 63, 1, 0, 1, 1, 0, 0],
+    ]
+}
+
+PillowTestJpegKeepRgbProgressiveSosComponentHeaders() {
+    return [
+        [0, 0, 0, 1, 3, 82, 0, 0, 71, 0, 0, 66, 0, 0],
+        [1, 5, 0, 2, 1, 82, 0, 0],
+        [1, 5, 0, 2, 1, 71, 0, 0],
+        [1, 5, 0, 2, 1, 66, 0, 0],
+        [6, 63, 0, 2, 1, 82, 0, 0],
+        [6, 63, 0, 2, 1, 71, 0, 0],
+        [6, 63, 0, 2, 1, 66, 0, 0],
+        [1, 63, 2, 1, 1, 82, 0, 0],
+        [1, 63, 2, 1, 1, 71, 0, 0],
+        [1, 63, 2, 1, 1, 66, 0, 0],
+        [0, 0, 1, 0, 3, 82, 0, 0, 71, 0, 0, 66, 0, 0],
+        [1, 63, 1, 0, 1, 82, 0, 0],
+        [1, 63, 1, 0, 1, 71, 0, 0],
+        [1, 63, 1, 0, 1, 66, 0, 0],
+    ]
+}
+
+PillowTestAssertJpegKeepRgbMarkers(path, sofMarker, sosCount, expectedSofSampling := unset) {
+    bytes := PillowTestReadFileBytes(path)
+    app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+    jfif := PillowTestFindJpegSegment(bytes, 0xE0, [74, 70, 73, 70, 0])
+    AhkTest.AssertTrue(app14.Found)
+    AhkTest.AssertFalse(jfif.Found)
+    AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+        PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+    AhkTest.AssertEqual(sofMarker, PillowTestReadJpegSofMarker(path))
+    if !IsSet(expectedSofSampling)
+        expectedSofSampling := [82, 1, 1, 0, 71, 1, 1, 0, 66, 1, 1, 0]
+    AhkTest.AssertEqual(expectedSofSampling,
+        PillowTestReadJpegSofSampling(path, sofMarker))
+    AhkTest.AssertEqual(sosCount, PillowTestCountJpegSos(path))
+}
+
+PillowTestImageSaveJpegProgressiveWritesRgbScans(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 16 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 11, 256))
+            values.Push(Mod(x * 29 + y * 7, 256))
+            values.Push(Mod(x * 5 + y * 37, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+    defaultPath := PillowTestTempJpegPath("progressive-rgb-default")
+    path444 := PillowTestTempJpegPath("progressive-rgb-444")
+    path422 := PillowTestTempJpegPath("progressive-rgb-422")
+    path420 := PillowTestTempJpegPath("progressive-rgb-420")
+    loaded := 0
+    try {
+        cases := [
+            { Path: defaultPath, Options: { quality: 75, progressive: true }, Sampling: [1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Path: path444, Options: { quality: 75, progressive: true, optimize: true, subsampling: 0 }, Sampling: [1, 1, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Path: path422, Options: { quality: 75, progression: true, subsampling: "4:2:2" }, Sampling: [1, 2, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Path: path420, Options: { quality: 75, progressive: true, subsampling: 2 }, Sampling: [1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+        ]
+        for testCase in cases {
+            image.Save(testCase.Path, "JPEG", testCase.Options)
+            AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSofSampling(testCase.Path, 0xC2))
+            AhkTest.AssertEqual(PillowTestJpegRgbProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual([16, 16], loaded.Size)
+            loaded.Close()
+            loaded := 0
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(path420)
+        PillowTestDeleteFile(path422)
+        PillowTestDeleteFile(path444)
+        PillowTestDeleteFile(defaultPath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG progressive writes RGB scans", PillowTestImageSaveJpegProgressiveWritesRgbScans)
+
+PillowTestImageSaveJpegProgressiveWritesLuminanceScans(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 8 {
+            x := A_Index - 1
+            values.Push(Mod(x * 23 + y * 41, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("L", [8, 8], PillowTestBuffer(values))
+    progressivePath := PillowTestTempJpegPath("progressive-l")
+    progressionPath := PillowTestTempJpegPath("progression-l")
+    loadedProgressive := 0
+    loadedProgression := 0
+    try {
+        for testCase in [
+            { Path: progressivePath, Options: { quality: 75, progressive: true } },
+            { Path: progressionPath, Options: { quality: 75, progression: true } },
+        ] {
+            image.Save(testCase.Path, "JPEG", testCase.Options)
+            AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual(1, PillowTestReadJpegSofComponentCount(testCase.Path, 0xC2))
+            AhkTest.AssertEqual([
+                [1, 1, 0, 0, 0, 0, 0, 1],
+                [1, 1, 0, 0, 1, 5, 0, 2],
+                [1, 1, 0, 0, 6, 63, 0, 2],
+                [1, 1, 0, 0, 1, 63, 2, 1],
+                [1, 1, 0, 0, 0, 0, 1, 0],
+                [1, 1, 0, 0, 1, 63, 1, 0],
+            ], PillowTestReadJpegSosHeaders(testCase.Path))
+        }
+
+        loadedProgressive := Pillow.Image.Open(progressivePath)
+        loadedProgression := Pillow.Image.Open(progressionPath)
+        AhkTest.AssertEqual("L", loadedProgressive.Mode)
+        AhkTest.AssertEqual([8, 8], loadedProgressive.Size)
+        AhkTest.AssertEqual("L", loadedProgression.Mode)
+        AhkTest.AssertEqual([8, 8], loadedProgression.Size)
+    } finally {
+        if IsObject(loadedProgression)
+            loadedProgression.Close()
+        if IsObject(loadedProgressive)
+            loadedProgressive.Close()
+        PillowTestDeleteFile(progressionPath)
+        PillowTestDeleteFile(progressivePath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG progressive writes L scans", PillowTestImageSaveJpegProgressiveWritesLuminanceScans)
+
+PillowTestImageSaveJpegOptimizeWritesOptimizedLuminanceHuffman(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 8 {
+            x := A_Index - 1
+            values.Push(Mod(x * 23 + y * 41, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("L", [8, 8], PillowTestBuffer(values))
+    path := PillowTestTempJpegPath("optimize-l")
+    loaded := 0
+    try {
+        image.Save(path, "JPEG", { quality: 75, optimize: true })
+        AhkTest.AssertEqual(0xC0, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual(1, PillowTestReadJpegSofComponentCount(path))
+        AhkTest.AssertEqual(1, PillowTestCountJpegSos(path))
+        dhtLengths := PillowTestReadJpegDhtPayloadLengths(path)
+        AhkTest.AssertEqual(2, dhtLengths.Length)
+        AhkTest.AssertTrue(dhtLengths[1] < 29)
+        AhkTest.AssertTrue(dhtLengths[2] < 179)
+
+        loaded := Pillow.Image.Open(path)
+        AhkTest.AssertEqual("L", loaded.Mode)
+        AhkTest.AssertEqual([8, 8], loaded.Size)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG optimize writes optimized L Huffman tables", PillowTestImageSaveJpegOptimizeWritesOptimizedLuminanceHuffman)
+
+PillowTestImageSaveJpegOptimizeWritesOptimizedRgb444Huffman(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 8 {
+            x := A_Index - 1
+            values.Push(Mod(x * 31 + y * 7, 256))
+            values.Push(Mod(x * 13 + y * 23, 256))
+            values.Push(Mod(x * 17 + y * 3, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [8, 8], PillowTestBuffer(values))
+    path := PillowTestTempJpegPath("optimize-rgb-444")
+    loaded := 0
+    try {
+        image.Save(path, "JPEG", { quality: 75, optimize: true, subsampling: 0 })
+        AhkTest.AssertEqual(0xC0, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([1, 1, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1], PillowTestReadJpegSof0Sampling(path))
+        AhkTest.AssertEqual(1, PillowTestCountJpegSos(path))
+        dhtLengths := PillowTestReadJpegDhtPayloadLengths(path)
+        AhkTest.AssertEqual(4, dhtLengths.Length)
+        AhkTest.AssertTrue(dhtLengths[1] < 29)
+        AhkTest.AssertTrue(dhtLengths[2] < 179)
+        AhkTest.AssertTrue(dhtLengths[3] < 29)
+        AhkTest.AssertTrue(dhtLengths[4] < 179)
+
+        loaded := Pillow.Image.Open(path)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([8, 8], loaded.Size)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG optimize writes optimized RGB 444 Huffman tables", PillowTestImageSaveJpegOptimizeWritesOptimizedRgb444Huffman)
+
+PillowTestImageSaveJpegOptimizeWritesOptimizedRgbSubsamplingHuffman(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 16 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 11, 256))
+            values.Push(Mod(x * 29 + y * 7, 256))
+            values.Push(Mod(x * 5 + y * 37, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+    defaultPath := PillowTestTempJpegPath("optimize-rgb-default")
+    path422 := PillowTestTempJpegPath("optimize-rgb-422")
+    path420 := PillowTestTempJpegPath("optimize-rgb-420")
+    loadedDefault := 0
+    loaded422 := 0
+    loaded420 := 0
+    try {
+        image.Save(defaultPath, "JPEG", { quality: 75, optimize: true })
+        image.Save(path422, "JPEG", { quality: 75, optimize: true, subsampling: "4:2:2" })
+        image.Save(path420, "JPEG", { quality: 75, optimize: true, subsampling: 2 })
+
+        cases := [
+            { Path: defaultPath, Sampling: [1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Path: path422, Sampling: [1, 2, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+            { Path: path420, Sampling: [1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1] },
+        ]
+        for testCase in cases {
+            AhkTest.AssertEqual(0xC0, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSof0Sampling(testCase.Path))
+            AhkTest.AssertEqual(1, PillowTestCountJpegSos(testCase.Path))
+            dhtLengths := PillowTestReadJpegDhtPayloadLengths(testCase.Path)
+            AhkTest.AssertEqual(4, dhtLengths.Length)
+            AhkTest.AssertTrue(dhtLengths[1] < 29)
+            AhkTest.AssertTrue(dhtLengths[2] < 179)
+            AhkTest.AssertTrue(dhtLengths[3] < 29)
+            AhkTest.AssertTrue(dhtLengths[4] < 179)
+        }
+
+        loadedDefault := Pillow.Image.Open(defaultPath)
+        loaded422 := Pillow.Image.Open(path422)
+        loaded420 := Pillow.Image.Open(path420)
+        AhkTest.AssertEqual("RGB", loadedDefault.Mode)
+        AhkTest.AssertEqual([16, 16], loadedDefault.Size)
+        AhkTest.AssertEqual("RGB", loaded422.Mode)
+        AhkTest.AssertEqual([16, 16], loaded422.Size)
+        AhkTest.AssertEqual("RGB", loaded420.Mode)
+        AhkTest.AssertEqual([16, 16], loaded420.Size)
+    } finally {
+        if IsObject(loaded420)
+            loaded420.Close()
+        if IsObject(loaded422)
+            loaded422.Close()
+        if IsObject(loadedDefault)
+            loadedDefault.Close()
+        PillowTestDeleteFile(path420)
+        PillowTestDeleteFile(path422)
+        PillowTestDeleteFile(defaultPath)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG optimize writes optimized RGB subsampling Huffman tables", PillowTestImageSaveJpegOptimizeWritesOptimizedRgbSubsamplingHuffman)
+
+PillowTestImageSaveJpegKeepRgbWritesRgbComponents(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 16 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 11, 256))
+            values.Push(Mod(x * 29 + y * 7, 256))
+            values.Push(Mod(x * 5 + y * 37, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+    baselinePath := PillowTestTempJpegPath("keep-rgb-baseline")
+    optimizePath := PillowTestTempJpegPath("keep-rgb-optimize")
+    progressivePath := PillowTestTempJpegPath("keep-rgb-progressive")
+    badPath := PillowTestTempJpegPath("keep-rgb-bad-subsampling")
+    loadedBaseline := 0
+    loadedOptimize := 0
+    loadedProgressive := 0
+    try {
+        cases := [
+            { Path: baselinePath, Options: { quality: 75, keep_rgb: true }, Sof: 0xC0, SosCount: 1 },
+            { Path: optimizePath, Options: { quality: 75, keep_rgb: true, optimize: true, subsampling: 0 }, Sof: 0xC0, SosCount: 1 },
+            { Path: progressivePath, Options: { quality: 75, keep_rgb: true, progressive: true, optimize: true }, Sof: 0xC2, SosCount: 14 },
+        ]
+        for testCase in cases {
+            image.Save(testCase.Path, "JPEG", testCase.Options)
+            PillowTestAssertJpegKeepRgbMarkers(testCase.Path, testCase.Sof, testCase.SosCount)
+        }
+
+        dhtLengths := PillowTestReadJpegDhtPayloadLengths(optimizePath)
+        AhkTest.AssertEqual(2, dhtLengths.Length)
+        AhkTest.AssertTrue(dhtLengths[1] < 29)
+        AhkTest.AssertTrue(dhtLengths[2] < 179)
+        AhkTest.AssertEqual([[0, 63, 0, 0, 3, 82, 0, 0, 71, 0, 0, 66, 0, 0]],
+            PillowTestReadJpegSosComponentHeaders(baselinePath))
+        AhkTest.AssertEqual(PillowTestJpegKeepRgbProgressiveSosComponentHeaders(),
+            PillowTestReadJpegSosComponentHeaders(progressivePath))
+
+        rejected := false
+        try {
+            image.Save(badPath, "JPEG", { quality: 75, keep_rgb: true, subsampling: "4:2:2" })
+        } catch Error as err {
+            rejected := true
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0 || InStr(err.Message, "subsampling") > 0)
+        }
+        if !rejected
+            AhkTest.Fail("Expected keep_rgb with subsampling 4:2:2 to be rejected")
+
+        loadedBaseline := Pillow.Image.Open(baselinePath)
+        loadedOptimize := Pillow.Image.Open(optimizePath)
+        loadedProgressive := Pillow.Image.Open(progressivePath)
+        for loaded in [loadedBaseline, loadedOptimize, loadedProgressive] {
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual([16, 16], loaded.Size)
+        }
+    } finally {
+        for item in [loadedProgressive, loadedOptimize, loadedBaseline, image] {
+            if IsObject(item)
+                item.Close()
+        }
+        for path in [badPath, progressivePath, optimizePath, baselinePath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG keep_rgb writes RGB components", PillowTestImageSaveJpegKeepRgbWritesRgbComponents)
+
+PillowTestImageSaveJpegKeepRgbDpiWritesJfifAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 8 {
+            x := A_Index - 1
+            values.Push(Mod(20 + x * 11, 256))
+            values.Push(Mod(40 + y * 13, 256))
+            values.Push(Mod(80 + x * 3 + y * 5, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [8, 8], PillowTestBuffer(values))
+    path := PillowTestTempJpegPath("keep-rgb-dpi")
+    loaded := 0
+    try {
+        image.Save(path, "JPEG", { quality: 75, keep_rgb: true, dpi: [300, 150] })
+
+        bytes := PillowTestReadFileBytes(path)
+        jfifSegment := PillowTestFindJpegSegment(bytes, 0xE0, [74, 70, 73, 70, 0])
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(jfifSegment.Found)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(jfifSegment.MarkerOffset < app14.MarkerOffset)
+        AhkTest.AssertTrue(app14.MarkerOffset < dqtSegment.MarkerOffset)
+        jfif := PillowTestReadJpegJfif(path)
+        AhkTest.AssertEqual(1, jfif.Unit)
+        AhkTest.AssertEqual(300, jfif.XDensity)
+        AhkTest.AssertEqual(150, jfif.YDensity)
+        AhkTest.AssertEqual([65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0],
+            PillowTestArraySlice(bytes, app14.PayloadOffset, app14.PayloadOffset + 11))
+        AhkTest.AssertEqual(0xC0, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([82, 1, 1, 0, 71, 1, 1, 0, 66, 1, 1, 0],
+            PillowTestReadJpegSofSampling(path, 0xC0))
+        AhkTest.AssertEqual(1, PillowTestCountJpegSos(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([8, 8], loaded.Size)
+        PillowTestAssertFloatArrayClose([300.0, 150.0], loaded.Info["dpi"])
+        AhkTest.AssertEqual(257, loaded.Info["jfif"])
+        AhkTest.AssertEqual([1, 1], loaded.Info["jfif_version"])
+        AhkTest.AssertEqual(1, loaded.Info["jfif_unit"])
+        AhkTest.AssertEqual([300, 150], loaded.Info["jfif_density"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG keep_rgb dpi writes JFIF and info", PillowTestImageSaveJpegKeepRgbDpiWritesJfifAndInfo)
+
+PillowTestImageSaveJpegKeepRgbMetadataWritesRgbComponentsAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 16 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 11, 256))
+            values.Push(Mod(x * 29 + y * 7, 256))
+            values.Push(Mod(x * 5 + y * 37, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+    baselinePath := PillowTestTempJpegPath("keep-rgb-metadata-baseline")
+    optimizePath := PillowTestTempJpegPath("keep-rgb-metadata-optimize")
+    progressivePath := PillowTestTempJpegPath("keep-rgb-metadata-progressive")
+    loadedImages := []
+    try {
+        comment := PillowTestTextBytes("Hello JPEG")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            {
+                Path: baselinePath,
+                Options: {
+                    quality: 75,
+                    keep_rgb: true,
+                    comment: "Hello JPEG",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif)
+                },
+                Sof: 0xC0,
+                SosCount: 1,
+                StandardDht: true,
+                Progressive: false
+            },
+            {
+                Path: optimizePath,
+                Options: {
+                    quality: 75,
+                    keep_rgb: true,
+                    optimize: true,
+                    comment: "Hello JPEG",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif)
+                },
+                Sof: 0xC0,
+                SosCount: 1,
+                StandardDht: false,
+                Progressive: false
+            },
+            {
+                Path: progressivePath,
+                Options: {
+                    quality: 75,
+                    keep_rgb: true,
+                    progressive: true,
+                    optimize: true,
+                    comment: "Hello JPEG",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif)
+                },
+                Sof: 0xC2,
+                SosCount: 14,
+                StandardDht: false,
+                Progressive: true
+            },
+        ]
+
+        for testCase in cases {
+            image.Save(testCase.Path, "JPEG", testCase.Options)
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            app14 := PillowTestFindJpegSegment(bytes, 0xEE, [65, 100, 111, 98, 101])
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            AhkTest.AssertTrue(app14.Found)
+            AhkTest.AssertFalse(jfif.Found)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            PillowTestAssertJpegKeepRgbMarkers(testCase.Path, testCase.Sof, testCase.SosCount)
+            AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+            AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+                PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+            AhkTest.AssertEqual(iccProfile,
+                PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+            AhkTest.AssertEqual(comment,
+                PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+            if testCase.StandardDht
+                AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+            if testCase.Progressive
+                AhkTest.AssertEqual(PillowTestJpegKeepRgbProgressiveSosComponentHeaders(),
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            loadedImages.Push(loaded)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual([16, 16], loaded.Size)
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+        }
+    } finally {
+        for loaded in loadedImages {
+            if IsObject(loaded)
+                loaded.Close()
+        }
+        for path in [progressivePath, optimizePath, baselinePath]
+            PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG keep_rgb metadata writes RGB components and info", PillowTestImageSaveJpegKeepRgbMetadataWritesRgbComponentsAndInfo)
+
+PillowTestImageSaveJpegQTablesKeepRgbWritesRgbComponentsAndCustomDqt(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 16 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 11, 256))
+            values.Push(Mod(x * 29 + y * 7, 256))
+            values.Push(Mod(x * 5 + y * 37, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+    baselinePath := PillowTestTempJpegPath("qtables-keep-rgb-baseline")
+    optimizePath := PillowTestTempJpegPath("qtables-keep-rgb-optimize")
+    progressivePath := PillowTestTempJpegPath("qtables-keep-rgb-progressive")
+    badPath := PillowTestTempJpegPath("qtables-keep-rgb-bad-subsampling")
+    loadedImages := []
+    try {
+        lumaQTable := []
+        chromaQTable := []
+        loop 64 {
+            i := A_Index - 1
+            lumaQTable.Push(2 + Mod(i, 8))
+            chromaQTable.Push(3 + Mod(i, 7))
+        }
+
+        expectedSofSampling := [82, 1, 1, 0, 71, 1, 1, 1, 66, 1, 1, 1]
+        cases := [
+            { Path: baselinePath, Options: { quality: 75, qtables: [lumaQTable, chromaQTable], keep_rgb: true }, Sof: 0xC0, SosCount: 1, Progressive: false },
+            { Path: optimizePath, Options: { quality: 75, qtables: [lumaQTable, chromaQTable], keep_rgb: true, optimize: true }, Sof: 0xC0, SosCount: 1, Progressive: false },
+            { Path: progressivePath, Options: { quality: 75, qtables: [lumaQTable, chromaQTable], keep_rgb: true, progressive: true }, Sof: 0xC2, SosCount: 14, Progressive: true },
+        ]
+        for testCase in cases {
+            image.Save(testCase.Path, "JPEG", testCase.Options)
+            PillowTestAssertJpegKeepRgbMarkers(testCase.Path, testCase.Sof, testCase.SosCount, expectedSofSampling)
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(lumaQTable, 75), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(chromaQTable, 75), dqtPayloads[2].Values)
+            if testCase.Progressive
+                AhkTest.AssertEqual(PillowTestJpegKeepRgbProgressiveSosComponentHeaders(),
+                    PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            if !testCase.Progressive {
+                loaded := Pillow.Image.Open(testCase.Path)
+                loadedImages.Push(loaded)
+                AhkTest.AssertEqual("RGB", loaded.Mode)
+                AhkTest.AssertEqual([16, 16], loaded.Size)
+            }
+        }
+
+        dhtLengths := PillowTestReadJpegDhtPayloadLengths(optimizePath)
+        AhkTest.AssertEqual(2, dhtLengths.Length)
+        AhkTest.AssertTrue(dhtLengths[1] < 29)
+        AhkTest.AssertTrue(dhtLengths[2] < 179)
+        AhkTest.AssertEqual([[0, 63, 0, 0, 3, 82, 0, 0, 71, 0, 0, 66, 0, 0]],
+            PillowTestReadJpegSosComponentHeaders(baselinePath))
+
+        rejected := false
+        try {
+            image.Save(badPath, "JPEG", { quality: 75, qtables: [lumaQTable, chromaQTable], keep_rgb: true, subsampling: 1 })
+        } catch Error as err {
+            rejected := true
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0 || InStr(err.Message, "subsampling") > 0)
+        }
+        if !rejected
+            AhkTest.Fail("Expected qtables plus keep_rgb with subsampling 1 to be rejected")
+    } finally {
+        for loaded in loadedImages {
+            if IsObject(loaded)
+                loaded.Close()
+        }
+        for path in [badPath, progressivePath, optimizePath, baselinePath]
+            PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG qtables keep_rgb writes RGB components and custom DQT", PillowTestImageSaveJpegQTablesKeepRgbWritesRgbComponentsAndCustomDqt)
+
+PillowTestImageSaveJpegQTablesKeepRgbMetadataWritesRgbComponentsAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 8 {
+            x := A_Index - 1
+            values.Push(Mod(x * 31 + y * 7, 256))
+            values.Push(Mod(x * 13 + y * 23, 256))
+            values.Push(Mod(x * 17 + y * 3, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [8, 8], PillowTestBuffer(values))
+    path := PillowTestTempJpegPath("qtables-keep-rgb-metadata")
+    loaded := 0
+    try {
+        lumaQTable := []
+        chromaQTable := []
+        loop 64 {
+            lumaQTable.Push(16)
+            chromaQTable.Push(17)
+        }
+        comment := PillowTestTextBytes("Hello JPEG")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        image.Save(path, "JPEG", {
+            quality: 75,
+            qtables: [lumaQTable, chromaQTable],
+            keep_rgb: true,
+            comment: "Hello JPEG",
+            icc_profile: PillowTestBuffer(iccProfile),
+            exif: PillowTestBuffer(exif)
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        app14 := PillowTestFindJpegSegment(bytes, 0xEE, [0x41, 0x64, 0x6F, 0x62, 0x65])
+        jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(app14.Found)
+        AhkTest.AssertFalse(jfif.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(app14.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        PillowTestAssertJpegKeepRgbMarkers(path, 0xC0, 1, [82, 1, 1, 0, 71, 1, 1, 1, 66, 1, 1, 1])
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+        AhkTest.AssertEqual(iccProfile,
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(2, dqtPayloads.Length)
+        AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+        AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(lumaQTable, 75), dqtPayloads[1].Values)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(chromaQTable, 75), dqtPayloads[2].Values)
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([8, 8], loaded.Size)
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG qtables keep_rgb metadata writes RGB components and info", PillowTestImageSaveJpegQTablesKeepRgbMetadataWritesRgbComponentsAndInfo)
+
+PillowTestImageSaveJpegQTablesWritesCustomDqt(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 16 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 11, 256))
+            values.Push(Mod(x * 29 + y * 7, 256))
+            values.Push(Mod(x * 5 + y * 37, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+    baselinePath := PillowTestTempJpegPath("qtables-rgb-baseline")
+    optimizePath := PillowTestTempJpegPath("qtables-rgb-optimize")
+    loadedImages := []
+    try {
+        lumaQTable := []
+        chromaQTable := []
+        loop 64 {
+            lumaQTable.Push(A_Index)
+            chromaQTable.Push(65 - A_Index)
+        }
+
+        cases := [
+            { Path: baselinePath, Options: { quality: 75, qtables: [lumaQTable, chromaQTable] }, Sampling: [1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1], StandardDht: true },
+            { Path: optimizePath, Options: { quality: 75, qtables: [lumaQTable, chromaQTable], optimize: true, subsampling: 0 }, Sampling: [1, 1, 1, 0, 2, 1, 1, 1, 3, 1, 1, 1], StandardDht: false },
+        ]
+        for testCase in cases {
+            image.Save(testCase.Path, "JPEG", testCase.Options)
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(lumaQTable, 75), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(chromaQTable, 75), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(0xC0, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual(testCase.Sampling, PillowTestReadJpegSof0Sampling(testCase.Path))
+            AhkTest.AssertEqual(1, PillowTestCountJpegSos(testCase.Path))
+            dhtLengths := PillowTestReadJpegDhtPayloadLengths(testCase.Path)
+            AhkTest.AssertEqual(4, dhtLengths.Length)
+            if testCase.StandardDht {
+                AhkTest.AssertEqual([29, 179, 29, 179], dhtLengths)
+            } else {
+                AhkTest.AssertTrue(dhtLengths[1] < 29)
+                AhkTest.AssertTrue(dhtLengths[2] < 179)
+                AhkTest.AssertTrue(dhtLengths[3] < 29)
+                AhkTest.AssertTrue(dhtLengths[4] < 179)
+            }
+
+            loaded := Pillow.Image.Open(testCase.Path)
+            loadedImages.Push(loaded)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual([16, 16], loaded.Size)
+        }
+    } finally {
+        for loaded in loadedImages
+            loaded.Close()
+        PillowTestDeleteFile(baselinePath)
+        PillowTestDeleteFile(optimizePath)
+        image.Close()
+    }
+    PillowTestImageSaveJpegQTablesWritesLuminanceCustomDqt()
+}
+
+AhkTest.Test("Pillow Image.Save JPEG qtables writes RGB and L custom DQT tables", PillowTestImageSaveJpegQTablesWritesCustomDqt)
+
+PillowTestImageSaveJpegQTablesProgressiveWritesCustomDqt(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 16 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 11, 256))
+            values.Push(Mod(x * 29 + y * 7, 256))
+            values.Push(Mod(x * 5 + y * 37, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+    path := PillowTestTempJpegPath("qtables-rgb-progressive")
+    loaded := 0
+    try {
+        lumaQTable := []
+        chromaQTable := []
+        loop 64 {
+            i := A_Index - 1
+            lumaQTable.Push(8 + Mod(i, 8) + (i // 8))
+            chromaQTable.Push(17 + Mod(i * 3, 11))
+        }
+
+        image.Save(path, "JPEG", {
+            quality: 75,
+            qtables: [lumaQTable, chromaQTable],
+            progressive: true,
+        })
+
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(2, dqtPayloads.Length)
+        AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+        AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(lumaQTable, 75), dqtPayloads[1].Values)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(chromaQTable, 75), dqtPayloads[2].Values)
+        AhkTest.AssertEqual(0xC2, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1], PillowTestReadJpegSofSampling(path, 0xC2))
+        AhkTest.AssertEqual(PillowTestJpegRgbProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(path))
+
+        loaded := Pillow.Image.Open(path)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([16, 16], loaded.Size)
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG qtables progressive writes custom DQT tables", PillowTestImageSaveJpegQTablesProgressiveWritesCustomDqt)
+
+PillowTestJpegLProgressiveSosHeaders() {
+    return [
+        [1, 1, 0, 0, 0, 0, 0, 1],
+        [1, 1, 0, 0, 1, 5, 0, 2],
+        [1, 1, 0, 0, 6, 63, 0, 2],
+        [1, 1, 0, 0, 1, 63, 2, 1],
+        [1, 1, 0, 0, 0, 0, 1, 0],
+        [1, 1, 0, 0, 1, 63, 1, 0],
+    ]
+}
+
+PillowTestImageSaveJpegQTablesWritesLuminanceCustomDqt(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 8 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 23, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("L", [8, 8], PillowTestBuffer(values))
+    baselinePath := PillowTestTempJpegPath("qtables-l-baseline")
+    optimizePath := PillowTestTempJpegPath("qtables-l-optimize")
+    progressivePath := PillowTestTempJpegPath("qtables-l-progressive")
+    loadedImages := []
+    try {
+        lumaQTable := []
+        ignoredQTable := []
+        loop 64 {
+            lumaQTable.Push(A_Index)
+            ignoredQTable.Push(65 - A_Index)
+        }
+
+        cases := [
+            { Path: baselinePath, Options: { quality: 75, qtables: [lumaQTable, ignoredQTable] }, Sof: 0xC0, Dht: "standard" },
+            { Path: optimizePath, Options: { quality: 75, qtables: [lumaQTable, ignoredQTable], optimize: true }, Sof: 0xC0, Dht: "optimized" },
+            { Path: progressivePath, Options: { quality: 75, qtables: [lumaQTable, ignoredQTable], progressive: true }, Sof: 0xC2, Dht: "progressive" },
+        ]
+        for testCase in cases {
+            image.Save(testCase.Path, "JPEG", testCase.Options)
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(1, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(lumaQTable, 75), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(testCase.Sof, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual(1, PillowTestReadJpegSofComponentCount(testCase.Path, testCase.Sof))
+            AhkTest.AssertEqual([1, 1, 1, 0], PillowTestReadJpegSofSampling(testCase.Path, testCase.Sof))
+            if testCase.Dht = "standard" {
+                AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+                AhkTest.AssertEqual(1, PillowTestCountJpegSos(testCase.Path))
+            } else if testCase.Dht = "optimized" {
+                dhtLengths := PillowTestReadJpegDhtPayloadLengths(testCase.Path)
+                AhkTest.AssertEqual(2, dhtLengths.Length)
+                AhkTest.AssertTrue(dhtLengths[1] < 29)
+                AhkTest.AssertTrue(dhtLengths[2] < 179)
+                AhkTest.AssertEqual(1, PillowTestCountJpegSos(testCase.Path))
+            } else {
+                AhkTest.AssertEqual(PillowTestJpegLProgressiveSosHeaders(), PillowTestReadJpegSosHeaders(testCase.Path))
+            }
+
+            loaded := Pillow.Image.Open(testCase.Path)
+            loadedImages.Push(loaded)
+            AhkTest.AssertEqual("L", loaded.Mode)
+            AhkTest.AssertEqual([8, 8], loaded.Size)
+        }
+    } finally {
+        for loaded in loadedImages {
+            if IsObject(loaded)
+                loaded.Close()
+        }
+        PillowTestDeleteFile(progressivePath)
+        PillowTestDeleteFile(optimizePath)
+        PillowTestDeleteFile(baselinePath)
+        image.Close()
+    }
+}
+
+PillowTestImageSaveJpegQTablesMetadataWritesLuminanceCustomDqtAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 8 {
+        y := A_Index - 1
+        loop 8 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 23, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("L", [8, 8], PillowTestBuffer(values))
+    path := PillowTestTempJpegPath("qtables-l-metadata-baseline")
+    loaded := 0
+    try {
+        lumaQTable := []
+        ignoredQTable := []
+        loop 64 {
+            lumaQTable.Push(A_Index)
+            ignoredQTable.Push(65 - A_Index)
+        }
+        comment := PillowTestTextBytes("Hello JPEG")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        image.Save(path, "JPEG", {
+            quality: 75,
+            qtables: [lumaQTable, ignoredQTable],
+            comment: "Hello JPEG",
+            icc_profile: PillowTestBuffer(iccProfile),
+            exif: PillowTestBuffer(exif)
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(jfif.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(jfif.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+
+        dqtPayloads := PillowTestReadJpegDqtPayloads(path)
+        AhkTest.AssertEqual(1, dqtPayloads.Length)
+        AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+        AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(lumaQTable, 75), dqtPayloads[1].Values)
+        AhkTest.AssertEqual(0xC0, PillowTestReadJpegSofMarker(path))
+        AhkTest.AssertEqual([1, 1, 1, 0], PillowTestReadJpegSofSampling(path, 0xC0))
+        AhkTest.AssertEqual([29, 179], PillowTestReadJpegDhtPayloadLengths(path))
+        AhkTest.AssertEqual(1, PillowTestCountJpegSos(path))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("L", loaded.Mode)
+        AhkTest.AssertEqual([8, 8], loaded.Size)
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(path)
+        image.Close()
+    }
+}
+
+PillowTestImageSaveJpegQTablesMetadataWritesCustomDqtAndInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 16 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 11, 256))
+            values.Push(Mod(x * 29 + y * 7, 256))
+            values.Push(Mod(x * 5 + y * 37, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+    baselinePath := PillowTestTempJpegPath("qtables-metadata-baseline")
+    optimizePath := PillowTestTempJpegPath("qtables-metadata-optimize")
+    progressivePath := PillowTestTempJpegPath("qtables-metadata-progressive")
+    loadedImages := []
+    try {
+        lumaQTable := []
+        chromaQTable := []
+        loop 64 {
+            i := A_Index - 1
+            lumaQTable.Push(2 + Mod(i, 8))
+            chromaQTable.Push(3 + Mod(i, 7))
+        }
+        comment := PillowTestTextBytes("Hello JPEG")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        cases := [
+            {
+                Path: baselinePath,
+                Options: {
+                    quality: 75,
+                    qtables: [lumaQTable, chromaQTable],
+                    comment: "Hello JPEG",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif)
+                },
+                Sof: 0xC0,
+                SosCount: 1,
+                Progressive: false,
+                StandardDht: true
+            },
+            {
+                Path: optimizePath,
+                Options: {
+                    quality: 75,
+                    qtables: [lumaQTable, chromaQTable],
+                    optimize: true,
+                    comment: "Hello JPEG",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif)
+                },
+                Sof: 0xC0,
+                SosCount: 1,
+                Progressive: false,
+                StandardDht: false
+            },
+            {
+                Path: progressivePath,
+                Options: {
+                    quality: 75,
+                    qtables: [lumaQTable, chromaQTable],
+                    progressive: true,
+                    comment: "Hello JPEG",
+                    icc_profile: PillowTestBuffer(iccProfile),
+                    exif: PillowTestBuffer(exif)
+                },
+                Sof: 0xC2,
+                SosCount: 10,
+                Progressive: true,
+                StandardDht: false
+            },
+        ]
+
+        for testCase in cases {
+            try {
+                image.Save(testCase.Path, "JPEG", testCase.Options)
+            } catch Error as err {
+                AhkTest.Fail("Expected JPEG qtables metadata save to succeed, got: " err.Message)
+            }
+
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            AhkTest.AssertTrue(jfif.Found)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(jfif.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+            AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+                PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+            AhkTest.AssertEqual(iccProfile,
+                PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+            AhkTest.AssertEqual(comment,
+                PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+
+            dqtPayloads := PillowTestReadJpegDqtPayloads(testCase.Path)
+            AhkTest.AssertEqual(2, dqtPayloads.Length)
+            AhkTest.AssertEqual(0, dqtPayloads[1].TableId)
+            AhkTest.AssertEqual(1, dqtPayloads[2].TableId)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(lumaQTable, 75), dqtPayloads[1].Values)
+            AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(chromaQTable, 75), dqtPayloads[2].Values)
+            AhkTest.AssertEqual(testCase.Sof, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual([1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1],
+                PillowTestReadJpegSofSampling(testCase.Path, testCase.Sof))
+            AhkTest.AssertEqual(testCase.SosCount, PillowTestCountJpegSos(testCase.Path))
+            if testCase.StandardDht
+                AhkTest.AssertEqual([29, 179, 29, 179], PillowTestReadJpegDhtPayloadLengths(testCase.Path))
+            if testCase.Progressive
+                AhkTest.AssertEqual(PillowTestJpegRgbProgressiveSosComponentHeaders(), PillowTestReadJpegSosComponentHeaders(testCase.Path))
+
+            loaded := Pillow.Image.Open(testCase.Path, ["JPEG"])
+            loadedImages.Push(loaded)
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual([16, 16], loaded.Size)
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+        }
+    } finally {
+        for loaded in loadedImages {
+            if IsObject(loaded)
+                loaded.Close()
+        }
+        PillowTestDeleteFile(progressivePath)
+        PillowTestDeleteFile(optimizePath)
+        PillowTestDeleteFile(baselinePath)
+        image.Close()
+    }
+    PillowTestImageSaveJpegQTablesMetadataWritesLuminanceCustomDqtAndInfo()
+}
+
+AhkTest.Test("Pillow Image.Save JPEG qtables metadata writes RGB and L custom DQT and info", PillowTestImageSaveJpegQTablesMetadataWritesCustomDqtAndInfo)
+
+PillowTestImageSaveJpegMetadataEncodeOptionsWriteOptimizeAndProgressiveMarkers(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    values := []
+    loop 16 {
+        y := A_Index - 1
+        loop 16 {
+            x := A_Index - 1
+            values.Push(Mod(x * 17 + y * 11, 256))
+            values.Push(Mod(x * 29 + y * 7, 256))
+            values.Push(Mod(x * 5 + y * 37, 256))
+        }
+    }
+    image := Pillow.Image.FromBytes("RGB", [16, 16], PillowTestBuffer(values))
+    optimizePath := PillowTestTempJpegPath("metadata-encode-optimize")
+    progressivePath := PillowTestTempJpegPath("metadata-encode-progressive")
+    loadedOptimize := 0
+    loadedProgressive := 0
+    try {
+        comment := PillowTestTextBytes("Hello JPEG")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+        cases := [
+            { Path: optimizePath, Options: { quality: 75, optimize: true, comment: "Hello JPEG", icc_profile: PillowTestBuffer(iccProfile), exif: PillowTestBuffer(exif) }, Sof: 0xC0, SosCount: 1 },
+            { Path: progressivePath, Options: { quality: 75, progressive: true, optimize: true, comment: "Hello JPEG", icc_profile: PillowTestBuffer(iccProfile), exif: PillowTestBuffer(exif) }, Sof: 0xC2, SosCount: 10 },
+        ]
+
+        for testCase in cases {
+            image.Save(testCase.Path, "JPEG", testCase.Options)
+            bytes := PillowTestReadFileBytes(testCase.Path)
+            jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+            exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+            iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+            commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+            dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+            AhkTest.AssertTrue(jfif.Found)
+            AhkTest.AssertTrue(exifSegment.Found)
+            AhkTest.AssertTrue(iccSegment.Found)
+            AhkTest.AssertTrue(commentSegment.Found)
+            AhkTest.AssertTrue(dqtSegment.Found)
+            AhkTest.AssertTrue(jfif.MarkerOffset < exifSegment.MarkerOffset)
+            AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+            AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+            AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+            AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+            AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+                PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+            AhkTest.AssertEqual(iccProfile,
+                PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+            AhkTest.AssertEqual(comment,
+                PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+            AhkTest.AssertEqual(testCase.Sof, PillowTestReadJpegSofMarker(testCase.Path))
+            AhkTest.AssertEqual([1, 2, 2, 0, 2, 1, 1, 1, 3, 1, 1, 1],
+                PillowTestReadJpegSofSampling(testCase.Path, testCase.Sof))
+            AhkTest.AssertEqual(testCase.SosCount, PillowTestCountJpegSos(testCase.Path))
+        }
+
+        loadedOptimize := Pillow.Image.Open(optimizePath, ["JPEG"])
+        loadedProgressive := Pillow.Image.Open(progressivePath, ["JPEG"])
+        for loaded in [loadedOptimize, loadedProgressive] {
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual([16, 16], loaded.Size)
+            AhkTest.AssertEqual(6, loaded.ExifOrientation())
+            AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+            AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+            AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+            AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+            AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+        }
+    } finally {
+        for loaded in [loadedProgressive, loadedOptimize] {
+            if IsObject(loaded)
+                loaded.Close()
+        }
+        image.Close()
+        PillowTestDeleteFile(progressivePath)
+        PillowTestDeleteFile(optimizePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG metadata encode options write optimize and progressive markers", PillowTestImageSaveJpegMetadataEncodeOptionsWriteOptimizeAndProgressiveMarkers)
+
+PillowTestImageSaveJpegMetadataOptionsWriteAndOpenInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    path := PillowTestTempJpegPath("metadata")
+    loaded := 0
+    try {
+        comment := PillowTestTextBytes("Hello JPEG")
+        iccProfile := [1, 2, 3, 4, 5, 6, 7, 8]
+        exif := PillowTestArraySlice(PillowTestExifOrientationSegment(6), 5, 36)
+
+        image.Save(path, "JPEG", {
+            quality: 95,
+            dpi: [300, 150],
+            comment: "Hello JPEG",
+            icc_profile: PillowTestBuffer(iccProfile),
+            exif: PillowTestBuffer(exif)
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        exifSegment := PillowTestFindJpegSegment(bytes, 0xE1, [0x45, 0x78, 0x69, 0x66, 0, 0])
+        iccSegment := PillowTestFindJpegSegment(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        AhkTest.AssertTrue(jfif.Found)
+        AhkTest.AssertTrue(exifSegment.Found)
+        AhkTest.AssertTrue(iccSegment.Found)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(jfif.MarkerOffset < exifSegment.MarkerOffset)
+        AhkTest.AssertTrue(exifSegment.MarkerOffset < iccSegment.MarkerOffset)
+        AhkTest.AssertTrue(iccSegment.MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertEqual(exif, PillowTestArraySlice(bytes, exifSegment.PayloadOffset, exifSegment.PayloadOffset + exifSegment.PayloadLength - 1))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 1],
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset, iccSegment.PayloadOffset + 13))
+        AhkTest.AssertEqual(iccProfile,
+            PillowTestArraySlice(bytes, iccSegment.PayloadOffset + 14, iccSegment.PayloadOffset + 13 + iccProfile.Length))
+        AhkTest.AssertEqual(comment, PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([2, 1], loaded.Size)
+        AhkTest.AssertEqual([300, 150], loaded.Info["dpi"])
+        AhkTest.AssertEqual(6, loaded.ExifOrientation())
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        AhkTest.AssertEqual(iccProfile, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+        AhkTest.AssertTrue(loaded.Info["exif"] is Buffer)
+        AhkTest.AssertEqual(exif, PillowTestBufferToArray(loaded.Info["exif"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG metadata options write markers and reopen info", PillowTestImageSaveJpegMetadataOptionsWriteAndOpenInfo)
+
+PillowTestImageSaveJpegLargeIccProfileSplitsMarkersAndReopensInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([10, 20, 30]))
+    path := PillowTestTempJpegPath("large-icc")
+    loaded := 0
+    try {
+        comment := PillowTestTextBytes("Large ICC")
+        iccProfile := PillowTestLargeIccProfile()
+
+        image.Save(path, "JPEG", {
+            quality: 75,
+            comment: "Large ICC",
+            icc_profile: PillowTestBuffer(iccProfile)
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        jfif := PillowTestFindJpegSegment(bytes, 0xE0, [0x4A, 0x46, 0x49, 0x46, 0])
+        iccSegments := PillowTestFindJpegSegments(bytes, 0xE2, [0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0])
+        commentSegment := PillowTestFindJpegSegment(bytes, 0xFE)
+        dqtSegment := PillowTestFindJpegSegment(bytes, 0xDB)
+        AhkTest.AssertTrue(jfif.Found)
+        AhkTest.AssertEqual(2, iccSegments.Length)
+        AhkTest.AssertTrue(commentSegment.Found)
+        AhkTest.AssertTrue(dqtSegment.Found)
+        AhkTest.AssertTrue(jfif.MarkerOffset < iccSegments[1].MarkerOffset)
+        AhkTest.AssertTrue(iccSegments[1].MarkerOffset < iccSegments[2].MarkerOffset)
+        AhkTest.AssertTrue(iccSegments[2].MarkerOffset < commentSegment.MarkerOffset)
+        AhkTest.AssertTrue(commentSegment.MarkerOffset < dqtSegment.MarkerOffset)
+        AhkTest.AssertEqual(65535, iccSegments[1].Length)
+        AhkTest.AssertEqual(4497, iccSegments[2].Length)
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 1, 2],
+            PillowTestArraySlice(bytes, iccSegments[1].PayloadOffset, iccSegments[1].PayloadOffset + 13))
+        AhkTest.AssertEqual([0x49, 0x43, 0x43, 0x5F, 0x50, 0x52, 0x4F, 0x46, 0x49, 0x4C, 0x45, 0, 2, 2],
+            PillowTestArraySlice(bytes, iccSegments[2].PayloadOffset, iccSegments[2].PayloadOffset + 13))
+        AhkTest.AssertEqual(PillowTestArraySlice(iccProfile, 1, 8),
+            PillowTestArraySlice(bytes, iccSegments[1].PayloadOffset + 14, iccSegments[1].PayloadOffset + 21))
+        AhkTest.AssertEqual(PillowTestArraySlice(iccProfile, 69993, 70000),
+            PillowTestArraySlice(bytes, iccSegments[2].PayloadOffset + 4495 - 8, iccSegments[2].PayloadOffset + 4494))
+        AhkTest.AssertEqual(comment,
+            PillowTestArraySlice(bytes, commentSegment.PayloadOffset, commentSegment.PayloadOffset + commentSegment.PayloadLength - 1))
+
+        loaded := Pillow.Image.Open(path, ["JPEG"])
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([1, 1], loaded.Size)
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertTrue(loaded.Info["icc_profile"] is Buffer)
+        loadedIcc := PillowTestBufferToArray(loaded.Info["icc_profile"])
+        AhkTest.AssertEqual(70000, loadedIcc.Length)
+        AhkTest.AssertTrue(PillowTestArrayEquals(iccProfile, loadedIcc))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG large ICC profile splits markers and reopens info", PillowTestImageSaveJpegLargeIccProfileSplitsMarkersAndReopensInfo)
+
 PillowTestImageSaveJpegDpiRejectsInvalidOption(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
@@ -2519,6 +17044,582 @@ PillowTestImageSaveAndOpenTiffUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Save and Image.Open support TIFF through native path", PillowTestImageSaveAndOpenTiffUsesNativePath)
 
+PillowTestImageSaveTiffDpiOptionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    path := PillowTestTempTiffPath("dpi-rgb")
+    loaded := 0
+    try {
+        image.Save(path, "TIFF", { dpi: [300, 150] })
+        AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        PillowTestAssertTiffDpiTags(path, 300, 150)
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([2, 1], loaded.Size)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(loaded.Info.Has("dpi"))
+        PillowTestAssertFloatArrayClose([300.0, 150.0], loaded.Info["dpi"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF dpi option uses native path", PillowTestImageSaveTiffDpiOptionUsesNativePath)
+
+PillowTestImageSaveTiffPackbitsCompressionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [
+        10, 20, 30, 10, 20, 30,
+        40, 50, 60, 40, 50, 60
+    ]
+    image := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer(pixels))
+    path := PillowTestTempTiffPath("packbits-rgb")
+    loaded := 0
+    try {
+        image.Save(path, "TIFF", { compression: "packbits" })
+        AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        PillowTestAssertTiffCompressionTag(path, 32773)
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([2, 2], loaded.Size)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF packbits compression uses native path", PillowTestImageSaveTiffPackbitsCompressionUsesNativePath)
+
+PillowTestImageSaveTiffLzwCompressionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [
+        10, 20, 30, 10, 20, 30,
+        40, 50, 60, 40, 50, 60
+    ]
+    image := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer(pixels))
+    path := PillowTestTempTiffPath("lzw-rgb")
+    loaded := 0
+    try {
+        image.Save(path, "TIFF", { compression: "tiff_lzw" })
+        AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        PillowTestAssertTiffCompressionTag(path, 5)
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([2, 2], loaded.Size)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF lzw compression uses native path", PillowTestImageSaveTiffLzwCompressionUsesNativePath)
+
+PillowTestImageSaveTiffDeflateCompressionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [
+        10, 20, 30, 10, 20, 30,
+        40, 50, 60, 40, 50, 60
+    ]
+    image := Pillow.Image.FromBytes("RGB", [2, 2], PillowTestBuffer(pixels))
+    path := PillowTestTempTiffPath("deflate-rgb")
+    loaded := 0
+    try {
+        image.Save(path, "TIFF", { compression: "tiff_adobe_deflate" })
+        AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        PillowTestAssertTiffCompressionTag(path, 8)
+        PillowTestAssertTiffStripPrefix(path, [0x78, 0x9C])
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([2, 2], loaded.Size)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF deflate compression uses native path", PillowTestImageSaveTiffDeflateCompressionUsesNativePath)
+
+PillowTestImageSaveTiffModeOneUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    packed := [0x5A, 0xC5]
+    pixels := [
+        0, 255, 0, 255, 255, 0, 255, 0,
+        255, 255, 0, 0, 0, 255, 0, 255
+    ]
+    image := Pillow.Image.FromBytes("1", [8, 2], PillowTestBuffer(packed))
+    path := PillowTestTempTiffPath("mode-one")
+    loaded := 0
+    try {
+        image.Save(path, "TIFF")
+        AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        PillowTestAssertTiffModeOneTagsAndStrip(path, packed)
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("1", loaded.Mode)
+        AhkTest.AssertEqual([8, 2], loaded.Size)
+        AhkTest.AssertEqual(packed, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(pixels, loaded.GetData())
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF mode 1 uses native path", PillowTestImageSaveTiffModeOneUsesNativePath)
+
+PillowTestImageSaveTiffPaletteModeUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [0, 1, 2, 1, 0, 2]
+    palette := [10, 20, 30, 40, 50, 60, 70, 80, 90]
+    image := Pillow.Image.FromBytes("P", [3, 2], PillowTestBuffer(pixels))
+    path := PillowTestTempTiffPath("palette")
+    loaded := 0
+    try {
+        image.PutPalette(palette)
+        image.Save(path, "TIFF")
+        AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        PillowTestAssertTiffPaletteTagsAndStrip(path, pixels)
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("P", loaded.Mode)
+        AhkTest.AssertEqual([3, 2], loaded.Size)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(palette, PillowTestArraySlice(loaded.GetPalette(), 1, 9))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF P mode uses native path", PillowTestImageSaveTiffPaletteModeUsesNativePath)
+
+PillowTestImageSaveTiffLaModeUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 255, 40, 128]
+    image := Pillow.Image.FromBytes("LA", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempTiffPath("la")
+    loaded := 0
+    try {
+        image.Save(path, "TIFF")
+        AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        PillowTestAssertTiffLaTagsAndStrip(path, pixels)
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("LA", loaded.Mode)
+        AhkTest.AssertEqual([2, 1], loaded.Size)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF LA mode uses native path", PillowTestImageSaveTiffLaModeUsesNativePath)
+
+PillowTestImageSaveTiffLaCompressionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [10, 255, 40, 128]
+    cases := [
+        { Name: "packbits", Option: "packbits", Code: 32773 },
+        { Name: "lzw", Option: "tiff_lzw", Code: 5 },
+        { Name: "adobe-deflate", Option: "tiff_adobe_deflate", Code: 8 },
+        { Name: "tiff-deflate", Option: "tiff_deflate", Code: 8 }
+    ]
+    image := Pillow.Image.FromBytes("LA", [2, 1], PillowTestBuffer(pixels))
+    try {
+        for item in cases {
+            path := PillowTestTempTiffPath("la-" item.Name)
+            loaded := 0
+            try {
+                image.Save(path, "TIFF", { compression: item.Option })
+                AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+                PillowTestAssertTiffLaTagsAndStrip(path, pixels, item.Code)
+
+                loaded := Pillow.Image.Open(path, ["TIFF"])
+                AhkTest.AssertEqual("TIFF", loaded.Format)
+                AhkTest.AssertEqual("LA", loaded.Mode)
+                AhkTest.AssertEqual([2, 1], loaded.Size)
+                AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            } finally {
+                if IsObject(loaded)
+                    loaded.Close()
+                PillowTestDeleteFile(path)
+            }
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF LA compression uses native path", PillowTestImageSaveTiffLaCompressionUsesNativePath)
+
+PillowTestImageSaveTiffCmykModeUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [1, 2, 3, 4, 10, 20, 30, 40]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempTiffPath("cmyk")
+    loaded := 0
+    try {
+        image.Save(path, "TIFF")
+        AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        PillowTestAssertTiffCmykTagsAndStrip(path, pixels)
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("CMYK", loaded.Mode)
+        AhkTest.AssertEqual([2, 1], loaded.Size)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF CMYK mode uses native path", PillowTestImageSaveTiffCmykModeUsesNativePath)
+
+PillowTestImageSaveTiffCmykCompressionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [1, 2, 3, 4, 10, 20, 30, 40]
+    cases := [
+        { Name: "packbits", Option: "packbits", Code: 32773 },
+        { Name: "lzw", Option: "tiff_lzw", Code: 5 },
+        { Name: "adobe-deflate", Option: "tiff_adobe_deflate", Code: 8 },
+        { Name: "tiff-deflate", Option: "tiff_deflate", Code: 8 }
+    ]
+    image := Pillow.Image.FromBytes("CMYK", [2, 1], PillowTestBuffer(pixels))
+    try {
+        for item in cases {
+            path := PillowTestTempTiffPath("cmyk-" item.Name)
+            loaded := 0
+            try {
+                image.Save(path, "TIFF", { compression: item.Option })
+                AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+                PillowTestAssertTiffCmykTagsAndStrip(path, pixels, item.Code)
+
+                loaded := Pillow.Image.Open(path, ["TIFF"])
+                AhkTest.AssertEqual("TIFF", loaded.Format)
+                AhkTest.AssertEqual("CMYK", loaded.Mode)
+                AhkTest.AssertEqual([2, 1], loaded.Size)
+                AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            } finally {
+                if IsObject(loaded)
+                    loaded.Close()
+                PillowTestDeleteFile(path)
+            }
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF CMYK compression uses native path", PillowTestImageSaveTiffCmykCompressionUsesNativePath)
+
+PillowTestImageSaveTiffNumericModesUseNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    cases := [
+        {
+            Name: "i",
+            Mode: "I",
+            SampleFormat: 2,
+            Bytes: [255, 255, 255, 255, 0, 0, 0, 0, 112, 17, 1, 0]
+        },
+        {
+            Name: "f",
+            Mode: "F",
+            SampleFormat: 3,
+            Bytes: [0, 0, 192, 191, 0, 0, 0, 0, 0, 0, 16, 64]
+        }
+    ]
+    for item in cases {
+        image := Pillow.Image.FromBytes(item.Mode, [3, 1], PillowTestBuffer(item.Bytes))
+        path := PillowTestTempTiffPath("numeric-" item.Name)
+        loaded := 0
+        try {
+            image.Save(path, "TIFF")
+            AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+            PillowTestAssertTiffNumericTagsAndStrip(path, item.Bytes, item.SampleFormat)
+
+            loaded := Pillow.Image.Open(path, ["TIFF"])
+            AhkTest.AssertEqual("TIFF", loaded.Format)
+            AhkTest.AssertEqual(item.Mode, loaded.Mode)
+            AhkTest.AssertEqual([3, 1], loaded.Size)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(loaded.ToBytes()))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            image.Close()
+            PillowTestDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF numeric I and F modes use native path", PillowTestImageSaveTiffNumericModesUseNativePath)
+
+PillowTestImageSaveTiffNumericCompressionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    cases := [
+        {
+            Name: "i",
+            Mode: "I",
+            SampleFormat: 2,
+            Bytes: [255, 255, 255, 255, 0, 0, 0, 0, 112, 17, 1, 0]
+        },
+        {
+            Name: "f",
+            Mode: "F",
+            SampleFormat: 3,
+            Bytes: [0, 0, 192, 191, 0, 0, 0, 0, 0, 0, 16, 64]
+        }
+    ]
+    compressions := [
+        { Name: "packbits", Option: "packbits", Code: 32773 },
+        { Name: "lzw", Option: "tiff_lzw", Code: 5 },
+        { Name: "adobe-deflate", Option: "tiff_adobe_deflate", Code: 8 },
+        { Name: "tiff-deflate", Option: "tiff_deflate", Code: 8 }
+    ]
+    for item in cases {
+        image := Pillow.Image.FromBytes(item.Mode, [3, 1], PillowTestBuffer(item.Bytes))
+        try {
+            for compression in compressions {
+                path := PillowTestTempTiffPath("numeric-" item.Name "-" compression.Name)
+                loaded := 0
+                try {
+                    image.Save(path, "TIFF", { compression: compression.Option })
+                    AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+                    PillowTestAssertTiffNumericTagsAndStrip(path, item.Bytes, item.SampleFormat, compression.Code)
+
+                    loaded := Pillow.Image.Open(path, ["TIFF"])
+                    AhkTest.AssertEqual("TIFF", loaded.Format)
+                    AhkTest.AssertEqual(item.Mode, loaded.Mode)
+                    AhkTest.AssertEqual([3, 1], loaded.Size)
+                    AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(loaded.ToBytes()))
+                } finally {
+                    if IsObject(loaded)
+                        loaded.Close()
+                    PillowTestDeleteFile(path)
+                }
+            }
+        } finally {
+            image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF numeric compression uses native path", PillowTestImageSaveTiffNumericCompressionUsesNativePath)
+
+PillowTestImageSaveTiffI16ModeUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [1, 0, 255, 0, 0, 1]
+    image := Pillow.Image.FromBytes("I;16", [3, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempTiffPath("i16")
+    loaded := 0
+    try {
+        image.Save(path, "TIFF")
+        AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        PillowTestAssertTiffI16TagsAndStrip(path, pixels)
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("I;16", loaded.Mode)
+        AhkTest.AssertEqual([3, 1], loaded.Size)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF I16 mode uses native path", PillowTestImageSaveTiffI16ModeUsesNativePath)
+
+PillowTestImageSaveTiffI16BigEndianModeUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [0, 1, 0, 255, 1, 0]
+    image := Pillow.Image.FromBytes("I;16B", [3, 1], PillowTestBuffer(pixels))
+    path := PillowTestTempTiffPath("i16b")
+    loaded := 0
+    try {
+        image.Save(path, "TIFF")
+        AhkTest.AssertEqual([77, 77, 0, 42], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        PillowTestAssertTiffI16BigEndianTagsAndStrip(path, pixels)
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("I;16B", loaded.Mode)
+        AhkTest.AssertEqual([3, 1], loaded.Size)
+        AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF I16B mode uses native path", PillowTestImageSaveTiffI16BigEndianModeUsesNativePath)
+
+PillowTestImageSaveTiffI16CompressionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [1, 0, 255, 0, 0, 1]
+    compressions := [
+        { Name: "packbits", Option: "packbits", Code: 32773 },
+        { Name: "lzw", Option: "tiff_lzw", Code: 5 },
+        { Name: "adobe-deflate", Option: "tiff_adobe_deflate", Code: 8 },
+        { Name: "tiff-deflate", Option: "tiff_deflate", Code: 8 }
+    ]
+    image := Pillow.Image.FromBytes("I;16", [3, 1], PillowTestBuffer(pixels))
+    try {
+        for compression in compressions {
+            path := PillowTestTempTiffPath("i16-" compression.Name)
+            loaded := 0
+            try {
+                image.Save(path, "TIFF", { compression: compression.Option })
+                AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+                PillowTestAssertTiffI16TagsAndStrip(path, pixels, compression.Code)
+
+                loaded := Pillow.Image.Open(path, ["TIFF"])
+                AhkTest.AssertEqual("TIFF", loaded.Format)
+                AhkTest.AssertEqual("I;16", loaded.Mode)
+                AhkTest.AssertEqual([3, 1], loaded.Size)
+                AhkTest.AssertEqual(pixels, PillowTestBufferToArray(loaded.ToBytes()))
+            } finally {
+                if IsObject(loaded)
+                    loaded.Close()
+                PillowTestDeleteFile(path)
+            }
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF I16 compression uses native path", PillowTestImageSaveTiffI16CompressionUsesNativePath)
+
+PillowTestImageSaveTiffI16BigEndianCompressionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixels := [0, 1, 0, 255, 1, 0]
+    expected := [1, 0, 255, 0, 0, 1]
+    compressions := [
+        { Name: "packbits", Option: "packbits", Code: 32773 },
+        { Name: "lzw", Option: "tiff_lzw", Code: 5 },
+        { Name: "adobe-deflate", Option: "tiff_adobe_deflate", Code: 8 },
+        { Name: "tiff-deflate", Option: "tiff_deflate", Code: 8 }
+    ]
+    image := Pillow.Image.FromBytes("I;16B", [3, 1], PillowTestBuffer(pixels))
+    try {
+        for compression in compressions {
+            path := PillowTestTempTiffPath("i16b-" compression.Name)
+            loaded := 0
+            try {
+                image.Save(path, "TIFF", { compression: compression.Option })
+                AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+                PillowTestAssertTiffI16TagsAndStrip(path, expected, compression.Code)
+
+                loaded := Pillow.Image.Open(path, ["TIFF"])
+                AhkTest.AssertEqual("TIFF", loaded.Format)
+                AhkTest.AssertEqual("I;16", loaded.Mode)
+                AhkTest.AssertEqual([3, 1], loaded.Size)
+                AhkTest.AssertEqual(expected, PillowTestBufferToArray(loaded.ToBytes()))
+            } finally {
+                if IsObject(loaded)
+                    loaded.Close()
+                PillowTestDeleteFile(path)
+            }
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF I16B compression uses native path", PillowTestImageSaveTiffI16BigEndianCompressionUsesNativePath)
+
+PillowTestImageOpenTiffReadsPillowDeflateNumericF(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempTiffPath("pillow-deflate-f")
+    image := 0
+    expected := [0, 0, 192, 191, 0, 0, 0, 0, 0, 0, 16, 64]
+    try {
+        PillowTestWriteFileBytes(path, PillowTestTiffNumericFAdobeDeflateBytes())
+        image := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("TIFF", image.Format)
+        AhkTest.AssertEqual("F", image.Mode)
+        AhkTest.AssertEqual([3, 1], image.Size)
+        AhkTest.AssertEqual(expected, PillowTestBufferToArray(image.ToBytes()))
+    } finally {
+        if IsObject(image)
+            image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open TIFF reads Pillow deflate numeric F", PillowTestImageOpenTiffReadsPillowDeflateNumericF)
+
+PillowTestImageSaveTiffSaveAllWritesMultipageImages(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([10, 20]))
+    second := Pillow.Image.FromBytes("L", [2, 1], PillowTestBuffer([30, 40]))
+    path := PillowTestTempTiffPath("save-all-l")
+    loaded := 0
+    try {
+        try {
+            first.Save(path, "TIFF", { SaveAll: true, AppendImages: [second] })
+        } catch Error as err {
+            AhkTest.Fail("Expected TIFF save_all to succeed, got: " err.Message)
+            return
+        }
+        AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual(true, loaded.IsAnimated)
+        AhkTest.AssertEqual("L", loaded.Mode)
+        AhkTest.AssertEqual([10, 20], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual("", loaded.Seek(1))
+        AhkTest.AssertEqual([30, 40], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF save_all writes multipage images", PillowTestImageSaveTiffSaveAllWritesMultipageImages)
+
 PillowTestImageOpenTiffSupportsFrameMetadataAndSeek(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     path := PillowTestTempTiffPath("multi-l")
@@ -2577,12 +17678,12 @@ AhkTest.Test("Pillow Image.Open TIFF exposes n_frames and seek", PillowTestImage
 
 PillowTestImageOpenSaveTiffRejectsUnsupportedInputs(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
-    image := Pillow.Image.FromBytes("CMYK", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
+    image := Pillow.Image.FromBytes("RGBX", [1, 1], PillowTestBuffer([1, 2, 3, 4]))
     badPath := PillowTestTempTiffPath("bad")
     try {
         try {
             image.Save(badPath, "TIFF")
-            AhkTest.Fail("Expected Image.Save to reject unsupported CMYK TIFF")
+            AhkTest.Fail("Expected Image.Save to reject unsupported RGBX TIFF")
         } catch Error as err {
             AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
         }
@@ -2665,6 +17766,75 @@ PillowTestImageSaveGifTransparencyOptionUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Save GIF transparency option uses native path", PillowTestImageSaveGifTransparencyOptionUsesNativePath)
 
+PillowTestImageSaveGifCommentOptionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([0, 1]))
+    path := PillowTestTempGifPath("save-comment")
+    comment := PillowTestTextBytes("hello")
+    loaded := 0
+    try {
+        image.PutPalette([0, 0, 0, 10, 20, 30])
+        image.Save(path, "GIF", { Comment: "hello" })
+
+        bytes := PillowTestReadFileBytes(path)
+        AhkTest.AssertEqual([71, 73, 70, 56, 57, 97], PillowTestArraySlice(bytes, 1, 6))
+        AhkTest.AssertEqual([33, 254, 5, 104, 101, 108, 108, 111, 0], PillowTestArraySlice(bytes, 20, 28))
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertTrue(loaded.Info.Has("comment"))
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save GIF comment option uses native path", PillowTestImageSaveGifCommentOptionUsesNativePath)
+
+PillowTestImageSaveGifCommentAndTransparencyOptionsUseNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([0, 1]))
+    path := PillowTestTempGifPath("save-comment-transparency")
+    comment := PillowTestTextBytes("hello")
+    loaded := 0
+    rgba := 0
+    try {
+        image.PutPalette([0, 0, 0, 10, 20, 30])
+        image.Save(path, "GIF", { Comment: "hello", Transparency: 1 })
+
+        bytes := PillowTestReadFileBytes(path)
+        AhkTest.AssertEqual([71, 73, 70, 56, 57, 97], PillowTestArraySlice(bytes, 1, 6))
+        commentOffset := PillowTestFindBytePattern(bytes, [33, 254, 5, 104, 101, 108, 108, 111, 0])
+        gceOffset := PillowTestFindBytePattern(bytes, [33, 249, 4, 1, 0, 0, 1, 0])
+        AhkTest.AssertTrue(commentOffset > 0)
+        AhkTest.AssertTrue(gceOffset > commentOffset)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(1, loaded.Info["transparency"])
+        AhkTest.AssertTrue(loaded.Info.Has("comment"))
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+
+        rgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual([0, 0, 0, 255, 10, 20, 30, 0], PillowTestBufferToArray(rgba.ToBytes()))
+    } finally {
+        if IsObject(rgba)
+            rgba.Close()
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF comment and transparency options use native path",
+    PillowTestImageSaveGifCommentAndTransparencyOptionsUseNativePath
+)
+
 PillowTestImageSaveGifAnimationUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     first := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([0, 1]))
@@ -2704,6 +17874,593 @@ PillowTestImageSaveGifAnimationUsesNativePath(*) {
 }
 
 AhkTest.Test("Pillow Image.Save GIF save_all uses native animation path", PillowTestImageSaveGifAnimationUsesNativePath)
+
+PillowTestImageSaveGifAnimationCommentOptionUsesNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([0, 1]))
+    second := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([1, 0]))
+    palette := [0, 0, 0, 10, 20, 30]
+    path := PillowTestTempGifPath("save-animation-comment")
+    comment := PillowTestTextBytes("hello")
+    loaded := 0
+    try {
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        first.Save(path, "GIF", {
+            SaveAll: true,
+            AppendImages: [second],
+            Duration: [10, 20],
+            Loop: 0,
+            Disposal: [0, 0],
+            Comment: "hello"
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        AhkTest.AssertEqual([
+            33, 255, 11, 78, 69, 84, 83, 67, 65, 80, 69, 50, 46, 48,
+            3, 1, 0, 0, 0,
+            33, 254, 5, 104, 101, 108, 108, 111, 0
+        ], PillowTestArraySlice(bytes, 26, 53))
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertTrue(loaded.Info.Has("comment"))
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        loaded.Seek(1)
+        AhkTest.AssertTrue(loaded.Info.Has("comment"))
+        AhkTest.AssertTrue(loaded.Info["comment"] is Buffer)
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save GIF save_all comment option uses native path", PillowTestImageSaveGifAnimationCommentOptionUsesNativePath)
+
+PillowTestImageSaveGifAnimationCommentAndTransparencyOptionsUseNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([0, 1]))
+    second := Pillow.Image.FromBytes("P", [2, 1], PillowTestBuffer([1, 0]))
+    palette := [0, 0, 0, 10, 20, 30, 0, 0, 255]
+    path := PillowTestTempGifPath("save-animation-comment-transparency")
+    comment := PillowTestTextBytes("hello")
+    loaded := 0
+    secondRgba := 0
+    try {
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        first.Save(path, "GIF", {
+            SaveAll: true,
+            AppendImages: [second],
+            Duration: [10, 20],
+            Loop: 0,
+            Disposal: [0, 0],
+            Comment: "hello",
+            Transparency: 1
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        netscapeOffset := PillowTestFindBytePattern(bytes, [
+            33, 255, 11, 78, 69, 84, 83, 67, 65, 80, 69, 50, 46, 48,
+            3, 1, 0, 0, 0
+        ])
+        commentOffset := PillowTestFindBytePattern(bytes, [33, 254, 5, 104, 101, 108, 108, 111, 0])
+        gceOffset := PillowTestFindBytePattern(bytes, [33, 249, 4, 1, 1, 0, 1, 0])
+        AhkTest.AssertTrue(netscapeOffset > 0)
+        AhkTest.AssertTrue(commentOffset > netscapeOffset)
+        AhkTest.AssertTrue(gceOffset > commentOffset)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual(10, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        AhkTest.AssertEqual(1, loaded.Info["transparency"])
+        AhkTest.AssertTrue(loaded.Info.Has("comment"))
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+
+        loaded.Seek(1)
+        AhkTest.AssertEqual(20, loaded.Info["duration"])
+        AhkTest.AssertTrue(loaded.Info.Has("comment"))
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertFalse(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual("RGBA", loaded.Mode)
+        secondRgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 255], PillowTestBufferToArray(secondRgba.ToBytes()))
+    } finally {
+        if IsObject(secondRgba)
+            secondRgba.Close()
+        if IsObject(loaded)
+            loaded.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all comment and transparency options use native path",
+    PillowTestImageSaveGifAnimationCommentAndTransparencyOptionsUseNativePath
+)
+
+PillowTestImageSaveGifAnimationCommentBackgroundOptionsUseNativePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([1, 0, 0]))
+    path := PillowTestTempGifPath("save-animation-comment-background-options")
+    comment := PillowTestTextBytes("hello")
+    loaded := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 255]
+        loop 253 {
+            palette.Push(0)
+            palette.Push(0)
+            palette.Push(0)
+        }
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            SaveAll: true,
+            AppendImages: [second],
+            Duration: [10, 20],
+            Loop: 0,
+            Disposal: [0, 2],
+            Comment: "hello",
+            Transparency: 2,
+            Background: 1,
+            IncludeColorTable: true,
+            Optimize: false
+        })
+
+        bytes := PillowTestReadFileBytes(path)
+        netscapeOffset := PillowTestFindBytePattern(bytes, [
+            33, 255, 11, 78, 69, 84, 83, 67, 65, 80, 69, 50, 46, 48,
+            3, 1, 0, 0, 0
+        ])
+        commentOffset := PillowTestFindBytePattern(bytes, [33, 254, 5, 104, 101, 108, 108, 111, 0])
+        gceOffset := PillowTestFindBytePattern(bytes, [33, 249, 4, 1, 1, 0, 2, 0])
+        AhkTest.AssertTrue(netscapeOffset > 0)
+        AhkTest.AssertTrue(commentOffset > netscapeOffset)
+        AhkTest.AssertTrue(gceOffset > commentOffset)
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual(1, descriptors[1].BackgroundIndex)
+        AhkTest.AssertEqual(256, descriptors[1].GlobalColorCount)
+        AhkTest.AssertEqual(256, descriptors[1].LocalColorCount)
+        AhkTest.AssertEqual(8, descriptors[1].LzwMin)
+        AhkTest.AssertEqual(2, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(256, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([1], descriptors[2].Indices)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual(10, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        AhkTest.AssertEqual(1, loaded.Info["background"])
+        AhkTest.AssertEqual(2, loaded.Info["transparency"])
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        loaded.Seek(1)
+        AhkTest.AssertEqual(20, loaded.Info["duration"])
+        AhkTest.AssertEqual(2, loaded.DisposalMethod)
+        AhkTest.AssertEqual(1, loaded.Info["background"])
+        AhkTest.AssertFalse(loaded.Info.Has("transparency"))
+        AhkTest.AssertEqual(comment, PillowTestBufferToArray(loaded.Info["comment"]))
+        AhkTest.AssertEqual("RGBA", loaded.Mode)
+        AhkTest.AssertEqual([255, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all comment background options use native path",
+    PillowTestImageSaveGifAnimationCommentBackgroundOptionsUseNativePath
+)
+
+PillowTestImageSaveGifAnimationQuantizesLFrames(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([0, 128, 255]))
+    second := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([255, 64, 0]))
+    path := PillowTestTempGifPath("save-animation-l-quantize")
+    loaded := 0
+    firstL := 0
+    secondL := 0
+    try {
+        first.Save(path, "GIF", { SaveAll: true, AppendImages: [second], Duration: [10, 20], Loop: 0, Disposal: [0, 0] })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual([0, 0, 3, 1], [
+            descriptors[1].Left, descriptors[1].Top, descriptors[1].Width, descriptors[1].Height
+        ])
+        AhkTest.AssertEqual([0, 0, 3, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual("GIF", loaded.Format)
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual(true, loaded.IsAnimated)
+        AhkTest.AssertEqual(10, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        firstL := loaded.Convert("L")
+        AhkTest.AssertEqual([0, 128, 255], PillowTestBufferToArray(firstL.ToBytes()))
+
+        loaded.Seek(1)
+        AhkTest.AssertEqual(20, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        secondL := loaded.Convert("L")
+        AhkTest.AssertEqual([255, 64, 0], PillowTestBufferToArray(secondL.ToBytes()))
+    } finally {
+        for image in [secondL, firstL, loaded, second, first] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save GIF save_all quantizes L frames", PillowTestImageSaveGifAnimationQuantizesLFrames)
+
+PillowTestImageSaveGifAnimationQuantizesLaFrames(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("LA", [3, 1], PillowTestBuffer([0, 255, 128, 255, 255, 255]))
+    second := Pillow.Image.FromBytes("LA", [3, 1], PillowTestBuffer([255, 255, 64, 0, 0, 255]))
+    path := PillowTestTempGifPath("save-animation-la-quantize")
+    loaded := 0
+    firstL := 0
+    secondL := 0
+    try {
+        first.Save(path, "GIF", { SaveAll: true, AppendImages: [second], Duration: [10, 20], Loop: 0, Disposal: [0, 0] })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual([0, 0, 3, 1], [
+            descriptors[1].Left, descriptors[1].Top, descriptors[1].Width, descriptors[1].Height
+        ])
+        AhkTest.AssertEqual([0, 0, 3, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual("GIF", loaded.Format)
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual(true, loaded.IsAnimated)
+        AhkTest.AssertEqual(10, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        firstL := loaded.Convert("L")
+        AhkTest.AssertEqual([0, 128, 255], PillowTestBufferToArray(firstL.ToBytes()))
+
+        loaded.Seek(1)
+        AhkTest.AssertEqual(20, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        secondL := loaded.Convert("L")
+        AhkTest.AssertEqual([255, 64, 0], PillowTestBufferToArray(secondL.ToBytes()))
+    } finally {
+        for image in [secondL, firstL, loaded, second, first] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save GIF save_all quantizes LA frames", PillowTestImageSaveGifAnimationQuantizesLaFrames)
+
+PillowTestImageSaveGifAnimationQuantizesExactRgbFrames(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([0, 0, 0, 255, 0, 0]))
+    second := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([255, 0, 0, 0, 0, 255]))
+    path := PillowTestTempGifPath("save-animation-rgb-quantize")
+    loaded := 0
+    firstRgb := 0
+    secondRgb := 0
+    try {
+        first.Save(path, "GIF", { SaveAll: true, AppendImages: [second], Duration: [10, 20], Loop: 0, Disposal: [0, 0] })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual([0, 0, 2, 1], [
+            descriptors[1].Left, descriptors[1].Top, descriptors[1].Width, descriptors[1].Height
+        ])
+        AhkTest.AssertEqual([0, 0, 2, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual("GIF", loaded.Format)
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual(true, loaded.IsAnimated)
+        AhkTest.AssertEqual(10, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        firstRgb := loaded.Convert("RGB")
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0], PillowTestBufferToArray(firstRgb.ToBytes()))
+
+        loaded.Seek(1)
+        AhkTest.AssertEqual(20, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        secondRgb := loaded.Convert("RGB")
+        AhkTest.AssertEqual([255, 0, 0, 0, 0, 255], PillowTestBufferToArray(secondRgb.ToBytes()))
+    } finally {
+        for image in [secondRgb, firstRgb, loaded, second, first] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save GIF save_all quantizes exact RGB frames", PillowTestImageSaveGifAnimationQuantizesExactRgbFrames)
+
+PillowTestImageSaveGifAnimationQuantizesExactRgbaFrames(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([0, 0, 0, 255, 255, 0, 0, 255]))
+    second := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([255, 0, 0, 255, 1, 2, 3, 0]))
+    path := PillowTestTempGifPath("save-animation-rgba-quantize")
+    loaded := 0
+    firstRgba := 0
+    secondRgba := 0
+    try {
+        first.Save(path, "GIF", { SaveAll: true, AppendImages: [second], Duration: [10, 20], Loop: 0, Disposal: [0, 0] })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual([0, 0, 2, 1], [
+            descriptors[1].Left, descriptors[1].Top, descriptors[1].Width, descriptors[1].Height
+        ])
+        AhkTest.AssertEqual(-1, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 2, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(0, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([1, 2, 3, 255, 0, 0], PillowTestArraySlice(descriptors[2].LocalPaletteHead, 1, 6))
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual("GIF", loaded.Format)
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual(true, loaded.IsAnimated)
+        AhkTest.AssertEqual(10, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        firstRgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual([0, 0, 0, 255, 255, 0, 0, 255], PillowTestBufferToArray(firstRgba.ToBytes()))
+
+        loaded.Seek(1)
+        AhkTest.AssertEqual(20, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        secondRgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual([255, 0, 0, 255, 255, 0, 0, 255], PillowTestBufferToArray(secondRgba.ToBytes()))
+    } finally {
+        for image in [secondRgba, firstRgba, loaded, second, first] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save GIF save_all quantizes exact RGBA frames", PillowTestImageSaveGifAnimationQuantizesExactRgbaFrames)
+
+PillowTestImageSaveGifAnimationHonorsCallerTransparencyWithRgbaFrames(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([0, 0, 0, 255, 255, 0, 0, 255]))
+    second := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([255, 0, 0, 255, 1, 2, 3, 0]))
+    path := PillowTestTempGifPath("save-animation-rgba-caller-transparency")
+    loaded := 0
+    firstRgba := 0
+    secondRgba := 0
+    try {
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second],
+            duration: [10, 20],
+            loop: 0,
+            disposal: [0, 0],
+            transparency: 2
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual([0, 0, 2, 1], [
+            descriptors[1].Left, descriptors[1].Top, descriptors[1].Width, descriptors[1].Height
+        ])
+        AhkTest.AssertEqual(-1, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 2, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([1, 2, 3, 255, 0, 0], PillowTestArraySlice(descriptors[2].LocalPaletteHead, 1, 6))
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual("GIF", loaded.Format)
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual(10, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        firstRgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual([0, 0, 0, 255, 255, 0, 0, 255], PillowTestBufferToArray(firstRgba.ToBytes()))
+
+        loaded.Seek(1)
+        AhkTest.AssertEqual(20, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        secondRgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual([255, 0, 0, 255, 1, 2, 3, 255], PillowTestBufferToArray(secondRgba.ToBytes()))
+    } finally {
+        for image in [secondRgba, firstRgba, loaded, second, first] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all honors caller transparency with RGBA frames",
+    PillowTestImageSaveGifAnimationHonorsCallerTransparencyWithRgbaFrames
+)
+
+PillowTestImageSaveGifAnimationQuantizesMixedRgbRgbaFrames(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([0, 0, 0, 255, 0, 0]))
+    second := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([255, 0, 0, 255, 1, 2, 3, 0]))
+    path := PillowTestTempGifPath("save-animation-mixed-rgb-rgba-quantize")
+    loaded := 0
+    firstRgba := 0
+    secondRgba := 0
+    try {
+        first.Save(path, "GIF", { SaveAll: true, AppendImages: [second], Duration: [10, 20], Loop: 0, Disposal: [0, 0] })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual([0, 0, 2, 1], [
+            descriptors[1].Left, descriptors[1].Top, descriptors[1].Width, descriptors[1].Height
+        ])
+        AhkTest.AssertEqual([0, 0, 2, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(0, descriptors[2].Gce.Transparency)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual("GIF", loaded.Format)
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual(true, loaded.IsAnimated)
+        AhkTest.AssertEqual(10, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        firstRgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual([0, 0, 0, 255, 255, 0, 0, 255], PillowTestBufferToArray(firstRgba.ToBytes()))
+
+        loaded.Seek(1)
+        AhkTest.AssertEqual(20, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        secondRgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual([255, 0, 0, 255, 255, 0, 0, 255], PillowTestBufferToArray(secondRgba.ToBytes()))
+    } finally {
+        for image in [secondRgba, firstRgba, loaded, second, first] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save GIF save_all quantizes mixed RGB and RGBA frames", PillowTestImageSaveGifAnimationQuantizesMixedRgbRgbaFrames)
+
+PillowTestImageSaveGifAnimationHonorsCallerTransparencyWithMixedRgbRgbaFrames(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([0, 0, 0, 255, 0, 0]))
+    second := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([255, 0, 0, 255, 1, 2, 3, 0]))
+    path := PillowTestTempGifPath("save-animation-mixed-rgb-rgba-caller-transparency")
+    loaded := 0
+    firstRgba := 0
+    secondRgba := 0
+    try {
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second],
+            duration: [10, 20],
+            loop: 0,
+            disposal: [0, 0],
+            transparency: 1
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual([0, 0, 2, 1], [
+            descriptors[1].Left, descriptors[1].Top, descriptors[1].Width, descriptors[1].Height
+        ])
+        AhkTest.AssertEqual(1, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 2, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(1, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([1, 2, 3, 255, 0, 0], PillowTestArraySlice(descriptors[2].LocalPaletteHead, 1, 6))
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual("GIF", loaded.Format)
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual(true, loaded.IsAnimated)
+        AhkTest.AssertEqual(10, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        firstRgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual([0, 0, 0, 0, 255, 0, 0, 255], PillowTestBufferToArray(firstRgba.ToBytes()))
+
+        loaded.Seek(1)
+        AhkTest.AssertEqual(20, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        AhkTest.AssertFalse(loaded.Info.Has("transparency"))
+        secondRgba := loaded.Convert("RGBA")
+        AhkTest.AssertEqual([0, 0, 0, 0, 1, 2, 3, 255], PillowTestBufferToArray(secondRgba.ToBytes()))
+    } finally {
+        for image in [secondRgba, firstRgba, loaded, second, first] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all honors caller transparency with mixed RGB and RGBA frames",
+    PillowTestImageSaveGifAnimationHonorsCallerTransparencyWithMixedRgbRgbaFrames
+)
+
+PillowTestImageSaveGifAnimationQuantizesLossyMixedRgbRgbaFrames(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    firstSource := PillowTestQuantizeStressRgbBytes(18, 18)
+    secondSource := PillowTestQuantizeStressRgbaBytes()
+    first := Pillow.Image.FromBytes("RGB", [18, 18], PillowTestBuffer(firstSource))
+    second := Pillow.Image.FromBytes("RGBA", [18, 18], PillowTestBuffer(secondSource))
+    path := PillowTestTempGifPath("save-animation-mixed-lossy-rgb-rgba-quantize")
+    loaded := 0
+    firstRgb := 0
+    secondRgb := 0
+    try {
+        first.Save(path, "GIF", { SaveAll: true, AppendImages: [second], Duration: [10, 20], Loop: 0, Disposal: [0, 0] })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual(-1, descriptors[1].Gce.Transparency)
+        AhkTest.AssertTrue(descriptors[2].Gce.Transparency >= 0)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual("GIF", loaded.Format)
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual(true, loaded.IsAnimated)
+        AhkTest.AssertEqual(10, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        firstRgb := loaded.Convert("RGB")
+        PillowTestAssertRgbApproximation(firstSource, PillowTestBufferToArray(firstRgb.ToBytes()), 24, 9)
+
+        loaded.Seek(1)
+        AhkTest.AssertEqual(20, loaded.Info["duration"])
+        AhkTest.AssertEqual(0, loaded.Info["loop"])
+        secondRgb := loaded.Convert("RGB")
+        PillowTestAssertRgbaGifApproximation(secondSource, PillowTestBufferToArray(secondRgb.ToBytes()), 64, 18)
+    } finally {
+        for image in [secondRgb, firstRgb, loaded, second, first] {
+            if IsObject(image)
+                image.Close()
+        }
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save GIF save_all quantizes lossy mixed RGB and RGBA frames", PillowTestImageSaveGifAnimationQuantizesLossyMixedRgbRgbaFrames)
 
 PillowTestImageSaveGifAnimationWritesOptimizedLocalRectangles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -2896,7 +18653,7 @@ PillowTestImageSaveGifAnimationHonorsTransparencyOption(*) {
 
         descriptors := PillowTestGifFrameDescriptors(path)
         AhkTest.AssertEqual(2, descriptors.Length)
-        AhkTest.AssertEqual(-1, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual(1, descriptors[1].Gce.Transparency)
         AhkTest.AssertEqual([1, 0, 1, 1], [
             descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
         ])
@@ -2907,8 +18664,8 @@ PillowTestImageSaveGifAnimationHonorsTransparencyOption(*) {
         loaded := Pillow.Image.Open(path, ["GIF"])
         AhkTest.AssertEqual(2, loaded.NFrames)
         loaded.Seek(1)
-        AhkTest.AssertEqual("RGB", loaded.Mode)
-        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual("RGBA", loaded.Mode)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255], PillowTestBufferToArray(loaded.ToBytes()))
     } finally {
         if IsObject(loaded)
             loaded.Close()
@@ -2959,8 +18716,8 @@ PillowTestImageSaveGifAnimationHonorsTransparencyAndOptimizeFalse(*) {
         loaded := Pillow.Image.Open(path, ["GIF"])
         AhkTest.AssertEqual(2, loaded.NFrames)
         loaded.Seek(1)
-        AhkTest.AssertEqual("RGB", loaded.Mode)
-        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual("RGBA", loaded.Mode)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255], PillowTestBufferToArray(loaded.ToBytes()))
     } finally {
         if IsObject(loaded)
             loaded.Close()
@@ -2971,6 +18728,307 @@ PillowTestImageSaveGifAnimationHonorsTransparencyAndOptimizeFalse(*) {
 }
 
 AhkTest.Test("Pillow Image.Save GIF save_all honors transparency with optimize false", PillowTestImageSaveGifAnimationHonorsTransparencyAndOptimizeFalse)
+
+PillowTestImageSaveGifAnimationKeepsOpaqueUnchangedPixelsWithOptimizeFalse(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([1, 0, 1]))
+    path := PillowTestTempGifPath("save-animation-transparency-optimize-false-opaque-unchanged")
+    loaded := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 0]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second],
+            duration: [10, 20],
+            loop: 0,
+            disposal: [0, 0],
+            transparency: 2,
+            optimize: false
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual(2, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 3, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertTrue((descriptors[2].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[2].LocalPaletteHead)
+        AhkTest.AssertEqual(8, descriptors[2].LzwMin)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual([1, 0, 1], descriptors[2].Indices)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        loaded.Seek(1)
+        AhkTest.AssertEqual("RGBA", loaded.Mode)
+        AhkTest.AssertEqual([255, 0, 0, 255, 0, 0, 0, 255, 255, 0, 0, 255], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all keeps unchanged pixels opaque with optimize false",
+    PillowTestImageSaveGifAnimationKeepsOpaqueUnchangedPixelsWithOptimizeFalse
+)
+
+PillowTestImageSaveGifAnimationOmitsTransparentLocalTableWithOptimizeFalse(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([1, 0, 0]))
+    third := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([2, 2, 2]))
+    path := PillowTestTempGifPath("save-animation-optimize-false-disposal2-transparent-background")
+    loaded := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 0]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        third.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second, third],
+            duration: [10, 20, 30],
+            loop: 0,
+            disposal: [0, 2, 0],
+            transparency: 2,
+            background: 1,
+            optimize: false
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual(1, descriptors[1].BackgroundIndex)
+        AhkTest.AssertEqual(2, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 3, 1], [
+            descriptors[3].Left, descriptors[3].Top, descriptors[3].Width, descriptors[3].Height
+        ])
+        AhkTest.AssertEqual(0, descriptors[3].Flags)
+        AhkTest.AssertEqual(0, descriptors[3].LocalColorCount)
+        AhkTest.AssertEqual(2, descriptors[3].Gce.Transparency)
+        AhkTest.AssertEqual([2, 2, 2], descriptors[3].Indices)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(3, loaded.NFrames)
+        loaded.Seek(2)
+        AhkTest.AssertEqual("RGBA", loaded.Mode)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 255], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        third.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all omits transparent local table with optimize false",
+    PillowTestImageSaveGifAnimationOmitsTransparentLocalTableWithOptimizeFalse
+)
+
+PillowTestImageSaveGifAnimationWritesOptimizedTransparentRestoredFrame(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([1, 0, 0]))
+    third := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([2, 2, 2]))
+    path := PillowTestTempGifPath("save-animation-optimized-disposal2-transparent-background")
+    loaded := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 0]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        third.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second, third],
+            duration: [10, 20, 30],
+            loop: 0,
+            disposal: [0, 2, 0],
+            transparency: 2,
+            background: 1
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual(1, descriptors[1].BackgroundIndex)
+        AhkTest.AssertEqual(-1, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 3, 1], [
+            descriptors[3].Left, descriptors[3].Top, descriptors[3].Width, descriptors[3].Height
+        ])
+        AhkTest.AssertTrue((descriptors[3].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(4, descriptors[3].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[3].LocalPaletteHead)
+        AhkTest.AssertEqual(0, descriptors[3].Gce.Transparency)
+        AhkTest.AssertEqual(8, descriptors[3].LzwMin)
+        AhkTest.AssertEqual([0, 0, 0], descriptors[3].Indices)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(3, loaded.NFrames)
+        loaded.Seek(2)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        third.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all writes optimized transparent restored frame",
+    PillowTestImageSaveGifAnimationWritesOptimizedTransparentRestoredFrame
+)
+
+PillowTestImageSaveGifAnimationUsesRestoredBackgroundIndexWhenGlobalPaletteMatches(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [4, 2], PillowTestBuffer([1, 0, 0, 0, 0, 0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [4, 2], PillowTestBuffer([1, 1, 0, 0, 0, 0, 0, 0]))
+    third := Pillow.Image.FromBytes("P", [4, 2], PillowTestBuffer([1, 0, 0, 0, 0, 0, 0, 0]))
+    path := PillowTestTempGifPath("save-animation-disposal2-index-background-rediff")
+    loaded := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 0]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        third.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second, third],
+            duration: [10, 20, 30],
+            loop: 0,
+            disposal: [0, 2, 0],
+            transparency: 2
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual([1, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 4, 2], [
+            descriptors[3].Left, descriptors[3].Top, descriptors[3].Width, descriptors[3].Height
+        ])
+        AhkTest.AssertTrue((descriptors[3].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(4, descriptors[3].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[3].LocalPaletteHead)
+        AhkTest.AssertEqual(-1, descriptors[3].Gce.Transparency)
+        AhkTest.AssertEqual(8, descriptors[3].LzwMin)
+        AhkTest.AssertEqual([1, 0, 0, 0, 0, 0, 0, 0], descriptors[3].Indices)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(3, loaded.NFrames)
+        loaded.Seek(2)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([
+            255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        third.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all uses restored background index when global palette matches",
+    PillowTestImageSaveGifAnimationUsesRestoredBackgroundIndexWhenGlobalPaletteMatches
+)
+
+PillowTestImageSaveGifAnimationUsesRestoredBackgroundIndexWhenOptimizedPalettesMatch(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [4, 2], PillowTestBuffer([1, 0, 0, 0, 0, 0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [4, 2], PillowTestBuffer([1, 1, 0, 0, 0, 0, 0, 0]))
+    third := Pillow.Image.FromBytes("P", [4, 2], PillowTestBuffer([1, 0, 0, 0, 0, 0, 0, 0]))
+    path := PillowTestTempGifPath("save-animation-disposal2-optimized-palette-rediff")
+    loaded := 0
+    try {
+        firstPalette := [0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 255, 0]
+        thirdPalette := [0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 255]
+        first.PutPalette(firstPalette)
+        second.PutPalette(firstPalette)
+        third.PutPalette(thirdPalette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second, third],
+            duration: [10, 20, 30],
+            loop: 0,
+            disposal: [0, 2, 0],
+            transparency: 2
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual([1, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 4, 2], [
+            descriptors[3].Left, descriptors[3].Top, descriptors[3].Width, descriptors[3].Height
+        ])
+        AhkTest.AssertTrue((descriptors[3].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(4, descriptors[3].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[3].LocalPaletteHead)
+        AhkTest.AssertEqual(-1, descriptors[3].Gce.Transparency)
+        AhkTest.AssertEqual(8, descriptors[3].LzwMin)
+        AhkTest.AssertEqual([1, 0, 0, 0, 0, 0, 0, 0], descriptors[3].Indices)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(3, loaded.NFrames)
+        loaded.Seek(2)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([
+            255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        third.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all uses restored background index when optimized palettes match",
+    PillowTestImageSaveGifAnimationUsesRestoredBackgroundIndexWhenOptimizedPalettesMatch
+)
 
 PillowTestImageSaveGifAnimationHonorsBackgroundOption(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -3031,7 +19089,7 @@ PillowTestImageSaveGifAnimationRediffsAfterDisposalBackgroundWithTransparency(*)
     path := PillowTestTempGifPath("save-animation-disposal2-transparency-rediff")
     loaded := 0
     try {
-        palette := [0, 0, 0, 255, 0, 0]
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 0]
         first.PutPalette(palette)
         second.PutPalette(palette)
         third.PutPalette(palette)
@@ -3047,6 +19105,7 @@ PillowTestImageSaveGifAnimationRediffsAfterDisposalBackgroundWithTransparency(*)
 
         descriptors := PillowTestGifFrameDescriptors(path)
         AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual(-1, descriptors[1].Gce.Transparency)
         AhkTest.AssertEqual([0, 0, 1, 1], [
             descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
         ])
@@ -3076,6 +19135,499 @@ PillowTestImageSaveGifAnimationRediffsAfterDisposalBackgroundWithTransparency(*)
 AhkTest.Test(
     "Pillow Image.Save GIF save_all re-diffs after disposal 2 with transparency",
     PillowTestImageSaveGifAnimationRediffsAfterDisposalBackgroundWithTransparency
+)
+
+PillowTestImageSaveGifAnimationUsesShortPaletteDisposalBackgroundIndex(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([1, 0, 0]))
+    third := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 1, 0]))
+    path := PillowTestTempGifPath("save-animation-disposal2-short-palette-rediff")
+    try {
+        palette := [0, 0, 0, 255, 0, 0]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        third.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second, third],
+            duration: [10, 20, 30],
+            loop: 0,
+            disposal: [0, 2, 0],
+            transparency: 2
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual(2, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 3, 1], [
+            descriptors[3].Left, descriptors[3].Top, descriptors[3].Width, descriptors[3].Height
+        ])
+        AhkTest.AssertTrue((descriptors[3].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(2, descriptors[3].Gce.Transparency)
+    } finally {
+        third.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all uses short-palette disposal background index",
+    PillowTestImageSaveGifAnimationUsesShortPaletteDisposalBackgroundIndex
+)
+
+PillowTestImageSaveGifAnimationUsesDisposal3PillowCodeSize(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([1, 0, 0]))
+    third := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 1, 0]))
+    path := PillowTestTempGifPath("save-animation-disposal3-lzw-min")
+    loaded := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        third.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second, third],
+            duration: [10, 20, 30],
+            loop: 0,
+            disposal: [0, 3, 0],
+            transparency: 2
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(3, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 2, 1], [
+            descriptors[3].Left, descriptors[3].Top, descriptors[3].Width, descriptors[3].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[3].Gce.Transparency)
+        AhkTest.AssertEqual(8, descriptors[1].LzwMin)
+        AhkTest.AssertEqual(8, descriptors[2].LzwMin)
+        AhkTest.AssertEqual(8, descriptors[3].LzwMin)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(3, loaded.NFrames)
+        loaded.Seek(2)
+        AhkTest.AssertEqual("RGBA", loaded.Mode)
+        AhkTest.AssertEqual([0, 0, 0, 255, 255, 0, 0, 255, 0, 0, 0, 255], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        third.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all uses disposal 3 Pillow LZW code size",
+    PillowTestImageSaveGifAnimationUsesDisposal3PillowCodeSize
+)
+
+PillowTestImageSaveGifAnimationWritesRestoredBackgroundFrameAfterDisposal2(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([1, 0, 0]))
+    third := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    path := PillowTestTempGifPath("save-animation-disposal2-restored-background")
+    loaded := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 0]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        third.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second, third],
+            duration: [10, 20, 30],
+            loop: 0,
+            disposal: [0, 2, 0],
+            transparency: 2
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual(-1, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 3, 1], [
+            descriptors[3].Left, descriptors[3].Top, descriptors[3].Width, descriptors[3].Height
+        ])
+        AhkTest.AssertTrue((descriptors[3].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(4, descriptors[3].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[3].LocalPaletteHead)
+        AhkTest.AssertEqual(-1, descriptors[3].Gce.Transparency)
+        AhkTest.AssertEqual(8, descriptors[3].LzwMin)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(3, loaded.NFrames)
+        loaded.Seek(2)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        third.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all writes restored background frame after disposal 2",
+    PillowTestImageSaveGifAnimationWritesRestoredBackgroundFrameAfterDisposal2
+)
+
+PillowTestImageSaveGifAnimationCompactsSparsePaletteAfterDisposal2WithBackground(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([3, 0, 0]))
+    third := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([1, 0, 0]))
+    path := PillowTestTempGifPath("save-animation-disposal2-background-sparse-palette")
+    loaded := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 255]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        third.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second, third],
+            duration: [10, 20, 30],
+            loop: 0,
+            disposal: [0, 2, 0],
+            transparency: 2,
+            background: 1
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual(1, descriptors[1].BackgroundIndex)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], descriptors[2].LocalPaletteHead)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[3].Left, descriptors[3].Top, descriptors[3].Width, descriptors[3].Height
+        ])
+        AhkTest.AssertEqual(-1, descriptors[3].Gce.Transparency)
+        AhkTest.AssertEqual(4, descriptors[3].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[3].LocalPaletteHead)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(3, loaded.NFrames)
+        loaded.Seek(2)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([255, 0, 0, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        third.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all compacts sparse palette after disposal 2 with background",
+    PillowTestImageSaveGifAnimationCompactsSparsePaletteAfterDisposal2WithBackground
+)
+
+PillowTestImageSaveGifAnimationOptimizesBackgroundOnlySparsePaletteAfterDisposal2(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([3, 0, 0]))
+    third := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([1, 0, 0]))
+    path := PillowTestTempGifPath("save-animation-disposal2-background-only-sparse-palette")
+    loaded := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 255]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        third.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second, third],
+            duration: [10, 20, 30],
+            loop: 0,
+            disposal: [0, 2, 0],
+            background: 1
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual(1, descriptors[1].BackgroundIndex)
+        AhkTest.AssertEqual(4, descriptors[1].GlobalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[1].GlobalPaletteHead)
+        AhkTest.AssertEqual(-1, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], descriptors[2].LocalPaletteHead)
+        AhkTest.AssertEqual([0, 0, 3, 1], [
+            descriptors[3].Left, descriptors[3].Top, descriptors[3].Width, descriptors[3].Height
+        ])
+        AhkTest.AssertEqual(-1, descriptors[3].Gce.Transparency)
+        AhkTest.AssertEqual(4, descriptors[3].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[3].LocalPaletteHead)
+        AhkTest.AssertEqual(8, descriptors[3].LzwMin)
+        AhkTest.AssertEqual([1, 0, 0], descriptors[3].Indices)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(3, loaded.NFrames)
+        loaded.Seek(2)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([255, 0, 0, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        third.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all optimizes background-only sparse palette after disposal 2",
+    PillowTestImageSaveGifAnimationOptimizesBackgroundOnlySparsePaletteAfterDisposal2
+)
+
+PillowTestImageSaveGifAnimationCompactsSparsePaletteWithDefaultTransparency(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([3, 0, 0]))
+    path := PillowTestTempGifPath("save-animation-sparse-palette-default-transparency")
+    loaded := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 255]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second],
+            duration: [10, 20],
+            loop: 0,
+            disposal: [0, 0]
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(2, descriptors.Length)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], descriptors[2].LocalPaletteHead)
+        AhkTest.AssertEqual(8, descriptors[2].LzwMin)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        loaded.Seek(1)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([0, 0, 255, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all compacts sparse palette with default transparency",
+    PillowTestImageSaveGifAnimationCompactsSparsePaletteWithDefaultTransparency
+)
+
+PillowTestImageSaveGifAnimationZerosUnusedSparsePaletteAfterDisposal2(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([3, 0, 0]))
+    third := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([1, 0, 0]))
+    path := PillowTestTempGifPath("save-animation-disposal2-default-sparse-palette")
+    loaded := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 255]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        third.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second, third],
+            duration: [10, 20, 30],
+            loop: 0,
+            disposal: [0, 2, 0]
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], descriptors[2].LocalPaletteHead)
+        AhkTest.AssertEqual([0, 0, 3, 1], [
+            descriptors[3].Left, descriptors[3].Top, descriptors[3].Width, descriptors[3].Height
+        ])
+        AhkTest.AssertEqual(-1, descriptors[3].Gce.Transparency)
+        AhkTest.AssertEqual(4, descriptors[3].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[3].LocalPaletteHead)
+        AhkTest.AssertEqual(8, descriptors[3].LzwMin)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(3, loaded.NFrames)
+        loaded.Seek(2)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([255, 0, 0, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        third.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all zeros unused sparse palette after disposal 2",
+    PillowTestImageSaveGifAnimationZerosUnusedSparsePaletteAfterDisposal2
+)
+
+PillowTestImageSaveGifAnimationIncludeColorTableCompactsSparsePaletteAfterDisposal2(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 0, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([3, 0, 0]))
+    third := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([1, 0, 0]))
+    path := PillowTestTempGifPath("save-animation-include-table-disposal2-sparse-palette")
+    loaded := 0
+    try {
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 255]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+        third.PutPalette(palette)
+
+        first.Save(path, "GIF", {
+            save_all: true,
+            append_images: [second, third],
+            duration: [10, 20, 30],
+            loop: 0,
+            disposal: [0, 2, 0],
+            include_color_table: true
+        })
+
+        descriptors := PillowTestGifFrameDescriptors(path)
+        AhkTest.AssertEqual(3, descriptors.Length)
+        AhkTest.AssertEqual(4, descriptors[1].GlobalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[1].GlobalPaletteHead)
+        AhkTest.AssertTrue((descriptors[1].Flags & 0x80) != 0)
+        AhkTest.AssertEqual(4, descriptors[1].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[1].LocalPaletteHead)
+        AhkTest.AssertEqual(-1, descriptors[1].Gce.Transparency)
+        AhkTest.AssertEqual([0, 0, 1, 1], [
+            descriptors[2].Left, descriptors[2].Top, descriptors[2].Width, descriptors[2].Height
+        ])
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Disposal)
+        AhkTest.AssertEqual(2, descriptors[2].Gce.Transparency)
+        AhkTest.AssertEqual(4, descriptors[2].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], descriptors[2].LocalPaletteHead)
+        AhkTest.AssertEqual([0, 0, 3, 1], [
+            descriptors[3].Left, descriptors[3].Top, descriptors[3].Width, descriptors[3].Height
+        ])
+        AhkTest.AssertEqual(-1, descriptors[3].Gce.Transparency)
+        AhkTest.AssertEqual(4, descriptors[3].LocalColorCount)
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0], descriptors[3].LocalPaletteHead)
+        AhkTest.AssertEqual(8, descriptors[3].LzwMin)
+
+        loaded := Pillow.Image.Open(path, ["GIF"])
+        AhkTest.AssertEqual(3, loaded.NFrames)
+        loaded.Seek(2)
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([255, 0, 0, 0, 0, 0, 0, 0, 0], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        third.Close()
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all include color table compacts sparse palette after disposal 2",
+    PillowTestImageSaveGifAnimationIncludeColorTableCompactsSparsePaletteAfterDisposal2
+)
+
+PillowTestImageSaveGifAnimationRejectsDisposalListWhenAllFramesCollapse(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 1, 0]))
+    second := Pillow.Image.FromBytes("P", [3, 1], PillowTestBuffer([0, 1, 0]))
+    path := PillowTestTempGifPath("save-animation-identical-disposal-list")
+    try {
+        palette := [0, 0, 0, 255, 0, 0, 0, 0, 255]
+        first.PutPalette(palette)
+        second.PutPalette(palette)
+
+        didThrow := false
+        try {
+            first.Save(path, "GIF", {
+                save_all: true,
+                append_images: [second],
+                duration: [10, 20],
+                disposal: [0, 0]
+            })
+        } catch Error as err {
+            didThrow := true
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+        AhkTest.AssertTrue(didThrow)
+    } finally {
+        second.Close()
+        first.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test(
+    "Pillow Image.Save GIF save_all rejects disposal list when all frames collapse",
+    PillowTestImageSaveGifAnimationRejectsDisposalListWhenAllFramesCollapse
 )
 
 PillowTestImageOpenGifSupportsFrameMetadataAndSeek(*) {
@@ -6765,7 +23317,7 @@ PillowTestImageInfoUsesIndependentMapMetadata(*) {
 
         source.Save(savedPath, "PNG")
         opened := Pillow.Image.Open(savedPath)
-        AhkTest.AssertEqual(0, opened.Info.Count)
+        AhkTest.AssertTrue(!opened.Info.Has("author"))
 
         opened.Info["author"] := "ahk"
         opened.Info["dpi"] := [72, 72]
@@ -7388,6 +23940,51 @@ PillowTestImageFilterKernelUsesNativePath(*) {
 
 AhkTest.Test("Pillow Image.Filter applies ImageFilter.Kernel through native path", PillowTestImageFilterKernelUsesNativePath)
 
+PillowTestImageFilterKernelSupportsModeIAndRejectsModeF(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    modeI := Pillow.Image.FromBytes("I", [3, 3], PillowTestBuffer([
+        246, 255, 255, 255, 200, 0, 0, 0, 44, 1, 0, 0,
+        144, 1, 0, 0, 244, 1, 0, 0, 88, 2, 0, 0,
+        188, 2, 0, 0, 32, 3, 0, 0, 132, 3, 0, 0,
+    ]))
+    modeF := Pillow.Image.FromBytes("F", [1, 1], PillowTestBuffer([0, 0, 0, 0]))
+    filtered := 0
+    scaleZero := 0
+    try {
+        filtered := modeI.Filter(Pillow.ImageFilter.Kernel([3, 3], [
+            1, 1, 1,
+            1, 1, 1,
+            1, 1, 1,
+        ], 1.0, 0.0))
+        scaleZero := modeI.Filter(Pillow.ImageFilter.Kernel([3, 3], [
+            1, 1, 1,
+            1, 1, 1,
+            1, 1, 1,
+        ], 0.0, 0.0))
+
+        AhkTest.AssertEqual("I", filtered.Mode)
+        AhkTest.AssertEqual([3, 3], filtered.Size)
+        AhkTest.AssertEqual([-10, 200, 300, 400, 4390, 600, 700, 800, 900], filtered.GetData())
+        AhkTest.AssertEqual([-10, 200, 300, 400, -2147483648, 600, 700, 800, 900], scaleZero.GetData())
+
+        try {
+            modeF.Filter(Pillow.ImageFilter.Kernel([3, 3], [0, 0, 0, 0, 1, 0, 0, 0, 0]))
+            AhkTest.Fail("Expected mode F ImageFilter.Kernel to reject like Pillow")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "wrong mode") > 0)
+        }
+    } finally {
+        if IsObject(scaleZero)
+            scaleZero.Close()
+        if IsObject(filtered)
+            filtered.Close()
+        modeF.Close()
+        modeI.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter.Kernel supports mode I and rejects mode F", PillowTestImageFilterKernelSupportsModeIAndRejectsModeF)
+
 PillowTestImageFilterCopiesInfoMetadata(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 3], PillowTestBuffer([
@@ -7658,6 +24255,85 @@ PillowTestImageFilterRankFiltersSupportRgbRgba(*) {
 
 AhkTest.Test("Pillow ImageFilter rank filters support RGB and RGBA", PillowTestImageFilterRankFiltersSupportRgbRgba)
 
+PillowTestImageFilterRankFiltersSupportNumericModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    modeI := Pillow.Image.FromBytes("I", [3, 3], PillowTestBuffer(PillowTestBytesFromI32([
+        9, -10, 300,
+        400, 5, 600,
+        700, 800, -2,
+    ])))
+    modeF := Pillow.Image.FromBytes("F", [3, 3], PillowTestBuffer(PillowTestBytesFromF32([
+        1.25, -2.5, 3.75,
+        4.0, 5.5, 6.0,
+        7.25, 8.5, -9.75,
+    ])))
+    outputs := []
+    try {
+        cases := [
+            { Source: modeI, Filter: Pillow.ImageFilter.MinFilter(3), Data: [
+                -10, -10, -10,
+                -10, -10, -10,
+                5, -2, -2,
+            ] },
+            { Source: modeI, Filter: Pillow.ImageFilter.MedianFilter(3), Data: [
+                9, 9, 300,
+                400, 300, 300,
+                700, 600, 5,
+            ] },
+            { Source: modeI, Filter: Pillow.ImageFilter.MaxFilter(3), Data: [
+                400, 600, 600,
+                800, 800, 800,
+                800, 800, 800,
+            ] },
+            { Source: modeI, Filter: Pillow.ImageFilter.RankFilter(3, 1), Data: [
+                -10, -10, -10,
+                5, -2, -2,
+                400, -2, -2,
+            ] },
+            { Source: modeF, Filter: Pillow.ImageFilter.MinFilter(3), Data: [
+                -2.5, -2.5, -2.5,
+                -2.5, -9.75, -9.75,
+                4.0, -9.75, -9.75,
+            ] },
+            { Source: modeF, Filter: Pillow.ImageFilter.MedianFilter(3), Data: [
+                1.25, 3.75, 3.75,
+                4.0, 4.0, 3.75,
+                7.25, 6.0, 5.5,
+            ] },
+            { Source: modeF, Filter: Pillow.ImageFilter.MaxFilter(3), Data: [
+                5.5, 6.0, 6.0,
+                8.5, 8.5, 8.5,
+                8.5, 8.5, 8.5,
+            ] },
+            { Source: modeF, Filter: Pillow.ImageFilter.RankFilter(3, 1), Data: [
+                -2.5, -2.5, -2.5,
+                1.25, -2.5, -9.75,
+                4.0, -9.75, -9.75,
+            ] },
+        ]
+
+        for item in cases {
+            out := item.Source.Filter(item.Filter)
+            outputs.Push(out)
+            AhkTest.AssertEqual(item.Source.Mode, out.Mode)
+            AhkTest.AssertEqual([3, 3], out.Size)
+            if item.Source.Mode = "F"
+                PillowTestAssertFloatArrayClose(item.Data, out.GetData())
+            else
+                AhkTest.AssertEqual(item.Data, out.GetData())
+        }
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        modeF.Close()
+        modeI.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter rank filters support numeric I and F modes", PillowTestImageFilterRankFiltersSupportNumericModes)
+
 PillowTestImageFilterRankFiltersRejectInvalidArguments(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("L", [3, 3], PillowTestBuffer([0, 1, 2, 3, 4, 5, 6, 7, 8]))
@@ -7806,6 +24482,38 @@ PillowTestImageFilterModeFilterKeepsSparseModesAndTies(*) {
 }
 
 AhkTest.Test("Pillow ImageFilter ModeFilter keeps sparse modes and ties", PillowTestImageFilterModeFilterKeepsSparseModesAndTies)
+
+PillowTestImageFilterModeFilterRejectsNumericModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    modeI := Pillow.Image.FromBytes("I", [3, 3], PillowTestBuffer(PillowTestBytesFromI32([
+        9, 9, 300,
+        9, 5, 600,
+        700, 800, -2,
+    ])))
+    modeF := Pillow.Image.FromBytes("F", [3, 3], PillowTestBuffer(PillowTestBytesFromF32([
+        1.25, 1.25, 3.75,
+        1.25, 5.5, 6.0,
+        7.25, 8.5, -9.75,
+    ])))
+    try {
+        for image in [modeI, modeF] {
+            rejected := false
+            try {
+                image.Filter(Pillow.ImageFilter.ModeFilter(3))
+            } catch Error as err {
+                rejected := true
+                AhkTest.AssertTrue(InStr(err.Message, "wrong mode") > 0)
+            }
+            if !rejected
+                AhkTest.Fail("Expected ModeFilter to reject numeric mode")
+        }
+    } finally {
+        modeF.Close()
+        modeI.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter ModeFilter rejects numeric I and F modes", PillowTestImageFilterModeFilterRejectsNumericModes)
 
 PillowTestImageFilterBoxBlurUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -8100,6 +24808,37 @@ PillowTestImageFilterUnsharpMaskSupportsRgbRgba(*) {
 }
 
 AhkTest.Test("Pillow ImageFilter UnsharpMask supports RGB and RGBA", PillowTestImageFilterUnsharpMaskSupportsRgbRgba)
+
+PillowTestImageFilterBlurRejectsNumericModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    modeI := Pillow.Image.FromBytes("I", [2, 2], PillowTestBuffer(PillowTestBytesFromI32([1, 2, 3, 4])))
+    modeF := Pillow.Image.FromBytes("F", [2, 2], PillowTestBuffer(PillowTestBytesFromF32([1.25, -2.5, 3.5, 4.75])))
+    try {
+        filters := [
+            Pillow.ImageFilter.BoxBlur(1),
+            Pillow.ImageFilter.GaussianBlur(1),
+            Pillow.ImageFilter.UnsharpMask(1, 150, 3),
+        ]
+        for image in [modeI, modeF] {
+            for filter in filters {
+                rejected := false
+                try {
+                    image.Filter(filter)
+                } catch Error as err {
+                    rejected := true
+                    AhkTest.AssertTrue(InStr(err.Message, "wrong mode") > 0)
+                }
+                if !rejected
+                    AhkTest.Fail("Expected " filter.Name " to reject numeric mode")
+            }
+        }
+    } finally {
+        modeF.Close()
+        modeI.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFilter blur filters reject numeric I and F modes", PillowTestImageFilterBlurRejectsNumericModes)
 
 PillowTestImageFilterLaUsesNativePath(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -9486,6 +26225,79 @@ PillowTestImageConvertCmykUsesNativeOperation(*) {
 
 AhkTest.Test("Pillow Image.Convert supports CMYK through native handles", PillowTestImageConvertCmykUsesNativeOperation)
 
+PillowTestImageConvertNumericModesToLUsesNativeOperation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    modeI := Pillow.Image.FromBytes("I", [11, 1], PillowTestBuffer([
+        212, 254, 255, 255,
+        255, 255, 255, 255,
+        0, 0, 0, 0,
+        1, 0, 0, 0,
+        127, 0, 0, 0,
+        128, 0, 0, 0,
+        255, 0, 0, 0,
+        0, 1, 0, 0,
+        232, 3, 0, 0,
+        255, 255, 255, 127,
+        0, 0, 0, 128,
+    ]))
+    modeF := Pillow.Image.FromBytes("F", [17, 1], PillowTestBuffer([
+        0, 64, 150, 195,
+        0, 0, 192, 191,
+        0, 0, 0, 191,
+        0, 0, 0, 0,
+        72, 225, 250, 62,
+        0, 0, 0, 63,
+        0, 0, 128, 63,
+        205, 204, 254, 66,
+        0, 0, 255, 66,
+        0, 128, 0, 67,
+        0, 128, 126, 67,
+        0, 0, 127, 67,
+        0, 128, 127, 67,
+        0, 0, 122, 68,
+        0, 0, 192, 127,
+        0, 0, 128, 255,
+        0, 0, 128, 127,
+    ]))
+    emptyI := Pillow.Image.New("I", [0, 1])
+    emptyF := Pillow.Image.New("F", [0, 1])
+    outputs := []
+    try {
+        iOut := modeI.Convert("L")
+        fOut := modeF.Convert("L")
+        emptyIOut := emptyI.Convert("L")
+        emptyFOut := emptyF.Convert("L")
+        outputs.Push(iOut)
+        outputs.Push(fOut)
+        outputs.Push(emptyIOut)
+        outputs.Push(emptyFOut)
+
+        AhkTest.AssertEqual("L", iOut.Mode)
+        AhkTest.AssertEqual("L", fOut.Mode)
+        AhkTest.AssertEqual([11, 1], iOut.Size)
+        AhkTest.AssertEqual([17, 1], fOut.Size)
+        AhkTest.AssertEqual([0, 0, 0, 1, 127, 128, 255, 255, 255, 255, 0], PillowTestBufferToArray(iOut.ToBytes()))
+        AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 1, 127, 127, 128, 254, 255, 255, 255, 0, 0, 255], PillowTestBufferToArray(fOut.ToBytes()))
+        AhkTest.AssertEqual("L", emptyIOut.Mode)
+        AhkTest.AssertEqual("L", emptyFOut.Mode)
+        AhkTest.AssertEqual([0, 1], emptyIOut.Size)
+        AhkTest.AssertEqual([0, 1], emptyFOut.Size)
+        AhkTest.AssertEqual([], PillowTestBufferToArray(emptyIOut.ToBytes()))
+        AhkTest.AssertEqual([], PillowTestBufferToArray(emptyFOut.ToBytes()))
+    } finally {
+        for image in outputs {
+            if IsObject(image)
+                image.Close()
+        }
+        emptyF.Close()
+        emptyI.Close()
+        modeF.Close()
+        modeI.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Convert supports numeric I and F to L through native handles", PillowTestImageConvertNumericModesToLUsesNativeOperation)
+
 PillowTestImageConvertMatrixUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [3, 2], PillowTestBuffer([
@@ -10113,6 +26925,28 @@ PillowTestImageGetBandsReturnsPillowModeBandNames(*) {
 
 AhkTest.Test("Pillow Image.GetBands returns Pillow mode band names", PillowTestImageGetBandsReturnsPillowModeBandNames)
 
+PillowTestImageGetbandsAliasReturnsPillowModeBandNames(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.New("RGB", [1, 1])
+    modeI := Pillow.Image.FromBytes("I", [1, 1], PillowTestBuffer(PillowTestBytesFromI32([-1])))
+    modeF := Pillow.Image.FromBytes("F", [1, 1], PillowTestBuffer(PillowTestBytesFromF32([1.5])))
+    try {
+        AhkTest.AssertEqual(["R", "G", "B"], rgb.getbands())
+        AhkTest.AssertEqual(["I"], modeI.getbands())
+        AhkTest.AssertEqual(["F"], modeF.getbands())
+
+        bands := rgb.getbands()
+        bands[1] := "changed"
+        AhkTest.AssertEqual(["R", "G", "B"], rgb.getbands())
+    } finally {
+        modeF.Close()
+        modeI.Close()
+        rgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.getbands alias returns Pillow mode band names", PillowTestImageGetbandsAliasReturnsPillowModeBandNames)
+
 PillowTestImageHistogramUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [3, 1], PillowTestBuffer([
@@ -10153,9 +26987,91 @@ PillowTestImageHistogramMatchesPillowLaMode(*) {
 
 AhkTest.Test("Pillow Image.Histogram matches Pillow LA mode layout", PillowTestImageHistogramMatchesPillowLaMode)
 
+PillowTestImageHistogramMatchesNumericModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    modeI := Pillow.Image.FromBytes("I", [4, 1], PillowTestBuffer([
+        254, 255, 255, 255,
+        255, 255, 255, 255,
+        0, 0, 0, 0,
+        1, 0, 0, 0,
+    ]))
+    modeF := Pillow.Image.FromBytes("F", [4, 1], PillowTestBuffer([
+        0xCD, 0xCC, 0xCC, 0x3D,
+        0x66, 0x66, 0x66, 0x3F,
+        0xCD, 0xCC, 0x8C, 0x3F,
+        0x33, 0x33, 0xF3, 0x3F,
+    ]))
+    modeFLaterNaN := Pillow.Image.FromBytes("F", [3, 1], PillowTestBuffer([
+        0x00, 0x00, 0x80, 0x3F,
+        0x00, 0x00, 0xC0, 0x7F,
+        0x00, 0x00, 0x00, 0x40,
+    ]))
+    modeFFirstNaN := Pillow.Image.FromBytes("F", [3, 1], PillowTestBuffer([
+        0x00, 0x00, 0xC0, 0x7F,
+        0x00, 0x00, 0x80, 0x3F,
+        0x00, 0x00, 0x00, 0x40,
+    ]))
+    mask := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([255, 0, 255, 0]))
+    try {
+        histI := modeI.Histogram()
+        AhkTest.AssertEqual(256, histI.Length)
+        AhkTest.AssertEqual(1, histI[1])
+        AhkTest.AssertEqual(1, histI[86])
+        AhkTest.AssertEqual(1, histI[171])
+        AhkTest.AssertEqual(1, histI[256])
+        AhkTest.AssertEqual(4, PillowTestSumArray(histI))
+
+        histF := modeF.Histogram()
+        AhkTest.AssertEqual(256, histF.Length)
+        AhkTest.AssertEqual(1, histF[1])
+        AhkTest.AssertEqual(1, histF[114])
+        AhkTest.AssertEqual(1, histF[142])
+        AhkTest.AssertEqual(1, histF[256])
+        AhkTest.AssertEqual(4, PillowTestSumArray(histF))
+
+        histLaterNaN := modeFLaterNaN.Histogram()
+        AhkTest.AssertEqual(1, histLaterNaN[1])
+        AhkTest.AssertEqual(1, histLaterNaN[256])
+        AhkTest.AssertEqual(2, PillowTestSumArray(histLaterNaN))
+
+        histFirstNaN := modeFFirstNaN.Histogram()
+        AhkTest.AssertEqual(256, histFirstNaN.Length)
+        AhkTest.AssertEqual(0, PillowTestSumArray(histFirstNaN))
+
+        try {
+            modeI.Histogram(mask)
+            AhkTest.Fail("Expected mode I masked histogram to reject like Pillow")
+        } catch Error as err {
+            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
+        }
+    } finally {
+        mask.Close()
+        modeFFirstNaN.Close()
+        modeFLaterNaN.Close()
+        modeF.Close()
+        modeI.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Histogram matches Pillow numeric modes", PillowTestImageHistogramMatchesNumericModes)
+
 PillowTestAssertFloatClose(expected, actual, tolerance := 0.0000001) {
+    if IsObject(actual)
+        AhkTest.Fail("Expected numeric value " expected " +/- " tolerance ", got " Type(actual))
     if Abs(expected - actual) > tolerance
         AhkTest.Fail("Expected " expected " +/- " tolerance ", got " actual)
+}
+
+PillowTestAssertNaN(actual) {
+    AhkTest.AssertTrue(actual != actual)
+}
+
+PillowTestAssertPositiveInfinity(actual) {
+    AhkTest.AssertTrue(actual > 1.0e300)
+}
+
+PillowTestAssertNegativeInfinity(actual) {
+    AhkTest.AssertTrue(actual < -1.0e300)
 }
 
 PillowTestImageEntropyUsesNativeOperation(*) {
@@ -10194,6 +27110,31 @@ PillowTestImageEntropyUsesNativeOperation(*) {
 }
 
 AhkTest.Test("Pillow Image.Entropy uses native histogram entropy", PillowTestImageEntropyUsesNativeOperation)
+
+PillowTestImageEntropyMatchesNumericModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    modeI := Pillow.Image.FromBytes("I", [4, 1], PillowTestBuffer(PillowTestBytesFromI32([-1, 0, -1, 70000])))
+    modeF := Pillow.Image.FromBytes("F", [4, 1], PillowTestBuffer(PillowTestBytesFromF32([1.5, -0.0, 1.5, 3.5])))
+    mask := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([255, 0, 255, 255]))
+    try {
+        PillowTestAssertFloatClose(0.8112781244591328, modeI.Entropy())
+        PillowTestAssertFloatClose(1.5, modeF.Entropy())
+        for image in [modeI, modeF] {
+            try {
+                image.Entropy(mask)
+                AhkTest.Fail("Expected numeric Image.Entropy mask to reject wrong mode")
+            } catch Error as err {
+                AhkTest.AssertEqual("image has wrong mode", err.Message)
+            }
+        }
+    } finally {
+        mask.Close()
+        modeF.Close()
+        modeI.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Entropy matches numeric I and F modes", PillowTestImageEntropyMatchesNumericModes)
 
 PillowTestImageStatsAcceptModeOneMasks(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -10375,6 +27316,27 @@ PillowTestImageStatAcceptsHistogramListAndNativeMask(*) {
 
 AhkTest.Test("Pillow ImageStat.Stat accepts histogram lists and native masks", PillowTestImageStatAcceptsHistogramListAndNativeMask)
 
+PillowTestImageStatRejectsEmptyNumericModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    emptyI := Pillow.Image.New("I", [0, 1])
+    emptyF := Pillow.Image.New("F", [0, 1])
+    try {
+        for image in [emptyI, emptyF] {
+            try {
+                Pillow.ImageStat.Stat(image)
+                AhkTest.Fail("Expected empty numeric ImageStat.Stat to reject")
+            } catch Error as err {
+                AhkTest.AssertEqual("min/max not given", err.Message)
+            }
+        }
+    } finally {
+        emptyF.Close()
+        emptyI.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageStat.Stat rejects empty numeric modes", PillowTestImageStatRejectsEmptyNumericModes)
+
 PillowTestImageGetExtremaUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     rgb := Pillow.Image.FromBytes("RGB", [3, 1], PillowTestBuffer([
@@ -10393,6 +27355,78 @@ PillowTestImageGetExtremaUsesNativeOperation(*) {
 }
 
 AhkTest.Test("Pillow Image.GetExtrema returns Pillow-style extrema through native handles", PillowTestImageGetExtremaUsesNativeOperation)
+
+PillowTestImageGetExtremaSupportsModeI(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("I", [4, 1], PillowTestBuffer([
+        246, 255, 255, 255,
+        0, 0, 0, 0,
+        112, 17, 1, 0,
+        0, 0, 0, 128,
+    ]))
+    try {
+        AhkTest.AssertEqual([-2147483648, 70000], image.GetExtrema())
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetExtrema supports mode I int32 extrema", PillowTestImageGetExtremaSupportsModeI)
+
+PillowTestImageGetExtremaSupportsModeF(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    finite := Pillow.Image.FromBytes("F", [4, 1], PillowTestBuffer([
+        0x00, 0x00, 0xC0, 0xBF,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x10, 0x40,
+        0x00, 0x00, 0x70, 0xC0,
+    ]))
+    laterNaN := Pillow.Image.FromBytes("F", [3, 1], PillowTestBuffer([
+        0x00, 0x00, 0x80, 0x3F,
+        0x00, 0x00, 0xC0, 0x7F,
+        0x00, 0x00, 0x00, 0x40,
+    ]))
+    firstNaN := Pillow.Image.FromBytes("F", [3, 1], PillowTestBuffer([
+        0x00, 0x00, 0xC0, 0x7F,
+        0x00, 0x00, 0x80, 0x3F,
+        0x00, 0x00, 0x00, 0x40,
+    ]))
+    infinities := Pillow.Image.FromBytes("F", [3, 1], PillowTestBuffer([
+        0x00, 0x00, 0x80, 0xFF,
+        0x00, 0x00, 0x80, 0x3F,
+        0x00, 0x00, 0x80, 0x7F,
+    ]))
+    empty := 0
+    try {
+        finiteExtrema := finite.GetExtrema()
+        PillowTestAssertFloatClose(-3.75, finiteExtrema[1])
+        PillowTestAssertFloatClose(2.25, finiteExtrema[2])
+
+        laterNaNExtrema := laterNaN.GetExtrema()
+        PillowTestAssertFloatClose(1.0, laterNaNExtrema[1])
+        PillowTestAssertFloatClose(2.0, laterNaNExtrema[2])
+
+        firstNaNExtrema := firstNaN.GetExtrema()
+        PillowTestAssertNaN(firstNaNExtrema[1])
+        PillowTestAssertNaN(firstNaNExtrema[2])
+
+        infinityExtrema := infinities.GetExtrema()
+        PillowTestAssertNegativeInfinity(infinityExtrema[1])
+        PillowTestAssertPositiveInfinity(infinityExtrema[2])
+
+        empty := finite.Crop([0, 0, 0, 1])
+        AhkTest.AssertEqual(0, empty.GetExtrema())
+    } finally {
+        if IsObject(empty)
+            empty.Close()
+        infinities.Close()
+        firstNaN.Close()
+        laterNaN.Close()
+        finite.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetExtrema supports mode F float extrema", PillowTestImageGetExtremaSupportsModeF)
 
 PillowTestImageGetBboxUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -10512,6 +27546,40 @@ PillowTestImageGetColorsUsesNativeOperation(*) {
 }
 
 AhkTest.Test("Pillow Image.GetColors returns Pillow-style color counts through native handles", PillowTestImageGetColorsUsesNativeOperation)
+
+PillowTestImageGetColorsMatchesNumericModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    modeI := Pillow.Image.FromBytes("I", [4, 1], PillowTestBuffer(PillowTestBytesFromI32([-1, 0, -1, 70000])))
+    modeF := Pillow.Image.FromBytes("F", [4, 1], PillowTestBuffer(PillowTestBytesFromF32([1.5, 2.5, 1.5, 3.5])))
+    empty := 0
+    try {
+        empty := modeI.Crop([0, 0, 0, 1])
+        iColors := modeI.GetColors()
+        fColors := modeF.GetColors()
+
+        AhkTest.AssertEqual(3, iColors.Length)
+        AhkTest.AssertEqual([2, -1], PillowTestFindColor(iColors, -1))
+        AhkTest.AssertEqual([1, 0], PillowTestFindColor(iColors, 0))
+        AhkTest.AssertEqual([1, 70000], PillowTestFindColor(iColors, 70000))
+        AhkTest.AssertEqual(0, modeI.GetColors(2))
+
+        AhkTest.AssertEqual(3, fColors.Length)
+        AhkTest.AssertEqual([2, 1.5], PillowTestFindColor(fColors, 1.5))
+        AhkTest.AssertEqual([1, 2.5], PillowTestFindColor(fColors, 2.5))
+        AhkTest.AssertEqual([1, 3.5], PillowTestFindColor(fColors, 3.5))
+        AhkTest.AssertEqual(0, modeF.GetColors(2))
+
+        AhkTest.AssertEqual([], empty.GetColors(0))
+        AhkTest.AssertEqual(0, empty.GetColors(-1))
+    } finally {
+        if IsObject(empty)
+            empty.Close()
+        modeF.Close()
+        modeI.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.GetColors matches numeric I and F modes", PillowTestImageGetColorsMatchesNumericModes)
 
 PillowTestImageOpsGrayscaleConvertsCoreModes(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -10815,6 +27883,32 @@ PillowTestImageOpsLutTransformsRejectBadWrapperParameters(*) {
 
 AhkTest.Test("Pillow ImageOps LUT transforms reject invalid wrapper parameters", PillowTestImageOpsLutTransformsRejectBadWrapperParameters)
 
+PillowTestImageOpsLutTransformsRejectNumericModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    modeI := Pillow.Image.FromBytes("I", [1, 1], PillowTestBuffer([0, 0, 0, 0]))
+    modeF := Pillow.Image.FromBytes("F", [1, 1], PillowTestBuffer([0, 0, 0, 0]))
+    try {
+        for image in [modeI, modeF] {
+            for methodName in ["Invert", "Posterize", "Solarize"] {
+                try {
+                    if methodName = "Posterize"
+                        Pillow.ImageOps.%methodName%(image, 4)
+                    else
+                        Pillow.ImageOps.%methodName%(image)
+                    AhkTest.Fail("Expected ImageOps." methodName " to reject mode " image.Mode)
+                } catch Error as err {
+                    AhkTest.AssertEqual("not supported for mode " image.Mode, err.Message)
+                }
+            }
+        }
+    } finally {
+        modeF.Close()
+        modeI.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps LUT transforms reject numeric modes like Pillow", PillowTestImageOpsLutTransformsRejectNumericModes)
+
 PillowTestImageOpsColorizeUsesNativeOperation(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.FromBytes("L", [5, 1], PillowTestBuffer([0, 64, 128, 192, 255]))
@@ -11099,6 +28193,70 @@ PillowTestImageOpsEqualizeRejectsUnsupportedMode(*) {
 }
 
 AhkTest.Test("Pillow ImageOps.Equalize rejects modes Pillow _lut does not support", PillowTestImageOpsEqualizeRejectsUnsupportedMode)
+
+PillowTestImageOpsHistogramTransformsRejectNumericModesLikePillow(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    modeI := Pillow.Image.FromBytes("I", [4, 1], PillowTestBuffer([
+        255, 255, 255, 255,
+        0, 0, 0, 0,
+        255, 0, 0, 0,
+        112, 17, 1, 0,
+    ]))
+    modeF := Pillow.Image.FromBytes("F", [4, 1], PillowTestBuffer([
+        0, 0, 192, 191,
+        0, 0, 0, 0,
+        0, 0, 127, 67,
+        0, 0, 96, 64,
+    ]))
+    mask := Pillow.Image.FromBytes("L", [4, 1], PillowTestBuffer([0, 255, 255, 0]))
+    try {
+        for image in [modeI, modeF] {
+            notSupported := "not supported for mode " image.Mode
+            try {
+                Pillow.ImageOps.Equalize(image)
+                AhkTest.Fail("Expected ImageOps.Equalize to reject mode " image.Mode)
+            } catch Error as err {
+                AhkTest.AssertEqual(notSupported, err.Message)
+            }
+            try {
+                Pillow.ImageOps.Autocontrast(image)
+                AhkTest.Fail("Expected ImageOps.Autocontrast to reject mode " image.Mode)
+            } catch Error as err {
+                AhkTest.AssertEqual(notSupported, err.Message)
+            }
+            try {
+                Pillow.ImageOps.Autocontrast(image, , , , true)
+                AhkTest.Fail("Expected ImageOps.Autocontrast preserve_tone to reject mode " image.Mode)
+            } catch Error as err {
+                AhkTest.AssertEqual(notSupported, err.Message)
+            }
+            try {
+                Pillow.ImageOps.Equalize(image, mask)
+                AhkTest.Fail("Expected masked ImageOps.Equalize to reject mode " image.Mode)
+            } catch Error as err {
+                AhkTest.AssertEqual("image has wrong mode", err.Message)
+            }
+            try {
+                Pillow.ImageOps.Autocontrast(image, , , mask)
+                AhkTest.Fail("Expected masked ImageOps.Autocontrast to reject mode " image.Mode)
+            } catch Error as err {
+                AhkTest.AssertEqual("image has wrong mode", err.Message)
+            }
+            try {
+                Pillow.ImageOps.Autocontrast(image, , , mask, true)
+                AhkTest.Fail("Expected masked ImageOps.Autocontrast preserve_tone to reject mode " image.Mode)
+            } catch Error as err {
+                AhkTest.AssertEqual(notSupported, err.Message)
+            }
+        }
+    } finally {
+        mask.Close()
+        modeF.Close()
+        modeI.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageOps histogram transforms reject numeric modes like Pillow", PillowTestImageOpsHistogramTransformsRejectNumericModesLikePillow)
 
 PillowTestImageOpsCropRemovesScalarAndTupleBorders(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -11834,6 +28992,33 @@ PillowTestImageBlendStaticUsesNativeHandles(*) {
 }
 
 AhkTest.Test("Pillow Image.Blend blends images through native handles", PillowTestImageBlendStaticUsesNativeHandles)
+
+PillowTestImageBlendRejectsNumericModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    modeILeft := Pillow.Image.FromBytes("I", [2, 1], PillowTestBuffer(PillowTestBytesFromI32([-10, 300])))
+    modeIRight := Pillow.Image.FromBytes("I", [2, 1], PillowTestBuffer(PillowTestBytesFromI32([20, -400])))
+    modeFLeft := Pillow.Image.FromBytes("F", [2, 1], PillowTestBuffer(PillowTestBytesFromF32([-1.5, 300.25])))
+    modeFRight := Pillow.Image.FromBytes("F", [2, 1], PillowTestBuffer(PillowTestBytesFromF32([2.0, -400.5])))
+    try {
+        for fixture in [[modeILeft, modeIRight], [modeFLeft, modeFRight]] {
+            out := 0
+            try {
+                out := Pillow.Image.Blend(fixture[1], fixture[2], 0.25)
+                AhkTest.Fail("Expected Image.Blend to reject numeric mode")
+            } catch Error as err {
+                AhkTest.AssertTrue(InStr(err.Message, "image has wrong mode") > 0)
+            } finally {
+                if IsObject(out)
+                    out.Close()
+            }
+        }
+    } finally {
+        for image in [modeFRight, modeFLeft, modeIRight, modeILeft]
+            image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Blend rejects numeric I and F modes", PillowTestImageBlendRejectsNumericModes)
 
 PillowTestImageCompositeStaticUsesNativeHandles(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -12963,6 +30148,47 @@ PillowTestImageChopsModuloOpsRejectModeMismatch(*) {
 }
 
 AhkTest.Test("Pillow ImageChops modulo ops reject mode mismatch", PillowTestImageChopsModuloOpsRejectModeMismatch)
+
+PillowTestImageChopsBinaryOpsRejectNumericModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    modeI := Pillow.Image.FromBytes("I", [2, 1], PillowTestBuffer(PillowTestBytesFromI32([-10, 300])))
+    modeF := Pillow.Image.FromBytes("F", [2, 1], PillowTestBuffer(PillowTestBytesFromF32([-1.5, 300.25])))
+    methods := [
+        "Difference",
+        "Multiply",
+        "Screen",
+        "Lighter",
+        "Darker",
+        "SoftLight",
+        "HardLight",
+        "Overlay",
+        "Add",
+        "Subtract",
+        "AddModulo",
+        "SubtractModulo",
+    ]
+    try {
+        for methodName in methods {
+            for image in [modeI, modeF] {
+                out := 0
+                try {
+                    out := Pillow.ImageChops.%methodName%(image, image)
+                    AhkTest.Fail("Expected ImageChops." methodName " to reject numeric mode")
+                } catch Error as err {
+                    AhkTest.AssertTrue(InStr(err.Message, "image has wrong mode") > 0)
+                } finally {
+                    if IsObject(out)
+                        out.Close()
+                }
+            }
+        }
+    } finally {
+        modeF.Close()
+        modeI.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageChops binary ops reject numeric I and F modes", PillowTestImageChopsBinaryOpsRejectNumericModes)
 
 PillowTestImageChopsBinaryCopiesInfoMetadata(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

@@ -36,6 +36,25 @@ constexpr int PILLOW_C_MODE_P = 6;
 constexpr int PILLOW_C_MODE_CMYK = 7;
 constexpr int PILLOW_C_MODE_I = 8;
 constexpr int PILLOW_C_MODE_F = 9;
+constexpr int PILLOW_C_MODE_RGBX = 10;
+constexpr int PILLOW_C_MODE_I16 = 11;
+constexpr int PILLOW_C_MODE_I16B = 12;
+
+constexpr std::uint16_t TIFF_COMPRESSION_NONE = 1u;
+constexpr std::uint16_t TIFF_COMPRESSION_LZW = 5u;
+constexpr std::uint16_t TIFF_COMPRESSION_ADOBE_DEFLATE = 8u;
+constexpr std::uint16_t TIFF_COMPRESSION_PACKBITS = 32773u;
+
+constexpr int JPEG_ZIGZAG[64] = {
+    0, 1, 8, 16, 9, 2, 3, 10,
+    17, 24, 32, 25, 18, 11, 4, 5,
+    12, 19, 26, 33, 40, 48, 41, 34,
+    27, 20, 13, 6, 7, 14, 21, 28,
+    35, 42, 49, 56, 57, 50, 43, 36,
+    29, 22, 15, 23, 30, 37, 44, 51,
+    58, 59, 52, 45, 38, 31, 39, 46,
+    53, 60, 61, 54, 47, 55, 62, 63
+};
 
 constexpr int PILLOW_C_PALETTE_ALPHA_NONE = 0;
 constexpr int PILLOW_C_PALETTE_ALPHA_RGBA = 1;
@@ -85,7 +104,39 @@ struct PillowCImage {
     bool has_hotspot = false;
     int hotspot_x = 0;
     int hotspot_y = 0;
+    bool has_dib_compression = false;
+    int dib_compression = -1;
+    bool has_png_gamma = false;
+    double png_gamma = 0.0;
+    bool has_png_srgb = false;
+    int png_srgb = 0;
+    bool has_png_chromaticity = false;
+    double png_chromaticity[8] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    std::vector<std::pair<std::string, std::string>> png_text;
+    std::vector<std::uint8_t> png_icc_profile;
+    std::vector<std::uint8_t> png_exif;
+    std::vector<std::uint8_t> tiff_exif;
+    std::vector<std::uint8_t> jpeg_comment;
+    std::vector<std::uint8_t> jpeg_icc_profile;
+    std::vector<std::uint8_t> jpeg_exif;
+    std::vector<std::uint8_t> xmp;
+    std::vector<int> jpeg_qtables;
+    std::size_t jpeg_qtable_count = 0;
+    int jpeg_subsampling = -1;
+    bool has_png_transparency = false;
+    int png_transparency = -1;
+    std::vector<std::uint8_t> png_transparency_table;
+    bool has_png_rgb_transparency = false;
+    std::uint8_t png_rgb_transparency[3] = {0, 0, 0};
+    const std::uint8_t* buffer_source = nullptr;
+    std::size_t buffer_source_size = 0;
+    std::string buffer_raw_mode;
+    int buffer_stride = 0;
+    int buffer_orientation = 1;
+    bool buffer_readonly = false;
 };
+
+int refresh_const_buffer_view_image(const PillowCImage* image);
 
 constexpr int PILLOW_C_FONT_DEFAULT = 1;
 
@@ -398,6 +449,17 @@ inline std::uint8_t clip_u8_double(double value)
     return static_cast<std::uint8_t>(value);
 }
 
+inline std::uint8_t clip_numeric_f32_to_l(float value)
+{
+    if (!(value > 0.0f)) {
+        return 0;
+    }
+    if (value >= 255.0f) {
+        return 255;
+    }
+    return static_cast<std::uint8_t>(value);
+}
+
 inline std::uint8_t pillow_clip8_double(double value)
 {
     if (value <= 0.0) {
@@ -418,6 +480,18 @@ inline std::uint8_t round_half_up_clip_u8(double value)
         return 255;
     }
     return static_cast<std::uint8_t>(std::floor(value + 0.5));
+}
+
+inline std::int32_t round_half_up_clip_i32_nonnegative(double value)
+{
+    if (!(value > 0.0)) {
+        return 0;
+    }
+    constexpr double max_i32 = static_cast<double>(std::numeric_limits<std::int32_t>::max());
+    if (value >= max_i32 - 0.5) {
+        return std::numeric_limits<std::int32_t>::max();
+    }
+    return static_cast<std::int32_t>(std::floor(value + 0.5));
 }
 
 inline int clamp_int(int value, int low, int high)
@@ -489,6 +563,25 @@ inline std::int32_t read_i32_le(const std::uint8_t* data)
         (static_cast<std::uint32_t>(data[2]) << 16) |
         (static_cast<std::uint32_t>(data[3]) << 24);
     return static_cast<std::int32_t>(value);
+}
+
+inline float read_f32_le(const std::uint8_t* data)
+{
+    const std::uint32_t bits =
+        static_cast<std::uint32_t>(data[0]) |
+        (static_cast<std::uint32_t>(data[1]) << 8) |
+        (static_cast<std::uint32_t>(data[2]) << 16) |
+        (static_cast<std::uint32_t>(data[3]) << 24);
+    float value = 0.0f;
+    std::memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+inline void write_f32_le(std::uint8_t* data, float value)
+{
+    std::uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    write_i32_le(data, bits);
 }
 
 inline std::uint16_t clip_i32_to_u16(std::int32_t value)
@@ -607,12 +700,18 @@ int channels_for_mode(int mode)
         return 3;
     case PILLOW_C_MODE_RGBA:
         return 4;
+    case PILLOW_C_MODE_RGBX:
+        return 4;
     case PILLOW_C_MODE_CMYK:
         return 4;
     case PILLOW_C_MODE_I:
         return 4;
     case PILLOW_C_MODE_F:
         return 4;
+    case PILLOW_C_MODE_I16:
+        return 2;
+    case PILLOW_C_MODE_I16B:
+        return 2;
     default:
         return 0;
     }
@@ -649,12 +748,18 @@ const char* mode_name(int mode)
         return "RGB";
     case PILLOW_C_MODE_RGBA:
         return "RGBA";
+    case PILLOW_C_MODE_RGBX:
+        return "RGBX";
     case PILLOW_C_MODE_CMYK:
         return "CMYK";
     case PILLOW_C_MODE_I:
         return "I";
     case PILLOW_C_MODE_F:
         return "F";
+    case PILLOW_C_MODE_I16:
+        return "I;16";
+    case PILLOW_C_MODE_I16B:
+        return "I;16B";
     default:
         return nullptr;
     }
@@ -721,6 +826,11 @@ RawCodecSpec raw_decode_spec(int target_mode, const char* raw_mode)
             return {RawCodecKind::BGR, 3};
         }
         break;
+    case PILLOW_C_MODE_RGBX:
+        if (std::strcmp(raw_mode, "RGBX") == 0) {
+            return {RawCodecKind::RGBX, 4};
+        }
+        break;
     case PILLOW_C_MODE_CMYK:
         if (std::strcmp(raw_mode, "CMYK") == 0) {
             return {RawCodecKind::CMYK, 4};
@@ -755,6 +865,16 @@ RawCodecSpec raw_decode_spec(int target_mode, const char* raw_mode)
         }
         if (std::strcmp(raw_mode, "F;32NF") == 0) {
             return {RawCodecKind::F32Native, 4};
+        }
+        break;
+    case PILLOW_C_MODE_I16:
+        if (std::strcmp(raw_mode, "I;16") == 0) {
+            return {RawCodecKind::I16Little, 2};
+        }
+        break;
+    case PILLOW_C_MODE_I16B:
+        if (std::strcmp(raw_mode, "I;16B") == 0) {
+            return {RawCodecKind::I16Big, 2};
         }
         break;
     default:
@@ -825,6 +945,11 @@ RawCodecSpec raw_encode_spec(int source_mode, const char* raw_mode)
             return {RawCodecKind::BGR, 3};
         }
         break;
+    case PILLOW_C_MODE_RGBX:
+        if (std::strcmp(raw_mode, "RGBX") == 0) {
+            return {RawCodecKind::RGBX, 4};
+        }
+        break;
     case PILLOW_C_MODE_CMYK:
         if (std::strcmp(raw_mode, "CMYK") == 0) {
             return {RawCodecKind::CMYK, 4};
@@ -844,6 +969,16 @@ RawCodecSpec raw_encode_spec(int source_mode, const char* raw_mode)
         }
         if (std::strcmp(raw_mode, "F;32NF") == 0) {
             return {RawCodecKind::F32Native, 4};
+        }
+        break;
+    case PILLOW_C_MODE_I16:
+        if (std::strcmp(raw_mode, "I;16") == 0) {
+            return {RawCodecKind::I16Little, 2};
+        }
+        break;
+    case PILLOW_C_MODE_I16B:
+        if (std::strcmp(raw_mode, "I;16B") == 0) {
+            return {RawCodecKind::I16Big, 2};
         }
         break;
     default:
@@ -1164,6 +1299,15 @@ struct JpegMetadata {
     int jfif_unit = -1;
     int jfif_density_x = 0;
     int jfif_density_y = 0;
+    std::vector<std::uint8_t> comment;
+    std::vector<std::uint8_t> icc_profile;
+    std::uint8_t icc_segment_count = 0;
+    std::vector<std::vector<std::uint8_t>> icc_segments;
+    std::vector<std::uint8_t> exif;
+    std::vector<std::uint8_t> xmp;
+    std::vector<int> qtables;
+    std::size_t qtable_count = 0;
+    int subsampling = -1;
 };
 
 struct GifMetadata {
@@ -1172,6 +1316,7 @@ struct GifMetadata {
     int disposal = 0;
     int background = -1;
     int transparency = -1;
+    std::vector<std::uint8_t> comment;
 };
 
 bool read_png_header_info(const char* path, PngHeaderInfo* info)
@@ -1239,6 +1384,1075 @@ bool read_png_dpi_metadata(const char* path, double* out_dpi_x, double* out_dpi_
     return false;
 }
 
+bool read_png_gamma_metadata(const char* path, double* out_gamma)
+{
+    if (!path || !out_gamma) {
+        return false;
+    }
+    *out_gamma = 0.0;
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.size() < sizeof(signature) || std::memcmp(data.data(), signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= data.size()) {
+        const std::uint32_t length = read_be32(data.data() + pos);
+        if (length > data.size() - pos - 12u) {
+            return false;
+        }
+        const std::uint8_t* type = data.data() + pos + 4u;
+        const std::uint8_t* payload = data.data() + pos + 8u;
+        if (length == 4u && std::memcmp(type, "gAMA", 4u) == 0) {
+            *out_gamma = static_cast<double>(read_be32(payload)) / 100000.0;
+            return true;
+        }
+        if (std::memcmp(type, "IEND", 4u) == 0) {
+            return false;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    return false;
+}
+
+bool read_png_srgb_metadata(const char* path, int* out_srgb)
+{
+    if (!path || !out_srgb) {
+        return false;
+    }
+    *out_srgb = 0;
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.size() < sizeof(signature) || std::memcmp(data.data(), signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= data.size()) {
+        const std::uint32_t length = read_be32(data.data() + pos);
+        if (length > data.size() - pos - 12u) {
+            return false;
+        }
+        const std::uint8_t* type = data.data() + pos + 4u;
+        const std::uint8_t* payload = data.data() + pos + 8u;
+        if (length == 1u && std::memcmp(type, "sRGB", 4u) == 0) {
+            *out_srgb = static_cast<int>(payload[0]);
+            return true;
+        }
+        if (std::memcmp(type, "IEND", 4u) == 0) {
+            return false;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    return false;
+}
+
+bool read_png_chromaticity_metadata(const char* path, double* out_values, std::size_t value_count)
+{
+    if (!path || !out_values || value_count < 8u) {
+        return false;
+    }
+    for (std::size_t i = 0; i < 8u; ++i) {
+        out_values[i] = 0.0;
+    }
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.size() < sizeof(signature) || std::memcmp(data.data(), signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= data.size()) {
+        const std::uint32_t length = read_be32(data.data() + pos);
+        if (length > data.size() - pos - 12u) {
+            return false;
+        }
+        const std::uint8_t* type = data.data() + pos + 4u;
+        const std::uint8_t* payload = data.data() + pos + 8u;
+        if (length == 32u && std::memcmp(type, "cHRM", 4u) == 0) {
+            for (std::size_t i = 0; i < 8u; ++i) {
+                out_values[i] = static_cast<double>(read_be32(payload + i * 4u)) / 100000.0;
+            }
+            return true;
+        }
+        if (std::memcmp(type, "IEND", 4u) == 0) {
+            return false;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    return false;
+}
+
+struct DeflateBitReader {
+    const std::uint8_t* data = nullptr;
+    std::size_t size = 0;
+    std::size_t byte_pos = 0;
+    std::uint32_t bit_buffer = 0;
+    int bit_count = 0;
+
+    bool read_bits(int count, std::uint32_t* out_value)
+    {
+        if (!out_value || count < 0 || count > 16) {
+            return false;
+        }
+        while (bit_count < count) {
+            if (byte_pos >= size) {
+                return false;
+            }
+            bit_buffer |= static_cast<std::uint32_t>(data[byte_pos++]) << bit_count;
+            bit_count += 8;
+        }
+        const std::uint32_t mask = count == 32 ? 0xffffffffu : ((1u << count) - 1u);
+        *out_value = bit_buffer & mask;
+        bit_buffer >>= count;
+        bit_count -= count;
+        return true;
+    }
+
+    void align_to_byte()
+    {
+        bit_buffer = 0;
+        bit_count = 0;
+    }
+};
+
+struct DeflateHuffmanEntry {
+    std::uint16_t symbol = 0;
+    std::uint8_t bit_length = 0;
+};
+
+std::uint32_t adler32_bytes(const std::uint8_t* data, std::size_t size)
+{
+    constexpr std::uint32_t mod = 65521u;
+    std::uint32_t a = 1u;
+    std::uint32_t b = 0u;
+    for (std::size_t i = 0; i < size; ++i) {
+        a = (a + data[i]) % mod;
+        b = (b + a) % mod;
+    }
+    return (b << 16) | a;
+}
+
+std::uint16_t reverse_bits(std::uint16_t value, int bit_count)
+{
+    std::uint16_t reversed = 0;
+    for (int i = 0; i < bit_count; ++i) {
+        reversed = static_cast<std::uint16_t>((reversed << 1) | (value & 1u));
+        value = static_cast<std::uint16_t>(value >> 1);
+    }
+    return reversed;
+}
+
+bool build_deflate_huffman_table(
+    const std::vector<std::uint8_t>& lengths,
+    int max_bits,
+    std::vector<DeflateHuffmanEntry>* out_table)
+{
+    if (!out_table || max_bits <= 0 || max_bits > 15) {
+        return false;
+    }
+    const std::size_t table_size = static_cast<std::size_t>(1ull << max_bits);
+    out_table->assign(table_size, {});
+    int bl_count[16] = {};
+    for (std::uint8_t length : lengths) {
+        if (length > max_bits) {
+            return false;
+        }
+        if (length != 0u) {
+            ++bl_count[length];
+        }
+    }
+    int code = 0;
+    int next_code[16] = {};
+    for (int bits = 1; bits <= max_bits; ++bits) {
+        code = (code + bl_count[bits - 1]) << 1;
+        next_code[bits] = code;
+    }
+    for (std::size_t symbol = 0; symbol < lengths.size(); ++symbol) {
+        const int length = lengths[symbol];
+        if (length == 0) {
+            continue;
+        }
+        const std::uint16_t reversed = reverse_bits(static_cast<std::uint16_t>(next_code[length]), length);
+        ++next_code[length];
+        const std::size_t fill_step = static_cast<std::size_t>(1ull << length);
+        for (std::size_t index = reversed; index < table_size; index += fill_step) {
+            (*out_table)[index].symbol = static_cast<std::uint16_t>(symbol);
+            (*out_table)[index].bit_length = static_cast<std::uint8_t>(length);
+        }
+    }
+    return true;
+}
+
+bool read_deflate_symbol(
+    DeflateBitReader* reader,
+    const std::vector<DeflateHuffmanEntry>& table,
+    int max_bits,
+    std::uint16_t* out_symbol)
+{
+    if (!reader || !out_symbol || table.empty() || max_bits <= 0 || max_bits > 15) {
+        return false;
+    }
+    while (reader->bit_count < max_bits && reader->byte_pos < reader->size) {
+        reader->bit_buffer |= static_cast<std::uint32_t>(reader->data[reader->byte_pos++]) << reader->bit_count;
+        reader->bit_count += 8;
+    }
+    if (reader->bit_count == 0) {
+        return false;
+    }
+    const DeflateHuffmanEntry entry = table[reader->bit_buffer & ((1u << max_bits) - 1u)];
+    if (entry.bit_length == 0 || reader->bit_count < entry.bit_length) {
+        return false;
+    }
+    reader->bit_buffer >>= entry.bit_length;
+    reader->bit_count -= entry.bit_length;
+    *out_symbol = entry.symbol;
+    return true;
+}
+
+bool inflate_deflate_huffman_block(
+    DeflateBitReader* reader,
+    const std::vector<DeflateHuffmanEntry>& literal_table,
+    int literal_max_bits,
+    const std::vector<DeflateHuffmanEntry>& distance_table,
+    int distance_max_bits,
+    std::vector<std::uint8_t>* out)
+{
+    if (!reader || !out) {
+        return false;
+    }
+    static constexpr int length_base[29] = {
+        3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27,
+        31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258,
+    };
+    static constexpr int length_extra[29] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
+        2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+    };
+    static constexpr int distance_base[30] = {
+        1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129,
+        193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097,
+        6145, 8193, 12289, 16385, 24577,
+    };
+    static constexpr int distance_extra[30] = {
+        0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6,
+        6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
+    };
+
+    for (;;) {
+        std::uint16_t symbol = 0;
+        if (!read_deflate_symbol(reader, literal_table, literal_max_bits, &symbol)) {
+            return false;
+        }
+        if (symbol < 256u) {
+            out->push_back(static_cast<std::uint8_t>(symbol));
+        } else if (symbol == 256u) {
+            return true;
+        } else if (symbol <= 285u) {
+            const int length_index = static_cast<int>(symbol - 257u);
+            int match_length = length_base[length_index];
+            if (length_extra[length_index] > 0) {
+                std::uint32_t extra = 0;
+                if (!reader->read_bits(length_extra[length_index], &extra)) {
+                    return false;
+                }
+                match_length += static_cast<int>(extra);
+            }
+            std::uint16_t distance_symbol = 0;
+            if (!read_deflate_symbol(reader, distance_table, distance_max_bits, &distance_symbol) ||
+                distance_symbol >= 30u) {
+                return false;
+            }
+            int distance = distance_base[distance_symbol];
+            if (distance_extra[distance_symbol] > 0) {
+                std::uint32_t extra = 0;
+                if (!reader->read_bits(distance_extra[distance_symbol], &extra)) {
+                    return false;
+                }
+                distance += static_cast<int>(extra);
+            }
+            if (distance <= 0 || static_cast<std::size_t>(distance) > out->size()) {
+                return false;
+            }
+            for (int i = 0; i < match_length; ++i) {
+                out->push_back((*out)[out->size() - static_cast<std::size_t>(distance)]);
+            }
+        } else {
+            return false;
+        }
+    }
+}
+
+bool read_dynamic_deflate_tables(
+    DeflateBitReader* reader,
+    std::vector<DeflateHuffmanEntry>* out_literal_table,
+    std::vector<DeflateHuffmanEntry>* out_distance_table)
+{
+    if (!reader || !out_literal_table || !out_distance_table) {
+        return false;
+    }
+    std::uint32_t hlit_bits = 0;
+    std::uint32_t hdist_bits = 0;
+    std::uint32_t hclen_bits = 0;
+    if (!reader->read_bits(5, &hlit_bits) ||
+        !reader->read_bits(5, &hdist_bits) ||
+        !reader->read_bits(4, &hclen_bits)) {
+        return false;
+    }
+    const std::size_t literal_count = static_cast<std::size_t>(hlit_bits) + 257u;
+    const std::size_t distance_count = static_cast<std::size_t>(hdist_bits) + 1u;
+    const std::size_t code_length_count = static_cast<std::size_t>(hclen_bits) + 4u;
+    if (literal_count > 286u || distance_count > 32u || code_length_count > 19u) {
+        return false;
+    }
+
+    static constexpr std::uint8_t code_length_order[19] = {
+        16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+    };
+    std::vector<std::uint8_t> code_length_lengths(19, 0);
+    for (std::size_t i = 0; i < code_length_count; ++i) {
+        std::uint32_t length = 0;
+        if (!reader->read_bits(3, &length)) {
+            return false;
+        }
+        code_length_lengths[code_length_order[i]] = static_cast<std::uint8_t>(length);
+    }
+    std::vector<DeflateHuffmanEntry> code_length_table;
+    if (!build_deflate_huffman_table(code_length_lengths, 7, &code_length_table)) {
+        return false;
+    }
+
+    const std::size_t total_lengths = literal_count + distance_count;
+    std::vector<std::uint8_t> lengths;
+    lengths.reserve(total_lengths);
+    while (lengths.size() < total_lengths) {
+        std::uint16_t symbol = 0;
+        if (!read_deflate_symbol(reader, code_length_table, 7, &symbol)) {
+            return false;
+        }
+        if (symbol <= 15u) {
+            lengths.push_back(static_cast<std::uint8_t>(symbol));
+        } else if (symbol == 16u) {
+            if (lengths.empty()) {
+                return false;
+            }
+            std::uint32_t extra = 0;
+            if (!reader->read_bits(2, &extra)) {
+                return false;
+            }
+            const std::size_t repeat = static_cast<std::size_t>(extra) + 3u;
+            if (lengths.size() + repeat > total_lengths) {
+                return false;
+            }
+            const std::uint8_t previous = lengths.back();
+            for (std::size_t i = 0; i < repeat; ++i) {
+                lengths.push_back(previous);
+            }
+        } else if (symbol == 17u) {
+            std::uint32_t extra = 0;
+            if (!reader->read_bits(3, &extra)) {
+                return false;
+            }
+            const std::size_t repeat = static_cast<std::size_t>(extra) + 3u;
+            if (lengths.size() + repeat > total_lengths) {
+                return false;
+            }
+            lengths.insert(lengths.end(), repeat, 0);
+        } else if (symbol == 18u) {
+            std::uint32_t extra = 0;
+            if (!reader->read_bits(7, &extra)) {
+                return false;
+            }
+            const std::size_t repeat = static_cast<std::size_t>(extra) + 11u;
+            if (lengths.size() + repeat > total_lengths) {
+                return false;
+            }
+            lengths.insert(lengths.end(), repeat, 0);
+        } else {
+            return false;
+        }
+    }
+
+    std::vector<std::uint8_t> literal_lengths(lengths.begin(), lengths.begin() + static_cast<std::ptrdiff_t>(literal_count));
+    std::vector<std::uint8_t> distance_lengths(lengths.begin() + static_cast<std::ptrdiff_t>(literal_count), lengths.end());
+    if (literal_lengths.size() <= 256u || literal_lengths[256] == 0u) {
+        return false;
+    }
+    return build_deflate_huffman_table(literal_lengths, 15, out_literal_table) &&
+        build_deflate_huffman_table(distance_lengths, 15, out_distance_table);
+}
+
+bool inflate_zlib_deflate(
+    const std::uint8_t* data,
+    std::size_t size,
+    std::vector<std::uint8_t>* out)
+{
+    if (!data || !out || size < 6u) {
+        return false;
+    }
+    out->clear();
+    const std::uint8_t cmf = data[0];
+    const std::uint8_t flg = data[1];
+    if ((cmf & 0x0fu) != 8u || (static_cast<unsigned>(cmf) * 256u + flg) % 31u != 0u || (flg & 0x20u) != 0u) {
+        return false;
+    }
+    const std::size_t deflate_size = size - 6u;
+    const std::uint32_t expected_adler = read_be32(data + size - 4u);
+    DeflateBitReader reader;
+    reader.data = data + 2u;
+    reader.size = deflate_size;
+
+    std::vector<std::uint8_t> literal_lengths(288, 0);
+    for (int i = 0; i <= 143; ++i) {
+        literal_lengths[static_cast<std::size_t>(i)] = 8;
+    }
+    for (int i = 144; i <= 255; ++i) {
+        literal_lengths[static_cast<std::size_t>(i)] = 9;
+    }
+    for (int i = 256; i <= 279; ++i) {
+        literal_lengths[static_cast<std::size_t>(i)] = 7;
+    }
+    for (int i = 280; i <= 287; ++i) {
+        literal_lengths[static_cast<std::size_t>(i)] = 8;
+    }
+    std::vector<std::uint8_t> distance_lengths(32, 5);
+    std::vector<DeflateHuffmanEntry> literal_table;
+    std::vector<DeflateHuffmanEntry> distance_table;
+    if (!build_deflate_huffman_table(literal_lengths, 9, &literal_table) ||
+        !build_deflate_huffman_table(distance_lengths, 5, &distance_table)) {
+        return false;
+    }
+
+    bool final_block = false;
+    while (!final_block) {
+        std::uint32_t final_bit = 0;
+        std::uint32_t block_type = 0;
+        if (!reader.read_bits(1, &final_bit) || !reader.read_bits(2, &block_type)) {
+            return false;
+        }
+        final_block = final_bit != 0u;
+        if (block_type == 0u) {
+            reader.align_to_byte();
+            if (reader.byte_pos + 4u > reader.size) {
+                return false;
+            }
+            const std::uint16_t len = static_cast<std::uint16_t>(reader.data[reader.byte_pos] | (reader.data[reader.byte_pos + 1u] << 8));
+            const std::uint16_t nlen = static_cast<std::uint16_t>(reader.data[reader.byte_pos + 2u] | (reader.data[reader.byte_pos + 3u] << 8));
+            reader.byte_pos += 4u;
+            if (static_cast<std::uint16_t>(~len) != nlen || reader.byte_pos + len > reader.size) {
+                return false;
+            }
+            out->insert(out->end(), reader.data + reader.byte_pos, reader.data + reader.byte_pos + len);
+            reader.byte_pos += len;
+        } else if (block_type == 1u) {
+            if (!inflate_deflate_huffman_block(&reader, literal_table, 9, distance_table, 5, out)) {
+                return false;
+            }
+        } else if (block_type == 2u) {
+            std::vector<DeflateHuffmanEntry> dynamic_literal_table;
+            std::vector<DeflateHuffmanEntry> dynamic_distance_table;
+            if (!read_dynamic_deflate_tables(&reader, &dynamic_literal_table, &dynamic_distance_table) ||
+                !inflate_deflate_huffman_block(&reader, dynamic_literal_table, 15, dynamic_distance_table, 15, out)) {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    return adler32_bytes(out->empty() ? nullptr : out->data(), out->size()) == expected_adler;
+}
+
+std::string latin1_to_utf8(const std::uint8_t* data, std::size_t size)
+{
+    std::string out;
+    out.reserve(size * 2u);
+    for (std::size_t i = 0; i < size; ++i) {
+        const std::uint8_t ch = data[i];
+        if (ch < 0x80u) {
+            out.push_back(static_cast<char>(ch));
+        } else {
+            out.push_back(static_cast<char>(0xC0u | (ch >> 6)));
+            out.push_back(static_cast<char>(0x80u | (ch & 0x3Fu)));
+        }
+    }
+    return out;
+}
+
+bool read_png_text_metadata(const char* path, std::vector<std::pair<std::string, std::string>>* out_text)
+{
+    if (!path || !out_text) {
+        return false;
+    }
+    out_text->clear();
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.size() < sizeof(signature) || std::memcmp(data.data(), signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= data.size()) {
+        const std::uint32_t length = read_be32(data.data() + pos);
+        if (length > data.size() - pos - 12u) {
+            out_text->clear();
+            return false;
+        }
+        const std::uint8_t* type = data.data() + pos + 4u;
+        const std::uint8_t* payload = data.data() + pos + 8u;
+        if (std::memcmp(type, "tEXt", 4u) == 0) {
+            const std::uint8_t* end = payload + length;
+            const std::uint8_t* separator = static_cast<const std::uint8_t*>(
+                std::memchr(payload, 0, length));
+            if (separator && separator != payload) {
+                out_text->push_back({
+                    latin1_to_utf8(payload, static_cast<std::size_t>(separator - payload)),
+                    latin1_to_utf8(separator + 1, static_cast<std::size_t>(end - (separator + 1))),
+                });
+            }
+        } else if (std::memcmp(type, "zTXt", 4u) == 0) {
+            const std::uint8_t* end = payload + length;
+            const std::uint8_t* separator = static_cast<const std::uint8_t*>(
+                std::memchr(payload, 0, length));
+            if (separator && separator != payload && separator + 2u <= end && separator[1] == 0u) {
+                std::vector<std::uint8_t> value_bytes;
+                if (inflate_zlib_deflate(
+                        separator + 2u,
+                        static_cast<std::size_t>(end - (separator + 2u)),
+                        &value_bytes)) {
+                    out_text->push_back({
+                        latin1_to_utf8(payload, static_cast<std::size_t>(separator - payload)),
+                        latin1_to_utf8(value_bytes.data(), value_bytes.size()),
+                    });
+                }
+            }
+        } else if (std::memcmp(type, "iTXt", 4u) == 0) {
+            const std::uint8_t* end = payload + length;
+            const std::uint8_t* key_end = static_cast<const std::uint8_t*>(
+                std::memchr(payload, 0, length));
+            if (key_end && key_end != payload && key_end + 5u <= end) {
+                const std::uint8_t compression_flag = key_end[1];
+                const std::uint8_t compression_method = key_end[2];
+                if ((compression_flag == 0u || compression_flag == 1u) && compression_method == 0u) {
+                    const std::uint8_t* language = key_end + 3u;
+                    const std::uint8_t* language_end = static_cast<const std::uint8_t*>(
+                        std::memchr(language, 0, static_cast<std::size_t>(end - language)));
+                    if (language_end) {
+                        const std::uint8_t* translated = language_end + 1u;
+                        const std::uint8_t* translated_end = static_cast<const std::uint8_t*>(
+                            std::memchr(translated, 0, static_cast<std::size_t>(end - translated)));
+                        if (translated_end) {
+                            const std::uint8_t* value = translated_end + 1u;
+                            std::string value_text;
+                            if (compression_flag == 0u) {
+                                value_text.assign(
+                                    reinterpret_cast<const char*>(value),
+                                    static_cast<std::size_t>(end - value));
+                            } else if (compression_flag == 1u) {
+                                std::vector<std::uint8_t> value_bytes;
+                                if (!inflate_zlib_deflate(
+                                        value,
+                                        static_cast<std::size_t>(end - value),
+                                        &value_bytes)) {
+                                    continue;
+                                }
+                                value_text.assign(
+                                    reinterpret_cast<const char*>(value_bytes.data()),
+                                    value_bytes.size());
+                            } else {
+                                continue;
+                            }
+                            out_text->push_back({
+                                latin1_to_utf8(payload, static_cast<std::size_t>(key_end - payload)),
+                                value_text,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        if (std::memcmp(type, "IEND", 4u) == 0) {
+            return !out_text->empty();
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    return !out_text->empty();
+}
+
+bool read_png_xmp_metadata(const char* path, std::vector<std::uint8_t>* out_xmp)
+{
+    if (!path || !out_xmp) {
+        return false;
+    }
+    out_xmp->clear();
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.size() < sizeof(signature) || std::memcmp(data.data(), signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    static constexpr char xmp_key[] = "XML:com.adobe.xmp";
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= data.size()) {
+        const std::uint32_t length = read_be32(data.data() + pos);
+        if (length > data.size() - pos - 12u) {
+            out_xmp->clear();
+            return false;
+        }
+        const std::uint8_t* type = data.data() + pos + 4u;
+        const std::uint8_t* payload = data.data() + pos + 8u;
+        if (std::memcmp(type, "iTXt", 4u) == 0) {
+            const std::uint8_t* end = payload + length;
+            const std::uint8_t* key_end = static_cast<const std::uint8_t*>(
+                std::memchr(payload, 0, length));
+            if (key_end && key_end != payload &&
+                static_cast<std::size_t>(key_end - payload) == sizeof(xmp_key) - 1u &&
+                std::memcmp(payload, xmp_key, sizeof(xmp_key) - 1u) == 0 &&
+                key_end + 5u <= end) {
+                const std::uint8_t compression_flag = key_end[1];
+                const std::uint8_t compression_method = key_end[2];
+                if ((compression_flag == 0u || compression_flag == 1u) && compression_method == 0u) {
+                    const std::uint8_t* language = key_end + 3u;
+                    const std::uint8_t* language_end = static_cast<const std::uint8_t*>(
+                        std::memchr(language, 0, static_cast<std::size_t>(end - language)));
+                    if (language_end) {
+                        const std::uint8_t* translated = language_end + 1u;
+                        const std::uint8_t* translated_end = static_cast<const std::uint8_t*>(
+                            std::memchr(translated, 0, static_cast<std::size_t>(end - translated)));
+                        if (translated_end) {
+                            const std::uint8_t* value = translated_end + 1u;
+                            if (compression_flag == 0u) {
+                                out_xmp->assign(value, end);
+                                return !out_xmp->empty();
+                            }
+                            std::vector<std::uint8_t> value_bytes;
+                            if (inflate_zlib_deflate(
+                                    value,
+                                    static_cast<std::size_t>(end - value),
+                                    &value_bytes) &&
+                                !value_bytes.empty()) {
+                                *out_xmp = std::move(value_bytes);
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (std::memcmp(type, "IEND", 4u) == 0) {
+            break;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    return false;
+}
+
+bool read_png_icc_profile(const char* path, std::vector<std::uint8_t>* out_profile)
+{
+    if (!path || !out_profile) {
+        return false;
+    }
+    out_profile->clear();
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.size() < sizeof(signature) || std::memcmp(data.data(), signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= data.size()) {
+        const std::uint32_t length = read_be32(data.data() + pos);
+        if (length > data.size() - pos - 12u) {
+            out_profile->clear();
+            return false;
+        }
+        const std::uint8_t* type = data.data() + pos + 4u;
+        const std::uint8_t* payload = data.data() + pos + 8u;
+        if (std::memcmp(type, "iCCP", 4u) == 0) {
+            const std::uint8_t* end = payload + length;
+            const std::uint8_t* separator = static_cast<const std::uint8_t*>(
+                std::memchr(payload, 0, length));
+            if (separator && separator != payload && separator + 2u <= end && separator[1] == 0u) {
+                std::vector<std::uint8_t> profile;
+                if (inflate_zlib_deflate(
+                        separator + 2u,
+                        static_cast<std::size_t>(end - (separator + 2u)),
+                        &profile) &&
+                    !profile.empty()) {
+                    *out_profile = std::move(profile);
+                    return true;
+                }
+            }
+        }
+        if (std::memcmp(type, "IEND", 4u) == 0) {
+            return false;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    return false;
+}
+
+bool read_png_exif_metadata(const char* path, std::vector<std::uint8_t>* out_exif)
+{
+    if (!path || !out_exif) {
+        return false;
+    }
+    out_exif->clear();
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.size() < sizeof(signature) || std::memcmp(data.data(), signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= data.size()) {
+        const std::uint32_t length = read_be32(data.data() + pos);
+        if (length > data.size() - pos - 12u) {
+            out_exif->clear();
+            return false;
+        }
+        const std::uint8_t* type = data.data() + pos + 4u;
+        const std::uint8_t* payload = data.data() + pos + 8u;
+        if (std::memcmp(type, "eXIf", 4u) == 0) {
+            if (length == 0u) {
+                return false;
+            }
+            static constexpr std::uint8_t exif_header[6] = {'E', 'x', 'i', 'f', 0, 0};
+            try {
+                out_exif->assign(exif_header, exif_header + sizeof(exif_header));
+                out_exif->insert(out_exif->end(), payload, payload + length);
+            } catch (const std::bad_alloc&) {
+                out_exif->clear();
+                throw;
+            }
+            return true;
+        }
+        if (std::memcmp(type, "IEND", 4u) == 0) {
+            return false;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    return false;
+}
+
+bool read_png_palette_transparency(
+    const char* path,
+    std::vector<std::uint8_t>* out_palette_rgb,
+    std::vector<std::uint8_t>* out_palette_alpha,
+    std::vector<std::uint8_t>* out_transparency_table,
+    int* out_transparency)
+{
+    if (!path || !out_palette_rgb || !out_palette_alpha || !out_transparency_table || !out_transparency) {
+        return false;
+    }
+    out_palette_rgb->clear();
+    out_palette_alpha->clear();
+    out_transparency_table->clear();
+    *out_transparency = -1;
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.size() < sizeof(signature) || std::memcmp(data.data(), signature, sizeof(signature)) != 0) {
+        return false;
+    }
+
+    std::vector<std::uint8_t> palette_rgb;
+    std::vector<std::uint8_t> transparency;
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= data.size()) {
+        const std::uint32_t length = read_be32(data.data() + pos);
+        if (length > data.size() - pos - 12u) {
+            return false;
+        }
+        const std::uint8_t* type = data.data() + pos + 4u;
+        const std::uint8_t* payload = data.data() + pos + 8u;
+        if (std::memcmp(type, "PLTE", 4u) == 0) {
+            if (length == 0u || length % 3u != 0u || length > 768u) {
+                return false;
+            }
+            palette_rgb.assign(payload, payload + length);
+        } else if (std::memcmp(type, "tRNS", 4u) == 0) {
+            if (length == 0u || length > 256u) {
+                return false;
+            }
+            transparency.assign(payload, payload + length);
+        } else if (std::memcmp(type, "IEND", 4u) == 0) {
+            break;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    if (palette_rgb.empty() || transparency.empty()) {
+        return false;
+    }
+
+    const std::size_t entries = palette_rgb.size() / 3u;
+    out_palette_rgb->assign(palette_rgb.begin(), palette_rgb.end());
+    out_palette_alpha->assign(entries, std::uint8_t{255});
+    const std::size_t alpha_count = std::min(entries, transparency.size());
+    for (std::size_t index = 0; index < alpha_count; ++index) {
+        (*out_palette_alpha)[index] = transparency[index];
+    }
+    int zero_index = -1;
+    int zero_count = 0;
+    bool has_partial_alpha = false;
+    for (std::size_t index = 0; index < alpha_count; ++index) {
+        if (transparency[index] == 0u) {
+            zero_index = static_cast<int>(index);
+            ++zero_count;
+        } else if (transparency[index] != 255u) {
+            has_partial_alpha = true;
+        }
+    }
+    if (zero_count == 1 && !has_partial_alpha) {
+        *out_transparency = zero_index;
+    } else {
+        out_transparency_table->assign(transparency.begin(), transparency.begin() + static_cast<std::ptrdiff_t>(alpha_count));
+    }
+    return true;
+}
+
+bool read_png_rgb_transparency(const char* path, std::uint8_t out_rgb[3])
+{
+    if (!path || !out_rgb) {
+        return false;
+    }
+    out_rgb[0] = 0;
+    out_rgb[1] = 0;
+    out_rgb[2] = 0;
+    PngHeaderInfo header_info{};
+    if (!read_png_header_info(path, &header_info) ||
+        header_info.bit_depth != 8 ||
+        header_info.color_type != 2) {
+        return false;
+    }
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.size() < sizeof(signature) || std::memcmp(data.data(), signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= data.size()) {
+        const std::uint32_t length = read_be32(data.data() + pos);
+        if (length > data.size() - pos - 12u) {
+            return false;
+        }
+        const std::uint8_t* type = data.data() + pos + 4u;
+        const std::uint8_t* payload = data.data() + pos + 8u;
+        if (std::memcmp(type, "tRNS", 4u) == 0) {
+            if (length != 6u) {
+                return false;
+            }
+            for (int channel = 0; channel < 3; ++channel) {
+                const std::uint16_t value = static_cast<std::uint16_t>(
+                    (static_cast<std::uint16_t>(payload[channel * 2]) << 8) |
+                    static_cast<std::uint16_t>(payload[channel * 2 + 1]));
+                if (value > 255u) {
+                    return false;
+                }
+                out_rgb[channel] = static_cast<std::uint8_t>(value);
+            }
+            return true;
+        }
+        if (std::memcmp(type, "IDAT", 4u) == 0 || std::memcmp(type, "IEND", 4u) == 0) {
+            return false;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    return false;
+}
+
+bool read_png_grayscale_transparency(const char* path, std::uint8_t* out_value)
+{
+    if (!path || !out_value) {
+        return false;
+    }
+    *out_value = 0;
+    PngHeaderInfo header_info{};
+    if (!read_png_header_info(path, &header_info) ||
+        header_info.bit_depth != 8 ||
+        header_info.color_type != 0) {
+        return false;
+    }
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.size() < sizeof(signature) || std::memcmp(data.data(), signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= data.size()) {
+        const std::uint32_t length = read_be32(data.data() + pos);
+        if (length > data.size() - pos - 12u) {
+            return false;
+        }
+        const std::uint8_t* type = data.data() + pos + 4u;
+        const std::uint8_t* payload = data.data() + pos + 8u;
+        if (std::memcmp(type, "tRNS", 4u) == 0) {
+            if (length != 2u || payload[0] != 0u) {
+                return false;
+            }
+            *out_value = payload[1];
+            return true;
+        }
+        if (std::memcmp(type, "IDAT", 4u) == 0 || std::memcmp(type, "IEND", 4u) == 0) {
+            return false;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    return false;
+}
+
+bool png_chunk_is_compressed_text_for_wic(
+    const std::uint8_t* type,
+    const std::uint8_t* payload,
+    std::uint32_t length)
+{
+    if (!type || !payload || length == 0u) {
+        return false;
+    }
+    const std::uint8_t* end = payload + length;
+    if (std::memcmp(type, "zTXt", 4u) == 0) {
+        const std::uint8_t* separator = static_cast<const std::uint8_t*>(
+            std::memchr(payload, 0, length));
+        return separator && separator != payload && separator + 2u <= end && separator[1] == 0u;
+    }
+    if (std::memcmp(type, "iTXt", 4u) == 0) {
+        const std::uint8_t* key_end = static_cast<const std::uint8_t*>(
+            std::memchr(payload, 0, length));
+        return key_end && key_end != payload && key_end + 3u <= end &&
+            key_end[1] == 1u && key_end[2] == 0u;
+    }
+    return false;
+}
+
+bool copy_png_without_wic_sensitive_chunks(
+    const char* path,
+    bool remove_trns,
+    bool remove_compressed_text,
+    std::vector<std::uint8_t>* out_png)
+{
+    if (!path || !out_png) {
+        return false;
+    }
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (data.size() < sizeof(signature) || std::memcmp(data.data(), signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::vector<std::uint8_t> copy;
+    copy.insert(copy.end(), signature, signature + sizeof(signature));
+    bool removed_chunk = false;
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= data.size()) {
+        const std::uint32_t length = read_be32(data.data() + pos);
+        if (length > data.size() - pos - 12u) {
+            return false;
+        }
+        const std::uint8_t* type = data.data() + pos + 4u;
+        const std::uint8_t* payload = data.data() + pos + 8u;
+        const std::size_t chunk_size = 12u + static_cast<std::size_t>(length);
+        if ((remove_trns && std::memcmp(type, "tRNS", 4u) == 0) ||
+            (remove_compressed_text && png_chunk_is_compressed_text_for_wic(type, payload, length))) {
+            removed_chunk = true;
+        } else {
+            copy.insert(
+                copy.end(),
+                data.begin() + static_cast<std::ptrdiff_t>(pos),
+                data.begin() + static_cast<std::ptrdiff_t>(pos + chunk_size));
+        }
+        pos += chunk_size;
+        if (std::memcmp(type, "IEND", 4u) == 0) {
+            break;
+        }
+    }
+    if (!removed_chunk) {
+        return false;
+    }
+    *out_png = std::move(copy);
+    return true;
+}
+
+bool copy_png_without_trns(const char* path, std::vector<std::uint8_t>* out_png)
+{
+    return copy_png_without_wic_sensitive_chunks(path, true, false, out_png);
+}
+
+int remap_png_rgba_to_palette_indices(
+    const std::vector<std::uint8_t>& rgba,
+    int width,
+    int height,
+    std::size_t rgba_stride,
+    const std::vector<std::uint8_t>& palette_rgb,
+    const std::vector<std::uint8_t>& palette_alpha,
+    PillowCImage* image)
+{
+    if (!image || width <= 0 || height <= 0 || palette_rgb.empty() || palette_rgb.size() % 3u != 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t entries = palette_rgb.size() / 3u;
+    if (entries > 256u || rgba_stride < static_cast<std::size_t>(width) * 4u ||
+        rgba.size() < rgba_stride * static_cast<std::size_t>(height)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    for (int y = 0; y < height; ++y) {
+        const std::uint8_t* src_row = rgba.data() + static_cast<std::size_t>(y) * rgba_stride;
+        std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+        for (int x = 0; x < width; ++x) {
+            const std::uint8_t* src = src_row + static_cast<std::size_t>(x) * 4u;
+            int found = -1;
+            for (std::size_t index = 0; index < entries; ++index) {
+                const std::size_t rgb = index * 3u;
+                const std::uint8_t alpha =
+                    index < palette_alpha.size() ? palette_alpha[index] : std::uint8_t{255};
+                if (palette_rgb[rgb] == src[0] && palette_rgb[rgb + 1u] == src[1] &&
+                    palette_rgb[rgb + 2u] == src[2] && alpha == src[3]) {
+                    found = static_cast<int>(index);
+                    break;
+                }
+            }
+            if (found < 0 && src[3] == 0u) {
+                for (std::size_t index = 0; index < entries; ++index) {
+                    const std::uint8_t alpha =
+                        index < palette_alpha.size() ? palette_alpha[index] : std::uint8_t{255};
+                    if (alpha == 0u) {
+                        found = static_cast<int>(index);
+                        break;
+                    }
+                }
+            }
+            if (found < 0) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            dst_row[x] = static_cast<std::uint8_t>(found);
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 bool skip_gif_sub_blocks(const std::vector<std::uint8_t>& data, std::size_t* pos)
 {
     if (!pos) {
@@ -1256,6 +2470,11 @@ bool skip_gif_sub_blocks(const std::vector<std::uint8_t>& data, std::size_t* pos
     }
     return false;
 }
+
+bool read_gif_sub_blocks(
+    const std::vector<std::uint8_t>& data,
+    std::size_t* pos,
+    std::vector<std::uint8_t>* out);
 
 bool gif_app_extension_is_looping(const std::uint8_t* data, std::size_t size)
 {
@@ -1298,6 +2517,7 @@ bool read_gif_metadata(const char* path, int frame_index, GifMetadata* out)
     int pending_transparency = -1;
     int loop_count = -1;
     int current_frame = 0;
+    std::vector<std::uint8_t> current_comment;
 
     while (pos < data.size()) {
         const std::uint8_t introducer = data[pos++];
@@ -1326,6 +2546,12 @@ bool read_gif_metadata(const char* path, int frame_index, GifMetadata* out)
                     return false;
                 }
                 ++pos;
+            } else if (label == 0xfeu) {
+                std::vector<std::uint8_t> comment;
+                if (!read_gif_sub_blocks(data, &pos, &comment)) {
+                    return false;
+                }
+                current_comment = std::move(comment);
             } else if (label == 0xffu) {
                 if (pos >= data.size()) {
                     return false;
@@ -1390,6 +2616,7 @@ bool read_gif_metadata(const char* path, int frame_index, GifMetadata* out)
             out->loop = loop_count;
             out->disposal = pending_disposal;
             out->transparency = pending_transparency;
+            out->comment = current_comment;
             return true;
         }
         ++current_frame;
@@ -1674,6 +2901,84 @@ void gif_draw_indexed_frame_rgb(
     }
 }
 
+void gif_fill_rgba_rect(
+    std::vector<std::uint8_t>* canvas,
+    int logical_width,
+    int logical_height,
+    int left,
+    int top,
+    int width,
+    int height,
+    const std::uint8_t* color,
+    std::uint8_t alpha)
+{
+    if (!canvas || !color || logical_width <= 0 || logical_height <= 0 || width <= 0 || height <= 0) {
+        return;
+    }
+    const int x0 = std::max(0, left);
+    const int y0 = std::max(0, top);
+    const int x1 = std::min(logical_width, left + width);
+    const int y1 = std::min(logical_height, top + height);
+    for (int y = y0; y < y1; ++y) {
+        for (int x = x0; x < x1; ++x) {
+            const std::size_t offset = (static_cast<std::size_t>(y) * static_cast<std::size_t>(logical_width) +
+                                        static_cast<std::size_t>(x)) * 4u;
+            (*canvas)[offset] = color[0];
+            (*canvas)[offset + 1u] = color[1];
+            (*canvas)[offset + 2u] = color[2];
+            (*canvas)[offset + 3u] = alpha;
+        }
+    }
+}
+
+void gif_draw_indexed_frame_rgba(
+    std::vector<std::uint8_t>* canvas,
+    int logical_width,
+    int logical_height,
+    int left,
+    int top,
+    int width,
+    int height,
+    const std::vector<std::uint8_t>& indices,
+    const std::vector<std::uint8_t>& palette,
+    int transparency)
+{
+    if (!canvas || logical_width <= 0 || logical_height <= 0 || width <= 0 || height <= 0) {
+        return;
+    }
+    for (int y = 0; y < height; ++y) {
+        const int dst_y = top + y;
+        if (dst_y < 0 || dst_y >= logical_height) {
+            continue;
+        }
+        for (int x = 0; x < width; ++x) {
+            const int dst_x = left + x;
+            if (dst_x < 0 || dst_x >= logical_width) {
+                continue;
+            }
+            const std::size_t src_offset = static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+                                           static_cast<std::size_t>(x);
+            if (src_offset >= indices.size()) {
+                return;
+            }
+            const int index = indices[src_offset];
+            if (index == transparency) {
+                continue;
+            }
+            std::uint8_t r = 0;
+            std::uint8_t g = 0;
+            std::uint8_t b = 0;
+            gif_palette_color(palette, index, &r, &g, &b);
+            const std::size_t dst_offset = (static_cast<std::size_t>(dst_y) * static_cast<std::size_t>(logical_width) +
+                                            static_cast<std::size_t>(dst_x)) * 4u;
+            (*canvas)[dst_offset] = r;
+            (*canvas)[dst_offset + 1u] = g;
+            (*canvas)[dst_offset + 2u] = b;
+            (*canvas)[dst_offset + 3u] = 255u;
+        }
+    }
+}
+
 int open_gif_composited_frame_image(const char* path, int frame_index, PillowCImage** out_image)
 {
     if (!path || !out_image) {
@@ -1696,9 +3001,12 @@ int open_gif_composited_frame_image(const char* path, int frame_index, PillowCIm
     if (logical_width <= 0 || logical_height <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    std::size_t stride = 0;
-    std::size_t size = 0;
-    if (!checked_image_size(logical_width, logical_height, 3, &stride, &size)) {
+    std::size_t rgb_stride = 0;
+    std::size_t rgb_size = 0;
+    std::size_t rgba_stride = 0;
+    std::size_t rgba_size = 0;
+    if (!checked_image_size(logical_width, logical_height, 3, &rgb_stride, &rgb_size) ||
+        !checked_image_size(logical_width, logical_height, 4, &rgba_stride, &rgba_size)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
@@ -1716,8 +3024,9 @@ int open_gif_composited_frame_image(const char* path, int frame_index, PillowCIm
     gif_palette_color(global_palette, background_index, &background[0], &background[1], &background[2]);
 
     try {
-        std::vector<std::uint8_t> canvas(size, 0);
-        for (std::size_t pixel = 0; pixel < size; pixel += 3u) {
+        std::vector<std::uint8_t> canvas(rgb_size, 0);
+        bool canvas_is_rgba = false;
+        for (std::size_t pixel = 0; pixel < rgb_size; pixel += 3u) {
             canvas[pixel] = background[0];
             canvas[pixel + 1u] = background[1];
             canvas[pixel + 2u] = background[2];
@@ -1804,38 +3113,73 @@ int open_gif_composited_frame_image(const char* path, int frame_index, PillowCIm
                 decoded = std::move(deinterlaced);
             }
 
+            if (current_frame == 0 && pending_transparency >= 0 && !canvas_is_rgba) {
+                canvas.assign(rgba_size, std::uint8_t{0});
+                canvas_is_rgba = true;
+            }
+
             std::vector<std::uint8_t> restore_canvas;
+            bool restore_canvas_is_rgba = canvas_is_rgba;
             if (pending_disposal == 3) {
                 restore_canvas = canvas;
             }
-            gif_draw_indexed_frame_rgb(
-                &canvas,
-                logical_width,
-                logical_height,
-                left,
-                top,
-                frame_width,
-                frame_height,
-                decoded,
-                *palette,
-                pending_transparency);
+            if (canvas_is_rgba) {
+                gif_draw_indexed_frame_rgba(
+                    &canvas,
+                    logical_width,
+                    logical_height,
+                    left,
+                    top,
+                    frame_width,
+                    frame_height,
+                    decoded,
+                    *palette,
+                    pending_transparency);
+            } else {
+                gif_draw_indexed_frame_rgb(
+                    &canvas,
+                    logical_width,
+                    logical_height,
+                    left,
+                    top,
+                    frame_width,
+                    frame_height,
+                    decoded,
+                    *palette,
+                    pending_transparency);
+            }
 
             if (current_frame == frame_index) {
                 auto* image = new PillowCImage{
                     logical_width,
                     logical_height,
-                    PILLOW_C_MODE_RGB,
-                    3,
-                    stride,
+                    canvas_is_rgba ? PILLOW_C_MODE_RGBA : PILLOW_C_MODE_RGB,
+                    canvas_is_rgba ? 4 : 3,
+                    canvas_is_rgba ? rgba_stride : rgb_stride,
                     std::move(canvas)};
                 *out_image = image;
                 return PILLOW_C_OK;
             }
 
             if (pending_disposal == 2) {
-                gif_fill_rgb_rect(&canvas, logical_width, logical_height, left, top, frame_width, frame_height, background);
+                if (canvas_is_rgba) {
+                    const std::uint8_t transparent_black[3] = {0, 0, 0};
+                    gif_fill_rgba_rect(
+                        &canvas,
+                        logical_width,
+                        logical_height,
+                        left,
+                        top,
+                        frame_width,
+                        frame_height,
+                        transparent_black,
+                        0u);
+                } else {
+                    gif_fill_rgb_rect(&canvas, logical_width, logical_height, left, top, frame_width, frame_height, background);
+                }
             } else if (pending_disposal == 3 && !restore_canvas.empty()) {
                 canvas = std::move(restore_canvas);
+                canvas_is_rgba = restore_canvas_is_rgba;
             }
 
             ++current_frame;
@@ -1867,16 +3211,11 @@ std::uint32_t read_tiff32(const std::uint8_t* data, bool little_endian)
     return little_endian ? read_le32(data) : read_be32(data);
 }
 
-int parse_exif_orientation(const std::uint8_t* payload, std::size_t payload_size)
+int parse_tiff_orientation(const std::uint8_t* tiff, std::size_t tiff_size)
 {
-    static constexpr std::uint8_t exif_header[6] = {'E', 'x', 'i', 'f', 0, 0};
-    if (!payload || payload_size < sizeof(exif_header) + 8u ||
-        std::memcmp(payload, exif_header, sizeof(exif_header)) != 0) {
+    if (!tiff || tiff_size < 8u) {
         return 0;
     }
-
-    const std::uint8_t* tiff = payload + sizeof(exif_header);
-    const std::size_t tiff_size = payload_size - sizeof(exif_header);
     const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
     const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
     if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
@@ -1908,6 +3247,2143 @@ int parse_exif_orientation(const std::uint8_t* payload, std::size_t payload_size
     return 0;
 }
 
+struct TiffResolutionMetadata {
+    bool has_dpi = false;
+    double dpi_x = 0.0;
+    double dpi_y = 0.0;
+};
+
+bool parse_tiff_rational(
+    const std::uint8_t* tiff,
+    std::size_t tiff_size,
+    bool little_endian,
+    std::uint32_t offset,
+    double* out_value)
+{
+    if (!tiff || !out_value || offset > tiff_size || tiff_size - offset < 8u) {
+        return false;
+    }
+    const std::uint32_t numerator = read_tiff32(tiff + offset, little_endian);
+    const std::uint32_t denominator = read_tiff32(tiff + offset + 4u, little_endian);
+    if (denominator == 0u) {
+        return false;
+    }
+    *out_value = static_cast<double>(numerator) / static_cast<double>(denominator);
+    return true;
+}
+
+bool parse_tiff_resolution(const std::uint8_t* tiff, std::size_t tiff_size, TiffResolutionMetadata* out_metadata)
+{
+    if (!out_metadata) {
+        return false;
+    }
+    *out_metadata = TiffResolutionMetadata{};
+    if (!tiff || tiff_size < 8u) {
+        return false;
+    }
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return false;
+    }
+
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return false;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return false;
+    }
+
+    double x_resolution = 0.0;
+    double y_resolution = 0.0;
+    int resolution_unit = 0;
+    bool has_x_resolution = false;
+    bool has_y_resolution = false;
+    bool has_resolution_unit = false;
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if ((tag == 0x011au || tag == 0x011bu) && type == 5u && count == 1u) {
+            double value = 0.0;
+            if (parse_tiff_rational(tiff, tiff_size, little_endian, read_tiff32(entry + 8u, little_endian), &value)) {
+                if (tag == 0x011au) {
+                    x_resolution = value;
+                    has_x_resolution = true;
+                } else {
+                    y_resolution = value;
+                    has_y_resolution = true;
+                }
+            }
+        } else if (tag == 0x0128u && type == 3u && count == 1u) {
+            resolution_unit = static_cast<int>(read_tiff16(entry + 8u, little_endian));
+            has_resolution_unit = true;
+        }
+    }
+
+    if (!has_x_resolution || !has_y_resolution || !has_resolution_unit ||
+        resolution_unit != 2 || x_resolution <= 0.0 || y_resolution <= 0.0) {
+        return false;
+    }
+    out_metadata->has_dpi = true;
+    out_metadata->dpi_x = x_resolution;
+    out_metadata->dpi_y = y_resolution;
+    return true;
+}
+
+bool parse_tiff_palette_rgb(const std::uint8_t* tiff, std::size_t tiff_size, std::vector<std::uint8_t>* out_palette)
+{
+    if (!out_palette) {
+        return false;
+    }
+    out_palette->clear();
+    if (!tiff || tiff_size < 8u) {
+        return false;
+    }
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return false;
+    }
+
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return false;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return false;
+    }
+
+    std::uint32_t color_map_offset = 0u;
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if (tag == 0x0140u && type == 3u && count == 768u) {
+            color_map_offset = read_tiff32(entry + 8u, little_endian);
+            break;
+        }
+    }
+    if (color_map_offset > tiff_size || tiff_size - color_map_offset < 256u * 3u * 2u) {
+        return false;
+    }
+
+    out_palette->assign(256u * 3u, std::uint8_t{0});
+    for (std::size_t index = 0; index < 256u; ++index) {
+        for (std::size_t channel = 0; channel < 3u; ++channel) {
+            const std::size_t plane_index = channel * 256u + index;
+            const std::uint16_t value = read_tiff16(tiff + color_map_offset + plane_index * 2u, little_endian);
+            (*out_palette)[index * 3u + channel] = static_cast<std::uint8_t>(value >> 8);
+        }
+    }
+    return true;
+}
+
+bool parse_tiff_is_la_mode(const std::uint8_t* tiff, std::size_t tiff_size)
+{
+    if (!tiff || tiff_size < 8u) {
+        return false;
+    }
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return false;
+    }
+
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return false;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return false;
+    }
+
+    bool has_bits = false;
+    bool has_photometric = false;
+    bool has_samples = false;
+    bool has_extra_samples = false;
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if (type != 3u) {
+            continue;
+        }
+        if (tag == 258u && count == 2u) {
+            const std::uint16_t first = read_tiff16(entry + 8u, little_endian);
+            const std::uint16_t second = read_tiff16(entry + 10u, little_endian);
+            has_bits = first == 8u && second == 8u;
+        } else if (tag == 262u && count == 1u) {
+            has_photometric = read_tiff16(entry + 8u, little_endian) == 1u;
+        } else if (tag == 277u && count == 1u) {
+            has_samples = read_tiff16(entry + 8u, little_endian) == 2u;
+        } else if (tag == 338u && count == 1u) {
+            has_extra_samples = read_tiff16(entry + 8u, little_endian) == 2u;
+        }
+    }
+    return has_bits && has_photometric && has_samples && has_extra_samples;
+}
+
+bool tiff_packbits_decode_strip(
+    const std::uint8_t* data,
+    std::size_t size,
+    std::size_t expected_size,
+    std::vector<std::uint8_t>* out)
+{
+    if (!data || !out || expected_size == 0u) {
+        return false;
+    }
+    out->clear();
+    out->reserve(expected_size);
+    std::size_t pos = 0;
+    while (pos < size && out->size() < expected_size) {
+        const std::int8_t control = static_cast<std::int8_t>(data[pos++]);
+        if (control >= 0) {
+            const std::size_t count = static_cast<std::size_t>(control) + 1u;
+            if (count > size - pos || count > expected_size - out->size()) {
+                return false;
+            }
+            out->insert(out->end(), data + pos, data + pos + count);
+            pos += count;
+        } else if (control >= -127) {
+            const std::size_t count = static_cast<std::size_t>(1 - static_cast<int>(control));
+            if (pos >= size || count > expected_size - out->size()) {
+                return false;
+            }
+            out->insert(out->end(), count, data[pos++]);
+        }
+    }
+    return out->size() == expected_size;
+}
+
+struct TiffMsbBitReader {
+    const std::uint8_t* data = nullptr;
+    std::size_t size = 0;
+    std::size_t bit_pos = 0;
+
+    bool read(int bit_count, int* out_code)
+    {
+        if (!data || !out_code || bit_count <= 0 || bit_count > 12) {
+            return false;
+        }
+        if (static_cast<std::size_t>(bit_count) > size * 8u - bit_pos) {
+            return false;
+        }
+        int code = 0;
+        for (int bit = 0; bit < bit_count; ++bit) {
+            const std::uint8_t value = data[bit_pos / 8u];
+            code = (code << 1) | ((value >> (7u - (bit_pos % 8u))) & 1u);
+            ++bit_pos;
+        }
+        *out_code = code;
+        return true;
+    }
+};
+
+bool tiff_lzw_decode_strip(
+    const std::uint8_t* data,
+    std::size_t size,
+    std::size_t expected_size,
+    std::vector<std::uint8_t>* out)
+{
+    if (!data || !out || size == 0u || expected_size == 0u) {
+        return false;
+    }
+    out->clear();
+    out->reserve(expected_size);
+
+    constexpr int clear_code = 256;
+    constexpr int end_code = 257;
+    int next_code = 258;
+    int code_size = 9;
+    std::vector<std::vector<std::uint8_t>> dictionary(4096);
+
+    auto reset_dictionary = [&]() {
+        for (auto& entry : dictionary) {
+            entry.clear();
+        }
+        for (int code = 0; code < 256; ++code) {
+            dictionary[static_cast<std::size_t>(code)] = {static_cast<std::uint8_t>(code)};
+        }
+        next_code = 258;
+        code_size = 9;
+    };
+
+    reset_dictionary();
+    TiffMsbBitReader reader{data, size, 0};
+    std::vector<std::uint8_t> previous;
+    bool have_previous = false;
+
+    while (out->size() < expected_size) {
+        int code = 0;
+        if (!reader.read(code_size, &code)) {
+            return false;
+        }
+        if (code == clear_code) {
+            reset_dictionary();
+            previous.clear();
+            have_previous = false;
+            continue;
+        }
+        if (code == end_code) {
+            break;
+        }
+
+        std::vector<std::uint8_t> entry;
+        if (code >= 0 && code < next_code && !dictionary[static_cast<std::size_t>(code)].empty()) {
+            entry = dictionary[static_cast<std::size_t>(code)];
+        } else if (code == next_code && have_previous && !previous.empty()) {
+            entry = previous;
+            entry.push_back(previous.front());
+        } else {
+            return false;
+        }
+        if (entry.size() > expected_size - out->size()) {
+            return false;
+        }
+        out->insert(out->end(), entry.begin(), entry.end());
+
+        if (have_previous && next_code < 4096 && !previous.empty() && !entry.empty()) {
+            std::vector<std::uint8_t> next_entry = previous;
+            next_entry.push_back(entry.front());
+            dictionary[static_cast<std::size_t>(next_code++)] = std::move(next_entry);
+            if (next_code == (1 << code_size) && code_size < 12) {
+                ++code_size;
+            }
+        }
+        previous = std::move(entry);
+        have_previous = true;
+    }
+    return out->size() == expected_size;
+}
+
+int parse_tiff_i16_image(const std::uint8_t* tiff, std::size_t tiff_size, bool* recognized, PillowCImage** out_image)
+{
+    if (!recognized || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *recognized = false;
+    *out_image = nullptr;
+    if (!tiff || tiff_size < 8u) {
+        return PILLOW_C_OK;
+    }
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return PILLOW_C_OK;
+    }
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return PILLOW_C_OK;
+    }
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return PILLOW_C_OK;
+    }
+
+    auto read_scalar_tag = [little_endian](const std::uint8_t* entry, std::uint32_t* out_value) -> bool {
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if (!out_value || count != 1u) {
+            return false;
+        }
+        if (type == 3u) {
+            *out_value = read_tiff16(entry + 8u, little_endian);
+            return true;
+        }
+        if (type == 4u) {
+            *out_value = read_tiff32(entry + 8u, little_endian);
+            return true;
+        }
+        return false;
+    };
+
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t bits_per_sample = 0;
+    std::uint32_t compression = TIFF_COMPRESSION_NONE;
+    std::uint32_t photometric = 0;
+    std::uint32_t strip_offset = 0;
+    std::uint32_t rows_per_strip = 0;
+    std::uint32_t strip_byte_count = 0;
+    std::uint32_t planar_config = 1;
+    std::uint32_t samples_per_pixel = 1;
+    bool has_width = false;
+    bool has_height = false;
+    bool has_bits = false;
+    bool has_compression = false;
+    bool has_photometric = false;
+    bool has_strip_offset = false;
+    bool has_rows_per_strip = false;
+    bool has_strip_byte_count = false;
+    bool has_samples_per_pixel = false;
+    bool has_sample_format = false;
+
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        std::uint32_t value = 0;
+        switch (tag) {
+        case 256u:
+            has_width = read_scalar_tag(entry, &width);
+            break;
+        case 257u:
+            has_height = read_scalar_tag(entry, &height);
+            break;
+        case 258u:
+            has_bits = read_scalar_tag(entry, &bits_per_sample);
+            break;
+        case 259u:
+            has_compression = read_scalar_tag(entry, &compression);
+            break;
+        case 262u:
+            has_photometric = read_scalar_tag(entry, &photometric);
+            break;
+        case 273u:
+            has_strip_offset = read_scalar_tag(entry, &strip_offset);
+            break;
+        case 277u:
+            has_samples_per_pixel = read_scalar_tag(entry, &samples_per_pixel);
+            break;
+        case 278u:
+            has_rows_per_strip = read_scalar_tag(entry, &rows_per_strip);
+            break;
+        case 279u:
+            has_strip_byte_count = read_scalar_tag(entry, &strip_byte_count);
+            break;
+        case 284u:
+            if (read_scalar_tag(entry, &value)) {
+                planar_config = value;
+            }
+            break;
+        case 339u:
+            has_sample_format = true;
+            break;
+        default:
+            break;
+        }
+    }
+
+    const bool matches_i16 =
+        has_width && has_height && has_bits && has_photometric && has_strip_offset && has_strip_byte_count &&
+        width > 0u && height > 0u &&
+        bits_per_sample == 16u &&
+        (!has_compression ||
+         compression == TIFF_COMPRESSION_NONE ||
+         compression == TIFF_COMPRESSION_PACKBITS ||
+         compression == TIFF_COMPRESSION_LZW ||
+         compression == TIFF_COMPRESSION_ADOBE_DEFLATE) &&
+        photometric == 1u &&
+        (!has_samples_per_pixel || samples_per_pixel == 1u) &&
+        (compression == TIFF_COMPRESSION_NONE || (has_rows_per_strip && rows_per_strip == height)) &&
+        planar_config == 1u &&
+        !has_sample_format;
+    if (!matches_i16) {
+        return PILLOW_C_OK;
+    }
+    *recognized = true;
+    if (width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+        height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size(static_cast<int>(width), static_cast<int>(height), 2, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (static_cast<std::size_t>(strip_offset) > tiff_size ||
+        static_cast<std::size_t>(strip_byte_count) > tiff_size - static_cast<std::size_t>(strip_offset)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::uint8_t* strip = tiff + strip_offset;
+    const std::size_t strip_size = static_cast<std::size_t>(strip_byte_count);
+    const std::uint8_t* pixels = strip;
+    std::vector<std::uint8_t> decoded;
+    if (compression == TIFF_COMPRESSION_NONE) {
+        if (strip_size != size) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    } else if (compression == TIFF_COMPRESSION_PACKBITS) {
+        if (!tiff_packbits_decode_strip(strip, strip_size, size, &decoded)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        pixels = decoded.data();
+    } else if (compression == TIFF_COMPRESSION_LZW) {
+        if (!tiff_lzw_decode_strip(strip, strip_size, size, &decoded)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        pixels = decoded.data();
+    } else if (compression == TIFF_COMPRESSION_ADOBE_DEFLATE) {
+        if (!inflate_zlib_deflate(strip, strip_size, &decoded) || decoded.size() != size) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        pixels = decoded.data();
+    }
+    try {
+        auto* image = new PillowCImage{
+            static_cast<int>(width),
+            static_cast<int>(height),
+            little_endian ? PILLOW_C_MODE_I16 : PILLOW_C_MODE_I16B,
+            2,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        if (size > 0u) {
+            std::memcpy(image->pixels.data(), pixels, size);
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int parse_tiff_numeric_image(const std::uint8_t* tiff, std::size_t tiff_size, bool* recognized, PillowCImage** out_image)
+{
+    if (!recognized || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *recognized = false;
+    *out_image = nullptr;
+    if (!tiff || tiff_size < 8u) {
+        return PILLOW_C_OK;
+    }
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return PILLOW_C_OK;
+    }
+
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t bits_per_sample = 0;
+    std::uint32_t compression = 0;
+    std::uint32_t photometric = 0;
+    std::uint32_t strip_offset = 0;
+    std::uint32_t samples_per_pixel = 0;
+    std::uint32_t rows_per_strip = 0;
+    std::uint32_t strip_byte_count = 0;
+    std::uint32_t planar_config = 0;
+    std::uint32_t sample_format = 0;
+    bool has_width = false;
+    bool has_height = false;
+    bool has_bits = false;
+    bool has_compression = false;
+    bool has_photometric = false;
+    bool has_strip_offset = false;
+    bool has_samples = false;
+    bool has_rows_per_strip = false;
+    bool has_strip_byte_count = false;
+    bool has_planar_config = false;
+    bool has_sample_format = false;
+    bool invalid_numeric_entry = false;
+
+    auto read_scalar = [&](const std::uint8_t* entry, std::uint32_t* out_value) -> bool {
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if (!out_value || count != 1u) {
+            return false;
+        }
+        if (type == 3u) {
+            *out_value = read_tiff16(entry + 8u, little_endian);
+            return true;
+        }
+        if (type == 4u) {
+            *out_value = read_tiff32(entry + 8u, little_endian);
+            return true;
+        }
+        return false;
+    };
+
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        switch (tag) {
+        case 256u:
+            has_width = read_scalar(entry, &width);
+            break;
+        case 257u:
+            has_height = read_scalar(entry, &height);
+            break;
+        case 258u:
+            has_bits = read_scalar(entry, &bits_per_sample);
+            break;
+        case 259u:
+            has_compression = read_scalar(entry, &compression);
+            break;
+        case 262u:
+            has_photometric = read_scalar(entry, &photometric);
+            break;
+        case 273u:
+            has_strip_offset = read_scalar(entry, &strip_offset);
+            break;
+        case 277u:
+            has_samples = read_scalar(entry, &samples_per_pixel);
+            break;
+        case 278u:
+            has_rows_per_strip = read_scalar(entry, &rows_per_strip);
+            break;
+        case 279u:
+            has_strip_byte_count = read_scalar(entry, &strip_byte_count);
+            break;
+        case 284u:
+            has_planar_config = read_scalar(entry, &planar_config);
+            break;
+        case 339u:
+            has_sample_format = read_scalar(entry, &sample_format);
+            invalid_numeric_entry = !has_sample_format;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (!has_sample_format || (sample_format != 2u && sample_format != 3u) ||
+        !has_bits || bits_per_sample != 32u) {
+        return PILLOW_C_OK;
+    }
+    *recognized = true;
+    if (invalid_numeric_entry || !little_endian || !has_width || !has_height ||
+        !has_compression ||
+        (compression != TIFF_COMPRESSION_NONE &&
+         compression != TIFF_COMPRESSION_PACKBITS &&
+         compression != TIFF_COMPRESSION_LZW &&
+         compression != TIFF_COMPRESSION_ADOBE_DEFLATE) ||
+        !has_photometric || photometric != 1u ||
+        !has_strip_offset || !has_rows_per_strip || !has_strip_byte_count ||
+        !has_planar_config || planar_config != 1u ||
+        (has_samples && samples_per_pixel != 1u) ||
+        width == 0u || height == 0u ||
+        width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+        height > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+        rows_per_strip != height) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size(static_cast<int>(width), static_cast<int>(height), 4, &stride, &size) ||
+        strip_offset > tiff_size ||
+        strip_byte_count > tiff_size - static_cast<std::size_t>(strip_offset)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::uint8_t* strip = tiff + strip_offset;
+    const std::size_t strip_size = static_cast<std::size_t>(strip_byte_count);
+    const std::uint8_t* pixels = strip;
+    std::vector<std::uint8_t> decoded;
+    if (compression == TIFF_COMPRESSION_NONE) {
+        if (strip_size != size) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    } else if (compression == TIFF_COMPRESSION_PACKBITS) {
+        if (!tiff_packbits_decode_strip(strip, strip_size, size, &decoded)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        pixels = decoded.data();
+    } else if (compression == TIFF_COMPRESSION_LZW) {
+        if (!tiff_lzw_decode_strip(strip, strip_size, size, &decoded)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        pixels = decoded.data();
+    } else if (compression == TIFF_COMPRESSION_ADOBE_DEFLATE) {
+        if (!inflate_zlib_deflate(strip, strip_size, &decoded) || decoded.size() != size) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        pixels = decoded.data();
+    }
+
+    auto* image = new PillowCImage{
+        static_cast<int>(width),
+        static_cast<int>(height),
+        sample_format == 2u ? PILLOW_C_MODE_I : PILLOW_C_MODE_F,
+        4,
+        stride,
+        std::vector<std::uint8_t>(size)};
+    std::memcpy(image->pixels.data(), pixels, size);
+    *out_image = image;
+    return PILLOW_C_OK;
+}
+
+void apply_tiff_orientation_three(PillowCImage* image)
+{
+    if (!image || image->channels <= 0) {
+        return;
+    }
+    const std::size_t channels = static_cast<std::size_t>(image->channels);
+    const std::size_t pixel_count = image->pixels.size() / channels;
+    const std::size_t half = pixel_count / 2u;
+    for (std::size_t left_pixel = 0; left_pixel < half; ++left_pixel) {
+        const std::size_t right_pixel = pixel_count - 1u - left_pixel;
+        const std::size_t left = left_pixel * channels;
+        const std::size_t right = right_pixel * channels;
+        for (std::size_t channel = 0; channel < channels; ++channel) {
+            std::swap(image->pixels[left + channel], image->pixels[right + channel]);
+        }
+    }
+}
+
+int apply_tiff_orientation_six_or_eight(PillowCImage* image, int orientation)
+{
+    if (!image || image->channels <= 0 || image->width <= 0 || image->height <= 0 ||
+        (orientation != 6 && orientation != 8)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const int source_width = image->width;
+    const int source_height = image->height;
+    const int target_width = source_height;
+    const int target_height = source_width;
+    const std::size_t channels = static_cast<std::size_t>(image->channels);
+    std::size_t target_stride = 0;
+    std::size_t target_size = 0;
+    if (!checked_image_size(target_width, target_height, image->channels, &target_stride, &target_size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::vector<std::uint8_t> rotated(target_size);
+    for (int y = 0; y < source_height; ++y) {
+        for (int x = 0; x < source_width; ++x) {
+            const int target_x = orientation == 6 ? (source_height - 1 - y) : y;
+            const int target_y = orientation == 6 ? x : (source_width - 1 - x);
+            const std::size_t source_offset =
+                static_cast<std::size_t>(y) * image->stride + static_cast<std::size_t>(x) * channels;
+            const std::size_t target_offset =
+                static_cast<std::size_t>(target_y) * target_stride + static_cast<std::size_t>(target_x) * channels;
+            for (std::size_t channel = 0; channel < channels; ++channel) {
+                rotated[target_offset + channel] = image->pixels[source_offset + channel];
+            }
+        }
+    }
+
+    image->width = target_width;
+    image->height = target_height;
+    image->stride = target_stride;
+    image->pixels = std::move(rotated);
+    return PILLOW_C_OK;
+}
+
+int apply_tiff_orientation_mirror_or_transpose(PillowCImage* image, int orientation)
+{
+    if (!image || image->channels <= 0 || image->width <= 0 || image->height <= 0 ||
+        (orientation != 2 && orientation != 4 && orientation != 5 && orientation != 7)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const int source_width = image->width;
+    const int source_height = image->height;
+    const bool swaps_dimensions = orientation == 5 || orientation == 7;
+    const int target_width = swaps_dimensions ? source_height : source_width;
+    const int target_height = swaps_dimensions ? source_width : source_height;
+    const std::size_t channels = static_cast<std::size_t>(image->channels);
+    std::size_t target_stride = 0;
+    std::size_t target_size = 0;
+    if (!checked_image_size(target_width, target_height, image->channels, &target_stride, &target_size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::vector<std::uint8_t> transformed(target_size);
+    for (int y = 0; y < source_height; ++y) {
+        for (int x = 0; x < source_width; ++x) {
+            int target_x = x;
+            int target_y = y;
+            switch (orientation) {
+            case 2:
+                target_x = source_width - 1 - x;
+                target_y = y;
+                break;
+            case 4:
+                target_x = x;
+                target_y = source_height - 1 - y;
+                break;
+            case 5:
+                target_x = y;
+                target_y = x;
+                break;
+            case 7:
+                target_x = source_height - 1 - y;
+                target_y = source_width - 1 - x;
+                break;
+            default:
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+
+            const std::size_t source_offset =
+                static_cast<std::size_t>(y) * image->stride + static_cast<std::size_t>(x) * channels;
+            const std::size_t target_offset =
+                static_cast<std::size_t>(target_y) * target_stride + static_cast<std::size_t>(target_x) * channels;
+            for (std::size_t channel = 0; channel < channels; ++channel) {
+                transformed[target_offset + channel] = image->pixels[source_offset + channel];
+            }
+        }
+    }
+
+    image->width = target_width;
+    image->height = target_height;
+    image->stride = target_stride;
+    image->pixels = std::move(transformed);
+    return PILLOW_C_OK;
+}
+
+int parse_exif_orientation(const std::uint8_t* payload, std::size_t payload_size)
+{
+    static constexpr std::uint8_t exif_header[6] = {'E', 'x', 'i', 'f', 0, 0};
+    if (!payload || payload_size < sizeof(exif_header) + 8u ||
+        std::memcmp(payload, exif_header, sizeof(exif_header)) != 0) {
+        return 0;
+    }
+
+    return parse_tiff_orientation(payload + sizeof(exif_header), payload_size - sizeof(exif_header));
+}
+
+int copy_exif_orientation_bytes(int orientation, std::uint8_t* out_exif, std::size_t out_exif_size, std::size_t* out_exif_required)
+{
+    static constexpr std::uint8_t empty_exif[] = {
+        0x45u, 0x78u, 0x69u, 0x66u, 0x00u, 0x00u,
+        0x4du, 0x4du, 0x00u, 0x2au, 0x00u, 0x00u, 0x00u, 0x08u,
+        0x00u, 0x00u,
+        0x00u, 0x00u, 0x00u, 0x00u,
+    };
+    static constexpr std::uint8_t orientation_exif[] = {
+        0x45u, 0x78u, 0x69u, 0x66u, 0x00u, 0x00u,
+        0x4du, 0x4du, 0x00u, 0x2au, 0x00u, 0x00u, 0x00u, 0x08u,
+        0x00u, 0x01u,
+        0x01u, 0x12u, 0x00u, 0x03u, 0x00u, 0x00u, 0x00u, 0x01u,
+        0x00u, 0x00u, 0x00u, 0x00u,
+        0x00u, 0x00u, 0x00u, 0x00u,
+    };
+    if (!out_exif_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (orientation < 0 || orientation > 0xffff) {
+        *out_exif_required = 0u;
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_orientation = orientation != 0;
+    const std::size_t required = has_orientation ? sizeof(orientation_exif) : sizeof(empty_exif);
+    *out_exif_required = required;
+    if (!out_exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_exif_size < required) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (!has_orientation) {
+        std::memcpy(out_exif, empty_exif, required);
+        return PILLOW_C_OK;
+    }
+    std::memcpy(out_exif, orientation_exif, required);
+    out_exif[24] = static_cast<std::uint8_t>((orientation >> 8) & 0xff);
+    out_exif[25] = static_cast<std::uint8_t>(orientation & 0xff);
+    return PILLOW_C_OK;
+}
+
+void write_exif_u16_be(std::uint8_t* data, std::uint16_t value)
+{
+    data[0] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
+    data[1] = static_cast<std::uint8_t>(value & 0xffu);
+}
+
+void write_exif_u32_be(std::uint8_t* data, std::uint32_t value)
+{
+    data[0] = static_cast<std::uint8_t>((value >> 24) & 0xffu);
+    data[1] = static_cast<std::uint8_t>((value >> 16) & 0xffu);
+    data[2] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
+    data[3] = static_cast<std::uint8_t>(value & 0xffu);
+}
+
+struct ExifOutputEntry {
+    std::uint16_t tag = 0;
+    std::uint16_t type = 0;
+    std::uint32_t count = 0;
+    std::uint32_t uint_value = 0;
+    std::uint32_t rational_numerator = 0;
+    std::uint32_t rational_denominator = 0;
+    std::int32_t signed_rational_numerator = 0;
+    std::int32_t signed_rational_denominator = 0;
+    const char* ascii_value = nullptr;
+    std::size_t ascii_size = 0;
+    const std::uint32_t* short_array_values = nullptr;
+    std::size_t short_array_count = 0;
+    const std::uint8_t* byte_array_values = nullptr;
+    std::size_t byte_array_count = 0;
+};
+
+int copy_exif_entries_undefined_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    const int* short_array_tags,
+    const std::uint32_t* short_array_values,
+    std::size_t short_array_value_count,
+    const std::size_t* short_array_offsets,
+    const std::size_t* short_array_counts,
+    std::size_t short_array_count,
+    const int* byte_array_tags,
+    const std::uint8_t* byte_array_values,
+    std::size_t byte_array_value_count,
+    const std::size_t* byte_array_offsets,
+    const std::size_t* byte_array_counts,
+    std::size_t byte_array_count,
+    const int* signed_rational_tags,
+    const std::int32_t* signed_rational_numerators,
+    const std::int32_t* signed_rational_denominators,
+    std::size_t signed_rational_count,
+    const int* undefined_tags,
+    const std::uint8_t* undefined_values,
+    std::size_t undefined_value_count,
+    const std::size_t* undefined_offsets,
+    const std::size_t* undefined_counts,
+    std::size_t undefined_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    if (!out_exif_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_exif_required = 0u;
+    if (orientation < 0 || orientation > 0xffff ||
+        ascii_count > 0xffffu || uint_count > 0xffffu ||
+        rational_count > 0xffffu || short_array_count > 0xffffu ||
+        byte_array_count > 0xffffu || signed_rational_count > 0xffffu ||
+        undefined_count > 0xffffu) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (ascii_count > 0u && (!ascii_tags || !ascii_values)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (uint_count > 0u && (!uint_tags || !uint_values || !uint_types)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (rational_count > 0u && (!rational_tags || !rational_numerators || !rational_denominators)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (short_array_count > 0u && (!short_array_tags || !short_array_values || !short_array_offsets || !short_array_counts)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (byte_array_count > 0u && (!byte_array_tags || !byte_array_values || !byte_array_offsets || !byte_array_counts)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (signed_rational_count > 0u && (!signed_rational_tags || !signed_rational_numerators || !signed_rational_denominators)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (undefined_count > 0u && (!undefined_tags || !undefined_values || !undefined_offsets || !undefined_counts)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    std::vector<ExifOutputEntry> entries;
+    entries.reserve(ascii_count + uint_count + rational_count + short_array_count + byte_array_count + signed_rational_count + undefined_count + (orientation != 0 ? 1u : 0u));
+    for (std::size_t index = 0; index < ascii_count; ++index) {
+        const int tag = ascii_tags[index];
+        const char* value = ascii_values[index];
+        if (!value) {
+            return PILLOW_C_NULL_POINTER;
+        }
+        if (tag <= 0 || tag > 0xffff || tag == 274) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::size_t value_size = std::strlen(value);
+        if (value_size > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) - 1u) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+        ExifOutputEntry entry;
+        entry.tag = static_cast<std::uint16_t>(tag);
+        entry.type = 2u;
+        entry.count = static_cast<std::uint32_t>(value_size + 1u);
+        entry.ascii_value = value;
+        entry.ascii_size = value_size;
+        entries.push_back(entry);
+    }
+    for (std::size_t index = 0; index < uint_count; ++index) {
+        const int tag = uint_tags[index];
+        const int type = uint_types[index];
+        const std::uint32_t value = uint_values[index];
+        if (tag <= 0 || tag > 0xffff || tag == 274 || (type != 3 && type != 4)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (type == 3 && value > 0xffffu) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ExifOutputEntry entry;
+        entry.tag = static_cast<std::uint16_t>(tag);
+        entry.type = static_cast<std::uint16_t>(type);
+        entry.count = 1u;
+        entry.uint_value = value;
+        entries.push_back(entry);
+    }
+    for (std::size_t index = 0; index < rational_count; ++index) {
+        const int tag = rational_tags[index];
+        const std::uint32_t numerator = rational_numerators[index];
+        const std::uint32_t denominator = rational_denominators[index];
+        if (tag <= 0 || tag > 0xffff || tag == 274 || denominator == 0u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ExifOutputEntry entry;
+        entry.tag = static_cast<std::uint16_t>(tag);
+        entry.type = 5u;
+        entry.count = 1u;
+        entry.rational_numerator = numerator;
+        entry.rational_denominator = denominator;
+        entries.push_back(entry);
+    }
+    for (std::size_t index = 0; index < short_array_count; ++index) {
+        const int tag = short_array_tags[index];
+        const std::size_t value_offset = short_array_offsets[index];
+        const std::size_t value_count = short_array_counts[index];
+        if (tag <= 0 || tag > 0xffff || tag == 274 || value_count == 0u ||
+            value_count > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (value_offset > short_array_value_count || value_count > short_array_value_count - value_offset) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+        for (std::size_t value_index = 0; value_index < value_count; ++value_index) {
+            if (short_array_values[value_offset + value_index] > 0xffffu) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+        }
+        ExifOutputEntry entry;
+        entry.tag = static_cast<std::uint16_t>(tag);
+        entry.type = 3u;
+        entry.count = static_cast<std::uint32_t>(value_count);
+        entry.short_array_values = short_array_values + value_offset;
+        entry.short_array_count = value_count;
+        entries.push_back(entry);
+    }
+    for (std::size_t index = 0; index < byte_array_count; ++index) {
+        const int tag = byte_array_tags[index];
+        const std::size_t value_offset = byte_array_offsets[index];
+        const std::size_t value_count = byte_array_counts[index];
+        if (tag <= 0 || tag > 0xffff || tag == 274 || value_count == 0u ||
+            value_count > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (value_offset > byte_array_value_count || value_count > byte_array_value_count - value_offset) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+        ExifOutputEntry entry;
+        entry.tag = static_cast<std::uint16_t>(tag);
+        entry.type = 1u;
+        entry.count = static_cast<std::uint32_t>(value_count);
+        entry.byte_array_values = byte_array_values + value_offset;
+        entry.byte_array_count = value_count;
+        entries.push_back(entry);
+    }
+    for (std::size_t index = 0; index < signed_rational_count; ++index) {
+        const int tag = signed_rational_tags[index];
+        const std::int32_t numerator = signed_rational_numerators[index];
+        const std::int32_t denominator = signed_rational_denominators[index];
+        if (tag <= 0 || tag > 0xffff || tag == 274 || denominator == 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ExifOutputEntry entry;
+        entry.tag = static_cast<std::uint16_t>(tag);
+        entry.type = 10u;
+        entry.count = 1u;
+        entry.signed_rational_numerator = numerator;
+        entry.signed_rational_denominator = denominator;
+        entries.push_back(entry);
+    }
+    for (std::size_t index = 0; index < undefined_count; ++index) {
+        const int tag = undefined_tags[index];
+        const std::size_t value_offset = undefined_offsets[index];
+        const std::size_t value_count = undefined_counts[index];
+        if (tag <= 0 || tag > 0xffff || tag == 274 || value_count == 0u ||
+            value_count > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (value_offset > undefined_value_count || value_count > undefined_value_count - value_offset) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+        ExifOutputEntry entry;
+        entry.tag = static_cast<std::uint16_t>(tag);
+        entry.type = 7u;
+        entry.count = static_cast<std::uint32_t>(value_count);
+        entry.byte_array_values = undefined_values + value_offset;
+        entry.byte_array_count = value_count;
+        entries.push_back(entry);
+    }
+    if (orientation != 0) {
+        ExifOutputEntry entry;
+        entry.tag = 274u;
+        entry.type = 3u;
+        entry.count = 1u;
+        entry.uint_value = static_cast<std::uint32_t>(orientation);
+        entries.push_back(entry);
+    }
+
+    std::sort(entries.begin(), entries.end(), [](const ExifOutputEntry& left, const ExifOutputEntry& right) {
+        return left.tag < right.tag;
+    });
+
+    static constexpr std::uint8_t exif_prefix[] = {'E', 'x', 'i', 'f', 0, 0};
+    const std::size_t entry_count = entries.size();
+    if (entry_count > 0xffffu) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t tiff_header_size = 8u;
+    const std::size_t ifd_count_size = 2u;
+    const std::size_t entry_size = 12u;
+    const std::size_t next_ifd_size = 4u;
+    const std::size_t data_offset = tiff_header_size + ifd_count_size + entry_count * entry_size + next_ifd_size;
+    std::size_t total_size = sizeof(exif_prefix) + data_offset;
+    for (const auto& entry : entries) {
+        if (entry.type == 2u && entry.count > 4u) {
+            std::size_t stored_size = static_cast<std::size_t>(entry.count);
+            if ((stored_size & 1u) != 0u) {
+                ++stored_size;
+            }
+            if (total_size > std::numeric_limits<std::size_t>::max() - stored_size) {
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            total_size += stored_size;
+        } else if (entry.type == 5u || entry.type == 10u) {
+            if (total_size > std::numeric_limits<std::size_t>::max() - 8u) {
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            total_size += 8u;
+        } else if (entry.type == 3u && entry.short_array_values && entry.short_array_count > 2u) {
+            if (entry.short_array_count > std::numeric_limits<std::size_t>::max() / 2u) {
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            const std::size_t stored_size = entry.short_array_count * 2u;
+            if (total_size > std::numeric_limits<std::size_t>::max() - stored_size) {
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            total_size += stored_size;
+        } else if ((entry.type == 1u || entry.type == 7u) && entry.byte_array_values && entry.byte_array_count > 4u) {
+            std::size_t stored_size = entry.byte_array_count;
+            if ((stored_size & 1u) != 0u) {
+                ++stored_size;
+            }
+            if (total_size > std::numeric_limits<std::size_t>::max() - stored_size) {
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            total_size += stored_size;
+        }
+    }
+
+    *out_exif_required = total_size;
+    if (!out_exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_exif_size < total_size) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::memset(out_exif, 0, total_size);
+    std::memcpy(out_exif, exif_prefix, sizeof(exif_prefix));
+    std::uint8_t* tiff = out_exif + sizeof(exif_prefix);
+    tiff[0] = 'M';
+    tiff[1] = 'M';
+    write_exif_u16_be(tiff + 2u, 42u);
+    write_exif_u32_be(tiff + 4u, 8u);
+    write_exif_u16_be(tiff + 8u, static_cast<std::uint16_t>(entry_count));
+
+    std::size_t variable_data_offset = data_offset;
+    for (std::size_t index = 0; index < entry_count; ++index) {
+        const auto& entry = entries[index];
+        std::uint8_t* ifd_entry = tiff + 10u + index * entry_size;
+        write_exif_u16_be(ifd_entry, entry.tag);
+        write_exif_u16_be(ifd_entry + 2u, entry.type);
+        write_exif_u32_be(ifd_entry + 4u, entry.count);
+        if ((entry.type == 1u || entry.type == 7u) && entry.byte_array_values) {
+            std::uint8_t* value_target = nullptr;
+            if (entry.byte_array_count <= 4u) {
+                value_target = ifd_entry + 8u;
+            } else {
+                write_exif_u32_be(ifd_entry + 8u, static_cast<std::uint32_t>(variable_data_offset));
+                value_target = tiff + variable_data_offset;
+                variable_data_offset += entry.byte_array_count;
+                if ((variable_data_offset & 1u) != 0u) {
+                    ++variable_data_offset;
+                }
+            }
+            std::memcpy(value_target, entry.byte_array_values, entry.byte_array_count);
+        } else if (entry.type == 3u && entry.short_array_values) {
+            const std::size_t value_bytes = entry.short_array_count * 2u;
+            std::uint8_t* value_target = nullptr;
+            if (value_bytes <= 4u) {
+                value_target = ifd_entry + 8u;
+            } else {
+                write_exif_u32_be(ifd_entry + 8u, static_cast<std::uint32_t>(variable_data_offset));
+                value_target = tiff + variable_data_offset;
+                variable_data_offset += value_bytes;
+            }
+            for (std::size_t value_index = 0; value_index < entry.short_array_count; ++value_index) {
+                write_exif_u16_be(
+                    value_target + value_index * 2u,
+                    static_cast<std::uint16_t>(entry.short_array_values[value_index]));
+            }
+        } else if (entry.type == 3u) {
+            write_exif_u16_be(ifd_entry + 8u, static_cast<std::uint16_t>(entry.uint_value));
+        } else if (entry.type == 4u) {
+            write_exif_u32_be(ifd_entry + 8u, entry.uint_value);
+        } else if (entry.type == 5u) {
+            write_exif_u32_be(ifd_entry + 8u, static_cast<std::uint32_t>(variable_data_offset));
+            std::uint8_t* value_target = tiff + variable_data_offset;
+            write_exif_u32_be(value_target, entry.rational_numerator);
+            write_exif_u32_be(value_target + 4u, entry.rational_denominator);
+            variable_data_offset += 8u;
+        } else if (entry.type == 10u) {
+            write_exif_u32_be(ifd_entry + 8u, static_cast<std::uint32_t>(variable_data_offset));
+            std::uint8_t* value_target = tiff + variable_data_offset;
+            write_exif_u32_be(value_target, static_cast<std::uint32_t>(entry.signed_rational_numerator));
+            write_exif_u32_be(value_target + 4u, static_cast<std::uint32_t>(entry.signed_rational_denominator));
+            variable_data_offset += 8u;
+        } else if (entry.count <= 4u) {
+            std::memcpy(ifd_entry + 8u, entry.ascii_value, entry.ascii_size);
+        } else {
+            write_exif_u32_be(ifd_entry + 8u, static_cast<std::uint32_t>(variable_data_offset));
+            std::uint8_t* value_target = tiff + variable_data_offset;
+            std::memcpy(value_target, entry.ascii_value, entry.ascii_size);
+            variable_data_offset += static_cast<std::size_t>(entry.count);
+            if ((variable_data_offset & 1u) != 0u) {
+                ++variable_data_offset;
+            }
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int copy_exif_entries_signed_rational_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    const int* short_array_tags,
+    const std::uint32_t* short_array_values,
+    std::size_t short_array_value_count,
+    const std::size_t* short_array_offsets,
+    const std::size_t* short_array_counts,
+    std::size_t short_array_count,
+    const int* byte_array_tags,
+    const std::uint8_t* byte_array_values,
+    std::size_t byte_array_value_count,
+    const std::size_t* byte_array_offsets,
+    const std::size_t* byte_array_counts,
+    std::size_t byte_array_count,
+    const int* signed_rational_tags,
+    const std::int32_t* signed_rational_numerators,
+    const std::int32_t* signed_rational_denominators,
+    std::size_t signed_rational_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_undefined_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        rational_tags,
+        rational_numerators,
+        rational_denominators,
+        rational_count,
+        short_array_tags,
+        short_array_values,
+        short_array_value_count,
+        short_array_offsets,
+        short_array_counts,
+        short_array_count,
+        byte_array_tags,
+        byte_array_values,
+        byte_array_value_count,
+        byte_array_offsets,
+        byte_array_counts,
+        byte_array_count,
+        signed_rational_tags,
+        signed_rational_numerators,
+        signed_rational_denominators,
+        signed_rational_count,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        0u,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+int copy_exif_entries_byte_array_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    const int* short_array_tags,
+    const std::uint32_t* short_array_values,
+    std::size_t short_array_value_count,
+    const std::size_t* short_array_offsets,
+    const std::size_t* short_array_counts,
+    std::size_t short_array_count,
+    const int* byte_array_tags,
+    const std::uint8_t* byte_array_values,
+    std::size_t byte_array_value_count,
+    const std::size_t* byte_array_offsets,
+    const std::size_t* byte_array_counts,
+    std::size_t byte_array_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_signed_rational_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        rational_tags,
+        rational_numerators,
+        rational_denominators,
+        rational_count,
+        short_array_tags,
+        short_array_values,
+        short_array_value_count,
+        short_array_offsets,
+        short_array_counts,
+        short_array_count,
+        byte_array_tags,
+        byte_array_values,
+        byte_array_value_count,
+        byte_array_offsets,
+        byte_array_counts,
+        byte_array_count,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+int copy_exif_entries_short_array_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    const int* short_array_tags,
+    const std::uint32_t* short_array_values,
+    std::size_t short_array_value_count,
+    const std::size_t* short_array_offsets,
+    const std::size_t* short_array_counts,
+    std::size_t short_array_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_byte_array_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        rational_tags,
+        rational_numerators,
+        rational_denominators,
+        rational_count,
+        short_array_tags,
+        short_array_values,
+        short_array_value_count,
+        short_array_offsets,
+        short_array_counts,
+        short_array_count,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        0u,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+int copy_exif_entries_full_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_short_array_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        rational_tags,
+        rational_numerators,
+        rational_denominators,
+        rational_count,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        0u,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+int copy_exif_entries_typed_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_full_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+int copy_exif_entries_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_typed_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+bool tiff_common_ascii_tag(int tag)
+{
+    return tag == 270 || tag == 271 || tag == 272 || tag == 305 || tag == 306;
+}
+
+bool read_tiff_ascii_entry_value(
+    const std::uint8_t* tiff,
+    std::size_t tiff_size,
+    bool little_endian,
+    const std::uint8_t* entry,
+    std::string* out_value)
+{
+    if (!tiff || !entry || !out_value) {
+        return false;
+    }
+    const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+    const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+    if (type != 2u || count == 0u) {
+        return false;
+    }
+
+    const std::uint8_t* value = nullptr;
+    if (count <= 4u) {
+        value = entry + 8u;
+    } else {
+        const std::uint32_t value_offset = read_tiff32(entry + 8u, little_endian);
+        if (value_offset > tiff_size || static_cast<std::size_t>(count) > tiff_size - value_offset) {
+            return false;
+        }
+        value = tiff + value_offset;
+    }
+
+    std::size_t value_size = 0u;
+    while (value_size < static_cast<std::size_t>(count) && value[value_size] != 0u) {
+        ++value_size;
+    }
+    out_value->assign(reinterpret_cast<const char*>(value), value_size);
+    return true;
+}
+
+int build_tiff_common_ascii_exif(
+    const std::uint8_t* tiff,
+    std::size_t tiff_size,
+    int orientation,
+    std::vector<std::uint8_t>* out_exif)
+{
+    if (!out_exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    out_exif->clear();
+    if (!tiff || tiff_size < 8u) {
+        return PILLOW_C_OK;
+    }
+
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return PILLOW_C_OK;
+    }
+
+    std::vector<int> ascii_tags;
+    std::vector<std::string> ascii_values;
+    ascii_tags.reserve(5u);
+    ascii_values.reserve(5u);
+    for (std::uint16_t index = 0u; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const int tag = static_cast<int>(read_tiff16(entry, little_endian));
+        if (!tiff_common_ascii_tag(tag)) {
+            continue;
+        }
+        std::string value;
+        if (!read_tiff_ascii_entry_value(tiff, tiff_size, little_endian, entry, &value)) {
+            continue;
+        }
+        ascii_tags.push_back(tag);
+        ascii_values.push_back(std::move(value));
+    }
+
+    const int serialized_orientation = orientation == 1 ? 1 : 0;
+    if (ascii_tags.empty() && serialized_orientation == 0) {
+        return PILLOW_C_OK;
+    }
+
+    std::vector<const char*> ascii_value_ptrs;
+    ascii_value_ptrs.reserve(ascii_values.size());
+    for (const std::string& value : ascii_values) {
+        ascii_value_ptrs.push_back(value.c_str());
+    }
+
+    std::size_t required = 0u;
+    int status = copy_exif_entries_bytes(
+        serialized_orientation,
+        ascii_tags.empty() ? nullptr : ascii_tags.data(),
+        ascii_value_ptrs.empty() ? nullptr : ascii_value_ptrs.data(),
+        ascii_tags.size(),
+        nullptr,
+        0u,
+        &required);
+    if (status != PILLOW_C_OK && status != PILLOW_C_NULL_POINTER) {
+        return status;
+    }
+    if (required == 0u) {
+        return PILLOW_C_OK;
+    }
+
+    out_exif->assign(required, std::uint8_t{0});
+    status = copy_exif_entries_bytes(
+        serialized_orientation,
+        ascii_tags.empty() ? nullptr : ascii_tags.data(),
+        ascii_value_ptrs.empty() ? nullptr : ascii_value_ptrs.data(),
+        ascii_tags.size(),
+        out_exif->data(),
+        out_exif->size(),
+        &required);
+    if (status != PILLOW_C_OK) {
+        out_exif->clear();
+        return status;
+    }
+    return PILLOW_C_OK;
+}
+
+int parse_exif_ascii_tag(
+    const std::uint8_t* payload,
+    std::size_t payload_size,
+    int requested_tag,
+    std::string* out_value,
+    bool* out_has_value)
+{
+    static constexpr std::uint8_t exif_header[6] = {'E', 'x', 'i', 'f', 0, 0};
+    if (!out_value || !out_has_value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    out_value->clear();
+    *out_has_value = false;
+    if (requested_tag <= 0 || requested_tag > 0xffff) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!payload || payload_size < sizeof(exif_header) + 8u ||
+        std::memcmp(payload, exif_header, sizeof(exif_header)) != 0) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* tiff = payload + sizeof(exif_header);
+    const std::size_t tiff_size = payload_size - sizeof(exif_header);
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return PILLOW_C_OK;
+    }
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return PILLOW_C_OK;
+    }
+
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        if (tag != static_cast<std::uint16_t>(requested_tag)) {
+            continue;
+        }
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if (type != 2u || count == 0u) {
+            return PILLOW_C_OK;
+        }
+
+        const std::uint8_t* value = nullptr;
+        if (count <= 4u) {
+            value = entry + 8u;
+        } else {
+            const std::uint32_t value_offset = read_tiff32(entry + 8u, little_endian);
+            if (value_offset > tiff_size || static_cast<std::size_t>(count) > tiff_size - static_cast<std::size_t>(value_offset)) {
+                return PILLOW_C_OK;
+            }
+            value = tiff + value_offset;
+        }
+        std::size_t value_size = 0u;
+        while (value_size < static_cast<std::size_t>(count) && value[value_size] != 0u) {
+            ++value_size;
+        }
+        out_value->assign(reinterpret_cast<const char*>(value), value_size);
+        *out_has_value = true;
+        return PILLOW_C_OK;
+    }
+    return PILLOW_C_OK;
+}
+
+int parse_exif_uint_tag(
+    const std::uint8_t* payload,
+    std::size_t payload_size,
+    int requested_tag,
+    std::uint32_t* out_value,
+    bool* out_has_value)
+{
+    static constexpr std::uint8_t exif_header[6] = {'E', 'x', 'i', 'f', 0, 0};
+    if (!out_value || !out_has_value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_value = 0u;
+    *out_has_value = false;
+    if (requested_tag <= 0 || requested_tag > 0xffff) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!payload || payload_size < sizeof(exif_header) + 8u ||
+        std::memcmp(payload, exif_header, sizeof(exif_header)) != 0) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* tiff = payload + sizeof(exif_header);
+    const std::size_t tiff_size = payload_size - sizeof(exif_header);
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return PILLOW_C_OK;
+    }
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return PILLOW_C_OK;
+    }
+
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        if (tag != static_cast<std::uint16_t>(requested_tag)) {
+            continue;
+        }
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if (count != 1u) {
+            return PILLOW_C_OK;
+        }
+        if (type == 3u) {
+            *out_value = read_tiff16(entry + 8u, little_endian);
+        } else if (type == 4u) {
+            *out_value = read_tiff32(entry + 8u, little_endian);
+        } else {
+            return PILLOW_C_OK;
+        }
+        *out_has_value = true;
+        return PILLOW_C_OK;
+    }
+    return PILLOW_C_OK;
+}
+
+int parse_exif_rational_tag(
+    const std::uint8_t* payload,
+    std::size_t payload_size,
+    int requested_tag,
+    std::uint32_t* out_numerator,
+    std::uint32_t* out_denominator,
+    bool* out_has_value)
+{
+    static constexpr std::uint8_t exif_header[6] = {'E', 'x', 'i', 'f', 0, 0};
+    if (!out_numerator || !out_denominator || !out_has_value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_numerator = 0u;
+    *out_denominator = 0u;
+    *out_has_value = false;
+    if (requested_tag <= 0 || requested_tag > 0xffff) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!payload || payload_size < sizeof(exif_header) + 8u ||
+        std::memcmp(payload, exif_header, sizeof(exif_header)) != 0) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* tiff = payload + sizeof(exif_header);
+    const std::size_t tiff_size = payload_size - sizeof(exif_header);
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return PILLOW_C_OK;
+    }
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return PILLOW_C_OK;
+    }
+
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        if (tag != static_cast<std::uint16_t>(requested_tag)) {
+            continue;
+        }
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if (type != 5u || count != 1u) {
+            return PILLOW_C_OK;
+        }
+        const std::uint32_t value_offset = read_tiff32(entry + 8u, little_endian);
+        if (value_offset > tiff_size || 8u > tiff_size - static_cast<std::size_t>(value_offset)) {
+            return PILLOW_C_OK;
+        }
+        const std::uint8_t* value = tiff + value_offset;
+        *out_numerator = read_tiff32(value, little_endian);
+        *out_denominator = read_tiff32(value + 4u, little_endian);
+        *out_has_value = true;
+        return PILLOW_C_OK;
+    }
+    return PILLOW_C_OK;
+}
+
+int parse_exif_signed_rational_tag(
+    const std::uint8_t* payload,
+    std::size_t payload_size,
+    int requested_tag,
+    std::int32_t* out_numerator,
+    std::int32_t* out_denominator,
+    bool* out_has_value)
+{
+    static constexpr std::uint8_t exif_header[6] = {'E', 'x', 'i', 'f', 0, 0};
+    if (!out_numerator || !out_denominator || !out_has_value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_numerator = 0;
+    *out_denominator = 0;
+    *out_has_value = false;
+    if (requested_tag <= 0 || requested_tag > 0xffff) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!payload || payload_size < sizeof(exif_header) + 8u ||
+        std::memcmp(payload, exif_header, sizeof(exif_header)) != 0) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* tiff = payload + sizeof(exif_header);
+    const std::size_t tiff_size = payload_size - sizeof(exif_header);
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return PILLOW_C_OK;
+    }
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return PILLOW_C_OK;
+    }
+
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        if (tag != static_cast<std::uint16_t>(requested_tag)) {
+            continue;
+        }
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if (type != 10u || count != 1u) {
+            return PILLOW_C_OK;
+        }
+        const std::uint32_t value_offset = read_tiff32(entry + 8u, little_endian);
+        if (value_offset > tiff_size || 8u > tiff_size - static_cast<std::size_t>(value_offset)) {
+            return PILLOW_C_OK;
+        }
+        const std::uint8_t* value = tiff + value_offset;
+        const std::uint32_t raw_numerator = read_tiff32(value, little_endian);
+        const std::uint32_t raw_denominator = read_tiff32(value + 4u, little_endian);
+        *out_numerator = raw_numerator <= static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max())
+            ? static_cast<std::int32_t>(raw_numerator)
+            : static_cast<std::int32_t>(static_cast<std::int64_t>(raw_numerator) - 0x100000000ll);
+        *out_denominator = raw_denominator <= static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max())
+            ? static_cast<std::int32_t>(raw_denominator)
+            : static_cast<std::int32_t>(static_cast<std::int64_t>(raw_denominator) - 0x100000000ll);
+        *out_has_value = true;
+        return PILLOW_C_OK;
+    }
+    return PILLOW_C_OK;
+}
+
+int parse_exif_ushort_array_tag(
+    const std::uint8_t* payload,
+    std::size_t payload_size,
+    int requested_tag,
+    std::vector<std::uint32_t>* out_values,
+    bool* out_has_value)
+{
+    static constexpr std::uint8_t exif_header[6] = {'E', 'x', 'i', 'f', 0, 0};
+    if (!out_values || !out_has_value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    out_values->clear();
+    *out_has_value = false;
+    if (requested_tag <= 0 || requested_tag > 0xffff) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!payload || payload_size < sizeof(exif_header) + 8u ||
+        std::memcmp(payload, exif_header, sizeof(exif_header)) != 0) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* tiff = payload + sizeof(exif_header);
+    const std::size_t tiff_size = payload_size - sizeof(exif_header);
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return PILLOW_C_OK;
+    }
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return PILLOW_C_OK;
+    }
+
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        if (tag != static_cast<std::uint16_t>(requested_tag)) {
+            continue;
+        }
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if (type != 3u || count == 0u) {
+            return PILLOW_C_OK;
+        }
+        const std::size_t value_bytes = static_cast<std::size_t>(count) * 2u;
+        const std::uint8_t* value = nullptr;
+        if (value_bytes <= 4u) {
+            value = entry + 8u;
+        } else {
+            const std::uint32_t value_offset = read_tiff32(entry + 8u, little_endian);
+            if (value_offset > tiff_size || value_bytes > tiff_size - static_cast<std::size_t>(value_offset)) {
+                return PILLOW_C_OK;
+            }
+            value = tiff + value_offset;
+        }
+        out_values->reserve(count);
+        for (std::uint32_t value_index = 0; value_index < count; ++value_index) {
+            out_values->push_back(read_tiff16(value + static_cast<std::size_t>(value_index) * 2u, little_endian));
+        }
+        *out_has_value = true;
+        return PILLOW_C_OK;
+    }
+    return PILLOW_C_OK;
+}
+
+int parse_exif_byte_array_tag(
+    const std::uint8_t* payload,
+    std::size_t payload_size,
+    int requested_tag,
+    std::vector<std::uint8_t>* out_values,
+    bool* out_has_value)
+{
+    static constexpr std::uint8_t exif_header[6] = {'E', 'x', 'i', 'f', 0, 0};
+    if (!out_values || !out_has_value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    out_values->clear();
+    *out_has_value = false;
+    if (requested_tag <= 0 || requested_tag > 0xffff) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!payload || payload_size < sizeof(exif_header) + 8u ||
+        std::memcmp(payload, exif_header, sizeof(exif_header)) != 0) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* tiff = payload + sizeof(exif_header);
+    const std::size_t tiff_size = payload_size - sizeof(exif_header);
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return PILLOW_C_OK;
+    }
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return PILLOW_C_OK;
+    }
+
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        if (tag != static_cast<std::uint16_t>(requested_tag)) {
+            continue;
+        }
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if (type != 1u || count == 0u) {
+            return PILLOW_C_OK;
+        }
+        const std::uint8_t* value = nullptr;
+        if (count <= 4u) {
+            value = entry + 8u;
+        } else {
+            const std::uint32_t value_offset = read_tiff32(entry + 8u, little_endian);
+            if (value_offset > tiff_size || count > tiff_size - static_cast<std::size_t>(value_offset)) {
+                return PILLOW_C_OK;
+            }
+            value = tiff + value_offset;
+        }
+        out_values->assign(value, value + count);
+        *out_has_value = true;
+        return PILLOW_C_OK;
+    }
+    return PILLOW_C_OK;
+}
+
+int parse_exif_undefined_tag(
+    const std::uint8_t* payload,
+    std::size_t payload_size,
+    int requested_tag,
+    std::vector<std::uint8_t>* out_values,
+    bool* out_has_value)
+{
+    static constexpr std::uint8_t exif_header[6] = {'E', 'x', 'i', 'f', 0, 0};
+    if (!out_values || !out_has_value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    out_values->clear();
+    *out_has_value = false;
+    if (requested_tag <= 0 || requested_tag > 0xffff) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!payload || payload_size < sizeof(exif_header) + 8u ||
+        std::memcmp(payload, exif_header, sizeof(exif_header)) != 0) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* tiff = payload + sizeof(exif_header);
+    const std::size_t tiff_size = payload_size - sizeof(exif_header);
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return PILLOW_C_OK;
+    }
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* ifd = tiff + ifd_offset;
+    const std::uint16_t entry_count = read_tiff16(ifd, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return PILLOW_C_OK;
+    }
+
+    for (std::uint16_t index = 0; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        if (tag != static_cast<std::uint16_t>(requested_tag)) {
+            continue;
+        }
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+        if (type != 7u || count == 0u) {
+            return PILLOW_C_OK;
+        }
+        const std::uint8_t* value = nullptr;
+        if (count <= 4u) {
+            value = entry + 8u;
+        } else {
+            const std::uint32_t value_offset = read_tiff32(entry + 8u, little_endian);
+            if (value_offset > tiff_size || count > tiff_size - static_cast<std::size_t>(value_offset)) {
+                return PILLOW_C_OK;
+            }
+            value = tiff + value_offset;
+        }
+        out_values->assign(value, value + count);
+        *out_has_value = true;
+        return PILLOW_C_OK;
+    }
+    return PILLOW_C_OK;
+}
+
 void apply_jpeg_jfif_metadata(const std::uint8_t* payload, std::size_t payload_size, JpegMetadata* metadata)
 {
     if (!payload || payload_size < 12u || !metadata || std::memcmp(payload, "JFIF\0", 5u) != 0) {
@@ -1927,6 +5403,143 @@ void apply_jpeg_jfif_metadata(const std::uint8_t* payload, std::size_t payload_s
         metadata->has_dpi = true;
         metadata->dpi_x = static_cast<double>(metadata->jfif_density_x) * 2.54;
         metadata->dpi_y = static_cast<double>(metadata->jfif_density_y) * 2.54;
+    }
+}
+
+bool jpeg_payload_starts_with(const std::uint8_t* payload, std::size_t payload_size, const char* prefix, std::size_t prefix_size)
+{
+    return payload && prefix && payload_size >= prefix_size && std::memcmp(payload, prefix, prefix_size) == 0;
+}
+
+void apply_jpeg_exif_metadata(const std::uint8_t* payload, std::size_t payload_size, JpegMetadata* metadata)
+{
+    static constexpr char exif_header[] = {'E', 'x', 'i', 'f', 0, 0};
+    if (!metadata || !jpeg_payload_starts_with(payload, payload_size, exif_header, sizeof(exif_header))) {
+        return;
+    }
+    if (metadata->exif.empty()) {
+        metadata->exif.assign(payload, payload + payload_size);
+    }
+    if (metadata->exif_orientation == 0) {
+        metadata->exif_orientation = parse_exif_orientation(payload, payload_size);
+    }
+}
+
+void apply_jpeg_xmp_metadata(const std::uint8_t* payload, std::size_t payload_size, JpegMetadata* metadata)
+{
+    static constexpr char xmp_header[] = {
+        'h', 't', 't', 'p', ':', '/', '/', 'n', 's', '.', 'a', 'd', 'o', 'b', 'e', '.', 'c', 'o', 'm',
+        '/', 'x', 'a', 'p', '/', '1', '.', '0', '/', 0};
+    if (!metadata || !metadata->xmp.empty() ||
+        !jpeg_payload_starts_with(payload, payload_size, xmp_header, sizeof(xmp_header))) {
+        return;
+    }
+    metadata->xmp.assign(payload + sizeof(xmp_header), payload + payload_size);
+}
+
+void apply_jpeg_icc_profile_metadata(const std::uint8_t* payload, std::size_t payload_size, JpegMetadata* metadata)
+{
+    static constexpr char icc_header[] = {'I', 'C', 'C', '_', 'P', 'R', 'O', 'F', 'I', 'L', 'E', 0};
+    if (!metadata || !metadata->icc_profile.empty() ||
+        payload_size < sizeof(icc_header) + 2u ||
+        !jpeg_payload_starts_with(payload, payload_size, icc_header, sizeof(icc_header))) {
+        return;
+    }
+    const std::uint8_t sequence_number = payload[sizeof(icc_header)];
+    const std::uint8_t segment_count = payload[sizeof(icc_header) + 1u];
+    if (sequence_number != 1u || segment_count != 1u) {
+        if (sequence_number == 0u || segment_count == 0u || sequence_number > segment_count) {
+            return;
+        }
+        if (metadata->icc_segment_count == 0u) {
+            metadata->icc_segment_count = segment_count;
+            metadata->icc_segments.resize(segment_count);
+        }
+        if (metadata->icc_segment_count != segment_count) {
+            return;
+        }
+        std::vector<std::uint8_t>& chunk = metadata->icc_segments[sequence_number - 1u];
+        if (!chunk.empty()) {
+            return;
+        }
+        chunk.assign(payload + sizeof(icc_header) + 2u, payload + payload_size);
+        std::size_t total_size = 0u;
+        for (const auto& segment : metadata->icc_segments) {
+            if (segment.empty()) {
+                return;
+            }
+            total_size += segment.size();
+        }
+        metadata->icc_profile.clear();
+        metadata->icc_profile.reserve(total_size);
+        for (const auto& segment : metadata->icc_segments) {
+            metadata->icc_profile.insert(metadata->icc_profile.end(), segment.begin(), segment.end());
+        }
+        return;
+    }
+    metadata->icc_profile.assign(payload + sizeof(icc_header) + 2u, payload + payload_size);
+}
+
+void apply_jpeg_qtable_metadata(const std::uint8_t* payload, std::size_t payload_size, JpegMetadata* metadata)
+{
+    if (!payload || !metadata) {
+        return;
+    }
+    std::size_t offset = 0u;
+    while (offset < payload_size) {
+        const std::uint8_t table_info = payload[offset++];
+        const int precision = table_info >> 4;
+        const int table_id = table_info & 0x0f;
+        if (precision != 0 || table_id > 3 || payload_size - offset < 64u) {
+            return;
+        }
+
+        const std::size_t required_count = static_cast<std::size_t>(table_id + 1);
+        if (metadata->qtables.size() < required_count * 64u) {
+            metadata->qtables.resize(required_count * 64u, 0);
+        }
+        metadata->qtable_count = std::max(metadata->qtable_count, required_count);
+
+        int* table = metadata->qtables.data() + static_cast<std::size_t>(table_id) * 64u;
+        for (int i = 0; i < 64; ++i) {
+            table[JPEG_ZIGZAG[i]] = payload[offset + static_cast<std::size_t>(i)];
+        }
+        offset += 64u;
+    }
+}
+
+void apply_jpeg_sof_metadata(const std::uint8_t* payload, std::size_t payload_size, JpegMetadata* metadata)
+{
+    if (!payload || !metadata || payload_size < 6u) {
+        return;
+    }
+    const int component_count = payload[5];
+    metadata->components = component_count;
+    if (component_count != 3 || payload_size < 6u + static_cast<std::size_t>(component_count) * 3u) {
+        metadata->subsampling = -1;
+        return;
+    }
+
+    const std::uint8_t* y = payload + 6u;
+    const std::uint8_t* cb = y + 3u;
+    const std::uint8_t* cr = cb + 3u;
+    if (y[0] != 1u || cb[0] != 2u || cr[0] != 3u ||
+        (cb[1] >> 4) != 1u || (cb[1] & 0x0fu) != 1u ||
+        (cr[1] >> 4) != 1u || (cr[1] & 0x0fu) != 1u) {
+        metadata->subsampling = -1;
+        return;
+    }
+
+    const int h = y[1] >> 4;
+    const int v = y[1] & 0x0f;
+    if (h == 1 && v == 1) {
+        metadata->subsampling = 0;
+    } else if (h == 2 && v == 1) {
+        metadata->subsampling = 1;
+    } else if (h == 2 && v == 2) {
+        metadata->subsampling = 2;
+    } else {
+        metadata->subsampling = -1;
     }
 }
 
@@ -1971,14 +5584,24 @@ bool read_jpeg_metadata(const char* path, JpegMetadata* metadata)
         if (marker == 0xe0u && !metadata->has_jfif) {
             apply_jpeg_jfif_metadata(segment_payload, segment_payload_size, metadata);
         }
-        if (marker == 0xe1u && metadata->exif_orientation == 0) {
-            metadata->exif_orientation = parse_exif_orientation(segment_payload, segment_payload_size);
+        if (marker == 0xe1u) {
+            apply_jpeg_exif_metadata(segment_payload, segment_payload_size, metadata);
+            apply_jpeg_xmp_metadata(segment_payload, segment_payload_size, metadata);
+        }
+        if (marker == 0xe2u) {
+            apply_jpeg_icc_profile_metadata(segment_payload, segment_payload_size, metadata);
+        }
+        if (marker == 0xfeu && metadata->comment.empty()) {
+            metadata->comment.assign(segment_payload, segment_payload + segment_payload_size);
+        }
+        if (marker == 0xdbu) {
+            apply_jpeg_qtable_metadata(segment_payload, segment_payload_size, metadata);
         }
         if (jpeg_is_sof_marker(marker)) {
-            if (segment_length < 8u) {
+            if (segment_payload_size < 6u) {
                 return false;
             }
-            metadata->components = data[offset + 7u];
+            apply_jpeg_sof_metadata(segment_payload, segment_payload_size, metadata);
         }
         offset += segment_length;
     }
@@ -2114,6 +5737,242 @@ int patch_jpeg_jfif_density(const char* path, double dpi_x, double dpi_y)
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int append_jpeg_segment(std::vector<std::uint8_t>& out, std::uint8_t marker, const std::uint8_t* payload, std::size_t payload_size)
+{
+    if (payload_size > static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max()) - 2u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (payload_size > 0u && !payload) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    out.push_back(0xffu);
+    out.push_back(marker);
+    append_be16(out, static_cast<std::uint16_t>(payload_size + 2u));
+    if (payload_size > 0u) {
+        out.insert(out.end(), payload, payload + payload_size);
+    }
+    return PILLOW_C_OK;
+}
+
+int append_jpeg_icc_segment(std::vector<std::uint8_t>& out, const std::uint8_t* profile, std::size_t profile_size)
+{
+    if (profile_size > 0u && !profile) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (profile_size == 0u) {
+        return PILLOW_C_OK;
+    }
+
+    static constexpr std::uint8_t icc_header_prefix[] = {
+        'I', 'C', 'C', '_', 'P', 'R', 'O', 'F', 'I', 'L', 'E', 0
+    };
+    static constexpr std::size_t max_payload_size =
+        static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max()) - 2u;
+    static constexpr std::size_t icc_segment_header_size = sizeof(icc_header_prefix) + 2u;
+    static constexpr std::size_t max_profile_chunk_size = max_payload_size - icc_segment_header_size;
+    static constexpr std::size_t max_profile_size = max_profile_chunk_size * 255u;
+    if (profile_size > max_profile_size) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    const std::size_t segment_count =
+        (profile_size + max_profile_chunk_size - 1u) / max_profile_chunk_size;
+    if (segment_count == 0u || segment_count > 255u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::size_t offset = 0u;
+    for (std::size_t index = 0u; index < segment_count; ++index) {
+        const std::size_t chunk_size = std::min(max_profile_chunk_size, profile_size - offset);
+        const std::size_t payload_size = icc_segment_header_size + chunk_size;
+        out.push_back(0xffu);
+        out.push_back(0xe2u);
+        append_be16(out, static_cast<std::uint16_t>(payload_size + 2u));
+        out.insert(out.end(), icc_header_prefix, icc_header_prefix + sizeof(icc_header_prefix));
+        out.push_back(static_cast<std::uint8_t>(index + 1u));
+        out.push_back(static_cast<std::uint8_t>(segment_count));
+        out.insert(out.end(), profile + offset, profile + offset + chunk_size);
+        offset += chunk_size;
+    }
+    return PILLOW_C_OK;
+}
+
+int append_jpeg_xmp_segment(std::vector<std::uint8_t>& out, const std::uint8_t* xmp, std::size_t xmp_size)
+{
+    if (xmp_size > 0u && !xmp) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (xmp_size == 0u) {
+        return PILLOW_C_OK;
+    }
+
+    static constexpr std::uint8_t xmp_header[] = {
+        'h', 't', 't', 'p', ':', '/', '/', 'n', 's', '.', 'a', 'd', 'o', 'b', 'e', '.', 'c', 'o', 'm',
+        '/', 'x', 'a', 'p', '/', '1', '.', '0', '/', 0};
+    const std::size_t payload_size = sizeof(xmp_header) + xmp_size;
+    if (payload_size > static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max()) - 2u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    out.push_back(0xffu);
+    out.push_back(0xe1u);
+    append_be16(out, static_cast<std::uint16_t>(payload_size + 2u));
+    out.insert(out.end(), xmp_header, xmp_header + sizeof(xmp_header));
+    out.insert(out.end(), xmp, xmp + xmp_size);
+    return PILLOW_C_OK;
+}
+
+int build_jpeg_metadata_segments(
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* xmp,
+    std::size_t xmp_size,
+    std::vector<std::uint8_t>* out_segments)
+{
+    if (!out_segments) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((comment_size > 0u && !comment) || (icc_profile_size > 0u && !icc_profile) ||
+        (exif_size > 0u && !exif) || (xmp_size > 0u && !xmp)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    int status = PILLOW_C_OK;
+    try {
+        if (exif_size > 0u) {
+            status = append_jpeg_segment(*out_segments, 0xe1u, exif, exif_size);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+        if (xmp_size > 0u) {
+            status = append_jpeg_xmp_segment(*out_segments, xmp, xmp_size);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+        if (icc_profile_size > 0u) {
+            status = append_jpeg_icc_segment(*out_segments, icc_profile, icc_profile_size);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+        if (comment_size > 0u) {
+            status = append_jpeg_segment(*out_segments, 0xfeu, comment, comment_size);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    return PILLOW_C_OK;
+}
+
+int jpeg_metadata_insert_position(const std::vector<std::uint8_t>& data, std::size_t* out_position)
+{
+    if (!out_position) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (data.size() < 2u || data[0] != 0xffu || data[1] != 0xd8u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    *out_position = 2u;
+    std::size_t pos = 2u;
+    while (pos + 4u <= data.size() && data[pos] == 0xffu) {
+        const std::uint8_t marker = data[pos + 1u];
+        if (!(marker == 0xe0u || marker == 0xeeu)) {
+            break;
+        }
+        const std::uint16_t length = read_be16(data.data() + pos + 2u);
+        if (length < 2u || pos + 2u + static_cast<std::size_t>(length) > data.size()) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::size_t payload = pos + 4u;
+        const std::size_t payload_size = static_cast<std::size_t>(length) - 2u;
+        if ((marker == 0xe0u && payload_size >= 5u && std::memcmp(data.data() + payload, "JFIF\0", 5u) == 0) ||
+            (marker == 0xeeu && payload_size >= 6u && std::memcmp(data.data() + payload, "Adobe", 5u) == 0 && data[payload + 5u] == 0u)) {
+            *out_position = pos + 2u + static_cast<std::size_t>(length);
+            pos = *out_position;
+            continue;
+        }
+        break;
+    }
+    return PILLOW_C_OK;
+}
+
+int patch_jpeg_metadata_segments(
+    const char* path,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* xmp = nullptr,
+    std::size_t xmp_size = 0u)
+{
+    if (!path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (comment_size == 0u && icc_profile_size == 0u && exif_size == 0u && xmp_size == 0u) {
+        return PILLOW_C_OK;
+    }
+
+    try {
+        std::vector<std::uint8_t> segments;
+        int status = build_jpeg_metadata_segments(
+            comment,
+            comment_size,
+            icc_profile,
+            icc_profile_size,
+            exif,
+            exif_size,
+            xmp,
+            xmp_size,
+            &segments);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::size_t insert_position = 0u;
+        status = jpeg_metadata_insert_position(data, &insert_position);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        data.insert(data.begin() + static_cast<std::ptrdiff_t>(insert_position), segments.begin(), segments.end());
+        return write_binary_file(path, data) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int patch_jpeg_source_comment_segment(const PillowCImage* image, const char* path)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->jpeg_comment.empty()) {
+        return PILLOW_C_OK;
+    }
+    return patch_jpeg_metadata_segments(
+        path,
+        image->jpeg_comment.data(),
+        image->jpeg_comment.size(),
+        nullptr,
+        0u,
+        nullptr,
+        0u);
 }
 
 bool write_binary_file(const char* path, const std::vector<std::uint8_t>& data)
@@ -2449,6 +6308,10 @@ int save_ppm_image(const PillowCImage* image, const char* path)
           (image->mode == PILLOW_C_MODE_RGB && image->channels == 3))) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
 
     try {
         if (image->mode == PILLOW_C_MODE_1) {
@@ -2698,6 +6561,10 @@ int save_qoi_image(const PillowCImage* image, const char* path)
           (image->mode == PILLOW_C_MODE_RGBA && image->channels == 4)) ||
         image->width <= 0 || image->height <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
 
     try {
@@ -3080,6 +6947,10 @@ int save_tga_image_with_options(const PillowCImage* image, const char* path, boo
     if (image->mode == PILLOW_C_MODE_P &&
         (image->palette_rgb.size() > 256u * 3u || image->palette_rgb.size() % 3u != 0)) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
 
     try {
@@ -3561,6 +7432,10 @@ int save_xbm_image_with_options(
     if (has_hotspot && (hotspot_x < 0 || hotspot_y < 0)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
 
     try {
         std::size_t packed_row_bytes = 0;
@@ -3781,6 +7656,10 @@ int save_bmp_image(const PillowCImage* image, const char* path)
         image->mode != PILLOW_C_MODE_RGBA) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
 
     const int bits_per_pixel = image->mode == PILLOW_C_MODE_L ? 8 : (image->mode == PILLOW_C_MODE_RGBA ? 32 : 24);
     std::size_t row_stride = 0;
@@ -3877,6 +7756,13 @@ int wic_format_to_mode(const WICPixelFormatGUID& format, int* mode, int* channel
     if (!mode || !channels || !target_format) {
         return PILLOW_C_NULL_POINTER;
     }
+    if (IsEqualGUID(format, GUID_WICPixelFormatBlackWhite) ||
+        IsEqualGUID(format, GUID_WICPixelFormat1bppIndexed)) {
+        *mode = PILLOW_C_MODE_1;
+        *channels = 1;
+        *target_format = GUID_WICPixelFormat8bppGray;
+        return PILLOW_C_OK;
+    }
     if (IsEqualGUID(format, GUID_WICPixelFormat8bppGray)) {
         *mode = PILLOW_C_MODE_L;
         *channels = 1;
@@ -3901,6 +7787,12 @@ int wic_format_to_mode(const WICPixelFormatGUID& format, int* mode, int* channel
         *mode = PILLOW_C_MODE_RGBA;
         *channels = 4;
         *target_format = GUID_WICPixelFormat32bppRGBA;
+        return PILLOW_C_OK;
+    }
+    if (IsEqualGUID(format, GUID_WICPixelFormat32bppCMYK)) {
+        *mode = PILLOW_C_MODE_CMYK;
+        *channels = 4;
+        *target_format = GUID_WICPixelFormat32bppCMYK;
         return PILLOW_C_OK;
     }
     *mode = PILLOW_C_MODE_RGB;
@@ -4023,18 +7915,376 @@ int wic_container_frame_count(const char* path, const GUID& container_format, in
     }
 }
 
-int open_ico_image(const char* path, PillowCImage** out_image)
+struct IcoDirectoryEntryInfo {
+    std::uint8_t width_byte = 0;
+    std::uint8_t height_byte = 0;
+    std::uint8_t color_count = 0;
+    std::uint8_t reserved = 0;
+    std::uint16_t planes = 0;
+    std::uint16_t bit_count = 0;
+    std::uint32_t bytes_in_resource = 0;
+    std::uint32_t image_offset = 0;
+    int width = 0;
+    int height = 0;
+    int color_depth = 0;
+    std::uint32_t square = 0;
+    std::size_t original_index = 0;
+};
+
+int ico_directory_color_depth(std::uint8_t color_count, std::uint16_t bit_count)
 {
-    if (!path || !out_image) {
+    if (bit_count != 0) {
+        return static_cast<int>(bit_count);
+    }
+    if (color_count != 0) {
+        int depth = 0;
+        int colors = static_cast<int>(color_count) - 1;
+        while (colors > 0) {
+            ++depth;
+            colors >>= 1;
+        }
+        if (depth != 0) {
+            return depth;
+        }
+    }
+    return 256;
+}
+
+bool parse_icon_directory_entries(
+    const std::vector<std::uint8_t>& data,
+    std::uint16_t expected_type,
+    std::vector<IcoDirectoryEntryInfo>* out_entries)
+{
+    if (!out_entries || data.size() < 6u ||
+        read_le16(data.data()) != 0u ||
+        read_le16(data.data() + 2u) != expected_type) {
+        return false;
+    }
+    const std::uint16_t count = read_le16(data.data() + 4u);
+    if (count == 0u ||
+        static_cast<std::size_t>(count) > (std::numeric_limits<std::size_t>::max() - 6u) / 16u) {
+        return false;
+    }
+    const std::size_t directory_size = 6u + static_cast<std::size_t>(count) * 16u;
+    if (directory_size > data.size()) {
+        return false;
+    }
+
+    std::vector<IcoDirectoryEntryInfo> entries;
+    entries.reserve(count);
+    for (std::size_t index = 0; index < static_cast<std::size_t>(count); ++index) {
+        const std::size_t offset = 6u + index * 16u;
+        IcoDirectoryEntryInfo entry{};
+        entry.width_byte = data[offset];
+        entry.height_byte = data[offset + 1u];
+        entry.color_count = data[offset + 2u];
+        entry.reserved = data[offset + 3u];
+        entry.planes = read_le16(data.data() + offset + 4u);
+        entry.bit_count = read_le16(data.data() + offset + 6u);
+        entry.bytes_in_resource = read_le32(data.data() + offset + 8u);
+        entry.image_offset = read_le32(data.data() + offset + 12u);
+        entry.width = entry.width_byte == 0u ? 256 : static_cast<int>(entry.width_byte);
+        entry.height = entry.height_byte == 0u ? 256 : static_cast<int>(entry.height_byte);
+        entry.color_depth = ico_directory_color_depth(entry.color_count, entry.bit_count);
+        entry.square = static_cast<std::uint32_t>(entry.width * entry.height);
+        entry.original_index = index;
+
+        const std::size_t image_offset = static_cast<std::size_t>(entry.image_offset);
+        const std::size_t image_size = static_cast<std::size_t>(entry.bytes_in_resource);
+        if (image_size == 0u || image_offset > data.size() || image_size > data.size() - image_offset) {
+            return false;
+        }
+        entries.push_back(entry);
+    }
+
+    *out_entries = std::move(entries);
+    return true;
+}
+
+bool parse_ico_directory_entries(
+    const std::vector<std::uint8_t>& data,
+    std::vector<IcoDirectoryEntryInfo>* out_entries)
+{
+    return parse_icon_directory_entries(data, 1u, out_entries);
+}
+
+bool parse_cur_directory_entries(
+    const std::vector<std::uint8_t>& data,
+    std::vector<IcoDirectoryEntryInfo>* out_entries)
+{
+    return parse_icon_directory_entries(data, 2u, out_entries);
+}
+
+bool choose_pillow_ico_directory_entry(
+    const std::vector<IcoDirectoryEntryInfo>& entries,
+    int requested_width,
+    int requested_height,
+    bool require_requested_size,
+    IcoDirectoryEntryInfo* out_entry)
+{
+    if (!out_entry || entries.empty()) {
+        return false;
+    }
+
+    std::vector<IcoDirectoryEntryInfo> sorted = entries;
+    std::stable_sort(sorted.begin(), sorted.end(), [](const IcoDirectoryEntryInfo& left, const IcoDirectoryEntryInfo& right) {
+        return left.color_depth < right.color_depth;
+    });
+    std::stable_sort(sorted.begin(), sorted.end(), [](const IcoDirectoryEntryInfo& left, const IcoDirectoryEntryInfo& right) {
+        return left.square > right.square;
+    });
+
+    for (const IcoDirectoryEntryInfo& entry : sorted) {
+        if (!require_requested_size ||
+            (entry.width == requested_width && entry.height == requested_height)) {
+            *out_entry = entry;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool build_single_entry_ico_bytes(
+    const std::vector<std::uint8_t>& source,
+    const IcoDirectoryEntryInfo& entry,
+    std::vector<std::uint8_t>* out)
+{
+    if (!out) {
+        return false;
+    }
+    const std::size_t image_offset = static_cast<std::size_t>(entry.image_offset);
+    const std::size_t image_size = static_cast<std::size_t>(entry.bytes_in_resource);
+    if (image_size == 0u || image_offset > source.size() || image_size > source.size() - image_offset ||
+        image_size > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max() - 22u)) {
+        return false;
+    }
+
+    std::vector<std::uint8_t> ico;
+    ico.reserve(22u + image_size);
+    append_le16(ico, 0u);
+    append_le16(ico, 1u);
+    append_le16(ico, 1u);
+    ico.push_back(entry.width_byte);
+    ico.push_back(entry.height_byte);
+    ico.push_back(entry.color_count);
+    ico.push_back(entry.reserved);
+    append_le16(ico, entry.planes);
+    append_le16(ico, entry.bit_count);
+    append_le32(ico, entry.bytes_in_resource);
+    append_le32(ico, 22u);
+    ico.insert(ico.end(), source.begin() + image_offset, source.begin() + image_offset + image_size);
+    *out = std::move(ico);
+    return true;
+}
+
+bool ico_entry_payload_is_png(const std::vector<std::uint8_t>& source, const IcoDirectoryEntryInfo& entry)
+{
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    const std::size_t image_offset = static_cast<std::size_t>(entry.image_offset);
+    const std::size_t image_size = static_cast<std::size_t>(entry.bytes_in_resource);
+    return image_offset <= source.size() &&
+           image_size >= sizeof(signature) &&
+           image_size <= source.size() - image_offset &&
+           std::memcmp(source.data() + image_offset, signature, sizeof(signature)) == 0;
+}
+
+bool read_ico_entry_dib_bit_count(
+    const std::vector<std::uint8_t>& source,
+    const IcoDirectoryEntryInfo& entry,
+    std::uint16_t* out_bit_count)
+{
+    if (!out_bit_count) {
+        return false;
+    }
+    *out_bit_count = 0;
+    const std::size_t image_offset = static_cast<std::size_t>(entry.image_offset);
+    const std::size_t image_size = static_cast<std::size_t>(entry.bytes_in_resource);
+    if (image_offset > source.size() || image_size < 16u || image_size > source.size() - image_offset) {
+        return false;
+    }
+    const std::uint8_t* dib = source.data() + image_offset;
+    const std::uint32_t header_size = read_le32(dib);
+    if (header_size < 16u || header_size > image_size) {
+        return false;
+    }
+    *out_bit_count = read_le16(dib + 14u);
+    return *out_bit_count != 0u;
+}
+
+bool read_ico_entry_dib_metadata(
+    const std::vector<std::uint8_t>& source,
+    const IcoDirectoryEntryInfo& entry,
+    bool* out_has_dpi,
+    double* out_dpi_x,
+    double* out_dpi_y,
+    int* out_compression)
+{
+    if (!out_has_dpi || !out_dpi_x || !out_dpi_y || !out_compression) {
+        return false;
+    }
+    *out_has_dpi = false;
+    *out_dpi_x = 0.0;
+    *out_dpi_y = 0.0;
+    *out_compression = -1;
+
+    const std::size_t image_offset = static_cast<std::size_t>(entry.image_offset);
+    const std::size_t image_size = static_cast<std::size_t>(entry.bytes_in_resource);
+    if (image_offset > source.size() || image_size < 40u || image_size > source.size() - image_offset) {
+        return false;
+    }
+
+    const std::uint8_t* dib = source.data() + image_offset;
+    const std::uint32_t header_size = read_le32(dib);
+    if (header_size < 40u || header_size > image_size) {
+        return false;
+    }
+
+    const std::uint32_t compression = read_le32(dib + 16u);
+    if (compression > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
+        return false;
+    }
+    *out_compression = static_cast<int>(compression);
+
+    const std::int32_t x_pels_per_meter = static_cast<std::int32_t>(read_le32(dib + 24u));
+    const std::int32_t y_pels_per_meter = static_cast<std::int32_t>(read_le32(dib + 28u));
+    if (x_pels_per_meter > 0 && y_pels_per_meter > 0) {
+        *out_has_dpi = true;
+        *out_dpi_x = static_cast<double>(x_pels_per_meter) * 0.0254;
+        *out_dpi_y = static_cast<double>(y_pels_per_meter) * 0.0254;
+    }
+    return true;
+}
+
+int ico_payload_format(
+    const char* path,
+    int requested_width,
+    int requested_height,
+    bool require_requested_size,
+    char* out_format,
+    std::size_t out_size,
+    std::size_t* out_required)
+{
+    if (!path || !out_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_required = 0;
+    if (require_requested_size && (requested_width <= 0 || requested_height <= 0)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        std::vector<std::uint8_t> ico_file;
+        if (!read_binary_file(path, &ico_file)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::vector<IcoDirectoryEntryInfo> entries;
+        if (!parse_ico_directory_entries(ico_file, &entries)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        IcoDirectoryEntryInfo selected_entry{};
+        if (!choose_pillow_ico_directory_entry(
+                entries,
+                requested_width,
+                requested_height,
+                require_requested_size,
+                &selected_entry)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        const char* format = "";
+        if (ico_entry_payload_is_png(ico_file, selected_entry)) {
+            format = "PNG";
+        }
+        const std::size_t required = std::strlen(format) == 0u ? 0u : std::strlen(format) + 1u;
+        *out_required = required;
+        if (required == 0u || !out_format) {
+            return PILLOW_C_OK;
+        }
+        if (out_size < required) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+        std::memcpy(out_format, format, required);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int ico_payload_dib_metadata(
+    const char* path,
+    int requested_width,
+    int requested_height,
+    bool require_requested_size,
+    int* out_has_dib,
+    int* out_has_dpi,
+    double* out_dpi_x,
+    double* out_dpi_y,
+    int* out_compression)
+{
+    if (!path || !out_has_dib || !out_has_dpi || !out_dpi_x || !out_dpi_y || !out_compression) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_has_dib = 0;
+    *out_has_dpi = 0;
+    *out_dpi_x = 0.0;
+    *out_dpi_y = 0.0;
+    *out_compression = -1;
+    if (require_requested_size && (requested_width <= 0 || requested_height <= 0)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        std::vector<std::uint8_t> ico_file;
+        if (!read_binary_file(path, &ico_file)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::vector<IcoDirectoryEntryInfo> entries;
+        if (!parse_ico_directory_entries(ico_file, &entries)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        IcoDirectoryEntryInfo selected_entry{};
+        if (!choose_pillow_ico_directory_entry(
+                entries,
+                requested_width,
+                requested_height,
+                require_requested_size,
+                &selected_entry)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        if (ico_entry_payload_is_png(ico_file, selected_entry)) {
+            return PILLOW_C_OK;
+        }
+
+        bool has_dpi = false;
+        double dpi_x = 0.0;
+        double dpi_y = 0.0;
+        int compression = -1;
+        if (!read_ico_entry_dib_metadata(ico_file, selected_entry, &has_dpi, &dpi_x, &dpi_y, &compression)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        *out_has_dib = 1;
+        *out_has_dpi = has_dpi ? 1 : 0;
+        *out_dpi_x = dpi_x;
+        *out_dpi_y = dpi_y;
+        *out_compression = compression;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int decode_single_entry_ico_bytes(std::vector<std::uint8_t>& selected_ico, PillowCImage** out_image)
+{
+    if (!out_image) {
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
+    if (selected_ico.empty() || selected_ico.size() > static_cast<std::size_t>(std::numeric_limits<DWORD>::max())) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
 
     try {
-        std::vector<wchar_t> wide_path;
-        if (!utf8_path_to_wide(path, &wide_path)) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
         ComInitScope com;
         if (!com.usable()) {
             return PILLOW_C_INVALID_ARGUMENT;
@@ -4045,11 +8295,22 @@ int open_ico_image(const char* path, PillowCImage** out_image)
             return status;
         }
 
+        ComPtr<IWICStream> stream;
+        HRESULT hr = factory->CreateStream(stream.put());
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        hr = stream->InitializeFromMemory(
+            selected_ico.data(),
+            static_cast<DWORD>(selected_ico.size()));
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
         ComPtr<IWICBitmapDecoder> decoder;
-        HRESULT hr = factory->CreateDecoderFromFilename(
-            wide_path.data(),
+        hr = factory->CreateDecoderFromStream(
+            stream.get(),
             nullptr,
-            GENERIC_READ,
             WICDecodeMetadataCacheOnDemand,
             decoder.put());
         if (FAILED(hr)) {
@@ -4067,34 +8328,16 @@ int open_ico_image(const char* path, PillowCImage** out_image)
         }
 
         ComPtr<IWICBitmapFrameDecode> frame;
+        hr = decoder->GetFrame(0, frame.put());
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
         UINT width_u = 0;
         UINT height_u = 0;
-        std::uint64_t best_area = 0;
-        for (UINT index = 0; index < frame_count; ++index) {
-            ComPtr<IWICBitmapFrameDecode> candidate;
-            hr = decoder->GetFrame(index, candidate.put());
-            if (FAILED(hr)) {
-                return PILLOW_C_INVALID_ARGUMENT;
-            }
-            UINT candidate_width = 0;
-            UINT candidate_height = 0;
-            hr = candidate->GetSize(&candidate_width, &candidate_height);
-            if (FAILED(hr) ||
-                candidate_width > static_cast<UINT>(std::numeric_limits<int>::max()) ||
-                candidate_height > static_cast<UINT>(std::numeric_limits<int>::max())) {
-                return PILLOW_C_INVALID_ARGUMENT;
-            }
-            const std::uint64_t area =
-                static_cast<std::uint64_t>(candidate_width) * static_cast<std::uint64_t>(candidate_height);
-            if (!frame.get() || area > best_area) {
-                frame.reset(candidate.get());
-                frame.get()->AddRef();
-                width_u = candidate_width;
-                height_u = candidate_height;
-                best_area = area;
-            }
-        }
-        if (!frame.get()) {
+        hr = frame->GetSize(&width_u, &height_u);
+        if (FAILED(hr) ||
+            width_u > static_cast<UINT>(std::numeric_limits<int>::max()) ||
+            height_u > static_cast<UINT>(std::numeric_limits<int>::max())) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
         const int width = static_cast<int>(width_u);
@@ -4163,6 +8406,191 @@ int open_ico_image(const char* path, PillowCImage** out_image)
     }
 }
 
+int open_ico_image_size(const char* path, int requested_width, int requested_height, bool require_requested_size, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (require_requested_size && (requested_width <= 0 || requested_height <= 0)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        std::vector<std::uint8_t> ico_file;
+        if (!read_binary_file(path, &ico_file)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::vector<IcoDirectoryEntryInfo> entries;
+        if (!parse_ico_directory_entries(ico_file, &entries)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        IcoDirectoryEntryInfo selected_entry{};
+        if (!choose_pillow_ico_directory_entry(
+                entries,
+                requested_width,
+                requested_height,
+                require_requested_size,
+                &selected_entry)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::vector<std::uint8_t> selected_ico;
+        if (!build_single_entry_ico_bytes(ico_file, selected_entry, &selected_ico)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return decode_single_entry_ico_bytes(selected_ico, out_image);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int open_ico_image(const char* path, PillowCImage** out_image)
+{
+    return open_ico_image_size(path, 0, 0, false, out_image);
+}
+
+int open_cur_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> cur_file;
+        if (!read_binary_file(path, &cur_file)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::vector<IcoDirectoryEntryInfo> entries;
+        if (!parse_cur_directory_entries(cur_file, &entries)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        IcoDirectoryEntryInfo selected_entry{};
+        if (!choose_pillow_ico_directory_entry(entries, 0, 0, false, &selected_entry)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (ico_entry_payload_is_png(cur_file, selected_entry)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::uint16_t bit_count = 0;
+        if (!read_ico_entry_dib_bit_count(cur_file, selected_entry, &bit_count)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        IcoDirectoryEntryInfo ico_entry = selected_entry;
+        ico_entry.planes = 0;
+        ico_entry.bit_count = bit_count;
+        std::vector<std::uint8_t> selected_ico;
+        if (!build_single_entry_ico_bytes(cur_file, ico_entry, &selected_ico)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        PillowCImage* image = nullptr;
+        int status = decode_single_entry_ico_bytes(selected_ico, &image);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        bool has_dpi = false;
+        double dpi_x = 0.0;
+        double dpi_y = 0.0;
+        int compression = -1;
+        if (!read_ico_entry_dib_metadata(cur_file, selected_entry, &has_dpi, &dpi_x, &dpi_y, &compression)) {
+            delete image;
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        image->has_dpi = has_dpi;
+        image->dpi_x = dpi_x;
+        image->dpi_y = dpi_y;
+        image->has_dib_compression = true;
+        image->dib_compression = compression;
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int ico_image_sizes(const char* path, int* out_sizes, std::size_t out_pair_count, std::size_t* out_required)
+{
+    if (!path || !out_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_required = 0;
+
+    try {
+        std::vector<wchar_t> wide_path;
+        if (!utf8_path_to_wide(path, &wide_path)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ComInitScope com;
+        if (!com.usable()) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ComPtr<IWICImagingFactory> factory;
+        int status = create_wic_factory(&factory);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        ComPtr<IWICBitmapDecoder> decoder;
+        HRESULT hr = factory->CreateDecoderFromFilename(
+            wide_path.data(),
+            nullptr,
+            GENERIC_READ,
+            WICDecodeMetadataCacheOnDemand,
+            decoder.put());
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        GUID container = {};
+        if (FAILED(decoder->GetContainerFormat(&container)) || !IsEqualGUID(container, GUID_ContainerFormatIco)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        UINT frame_count = 0;
+        hr = decoder->GetFrameCount(&frame_count);
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::vector<std::pair<int, int>> sizes;
+        sizes.reserve(frame_count);
+        for (UINT index = 0; index < frame_count; ++index) {
+            ComPtr<IWICBitmapFrameDecode> frame;
+            hr = decoder->GetFrame(index, frame.put());
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            UINT width = 0;
+            UINT height = 0;
+            hr = frame->GetSize(&width, &height);
+            if (FAILED(hr) ||
+                width > static_cast<UINT>(std::numeric_limits<int>::max()) ||
+                height > static_cast<UINT>(std::numeric_limits<int>::max())) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            sizes.emplace_back(static_cast<int>(width), static_cast<int>(height));
+        }
+
+        std::sort(sizes.begin(), sizes.end());
+        sizes.erase(std::unique(sizes.begin(), sizes.end()), sizes.end());
+        *out_required = sizes.size();
+        if (!out_sizes) {
+            return PILLOW_C_OK;
+        }
+        if (out_pair_count < sizes.size()) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+        for (std::size_t index = 0; index < sizes.size(); ++index) {
+            out_sizes[index * 2u] = sizes[index].first;
+            out_sizes[index * 2u + 1u] = sizes[index].second;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 int open_png_image(const char* path, PillowCImage** out_image)
 {
     if (!path || !out_image) {
@@ -4189,13 +8617,38 @@ int open_png_image(const char* path, PillowCImage** out_image)
             return status;
         }
 
+        std::uint8_t png_grayscale_transparency = 0;
+        const bool has_grayscale_transparency =
+            header_info.color_type == 0 &&
+            read_png_grayscale_transparency(path, &png_grayscale_transparency);
+        std::vector<std::uint8_t> png_decode_bytes;
         ComPtr<IWICBitmapDecoder> decoder;
-        HRESULT hr = factory->CreateDecoderFromFilename(
-            wide_path.data(),
-            nullptr,
-            GENERIC_READ,
-            WICDecodeMetadataCacheOnDemand,
-            decoder.put());
+        ComPtr<IWICStream> decoder_stream;
+        HRESULT hr = S_OK;
+        if (copy_png_without_wic_sensitive_chunks(path, has_grayscale_transparency, true, &png_decode_bytes)) {
+            hr = factory->CreateStream(decoder_stream.put());
+            if (FAILED(hr) || png_decode_bytes.size() > static_cast<std::size_t>(UINT_MAX)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            hr = decoder_stream->InitializeFromMemory(
+                png_decode_bytes.data(),
+                static_cast<DWORD>(png_decode_bytes.size()));
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            hr = factory->CreateDecoderFromStream(
+                decoder_stream.get(),
+                nullptr,
+                WICDecodeMetadataCacheOnDemand,
+                decoder.put());
+        } else {
+            hr = factory->CreateDecoderFromFilename(
+                wide_path.data(),
+                nullptr,
+                GENERIC_READ,
+                WICDecodeMetadataCacheOnDemand,
+                decoder.put());
+        }
         if (FAILED(hr)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
@@ -4231,16 +8684,42 @@ int open_png_image(const char* path, PillowCImage** out_image)
         int channels = 0;
         int decoded_channels = 0;
         WICPixelFormatGUID target_format = {};
-        if (header_info.color_type == 4 && header_info.bit_depth == 8) {
+        std::vector<std::uint8_t> png_palette_rgb;
+        std::vector<std::uint8_t> png_palette_alpha;
+        std::vector<std::uint8_t> png_transparency_table;
+        int png_transparency = -1;
+        const bool has_palette_transparency =
+            header_info.color_type == 3 &&
+            read_png_palette_transparency(
+                path,
+                &png_palette_rgb,
+                &png_palette_alpha,
+                &png_transparency_table,
+                &png_transparency);
+        std::uint8_t png_rgb_transparency[3] = {0, 0, 0};
+        const bool has_rgb_transparency =
+            header_info.color_type == 2 &&
+            read_png_rgb_transparency(path, png_rgb_transparency);
+        if (header_info.color_type == 0 && header_info.bit_depth == 8) {
+            mode = PILLOW_C_MODE_L;
+            channels = 1;
+            decoded_channels = 1;
+            target_format = GUID_WICPixelFormat8bppGray;
+        } else if (header_info.color_type == 4 && header_info.bit_depth == 8) {
             mode = PILLOW_C_MODE_LA;
             channels = 2;
             decoded_channels = 4;
             target_format = GUID_WICPixelFormat32bppRGBA;
+        } else if (header_info.color_type == 2 && header_info.bit_depth == 8) {
+            mode = PILLOW_C_MODE_RGB;
+            channels = 3;
+            decoded_channels = 3;
+            target_format = GUID_WICPixelFormat24bppRGB;
         } else if (header_info.color_type == 3 && header_info.bit_depth <= 8) {
             mode = PILLOW_C_MODE_P;
             channels = 1;
-            decoded_channels = 1;
-            target_format = GUID_WICPixelFormat8bppIndexed;
+            decoded_channels = has_palette_transparency ? 4 : 1;
+            target_format = has_palette_transparency ? GUID_WICPixelFormat32bppRGBA : GUID_WICPixelFormat8bppIndexed;
         } else {
             status = wic_format_to_mode(source_format, &mode, &channels, &target_format);
             if (status != PILLOW_C_OK) {
@@ -4267,6 +8746,9 @@ int open_png_image(const char* path, PillowCImage** out_image)
             status = copy_wic_palette_rgb(frame.get(), factory.get(), &palette_rgb);
             if (status != PILLOW_C_OK) {
                 return status;
+            }
+            if (has_palette_transparency) {
+                palette_rgb = png_palette_rgb;
             }
             HRESULT palette_hr = factory->CreatePalette(source_palette.put());
             if (FAILED(palette_hr) || FAILED(frame->CopyPalette(source_palette.get()))) {
@@ -4336,11 +8818,35 @@ int open_png_image(const char* path, PillowCImage** out_image)
                     dst_row[dst + 1u] = src_row[src + 3u];
                 }
             }
+        } else if (mode == PILLOW_C_MODE_P && has_palette_transparency) {
+            status = remap_png_rgba_to_palette_indices(
+                decoded,
+                width,
+                height,
+                decoded_stride,
+                png_palette_rgb,
+                png_palette_alpha,
+                image);
+            if (status != PILLOW_C_OK) {
+                delete image;
+                return status;
+            }
         }
         if (mode == PILLOW_C_MODE_P) {
             image->palette_rgb = std::move(palette_rgb);
-            image->palette_alpha.clear();
-            image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+            if (has_palette_transparency) {
+                image->palette_alpha = std::move(png_palette_alpha);
+                image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_RGBA;
+                if (png_transparency >= 0) {
+                    image->has_png_transparency = true;
+                    image->png_transparency = png_transparency;
+                } else if (!png_transparency_table.empty()) {
+                    image->png_transparency_table = std::move(png_transparency_table);
+                }
+            } else {
+                image->palette_alpha.clear();
+                image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+            }
         }
         double dpi_x = 0.0;
         double dpi_y = 0.0;
@@ -4348,6 +8854,50 @@ int open_png_image(const char* path, PillowCImage** out_image)
             image->has_dpi = true;
             image->dpi_x = dpi_x;
             image->dpi_y = dpi_y;
+        }
+        double png_gamma = 0.0;
+        if (read_png_gamma_metadata(path, &png_gamma)) {
+            image->has_png_gamma = true;
+            image->png_gamma = png_gamma;
+        }
+        int png_srgb = 0;
+        if (read_png_srgb_metadata(path, &png_srgb)) {
+            image->has_png_srgb = true;
+            image->png_srgb = png_srgb;
+        }
+        double png_chromaticity[8] = {};
+        if (read_png_chromaticity_metadata(path, png_chromaticity, 8u)) {
+            image->has_png_chromaticity = true;
+            for (std::size_t i = 0; i < 8u; ++i) {
+                image->png_chromaticity[i] = png_chromaticity[i];
+            }
+        }
+        std::vector<std::pair<std::string, std::string>> png_text;
+        if (read_png_text_metadata(path, &png_text)) {
+            image->png_text = std::move(png_text);
+        }
+        std::vector<std::uint8_t> png_xmp;
+        if (read_png_xmp_metadata(path, &png_xmp)) {
+            image->xmp = std::move(png_xmp);
+        }
+        std::vector<std::uint8_t> png_icc_profile;
+        if (read_png_icc_profile(path, &png_icc_profile)) {
+            image->png_icc_profile = std::move(png_icc_profile);
+        }
+        std::vector<std::uint8_t> png_exif;
+        if (read_png_exif_metadata(path, &png_exif)) {
+            image->exif_orientation = parse_exif_orientation(png_exif.data(), png_exif.size());
+            image->png_exif = std::move(png_exif);
+        }
+        if (has_rgb_transparency) {
+            image->has_png_rgb_transparency = true;
+            image->png_rgb_transparency[0] = png_rgb_transparency[0];
+            image->png_rgb_transparency[1] = png_rgb_transparency[1];
+            image->png_rgb_transparency[2] = png_rgb_transparency[2];
+        }
+        if (has_grayscale_transparency) {
+            image->has_png_transparency = true;
+            image->png_transparency = png_grayscale_transparency;
         }
         *out_image = image;
         return PILLOW_C_OK;
@@ -4422,18 +8972,6 @@ std::uint32_t crc32_bytes(const std::uint8_t* data, std::size_t size)
     return crc ^ 0xffffffffu;
 }
 
-std::uint32_t adler32_bytes(const std::uint8_t* data, std::size_t size)
-{
-    constexpr std::uint32_t mod = 65521u;
-    std::uint32_t a = 1u;
-    std::uint32_t b = 0u;
-    for (std::size_t i = 0; i < size; ++i) {
-        a = (a + data[i]) % mod;
-        b = (b + a) % mod;
-    }
-    return (b << 16) | a;
-}
-
 void append_png_chunk(std::vector<std::uint8_t>& out, const char type[4], const std::vector<std::uint8_t>& data)
 {
     append_be32(out, static_cast<std::uint32_t>(data.size()));
@@ -4446,10 +8984,10 @@ void append_png_chunk(std::vector<std::uint8_t>& out, const char type[4], const 
     append_be32(out, crc32_bytes(out.data() + type_offset, out.size() - type_offset));
 }
 
-int append_zlib_stored(std::vector<std::uint8_t>& out, const std::vector<std::uint8_t>& raw)
+int append_zlib_stored(std::vector<std::uint8_t>& out, const std::vector<std::uint8_t>& raw, std::uint8_t flags = 0x01u)
 {
     out.push_back(0x78u);
-    out.push_back(0x01u);
+    out.push_back(flags);
     std::size_t offset = 0;
     do {
         const std::size_t remaining = raw.size() - offset;
@@ -4463,6 +9001,20 @@ int append_zlib_stored(std::vector<std::uint8_t>& out, const std::vector<std::ui
     } while (offset < raw.size());
     append_be32(out, adler32_bytes(raw.empty() ? nullptr : raw.data(), raw.size()));
     return PILLOW_C_OK;
+}
+
+std::uint8_t png_zlib_header_flags_for_level(int compress_level)
+{
+    if (compress_level >= 7) {
+        return 0xDAu;
+    }
+    if (compress_level >= 6) {
+        return 0x9Cu;
+    }
+    if (compress_level >= 2) {
+        return 0x5Eu;
+    }
+    return 0x01u;
 }
 
 bool png_dpi_to_pixels_per_meter(double dpi, std::uint32_t* out_value)
@@ -4495,17 +9047,533 @@ int append_png_phys_chunk(std::vector<std::uint8_t>& png, double dpi_x, double d
     return PILLOW_C_OK;
 }
 
-int encode_png_custom_image(
+enum PngTextEntryKind {
+    PNG_TEXT_ENTRY_TEXT = 0,
+    PNG_TEXT_ENTRY_ITXT = 1,
+};
+
+enum PngMetadataSaveFlags : std::uint32_t {
+    PNG_METADATA_HAS_GAMA = 0x01u,
+    PNG_METADATA_CHUNK_AFTER_ICC = 0x02u,
+    PNG_METADATA_TEXT_BEFORE_EXIF = 0x04u,
+    PNG_METADATA_OPTIMIZE = 0x08u,
+    PNG_METADATA_HAS_TRANSPARENCY = 0x10u,
+    PNG_METADATA_HAS_RGB_TRANSPARENCY = 0x20u,
+    PNG_METADATA_CHUNK_AFTER_IDAT = 0x40u,
+};
+
+constexpr std::uint32_t PNG_METADATA_KNOWN_FLAGS =
+    PNG_METADATA_HAS_GAMA |
+    PNG_METADATA_CHUNK_AFTER_ICC |
+    PNG_METADATA_TEXT_BEFORE_EXIF |
+    PNG_METADATA_OPTIMIZE |
+    PNG_METADATA_HAS_TRANSPARENCY |
+    PNG_METADATA_HAS_RGB_TRANSPARENCY |
+    PNG_METADATA_CHUNK_AFTER_IDAT;
+
+bool is_png_text_ascii(const char* value, bool is_key)
+{
+    if (!value) {
+        return false;
+    }
+    const std::size_t length = std::strlen(value);
+    if (is_key && (length == 0u || length > 79u)) {
+        return false;
+    }
+    for (std::size_t i = 0; i < length; ++i) {
+        const unsigned char ch = static_cast<unsigned char>(value[i]);
+        if (ch >= 128u) {
+            return false;
+        }
+        if (is_key && (ch < 32u || ch == 127u)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int append_png_text_chunk_bytes(
+    std::vector<std::uint8_t>& png,
+    const char* key,
+    const std::uint8_t* value,
+    std::size_t value_length)
+{
+    if (!is_png_text_ascii(key, true) || (!value && value_length > 0u)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t key_length = std::strlen(key);
+    if (key_length + 1u > std::numeric_limits<std::uint32_t>::max() - value_length) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<std::uint8_t> text;
+    text.reserve(key_length + 1u + value_length);
+    text.insert(text.end(), reinterpret_cast<const std::uint8_t*>(key), reinterpret_cast<const std::uint8_t*>(key) + key_length);
+    text.push_back(0u);
+    if (value_length > 0u) {
+        text.insert(text.end(), value, value + value_length);
+    }
+    append_png_chunk(png, "tEXt", text);
+    return PILLOW_C_OK;
+}
+
+int append_png_text_chunk(std::vector<std::uint8_t>& png, const char* key, const char* value)
+{
+    if (!value) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return append_png_text_chunk_bytes(
+        png,
+        key,
+        reinterpret_cast<const std::uint8_t*>(value),
+        std::strlen(value));
+}
+
+int append_png_ztxt_chunk_bytes(
+    std::vector<std::uint8_t>& png,
+    const char* key,
+    const std::uint8_t* value,
+    std::size_t value_length)
+{
+    if (!is_png_text_ascii(key, true) || (!value && value_length > 0u)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t key_length = std::strlen(key);
+    std::vector<std::uint8_t> compressed;
+    compressed.reserve(value_length + 16u);
+    if (value_length > 0u) {
+        compressed.insert(compressed.end(), value, value + value_length);
+    }
+    std::vector<std::uint8_t> zlib;
+    append_zlib_stored(zlib, compressed);
+    if (key_length + 2u > std::numeric_limits<std::uint32_t>::max() - zlib.size()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<std::uint8_t> text;
+    text.reserve(key_length + 2u + zlib.size());
+    text.insert(text.end(), reinterpret_cast<const std::uint8_t*>(key), reinterpret_cast<const std::uint8_t*>(key) + key_length);
+    text.push_back(0u);
+    text.push_back(0u);
+    text.insert(text.end(), zlib.begin(), zlib.end());
+    append_png_chunk(png, "zTXt", text);
+    return PILLOW_C_OK;
+}
+
+int append_png_ztxt_chunk(std::vector<std::uint8_t>& png, const char* key, const char* value)
+{
+    if (!value) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return append_png_ztxt_chunk_bytes(
+        png,
+        key,
+        reinterpret_cast<const std::uint8_t*>(value),
+        std::strlen(value));
+}
+
+int append_png_itxt_chunk(
+    std::vector<std::uint8_t>& png,
+    const char* key,
+    const char* value,
+    bool compressed,
+    const char* lang = "",
+    const char* translated_key = "")
+{
+    if (!is_png_text_ascii(key, true) || !value || !lang || !translated_key) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!is_png_text_ascii(lang, false)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t key_length = std::strlen(key);
+    const std::size_t value_length = std::strlen(value);
+    const std::size_t lang_length = std::strlen(lang);
+    const std::size_t translated_key_length = std::strlen(translated_key);
+    std::vector<std::uint8_t> payload;
+    const std::uint8_t* text_begin = reinterpret_cast<const std::uint8_t*>(value);
+    const std::uint8_t* text_end = text_begin + value_length;
+    if (compressed) {
+        std::vector<std::uint8_t> raw;
+        try {
+            raw.assign(text_begin, text_end);
+        } catch (const std::bad_alloc&) {
+            return PILLOW_C_ALLOCATION_FAILED;
+        }
+        append_zlib_stored(payload, raw);
+        text_begin = payload.data();
+        text_end = payload.data() + payload.size();
+    }
+    const std::size_t output_value_length = static_cast<std::size_t>(text_end - text_begin);
+    const std::size_t prefix_length = key_length + 3u + lang_length + 1u + translated_key_length + 1u;
+    if (prefix_length > std::numeric_limits<std::uint32_t>::max() - output_value_length) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<std::uint8_t> text;
+    text.reserve(prefix_length + output_value_length);
+    text.insert(text.end(), reinterpret_cast<const std::uint8_t*>(key), reinterpret_cast<const std::uint8_t*>(key) + key_length);
+    text.push_back(0u);
+    text.push_back(compressed ? 1u : 0u);
+    text.push_back(0u);
+    text.insert(text.end(), reinterpret_cast<const std::uint8_t*>(lang), reinterpret_cast<const std::uint8_t*>(lang) + lang_length);
+    text.push_back(0u);
+    text.insert(
+        text.end(),
+        reinterpret_cast<const std::uint8_t*>(translated_key),
+        reinterpret_cast<const std::uint8_t*>(translated_key) + translated_key_length);
+    text.push_back(0u);
+    text.insert(text.end(), text_begin, text_end);
+    append_png_chunk(png, "iTXt", text);
+    return PILLOW_C_OK;
+}
+
+int append_png_iccp_chunk(std::vector<std::uint8_t>& png, const std::uint8_t* profile, std::size_t profile_size)
+{
+    if (!profile || profile_size == 0u) {
+        return profile ? PILLOW_C_INVALID_LENGTH : PILLOW_C_NULL_POINTER;
+    }
+    std::vector<std::uint8_t> profile_bytes;
+    try {
+        profile_bytes.assign(profile, profile + profile_size);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    std::vector<std::uint8_t> zlib;
+    append_zlib_stored(zlib, profile_bytes);
+    static constexpr char keyword[] = "ICC Profile";
+    const std::size_t key_length = sizeof(keyword) - 1u;
+    if (key_length + 2u > std::numeric_limits<std::uint32_t>::max() - zlib.size()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<std::uint8_t> chunk;
+    chunk.reserve(key_length + 2u + zlib.size());
+    chunk.insert(chunk.end(), reinterpret_cast<const std::uint8_t*>(keyword), reinterpret_cast<const std::uint8_t*>(keyword) + key_length);
+    chunk.push_back(0u);
+    chunk.push_back(0u);
+    chunk.insert(chunk.end(), zlib.begin(), zlib.end());
+    append_png_chunk(png, "iCCP", chunk);
+    return PILLOW_C_OK;
+}
+
+int append_png_exif_chunk(std::vector<std::uint8_t>& png, const std::uint8_t* exif, std::size_t exif_size)
+{
+    if (!exif || exif_size == 0u) {
+        return exif ? PILLOW_C_INVALID_LENGTH : PILLOW_C_NULL_POINTER;
+    }
+    static constexpr std::uint8_t exif_header[6] = {'E', 'x', 'i', 'f', 0, 0};
+    if (exif_size <= sizeof(exif_header) ||
+        std::memcmp(exif, exif_header, sizeof(exif_header)) != 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::uint8_t* payload = exif + sizeof(exif_header);
+    const std::size_t payload_size = exif_size - sizeof(exif_header);
+    if (payload_size > std::numeric_limits<std::uint32_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<std::uint8_t> chunk;
+    try {
+        chunk.assign(payload, payload + payload_size);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    append_png_chunk(png, "eXIf", chunk);
+    return PILLOW_C_OK;
+}
+
+int append_png_gama_chunk(std::vector<std::uint8_t>& png, std::uint32_t gamma_raw)
+{
+    std::vector<std::uint8_t> chunk;
+    append_be32(chunk, gamma_raw);
+    append_png_chunk(png, "gAMA", chunk);
+    return PILLOW_C_OK;
+}
+
+bool is_png_private_chunk_type(const char* type)
+{
+    return type && type[1] >= 'a' && type[1] <= 'z';
+}
+
+bool is_supported_png_pre_idat_chunk(const char* type, std::size_t data_size)
+{
+    if (!type) {
+        return false;
+    }
+    if (std::memcmp(type, "gAMA", 4u) == 0) {
+        return data_size == 4u;
+    }
+    if (std::memcmp(type, "sRGB", 4u) == 0) {
+        return data_size == 1u;
+    }
+    if (std::memcmp(type, "sBIT", 4u) == 0) {
+        return data_size == 3u;
+    }
+    if (std::memcmp(type, "sPLT", 4u) == 0) {
+        return true;
+    }
+    if (std::memcmp(type, "cHRM", 4u) == 0) {
+        return data_size == 32u;
+    }
+    if (std::memcmp(type, "cICP", 4u) == 0) {
+        return data_size == 4u;
+    }
+    if (std::memcmp(type, "bKGD", 4u) == 0) {
+        return data_size == 1u || data_size == 6u;
+    }
+    if (std::memcmp(type, "hIST", 4u) == 0) {
+        return data_size >= 2u && data_size <= 512u && (data_size % 2u) == 0u;
+    }
+    if (std::memcmp(type, "tIME", 4u) == 0) {
+        return data_size == 7u;
+    }
+    return is_png_private_chunk_type(type);
+}
+
+std::size_t png_bkgd_payload_size_for_mode(int mode)
+{
+    if (mode == PILLOW_C_MODE_P) {
+        return 1u;
+    }
+    if (mode == PILLOW_C_MODE_RGB) {
+        return 6u;
+    }
+    return 0u;
+}
+
+std::size_t png_sbit_payload_size_for_mode(int mode)
+{
+    return mode == PILLOW_C_MODE_RGB ? 3u : 0u;
+}
+
+std::size_t png_hist_payload_size_for_image(const PillowCImage* image)
+{
+    if (!image || image->mode != PILLOW_C_MODE_P) {
+        return 0u;
+    }
+    const std::size_t palette_size = image->palette_rgb.empty()
+        ? 3u
+        : image->palette_rgb.size();
+    if (palette_size % 3u != 0u || palette_size > 256u * 3u) {
+        return 0u;
+    }
+    return (palette_size / 3u) * 2u;
+}
+
+struct PngCustomChunkSpec {
+    const char* type;
+    const std::uint8_t* data;
+    std::size_t size;
+    bool after_idat;
+};
+
+int append_png_pre_idat_chunk(
+    std::vector<std::uint8_t>& png,
+    const char* type,
+    const std::uint8_t* data,
+    std::size_t data_size)
+{
+    if (!type || (data_size > 0u && !data)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!is_supported_png_pre_idat_chunk(type, data_size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (data_size > std::numeric_limits<std::uint32_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<std::uint8_t> chunk;
+    try {
+        if (data_size > 0u) {
+            chunk.assign(data, data + data_size);
+        }
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    append_png_chunk(png, type, chunk);
+    return PILLOW_C_OK;
+}
+
+int validate_png_custom_chunks(const PngCustomChunkSpec* chunks, std::size_t chunk_count)
+{
+    if (chunk_count > 0u && !chunks) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    for (std::size_t i = 0; i < chunk_count; ++i) {
+        const PngCustomChunkSpec& chunk = chunks[i];
+        if (!chunk.type || (chunk.size > 0u && !chunk.data)) {
+            return PILLOW_C_NULL_POINTER;
+        }
+        if (!is_png_private_chunk_type(chunk.type)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (chunk.size > std::numeric_limits<std::uint32_t>::max()) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int append_png_custom_chunks(
+    std::vector<std::uint8_t>& png,
+    const PngCustomChunkSpec* chunks,
+    std::size_t chunk_count,
+    bool after_idat)
+{
+    for (std::size_t i = 0; i < chunk_count; ++i) {
+        if (chunks[i].after_idat != after_idat) {
+            continue;
+        }
+        const int status = append_png_pre_idat_chunk(png, chunks[i].type, chunks[i].data, chunks[i].size);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int encode_png_custom_image_with_text_entries(
     const PillowCImage* image,
     bool has_dpi,
     double dpi_x,
     double dpi_y,
-    std::vector<std::uint8_t>* out_png)
+    bool has_transparency,
+    int transparency,
+    const std::uint8_t* transparency_table,
+    std::size_t transparency_table_size,
+    bool has_rgb_transparency,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b,
+    std::vector<std::uint8_t>* out_png,
+    const char* const* text_keys,
+    const char* const* text_values,
+    std::size_t text_count,
+    const int* text_compressed = nullptr,
+    const int* text_kinds = nullptr,
+    const char* const* text_langs = nullptr,
+    const char* const* text_translated_keys = nullptr,
+    const std::uint8_t* icc_profile = nullptr,
+    std::size_t icc_profile_size = 0u,
+    const std::uint8_t* exif = nullptr,
+    std::size_t exif_size = 0u,
+    bool optimize = false,
+    bool text_before_exif = false,
+    bool has_gama = false,
+    std::uint32_t gama_raw = 0u,
+    const char* pre_idat_chunk_type = nullptr,
+    const std::uint8_t* pre_idat_chunk_data = nullptr,
+    std::size_t pre_idat_chunk_size = 0u,
+    bool pre_idat_chunk_after_icc = false,
+    bool chunk_after_idat = false,
+    int compress_level = -1,
+    const PngCustomChunkSpec* custom_chunks = nullptr,
+    std::size_t custom_chunk_count = 0u,
+    bool custom_chunks_after_text = false,
+    const std::size_t* text_value_sizes = nullptr)
 {
     if (!image || !out_png) {
         return PILLOW_C_NULL_POINTER;
     }
+    if (icc_profile_size > 0u && !icc_profile) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (exif_size > 0u && !exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count > 0u && (!text_keys || !text_values)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((pre_idat_chunk_type || pre_idat_chunk_data || pre_idat_chunk_size > 0u) &&
+        (!pre_idat_chunk_type || (pre_idat_chunk_size > 0u && !pre_idat_chunk_data))) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const bool pre_idat_chunk_is_bkgd = pre_idat_chunk_type && std::memcmp(pre_idat_chunk_type, "bKGD", 4u) == 0;
+    const bool pre_idat_chunk_is_hist = pre_idat_chunk_type && std::memcmp(pre_idat_chunk_type, "hIST", 4u) == 0;
+    const bool pre_idat_chunk_is_sbit = pre_idat_chunk_type && std::memcmp(pre_idat_chunk_type, "sBIT", 4u) == 0;
+    const std::size_t pre_idat_hist_payload_size = pre_idat_chunk_is_hist
+        ? png_hist_payload_size_for_image(image)
+        : 0u;
+    const bool pre_idat_chunk_defer_to_palette = !chunk_after_idat &&
+        ((pre_idat_chunk_is_bkgd && png_bkgd_payload_size_for_mode(image->mode) == 1u) ||
+         (pre_idat_chunk_is_hist && pre_idat_hist_payload_size > 0u));
+    if (pre_idat_chunk_type) {
+        if (chunk_after_idat) {
+            if (!is_png_private_chunk_type(pre_idat_chunk_type)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+        } else if (!is_supported_png_pre_idat_chunk(pre_idat_chunk_type, pre_idat_chunk_size) ||
+                   (has_gama && std::memcmp(pre_idat_chunk_type, "gAMA", 4u) == 0) ||
+                   (pre_idat_chunk_is_bkgd && pre_idat_chunk_size != png_bkgd_payload_size_for_mode(image->mode)) ||
+                   (pre_idat_chunk_is_sbit && pre_idat_chunk_size != png_sbit_payload_size_for_mode(image->mode)) ||
+                   (pre_idat_chunk_is_hist && pre_idat_chunk_size != pre_idat_hist_payload_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    if (custom_chunk_count > 0u) {
+        if (pre_idat_chunk_type) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const int chunk_status = validate_png_custom_chunks(custom_chunks, custom_chunk_count);
+        if (chunk_status != PILLOW_C_OK) {
+            return chunk_status;
+        }
+    }
+    if ((text_langs && !text_translated_keys) || (!text_langs && text_translated_keys)) {
+        return PILLOW_C_NULL_POINTER;
+    }
     if (image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    for (std::size_t i = 0; i < text_count; ++i) {
+        if (!text_keys[i] || !text_values[i]) {
+            return PILLOW_C_NULL_POINTER;
+        }
+        if (text_langs && (!text_langs[i] || !text_translated_keys[i])) {
+            return PILLOW_C_NULL_POINTER;
+        }
+        const int kind = text_kinds ? text_kinds[i] : PNG_TEXT_ENTRY_TEXT;
+        if (kind != PNG_TEXT_ENTRY_TEXT && kind != PNG_TEXT_ENTRY_ITXT) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (text_value_sizes && kind != PNG_TEXT_ENTRY_TEXT) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (!is_png_text_ascii(text_keys[i], true)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (kind == PNG_TEXT_ENTRY_TEXT && text_langs && (text_langs[i][0] != '\0' || text_translated_keys[i][0] != '\0')) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (kind == PNG_TEXT_ENTRY_ITXT && text_langs && !is_png_text_ascii(text_langs[i], false)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (text_compressed && text_compressed[i] != 0 && text_compressed[i] != 1) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    if (transparency_table_size > 0u && !transparency_table) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (has_transparency &&
+        ((image->mode != PILLOW_C_MODE_P && image->mode != PILLOW_C_MODE_L) ||
+         transparency < 0 ||
+         transparency > 255)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (transparency_table_size > 0u &&
+        (image->mode != PILLOW_C_MODE_P || transparency_table_size > 256u)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (has_rgb_transparency &&
+        (image->mode != PILLOW_C_MODE_RGB ||
+         transparency_r < 0 ||
+         transparency_r > 255 ||
+         transparency_g < 0 ||
+         transparency_g > 255 ||
+         transparency_b < 0 ||
+         transparency_b > 255)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if ((has_transparency && has_rgb_transparency) ||
+        (has_transparency && transparency_table_size > 0u) ||
+        (has_rgb_transparency && transparency_table_size > 0u)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
@@ -4514,6 +9582,10 @@ int encode_png_custom_image(
     int status = png_custom_mode_spec(image, &color_type, &payload_channels);
     if (status != PILLOW_C_OK) {
         return status;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
     if (image->width > (std::numeric_limits<int>::max() - 1) / payload_channels) {
         return PILLOW_C_INVALID_ARGUMENT;
@@ -4554,6 +9626,119 @@ int encode_png_custom_image(
             }
         }
 
+        if (has_gama) {
+            status = append_png_gama_chunk(png, gama_raw);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        if (custom_chunk_count > 0u && !custom_chunks_after_text) {
+            status = append_png_custom_chunks(png, custom_chunks, custom_chunk_count, false);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        if (pre_idat_chunk_type && !chunk_after_idat && !pre_idat_chunk_after_icc && !pre_idat_chunk_defer_to_palette) {
+            status = append_png_pre_idat_chunk(png, pre_idat_chunk_type, pre_idat_chunk_data, pre_idat_chunk_size);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        if (icc_profile_size > 0u) {
+            status = append_png_iccp_chunk(png, icc_profile, icc_profile_size);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        if (pre_idat_chunk_type && !chunk_after_idat && pre_idat_chunk_after_icc && !pre_idat_chunk_defer_to_palette) {
+            status = append_png_pre_idat_chunk(png, pre_idat_chunk_type, pre_idat_chunk_data, pre_idat_chunk_size);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        const auto append_text_chunks = [&]() -> int {
+            for (std::size_t i = 0; i < text_count; ++i) {
+                const int kind = text_kinds ? text_kinds[i] : PNG_TEXT_ENTRY_TEXT;
+                if (kind == PNG_TEXT_ENTRY_ITXT) {
+                    const char* lang = text_langs ? text_langs[i] : "";
+                    const char* translated_key = text_translated_keys ? text_translated_keys[i] : "";
+                    status = append_png_itxt_chunk(
+                        png,
+                        text_keys[i],
+                        text_values[i],
+                        text_compressed && text_compressed[i] != 0,
+                        lang,
+                        translated_key);
+                } else {
+                    if (text_value_sizes) {
+                        const auto* value_bytes = reinterpret_cast<const std::uint8_t*>(text_values[i]);
+                        status = text_compressed && text_compressed[i]
+                            ? append_png_ztxt_chunk_bytes(png, text_keys[i], value_bytes, text_value_sizes[i])
+                            : append_png_text_chunk_bytes(png, text_keys[i], value_bytes, text_value_sizes[i]);
+                    } else {
+                        status = text_compressed && text_compressed[i]
+                            ? append_png_ztxt_chunk(png, text_keys[i], text_values[i])
+                            : append_png_text_chunk(png, text_keys[i], text_values[i]);
+                    }
+                }
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+            }
+            return PILLOW_C_OK;
+        };
+
+        bool wrote_custom_chunks_after_text = false;
+        if (text_count > 0u && text_before_exif) {
+            status = append_text_chunks();
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            if (custom_chunk_count > 0u && custom_chunks_after_text) {
+                status = append_png_custom_chunks(png, custom_chunks, custom_chunk_count, false);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+                wrote_custom_chunks_after_text = true;
+            }
+        }
+
+        bool wrote_rgb_transparency_before_exif = false;
+        if (exif_size > 0u && has_rgb_transparency && image->mode == PILLOW_C_MODE_RGB) {
+            std::vector<std::uint8_t> trns;
+            append_be16(trns, static_cast<std::uint16_t>(transparency_r));
+            append_be16(trns, static_cast<std::uint16_t>(transparency_g));
+            append_be16(trns, static_cast<std::uint16_t>(transparency_b));
+            append_png_chunk(png, "tRNS", trns);
+            wrote_rgb_transparency_before_exif = true;
+        }
+
+        if (exif_size > 0u) {
+            status = append_png_exif_chunk(png, exif, exif_size);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        if (text_count > 0u && !text_before_exif) {
+            status = append_text_chunks();
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        if (custom_chunk_count > 0u && custom_chunks_after_text && !wrote_custom_chunks_after_text) {
+            status = append_png_custom_chunks(png, custom_chunks, custom_chunk_count, false);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
         if (image->mode == PILLOW_C_MODE_P) {
             std::vector<std::uint8_t> plte = image->palette_rgb;
             if (plte.empty()) {
@@ -4562,12 +9747,57 @@ int encode_png_custom_image(
             if (plte.size() % 3u != 0u || plte.size() > 256u * 3u) {
                 return PILLOW_C_INVALID_ARGUMENT;
             }
+            const std::size_t palette_entries = plte.size() / 3u;
+            if (has_transparency && static_cast<std::size_t>(transparency) >= palette_entries) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
             append_png_chunk(png, "PLTE", plte);
+            if (transparency_table_size > 0u) {
+                const std::size_t count = std::min(transparency_table_size, palette_entries);
+                if (count > 0u) {
+                    std::vector<std::uint8_t> trns(transparency_table, transparency_table + count);
+                    append_png_chunk(png, "tRNS", trns);
+                }
+            } else if (has_transparency) {
+                std::vector<std::uint8_t> trns(static_cast<std::size_t>(transparency) + 1u, std::uint8_t{255});
+                trns[static_cast<std::size_t>(transparency)] = 0u;
+                append_png_chunk(png, "tRNS", trns);
+            }
+            if (pre_idat_chunk_defer_to_palette) {
+                status = append_png_pre_idat_chunk(png, pre_idat_chunk_type, pre_idat_chunk_data, pre_idat_chunk_size);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+            }
+        } else if (has_transparency && image->mode == PILLOW_C_MODE_L) {
+            std::vector<std::uint8_t> trns;
+            append_be16(trns, static_cast<std::uint16_t>(transparency));
+            append_png_chunk(png, "tRNS", trns);
+        } else if (has_rgb_transparency && image->mode == PILLOW_C_MODE_RGB && !wrote_rgb_transparency_before_exif) {
+            std::vector<std::uint8_t> trns;
+            append_be16(trns, static_cast<std::uint16_t>(transparency_r));
+            append_be16(trns, static_cast<std::uint16_t>(transparency_g));
+            append_be16(trns, static_cast<std::uint16_t>(transparency_b));
+            append_png_chunk(png, "tRNS", trns);
         }
 
         std::vector<std::uint8_t> zlib;
-        append_zlib_stored(zlib, raw);
+        append_zlib_stored(zlib, raw, optimize ? 0xDAu : png_zlib_header_flags_for_level(compress_level));
         append_png_chunk(png, "IDAT", zlib);
+
+        if (pre_idat_chunk_type && chunk_after_idat) {
+            status = append_png_pre_idat_chunk(png, pre_idat_chunk_type, pre_idat_chunk_data, pre_idat_chunk_size);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        if (custom_chunk_count > 0u) {
+            status = append_png_custom_chunks(png, custom_chunks, custom_chunk_count, true);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
 
         std::vector<std::uint8_t> empty;
         append_png_chunk(png, "IEND", empty);
@@ -4579,14 +9809,178 @@ int encode_png_custom_image(
     }
 }
 
-int save_png_custom_image_with_dpi(const PillowCImage* image, const char* path, bool has_dpi, double dpi_x, double dpi_y)
+int encode_png_custom_image(
+    const PillowCImage* image,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    bool has_transparency,
+    int transparency,
+    bool has_rgb_transparency,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b,
+    std::vector<std::uint8_t>* out_png,
+    const char* text_key = nullptr,
+    const char* text_value = nullptr,
+    bool optimize = false)
+{
+    if ((text_key && !text_value) || (!text_key && text_value)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    const char* text_keys[1] = {text_key};
+    const char* text_values[1] = {text_value};
+    const std::size_t text_count = text_key ? 1u : 0u;
+    return encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        has_transparency,
+        transparency,
+        nullptr,
+        0u,
+        has_rgb_transparency,
+        transparency_r,
+        transparency_g,
+        transparency_b,
+        out_png,
+        text_count ? text_keys : nullptr,
+        text_count ? text_values : nullptr,
+        text_count,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        0u,
+        optimize);
+}
+
+int save_png_custom_image_with_dpi(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    bool optimize = false)
 {
     if (!image || !path) {
         return PILLOW_C_NULL_POINTER;
     }
 
     std::vector<std::uint8_t> png;
-    const int status = encode_png_custom_image(image, has_dpi, dpi_x, dpi_y, &png);
+    const int status = encode_png_custom_image(image, has_dpi, dpi_x, dpi_y, false, 0, false, 0, 0, 0, &png, nullptr, nullptr, optimize);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_gama_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    std::uint32_t gama_raw)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        0u,
+        false,
+        false,
+        true,
+        gama_raw);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_chunk_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const char* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size)
+{
+    if (!image || !path || !chunk_type || (chunk_data_size > 0u && !chunk_data)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        0u,
+        false,
+        false,
+        false,
+        0u,
+        chunk_type,
+        chunk_data,
+        chunk_data_size);
     if (status != PILLOW_C_OK) {
         return status;
     }
@@ -4599,6 +9993,1053 @@ int save_png_custom_image_with_dpi(const PillowCImage* image, const char* path, 
 int save_png_custom_image(const PillowCImage* image, const char* path)
 {
     return save_png_custom_image_with_dpi(image, path, false, 0.0, 0.0);
+}
+
+int save_png_custom_image_with_transparency_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    bool has_transparency,
+    int transparency)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        has_transparency,
+        transparency,
+        false,
+        0,
+        0,
+        0,
+        &png);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_transparency_table_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* transparency_table,
+    std::size_t transparency_table_size)
+{
+    if (!image || !path || (!transparency_table && transparency_table_size > 0u)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        transparency_table,
+        transparency_table_size,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        nullptr,
+        nullptr,
+        0u);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_rgb_transparency_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    bool has_transparency,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        has_transparency,
+        transparency_r,
+        transparency_g,
+        transparency_b,
+        &png);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_text_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const char* key,
+    const char* value)
+{
+    if (!image || !path || !key || !value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        key,
+        value);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_text_entries_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    std::size_t text_count)
+{
+    if (!image || !path || !keys || !values) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        keys,
+        values,
+        text_count);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_text_entries_value_sizes_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int compress_level,
+    const char* const* keys,
+    const char* const* values,
+    const std::size_t* value_sizes,
+    const int* compressed,
+    std::size_t text_count)
+{
+    if (!image || !path || !keys || !values || !value_sizes || !compressed) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        keys,
+        values,
+        text_count,
+        compressed,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        0u,
+        false,
+        false,
+        false,
+        0u,
+        nullptr,
+        nullptr,
+        0u,
+        false,
+        false,
+        compress_level,
+        nullptr,
+        0u,
+        false,
+        value_sizes);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_text_entries_chunk_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    std::size_t text_count,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size)
+{
+    if (!image || !path || !keys || !values || !chunk_type || !chunk_data) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u || chunk_data_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        keys,
+        values,
+        text_count,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        0u,
+        false,
+        false,
+        false,
+        0u,
+        reinterpret_cast<const char*>(chunk_type),
+        chunk_data,
+        chunk_data_size);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_text_entries_chunk_rgb_transparency_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    std::size_t text_count,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    bool has_transparency,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    if (!image || !path || !keys || !values || !chunk_type || !chunk_data) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u || chunk_data_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        has_transparency,
+        transparency_r,
+        transparency_g,
+        transparency_b,
+        &png,
+        keys,
+        values,
+        text_count,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        0u,
+        false,
+        false,
+        false,
+        0u,
+        reinterpret_cast<const char*>(chunk_type),
+        chunk_data,
+        chunk_data_size);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_chunk_icc_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size)
+{
+    if (!image || !path || !chunk_type || !chunk_data || !icc_profile) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (chunk_data_size == 0u || icc_profile_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        icc_profile,
+        icc_profile_size,
+        nullptr,
+        0u,
+        false,
+        false,
+        false,
+        0u,
+        reinterpret_cast<const char*>(chunk_type),
+        chunk_data,
+        chunk_data_size,
+        true);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_chunk_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    if (!image || !path || !chunk_type || !chunk_data || !exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (chunk_data_size == 0u || exif_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        exif,
+        exif_size,
+        false,
+        false,
+        false,
+        0u,
+        reinterpret_cast<const char*>(chunk_type),
+        chunk_data,
+        chunk_data_size);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_chunk_rgb_transparency_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    bool has_transparency,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    if (!image || !path || !chunk_type || !chunk_data) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (chunk_data_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        has_transparency,
+        transparency_r,
+        transparency_g,
+        transparency_b,
+        &png,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        0u,
+        false,
+        false,
+        false,
+        0u,
+        reinterpret_cast<const char*>(chunk_type),
+        chunk_data,
+        chunk_data_size);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_text_entries_ex_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* compressed,
+    std::size_t text_count)
+{
+    if (!image || !path || !keys || !values || !compressed) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        keys,
+        values,
+        text_count,
+        compressed);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_text_entries_kind_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    std::size_t text_count)
+{
+    if (!image || !path || !keys || !values || !kinds || !compressed) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        keys,
+        values,
+        text_count,
+        compressed,
+        kinds);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_text_entries_itxt_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    const char* const* langs,
+    const char* const* translated_keys,
+    std::size_t text_count)
+{
+    if (!image || !path || !keys || !values || !kinds || !compressed || !langs || !translated_keys) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        keys,
+        values,
+        text_count,
+        compressed,
+        kinds,
+        langs,
+        translated_keys);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_text_entries_icc_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    std::size_t text_count,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size)
+{
+    if (!image || !path || !keys || !values || !kinds || !compressed || !icc_profile) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u || icc_profile_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        keys,
+        values,
+        text_count,
+        compressed,
+        kinds,
+        nullptr,
+        nullptr,
+        icc_profile,
+        icc_profile_size);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_text_entries_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    std::size_t text_count,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    if (!image || !path || !keys || !values || !kinds || !compressed || !exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u || exif_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        keys,
+        values,
+        text_count,
+        compressed,
+        kinds,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        exif,
+        exif_size,
+        false,
+        true);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_text_entries_icc_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    std::size_t text_count,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    if (!image || !path || !keys || !values || !kinds || !compressed || !icc_profile || !exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u || icc_profile_size == 0u || exif_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        keys,
+        values,
+        text_count,
+        compressed,
+        kinds,
+        nullptr,
+        nullptr,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        false,
+        true);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_icc_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size)
+{
+    if (!image || !path || !icc_profile) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (icc_profile_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        icc_profile,
+        icc_profile_size);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    if (!image || !path || !exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (exif_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        exif,
+        exif_size);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_custom_image_with_icc_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    if (!image || !path || !icc_profile || !exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (icc_profile_size == 0u || exif_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
 }
 
 int proportional_resize_size(
@@ -4623,6 +11064,25 @@ struct IcoResource {
     int color_count;
     std::vector<std::uint8_t> payload;
 };
+
+int ico_dib_mode_bit_count(const PillowCImage* image, int* out_bit_count)
+{
+    if (!image || !out_bit_count) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode == PILLOW_C_MODE_1) {
+        *out_bit_count = 1;
+    } else if (image->mode == PILLOW_C_MODE_L || image->mode == PILLOW_C_MODE_P) {
+        *out_bit_count = 8;
+    } else if (image->mode == PILLOW_C_MODE_RGB) {
+        *out_bit_count = 24;
+    } else if (image->mode == PILLOW_C_MODE_RGBA) {
+        *out_bit_count = 32;
+    } else {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
 
 int encode_ico_dib_image(const PillowCImage* image, std::vector<std::uint8_t>* out, int* out_bit_count, int* out_color_count)
 {
@@ -4774,21 +11234,34 @@ int encode_ico_dib_image(const PillowCImage* image, std::vector<std::uint8_t>* o
     }
 }
 
-int save_ico_image_with_sizes(
-    const PillowCImage* image,
+int save_ico_images_with_sizes(
+    const PillowCImage* const* images,
+    std::size_t image_count,
     const char* path,
     const IcoRequestedSize* requested_sizes,
     std::size_t requested_count,
     bool bitmap_format_bmp)
 {
-    if (!image || !path) {
+    if (!images || !path) {
         return PILLOW_C_NULL_POINTER;
+    }
+    if (image_count == 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
     }
     if (requested_count > 0 && !requested_sizes) {
         return PILLOW_C_NULL_POINTER;
     }
+    const PillowCImage* image = images[0];
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
     if (image->width <= 0 || image->height <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    for (std::size_t index = 1; index < image_count; ++index) {
+        if (!images[index]) {
+            return PILLOW_C_NULL_POINTER;
+        }
     }
 
     if (requested_count == 0) {
@@ -4802,11 +11275,19 @@ int save_ico_image_with_sizes(
 
     int status = PILLOW_C_OK;
     if (!bitmap_format_bmp) {
-        int color_type = 0;
-        int payload_channels = 0;
-        status = png_custom_mode_spec(image, &color_type, &payload_channels);
-        if (status != PILLOW_C_OK) {
-            return status;
+        for (std::size_t index = 0; index < image_count; ++index) {
+            int color_type = 0;
+            int payload_channels = 0;
+            status = png_custom_mode_spec(images[index], &color_type, &payload_channels);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+    }
+    for (std::size_t index = 0; index < image_count; ++index) {
+        const int refresh_status = refresh_const_buffer_view_image(images[index]);
+        if (refresh_status != PILLOW_C_OK) {
+            return refresh_status;
         }
     }
 
@@ -4835,41 +11316,7 @@ int save_ico_image_with_sizes(
         std::vector<IcoResource> resources;
         resources.reserve(sizes.size());
 
-        for (const IcoRequestedSize& requested : sizes) {
-            if (requested.width > image->width || requested.height > image->height ||
-                requested.width > 256 || requested.height > 256) {
-                continue;
-            }
-
-            const PillowCImage* frame = image;
-            PillowCImage resized{};
-            if (requested.width != image->width || requested.height != image->height) {
-                int out_width = 0;
-                int out_height = 0;
-                status = proportional_resize_size(image, requested.width, requested.height, false, &out_width, &out_height);
-                if (status != PILLOW_C_OK) {
-                    return status;
-                }
-                std::size_t stride = 0;
-                std::size_t size = 0;
-                if (!checked_image_size(out_width, out_height, image->channels, &stride, &size)) {
-                    return PILLOW_C_INVALID_ARGUMENT;
-                }
-                resized = PillowCImage{
-                    out_width,
-                    out_height,
-                    image->mode,
-                    image->channels,
-                    stride,
-                    std::vector<std::uint8_t>(size)};
-                status = resize_image_into(image, out_width, out_height, PILLOW_C_RESAMPLE_LANCZOS, &resized);
-                if (status != PILLOW_C_OK) {
-                    return status;
-                }
-                copy_palette_if_same_mode(image, &resized);
-                frame = &resized;
-            }
-
+        auto append_resource = [&](const PillowCImage* frame, int* out_bit_count) -> int {
             IcoResource resource{};
             resource.width = frame->width;
             resource.height = frame->height;
@@ -4881,7 +11328,7 @@ int save_ico_image_with_sizes(
                     return status;
                 }
             } else {
-                status = encode_png_custom_image(frame, false, 0.0, 0.0, &resource.payload);
+                status = encode_png_custom_image(frame, false, 0.0, 0.0, false, 0, false, 0, 0, 0, &resource.payload);
                 if (status != PILLOW_C_OK) {
                     return status;
                 }
@@ -4890,7 +11337,86 @@ int save_ico_image_with_sizes(
                 resource.payload.size() > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
                 return PILLOW_C_INVALID_ARGUMENT;
             }
+            if (out_bit_count) {
+                *out_bit_count = resource.bit_count;
+            }
             resources.push_back(std::move(resource));
+            return PILLOW_C_OK;
+        };
+
+        for (const IcoRequestedSize& requested : sizes) {
+            if (requested.width > image->width || requested.height > image->height ||
+                requested.width > 256 || requested.height > 256) {
+                continue;
+            }
+
+            bool used_exact_frame = false;
+            std::vector<int> used_bit_counts;
+            for (std::size_t image_index = 0; image_index < image_count; ++image_index) {
+                const PillowCImage* provided = images[image_index];
+                if (provided->width != requested.width || provided->height != requested.height) {
+                    continue;
+                }
+                if (bitmap_format_bmp && used_exact_frame) {
+                    int candidate_bit_count = 0;
+                    status = ico_dib_mode_bit_count(provided, &candidate_bit_count);
+                    if (status != PILLOW_C_OK) {
+                        return status;
+                    }
+                    if (std::find(used_bit_counts.begin(), used_bit_counts.end(), candidate_bit_count) != used_bit_counts.end()) {
+                        continue;
+                    }
+                }
+                int appended_bit_count = 0;
+                status = append_resource(provided, bitmap_format_bmp ? &appended_bit_count : nullptr);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+                used_exact_frame = true;
+                if (bitmap_format_bmp) {
+                    used_bit_counts.push_back(appended_bit_count);
+                } else {
+                    break;
+                }
+            }
+            if (used_exact_frame) {
+                continue;
+            }
+
+            const PillowCImage* resize_source = images[image_count - 1u];
+            const PillowCImage* frame = resize_source;
+            PillowCImage resized{};
+            if (requested.width != resize_source->width || requested.height != resize_source->height) {
+                int out_width = 0;
+                int out_height = 0;
+                status = proportional_resize_size(resize_source, requested.width, requested.height, false, &out_width, &out_height);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+                std::size_t stride = 0;
+                std::size_t size = 0;
+                if (!checked_image_size(out_width, out_height, resize_source->channels, &stride, &size)) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                resized = PillowCImage{
+                    out_width,
+                    out_height,
+                    resize_source->mode,
+                    resize_source->channels,
+                    stride,
+                    std::vector<std::uint8_t>(size)};
+                status = resize_image_into(resize_source, out_width, out_height, PILLOW_C_RESAMPLE_LANCZOS, &resized);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+                copy_palette_if_same_mode(resize_source, &resized);
+                frame = &resized;
+            }
+
+            status = append_resource(frame, nullptr);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
         }
 
         if (resources.size() > static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max())) {
@@ -4934,6 +11460,17 @@ int save_ico_image_with_sizes(
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int save_ico_image_with_sizes(
+    const PillowCImage* image,
+    const char* path,
+    const IcoRequestedSize* requested_sizes,
+    std::size_t requested_count,
+    bool bitmap_format_bmp)
+{
+    const PillowCImage* images[] = {image};
+    return save_ico_images_with_sizes(images, 1, path, requested_sizes, requested_count, bitmap_format_bmp);
 }
 
 int save_ico_image(const PillowCImage* image, const char* path)
@@ -5036,6 +11573,60 @@ int save_ico_image_format_options(
     }
 }
 
+int save_ico_images_format_options(
+    const PillowCImage* const* images,
+    std::size_t image_count,
+    const char* path,
+    const int* sizes,
+    std::size_t size_count,
+    int has_sizes,
+    const char* bitmap_format)
+{
+    static constexpr IcoRequestedSize default_sizes[] = {
+        {16, 16},
+        {24, 24},
+        {32, 32},
+        {48, 48},
+        {64, 64},
+        {128, 128},
+        {256, 256},
+    };
+    if (has_sizes && size_count > 0 && !sizes) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const bool bitmap_format_bmp = bitmap_format && std::strcmp(bitmap_format, "bmp") == 0;
+    try {
+        std::vector<IcoRequestedSize> requested;
+        if (has_sizes) {
+            requested.reserve(size_count);
+            for (std::size_t index = 0; index < size_count; ++index) {
+                requested.push_back(IcoRequestedSize{
+                    sizes[index * 2],
+                    sizes[index * 2 + 1],
+                });
+            }
+        }
+        const IcoRequestedSize* requested_data = nullptr;
+        std::size_t requested_count = 0;
+        if (has_sizes) {
+            requested_data = requested.empty() ? nullptr : requested.data();
+            requested_count = requested.size();
+        } else {
+            requested_data = default_sizes;
+            requested_count = sizeof(default_sizes) / sizeof(default_sizes[0]);
+        }
+        return save_ico_images_with_sizes(
+            images,
+            image_count,
+            path,
+            requested_data,
+            requested_count,
+            bitmap_format_bmp);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 int save_png_image_with_dpi(const PillowCImage* image, const char* path, bool has_dpi, double dpi_x, double dpi_y)
 {
     if (!image || !path) {
@@ -5060,6 +11651,10 @@ int save_png_image_with_dpi(const PillowCImage* image, const char* path, bool ha
     int status = png_mode_format(image, &format);
     if (status != PILLOW_C_OK) {
         return status;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
 
     try {
@@ -5170,7 +11765,7 @@ int save_png_image_with_compress_level(const PillowCImage* image, const char* pa
     if (compress_level < 0 || compress_level > 9) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (compress_level == 0) {
+    if (compress_level == 0 || compress_level == 1) {
         return save_png_custom_image(image, path);
     }
     return save_png_image(image, path);
@@ -5189,10 +11784,1654 @@ int save_png_image_with_options(const PillowCImage* image, const char* path, int
             return PILLOW_C_INVALID_ARGUMENT;
         }
     }
-    if (compress_level == 0) {
+    if (compress_level == 0 || compress_level == 1) {
         return save_png_custom_image_with_dpi(image, path, has_dpi, dpi_x, dpi_y);
     }
     return save_png_image_with_dpi(image, path, has_dpi, dpi_x, dpi_y);
+}
+
+int save_png_image_with_interlace_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    int interlace)
+{
+    (void)interlace;
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_dpi(image, path, has_dpi, dpi_x, dpi_y);
+}
+
+int save_png_image_with_gamma_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    double gamma)
+{
+    (void)gamma;
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_dpi(image, path, has_dpi, dpi_x, dpi_y);
+}
+
+int save_png_image_with_gama_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    std::uint32_t gama_raw)
+{
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_gama_options(image, path, has_dpi, dpi_x, dpi_y, gama_raw);
+}
+
+int save_png_image_with_chunk_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size)
+{
+    if (!chunk_type || (chunk_data_size > 0u && !chunk_data)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_chunk_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        reinterpret_cast<const char*>(chunk_type),
+        chunk_data,
+        chunk_data_size);
+}
+
+int save_png_image_with_optimize_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    int optimize)
+{
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    if (optimize != 0) {
+        return save_png_custom_image_with_dpi(image, path, has_dpi, dpi_x, dpi_y, true);
+    }
+    return save_png_image_with_options(image, path, compress_level, dpi_x, dpi_y);
+}
+
+int save_png_image_with_metadata_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    const char* const* langs,
+    const char* const* translated_keys,
+    std::size_t text_count,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    std::uint32_t flags,
+    std::uint32_t gama_raw,
+    int transparency,
+    const std::uint8_t* transparency_table,
+    std::size_t transparency_table_size,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((flags & ~PNG_METADATA_KNOWN_FLAGS) != 0u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+
+    if (text_count > 0u && (!keys || !values || !kinds || !compressed)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((langs && !translated_keys) || (!langs && translated_keys)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (icc_profile_size > 0u && !icc_profile) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (icc_profile && icc_profile_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (exif_size > 0u && !exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (exif && exif_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (chunk_data_size > 0u && (!chunk_type || !chunk_data)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!chunk_type && chunk_data) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (transparency_table_size > 0u && !transparency_table) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (transparency_table && transparency_table_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    const bool has_transparency = (flags & PNG_METADATA_HAS_TRANSPARENCY) != 0u;
+    const bool has_rgb_transparency = (flags & PNG_METADATA_HAS_RGB_TRANSPARENCY) != 0u;
+    if ((has_transparency && has_rgb_transparency) ||
+        (has_transparency && transparency_table_size > 0u) ||
+        (has_rgb_transparency && transparency_table_size > 0u)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        has_transparency,
+        transparency,
+        transparency_table,
+        transparency_table_size,
+        has_rgb_transparency,
+        transparency_r,
+        transparency_g,
+        transparency_b,
+        &png,
+        keys,
+        values,
+        text_count,
+        compressed,
+        kinds,
+        langs,
+        translated_keys,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        (flags & PNG_METADATA_OPTIMIZE) != 0u,
+        (flags & PNG_METADATA_TEXT_BEFORE_EXIF) != 0u,
+        (flags & PNG_METADATA_HAS_GAMA) != 0u,
+        gama_raw,
+        chunk_type ? reinterpret_cast<const char*>(chunk_type) : nullptr,
+        chunk_data,
+        chunk_data_size,
+        (flags & PNG_METADATA_CHUNK_AFTER_ICC) != 0u,
+        (flags & PNG_METADATA_CHUNK_AFTER_IDAT) != 0u,
+        compress_level);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_image_with_metadata_custom_chunks_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    const char* const* langs,
+    const char* const* translated_keys,
+    std::size_t text_count,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* chunk_types,
+    const std::uint8_t* const* chunk_data,
+    const std::size_t* chunk_data_sizes,
+    const int* chunk_after_idat,
+    std::size_t chunk_count,
+    std::uint32_t flags,
+    std::uint32_t gama_raw,
+    int transparency,
+    const std::uint8_t* transparency_table,
+    std::size_t transparency_table_size,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (chunk_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (!chunk_types || !chunk_data || !chunk_data_sizes || !chunk_after_idat) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((flags & (PNG_METADATA_CHUNK_AFTER_ICC | PNG_METADATA_CHUNK_AFTER_IDAT)) != 0u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if ((flags & ~PNG_METADATA_KNOWN_FLAGS) != 0u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+
+    if (text_count > 0u && (!keys || !values || !kinds || !compressed)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((langs && !translated_keys) || (!langs && translated_keys)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (icc_profile_size > 0u && !icc_profile) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (icc_profile && icc_profile_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (exif_size > 0u && !exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (exif && exif_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (transparency_table_size > 0u && !transparency_table) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (transparency_table && transparency_table_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    const bool has_transparency = (flags & PNG_METADATA_HAS_TRANSPARENCY) != 0u;
+    const bool has_rgb_transparency = (flags & PNG_METADATA_HAS_RGB_TRANSPARENCY) != 0u;
+    if ((has_transparency && has_rgb_transparency) ||
+        (has_transparency && transparency_table_size > 0u) ||
+        (has_rgb_transparency && transparency_table_size > 0u)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::vector<PngCustomChunkSpec> chunks;
+    try {
+        chunks.reserve(chunk_count);
+        for (std::size_t i = 0; i < chunk_count; ++i) {
+            if (chunk_after_idat[i] != 0 && chunk_after_idat[i] != 1) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            chunks.push_back(PngCustomChunkSpec{
+                reinterpret_cast<const char*>(chunk_types + i * 4u),
+                chunk_data[i],
+                chunk_data_sizes[i],
+                chunk_after_idat[i] != 0});
+        }
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+
+    const int validation_status = validate_png_custom_chunks(chunks.data(), chunks.size());
+    if (validation_status != PILLOW_C_OK) {
+        return validation_status;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        has_transparency,
+        transparency,
+        transparency_table,
+        transparency_table_size,
+        has_rgb_transparency,
+        transparency_r,
+        transparency_g,
+        transparency_b,
+        &png,
+        keys,
+        values,
+        text_count,
+        compressed,
+        kinds,
+        langs,
+        translated_keys,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        (flags & PNG_METADATA_OPTIMIZE) != 0u,
+        (flags & PNG_METADATA_TEXT_BEFORE_EXIF) != 0u,
+        (flags & PNG_METADATA_HAS_GAMA) != 0u,
+        gama_raw,
+        nullptr,
+        nullptr,
+        0u,
+        false,
+        false,
+        compress_level,
+        chunks.data(),
+        chunks.size(),
+        true);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_image_with_custom_chunks_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_types,
+    const std::uint8_t* const* chunk_data,
+    const std::size_t* chunk_data_sizes,
+    const int* chunk_after_idat,
+    std::size_t chunk_count)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (chunk_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (!chunk_types || !chunk_data || !chunk_data_sizes || !chunk_after_idat) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+
+    std::vector<PngCustomChunkSpec> chunks;
+    try {
+        chunks.reserve(chunk_count);
+        for (std::size_t i = 0; i < chunk_count; ++i) {
+            if (chunk_after_idat[i] != 0 && chunk_after_idat[i] != 1) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            chunks.push_back(PngCustomChunkSpec{
+                reinterpret_cast<const char*>(chunk_types + i * 4u),
+                chunk_data[i],
+                chunk_data_sizes[i],
+                chunk_after_idat[i] != 0});
+        }
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+
+    const int validation_status = validate_png_custom_chunks(chunks.data(), chunks.size());
+    if (validation_status != PILLOW_C_OK) {
+        return validation_status;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        0u,
+        false,
+        false,
+        false,
+        0u,
+        nullptr,
+        nullptr,
+        0u,
+        false,
+        false,
+        compress_level,
+        chunks.data(),
+        chunks.size());
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_image_with_text_entries_custom_chunks_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    std::size_t text_count,
+    const std::uint8_t* chunk_types,
+    const std::uint8_t* const* chunk_data,
+    const std::size_t* chunk_data_sizes,
+    const int* chunk_after_idat,
+    std::size_t chunk_count)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u || chunk_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (!keys || !values || !chunk_types || !chunk_data || !chunk_data_sizes || !chunk_after_idat) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+
+    std::vector<PngCustomChunkSpec> chunks;
+    try {
+        chunks.reserve(chunk_count);
+        for (std::size_t i = 0; i < chunk_count; ++i) {
+            if (chunk_after_idat[i] != 0 && chunk_after_idat[i] != 1) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            chunks.push_back(PngCustomChunkSpec{
+                reinterpret_cast<const char*>(chunk_types + i * 4u),
+                chunk_data[i],
+                chunk_data_sizes[i],
+                chunk_after_idat[i] != 0});
+        }
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+
+    const int validation_status = validate_png_custom_chunks(chunks.data(), chunks.size());
+    if (validation_status != PILLOW_C_OK) {
+        return validation_status;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        keys,
+        values,
+        text_count,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        nullptr,
+        0u,
+        false,
+        false,
+        false,
+        0u,
+        nullptr,
+        nullptr,
+        0u,
+        false,
+        false,
+        compress_level,
+        chunks.data(),
+        chunks.size(),
+        true);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_image_with_text_entries_custom_chunks_kind_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    const char* const* langs,
+    const char* const* translated_keys,
+    std::size_t text_count,
+    const std::uint8_t* chunk_types,
+    const std::uint8_t* const* chunk_data,
+    const std::size_t* chunk_data_sizes,
+    const int* chunk_after_idat,
+    std::size_t chunk_count)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u || chunk_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (!keys || !values || !kinds || !compressed || !langs || !translated_keys ||
+        !chunk_types || !chunk_data || !chunk_data_sizes || !chunk_after_idat) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+
+    std::vector<PngCustomChunkSpec> chunks;
+    try {
+        chunks.reserve(chunk_count);
+        for (std::size_t i = 0; i < chunk_count; ++i) {
+            if (chunk_after_idat[i] != 0 && chunk_after_idat[i] != 1) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            chunks.push_back(PngCustomChunkSpec{
+                reinterpret_cast<const char*>(chunk_types + i * 4u),
+                chunk_data[i],
+                chunk_data_sizes[i],
+                chunk_after_idat[i] != 0});
+        }
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+
+    const int validation_status = validate_png_custom_chunks(chunks.data(), chunks.size());
+    if (validation_status != PILLOW_C_OK) {
+        return validation_status;
+    }
+
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image_with_text_entries(
+        image,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        false,
+        0,
+        nullptr,
+        0u,
+        false,
+        0,
+        0,
+        0,
+        &png,
+        keys,
+        values,
+        text_count,
+        compressed,
+        kinds,
+        langs,
+        translated_keys,
+        nullptr,
+        0u,
+        nullptr,
+        0u,
+        false,
+        false,
+        false,
+        0u,
+        nullptr,
+        nullptr,
+        0u,
+        false,
+        false,
+        compress_level,
+        chunks.data(),
+        chunks.size(),
+        true);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (!write_binary_file(path, png)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+int save_png_image_with_transparency_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    int has_transparency,
+    int transparency)
+{
+    if (has_transparency != 0 && has_transparency != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    if (has_transparency) {
+        return save_png_custom_image_with_transparency_options(
+            image,
+            path,
+            has_dpi,
+            dpi_x,
+            dpi_y,
+            true,
+            transparency);
+    }
+    return save_png_image_with_options(image, path, compress_level, dpi_x, dpi_y);
+}
+
+int save_png_image_with_transparency_table_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* transparency_table,
+    std::size_t transparency_table_size)
+{
+    if (!transparency_table && transparency_table_size > 0u) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    if (transparency_table_size == 0u) {
+        return save_png_image_with_options(image, path, compress_level, dpi_x, dpi_y);
+    }
+    return save_png_custom_image_with_transparency_table_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        transparency_table,
+        transparency_table_size);
+}
+
+int save_png_image_with_rgb_transparency_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    int has_transparency,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    if (has_transparency != 0 && has_transparency != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    if (has_transparency) {
+        return save_png_custom_image_with_rgb_transparency_options(
+            image,
+            path,
+            has_dpi,
+            dpi_x,
+            dpi_y,
+            true,
+            transparency_r,
+            transparency_g,
+            transparency_b);
+    }
+    return save_png_image_with_options(image, path, compress_level, dpi_x, dpi_y);
+}
+
+int save_png_image_with_rgb_transparency_bytes_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* transparency,
+    std::size_t transparency_size)
+{
+    if (!transparency && transparency_size > 0u) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (transparency_size != 3u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return save_png_image_with_rgb_transparency_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        1,
+        transparency[0],
+        transparency[1],
+        transparency[2]);
+}
+
+int save_png_image_with_text_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* key,
+    const char* value)
+{
+    if (!key || !value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_text_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        key,
+        value);
+}
+
+int save_png_image_with_text_entries_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    std::size_t text_count)
+{
+    if (!keys || !values) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_text_entries_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        text_count);
+}
+
+int save_png_image_with_text_entries_value_sizes_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const std::size_t* value_sizes,
+    const int* compressed,
+    std::size_t text_count)
+{
+    if (!keys || !values || !value_sizes || !compressed) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_text_entries_value_sizes_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        compress_level,
+        keys,
+        values,
+        value_sizes,
+        compressed,
+        text_count);
+}
+
+int save_png_image_with_text_entries_chunk_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    std::size_t text_count,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size)
+{
+    if (!keys || !values || !chunk_type || !chunk_data) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u || chunk_data_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_text_entries_chunk_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        text_count,
+        chunk_type,
+        chunk_data,
+        chunk_data_size);
+}
+
+int save_png_image_with_text_entries_chunk_rgb_transparency_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    std::size_t text_count,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    int has_transparency,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    if (!keys || !values || !chunk_type || !chunk_data) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u || chunk_data_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (has_transparency != 0 && has_transparency != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_text_entries_chunk_rgb_transparency_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        text_count,
+        chunk_type,
+        chunk_data,
+        chunk_data_size,
+        has_transparency != 0,
+        transparency_r,
+        transparency_g,
+        transparency_b);
+}
+
+int save_png_image_with_chunk_icc_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size)
+{
+    if (!chunk_type || !chunk_data || !icc_profile) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (chunk_data_size == 0u || icc_profile_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_chunk_icc_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        chunk_type,
+        chunk_data,
+        chunk_data_size,
+        icc_profile,
+        icc_profile_size);
+}
+
+int save_png_image_with_chunk_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    if (!chunk_type || !chunk_data || !exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (chunk_data_size == 0u || exif_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_chunk_exif_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        chunk_type,
+        chunk_data,
+        chunk_data_size,
+        exif,
+        exif_size);
+}
+
+int save_png_image_with_chunk_rgb_transparency_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    int has_transparency,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    if (!chunk_type || !chunk_data) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (chunk_data_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (has_transparency != 0 && has_transparency != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_chunk_rgb_transparency_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        chunk_type,
+        chunk_data,
+        chunk_data_size,
+        has_transparency != 0,
+        transparency_r,
+        transparency_g,
+        transparency_b);
+}
+
+int save_png_image_with_chunk_rgb_transparency_bytes_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    const std::uint8_t* transparency,
+    std::size_t transparency_size)
+{
+    if (!transparency && transparency_size > 0u) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (transparency_size != 3u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return save_png_image_with_chunk_rgb_transparency_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        chunk_type,
+        chunk_data,
+        chunk_data_size,
+        1,
+        transparency[0],
+        transparency[1],
+        transparency[2]);
+}
+
+int save_png_image_with_text_entries_ex_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* compressed,
+    std::size_t text_count)
+{
+    if (!keys || !values || !compressed) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_text_entries_ex_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        compressed,
+        text_count);
+}
+
+int save_png_image_with_text_entries_kind_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    std::size_t text_count)
+{
+    if (!keys || !values || !kinds || !compressed) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_text_entries_kind_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        text_count);
+}
+
+int save_png_image_with_text_entries_itxt_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    const char* const* langs,
+    const char* const* translated_keys,
+    std::size_t text_count)
+{
+    if (!keys || !values || !kinds || !compressed || !langs || !translated_keys) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_text_entries_itxt_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        langs,
+        translated_keys,
+        text_count);
+}
+
+int save_png_image_with_text_entries_icc_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    std::size_t text_count,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size)
+{
+    if (!keys || !values || !kinds || !compressed || !icc_profile) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u || icc_profile_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_text_entries_icc_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        text_count,
+        icc_profile,
+        icc_profile_size);
+}
+
+int save_png_image_with_text_entries_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    std::size_t text_count,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    if (!keys || !values || !kinds || !compressed || !exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u || exif_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_text_entries_exif_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        text_count,
+        exif,
+        exif_size);
+}
+
+int save_png_image_with_text_entries_icc_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    std::size_t text_count,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    if (!keys || !values || !kinds || !compressed || !icc_profile || !exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (text_count == 0u || icc_profile_size == 0u || exif_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_text_entries_icc_exif_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        text_count,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size);
+}
+
+int save_png_image_with_icc_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size)
+{
+    if (!icc_profile) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (icc_profile_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_icc_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        icc_profile,
+        icc_profile_size);
+}
+
+int save_png_image_with_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    if (!exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (exif_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_exif_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        exif,
+        exif_size);
+}
+
+int save_png_image_with_icc_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    if (!icc_profile || !exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (icc_profile_size == 0u || exif_size == 0u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (compress_level < -1 || compress_level > 9) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool has_dpi = dpi_x > 0.0 || dpi_y > 0.0;
+    if (has_dpi) {
+        std::uint32_t unused = 0;
+        if (!png_dpi_to_pixels_per_meter(dpi_x, &unused) ||
+            !png_dpi_to_pixels_per_meter(dpi_y, &unused)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+    }
+    return save_png_custom_image_with_icc_exif_options(
+        image,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size);
 }
 
 int open_jpeg_image(const char* path, PillowCImage** out_image)
@@ -5207,7 +13446,7 @@ int open_jpeg_image(const char* path, PillowCImage** out_image)
         if (!read_jpeg_metadata(path, &metadata)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
-        if (metadata.components != 1 && metadata.components != 3) {
+        if (metadata.components != 1 && metadata.components != 3 && metadata.components != 4) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
 
@@ -5258,10 +13497,18 @@ int open_jpeg_image(const char* path, PillowCImage** out_image)
             return PILLOW_C_INVALID_ARGUMENT;
         }
 
-        const int mode = metadata.components == 1 ? PILLOW_C_MODE_L : PILLOW_C_MODE_RGB;
-        const int channels = metadata.components == 1 ? 1 : 3;
-        const WICPixelFormatGUID target_format =
-            metadata.components == 1 ? GUID_WICPixelFormat8bppGray : GUID_WICPixelFormat24bppRGB;
+        int mode = PILLOW_C_MODE_RGB;
+        int channels = 3;
+        WICPixelFormatGUID target_format = GUID_WICPixelFormat24bppRGB;
+        if (metadata.components == 1) {
+            mode = PILLOW_C_MODE_L;
+            channels = 1;
+            target_format = GUID_WICPixelFormat8bppGray;
+        } else if (metadata.components == 4) {
+            mode = PILLOW_C_MODE_CMYK;
+            channels = 4;
+            target_format = GUID_WICPixelFormat32bppCMYK;
+        }
 
         std::size_t stride = 0;
         std::size_t size = 0;
@@ -5318,6 +13565,13 @@ int open_jpeg_image(const char* path, PillowCImage** out_image)
         image->jfif_unit = metadata.jfif_unit;
         image->jfif_density_x = metadata.jfif_density_x;
         image->jfif_density_y = metadata.jfif_density_y;
+        image->jpeg_comment = std::move(metadata.comment);
+        image->jpeg_icc_profile = std::move(metadata.icc_profile);
+        image->jpeg_exif = std::move(metadata.exif);
+        image->xmp = std::move(metadata.xmp);
+        image->jpeg_qtables = std::move(metadata.qtables);
+        image->jpeg_qtable_count = metadata.qtable_count;
+        image->jpeg_subsampling = metadata.subsampling;
         hr = source->CopyPixels(
             nullptr,
             static_cast<UINT>(stride),
@@ -5335,7 +13589,4336 @@ int open_jpeg_image(const char* path, PillowCImage** out_image)
     }
 }
 
-int save_jpeg_image_with_options(const PillowCImage* image, const char* path, int quality, bool has_dpi, double dpi_x, double dpi_y)
+struct JpegHuffmanTable {
+    std::uint8_t counts[17] = {};
+    std::vector<std::uint8_t> symbols;
+    std::uint16_t codes[256] = {};
+    std::uint8_t sizes[256] = {};
+};
+
+struct JpegBitWriter {
+    std::vector<std::uint8_t>* out = nullptr;
+    std::uint8_t current = 0;
+    int used = 0;
+};
+
+constexpr int JPEG_LUMINANCE_QTABLE[64] = {
+    16, 11, 10, 16, 24, 40, 51, 61,
+    12, 12, 14, 19, 26, 58, 60, 55,
+    14, 13, 16, 24, 40, 57, 69, 56,
+    14, 17, 22, 29, 51, 87, 80, 62,
+    18, 22, 37, 56, 68, 109, 103, 77,
+    24, 35, 55, 64, 81, 104, 113, 92,
+    49, 64, 78, 87, 103, 121, 120, 101,
+    72, 92, 95, 98, 112, 100, 103, 99
+};
+
+constexpr int JPEG_CHROMINANCE_QTABLE[64] = {
+    17, 18, 24, 47, 99, 99, 99, 99,
+    18, 21, 26, 66, 99, 99, 99, 99,
+    24, 26, 56, 99, 99, 99, 99, 99,
+    47, 66, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99
+};
+
+int jpeg_value_category(int value)
+{
+    int magnitude = value < 0 ? -value : value;
+    int category = 0;
+    while (magnitude != 0) {
+        magnitude >>= 1;
+        ++category;
+    }
+    return category;
+}
+
+std::uint16_t jpeg_value_bits(int value, int category)
+{
+    if (category == 0) {
+        return 0;
+    }
+    if (value >= 0) {
+        return static_cast<std::uint16_t>(value);
+    }
+    return static_cast<std::uint16_t>(value + ((1 << category) - 1));
+}
+
+void jpeg_scaled_qtable(const int base_qtable[64], int quality, int out_qtable[64])
+{
+    int q = quality == -1 ? 75 : quality;
+    q = std::max(1, std::min(q, 100));
+    const int scale = q < 50 ? 5000 / q : 200 - q * 2;
+    for (int i = 0; i < 64; ++i) {
+        int value = (base_qtable[i] * scale + 50) / 100;
+        value = std::max(1, std::min(value, 255));
+        out_qtable[i] = value;
+    }
+}
+
+void jpeg_scaled_luminance_qtable(int quality, int out_qtable[64])
+{
+    jpeg_scaled_qtable(JPEG_LUMINANCE_QTABLE, quality, out_qtable);
+}
+
+void jpeg_scaled_chrominance_qtable(int quality, int out_qtable[64])
+{
+    jpeg_scaled_qtable(JPEG_CHROMINANCE_QTABLE, quality, out_qtable);
+}
+
+int jpeg_scaled_custom_qtable(const int* source_qtable, int quality, int out_qtable[64])
+{
+    if (!source_qtable || !out_qtable) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (quality == -1) {
+        for (int i = 0; i < 64; ++i) {
+            const int source = source_qtable[i];
+            if (source < 1 || source > 255) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            out_qtable[i] = source;
+        }
+        return PILLOW_C_OK;
+    }
+    int q = quality == -1 ? 75 : quality;
+    q = std::max(1, std::min(q, 100));
+    const int scale = q < 50 ? 5000 / q : 200 - q * 2;
+    for (int i = 0; i < 64; ++i) {
+        const int source = source_qtable[i];
+        if (source < 1 || source > 255) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        int value = (source * scale + 50) / 100;
+        value = std::max(1, std::min(value, 255));
+        out_qtable[i] = value;
+    }
+    return PILLOW_C_OK;
+}
+
+void jpeg_fdct_quantize_samples(const double samples[64], const int qtable[64], int out_zz[64])
+{
+    constexpr double pi = 3.141592653589793238462643383279502884;
+    int natural[64] = {};
+    for (int v = 0; v < 8; ++v) {
+        for (int u = 0; u < 8; ++u) {
+            double sum = 0.0;
+            for (int y = 0; y < 8; ++y) {
+                const double cy = std::cos(((2.0 * y + 1.0) * v * pi) / 16.0);
+                for (int x = 0; x < 8; ++x) {
+                    const double cx = std::cos(((2.0 * x + 1.0) * u * pi) / 16.0);
+                    sum += samples[y * 8 + x] * cx * cy;
+                }
+            }
+            const double cu = u == 0 ? 1.0 / std::sqrt(2.0) : 1.0;
+            const double cv = v == 0 ? 1.0 / std::sqrt(2.0) : 1.0;
+            const double coeff = 0.25 * cu * cv * sum;
+            const int natural_index = v * 8 + u;
+            natural[natural_index] = static_cast<int>(std::round(coeff / static_cast<double>(qtable[natural_index])));
+        }
+    }
+
+    for (int i = 0; i < 64; ++i) {
+        out_zz[i] = natural[JPEG_ZIGZAG[i]];
+    }
+}
+
+void jpeg_fdct_quantize_luma_block(
+    const PillowCImage* image,
+    int block_x,
+    int block_y,
+    const int qtable[64],
+    int out_zz[64])
+{
+    double samples[64] = {};
+    for (int y = 0; y < 8; ++y) {
+        const int src_y = std::min(block_y + y, image->height - 1);
+        const std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(src_y) * image->stride;
+        for (int x = 0; x < 8; ++x) {
+            const int src_x = std::min(block_x + x, image->width - 1);
+            samples[y * 8 + x] = static_cast<double>(row[src_x]) - 128.0;
+        }
+    }
+
+    jpeg_fdct_quantize_samples(samples, qtable, out_zz);
+}
+
+void jpeg_fdct_quantize_plane_block(
+    const std::vector<std::uint8_t>& plane,
+    int width,
+    int height,
+    int block_x,
+    int block_y,
+    const int qtable[64],
+    int out_zz[64])
+{
+    double samples[64] = {};
+    for (int y = 0; y < 8; ++y) {
+        const int src_y = std::min(block_y + y, height - 1);
+        const std::size_t row_offset = static_cast<std::size_t>(src_y) * static_cast<std::size_t>(width);
+        for (int x = 0; x < 8; ++x) {
+            const int src_x = std::min(block_x + x, width - 1);
+            samples[y * 8 + x] = static_cast<double>(plane[row_offset + static_cast<std::size_t>(src_x)]) - 128.0;
+        }
+    }
+
+    jpeg_fdct_quantize_samples(samples, qtable, out_zz);
+}
+
+void jpeg_collect_huffman_frequencies(
+    const std::vector<int>& blocks,
+    std::uint64_t dc_freq[256],
+    std::uint64_t ac_freq[256])
+{
+    int previous_dc = 0;
+    const std::size_t block_count = blocks.size() / 64u;
+    for (std::size_t block = 0; block < block_count; ++block) {
+        const int* coeffs = blocks.data() + block * 64u;
+        const int diff = coeffs[0] - previous_dc;
+        previous_dc = coeffs[0];
+        ++dc_freq[jpeg_value_category(diff)];
+
+        int zero_run = 0;
+        for (int i = 1; i < 64; ++i) {
+            const int value = coeffs[i];
+            if (value == 0) {
+                ++zero_run;
+                continue;
+            }
+            while (zero_run > 15) {
+                ++ac_freq[0xf0u];
+                zero_run -= 16;
+            }
+            const int category = jpeg_value_category(value);
+            ++ac_freq[(zero_run << 4) | category];
+            zero_run = 0;
+        }
+        if (zero_run > 0) {
+            ++ac_freq[0x00u];
+        }
+    }
+}
+
+int jpeg_build_optimized_huffman_table(const std::uint64_t frequencies[256], JpegHuffmanTable* table)
+{
+    if (!table) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    struct Node {
+        std::uint64_t frequency = 0;
+        int symbol = -1;
+        int left = -1;
+        int right = -1;
+    };
+
+    try {
+        *table = JpegHuffmanTable{};
+        std::vector<Node> nodes;
+        std::vector<int> active;
+        for (int symbol = 0; symbol < 256; ++symbol) {
+            if (frequencies[symbol] == 0u) {
+                continue;
+            }
+            Node node;
+            node.frequency = frequencies[symbol];
+            node.symbol = symbol;
+            nodes.push_back(node);
+            active.push_back(static_cast<int>(nodes.size()) - 1);
+        }
+        Node pseudo;
+        pseudo.frequency = 1;
+        pseudo.symbol = 256;
+        nodes.push_back(pseudo);
+        active.push_back(static_cast<int>(nodes.size()) - 1);
+
+        int lengths[257] = {};
+        if (active.size() == 1u) {
+            lengths[nodes[active[0]].symbol] = 1;
+        } else {
+            while (active.size() > 1u) {
+                std::sort(active.begin(), active.end(), [&nodes](int a, int b) {
+                    if (nodes[a].frequency != nodes[b].frequency) {
+                        return nodes[a].frequency < nodes[b].frequency;
+                    }
+                    return nodes[a].symbol < nodes[b].symbol;
+                });
+                const int left = active[0];
+                const int right = active[1];
+                Node parent;
+                parent.frequency = nodes[left].frequency + nodes[right].frequency;
+                parent.symbol = std::min(nodes[left].symbol, nodes[right].symbol);
+                parent.left = left;
+                parent.right = right;
+                nodes.push_back(parent);
+                active.erase(active.begin(), active.begin() + 2);
+                active.push_back(static_cast<int>(nodes.size()) - 1);
+            }
+
+            const int root = active[0];
+            std::vector<int> stack;
+            std::vector<int> depths;
+            stack.push_back(root);
+            depths.push_back(0);
+            while (!stack.empty()) {
+                const int index = stack.back();
+                const int depth = depths.back();
+                stack.pop_back();
+                depths.pop_back();
+                const Node& node = nodes[index];
+                if (node.left < 0 && node.right < 0) {
+                    lengths[node.symbol] = std::max(1, depth);
+                    continue;
+                }
+                if (node.right >= 0) {
+                    stack.push_back(node.right);
+                    depths.push_back(depth + 1);
+                }
+                if (node.left >= 0) {
+                    stack.push_back(node.left);
+                    depths.push_back(depth + 1);
+                }
+            }
+        }
+
+        for (int symbol = 0; symbol < 256; ++symbol) {
+            const int length = lengths[symbol];
+            if (length == 0) {
+                continue;
+            }
+            if (length > 16) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            ++table->counts[length];
+        }
+        for (int length = 1; length <= 16; ++length) {
+            for (int symbol = 0; symbol < 256; ++symbol) {
+                if (lengths[symbol] == length) {
+                    table->symbols.push_back(static_cast<std::uint8_t>(symbol));
+                }
+            }
+        }
+
+        std::uint16_t code = 0;
+        for (int length = 1; length <= 16; ++length) {
+            for (std::uint8_t symbol : table->symbols) {
+                if (lengths[symbol] != length) {
+                    continue;
+                }
+                table->codes[symbol] = code;
+                table->sizes[symbol] = static_cast<std::uint8_t>(length);
+                ++code;
+            }
+            code = static_cast<std::uint16_t>(code << 1);
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+constexpr std::uint8_t JPEG_STD_LUMA_DC_COUNTS[16] = {
+    0, 1, 5, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0
+};
+
+constexpr std::uint8_t JPEG_STD_LUMA_DC_SYMBOLS[12] = {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+};
+
+constexpr std::uint8_t JPEG_STD_LUMA_AC_COUNTS[16] = {
+    0, 2, 1, 3, 3, 2, 4, 3, 5, 5, 4, 4, 0, 0, 1, 125
+};
+
+constexpr std::uint8_t JPEG_STD_LUMA_AC_SYMBOLS[162] = {
+    0x01, 0x02, 0x03, 0x00, 0x04, 0x11, 0x05, 0x12,
+    0x21, 0x31, 0x41, 0x06, 0x13, 0x51, 0x61, 0x07,
+    0x22, 0x71, 0x14, 0x32, 0x81, 0x91, 0xa1, 0x08,
+    0x23, 0x42, 0xb1, 0xc1, 0x15, 0x52, 0xd1, 0xf0,
+    0x24, 0x33, 0x62, 0x72, 0x82, 0x09, 0x0a, 0x16,
+    0x17, 0x18, 0x19, 0x1a, 0x25, 0x26, 0x27, 0x28,
+    0x29, 0x2a, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,
+    0x3a, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49,
+    0x4a, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59,
+    0x5a, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69,
+    0x6a, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79,
+    0x7a, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89,
+    0x8a, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98,
+    0x99, 0x9a, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7,
+    0xa8, 0xa9, 0xaa, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6,
+    0xb7, 0xb8, 0xb9, 0xba, 0xc2, 0xc3, 0xc4, 0xc5,
+    0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xd2, 0xd3, 0xd4,
+    0xd5, 0xd6, 0xd7, 0xd8, 0xd9, 0xda, 0xe1, 0xe2,
+    0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea,
+    0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8,
+    0xf9, 0xfa
+};
+
+constexpr std::uint8_t JPEG_STD_CHROMA_DC_COUNTS[16] = {
+    0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0
+};
+
+constexpr std::uint8_t JPEG_STD_CHROMA_DC_SYMBOLS[12] = {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+};
+
+constexpr std::uint8_t JPEG_STD_CHROMA_AC_COUNTS[16] = {
+    0, 2, 1, 2, 4, 4, 3, 4, 7, 5, 4, 4, 0, 1, 2, 119
+};
+
+constexpr std::uint8_t JPEG_STD_CHROMA_AC_SYMBOLS[162] = {
+    0x00, 0x01, 0x02, 0x03, 0x11, 0x04, 0x05, 0x21,
+    0x31, 0x06, 0x12, 0x41, 0x51, 0x07, 0x61, 0x71,
+    0x13, 0x22, 0x32, 0x81, 0x08, 0x14, 0x42, 0x91,
+    0xa1, 0xb1, 0xc1, 0x09, 0x23, 0x33, 0x52, 0xf0,
+    0x15, 0x62, 0x72, 0xd1, 0x0a, 0x16, 0x24, 0x34,
+    0xe1, 0x25, 0xf1, 0x17, 0x18, 0x19, 0x1a, 0x26,
+    0x27, 0x28, 0x29, 0x2a, 0x35, 0x36, 0x37, 0x38,
+    0x39, 0x3a, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
+    0x49, 0x4a, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58,
+    0x59, 0x5a, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68,
+    0x69, 0x6a, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78,
+    0x79, 0x7a, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87,
+    0x88, 0x89, 0x8a, 0x92, 0x93, 0x94, 0x95, 0x96,
+    0x97, 0x98, 0x99, 0x9a, 0xa2, 0xa3, 0xa4, 0xa5,
+    0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xb2, 0xb3, 0xb4,
+    0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xc2, 0xc3,
+    0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xd2,
+    0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xd8, 0xd9, 0xda,
+    0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9,
+    0xea, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8,
+    0xf9, 0xfa
+};
+
+int jpeg_build_huffman_table_from_spec(
+    const std::uint8_t counts[16],
+    const std::uint8_t* symbols,
+    std::size_t symbol_count,
+    JpegHuffmanTable* table)
+{
+    if (!counts || !symbols || !table) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    try {
+        *table = JpegHuffmanTable{};
+        std::size_t expected = 0;
+        for (int length = 1; length <= 16; ++length) {
+            table->counts[length] = counts[length - 1];
+            expected += counts[length - 1];
+        }
+        if (expected != symbol_count) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        table->symbols.assign(symbols, symbols + symbol_count);
+
+        std::uint16_t code = 0;
+        std::size_t symbol_index = 0;
+        for (int length = 1; length <= 16; ++length) {
+            const int count = table->counts[length];
+            for (int i = 0; i < count; ++i) {
+                const std::uint8_t symbol = table->symbols[symbol_index++];
+                table->codes[symbol] = code;
+                table->sizes[symbol] = static_cast<std::uint8_t>(length);
+                ++code;
+            }
+            code = static_cast<std::uint16_t>(code << 1);
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_build_standard_luminance_huffman_tables(JpegHuffmanTable* dc_table, JpegHuffmanTable* ac_table)
+{
+    int status = jpeg_build_huffman_table_from_spec(
+        JPEG_STD_LUMA_DC_COUNTS,
+        JPEG_STD_LUMA_DC_SYMBOLS,
+        sizeof(JPEG_STD_LUMA_DC_SYMBOLS),
+        dc_table);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return jpeg_build_huffman_table_from_spec(
+        JPEG_STD_LUMA_AC_COUNTS,
+        JPEG_STD_LUMA_AC_SYMBOLS,
+        sizeof(JPEG_STD_LUMA_AC_SYMBOLS),
+        ac_table);
+}
+
+int jpeg_build_standard_chrominance_huffman_tables(JpegHuffmanTable* dc_table, JpegHuffmanTable* ac_table)
+{
+    int status = jpeg_build_huffman_table_from_spec(
+        JPEG_STD_CHROMA_DC_COUNTS,
+        JPEG_STD_CHROMA_DC_SYMBOLS,
+        sizeof(JPEG_STD_CHROMA_DC_SYMBOLS),
+        dc_table);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return jpeg_build_huffman_table_from_spec(
+        JPEG_STD_CHROMA_AC_COUNTS,
+        JPEG_STD_CHROMA_AC_SYMBOLS,
+        sizeof(JPEG_STD_CHROMA_AC_SYMBOLS),
+        ac_table);
+}
+
+int jpeg_append_dht_segment(std::vector<std::uint8_t>& out, int table_class, int table_id, const JpegHuffmanTable& table)
+{
+    std::vector<std::uint8_t> payload;
+    try {
+        payload.push_back(static_cast<std::uint8_t>((table_class << 4) | table_id));
+        for (int i = 1; i <= 16; ++i) {
+            payload.push_back(table.counts[i]);
+        }
+        payload.insert(payload.end(), table.symbols.begin(), table.symbols.end());
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    return append_jpeg_segment(out, 0xc4u, payload.data(), payload.size());
+}
+
+void jpeg_bit_writer_emit_byte(JpegBitWriter* writer, std::uint8_t value)
+{
+    writer->out->push_back(value);
+    if (value == 0xffu) {
+        writer->out->push_back(0u);
+    }
+}
+
+void jpeg_bit_writer_write(JpegBitWriter* writer, std::uint16_t code, int size)
+{
+    for (int bit = size - 1; bit >= 0; --bit) {
+        writer->current = static_cast<std::uint8_t>((writer->current << 1) | ((code >> bit) & 1u));
+        ++writer->used;
+        if (writer->used == 8) {
+            jpeg_bit_writer_emit_byte(writer, writer->current);
+            writer->current = 0;
+            writer->used = 0;
+        }
+    }
+}
+
+void jpeg_bit_writer_flush(JpegBitWriter* writer)
+{
+    if (writer->used == 0) {
+        return;
+    }
+    const int remaining = 8 - writer->used;
+    const std::uint8_t fill = static_cast<std::uint8_t>((1u << remaining) - 1u);
+    const std::uint8_t value = static_cast<std::uint8_t>((writer->current << remaining) | fill);
+    jpeg_bit_writer_emit_byte(writer, value);
+    writer->current = 0;
+    writer->used = 0;
+}
+
+int jpeg_write_huffman_symbol(JpegBitWriter* writer, const JpegHuffmanTable& table, int symbol)
+{
+    if (symbol < 0 || symbol > 255 || table.sizes[symbol] == 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    jpeg_bit_writer_write(writer, table.codes[symbol], table.sizes[symbol]);
+    return PILLOW_C_OK;
+}
+
+int jpeg_encode_block_entropy(
+    JpegBitWriter* writer,
+    const int coeffs[64],
+    int* previous_dc,
+    const JpegHuffmanTable& dc_table,
+    const JpegHuffmanTable& ac_table)
+{
+    if (!writer || !previous_dc) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const int diff = coeffs[0] - *previous_dc;
+    *previous_dc = coeffs[0];
+    int category = jpeg_value_category(diff);
+    int status = jpeg_write_huffman_symbol(writer, dc_table, category);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    jpeg_bit_writer_write(writer, jpeg_value_bits(diff, category), category);
+
+    int zero_run = 0;
+    for (int i = 1; i < 64; ++i) {
+        const int value = coeffs[i];
+        if (value == 0) {
+            ++zero_run;
+            continue;
+        }
+        while (zero_run > 15) {
+            status = jpeg_write_huffman_symbol(writer, ac_table, 0xf0);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            zero_run -= 16;
+        }
+        category = jpeg_value_category(value);
+        const int symbol = (zero_run << 4) | category;
+        status = jpeg_write_huffman_symbol(writer, ac_table, symbol);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        jpeg_bit_writer_write(writer, jpeg_value_bits(value, category), category);
+        zero_run = 0;
+    }
+    if (zero_run > 0) {
+        status = jpeg_write_huffman_symbol(writer, ac_table, 0x00);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int jpeg_encode_luma_entropy(
+    const std::vector<int>& blocks,
+    const JpegHuffmanTable& dc_table,
+    const JpegHuffmanTable& ac_table,
+    std::vector<std::uint8_t>* out)
+{
+    if (!out) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    try {
+        JpegBitWriter writer;
+        writer.out = out;
+        int previous_dc = 0;
+        const std::size_t block_count = blocks.size() / 64u;
+        for (std::size_t block = 0; block < block_count; ++block) {
+            const int* coeffs = blocks.data() + block * 64u;
+            const int status = jpeg_encode_block_entropy(&writer, coeffs, &previous_dc, dc_table, ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+        jpeg_bit_writer_flush(&writer);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_successive_value(int value, int al)
+{
+    const int magnitude = value < 0 ? -value : value;
+    const int shifted = magnitude >> al;
+    return value < 0 ? -shifted : shifted;
+}
+
+int jpeg_successive_bit(int value, int al)
+{
+    const int magnitude = value < 0 ? -value : value;
+    return (magnitude >> al) & 1;
+}
+
+void jpeg_collect_progressive_dc_first_frequencies(
+    const std::vector<int>& blocks,
+    int al,
+    std::uint64_t dc_freq[256])
+{
+    int previous_dc = 0;
+    const std::size_t block_count = blocks.size() / 64u;
+    for (std::size_t block = 0; block < block_count; ++block) {
+        const int* coeffs = blocks.data() + block * 64u;
+        const int dc = jpeg_successive_value(coeffs[0], al);
+        const int diff = dc - previous_dc;
+        previous_dc = dc;
+        ++dc_freq[jpeg_value_category(diff)];
+    }
+}
+
+void jpeg_collect_progressive_ac_first_frequencies(
+    const std::vector<int>& blocks,
+    int ss,
+    int se,
+    int al,
+    std::uint64_t ac_freq[256])
+{
+    const std::size_t block_count = blocks.size() / 64u;
+    for (std::size_t block = 0; block < block_count; ++block) {
+        const int* coeffs = blocks.data() + block * 64u;
+        int zero_run = 0;
+        for (int k = ss; k <= se; ++k) {
+            const int value = jpeg_successive_value(coeffs[k], al);
+            if (value == 0) {
+                ++zero_run;
+                continue;
+            }
+            while (zero_run > 15) {
+                ++ac_freq[0xf0u];
+                zero_run -= 16;
+            }
+            const int category = jpeg_value_category(value);
+            ++ac_freq[(zero_run << 4) | category];
+            zero_run = 0;
+        }
+        if (zero_run > 0) {
+            ++ac_freq[0x00u];
+        }
+    }
+}
+
+void jpeg_collect_progressive_ac_refine_frequencies(
+    const std::vector<int>& blocks,
+    int ss,
+    int se,
+    int ah,
+    int al,
+    std::uint64_t ac_freq[256])
+{
+    const std::size_t block_count = blocks.size() / 64u;
+    for (std::size_t block = 0; block < block_count; ++block) {
+        const int* coeffs = blocks.data() + block * 64u;
+        int zero_run = 0;
+        int correction_bits = 0;
+        for (int k = ss; k <= se; ++k) {
+            const int value = coeffs[k];
+            const int magnitude = value < 0 ? -value : value;
+            if ((magnitude >> ah) != 0) {
+                ++correction_bits;
+                continue;
+            }
+            if ((magnitude >> al) == 0) {
+                ++zero_run;
+                continue;
+            }
+            while (zero_run > 15) {
+                ++ac_freq[0xf0u];
+                zero_run -= 16;
+                correction_bits = 0;
+            }
+            ++ac_freq[(zero_run << 4) | 1];
+            zero_run = 0;
+            correction_bits = 0;
+        }
+        if (zero_run > 0 || correction_bits > 0) {
+            ++ac_freq[0x00u];
+        }
+    }
+}
+
+int jpeg_encode_progressive_dc_first_scan(
+    const std::vector<int>& blocks,
+    int al,
+    const JpegHuffmanTable& dc_table,
+    std::vector<std::uint8_t>* out)
+{
+    if (!out) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    try {
+        JpegBitWriter writer;
+        writer.out = out;
+        int previous_dc = 0;
+        const std::size_t block_count = blocks.size() / 64u;
+        for (std::size_t block = 0; block < block_count; ++block) {
+            const int* coeffs = blocks.data() + block * 64u;
+            const int dc = jpeg_successive_value(coeffs[0], al);
+            const int diff = dc - previous_dc;
+            previous_dc = dc;
+            const int category = jpeg_value_category(diff);
+            int status = jpeg_write_huffman_symbol(&writer, dc_table, category);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            jpeg_bit_writer_write(&writer, jpeg_value_bits(diff, category), category);
+        }
+        jpeg_bit_writer_flush(&writer);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_encode_progressive_dc_refine_scan(
+    const std::vector<int>& blocks,
+    int al,
+    std::vector<std::uint8_t>* out)
+{
+    if (!out) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    try {
+        JpegBitWriter writer;
+        writer.out = out;
+        const std::size_t block_count = blocks.size() / 64u;
+        for (std::size_t block = 0; block < block_count; ++block) {
+            const int* coeffs = blocks.data() + block * 64u;
+            jpeg_bit_writer_write(&writer, static_cast<std::uint16_t>(jpeg_successive_bit(coeffs[0], al)), 1);
+        }
+        jpeg_bit_writer_flush(&writer);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_encode_progressive_ac_first_scan(
+    const std::vector<int>& blocks,
+    int ss,
+    int se,
+    int al,
+    const JpegHuffmanTable& ac_table,
+    std::vector<std::uint8_t>* out)
+{
+    if (!out) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    try {
+        JpegBitWriter writer;
+        writer.out = out;
+        const std::size_t block_count = blocks.size() / 64u;
+        for (std::size_t block = 0; block < block_count; ++block) {
+            const int* coeffs = blocks.data() + block * 64u;
+            int zero_run = 0;
+            for (int k = ss; k <= se; ++k) {
+                const int value = jpeg_successive_value(coeffs[k], al);
+                if (value == 0) {
+                    ++zero_run;
+                    continue;
+                }
+                while (zero_run > 15) {
+                    int status = jpeg_write_huffman_symbol(&writer, ac_table, 0xf0);
+                    if (status != PILLOW_C_OK) {
+                        return status;
+                    }
+                    zero_run -= 16;
+                }
+                const int category = jpeg_value_category(value);
+                const int symbol = (zero_run << 4) | category;
+                int status = jpeg_write_huffman_symbol(&writer, ac_table, symbol);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+                jpeg_bit_writer_write(&writer, jpeg_value_bits(value, category), category);
+                zero_run = 0;
+            }
+            if (zero_run > 0) {
+                const int status = jpeg_write_huffman_symbol(&writer, ac_table, 0x00);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+            }
+        }
+        jpeg_bit_writer_flush(&writer);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_emit_correction_bits(JpegBitWriter* writer, const std::vector<int>& bits)
+{
+    if (!writer) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    for (int bit : bits) {
+        jpeg_bit_writer_write(writer, static_cast<std::uint16_t>(bit & 1), 1);
+    }
+    return PILLOW_C_OK;
+}
+
+int jpeg_encode_progressive_ac_refine_scan(
+    const std::vector<int>& blocks,
+    int ss,
+    int se,
+    int ah,
+    int al,
+    const JpegHuffmanTable& ac_table,
+    std::vector<std::uint8_t>* out)
+{
+    if (!out) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    try {
+        JpegBitWriter writer;
+        writer.out = out;
+        const std::size_t block_count = blocks.size() / 64u;
+        std::vector<int> correction_bits;
+        correction_bits.reserve(static_cast<std::size_t>(se - ss + 1));
+        for (std::size_t block = 0; block < block_count; ++block) {
+            const int* coeffs = blocks.data() + block * 64u;
+            int zero_run = 0;
+            correction_bits.clear();
+            for (int k = ss; k <= se; ++k) {
+                const int value = coeffs[k];
+                const int magnitude = value < 0 ? -value : value;
+                if ((magnitude >> ah) != 0) {
+                    correction_bits.push_back((magnitude >> al) & 1);
+                    continue;
+                }
+                if ((magnitude >> al) == 0) {
+                    ++zero_run;
+                    continue;
+                }
+                while (zero_run > 15) {
+                    int status = jpeg_write_huffman_symbol(&writer, ac_table, 0xf0);
+                    if (status != PILLOW_C_OK) {
+                        return status;
+                    }
+                    status = jpeg_emit_correction_bits(&writer, correction_bits);
+                    if (status != PILLOW_C_OK) {
+                        return status;
+                    }
+                    correction_bits.clear();
+                    zero_run -= 16;
+                }
+                const int symbol = (zero_run << 4) | 1;
+                int status = jpeg_write_huffman_symbol(&writer, ac_table, symbol);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+                jpeg_bit_writer_write(&writer, value < 0 ? 0u : 1u, 1);
+                status = jpeg_emit_correction_bits(&writer, correction_bits);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+                correction_bits.clear();
+                zero_run = 0;
+            }
+            if (zero_run > 0 || !correction_bits.empty()) {
+                int status = jpeg_write_huffman_symbol(&writer, ac_table, 0x00);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+                status = jpeg_emit_correction_bits(&writer, correction_bits);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+            }
+        }
+        jpeg_bit_writer_flush(&writer);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_append_luminance_sos_segment(
+    std::vector<std::uint8_t>& out,
+    int ss,
+    int se,
+    int ah,
+    int al)
+{
+    std::uint8_t sos[] = {
+        1,
+        1,
+        0,
+        static_cast<std::uint8_t>(ss),
+        static_cast<std::uint8_t>(se),
+        static_cast<std::uint8_t>((ah << 4) | al)
+    };
+    return append_jpeg_segment(out, 0xdau, sos, sizeof(sos));
+}
+
+int jpeg_encode_rgb_interleaved_entropy(
+    const std::vector<int>& y_blocks,
+    const std::vector<int>& cb_blocks,
+    const std::vector<int>& cr_blocks,
+    int y_blocks_per_mcu,
+    const JpegHuffmanTable& luma_dc_table,
+    const JpegHuffmanTable& luma_ac_table,
+    const JpegHuffmanTable& chroma_dc_table,
+    const JpegHuffmanTable& chroma_ac_table,
+    std::vector<std::uint8_t>* out)
+{
+    if (!out) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (y_blocks_per_mcu <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t mcu_count = cb_blocks.size() / 64u;
+    if (cr_blocks.size() / 64u != mcu_count ||
+        y_blocks.size() / 64u != mcu_count * static_cast<std::size_t>(y_blocks_per_mcu)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        JpegBitWriter writer;
+        writer.out = out;
+        int previous_y_dc = 0;
+        int previous_cb_dc = 0;
+        int previous_cr_dc = 0;
+        std::size_t y_block_index = 0;
+        for (std::size_t mcu = 0; mcu < mcu_count; ++mcu) {
+            for (int y_block = 0; y_block < y_blocks_per_mcu; ++y_block) {
+                const int* y_coeffs = y_blocks.data() + y_block_index * 64u;
+                ++y_block_index;
+                const int status = jpeg_encode_block_entropy(
+                    &writer,
+                    y_coeffs,
+                    &previous_y_dc,
+                    luma_dc_table,
+                    luma_ac_table);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+            }
+            const int* cb_coeffs = cb_blocks.data() + mcu * 64u;
+            const int* cr_coeffs = cr_blocks.data() + mcu * 64u;
+            int status = jpeg_encode_block_entropy(
+                &writer,
+                cb_coeffs,
+                &previous_cb_dc,
+                chroma_dc_table,
+                chroma_ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_encode_block_entropy(
+                &writer,
+                cr_coeffs,
+                &previous_cr_dc,
+                chroma_dc_table,
+                chroma_ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+        jpeg_bit_writer_flush(&writer);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int save_jpeg_l_optimized_huffman(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const int* custom_qtable = nullptr,
+    bool optimize_huffman = true)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_L || image->channels != 1 || image->width <= 0 || image->height <= 0 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::uint8_t jfif_unit = 0;
+    std::uint16_t jfif_x_density = 1;
+    std::uint16_t jfif_y_density = 1;
+    if (has_dpi) {
+        int status = jpeg_density_from_dpi(dpi_x, dpi_y, &jfif_unit, &jfif_x_density, &jfif_y_density);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+
+    try {
+        int qtable[64] = {};
+        int status = PILLOW_C_OK;
+        if (custom_qtable) {
+            status = jpeg_scaled_custom_qtable(custom_qtable, quality, qtable);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else {
+            jpeg_scaled_luminance_qtable(quality, qtable);
+        }
+        const int blocks_x = (image->width + 7) / 8;
+        const int blocks_y = (image->height + 7) / 8;
+        std::vector<int> blocks;
+        blocks.reserve(static_cast<std::size_t>(blocks_x) * static_cast<std::size_t>(blocks_y) * 64u);
+        for (int by = 0; by < blocks_y; ++by) {
+            for (int bx = 0; bx < blocks_x; ++bx) {
+                int zz[64] = {};
+                jpeg_fdct_quantize_luma_block(image, bx * 8, by * 8, qtable, zz);
+                blocks.insert(blocks.end(), zz, zz + 64);
+            }
+        }
+
+        JpegHuffmanTable dc_table;
+        JpegHuffmanTable ac_table;
+        if (optimize_huffman) {
+            std::uint64_t dc_freq[256] = {};
+            std::uint64_t ac_freq[256] = {};
+            jpeg_collect_huffman_frequencies(blocks, dc_freq, ac_freq);
+            status = jpeg_build_optimized_huffman_table(dc_freq, &dc_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_build_optimized_huffman_table(ac_freq, &ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else {
+            status = jpeg_build_standard_luminance_huffman_tables(&dc_table, &ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        std::vector<std::uint8_t> out;
+        out.reserve(256u + blocks.size());
+        out.push_back(0xffu);
+        out.push_back(0xd8u);
+
+        std::uint8_t app0[] = {
+            'J', 'F', 'I', 'F', 0,
+            1, 1,
+            jfif_unit,
+            static_cast<std::uint8_t>((jfif_x_density >> 8) & 0xffu),
+            static_cast<std::uint8_t>(jfif_x_density & 0xffu),
+            static_cast<std::uint8_t>((jfif_y_density >> 8) & 0xffu),
+            static_cast<std::uint8_t>(jfif_y_density & 0xffu),
+            0, 0
+        };
+        status = append_jpeg_segment(out, 0xe0u, app0, sizeof(app0));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint8_t dqt[65] = {};
+        dqt[0] = 0;
+        for (int i = 0; i < 64; ++i) {
+            dqt[i + 1] = static_cast<std::uint8_t>(qtable[JPEG_ZIGZAG[i]]);
+        }
+        status = append_jpeg_segment(out, 0xdbu, dqt, sizeof(dqt));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::vector<std::uint8_t> sof;
+        sof.push_back(8);
+        append_be16(sof, static_cast<std::uint16_t>(image->height));
+        append_be16(sof, static_cast<std::uint16_t>(image->width));
+        sof.push_back(1);
+        sof.push_back(1);
+        sof.push_back(0x11);
+        sof.push_back(0);
+        status = append_jpeg_segment(out, 0xc0u, sof.data(), sof.size());
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 0, 0, dc_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_dht_segment(out, 1, 0, ac_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint8_t sos[] = {1, 1, 0, 0, 63, 0};
+        status = append_jpeg_segment(out, 0xdau, sos, sizeof(sos));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_luma_entropy(blocks, dc_table, ac_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        out.push_back(0xffu);
+        out.push_back(0xd9u);
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int save_jpeg_l_progressive_huffman(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const int* custom_qtable = nullptr)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_L || image->channels != 1 || image->width <= 0 || image->height <= 0 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::uint8_t jfif_unit = 0;
+    std::uint16_t jfif_x_density = 1;
+    std::uint16_t jfif_y_density = 1;
+    if (has_dpi) {
+        int status = jpeg_density_from_dpi(dpi_x, dpi_y, &jfif_unit, &jfif_x_density, &jfif_y_density);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+
+    try {
+        int qtable[64] = {};
+        int status = PILLOW_C_OK;
+        if (custom_qtable) {
+            status = jpeg_scaled_custom_qtable(custom_qtable, quality, qtable);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else {
+            jpeg_scaled_luminance_qtable(quality, qtable);
+        }
+        const int blocks_x = (image->width + 7) / 8;
+        const int blocks_y = (image->height + 7) / 8;
+        std::vector<int> blocks;
+        blocks.reserve(static_cast<std::size_t>(blocks_x) * static_cast<std::size_t>(blocks_y) * 64u);
+        for (int by = 0; by < blocks_y; ++by) {
+            for (int bx = 0; bx < blocks_x; ++bx) {
+                int zz[64] = {};
+                jpeg_fdct_quantize_luma_block(image, bx * 8, by * 8, qtable, zz);
+                blocks.insert(blocks.end(), zz, zz + 64);
+            }
+        }
+
+        std::uint64_t dc_first_freq[256] = {};
+        std::uint64_t ac_first_low_freq[256] = {};
+        std::uint64_t ac_first_high_freq[256] = {};
+        std::uint64_t ac_refine_mid_freq[256] = {};
+        std::uint64_t ac_refine_final_freq[256] = {};
+        jpeg_collect_progressive_dc_first_frequencies(blocks, 1, dc_first_freq);
+        jpeg_collect_progressive_ac_first_frequencies(blocks, 1, 5, 2, ac_first_low_freq);
+        jpeg_collect_progressive_ac_first_frequencies(blocks, 6, 63, 2, ac_first_high_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(blocks, 1, 63, 2, 1, ac_refine_mid_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(blocks, 1, 63, 1, 0, ac_refine_final_freq);
+
+        JpegHuffmanTable dc_first_table;
+        JpegHuffmanTable ac_first_low_table;
+        JpegHuffmanTable ac_first_high_table;
+        JpegHuffmanTable ac_refine_mid_table;
+        JpegHuffmanTable ac_refine_final_table;
+        status = jpeg_build_optimized_huffman_table(dc_first_freq, &dc_first_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(ac_first_low_freq, &ac_first_low_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(ac_first_high_freq, &ac_first_high_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(ac_refine_mid_freq, &ac_refine_mid_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(ac_refine_final_freq, &ac_refine_final_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::vector<std::uint8_t> out;
+        out.reserve(384u + blocks.size());
+        out.push_back(0xffu);
+        out.push_back(0xd8u);
+
+        std::uint8_t app0[] = {
+            'J', 'F', 'I', 'F', 0,
+            1, 1,
+            jfif_unit,
+            static_cast<std::uint8_t>((jfif_x_density >> 8) & 0xffu),
+            static_cast<std::uint8_t>(jfif_x_density & 0xffu),
+            static_cast<std::uint8_t>((jfif_y_density >> 8) & 0xffu),
+            static_cast<std::uint8_t>(jfif_y_density & 0xffu),
+            0, 0
+        };
+        status = append_jpeg_segment(out, 0xe0u, app0, sizeof(app0));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint8_t dqt[65] = {};
+        dqt[0] = 0;
+        for (int i = 0; i < 64; ++i) {
+            dqt[i + 1] = static_cast<std::uint8_t>(qtable[JPEG_ZIGZAG[i]]);
+        }
+        status = append_jpeg_segment(out, 0xdbu, dqt, sizeof(dqt));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::vector<std::uint8_t> sof;
+        sof.push_back(8);
+        append_be16(sof, static_cast<std::uint16_t>(image->height));
+        append_be16(sof, static_cast<std::uint16_t>(image->width));
+        sof.push_back(1);
+        sof.push_back(1);
+        sof.push_back(0x11);
+        sof.push_back(0);
+        status = append_jpeg_segment(out, 0xc2u, sof.data(), sof.size());
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 0, 0, dc_first_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_luminance_sos_segment(out, 0, 0, 0, 1);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_dc_first_scan(blocks, 1, dc_first_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 1, 0, ac_first_low_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_luminance_sos_segment(out, 1, 5, 0, 2);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_ac_first_scan(blocks, 1, 5, 2, ac_first_low_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 1, 0, ac_first_high_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_luminance_sos_segment(out, 6, 63, 0, 2);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_ac_first_scan(blocks, 6, 63, 2, ac_first_high_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 1, 0, ac_refine_mid_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_luminance_sos_segment(out, 1, 63, 2, 1);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_ac_refine_scan(blocks, 1, 63, 2, 1, ac_refine_mid_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_luminance_sos_segment(out, 0, 0, 1, 0);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_dc_refine_scan(blocks, 0, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 1, 0, ac_refine_final_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_luminance_sos_segment(out, 1, 63, 1, 0);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_ac_refine_scan(blocks, 1, 63, 1, 0, ac_refine_final_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        out.push_back(0xffu);
+        out.push_back(0xd9u);
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+std::uint8_t jpeg_clamp_sample(double value)
+{
+    const int rounded = static_cast<int>(std::round(value));
+    return static_cast<std::uint8_t>(std::max(0, std::min(255, rounded)));
+}
+
+int jpeg_rgb_sampling_from_subsampling(int subsampling, int* out_h, int* out_v)
+{
+    if (!out_h || !out_v) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    switch (subsampling) {
+    case -1:
+    case 2:
+        *out_h = 2;
+        *out_v = 2;
+        return PILLOW_C_OK;
+    case 1:
+        *out_h = 2;
+        *out_v = 1;
+        return PILLOW_C_OK;
+    case 0:
+        *out_h = 1;
+        *out_v = 1;
+        return PILLOW_C_OK;
+    default:
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+}
+
+struct JpegRgbPreparedBlocks {
+    int h_samp = 0;
+    int v_samp = 0;
+    int y_blocks_per_mcu = 0;
+    int luma_qtable[64] = {};
+    int chroma_qtable[64] = {};
+    std::vector<int> y_blocks;
+    std::vector<int> cb_blocks;
+    std::vector<int> cr_blocks;
+};
+
+int jpeg_prepare_rgb_sampled_blocks(
+    const PillowCImage* image,
+    int quality,
+    int subsampling,
+    const int* custom_luma_qtable,
+    const int* custom_chroma_qtable,
+    JpegRgbPreparedBlocks* prepared)
+{
+    if (!image || !prepared) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_RGB || image->channels != 3 || image->width <= 0 || image->height <= 0 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    int h_samp = 0;
+    int v_samp = 0;
+    int status = jpeg_rgb_sampling_from_subsampling(subsampling, &h_samp, &v_samp);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+
+    try {
+        *prepared = JpegRgbPreparedBlocks{};
+        prepared->h_samp = h_samp;
+        prepared->v_samp = v_samp;
+        prepared->y_blocks_per_mcu = h_samp * v_samp;
+        if (custom_luma_qtable) {
+            status = jpeg_scaled_custom_qtable(custom_luma_qtable, quality, prepared->luma_qtable);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else {
+            jpeg_scaled_luminance_qtable(quality, prepared->luma_qtable);
+        }
+        if (custom_chroma_qtable) {
+            status = jpeg_scaled_custom_qtable(custom_chroma_qtable, quality, prepared->chroma_qtable);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else {
+            jpeg_scaled_chrominance_qtable(quality, prepared->chroma_qtable);
+        }
+
+        const std::size_t pixel_count =
+            static_cast<std::size_t>(image->width) * static_cast<std::size_t>(image->height);
+        const int chroma_width = (image->width + h_samp - 1) / h_samp;
+        const int chroma_height = (image->height + v_samp - 1) / v_samp;
+        const int mcu_cols = (image->width + (8 * h_samp) - 1) / (8 * h_samp);
+        const int mcu_rows = (image->height + (8 * v_samp) - 1) / (8 * v_samp);
+        const std::size_t mcu_count =
+            static_cast<std::size_t>(mcu_cols) * static_cast<std::size_t>(mcu_rows);
+        if (mcu_count > std::numeric_limits<std::size_t>::max() / 64u ||
+            mcu_count > std::numeric_limits<std::size_t>::max() /
+                (64u * static_cast<std::size_t>(prepared->y_blocks_per_mcu))) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::vector<std::uint8_t> y_plane(pixel_count);
+        std::vector<std::uint8_t> cb_full(pixel_count);
+        std::vector<std::uint8_t> cr_full(pixel_count);
+        for (int y = 0; y < image->height; ++y) {
+            const std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+            const std::size_t row_offset = static_cast<std::size_t>(y) * static_cast<std::size_t>(image->width);
+            for (int x = 0; x < image->width; ++x) {
+                const std::uint8_t* pixel = row + static_cast<std::size_t>(x) * 3u;
+                const double r = static_cast<double>(pixel[0]);
+                const double g = static_cast<double>(pixel[1]);
+                const double b = static_cast<double>(pixel[2]);
+                const std::size_t index = row_offset + static_cast<std::size_t>(x);
+                y_plane[index] = jpeg_clamp_sample((0.299 * r) + (0.587 * g) + (0.114 * b));
+                cb_full[index] = jpeg_clamp_sample((-0.168736 * r) - (0.331264 * g) + (0.5 * b) + 128.0);
+                cr_full[index] = jpeg_clamp_sample((0.5 * r) - (0.418688 * g) - (0.081312 * b) + 128.0);
+            }
+        }
+
+        const std::size_t chroma_count =
+            static_cast<std::size_t>(chroma_width) * static_cast<std::size_t>(chroma_height);
+        std::vector<std::uint8_t> cb_plane(chroma_count);
+        std::vector<std::uint8_t> cr_plane(chroma_count);
+        for (int cy = 0; cy < chroma_height; ++cy) {
+            for (int cx = 0; cx < chroma_width; ++cx) {
+                int cb_sum = 0;
+                int cr_sum = 0;
+                for (int dy = 0; dy < v_samp; ++dy) {
+                    const int src_y = std::min((cy * v_samp) + dy, image->height - 1);
+                    const std::size_t src_row =
+                        static_cast<std::size_t>(src_y) * static_cast<std::size_t>(image->width);
+                    for (int dx = 0; dx < h_samp; ++dx) {
+                        const int src_x = std::min((cx * h_samp) + dx, image->width - 1);
+                        const std::size_t src_index = src_row + static_cast<std::size_t>(src_x);
+                        cb_sum += cb_full[src_index];
+                        cr_sum += cr_full[src_index];
+                    }
+                }
+                const int divisor = h_samp * v_samp;
+                const std::size_t dst_index =
+                    static_cast<std::size_t>(cy) * static_cast<std::size_t>(chroma_width) +
+                    static_cast<std::size_t>(cx);
+                cb_plane[dst_index] = static_cast<std::uint8_t>((cb_sum + (divisor / 2)) / divisor);
+                cr_plane[dst_index] = static_cast<std::uint8_t>((cr_sum + (divisor / 2)) / divisor);
+            }
+        }
+
+        prepared->y_blocks.reserve(
+            mcu_count * static_cast<std::size_t>(prepared->y_blocks_per_mcu) * 64u);
+        prepared->cb_blocks.reserve(mcu_count * 64u);
+        prepared->cr_blocks.reserve(mcu_count * 64u);
+        for (int mcu_y = 0; mcu_y < mcu_rows; ++mcu_y) {
+            for (int mcu_x = 0; mcu_x < mcu_cols; ++mcu_x) {
+                for (int y_sample = 0; y_sample < v_samp; ++y_sample) {
+                    for (int x_sample = 0; x_sample < h_samp; ++x_sample) {
+                        int zz[64] = {};
+                        jpeg_fdct_quantize_plane_block(
+                            y_plane,
+                            image->width,
+                            image->height,
+                            ((mcu_x * h_samp) + x_sample) * 8,
+                            ((mcu_y * v_samp) + y_sample) * 8,
+                            prepared->luma_qtable,
+                            zz);
+                        prepared->y_blocks.insert(prepared->y_blocks.end(), zz, zz + 64);
+                    }
+                }
+                int zz[64] = {};
+                jpeg_fdct_quantize_plane_block(
+                    cb_plane,
+                    chroma_width,
+                    chroma_height,
+                    mcu_x * 8,
+                    mcu_y * 8,
+                    prepared->chroma_qtable,
+                    zz);
+                prepared->cb_blocks.insert(prepared->cb_blocks.end(), zz, zz + 64);
+                jpeg_fdct_quantize_plane_block(
+                    cr_plane,
+                    chroma_width,
+                    chroma_height,
+                    mcu_x * 8,
+                    mcu_y * 8,
+                    prepared->chroma_qtable,
+                    zz);
+                prepared->cr_blocks.insert(prepared->cr_blocks.end(), zz, zz + 64);
+            }
+        }
+
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_prepare_keep_rgb_blocks(
+    const PillowCImage* image,
+    int quality,
+    const int* custom_r_qtable,
+    const int* custom_gb_qtable,
+    JpegRgbPreparedBlocks* prepared)
+{
+    if (!image || !prepared) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_RGB || image->channels != 3 || image->width <= 0 || image->height <= 0 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        *prepared = JpegRgbPreparedBlocks{};
+        prepared->h_samp = 1;
+        prepared->v_samp = 1;
+        prepared->y_blocks_per_mcu = 1;
+        int status = PILLOW_C_OK;
+        if (custom_r_qtable) {
+            status = jpeg_scaled_custom_qtable(custom_r_qtable, quality, prepared->luma_qtable);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else {
+            jpeg_scaled_luminance_qtable(quality, prepared->luma_qtable);
+        }
+        if (custom_gb_qtable) {
+            status = jpeg_scaled_custom_qtable(custom_gb_qtable, quality, prepared->chroma_qtable);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else {
+            for (int i = 0; i < 64; ++i) {
+                prepared->chroma_qtable[i] = prepared->luma_qtable[i];
+            }
+        }
+
+        const std::size_t pixel_count =
+            static_cast<std::size_t>(image->width) * static_cast<std::size_t>(image->height);
+        const int mcu_cols = (image->width + 7) / 8;
+        const int mcu_rows = (image->height + 7) / 8;
+        const std::size_t mcu_count =
+            static_cast<std::size_t>(mcu_cols) * static_cast<std::size_t>(mcu_rows);
+        if (mcu_count > std::numeric_limits<std::size_t>::max() / 64u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::vector<std::uint8_t> r_plane(pixel_count);
+        std::vector<std::uint8_t> g_plane(pixel_count);
+        std::vector<std::uint8_t> b_plane(pixel_count);
+        for (int y = 0; y < image->height; ++y) {
+            const std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+            const std::size_t row_offset = static_cast<std::size_t>(y) * static_cast<std::size_t>(image->width);
+            for (int x = 0; x < image->width; ++x) {
+                const std::uint8_t* pixel = row + static_cast<std::size_t>(x) * 3u;
+                const std::size_t index = row_offset + static_cast<std::size_t>(x);
+                r_plane[index] = pixel[0];
+                g_plane[index] = pixel[1];
+                b_plane[index] = pixel[2];
+            }
+        }
+
+        prepared->y_blocks.reserve(mcu_count * 64u);
+        prepared->cb_blocks.reserve(mcu_count * 64u);
+        prepared->cr_blocks.reserve(mcu_count * 64u);
+        for (int mcu_y = 0; mcu_y < mcu_rows; ++mcu_y) {
+            for (int mcu_x = 0; mcu_x < mcu_cols; ++mcu_x) {
+                int zz[64] = {};
+                jpeg_fdct_quantize_plane_block(
+                    r_plane,
+                    image->width,
+                    image->height,
+                    mcu_x * 8,
+                    mcu_y * 8,
+                    prepared->luma_qtable,
+                    zz);
+                prepared->y_blocks.insert(prepared->y_blocks.end(), zz, zz + 64);
+                jpeg_fdct_quantize_plane_block(
+                    g_plane,
+                    image->width,
+                    image->height,
+                    mcu_x * 8,
+                    mcu_y * 8,
+                    prepared->chroma_qtable,
+                    zz);
+                prepared->cb_blocks.insert(prepared->cb_blocks.end(), zz, zz + 64);
+                jpeg_fdct_quantize_plane_block(
+                    b_plane,
+                    image->width,
+                    image->height,
+                    mcu_x * 8,
+                    mcu_y * 8,
+                    prepared->chroma_qtable,
+                    zz);
+                prepared->cr_blocks.insert(prepared->cr_blocks.end(), zz, zz + 64);
+            }
+        }
+
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_append_adobe_rgb_app14(std::vector<std::uint8_t>& out)
+{
+    const std::uint8_t app14[] = {
+        'A', 'd', 'o', 'b', 'e',
+        0, 100,
+        0, 0,
+        0, 0,
+        0
+    };
+    return append_jpeg_segment(out, 0xeeu, app14, sizeof(app14));
+}
+
+int jpeg_append_jfif_app0(
+    std::vector<std::uint8_t>& out,
+    std::uint8_t unit,
+    std::uint16_t x_density,
+    std::uint16_t y_density)
+{
+    const std::uint8_t app0[] = {
+        'J', 'F', 'I', 'F', 0,
+        1, 1,
+        unit,
+        static_cast<std::uint8_t>((x_density >> 8) & 0xffu),
+        static_cast<std::uint8_t>(x_density & 0xffu),
+        static_cast<std::uint8_t>((y_density >> 8) & 0xffu),
+        static_cast<std::uint8_t>(y_density & 0xffu),
+        0, 0
+    };
+    return append_jpeg_segment(out, 0xe0u, app0, sizeof(app0));
+}
+
+int jpeg_append_optional_jfif_app0(
+    std::vector<std::uint8_t>& out,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y)
+{
+    if (!has_dpi) {
+        return PILLOW_C_OK;
+    }
+    std::uint8_t jfif_unit = 0;
+    std::uint16_t jfif_x_density = 0;
+    std::uint16_t jfif_y_density = 0;
+    int status = jpeg_density_from_dpi(dpi_x, dpi_y, &jfif_unit, &jfif_x_density, &jfif_y_density);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return jpeg_append_jfif_app0(out, jfif_unit, jfif_x_density, jfif_y_density);
+}
+
+int jpeg_append_dqt_table(std::vector<std::uint8_t>& out, int table_id, const int qtable[64])
+{
+    if (table_id < 0 || table_id > 3 || !qtable) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::uint8_t dqt[65] = {};
+    dqt[0] = static_cast<std::uint8_t>(table_id);
+    for (int i = 0; i < 64; ++i) {
+        dqt[i + 1] = static_cast<std::uint8_t>(qtable[JPEG_ZIGZAG[i]]);
+    }
+    return append_jpeg_segment(out, 0xdbu, dqt, sizeof(dqt));
+}
+
+int jpeg_append_luminance_dqt(std::vector<std::uint8_t>& out, const int qtable[64])
+{
+    return jpeg_append_dqt_table(out, 0, qtable);
+}
+
+int jpeg_append_keep_rgb_sof(
+    std::vector<std::uint8_t>& out,
+    const PillowCImage* image,
+    std::uint8_t marker,
+    int r_qtable_id,
+    int g_qtable_id,
+    int b_qtable_id)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (r_qtable_id < 0 || r_qtable_id > 3 ||
+        g_qtable_id < 0 || g_qtable_id > 3 ||
+        b_qtable_id < 0 || b_qtable_id > 3) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<std::uint8_t> sof;
+    try {
+        sof.push_back(8);
+        append_be16(sof, static_cast<std::uint16_t>(image->height));
+        append_be16(sof, static_cast<std::uint16_t>(image->width));
+        sof.push_back(3);
+        sof.push_back('R');
+        sof.push_back(0x11);
+        sof.push_back(static_cast<std::uint8_t>(r_qtable_id));
+        sof.push_back('G');
+        sof.push_back(0x11);
+        sof.push_back(static_cast<std::uint8_t>(g_qtable_id));
+        sof.push_back('B');
+        sof.push_back(0x11);
+        sof.push_back(static_cast<std::uint8_t>(b_qtable_id));
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    return append_jpeg_segment(out, marker, sof.data(), sof.size());
+}
+
+int jpeg_append_keep_rgb_interleaved_sos_segment(
+    std::vector<std::uint8_t>& out,
+    int r_selector,
+    int g_selector,
+    int b_selector,
+    int ss,
+    int se,
+    int ah,
+    int al)
+{
+    std::uint8_t sos[] = {
+        3,
+        static_cast<std::uint8_t>('R'),
+        static_cast<std::uint8_t>(r_selector),
+        static_cast<std::uint8_t>('G'),
+        static_cast<std::uint8_t>(g_selector),
+        static_cast<std::uint8_t>('B'),
+        static_cast<std::uint8_t>(b_selector),
+        static_cast<std::uint8_t>(ss),
+        static_cast<std::uint8_t>(se),
+        static_cast<std::uint8_t>((ah << 4) | al)
+    };
+    return append_jpeg_segment(out, 0xdau, sos, sizeof(sos));
+}
+
+int jpeg_append_keep_rgb_single_sos_segment(
+    std::vector<std::uint8_t>& out,
+    int component_id,
+    int table_selector,
+    int ss,
+    int se,
+    int ah,
+    int al)
+{
+    std::uint8_t sos[] = {
+        1,
+        static_cast<std::uint8_t>(component_id),
+        static_cast<std::uint8_t>(table_selector),
+        static_cast<std::uint8_t>(ss),
+        static_cast<std::uint8_t>(se),
+        static_cast<std::uint8_t>((ah << 4) | al)
+    };
+    return append_jpeg_segment(out, 0xdau, sos, sizeof(sos));
+}
+
+int save_jpeg_rgb_progressive_huffman(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int subsampling,
+    const int* custom_luma_qtable,
+    const int* custom_chroma_qtable,
+    int chroma_qtable_id);
+
+int save_jpeg_rgb_optimized_huffman(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int subsampling)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_RGB || image->channels != 3 || image->width <= 0 || image->height <= 0 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    int h_samp = 0;
+    int v_samp = 0;
+    int status = jpeg_rgb_sampling_from_subsampling(subsampling, &h_samp, &v_samp);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    std::uint8_t jfif_unit = 0;
+    std::uint16_t jfif_x_density = 1;
+    std::uint16_t jfif_y_density = 1;
+    if (has_dpi) {
+        status = jpeg_density_from_dpi(dpi_x, dpi_y, &jfif_unit, &jfif_x_density, &jfif_y_density);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+
+    try {
+        int luma_qtable[64] = {};
+        int chroma_qtable[64] = {};
+        jpeg_scaled_luminance_qtable(quality, luma_qtable);
+        jpeg_scaled_chrominance_qtable(quality, chroma_qtable);
+
+        const std::size_t pixel_count =
+            static_cast<std::size_t>(image->width) * static_cast<std::size_t>(image->height);
+        const int chroma_width = (image->width + h_samp - 1) / h_samp;
+        const int chroma_height = (image->height + v_samp - 1) / v_samp;
+        const int mcu_cols = (image->width + (8 * h_samp) - 1) / (8 * h_samp);
+        const int mcu_rows = (image->height + (8 * v_samp) - 1) / (8 * v_samp);
+        const int y_blocks_per_mcu = h_samp * v_samp;
+        const std::size_t mcu_count =
+            static_cast<std::size_t>(mcu_cols) * static_cast<std::size_t>(mcu_rows);
+        if (mcu_count > std::numeric_limits<std::size_t>::max() / 64u ||
+            mcu_count > std::numeric_limits<std::size_t>::max() / (64u * static_cast<std::size_t>(y_blocks_per_mcu))) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::vector<std::uint8_t> y_plane(pixel_count);
+        std::vector<std::uint8_t> cb_full(pixel_count);
+        std::vector<std::uint8_t> cr_full(pixel_count);
+        for (int y = 0; y < image->height; ++y) {
+            const std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+            const std::size_t row_offset = static_cast<std::size_t>(y) * static_cast<std::size_t>(image->width);
+            for (int x = 0; x < image->width; ++x) {
+                const std::uint8_t* pixel = row + static_cast<std::size_t>(x) * 3u;
+                const double r = static_cast<double>(pixel[0]);
+                const double g = static_cast<double>(pixel[1]);
+                const double b = static_cast<double>(pixel[2]);
+                const std::size_t index = row_offset + static_cast<std::size_t>(x);
+                y_plane[index] = jpeg_clamp_sample((0.299 * r) + (0.587 * g) + (0.114 * b));
+                cb_full[index] = jpeg_clamp_sample((-0.168736 * r) - (0.331264 * g) + (0.5 * b) + 128.0);
+                cr_full[index] = jpeg_clamp_sample((0.5 * r) - (0.418688 * g) - (0.081312 * b) + 128.0);
+            }
+        }
+
+        const std::size_t chroma_count =
+            static_cast<std::size_t>(chroma_width) * static_cast<std::size_t>(chroma_height);
+        std::vector<std::uint8_t> cb_plane(chroma_count);
+        std::vector<std::uint8_t> cr_plane(chroma_count);
+        for (int cy = 0; cy < chroma_height; ++cy) {
+            for (int cx = 0; cx < chroma_width; ++cx) {
+                int cb_sum = 0;
+                int cr_sum = 0;
+                for (int dy = 0; dy < v_samp; ++dy) {
+                    const int src_y = std::min((cy * v_samp) + dy, image->height - 1);
+                    const std::size_t src_row =
+                        static_cast<std::size_t>(src_y) * static_cast<std::size_t>(image->width);
+                    for (int dx = 0; dx < h_samp; ++dx) {
+                        const int src_x = std::min((cx * h_samp) + dx, image->width - 1);
+                        const std::size_t src_index = src_row + static_cast<std::size_t>(src_x);
+                        cb_sum += cb_full[src_index];
+                        cr_sum += cr_full[src_index];
+                    }
+                }
+                const int divisor = h_samp * v_samp;
+                const std::size_t dst_index =
+                    static_cast<std::size_t>(cy) * static_cast<std::size_t>(chroma_width) +
+                    static_cast<std::size_t>(cx);
+                cb_plane[dst_index] = static_cast<std::uint8_t>((cb_sum + (divisor / 2)) / divisor);
+                cr_plane[dst_index] = static_cast<std::uint8_t>((cr_sum + (divisor / 2)) / divisor);
+            }
+        }
+
+        std::vector<int> y_blocks;
+        std::vector<int> cb_blocks;
+        std::vector<int> cr_blocks;
+        y_blocks.reserve(mcu_count * static_cast<std::size_t>(y_blocks_per_mcu) * 64u);
+        cb_blocks.reserve(mcu_count * 64u);
+        cr_blocks.reserve(mcu_count * 64u);
+        for (int mcu_y = 0; mcu_y < mcu_rows; ++mcu_y) {
+            for (int mcu_x = 0; mcu_x < mcu_cols; ++mcu_x) {
+                for (int y_sample = 0; y_sample < v_samp; ++y_sample) {
+                    for (int x_sample = 0; x_sample < h_samp; ++x_sample) {
+                        int zz[64] = {};
+                        jpeg_fdct_quantize_plane_block(
+                            y_plane,
+                            image->width,
+                            image->height,
+                            ((mcu_x * h_samp) + x_sample) * 8,
+                            ((mcu_y * v_samp) + y_sample) * 8,
+                            luma_qtable,
+                            zz);
+                        y_blocks.insert(y_blocks.end(), zz, zz + 64);
+                    }
+                }
+                int zz[64] = {};
+                jpeg_fdct_quantize_plane_block(
+                    cb_plane,
+                    chroma_width,
+                    chroma_height,
+                    mcu_x * 8,
+                    mcu_y * 8,
+                    chroma_qtable,
+                    zz);
+                cb_blocks.insert(cb_blocks.end(), zz, zz + 64);
+                jpeg_fdct_quantize_plane_block(
+                    cr_plane,
+                    chroma_width,
+                    chroma_height,
+                    mcu_x * 8,
+                    mcu_y * 8,
+                    chroma_qtable,
+                    zz);
+                cr_blocks.insert(cr_blocks.end(), zz, zz + 64);
+            }
+        }
+
+        std::uint64_t luma_dc_freq[256] = {};
+        std::uint64_t luma_ac_freq[256] = {};
+        std::uint64_t chroma_dc_freq[256] = {};
+        std::uint64_t chroma_ac_freq[256] = {};
+        jpeg_collect_huffman_frequencies(y_blocks, luma_dc_freq, luma_ac_freq);
+        jpeg_collect_huffman_frequencies(cb_blocks, chroma_dc_freq, chroma_ac_freq);
+        jpeg_collect_huffman_frequencies(cr_blocks, chroma_dc_freq, chroma_ac_freq);
+
+        JpegHuffmanTable luma_dc_table;
+        JpegHuffmanTable luma_ac_table;
+        JpegHuffmanTable chroma_dc_table;
+        JpegHuffmanTable chroma_ac_table;
+        status = jpeg_build_optimized_huffman_table(luma_dc_freq, &luma_dc_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(luma_ac_freq, &luma_ac_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(chroma_dc_freq, &chroma_dc_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(chroma_ac_freq, &chroma_ac_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::vector<std::uint8_t> out;
+        out.reserve(512u + y_blocks.size() + cb_blocks.size() + cr_blocks.size());
+        out.push_back(0xffu);
+        out.push_back(0xd8u);
+
+        std::uint8_t app0[] = {
+            'J', 'F', 'I', 'F', 0,
+            1, 1,
+            jfif_unit,
+            static_cast<std::uint8_t>((jfif_x_density >> 8) & 0xffu),
+            static_cast<std::uint8_t>(jfif_x_density & 0xffu),
+            static_cast<std::uint8_t>((jfif_y_density >> 8) & 0xffu),
+            static_cast<std::uint8_t>(jfif_y_density & 0xffu),
+            0, 0
+        };
+        status = append_jpeg_segment(out, 0xe0u, app0, sizeof(app0));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint8_t dqt_luma[65] = {};
+        dqt_luma[0] = 0;
+        for (int i = 0; i < 64; ++i) {
+            dqt_luma[i + 1] = static_cast<std::uint8_t>(luma_qtable[JPEG_ZIGZAG[i]]);
+        }
+        status = append_jpeg_segment(out, 0xdbu, dqt_luma, sizeof(dqt_luma));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint8_t dqt_chroma[65] = {};
+        dqt_chroma[0] = 1;
+        for (int i = 0; i < 64; ++i) {
+            dqt_chroma[i + 1] = static_cast<std::uint8_t>(chroma_qtable[JPEG_ZIGZAG[i]]);
+        }
+        status = append_jpeg_segment(out, 0xdbu, dqt_chroma, sizeof(dqt_chroma));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::vector<std::uint8_t> sof;
+        sof.push_back(8);
+        append_be16(sof, static_cast<std::uint16_t>(image->height));
+        append_be16(sof, static_cast<std::uint16_t>(image->width));
+        sof.push_back(3);
+        sof.push_back(1);
+        sof.push_back(static_cast<std::uint8_t>((h_samp << 4) | v_samp));
+        sof.push_back(0);
+        sof.push_back(2);
+        sof.push_back(0x11);
+        sof.push_back(1);
+        sof.push_back(3);
+        sof.push_back(0x11);
+        sof.push_back(1);
+        status = append_jpeg_segment(out, 0xc0u, sof.data(), sof.size());
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 0, 0, luma_dc_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_dht_segment(out, 1, 0, luma_ac_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_dht_segment(out, 0, 1, chroma_dc_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_dht_segment(out, 1, 1, chroma_ac_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint8_t sos[] = {3, 1, 0x00, 2, 0x11, 3, 0x11, 0, 63, 0};
+        status = append_jpeg_segment(out, 0xdau, sos, sizeof(sos));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_rgb_interleaved_entropy(
+            y_blocks,
+            cb_blocks,
+            cr_blocks,
+            y_blocks_per_mcu,
+            luma_dc_table,
+            luma_ac_table,
+            chroma_dc_table,
+            chroma_ac_table,
+            &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        out.push_back(0xffu);
+        out.push_back(0xd9u);
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int save_jpeg_cmyk_baseline(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    const int* qtables,
+    std::size_t qtable_count,
+    bool optimize,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int subsampling);
+
+int save_jpeg_cmyk_progressive(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const int* qtables,
+    std::size_t qtable_count,
+    int subsampling);
+
+int save_jpeg_rgb_qtables_optimized_huffman(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const int* qtables,
+    std::size_t qtable_count,
+    int subsampling,
+    int progressive,
+    int optimize,
+    bool allow_cmyk_progressive_subsampling = false)
+{
+    if (!image || !path || !qtables) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+    if (qtable_count < 1u || qtable_count > 2u ||
+        progressive < -1 || progressive > 1 || optimize < -1 || optimize > 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->mode == PILLOW_C_MODE_CMYK && image->channels == 4) {
+        if (!(subsampling == -1 || subsampling == 0 || subsampling == 1 || subsampling == 2)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (progressive == 1) {
+            if (!(subsampling == -1 || subsampling == 0)) {
+                if (!allow_cmyk_progressive_subsampling) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+            }
+            return save_jpeg_cmyk_progressive(
+                image,
+                path,
+                quality,
+                has_dpi,
+                dpi_x,
+                dpi_y,
+                qtables,
+                qtable_count,
+                subsampling);
+        }
+        return save_jpeg_cmyk_baseline(image, path, quality, qtables, qtable_count, optimize == 1, has_dpi, dpi_x, dpi_y, subsampling);
+    }
+    if (image->mode == PILLOW_C_MODE_L && image->channels == 1) {
+        if (subsampling != -1) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (progressive == 1) {
+            return save_jpeg_l_progressive_huffman(
+                image,
+                path,
+                quality,
+                has_dpi,
+                dpi_x,
+                dpi_y,
+                qtables);
+        }
+        return save_jpeg_l_optimized_huffman(
+            image,
+            path,
+            quality,
+            has_dpi,
+            dpi_x,
+            dpi_y,
+            qtables,
+            optimize == 1);
+    }
+    if (image->mode != PILLOW_C_MODE_RGB || image->channels != 3 || image->width <= 0 || image->height <= 0 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const int* chroma_qtable = qtable_count > 1u ? qtables + 64 : qtables;
+    const int chroma_qtable_id = qtable_count > 1u ? 1 : 0;
+    if (progressive == 1) {
+        return save_jpeg_rgb_progressive_huffman(
+            image,
+            path,
+            quality,
+            has_dpi,
+            dpi_x,
+            dpi_y,
+            subsampling,
+            qtables,
+            chroma_qtable,
+            chroma_qtable_id);
+    }
+
+    std::uint8_t jfif_unit = 0;
+    std::uint16_t jfif_x_density = 1;
+    std::uint16_t jfif_y_density = 1;
+    if (has_dpi) {
+        int status = jpeg_density_from_dpi(dpi_x, dpi_y, &jfif_unit, &jfif_x_density, &jfif_y_density);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+
+    try {
+        JpegRgbPreparedBlocks prepared;
+        int status = jpeg_prepare_rgb_sampled_blocks(
+            image,
+            quality,
+            subsampling,
+            qtables,
+            chroma_qtable,
+            &prepared);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        JpegHuffmanTable luma_dc_table;
+        JpegHuffmanTable luma_ac_table;
+        JpegHuffmanTable chroma_dc_table;
+        JpegHuffmanTable chroma_ac_table;
+        if (optimize == 1) {
+            std::uint64_t luma_dc_freq[256] = {};
+            std::uint64_t luma_ac_freq[256] = {};
+            std::uint64_t chroma_dc_freq[256] = {};
+            std::uint64_t chroma_ac_freq[256] = {};
+            jpeg_collect_huffman_frequencies(prepared.y_blocks, luma_dc_freq, luma_ac_freq);
+            jpeg_collect_huffman_frequencies(prepared.cb_blocks, chroma_dc_freq, chroma_ac_freq);
+            jpeg_collect_huffman_frequencies(prepared.cr_blocks, chroma_dc_freq, chroma_ac_freq);
+
+            status = jpeg_build_optimized_huffman_table(luma_dc_freq, &luma_dc_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_build_optimized_huffman_table(luma_ac_freq, &luma_ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_build_optimized_huffman_table(chroma_dc_freq, &chroma_dc_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_build_optimized_huffman_table(chroma_ac_freq, &chroma_ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else {
+            status = jpeg_build_standard_luminance_huffman_tables(&luma_dc_table, &luma_ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_build_standard_chrominance_huffman_tables(&chroma_dc_table, &chroma_ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        std::vector<std::uint8_t> out;
+        out.reserve(512u + prepared.y_blocks.size() + prepared.cb_blocks.size() + prepared.cr_blocks.size());
+        out.push_back(0xffu);
+        out.push_back(0xd8u);
+
+        std::uint8_t app0[] = {
+            'J', 'F', 'I', 'F', 0,
+            1, 1,
+            jfif_unit,
+            static_cast<std::uint8_t>((jfif_x_density >> 8) & 0xffu),
+            static_cast<std::uint8_t>(jfif_x_density & 0xffu),
+            static_cast<std::uint8_t>((jfif_y_density >> 8) & 0xffu),
+            static_cast<std::uint8_t>(jfif_y_density & 0xffu),
+            0, 0
+        };
+        status = append_jpeg_segment(out, 0xe0u, app0, sizeof(app0));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint8_t dqt_luma[65] = {};
+        dqt_luma[0] = 0;
+        for (int i = 0; i < 64; ++i) {
+            dqt_luma[i + 1] = static_cast<std::uint8_t>(prepared.luma_qtable[JPEG_ZIGZAG[i]]);
+        }
+        status = append_jpeg_segment(out, 0xdbu, dqt_luma, sizeof(dqt_luma));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        if (chroma_qtable_id == 1) {
+            std::uint8_t dqt_chroma[65] = {};
+            dqt_chroma[0] = 1;
+            for (int i = 0; i < 64; ++i) {
+                dqt_chroma[i + 1] = static_cast<std::uint8_t>(prepared.chroma_qtable[JPEG_ZIGZAG[i]]);
+            }
+            status = append_jpeg_segment(out, 0xdbu, dqt_chroma, sizeof(dqt_chroma));
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        std::vector<std::uint8_t> sof;
+        sof.push_back(8);
+        append_be16(sof, static_cast<std::uint16_t>(image->height));
+        append_be16(sof, static_cast<std::uint16_t>(image->width));
+        sof.push_back(3);
+        sof.push_back(1);
+        sof.push_back(static_cast<std::uint8_t>((prepared.h_samp << 4) | prepared.v_samp));
+        sof.push_back(0);
+        sof.push_back(2);
+        sof.push_back(0x11);
+        sof.push_back(static_cast<std::uint8_t>(chroma_qtable_id));
+        sof.push_back(3);
+        sof.push_back(0x11);
+        sof.push_back(static_cast<std::uint8_t>(chroma_qtable_id));
+        status = append_jpeg_segment(out, 0xc0u, sof.data(), sof.size());
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 0, 0, luma_dc_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_dht_segment(out, 1, 0, luma_ac_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_dht_segment(out, 0, 1, chroma_dc_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_dht_segment(out, 1, 1, chroma_ac_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint8_t sos[] = {3, 1, 0x00, 2, 0x11, 3, 0x11, 0, 63, 0};
+        status = append_jpeg_segment(out, 0xdau, sos, sizeof(sos));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_rgb_interleaved_entropy(
+            prepared.y_blocks,
+            prepared.cb_blocks,
+            prepared.cr_blocks,
+            prepared.y_blocks_per_mcu,
+            luma_dc_table,
+            luma_ac_table,
+            chroma_dc_table,
+            chroma_ac_table,
+            &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        out.push_back(0xffu);
+        out.push_back(0xd9u);
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_append_rgb_interleaved_sos_segment(
+    std::vector<std::uint8_t>& out,
+    int y_selector,
+    int cb_selector,
+    int cr_selector,
+    int ss,
+    int se,
+    int ah,
+    int al)
+{
+    std::uint8_t sos[] = {
+        3,
+        1,
+        static_cast<std::uint8_t>(y_selector),
+        2,
+        static_cast<std::uint8_t>(cb_selector),
+        3,
+        static_cast<std::uint8_t>(cr_selector),
+        static_cast<std::uint8_t>(ss),
+        static_cast<std::uint8_t>(se),
+        static_cast<std::uint8_t>((ah << 4) | al)
+    };
+    return append_jpeg_segment(out, 0xdau, sos, sizeof(sos));
+}
+
+int jpeg_append_rgb_single_sos_segment(
+    std::vector<std::uint8_t>& out,
+    int component_id,
+    int table_selector,
+    int ss,
+    int se,
+    int ah,
+    int al)
+{
+    std::uint8_t sos[] = {
+        1,
+        static_cast<std::uint8_t>(component_id),
+        static_cast<std::uint8_t>(table_selector),
+        static_cast<std::uint8_t>(ss),
+        static_cast<std::uint8_t>(se),
+        static_cast<std::uint8_t>((ah << 4) | al)
+    };
+    return append_jpeg_segment(out, 0xdau, sos, sizeof(sos));
+}
+
+int jpeg_encode_progressive_rgb_dc_first_scan(
+    const std::vector<int>& y_blocks,
+    const std::vector<int>& cb_blocks,
+    const std::vector<int>& cr_blocks,
+    int y_blocks_per_mcu,
+    int al,
+    const JpegHuffmanTable& luma_dc_table,
+    const JpegHuffmanTable& chroma_dc_table,
+    std::vector<std::uint8_t>* out)
+{
+    if (!out) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (y_blocks_per_mcu <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t mcu_count = cb_blocks.size() / 64u;
+    if (cr_blocks.size() / 64u != mcu_count ||
+        y_blocks.size() / 64u != mcu_count * static_cast<std::size_t>(y_blocks_per_mcu)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        JpegBitWriter writer;
+        writer.out = out;
+        int previous_y_dc = 0;
+        int previous_cb_dc = 0;
+        int previous_cr_dc = 0;
+        std::size_t y_block_index = 0;
+        for (std::size_t mcu = 0; mcu < mcu_count; ++mcu) {
+            for (int y_block = 0; y_block < y_blocks_per_mcu; ++y_block) {
+                const int* coeffs = y_blocks.data() + y_block_index * 64u;
+                ++y_block_index;
+                const int dc = jpeg_successive_value(coeffs[0], al);
+                const int diff = dc - previous_y_dc;
+                previous_y_dc = dc;
+                const int category = jpeg_value_category(diff);
+                int status = jpeg_write_huffman_symbol(&writer, luma_dc_table, category);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+                jpeg_bit_writer_write(&writer, jpeg_value_bits(diff, category), category);
+            }
+
+            const int* cb_coeffs = cb_blocks.data() + mcu * 64u;
+            int cb_dc = jpeg_successive_value(cb_coeffs[0], al);
+            int diff = cb_dc - previous_cb_dc;
+            previous_cb_dc = cb_dc;
+            int category = jpeg_value_category(diff);
+            int status = jpeg_write_huffman_symbol(&writer, chroma_dc_table, category);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            jpeg_bit_writer_write(&writer, jpeg_value_bits(diff, category), category);
+
+            const int* cr_coeffs = cr_blocks.data() + mcu * 64u;
+            const int cr_dc = jpeg_successive_value(cr_coeffs[0], al);
+            diff = cr_dc - previous_cr_dc;
+            previous_cr_dc = cr_dc;
+            category = jpeg_value_category(diff);
+            status = jpeg_write_huffman_symbol(&writer, chroma_dc_table, category);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            jpeg_bit_writer_write(&writer, jpeg_value_bits(diff, category), category);
+        }
+        jpeg_bit_writer_flush(&writer);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_encode_progressive_rgb_dc_refine_scan(
+    const std::vector<int>& y_blocks,
+    const std::vector<int>& cb_blocks,
+    const std::vector<int>& cr_blocks,
+    int y_blocks_per_mcu,
+    int al,
+    std::vector<std::uint8_t>* out)
+{
+    if (!out) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (y_blocks_per_mcu <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t mcu_count = cb_blocks.size() / 64u;
+    if (cr_blocks.size() / 64u != mcu_count ||
+        y_blocks.size() / 64u != mcu_count * static_cast<std::size_t>(y_blocks_per_mcu)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        JpegBitWriter writer;
+        writer.out = out;
+        std::size_t y_block_index = 0;
+        for (std::size_t mcu = 0; mcu < mcu_count; ++mcu) {
+            for (int y_block = 0; y_block < y_blocks_per_mcu; ++y_block) {
+                const int* coeffs = y_blocks.data() + y_block_index * 64u;
+                ++y_block_index;
+                jpeg_bit_writer_write(&writer, static_cast<std::uint16_t>(jpeg_successive_bit(coeffs[0], al)), 1);
+            }
+            const int* cb_coeffs = cb_blocks.data() + mcu * 64u;
+            const int* cr_coeffs = cr_blocks.data() + mcu * 64u;
+            jpeg_bit_writer_write(&writer, static_cast<std::uint16_t>(jpeg_successive_bit(cb_coeffs[0], al)), 1);
+            jpeg_bit_writer_write(&writer, static_cast<std::uint16_t>(jpeg_successive_bit(cr_coeffs[0], al)), 1);
+        }
+        jpeg_bit_writer_flush(&writer);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int save_jpeg_rgb_progressive_huffman(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int subsampling,
+    const int* custom_luma_qtable,
+    const int* custom_chroma_qtable,
+    int chroma_qtable_id)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_RGB || image->channels != 3 || image->width <= 0 || image->height <= 0 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (chroma_qtable_id != 0 && chroma_qtable_id != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::uint8_t jfif_unit = 0;
+    std::uint16_t jfif_x_density = 1;
+    std::uint16_t jfif_y_density = 1;
+    int status = PILLOW_C_OK;
+    if (has_dpi) {
+        status = jpeg_density_from_dpi(dpi_x, dpi_y, &jfif_unit, &jfif_x_density, &jfif_y_density);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+
+    try {
+        JpegRgbPreparedBlocks prepared;
+        status = jpeg_prepare_rgb_sampled_blocks(
+            image,
+            quality,
+            subsampling,
+            custom_luma_qtable,
+            custom_chroma_qtable,
+            &prepared);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint64_t luma_dc_first_freq[256] = {};
+        std::uint64_t chroma_dc_first_freq[256] = {};
+        std::uint64_t luma_ac_first_low_freq[256] = {};
+        std::uint64_t luma_ac_first_high_freq[256] = {};
+        std::uint64_t chroma_ac_first_freq[256] = {};
+        std::uint64_t luma_ac_refine_mid_freq[256] = {};
+        std::uint64_t luma_ac_refine_final_freq[256] = {};
+        std::uint64_t chroma_ac_refine_final_freq[256] = {};
+
+        jpeg_collect_progressive_dc_first_frequencies(prepared.y_blocks, 1, luma_dc_first_freq);
+        jpeg_collect_progressive_dc_first_frequencies(prepared.cb_blocks, 1, chroma_dc_first_freq);
+        jpeg_collect_progressive_dc_first_frequencies(prepared.cr_blocks, 1, chroma_dc_first_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.y_blocks, 1, 5, 2, luma_ac_first_low_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.y_blocks, 6, 63, 2, luma_ac_first_high_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.cb_blocks, 1, 63, 1, chroma_ac_first_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.cr_blocks, 1, 63, 1, chroma_ac_first_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.y_blocks, 1, 63, 2, 1, luma_ac_refine_mid_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.y_blocks, 1, 63, 1, 0, luma_ac_refine_final_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.cb_blocks, 1, 63, 1, 0, chroma_ac_refine_final_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.cr_blocks, 1, 63, 1, 0, chroma_ac_refine_final_freq);
+
+        JpegHuffmanTable luma_dc_first_table;
+        JpegHuffmanTable chroma_dc_first_table;
+        JpegHuffmanTable luma_ac_first_low_table;
+        JpegHuffmanTable luma_ac_first_high_table;
+        JpegHuffmanTable chroma_ac_first_table;
+        JpegHuffmanTable luma_ac_refine_mid_table;
+        JpegHuffmanTable luma_ac_refine_final_table;
+        JpegHuffmanTable chroma_ac_refine_final_table;
+        status = jpeg_build_optimized_huffman_table(luma_dc_first_freq, &luma_dc_first_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(chroma_dc_first_freq, &chroma_dc_first_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(luma_ac_first_low_freq, &luma_ac_first_low_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(luma_ac_first_high_freq, &luma_ac_first_high_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(chroma_ac_first_freq, &chroma_ac_first_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(luma_ac_refine_mid_freq, &luma_ac_refine_mid_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(luma_ac_refine_final_freq, &luma_ac_refine_final_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(chroma_ac_refine_final_freq, &chroma_ac_refine_final_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::vector<std::uint8_t> out;
+        out.reserve(768u + prepared.y_blocks.size() + prepared.cb_blocks.size() + prepared.cr_blocks.size());
+        out.push_back(0xffu);
+        out.push_back(0xd8u);
+
+        std::uint8_t app0[] = {
+            'J', 'F', 'I', 'F', 0,
+            1, 1,
+            jfif_unit,
+            static_cast<std::uint8_t>((jfif_x_density >> 8) & 0xffu),
+            static_cast<std::uint8_t>(jfif_x_density & 0xffu),
+            static_cast<std::uint8_t>((jfif_y_density >> 8) & 0xffu),
+            static_cast<std::uint8_t>(jfif_y_density & 0xffu),
+            0, 0
+        };
+        status = append_jpeg_segment(out, 0xe0u, app0, sizeof(app0));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint8_t dqt_luma[65] = {};
+        dqt_luma[0] = 0;
+        for (int i = 0; i < 64; ++i) {
+            dqt_luma[i + 1] = static_cast<std::uint8_t>(prepared.luma_qtable[JPEG_ZIGZAG[i]]);
+        }
+        status = append_jpeg_segment(out, 0xdbu, dqt_luma, sizeof(dqt_luma));
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        if (chroma_qtable_id == 1) {
+            std::uint8_t dqt_chroma[65] = {};
+            dqt_chroma[0] = 1;
+            for (int i = 0; i < 64; ++i) {
+                dqt_chroma[i + 1] = static_cast<std::uint8_t>(prepared.chroma_qtable[JPEG_ZIGZAG[i]]);
+            }
+            status = append_jpeg_segment(out, 0xdbu, dqt_chroma, sizeof(dqt_chroma));
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        std::vector<std::uint8_t> sof;
+        sof.push_back(8);
+        append_be16(sof, static_cast<std::uint16_t>(image->height));
+        append_be16(sof, static_cast<std::uint16_t>(image->width));
+        sof.push_back(3);
+        sof.push_back(1);
+        sof.push_back(static_cast<std::uint8_t>((prepared.h_samp << 4) | prepared.v_samp));
+        sof.push_back(0);
+        sof.push_back(2);
+        sof.push_back(0x11);
+        sof.push_back(static_cast<std::uint8_t>(chroma_qtable_id));
+        sof.push_back(3);
+        sof.push_back(0x11);
+        sof.push_back(static_cast<std::uint8_t>(chroma_qtable_id));
+        status = append_jpeg_segment(out, 0xc2u, sof.data(), sof.size());
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 0, 0, luma_dc_first_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_dht_segment(out, 0, 1, chroma_dc_first_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_rgb_interleaved_sos_segment(out, 0x00, 0x10, 0x10, 0, 0, 0, 1);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_rgb_dc_first_scan(
+            prepared.y_blocks,
+            prepared.cb_blocks,
+            prepared.cr_blocks,
+            prepared.y_blocks_per_mcu,
+            1,
+            luma_dc_first_table,
+            chroma_dc_first_table,
+            &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 1, 0, luma_ac_first_low_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_rgb_single_sos_segment(out, 1, 0x00, 1, 5, 0, 2);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_ac_first_scan(
+            prepared.y_blocks, 1, 5, 2, luma_ac_first_low_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 1, 1, chroma_ac_first_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_rgb_single_sos_segment(out, 3, 0x01, 1, 63, 0, 1);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_ac_first_scan(
+            prepared.cr_blocks, 1, 63, 1, chroma_ac_first_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_rgb_single_sos_segment(out, 2, 0x01, 1, 63, 0, 1);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_ac_first_scan(
+            prepared.cb_blocks, 1, 63, 1, chroma_ac_first_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 1, 0, luma_ac_first_high_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_rgb_single_sos_segment(out, 1, 0x00, 6, 63, 0, 2);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_ac_first_scan(
+            prepared.y_blocks, 6, 63, 2, luma_ac_first_high_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 1, 0, luma_ac_refine_mid_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_rgb_single_sos_segment(out, 1, 0x00, 1, 63, 2, 1);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_ac_refine_scan(
+            prepared.y_blocks, 1, 63, 2, 1, luma_ac_refine_mid_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_rgb_interleaved_sos_segment(out, 0x00, 0x00, 0x00, 0, 0, 1, 0);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_rgb_dc_refine_scan(
+            prepared.y_blocks,
+            prepared.cb_blocks,
+            prepared.cr_blocks,
+            prepared.y_blocks_per_mcu,
+            0,
+            &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 1, 1, chroma_ac_refine_final_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_rgb_single_sos_segment(out, 3, 0x01, 1, 63, 1, 0);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_ac_refine_scan(
+            prepared.cr_blocks, 1, 63, 1, 0, chroma_ac_refine_final_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_rgb_single_sos_segment(out, 2, 0x01, 1, 63, 1, 0);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_ac_refine_scan(
+            prepared.cb_blocks, 1, 63, 1, 0, chroma_ac_refine_final_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 1, 0, luma_ac_refine_final_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_rgb_single_sos_segment(out, 1, 0x00, 1, 63, 1, 0);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_ac_refine_scan(
+            prepared.y_blocks, 1, 63, 1, 0, luma_ac_refine_final_table, &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        out.push_back(0xffu);
+        out.push_back(0xd9u);
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int save_jpeg_rgb_keep_rgb_baseline(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    bool optimize,
+    const int* custom_r_qtable,
+    const int* custom_gb_qtable,
+    int gb_qtable_id)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_RGB || image->channels != 3 || image->width <= 0 || image->height <= 0 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (gb_qtable_id != 0 && gb_qtable_id != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        JpegRgbPreparedBlocks prepared;
+        int status = jpeg_prepare_keep_rgb_blocks(image, quality, custom_r_qtable, custom_gb_qtable, &prepared);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        JpegHuffmanTable dc_table;
+        JpegHuffmanTable ac_table;
+        if (optimize) {
+            std::uint64_t dc_freq[256] = {};
+            std::uint64_t ac_freq[256] = {};
+            jpeg_collect_huffman_frequencies(prepared.y_blocks, dc_freq, ac_freq);
+            jpeg_collect_huffman_frequencies(prepared.cb_blocks, dc_freq, ac_freq);
+            jpeg_collect_huffman_frequencies(prepared.cr_blocks, dc_freq, ac_freq);
+            status = jpeg_build_optimized_huffman_table(dc_freq, &dc_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_build_optimized_huffman_table(ac_freq, &ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else {
+            status = jpeg_build_standard_luminance_huffman_tables(&dc_table, &ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        std::vector<std::uint8_t> out;
+        out.reserve(512u + prepared.y_blocks.size() + prepared.cb_blocks.size() + prepared.cr_blocks.size());
+        out.push_back(0xffu);
+        out.push_back(0xd8u);
+
+        status = jpeg_append_optional_jfif_app0(out, has_dpi, dpi_x, dpi_y);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_adobe_rgb_app14(out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_luminance_dqt(out, prepared.luma_qtable);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        if (gb_qtable_id == 1) {
+            status = jpeg_append_dqt_table(out, 1, prepared.chroma_qtable);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+        status = jpeg_append_keep_rgb_sof(out, image, 0xc0u, 0, gb_qtable_id, gb_qtable_id);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_dht_segment(out, 0, 0, dc_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_dht_segment(out, 1, 0, ac_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_keep_rgb_interleaved_sos_segment(out, 0x00, 0x00, 0x00, 0, 63, 0, 0);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_rgb_interleaved_entropy(
+            prepared.y_blocks,
+            prepared.cb_blocks,
+            prepared.cr_blocks,
+            1,
+            dc_table,
+            ac_table,
+            dc_table,
+            ac_table,
+            &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        out.push_back(0xffu);
+        out.push_back(0xd9u);
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int save_jpeg_rgb_keep_rgb_progressive(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const int* custom_r_qtable,
+    const int* custom_gb_qtable,
+    int gb_qtable_id)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_RGB || image->channels != 3 || image->width <= 0 || image->height <= 0 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (gb_qtable_id != 0 && gb_qtable_id != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        JpegRgbPreparedBlocks prepared;
+        int status = jpeg_prepare_keep_rgb_blocks(image, quality, custom_r_qtable, custom_gb_qtable, &prepared);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint64_t dc_first_freq[256] = {};
+        std::uint64_t r_ac_first_low_freq[256] = {};
+        std::uint64_t g_ac_first_low_freq[256] = {};
+        std::uint64_t b_ac_first_low_freq[256] = {};
+        std::uint64_t r_ac_first_high_freq[256] = {};
+        std::uint64_t g_ac_first_high_freq[256] = {};
+        std::uint64_t b_ac_first_high_freq[256] = {};
+        std::uint64_t r_ac_refine_mid_freq[256] = {};
+        std::uint64_t g_ac_refine_mid_freq[256] = {};
+        std::uint64_t b_ac_refine_mid_freq[256] = {};
+        std::uint64_t r_ac_refine_final_freq[256] = {};
+        std::uint64_t g_ac_refine_final_freq[256] = {};
+        std::uint64_t b_ac_refine_final_freq[256] = {};
+
+        jpeg_collect_progressive_dc_first_frequencies(prepared.y_blocks, 1, dc_first_freq);
+        jpeg_collect_progressive_dc_first_frequencies(prepared.cb_blocks, 1, dc_first_freq);
+        jpeg_collect_progressive_dc_first_frequencies(prepared.cr_blocks, 1, dc_first_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.y_blocks, 1, 5, 2, r_ac_first_low_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.cb_blocks, 1, 5, 2, g_ac_first_low_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.cr_blocks, 1, 5, 2, b_ac_first_low_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.y_blocks, 6, 63, 2, r_ac_first_high_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.cb_blocks, 6, 63, 2, g_ac_first_high_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.cr_blocks, 6, 63, 2, b_ac_first_high_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.y_blocks, 1, 63, 2, 1, r_ac_refine_mid_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.cb_blocks, 1, 63, 2, 1, g_ac_refine_mid_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.cr_blocks, 1, 63, 2, 1, b_ac_refine_mid_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.y_blocks, 1, 63, 1, 0, r_ac_refine_final_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.cb_blocks, 1, 63, 1, 0, g_ac_refine_final_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.cr_blocks, 1, 63, 1, 0, b_ac_refine_final_freq);
+
+        JpegHuffmanTable dc_first_table;
+        JpegHuffmanTable r_ac_first_low_table;
+        JpegHuffmanTable g_ac_first_low_table;
+        JpegHuffmanTable b_ac_first_low_table;
+        JpegHuffmanTable r_ac_first_high_table;
+        JpegHuffmanTable g_ac_first_high_table;
+        JpegHuffmanTable b_ac_first_high_table;
+        JpegHuffmanTable r_ac_refine_mid_table;
+        JpegHuffmanTable g_ac_refine_mid_table;
+        JpegHuffmanTable b_ac_refine_mid_table;
+        JpegHuffmanTable r_ac_refine_final_table;
+        JpegHuffmanTable g_ac_refine_final_table;
+        JpegHuffmanTable b_ac_refine_final_table;
+
+        status = jpeg_build_optimized_huffman_table(dc_first_freq, &dc_first_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(r_ac_first_low_freq, &r_ac_first_low_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(g_ac_first_low_freq, &g_ac_first_low_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(b_ac_first_low_freq, &b_ac_first_low_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(r_ac_first_high_freq, &r_ac_first_high_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(g_ac_first_high_freq, &g_ac_first_high_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(b_ac_first_high_freq, &b_ac_first_high_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(r_ac_refine_mid_freq, &r_ac_refine_mid_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(g_ac_refine_mid_freq, &g_ac_refine_mid_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(b_ac_refine_mid_freq, &b_ac_refine_mid_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(r_ac_refine_final_freq, &r_ac_refine_final_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(g_ac_refine_final_freq, &g_ac_refine_final_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_build_optimized_huffman_table(b_ac_refine_final_freq, &b_ac_refine_final_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::vector<std::uint8_t> out;
+        out.reserve(1024u + prepared.y_blocks.size() + prepared.cb_blocks.size() + prepared.cr_blocks.size());
+        out.push_back(0xffu);
+        out.push_back(0xd8u);
+
+        status = jpeg_append_optional_jfif_app0(out, has_dpi, dpi_x, dpi_y);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_adobe_rgb_app14(out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_luminance_dqt(out, prepared.luma_qtable);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        if (gb_qtable_id == 1) {
+            status = jpeg_append_dqt_table(out, 1, prepared.chroma_qtable);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+        status = jpeg_append_keep_rgb_sof(out, image, 0xc2u, 0, gb_qtable_id, gb_qtable_id);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 0, 0, dc_first_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_keep_rgb_interleaved_sos_segment(out, 0x00, 0x00, 0x00, 0, 0, 0, 1);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_rgb_dc_first_scan(
+            prepared.y_blocks,
+            prepared.cb_blocks,
+            prepared.cr_blocks,
+            1,
+            1,
+            dc_first_table,
+            dc_first_table,
+            &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        const struct AcFirstScan {
+            const std::vector<int>* blocks;
+            const JpegHuffmanTable* table;
+            int component;
+            int ss;
+            int se;
+            int al;
+        } ac_first_scans[] = {
+            {&prepared.y_blocks, &r_ac_first_low_table, 'R', 1, 5, 2},
+            {&prepared.cb_blocks, &g_ac_first_low_table, 'G', 1, 5, 2},
+            {&prepared.cr_blocks, &b_ac_first_low_table, 'B', 1, 5, 2},
+            {&prepared.y_blocks, &r_ac_first_high_table, 'R', 6, 63, 2},
+            {&prepared.cb_blocks, &g_ac_first_high_table, 'G', 6, 63, 2},
+            {&prepared.cr_blocks, &b_ac_first_high_table, 'B', 6, 63, 2},
+        };
+        for (const AcFirstScan& scan : ac_first_scans) {
+            status = jpeg_append_dht_segment(out, 1, 0, *scan.table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_append_keep_rgb_single_sos_segment(out, scan.component, 0x00, scan.ss, scan.se, 0, scan.al);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_encode_progressive_ac_first_scan(*scan.blocks, scan.ss, scan.se, scan.al, *scan.table, &out);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        const struct AcRefineScan {
+            const std::vector<int>* blocks;
+            const JpegHuffmanTable* table;
+            int component;
+            int ah;
+            int al;
+        } ac_refine_mid_scans[] = {
+            {&prepared.y_blocks, &r_ac_refine_mid_table, 'R', 2, 1},
+            {&prepared.cb_blocks, &g_ac_refine_mid_table, 'G', 2, 1},
+            {&prepared.cr_blocks, &b_ac_refine_mid_table, 'B', 2, 1},
+        };
+        for (const AcRefineScan& scan : ac_refine_mid_scans) {
+            status = jpeg_append_dht_segment(out, 1, 0, *scan.table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_append_keep_rgb_single_sos_segment(out, scan.component, 0x00, 1, 63, scan.ah, scan.al);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_encode_progressive_ac_refine_scan(*scan.blocks, 1, 63, scan.ah, scan.al, *scan.table, &out);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        status = jpeg_append_keep_rgb_interleaved_sos_segment(out, 0x00, 0x00, 0x00, 0, 0, 1, 0);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_rgb_dc_refine_scan(
+            prepared.y_blocks,
+            prepared.cb_blocks,
+            prepared.cr_blocks,
+            1,
+            0,
+            &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        const AcRefineScan ac_refine_final_scans[] = {
+            {&prepared.y_blocks, &r_ac_refine_final_table, 'R', 1, 0},
+            {&prepared.cb_blocks, &g_ac_refine_final_table, 'G', 1, 0},
+            {&prepared.cr_blocks, &b_ac_refine_final_table, 'B', 1, 0},
+        };
+        for (const AcRefineScan& scan : ac_refine_final_scans) {
+            status = jpeg_append_dht_segment(out, 1, 0, *scan.table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_append_keep_rgb_single_sos_segment(out, scan.component, 0x00, 1, 63, scan.ah, scan.al);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_encode_progressive_ac_refine_scan(*scan.blocks, 1, 63, scan.ah, scan.al, *scan.table, &out);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        out.push_back(0xffu);
+        out.push_back(0xd9u);
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int save_jpeg_rgb_keep_rgb_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int subsampling,
+    int progressive,
+    int optimize,
+    int keep_rgb)
+{
+    if (keep_rgb < -1 || keep_rgb > 1 || progressive < -1 || progressive > 1 || optimize < -1 || optimize > 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (keep_rgb != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!(subsampling == -1 || subsampling == 0)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image || image->mode != PILLOW_C_MODE_RGB || image->channels != 3) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+    if (progressive == 1) {
+        return save_jpeg_rgb_keep_rgb_progressive(image, path, quality, has_dpi, dpi_x, dpi_y, nullptr, nullptr, 0);
+    }
+    return save_jpeg_rgb_keep_rgb_baseline(image, path, quality, has_dpi, dpi_x, dpi_y, optimize == 1, nullptr, nullptr, 0);
+}
+
+int save_jpeg_rgb_qtables_keep_rgb_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const int* qtables,
+    std::size_t qtable_count,
+    int subsampling,
+    int progressive,
+    int optimize,
+    int keep_rgb)
+{
+    static_cast<void>(dpi_x);
+    static_cast<void>(dpi_y);
+    if (!image || !path || !qtables) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+    if (qtable_count < 1u || qtable_count > 2u ||
+        keep_rgb < -1 || keep_rgb > 1 ||
+        progressive < -1 || progressive > 1 ||
+        optimize < -1 || optimize > 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (keep_rgb != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->mode == PILLOW_C_MODE_CMYK && image->channels == 4) {
+        if (!(subsampling == -1 || subsampling == 0 || subsampling == 1 || subsampling == 2)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return save_jpeg_rgb_qtables_optimized_huffman(
+            image,
+            path,
+            quality,
+            has_dpi,
+            dpi_x,
+            dpi_y,
+            qtables,
+            qtable_count,
+            subsampling,
+            progressive,
+            optimize,
+            true);
+    }
+    if (has_dpi) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!(subsampling == -1 || subsampling == 0)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->mode != PILLOW_C_MODE_RGB || image->channels != 3) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const int* gb_qtable = qtable_count > 1u ? qtables + 64 : qtables;
+    const int gb_qtable_id = qtable_count > 1u ? 1 : 0;
+    if (progressive == 1) {
+        return save_jpeg_rgb_keep_rgb_progressive(
+            image,
+            path,
+            quality,
+            false,
+            0.0,
+            0.0,
+            qtables,
+            gb_qtable,
+            gb_qtable_id);
+    }
+    return save_jpeg_rgb_keep_rgb_baseline(
+        image,
+        path,
+        quality,
+        false,
+        0.0,
+        0.0,
+        optimize == 1,
+        qtables,
+        gb_qtable,
+        gb_qtable_id);
+}
+
+struct JpegCmykPreparedBlocks {
+    int h_samp = 1;
+    int v_samp = 1;
+    int c_blocks_per_mcu = 1;
+    int qtable[64] = {};
+    int myk_qtable[64] = {};
+    bool has_myk_qtable = false;
+    std::vector<int> c_blocks;
+    std::vector<int> m_blocks;
+    std::vector<int> y_blocks;
+    std::vector<int> k_blocks;
+};
+
+int jpeg_cmyk_sampling_from_subsampling(int subsampling, int* out_h, int* out_v)
+{
+    if (!out_h || !out_v) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    switch (subsampling) {
+    case -1:
+    case 0:
+        *out_h = 1;
+        *out_v = 1;
+        return PILLOW_C_OK;
+    case 1:
+        *out_h = 2;
+        *out_v = 1;
+        return PILLOW_C_OK;
+    case 2:
+        *out_h = 2;
+        *out_v = 2;
+        return PILLOW_C_OK;
+    default:
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+}
+
+int jpeg_prepare_cmyk_blocks(
+    const PillowCImage* image,
+    int quality,
+    const int* qtables,
+    std::size_t qtable_count,
+    JpegCmykPreparedBlocks* prepared,
+    int subsampling = -1)
+{
+    if (!image || !prepared) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (qtable_count > 0u && !qtables) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (qtable_count > 2u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->mode != PILLOW_C_MODE_CMYK || image->channels != 4 || image->width <= 0 || image->height <= 0 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    int h_samp = 1;
+    int v_samp = 1;
+    int status = jpeg_cmyk_sampling_from_subsampling(subsampling, &h_samp, &v_samp);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+
+    try {
+        *prepared = JpegCmykPreparedBlocks{};
+        prepared->h_samp = h_samp;
+        prepared->v_samp = v_samp;
+        prepared->c_blocks_per_mcu = h_samp * v_samp;
+        if (qtable_count == 0u) {
+            jpeg_scaled_luminance_qtable(quality, prepared->qtable);
+            std::copy(prepared->qtable, prepared->qtable + 64, prepared->myk_qtable);
+        } else {
+            status = jpeg_scaled_custom_qtable(qtables, quality, prepared->qtable);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            if (qtable_count > 1u) {
+                status = jpeg_scaled_custom_qtable(qtables + 64, quality, prepared->myk_qtable);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+                prepared->has_myk_qtable = true;
+            } else {
+                std::copy(prepared->qtable, prepared->qtable + 64, prepared->myk_qtable);
+            }
+        }
+
+        const std::size_t pixel_count =
+            static_cast<std::size_t>(image->width) * static_cast<std::size_t>(image->height);
+        const int myk_width = (image->width + h_samp - 1) / h_samp;
+        const int myk_height = (image->height + v_samp - 1) / v_samp;
+        const int mcu_cols = (image->width + (8 * h_samp) - 1) / (8 * h_samp);
+        const int mcu_rows = (image->height + (8 * v_samp) - 1) / (8 * v_samp);
+        const std::size_t mcu_count =
+            static_cast<std::size_t>(mcu_cols) * static_cast<std::size_t>(mcu_rows);
+        if (mcu_count > std::numeric_limits<std::size_t>::max() / 64u ||
+            mcu_count > std::numeric_limits<std::size_t>::max() /
+                (64u * static_cast<std::size_t>(prepared->c_blocks_per_mcu))) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::vector<std::uint8_t> c_plane(pixel_count);
+        std::vector<std::uint8_t> m_full(pixel_count);
+        std::vector<std::uint8_t> y_full(pixel_count);
+        std::vector<std::uint8_t> k_full(pixel_count);
+        for (int y = 0; y < image->height; ++y) {
+            const std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+            const std::size_t row_offset = static_cast<std::size_t>(y) * static_cast<std::size_t>(image->width);
+            for (int x = 0; x < image->width; ++x) {
+                const std::uint8_t* pixel = row + static_cast<std::size_t>(x) * 4u;
+                const std::size_t index = row_offset + static_cast<std::size_t>(x);
+                c_plane[index] = static_cast<std::uint8_t>(255u - pixel[0]);
+                m_full[index] = static_cast<std::uint8_t>(255u - pixel[1]);
+                y_full[index] = static_cast<std::uint8_t>(255u - pixel[2]);
+                k_full[index] = static_cast<std::uint8_t>(255u - pixel[3]);
+            }
+        }
+
+        const std::size_t myk_count =
+            static_cast<std::size_t>(myk_width) * static_cast<std::size_t>(myk_height);
+        std::vector<std::uint8_t> m_plane(myk_count);
+        std::vector<std::uint8_t> y_plane(myk_count);
+        std::vector<std::uint8_t> k_plane(myk_count);
+        for (int cy = 0; cy < myk_height; ++cy) {
+            for (int cx = 0; cx < myk_width; ++cx) {
+                int m_sum = 0;
+                int y_sum = 0;
+                int k_sum = 0;
+                for (int dy = 0; dy < v_samp; ++dy) {
+                    const int src_y = std::min((cy * v_samp) + dy, image->height - 1);
+                    const std::size_t src_row =
+                        static_cast<std::size_t>(src_y) * static_cast<std::size_t>(image->width);
+                    for (int dx = 0; dx < h_samp; ++dx) {
+                        const int src_x = std::min((cx * h_samp) + dx, image->width - 1);
+                        const std::size_t src_index = src_row + static_cast<std::size_t>(src_x);
+                        m_sum += m_full[src_index];
+                        y_sum += y_full[src_index];
+                        k_sum += k_full[src_index];
+                    }
+                }
+                const int divisor = h_samp * v_samp;
+                const std::size_t dst_index =
+                    static_cast<std::size_t>(cy) * static_cast<std::size_t>(myk_width) +
+                    static_cast<std::size_t>(cx);
+                m_plane[dst_index] = static_cast<std::uint8_t>(m_sum / divisor);
+                y_plane[dst_index] = static_cast<std::uint8_t>(y_sum / divisor);
+                k_plane[dst_index] = static_cast<std::uint8_t>(k_sum / divisor);
+            }
+        }
+
+        prepared->c_blocks.reserve(
+            mcu_count * static_cast<std::size_t>(prepared->c_blocks_per_mcu) * 64u);
+        prepared->m_blocks.reserve(mcu_count * 64u);
+        prepared->y_blocks.reserve(mcu_count * 64u);
+        prepared->k_blocks.reserve(mcu_count * 64u);
+        for (int mcu_y = 0; mcu_y < mcu_rows; ++mcu_y) {
+            for (int mcu_x = 0; mcu_x < mcu_cols; ++mcu_x) {
+                for (int c_y = 0; c_y < v_samp; ++c_y) {
+                    for (int c_x = 0; c_x < h_samp; ++c_x) {
+                        int zz[64] = {};
+                        jpeg_fdct_quantize_plane_block(
+                            c_plane,
+                            image->width,
+                            image->height,
+                            ((mcu_x * h_samp) + c_x) * 8,
+                            ((mcu_y * v_samp) + c_y) * 8,
+                            prepared->qtable,
+                            zz);
+                        prepared->c_blocks.insert(prepared->c_blocks.end(), zz, zz + 64);
+                    }
+                }
+                int zz[64] = {};
+                jpeg_fdct_quantize_plane_block(
+                    m_plane,
+                    myk_width,
+                    myk_height,
+                    mcu_x * 8,
+                    mcu_y * 8,
+                    prepared->myk_qtable,
+                    zz);
+                prepared->m_blocks.insert(prepared->m_blocks.end(), zz, zz + 64);
+                jpeg_fdct_quantize_plane_block(
+                    y_plane,
+                    myk_width,
+                    myk_height,
+                    mcu_x * 8,
+                    mcu_y * 8,
+                    prepared->myk_qtable,
+                    zz);
+                prepared->y_blocks.insert(prepared->y_blocks.end(), zz, zz + 64);
+                jpeg_fdct_quantize_plane_block(
+                    k_plane,
+                    myk_width,
+                    myk_height,
+                    mcu_x * 8,
+                    mcu_y * 8,
+                    prepared->myk_qtable,
+                    zz);
+                prepared->k_blocks.insert(prepared->k_blocks.end(), zz, zz + 64);
+            }
+        }
+
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_append_cmyk_sof(
+    std::vector<std::uint8_t>& out,
+    const PillowCImage* image,
+    int myk_qtable_id,
+    std::uint8_t marker = 0xc0u,
+    int h_samp = 1,
+    int v_samp = 1)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if ((myk_qtable_id != 0 && myk_qtable_id != 1) ||
+        h_samp < 1 || h_samp > 2 || v_samp < 1 || v_samp > 2) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<std::uint8_t> sof;
+    try {
+        sof.push_back(8);
+        append_be16(sof, static_cast<std::uint16_t>(image->height));
+        append_be16(sof, static_cast<std::uint16_t>(image->width));
+        sof.push_back(4);
+        sof.push_back('C');
+        sof.push_back(static_cast<std::uint8_t>((h_samp << 4) | v_samp));
+        sof.push_back(0);
+        sof.push_back('M');
+        sof.push_back(0x11);
+        sof.push_back(static_cast<std::uint8_t>(myk_qtable_id));
+        sof.push_back('Y');
+        sof.push_back(0x11);
+        sof.push_back(static_cast<std::uint8_t>(myk_qtable_id));
+        sof.push_back('K');
+        sof.push_back(0x11);
+        sof.push_back(static_cast<std::uint8_t>(myk_qtable_id));
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    return append_jpeg_segment(out, marker, sof.data(), sof.size());
+}
+
+int jpeg_append_cmyk_sos_segment(std::vector<std::uint8_t>& out)
+{
+    const std::uint8_t sos[] = {
+        4,
+        static_cast<std::uint8_t>('C'), 0x00,
+        static_cast<std::uint8_t>('M'), 0x00,
+        static_cast<std::uint8_t>('Y'), 0x00,
+        static_cast<std::uint8_t>('K'), 0x00,
+        0, 63, 0
+    };
+    return append_jpeg_segment(out, 0xdau, sos, sizeof(sos));
+}
+
+int jpeg_append_cmyk_interleaved_sos_segment(
+    std::vector<std::uint8_t>& out,
+    int c_selector,
+    int m_selector,
+    int y_selector,
+    int k_selector,
+    int ss,
+    int se,
+    int ah,
+    int al)
+{
+    std::uint8_t sos[] = {
+        4,
+        static_cast<std::uint8_t>('C'), static_cast<std::uint8_t>(c_selector),
+        static_cast<std::uint8_t>('M'), static_cast<std::uint8_t>(m_selector),
+        static_cast<std::uint8_t>('Y'), static_cast<std::uint8_t>(y_selector),
+        static_cast<std::uint8_t>('K'), static_cast<std::uint8_t>(k_selector),
+        static_cast<std::uint8_t>(ss),
+        static_cast<std::uint8_t>(se),
+        static_cast<std::uint8_t>((ah << 4) | al)
+    };
+    return append_jpeg_segment(out, 0xdau, sos, sizeof(sos));
+}
+
+int jpeg_append_cmyk_single_sos_segment(
+    std::vector<std::uint8_t>& out,
+    int component_id,
+    int table_selector,
+    int ss,
+    int se,
+    int ah,
+    int al)
+{
+    std::uint8_t sos[] = {
+        1,
+        static_cast<std::uint8_t>(component_id),
+        static_cast<std::uint8_t>(table_selector),
+        static_cast<std::uint8_t>(ss),
+        static_cast<std::uint8_t>(se),
+        static_cast<std::uint8_t>((ah << 4) | al)
+    };
+    return append_jpeg_segment(out, 0xdau, sos, sizeof(sos));
+}
+
+int jpeg_encode_cmyk_interleaved_entropy(
+    const std::vector<int>& c_blocks,
+    const std::vector<int>& m_blocks,
+    const std::vector<int>& y_blocks,
+    const std::vector<int>& k_blocks,
+    int c_blocks_per_mcu,
+    const JpegHuffmanTable& dc_table,
+    const JpegHuffmanTable& ac_table,
+    std::vector<std::uint8_t>* out)
+{
+    if (!out) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (c_blocks_per_mcu <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t mcu_count = m_blocks.size() / 64u;
+    if (y_blocks.size() / 64u != mcu_count ||
+        k_blocks.size() / 64u != mcu_count ||
+        c_blocks.size() / 64u != mcu_count * static_cast<std::size_t>(c_blocks_per_mcu)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        JpegBitWriter writer;
+        writer.out = out;
+        int previous_c_dc = 0;
+        int previous_m_dc = 0;
+        int previous_y_dc = 0;
+        int previous_k_dc = 0;
+        std::size_t c_block_index = 0;
+        for (std::size_t mcu = 0; mcu < mcu_count; ++mcu) {
+            for (int c_block = 0; c_block < c_blocks_per_mcu; ++c_block) {
+                const int* c_coeffs = c_blocks.data() + c_block_index * 64u;
+                ++c_block_index;
+                const int status = jpeg_encode_block_entropy(
+                    &writer,
+                    c_coeffs,
+                    &previous_c_dc,
+                    dc_table,
+                    ac_table);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+            }
+            const int* m_coeffs = m_blocks.data() + mcu * 64u;
+            int status = jpeg_encode_block_entropy(
+                &writer,
+                m_coeffs,
+                &previous_m_dc,
+                dc_table,
+                ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            const int* y_coeffs = y_blocks.data() + mcu * 64u;
+            status = jpeg_encode_block_entropy(
+                &writer,
+                y_coeffs,
+                &previous_y_dc,
+                dc_table,
+                ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            const int* k_coeffs = k_blocks.data() + mcu * 64u;
+            status = jpeg_encode_block_entropy(
+                &writer,
+                k_coeffs,
+                &previous_k_dc,
+                dc_table,
+                ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+        jpeg_bit_writer_flush(&writer);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_encode_progressive_cmyk_dc_first_scan(
+    const std::vector<int>& c_blocks,
+    const std::vector<int>& m_blocks,
+    const std::vector<int>& y_blocks,
+    const std::vector<int>& k_blocks,
+    int c_blocks_per_mcu,
+    int al,
+    const JpegHuffmanTable& dc_table,
+    std::vector<std::uint8_t>* out)
+{
+    if (!out) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (c_blocks_per_mcu <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t mcu_count = m_blocks.size() / 64u;
+    if (y_blocks.size() / 64u != mcu_count ||
+        k_blocks.size() / 64u != mcu_count ||
+        c_blocks.size() / 64u != mcu_count * static_cast<std::size_t>(c_blocks_per_mcu)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        JpegBitWriter writer;
+        writer.out = out;
+        int previous_c_dc = 0;
+        int previous_m_dc = 0;
+        int previous_y_dc = 0;
+        int previous_k_dc = 0;
+        std::size_t c_block_index = 0;
+        for (std::size_t mcu = 0; mcu < mcu_count; ++mcu) {
+            for (int c_block = 0; c_block < c_blocks_per_mcu; ++c_block) {
+                const int* c_coeffs = c_blocks.data() + c_block_index * 64u;
+                ++c_block_index;
+                int dc = jpeg_successive_value(c_coeffs[0], al);
+                int diff = dc - previous_c_dc;
+                previous_c_dc = dc;
+                int category = jpeg_value_category(diff);
+                int status = jpeg_write_huffman_symbol(&writer, dc_table, category);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+                jpeg_bit_writer_write(&writer, jpeg_value_bits(diff, category), category);
+            }
+
+            const int* m_coeffs = m_blocks.data() + mcu * 64u;
+            int dc = jpeg_successive_value(m_coeffs[0], al);
+            int diff = dc - previous_m_dc;
+            previous_m_dc = dc;
+            int category = jpeg_value_category(diff);
+            int status = jpeg_write_huffman_symbol(&writer, dc_table, category);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            jpeg_bit_writer_write(&writer, jpeg_value_bits(diff, category), category);
+
+            const int* y_coeffs = y_blocks.data() + mcu * 64u;
+            dc = jpeg_successive_value(y_coeffs[0], al);
+            diff = dc - previous_y_dc;
+            previous_y_dc = dc;
+            category = jpeg_value_category(diff);
+            status = jpeg_write_huffman_symbol(&writer, dc_table, category);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            jpeg_bit_writer_write(&writer, jpeg_value_bits(diff, category), category);
+
+            const int* k_coeffs = k_blocks.data() + mcu * 64u;
+            dc = jpeg_successive_value(k_coeffs[0], al);
+            diff = dc - previous_k_dc;
+            previous_k_dc = dc;
+            category = jpeg_value_category(diff);
+            status = jpeg_write_huffman_symbol(&writer, dc_table, category);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            jpeg_bit_writer_write(&writer, jpeg_value_bits(diff, category), category);
+        }
+        jpeg_bit_writer_flush(&writer);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_encode_progressive_cmyk_dc_refine_scan(
+    const std::vector<int>& c_blocks,
+    const std::vector<int>& m_blocks,
+    const std::vector<int>& y_blocks,
+    const std::vector<int>& k_blocks,
+    int c_blocks_per_mcu,
+    int al,
+    std::vector<std::uint8_t>* out)
+{
+    if (!out) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (c_blocks_per_mcu <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t mcu_count = m_blocks.size() / 64u;
+    if (y_blocks.size() / 64u != mcu_count ||
+        k_blocks.size() / 64u != mcu_count ||
+        c_blocks.size() / 64u != mcu_count * static_cast<std::size_t>(c_blocks_per_mcu)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        JpegBitWriter writer;
+        writer.out = out;
+        std::size_t c_block_index = 0;
+        for (std::size_t mcu = 0; mcu < mcu_count; ++mcu) {
+            for (int c_block = 0; c_block < c_blocks_per_mcu; ++c_block) {
+                const int* c_coeffs = c_blocks.data() + c_block_index * 64u;
+                ++c_block_index;
+                jpeg_bit_writer_write(&writer, static_cast<std::uint16_t>(jpeg_successive_bit(c_coeffs[0], al)), 1);
+            }
+            const int* m_coeffs = m_blocks.data() + mcu * 64u;
+            const int* y_coeffs = y_blocks.data() + mcu * 64u;
+            const int* k_coeffs = k_blocks.data() + mcu * 64u;
+            jpeg_bit_writer_write(&writer, static_cast<std::uint16_t>(jpeg_successive_bit(m_coeffs[0], al)), 1);
+            jpeg_bit_writer_write(&writer, static_cast<std::uint16_t>(jpeg_successive_bit(y_coeffs[0], al)), 1);
+            jpeg_bit_writer_write(&writer, static_cast<std::uint16_t>(jpeg_successive_bit(k_coeffs[0], al)), 1);
+        }
+        jpeg_bit_writer_flush(&writer);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int save_jpeg_cmyk_baseline(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    const int* qtables = nullptr,
+    std::size_t qtable_count = 0u,
+    bool optimize = false,
+    bool has_dpi = false,
+    double dpi_x = 0.0,
+    double dpi_y = 0.0,
+    int subsampling = -1)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_CMYK || image->channels != 4 || image->width <= 0 || image->height <= 0 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        JpegCmykPreparedBlocks prepared;
+        int status = jpeg_prepare_cmyk_blocks(image, quality, qtables, qtable_count, &prepared, subsampling);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        JpegHuffmanTable dc_table;
+        JpegHuffmanTable ac_table;
+        if (optimize) {
+            std::uint64_t dc_freq[256] = {};
+            std::uint64_t ac_freq[256] = {};
+            jpeg_collect_huffman_frequencies(prepared.c_blocks, dc_freq, ac_freq);
+            jpeg_collect_huffman_frequencies(prepared.m_blocks, dc_freq, ac_freq);
+            jpeg_collect_huffman_frequencies(prepared.y_blocks, dc_freq, ac_freq);
+            jpeg_collect_huffman_frequencies(prepared.k_blocks, dc_freq, ac_freq);
+            status = jpeg_build_optimized_huffman_table(dc_freq, &dc_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_build_optimized_huffman_table(ac_freq, &ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else {
+            status = jpeg_build_standard_luminance_huffman_tables(&dc_table, &ac_table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        std::vector<std::uint8_t> out;
+        out.reserve(
+            512u +
+            prepared.c_blocks.size() +
+            prepared.m_blocks.size() +
+            prepared.y_blocks.size() +
+            prepared.k_blocks.size());
+        out.push_back(0xffu);
+        out.push_back(0xd8u);
+
+        if (has_dpi) {
+            std::uint8_t jfif_unit = 0;
+            std::uint16_t jfif_x_density = 0;
+            std::uint16_t jfif_y_density = 0;
+            status = jpeg_density_from_dpi(dpi_x, dpi_y, &jfif_unit, &jfif_x_density, &jfif_y_density);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_append_jfif_app0(out, jfif_unit, jfif_x_density, jfif_y_density);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+        status = jpeg_append_adobe_rgb_app14(out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_luminance_dqt(out, prepared.qtable);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        if (prepared.has_myk_qtable) {
+            status = jpeg_append_dqt_table(out, 1, prepared.myk_qtable);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+        status = jpeg_append_cmyk_sof(
+            out,
+            image,
+            prepared.has_myk_qtable ? 1 : 0,
+            0xc0u,
+            prepared.h_samp,
+            prepared.v_samp);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_dht_segment(out, 0, 0, dc_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_dht_segment(out, 1, 0, ac_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_cmyk_sos_segment(out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_cmyk_interleaved_entropy(
+            prepared.c_blocks,
+            prepared.m_blocks,
+            prepared.y_blocks,
+            prepared.k_blocks,
+            prepared.c_blocks_per_mcu,
+            dc_table,
+            ac_table,
+            &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        out.push_back(0xffu);
+        out.push_back(0xd9u);
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int save_jpeg_cmyk_progressive(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi = false,
+    double dpi_x = 0.0,
+    double dpi_y = 0.0,
+    const int* qtables = nullptr,
+    std::size_t qtable_count = 0u,
+    int subsampling = -1)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_CMYK || image->channels != 4 || image->width <= 0 || image->height <= 0 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        JpegCmykPreparedBlocks prepared;
+        int status = jpeg_prepare_cmyk_blocks(image, quality, qtables, qtable_count, &prepared, subsampling);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint64_t dc_first_freq[256] = {};
+        std::uint64_t c_ac_first_low_freq[256] = {};
+        std::uint64_t m_ac_first_low_freq[256] = {};
+        std::uint64_t y_ac_first_low_freq[256] = {};
+        std::uint64_t k_ac_first_low_freq[256] = {};
+        std::uint64_t c_ac_first_high_freq[256] = {};
+        std::uint64_t m_ac_first_high_freq[256] = {};
+        std::uint64_t y_ac_first_high_freq[256] = {};
+        std::uint64_t k_ac_first_high_freq[256] = {};
+        std::uint64_t c_ac_refine_mid_freq[256] = {};
+        std::uint64_t m_ac_refine_mid_freq[256] = {};
+        std::uint64_t y_ac_refine_mid_freq[256] = {};
+        std::uint64_t k_ac_refine_mid_freq[256] = {};
+        std::uint64_t c_ac_refine_final_freq[256] = {};
+        std::uint64_t m_ac_refine_final_freq[256] = {};
+        std::uint64_t y_ac_refine_final_freq[256] = {};
+        std::uint64_t k_ac_refine_final_freq[256] = {};
+
+        jpeg_collect_progressive_dc_first_frequencies(prepared.c_blocks, 1, dc_first_freq);
+        jpeg_collect_progressive_dc_first_frequencies(prepared.m_blocks, 1, dc_first_freq);
+        jpeg_collect_progressive_dc_first_frequencies(prepared.y_blocks, 1, dc_first_freq);
+        jpeg_collect_progressive_dc_first_frequencies(prepared.k_blocks, 1, dc_first_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.c_blocks, 1, 5, 2, c_ac_first_low_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.m_blocks, 1, 5, 2, m_ac_first_low_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.y_blocks, 1, 5, 2, y_ac_first_low_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.k_blocks, 1, 5, 2, k_ac_first_low_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.c_blocks, 6, 63, 2, c_ac_first_high_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.m_blocks, 6, 63, 2, m_ac_first_high_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.y_blocks, 6, 63, 2, y_ac_first_high_freq);
+        jpeg_collect_progressive_ac_first_frequencies(prepared.k_blocks, 6, 63, 2, k_ac_first_high_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.c_blocks, 1, 63, 2, 1, c_ac_refine_mid_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.m_blocks, 1, 63, 2, 1, m_ac_refine_mid_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.y_blocks, 1, 63, 2, 1, y_ac_refine_mid_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.k_blocks, 1, 63, 2, 1, k_ac_refine_mid_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.c_blocks, 1, 63, 1, 0, c_ac_refine_final_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.m_blocks, 1, 63, 1, 0, m_ac_refine_final_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.y_blocks, 1, 63, 1, 0, y_ac_refine_final_freq);
+        jpeg_collect_progressive_ac_refine_frequencies(prepared.k_blocks, 1, 63, 1, 0, k_ac_refine_final_freq);
+
+        JpegHuffmanTable dc_first_table;
+        JpegHuffmanTable c_ac_first_low_table;
+        JpegHuffmanTable m_ac_first_low_table;
+        JpegHuffmanTable y_ac_first_low_table;
+        JpegHuffmanTable k_ac_first_low_table;
+        JpegHuffmanTable c_ac_first_high_table;
+        JpegHuffmanTable m_ac_first_high_table;
+        JpegHuffmanTable y_ac_first_high_table;
+        JpegHuffmanTable k_ac_first_high_table;
+        JpegHuffmanTable c_ac_refine_mid_table;
+        JpegHuffmanTable m_ac_refine_mid_table;
+        JpegHuffmanTable y_ac_refine_mid_table;
+        JpegHuffmanTable k_ac_refine_mid_table;
+        JpegHuffmanTable c_ac_refine_final_table;
+        JpegHuffmanTable m_ac_refine_final_table;
+        JpegHuffmanTable y_ac_refine_final_table;
+        JpegHuffmanTable k_ac_refine_final_table;
+
+        status = jpeg_build_optimized_huffman_table(dc_first_freq, &dc_first_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        JpegHuffmanTable* ac_tables[] = {
+            &c_ac_first_low_table, &m_ac_first_low_table, &y_ac_first_low_table, &k_ac_first_low_table,
+            &c_ac_first_high_table, &m_ac_first_high_table, &y_ac_first_high_table, &k_ac_first_high_table,
+            &c_ac_refine_mid_table, &m_ac_refine_mid_table, &y_ac_refine_mid_table, &k_ac_refine_mid_table,
+            &c_ac_refine_final_table, &m_ac_refine_final_table, &y_ac_refine_final_table, &k_ac_refine_final_table
+        };
+        std::uint64_t* ac_freqs[] = {
+            c_ac_first_low_freq, m_ac_first_low_freq, y_ac_first_low_freq, k_ac_first_low_freq,
+            c_ac_first_high_freq, m_ac_first_high_freq, y_ac_first_high_freq, k_ac_first_high_freq,
+            c_ac_refine_mid_freq, m_ac_refine_mid_freq, y_ac_refine_mid_freq, k_ac_refine_mid_freq,
+            c_ac_refine_final_freq, m_ac_refine_final_freq, y_ac_refine_final_freq, k_ac_refine_final_freq
+        };
+        for (int i = 0; i < 16; ++i) {
+            status = jpeg_build_optimized_huffman_table(ac_freqs[i], ac_tables[i]);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        std::vector<std::uint8_t> out;
+        out.reserve(
+            1536u +
+            prepared.c_blocks.size() +
+            prepared.m_blocks.size() +
+            prepared.y_blocks.size() +
+            prepared.k_blocks.size());
+        out.push_back(0xffu);
+        out.push_back(0xd8u);
+
+        if (has_dpi) {
+            std::uint8_t jfif_unit = 0;
+            std::uint16_t jfif_x_density = 0;
+            std::uint16_t jfif_y_density = 0;
+            status = jpeg_density_from_dpi(dpi_x, dpi_y, &jfif_unit, &jfif_x_density, &jfif_y_density);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_append_jfif_app0(out, jfif_unit, jfif_x_density, jfif_y_density);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+        status = jpeg_append_adobe_rgb_app14(out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_luminance_dqt(out, prepared.qtable);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        if (prepared.has_myk_qtable) {
+            status = jpeg_append_dqt_table(out, 1, prepared.myk_qtable);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+        status = jpeg_append_cmyk_sof(
+            out,
+            image,
+            prepared.has_myk_qtable ? 1 : 0,
+            0xc2u,
+            prepared.h_samp,
+            prepared.v_samp);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        status = jpeg_append_dht_segment(out, 0, 0, dc_first_table);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_append_cmyk_interleaved_sos_segment(out, 0x00, 0x00, 0x00, 0x00, 0, 0, 0, 1);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_cmyk_dc_first_scan(
+            prepared.c_blocks,
+            prepared.m_blocks,
+            prepared.y_blocks,
+            prepared.k_blocks,
+            prepared.c_blocks_per_mcu,
+            1,
+            dc_first_table,
+            &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        const struct AcFirstScan {
+            const std::vector<int>* blocks;
+            const JpegHuffmanTable* table;
+            int component;
+            int ss;
+            int se;
+            int al;
+        } ac_first_scans[] = {
+            {&prepared.c_blocks, &c_ac_first_low_table, 'C', 1, 5, 2},
+            {&prepared.m_blocks, &m_ac_first_low_table, 'M', 1, 5, 2},
+            {&prepared.y_blocks, &y_ac_first_low_table, 'Y', 1, 5, 2},
+            {&prepared.k_blocks, &k_ac_first_low_table, 'K', 1, 5, 2},
+            {&prepared.c_blocks, &c_ac_first_high_table, 'C', 6, 63, 2},
+            {&prepared.m_blocks, &m_ac_first_high_table, 'M', 6, 63, 2},
+            {&prepared.y_blocks, &y_ac_first_high_table, 'Y', 6, 63, 2},
+            {&prepared.k_blocks, &k_ac_first_high_table, 'K', 6, 63, 2},
+        };
+        for (const AcFirstScan& scan : ac_first_scans) {
+            status = jpeg_append_dht_segment(out, 1, 0, *scan.table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_append_cmyk_single_sos_segment(out, scan.component, 0x00, scan.ss, scan.se, 0, scan.al);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_encode_progressive_ac_first_scan(*scan.blocks, scan.ss, scan.se, scan.al, *scan.table, &out);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        const struct AcRefineScan {
+            const std::vector<int>* blocks;
+            const JpegHuffmanTable* table;
+            int component;
+            int ah;
+            int al;
+        } ac_refine_mid_scans[] = {
+            {&prepared.c_blocks, &c_ac_refine_mid_table, 'C', 2, 1},
+            {&prepared.m_blocks, &m_ac_refine_mid_table, 'M', 2, 1},
+            {&prepared.y_blocks, &y_ac_refine_mid_table, 'Y', 2, 1},
+            {&prepared.k_blocks, &k_ac_refine_mid_table, 'K', 2, 1},
+        };
+        for (const AcRefineScan& scan : ac_refine_mid_scans) {
+            status = jpeg_append_dht_segment(out, 1, 0, *scan.table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_append_cmyk_single_sos_segment(out, scan.component, 0x00, 1, 63, scan.ah, scan.al);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_encode_progressive_ac_refine_scan(*scan.blocks, 1, 63, scan.ah, scan.al, *scan.table, &out);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        status = jpeg_append_cmyk_interleaved_sos_segment(out, 0x00, 0x00, 0x00, 0x00, 0, 0, 1, 0);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        status = jpeg_encode_progressive_cmyk_dc_refine_scan(
+            prepared.c_blocks,
+            prepared.m_blocks,
+            prepared.y_blocks,
+            prepared.k_blocks,
+            prepared.c_blocks_per_mcu,
+            0,
+            &out);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        const AcRefineScan ac_refine_final_scans[] = {
+            {&prepared.c_blocks, &c_ac_refine_final_table, 'C', 1, 0},
+            {&prepared.m_blocks, &m_ac_refine_final_table, 'M', 1, 0},
+            {&prepared.y_blocks, &y_ac_refine_final_table, 'Y', 1, 0},
+            {&prepared.k_blocks, &k_ac_refine_final_table, 'K', 1, 0},
+        };
+        for (const AcRefineScan& scan : ac_refine_final_scans) {
+            status = jpeg_append_dht_segment(out, 1, 0, *scan.table);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_append_cmyk_single_sos_segment(out, scan.component, 0x00, 1, 63, scan.ah, scan.al);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            status = jpeg_encode_progressive_ac_refine_scan(*scan.blocks, 1, 63, scan.ah, scan.al, *scan.table, &out);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        }
+
+        out.push_back(0xffu);
+        out.push_back(0xd9u);
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int jpeg_wic_subsampling_option(int subsampling, WICJpegYCrCbSubsamplingOption* out_option)
+{
+    if (!out_option) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    switch (subsampling) {
+    case 0:
+        *out_option = WICJpegYCrCbSubsampling444;
+        return PILLOW_C_OK;
+    case 1:
+        *out_option = WICJpegYCrCbSubsampling422;
+        return PILLOW_C_OK;
+    case 2:
+        *out_option = WICJpegYCrCbSubsampling420;
+        return PILLOW_C_OK;
+    default:
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+}
+
+int save_jpeg_image_with_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int subsampling,
+    int progressive,
+    int optimize)
 {
     if (!image || !path) {
         return PILLOW_C_NULL_POINTER;
@@ -5344,8 +17927,13 @@ int save_jpeg_image_with_options(const PillowCImage* image, const char* path, in
         return PILLOW_C_INVALID_ARGUMENT;
     }
     if (!((image->mode == PILLOW_C_MODE_L && image->channels == 1) ||
-          (image->mode == PILLOW_C_MODE_RGB && image->channels == 3))) {
+          (image->mode == PILLOW_C_MODE_RGB && image->channels == 3) ||
+          (image->mode == PILLOW_C_MODE_CMYK && image->channels == 4))) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
     if (image->stride > static_cast<std::size_t>(std::numeric_limits<UINT>::max()) ||
         image->pixels.size() > static_cast<std::size_t>(std::numeric_limits<UINT>::max())) {
@@ -5353,6 +17941,67 @@ int save_jpeg_image_with_options(const PillowCImage* image, const char* path, in
     }
     const bool has_quality = quality != -1;
     const int clamped_quality = std::max(0, std::min(quality, 100));
+    if (progressive < -1 || progressive > 1 || optimize < -1 || optimize > 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->mode == PILLOW_C_MODE_CMYK) {
+        if (progressive == 1) {
+            if (subsampling != -1) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            return save_jpeg_cmyk_progressive(image, path, quality, has_dpi, dpi_x, dpi_y);
+        }
+        if (optimize == 1 && subsampling != -1) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return save_jpeg_cmyk_baseline(
+            image,
+            path,
+            quality,
+            nullptr,
+            0u,
+            optimize == 1,
+            has_dpi,
+            dpi_x,
+            dpi_y,
+            subsampling);
+    }
+    if (progressive == 1) {
+        if (image->mode == PILLOW_C_MODE_L && image->channels == 1 && subsampling == -1) {
+            return save_jpeg_l_progressive_huffman(image, path, quality, has_dpi, dpi_x, dpi_y);
+        }
+        if (image->mode == PILLOW_C_MODE_RGB && image->channels == 3) {
+            return save_jpeg_rgb_progressive_huffman(
+                image,
+                path,
+                quality,
+                has_dpi,
+                dpi_x,
+                dpi_y,
+                subsampling,
+                nullptr,
+                nullptr,
+                1);
+        }
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (optimize == 1) {
+        if (image->mode == PILLOW_C_MODE_L && image->channels == 1 && subsampling == -1) {
+            return save_jpeg_l_optimized_huffman(image, path, quality, has_dpi, dpi_x, dpi_y);
+        }
+        if (image->mode == PILLOW_C_MODE_RGB && image->channels == 3) {
+            return save_jpeg_rgb_optimized_huffman(image, path, quality, has_dpi, dpi_x, dpi_y, subsampling);
+        }
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    bool has_subsampling = subsampling != -1;
+    WICJpegYCrCbSubsamplingOption wic_subsampling = WICJpegYCrCbSubsamplingDefault;
+    if (has_subsampling) {
+        const int status = jpeg_wic_subsampling_option(subsampling, &wic_subsampling);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
     if (has_dpi) {
         std::uint8_t unit = 0;
         std::uint16_t x_density = 0;
@@ -5400,15 +18049,18 @@ int save_jpeg_image_with_options(const PillowCImage* image, const char* path, in
 
         ComPtr<IWICBitmapFrameEncode> frame;
         ComPtr<IPropertyBag2> encoder_options;
-        hr = has_quality ? encoder->CreateNewFrame(frame.put(), encoder_options.put()) :
-                           encoder->CreateNewFrame(frame.put(), nullptr);
+        const bool has_encoder_options = has_quality || has_subsampling;
+        hr = has_encoder_options ? encoder->CreateNewFrame(frame.put(), encoder_options.put()) :
+                                   encoder->CreateNewFrame(frame.put(), nullptr);
         if (FAILED(hr)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
-        if (has_quality) {
+        if (has_encoder_options) {
             if (!encoder_options.get()) {
                 return PILLOW_C_INVALID_ARGUMENT;
             }
+        }
+        if (has_quality) {
             PROPBAG2 option = {};
             option.pstrName = const_cast<LPOLESTR>(L"ImageQuality");
             VARIANT value;
@@ -5420,7 +18072,19 @@ int save_jpeg_image_with_options(const PillowCImage* image, const char* path, in
                 return PILLOW_C_INVALID_ARGUMENT;
             }
         }
-        hr = frame->Initialize(has_quality ? encoder_options.get() : nullptr);
+        if (has_subsampling) {
+            PROPBAG2 option = {};
+            option.pstrName = const_cast<LPOLESTR>(L"JpegYCrCbSubsampling");
+            VARIANT value;
+            VariantInit(&value);
+            value.vt = VT_UI1;
+            value.bVal = static_cast<BYTE>(wic_subsampling);
+            hr = encoder_options->Write(1, &option, &value);
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+        }
+        hr = frame->Initialize(has_encoder_options ? encoder_options.get() : nullptr);
         if (FAILED(hr)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
@@ -5429,8 +18093,10 @@ int save_jpeg_image_with_options(const PillowCImage* image, const char* path, in
             return PILLOW_C_INVALID_ARGUMENT;
         }
 
-        WICPixelFormatGUID format =
-            image->mode == PILLOW_C_MODE_L ? GUID_WICPixelFormat8bppGray : GUID_WICPixelFormat24bppBGR;
+        WICPixelFormatGUID format = GUID_WICPixelFormat24bppBGR;
+        if (image->mode == PILLOW_C_MODE_L) {
+            format = GUID_WICPixelFormat8bppGray;
+        }
         WICPixelFormatGUID encoder_format = format;
         hr = frame->SetPixelFormat(&encoder_format);
         if (FAILED(hr) || !IsEqualGUID(encoder_format, format)) {
@@ -5476,7 +18142,10 @@ int save_jpeg_image_with_options(const PillowCImage* image, const char* path, in
         stream.reset();
         factory.reset();
         if (has_dpi) {
-            return patch_jpeg_jfif_density(path, dpi_x, dpi_y);
+            status = patch_jpeg_jfif_density(path, dpi_x, dpi_y);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
         }
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
@@ -5484,9 +18153,300 @@ int save_jpeg_image_with_options(const PillowCImage* image, const char* path, in
     }
 }
 
+int save_jpeg_image_with_metadata_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* xmp,
+    std::size_t xmp_size,
+    int subsampling,
+    int progressive,
+    int optimize)
+{
+    if ((comment_size > 0u && !comment) || (icc_profile_size > 0u && !icc_profile) ||
+        (exif_size > 0u && !exif) || (xmp_size > 0u && !xmp)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    std::vector<std::uint8_t> unused_segments;
+    int status = build_jpeg_metadata_segments(
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        xmp,
+        xmp_size,
+        &unused_segments);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    status = save_jpeg_image_with_options(image, path, quality, has_dpi, dpi_x, dpi_y, subsampling, progressive, optimize);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return patch_jpeg_metadata_segments(path, comment, comment_size, icc_profile, icc_profile_size, exif, exif_size, xmp, xmp_size);
+}
+
+int save_jpeg_image_with_qtables_metadata_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* xmp,
+    std::size_t xmp_size,
+    const int* qtables,
+    std::size_t qtable_count,
+    int subsampling,
+    int progressive,
+    int optimize,
+    bool allow_cmyk_progressive_subsampling = false)
+{
+    if ((comment_size > 0u && !comment) || (icc_profile_size > 0u && !icc_profile) ||
+        (exif_size > 0u && !exif) || (xmp_size > 0u && !xmp)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    std::vector<std::uint8_t> unused_segments;
+    int status = build_jpeg_metadata_segments(
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        xmp,
+        xmp_size,
+        &unused_segments);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    status = save_jpeg_rgb_qtables_optimized_huffman(
+        image,
+        path,
+        quality,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        qtables,
+        qtable_count,
+        subsampling,
+        progressive,
+        optimize,
+        allow_cmyk_progressive_subsampling);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return patch_jpeg_metadata_segments(path, comment, comment_size, icc_profile, icc_profile_size, exif, exif_size, xmp, xmp_size);
+}
+
+int save_jpeg_image_with_qtables_metadata_keep_rgb_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const int* qtables,
+    std::size_t qtable_count,
+    int subsampling,
+    int progressive,
+    int optimize,
+    int keep_rgb)
+{
+    if ((comment_size > 0u && !comment) || (icc_profile_size > 0u && !icc_profile) ||
+        (exif_size > 0u && !exif)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    std::vector<std::uint8_t> unused_segments;
+    int status = build_jpeg_metadata_segments(
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        nullptr,
+        0u,
+        &unused_segments);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    status = save_jpeg_rgb_qtables_keep_rgb_options(
+        image,
+        path,
+        quality,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        qtables,
+        qtable_count,
+        subsampling,
+        progressive,
+        optimize,
+        keep_rgb);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return patch_jpeg_metadata_segments(path, comment, comment_size, icc_profile, icc_profile_size, exif, exif_size, nullptr, 0u);
+}
+
+int save_jpeg_image_with_qtables_metadata_keep_rgb_xmp_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* xmp,
+    std::size_t xmp_size,
+    const int* qtables,
+    std::size_t qtable_count,
+    int subsampling,
+    int progressive,
+    int optimize,
+    int keep_rgb)
+{
+    if ((comment_size > 0u && !comment) || (icc_profile_size > 0u && !icc_profile) ||
+        (exif_size > 0u && !exif) || (xmp_size > 0u && !xmp)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    std::vector<std::uint8_t> unused_segments;
+    int status = build_jpeg_metadata_segments(
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        xmp,
+        xmp_size,
+        &unused_segments);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    status = save_jpeg_rgb_qtables_keep_rgb_options(
+        image,
+        path,
+        quality,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        qtables,
+        qtable_count,
+        subsampling,
+        progressive,
+        optimize,
+        keep_rgb);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return patch_jpeg_metadata_segments(path, comment, comment_size, icc_profile, icc_profile_size, exif, exif_size, xmp, xmp_size);
+}
+
+int save_jpeg_image_with_metadata_keep_rgb_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* xmp,
+    std::size_t xmp_size,
+    int subsampling,
+    int progressive,
+    int optimize,
+    int keep_rgb)
+{
+    if ((comment_size > 0u && !comment) || (icc_profile_size > 0u && !icc_profile) ||
+        (exif_size > 0u && !exif) || (xmp_size > 0u && !xmp)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    std::vector<std::uint8_t> unused_segments;
+    int status = build_jpeg_metadata_segments(
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        xmp,
+        xmp_size,
+        &unused_segments);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (image && image->mode == PILLOW_C_MODE_CMYK && image->channels == 4 && keep_rgb == 1) {
+        status = save_jpeg_image_with_options(
+            image,
+            path,
+            quality,
+            has_dpi,
+            dpi_x,
+            dpi_y,
+            subsampling,
+            progressive,
+            optimize);
+    } else {
+        status = save_jpeg_rgb_keep_rgb_options(
+            image,
+            path,
+            quality,
+            has_dpi,
+            dpi_x,
+            dpi_y,
+            subsampling,
+            progressive,
+            optimize,
+            keep_rgb);
+    }
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return patch_jpeg_metadata_segments(path, comment, comment_size, icc_profile, icc_profile_size, exif, exif_size, xmp, xmp_size);
+}
+
 int save_jpeg_image_with_quality(const PillowCImage* image, const char* path, int quality)
 {
-    return save_jpeg_image_with_options(image, path, quality, false, 0.0, 0.0);
+    const int status = save_jpeg_image_with_options(image, path, quality, false, 0.0, 0.0, -1, -1, -1);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return patch_jpeg_source_comment_segment(image, path);
 }
 
 int save_jpeg_image(const PillowCImage* image, const char* path)
@@ -5562,14 +18522,67 @@ int open_tiff_frame_image(const char* path, int frame_index, PillowCImage** out_
         if (FAILED(hr)) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
+        std::vector<std::uint8_t> tiff_bytes;
+        bool has_tiff_bytes = false;
+        bool is_tiff_la = false;
+        if (frame_index == 0) {
+            if (!read_binary_file(path, &tiff_bytes)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            has_tiff_bytes = true;
+            bool is_tiff_numeric = false;
+            PillowCImage* numeric_image = nullptr;
+            status = parse_tiff_numeric_image(tiff_bytes.data(), tiff_bytes.size(), &is_tiff_numeric, &numeric_image);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            if (is_tiff_numeric) {
+                *out_image = numeric_image;
+                return PILLOW_C_OK;
+            }
+            bool is_tiff_i16 = false;
+            PillowCImage* i16_image = nullptr;
+            status = parse_tiff_i16_image(tiff_bytes.data(), tiff_bytes.size(), &is_tiff_i16, &i16_image);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            if (is_tiff_i16) {
+                *out_image = i16_image;
+                return PILLOW_C_OK;
+            }
+            is_tiff_la = parse_tiff_is_la_mode(tiff_bytes.data(), tiff_bytes.size());
+        }
         int mode = 0;
         int channels = 0;
+        int decoded_channels = 0;
         WICPixelFormatGUID target_format = {};
-        status = wic_format_to_mode(source_format, &mode, &channels, &target_format);
-        if (status != PILLOW_C_OK) {
-            return status;
+        std::vector<std::uint8_t> palette_rgb;
+        if (IsEqualGUID(source_format, GUID_WICPixelFormat8bppIndexed)) {
+            mode = PILLOW_C_MODE_P;
+            channels = 1;
+            decoded_channels = 1;
+            target_format = GUID_WICPixelFormat8bppIndexed;
+            status = copy_wic_palette_rgb(frame.get(), factory.get(), &palette_rgb);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else if (is_tiff_la) {
+            mode = PILLOW_C_MODE_LA;
+            channels = 2;
+            decoded_channels = 4;
+            target_format = GUID_WICPixelFormat32bppRGBA;
+        } else {
+            status = wic_format_to_mode(source_format, &mode, &channels, &target_format);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            decoded_channels = channels;
         }
-        if (!((mode == PILLOW_C_MODE_L && channels == 1) ||
+        if (!((mode == PILLOW_C_MODE_1 && channels == 1) ||
+              (mode == PILLOW_C_MODE_L && channels == 1) ||
+              (mode == PILLOW_C_MODE_LA && channels == 2) ||
+              (mode == PILLOW_C_MODE_P && channels == 1) ||
+              (mode == PILLOW_C_MODE_CMYK && channels == 4) ||
               (mode == PILLOW_C_MODE_RGB && channels == 3) ||
               (mode == PILLOW_C_MODE_RGBA && channels == 4))) {
             return PILLOW_C_INVALID_ARGUMENT;
@@ -5580,6 +18593,13 @@ int open_tiff_frame_image(const char* path, int frame_index, PillowCImage** out_
         if (!checked_image_size(width, height, channels, &stride, &size) ||
             stride > static_cast<std::size_t>(std::numeric_limits<UINT>::max()) ||
             size > static_cast<std::size_t>(std::numeric_limits<UINT>::max())) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::size_t decoded_stride = 0;
+        std::size_t decoded_size = 0;
+        if (!checked_image_size(width, height, decoded_channels, &decoded_stride, &decoded_size) ||
+            decoded_stride > static_cast<std::size_t>(std::numeric_limits<UINT>::max()) ||
+            decoded_size > static_cast<std::size_t>(std::numeric_limits<UINT>::max())) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
 
@@ -5614,14 +18634,83 @@ int open_tiff_frame_image(const char* path, int frame_index, PillowCImage** out_
             channels,
             stride,
             std::vector<std::uint8_t>(size)};
+        std::vector<std::uint8_t> decoded;
+        std::uint8_t* copy_target = image->pixels.data();
+        UINT copy_stride = static_cast<UINT>(stride);
+        UINT copy_size = static_cast<UINT>(image->pixels.size());
+        if (decoded_channels != channels) {
+            decoded.assign(decoded_size, std::uint8_t{0});
+            copy_target = decoded.data();
+            copy_stride = static_cast<UINT>(decoded_stride);
+            copy_size = static_cast<UINT>(decoded.size());
+        }
         hr = source->CopyPixels(
             nullptr,
-            static_cast<UINT>(stride),
-            static_cast<UINT>(image->pixels.size()),
-            image->pixels.data());
+            copy_stride,
+            copy_size,
+            copy_target);
         if (FAILED(hr)) {
             delete image;
             return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (mode == PILLOW_C_MODE_LA) {
+            for (int y = 0; y < height; ++y) {
+                const std::uint8_t* src_row = decoded.data() + static_cast<std::size_t>(y) * decoded_stride;
+                std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+                for (int x = 0; x < width; ++x) {
+                    const std::size_t src = static_cast<std::size_t>(x) * 4u;
+                    const std::size_t dst = static_cast<std::size_t>(x) * 2u;
+                    dst_row[dst + 0u] = src_row[src + 0u];
+                    dst_row[dst + 1u] = src_row[src + 3u];
+                }
+            }
+        }
+        if (mode == PILLOW_C_MODE_P) {
+            image->palette_rgb = std::move(palette_rgb);
+        }
+
+        if (frame_index == 0) {
+            if (!has_tiff_bytes) {
+                delete image;
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            if (mode == PILLOW_C_MODE_P) {
+                std::vector<std::uint8_t> parsed_palette;
+                if (!parse_tiff_palette_rgb(tiff_bytes.data(), tiff_bytes.size(), &parsed_palette)) {
+                    delete image;
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                image->palette_rgb = std::move(parsed_palette);
+            }
+            const int orientation = parse_tiff_orientation(tiff_bytes.data(), tiff_bytes.size());
+            status = build_tiff_common_ascii_exif(tiff_bytes.data(), tiff_bytes.size(), orientation, &image->tiff_exif);
+            if (status != PILLOW_C_OK) {
+                delete image;
+                return status;
+            }
+            if (orientation == 1) {
+                image->exif_orientation = 1;
+            } else if (orientation == 3) {
+                apply_tiff_orientation_three(image);
+            } else if (orientation == 2 || orientation == 4 || orientation == 5 || orientation == 7) {
+                status = apply_tiff_orientation_mirror_or_transpose(image, orientation);
+                if (status != PILLOW_C_OK) {
+                    delete image;
+                    return status;
+                }
+            } else if (orientation == 6 || orientation == 8) {
+                status = apply_tiff_orientation_six_or_eight(image, orientation);
+                if (status != PILLOW_C_OK) {
+                    delete image;
+                    return status;
+                }
+            }
+            TiffResolutionMetadata resolution;
+            if (parse_tiff_resolution(tiff_bytes.data(), tiff_bytes.size(), &resolution)) {
+                image->has_dpi = true;
+                image->dpi_x = resolution.dpi_x;
+                image->dpi_y = resolution.dpi_y;
+            }
         }
 
         *out_image = image;
@@ -5636,126 +18725,765 @@ int open_tiff_image(const char* path, PillowCImage** out_image)
     return open_tiff_frame_image(path, 0, out_image);
 }
 
-int save_tiff_image(const PillowCImage* image, const char* path)
+int validate_tiff_save_image(const PillowCImage* image)
 {
-    if (!image || !path) {
+    if (!image) {
         return PILLOW_C_NULL_POINTER;
     }
     if (image->width <= 0 || image->height <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    const bool is_palette = image->mode == PILLOW_C_MODE_P && image->channels == 1;
+    const bool is_numeric = (image->mode == PILLOW_C_MODE_I || image->mode == PILLOW_C_MODE_F) &&
+        image->channels == 4;
     if (!((image->mode == PILLOW_C_MODE_L && image->channels == 1) ||
+          (image->mode == PILLOW_C_MODE_1 && image->channels == 1) ||
+          (image->mode == PILLOW_C_MODE_I16 && image->channels == 2) ||
+          (image->mode == PILLOW_C_MODE_I16B && image->channels == 2) ||
+          (image->mode == PILLOW_C_MODE_LA && image->channels == 2) ||
+          is_palette ||
+          (image->mode == PILLOW_C_MODE_CMYK && image->channels == 4) ||
+          is_numeric ||
           (image->mode == PILLOW_C_MODE_RGB && image->channels == 3) ||
           (image->mode == PILLOW_C_MODE_RGBA && image->channels == 4))) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (is_palette &&
+        (image->palette_rgb.empty() || image->palette_rgb.size() % 3u != 0u ||
+         image->palette_rgb.size() > 256u * 3u)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
     if (image->stride > static_cast<std::size_t>(std::numeric_limits<UINT>::max()) ||
         image->pixels.size() > static_cast<std::size_t>(std::numeric_limits<UINT>::max())) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    return PILLOW_C_OK;
+}
 
-    try {
-        std::vector<wchar_t> wide_path;
-        if (!utf8_path_to_wide(path, &wide_path)) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
-        ComInitScope com;
-        if (!com.usable()) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
-        ComPtr<IWICImagingFactory> factory;
-        int status = create_wic_factory(&factory);
-        if (status != PILLOW_C_OK) {
-            return status;
-        }
+WICPixelFormatGUID tiff_save_pixel_format(const PillowCImage* image)
+{
+    if (image->mode == PILLOW_C_MODE_RGB) {
+        return GUID_WICPixelFormat24bppBGR;
+    }
+    if (image->mode == PILLOW_C_MODE_RGBA) {
+        return GUID_WICPixelFormat32bppBGRA;
+    }
+    return GUID_WICPixelFormat8bppGray;
+}
 
-        ComPtr<IWICStream> stream;
-        HRESULT hr = factory->CreateStream(stream.put());
-        if (FAILED(hr)) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
-        hr = stream->InitializeFromFilename(wide_path.data(), GENERIC_WRITE);
-        if (FAILED(hr)) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
+int write_tiff_frame(IWICBitmapEncoder* encoder, const PillowCImage* image)
+{
+    if (!encoder) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const int status = validate_tiff_save_image(image);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
 
-        ComPtr<IWICBitmapEncoder> encoder;
-        hr = factory->CreateEncoder(GUID_ContainerFormatTiff, nullptr, encoder.put());
-        if (FAILED(hr)) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
-        hr = encoder->Initialize(stream.get(), WICBitmapEncoderNoCache);
-        if (FAILED(hr)) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
+    ComPtr<IWICBitmapFrameEncode> frame;
+    HRESULT hr = encoder->CreateNewFrame(frame.put(), nullptr);
+    if (FAILED(hr)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    hr = frame->Initialize(nullptr);
+    if (FAILED(hr)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    hr = frame->SetSize(static_cast<UINT>(image->width), static_cast<UINT>(image->height));
+    if (FAILED(hr)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
 
-        ComPtr<IWICBitmapFrameEncode> frame;
-        hr = encoder->CreateNewFrame(frame.put(), nullptr);
-        if (FAILED(hr)) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
-        hr = frame->Initialize(nullptr);
-        if (FAILED(hr)) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
-        hr = frame->SetSize(static_cast<UINT>(image->width), static_cast<UINT>(image->height));
-        if (FAILED(hr)) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
+    const WICPixelFormatGUID format = tiff_save_pixel_format(image);
+    WICPixelFormatGUID encoder_format = format;
+    hr = frame->SetPixelFormat(&encoder_format);
+    if (FAILED(hr) || !IsEqualGUID(encoder_format, format)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
 
-        WICPixelFormatGUID format = GUID_WICPixelFormat8bppGray;
-        if (image->mode == PILLOW_C_MODE_RGB) {
-            format = GUID_WICPixelFormat24bppBGR;
-        } else if (image->mode == PILLOW_C_MODE_RGBA) {
-            format = GUID_WICPixelFormat32bppBGRA;
-        }
-        WICPixelFormatGUID encoder_format = format;
-        hr = frame->SetPixelFormat(&encoder_format);
-        if (FAILED(hr) || !IsEqualGUID(encoder_format, format)) {
-            return PILLOW_C_INVALID_ARGUMENT;
-        }
-
-        std::vector<std::uint8_t> encoded_pixels;
-        const std::uint8_t* write_data = image->pixels.data();
-        if (image->mode == PILLOW_C_MODE_RGB || image->mode == PILLOW_C_MODE_RGBA) {
-            encoded_pixels.assign(image->pixels.size(), std::uint8_t{0});
-            const std::size_t channels = static_cast<std::size_t>(image->channels);
-            for (int y = 0; y < image->height; ++y) {
-                const std::uint8_t* src_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
-                std::uint8_t* dst_row = encoded_pixels.data() + static_cast<std::size_t>(y) * image->stride;
-                for (int x = 0; x < image->width; ++x) {
-                    const std::size_t offset = static_cast<std::size_t>(x) * channels;
-                    dst_row[offset + 0u] = src_row[offset + 2u];
-                    dst_row[offset + 1u] = src_row[offset + 1u];
-                    dst_row[offset + 2u] = src_row[offset + 0u];
-                    if (channels == 4u) {
-                        dst_row[offset + 3u] = src_row[offset + 3u];
-                    }
+    std::vector<std::uint8_t> encoded_pixels;
+    const std::uint8_t* write_data = image->pixels.data();
+    if (image->mode == PILLOW_C_MODE_RGB || image->mode == PILLOW_C_MODE_RGBA) {
+        encoded_pixels.assign(image->pixels.size(), std::uint8_t{0});
+        const std::size_t channels = static_cast<std::size_t>(image->channels);
+        for (int y = 0; y < image->height; ++y) {
+            const std::uint8_t* src_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+            std::uint8_t* dst_row = encoded_pixels.data() + static_cast<std::size_t>(y) * image->stride;
+            for (int x = 0; x < image->width; ++x) {
+                const std::size_t offset = static_cast<std::size_t>(x) * channels;
+                dst_row[offset + 0u] = src_row[offset + 2u];
+                dst_row[offset + 1u] = src_row[offset + 1u];
+                dst_row[offset + 2u] = src_row[offset + 0u];
+                if (channels == 4u) {
+                    dst_row[offset + 3u] = src_row[offset + 3u];
                 }
             }
-            write_data = encoded_pixels.data();
+        }
+        write_data = encoded_pixels.data();
+    }
+
+    hr = frame->WritePixels(
+        static_cast<UINT>(image->height),
+        static_cast<UINT>(image->stride),
+        static_cast<UINT>(image->pixels.size()),
+        const_cast<BYTE*>(write_data));
+    if (FAILED(hr)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    hr = frame->Commit();
+    if (FAILED(hr)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return PILLOW_C_OK;
+}
+
+void append_tiff_entry(
+    std::vector<std::uint8_t>& out,
+    std::uint16_t tag,
+    std::uint16_t type,
+    std::uint32_t count,
+    std::uint32_t value)
+{
+    append_le16(out, tag);
+    append_le16(out, type);
+    append_le32(out, count);
+    append_le32(out, value);
+}
+
+void append_tiff_entry_be(
+    std::vector<std::uint8_t>& out,
+    std::uint16_t tag,
+    std::uint16_t type,
+    std::uint32_t count,
+    std::uint32_t value)
+{
+    append_be16(out, tag);
+    append_be16(out, type);
+    append_be32(out, count);
+    if (type == 3u && count == 1u) {
+        append_be16(out, static_cast<std::uint16_t>(value));
+        append_be16(out, 0u);
+        return;
+    }
+    append_be32(out, value);
+}
+
+std::size_t align_tiff_offset(std::size_t value)
+{
+    return (value + 1u) & ~std::size_t{1u};
+}
+
+bool tiff_u32_offset(std::size_t value, std::uint32_t* out_value)
+{
+    if (value > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+        return false;
+    }
+    *out_value = static_cast<std::uint32_t>(value);
+    return true;
+}
+
+int tiff_dpi_to_rational(bool has_dpi, double dpi_x, double dpi_y, std::uint32_t* out_x, std::uint32_t* out_y)
+{
+    if (!out_x || !out_y) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_x = 0u;
+    *out_y = 0u;
+    if (!has_dpi) {
+        return PILLOW_C_OK;
+    }
+
+    std::int64_t rounded_x = 0;
+    std::int64_t rounded_y = 0;
+    if (!pillow_round_to_i64(dpi_x, &rounded_x) || !pillow_round_to_i64(dpi_y, &rounded_y) ||
+        rounded_x <= 0 || rounded_y <= 0 ||
+        rounded_x > static_cast<std::int64_t>(std::numeric_limits<std::uint32_t>::max()) ||
+        rounded_y > static_cast<std::int64_t>(std::numeric_limits<std::uint32_t>::max())) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    *out_x = static_cast<std::uint32_t>(rounded_x);
+    *out_y = static_cast<std::uint32_t>(rounded_y);
+    return PILLOW_C_OK;
+}
+
+struct TiffFrameLayout {
+    std::uint32_t ifd_offset = 0;
+    std::uint32_t bits_offset = 0;
+    std::uint32_t x_resolution_offset = 0;
+    std::uint32_t y_resolution_offset = 0;
+    std::uint32_t color_map_offset = 0;
+    std::uint32_t pixel_offset = 0;
+    std::uint32_t next_ifd_offset = 0;
+    std::uint32_t pixel_byte_count = 0;
+    std::uint16_t entry_count = 0;
+};
+
+int normalize_tiff_save_compression(int compression, std::uint16_t* out_compression)
+{
+    if (!out_compression) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (compression == 0 || compression == TIFF_COMPRESSION_NONE) {
+        *out_compression = TIFF_COMPRESSION_NONE;
+        return PILLOW_C_OK;
+    }
+    if (compression == TIFF_COMPRESSION_PACKBITS) {
+        *out_compression = TIFF_COMPRESSION_PACKBITS;
+        return PILLOW_C_OK;
+    }
+    if (compression == TIFF_COMPRESSION_LZW) {
+        *out_compression = TIFF_COMPRESSION_LZW;
+        return PILLOW_C_OK;
+    }
+    if (compression == TIFF_COMPRESSION_ADOBE_DEFLATE) {
+        *out_compression = TIFF_COMPRESSION_ADOBE_DEFLATE;
+        return PILLOW_C_OK;
+    }
+    return PILLOW_C_INVALID_ARGUMENT;
+}
+
+void append_packbits_encoded_row(const std::uint8_t* row, std::size_t length, std::vector<std::uint8_t>& out)
+{
+    std::size_t i = 0;
+    while (i < length) {
+        std::size_t run = 1;
+        while (i + run < length && run < 128u && row[i + run] == row[i]) {
+            ++run;
+        }
+        if (run >= 3u) {
+            out.push_back(static_cast<std::uint8_t>(257u - run));
+            out.push_back(row[i]);
+            i += run;
+            continue;
         }
 
-        hr = frame->WritePixels(
-            static_cast<UINT>(image->height),
-            static_cast<UINT>(image->stride),
-            static_cast<UINT>(image->pixels.size()),
-            const_cast<BYTE*>(write_data));
-        if (FAILED(hr)) {
-            return PILLOW_C_INVALID_ARGUMENT;
+        const std::size_t literal_start = i;
+        i += run;
+        while (i < length) {
+            run = 1;
+            while (i + run < length && run < 128u && row[i + run] == row[i]) {
+                ++run;
+            }
+            if (run >= 3u || (i - literal_start) + run > 128u) {
+                break;
+            }
+            i += run;
         }
-        hr = frame->Commit();
-        if (FAILED(hr)) {
-            return PILLOW_C_INVALID_ARGUMENT;
+        const std::size_t literal_length = i - literal_start;
+        out.push_back(static_cast<std::uint8_t>(literal_length - 1u));
+        out.insert(out.end(), row + literal_start, row + literal_start + literal_length);
+    }
+}
+
+std::size_t tiff_uncompressed_row_stride(const PillowCImage* image)
+{
+    if (image->mode == PILLOW_C_MODE_1) {
+        return (static_cast<std::size_t>(image->width) + 7u) / 8u;
+    }
+    return static_cast<std::size_t>(image->stride);
+}
+
+std::vector<std::uint8_t> tiff_pack_mode_one_pixels(const PillowCImage* image)
+{
+    const std::size_t row_stride = tiff_uncompressed_row_stride(image);
+    std::vector<std::uint8_t> packed(row_stride * static_cast<std::size_t>(image->height), 0);
+    for (int y = 0; y < image->height; ++y) {
+        const std::size_t src_row = static_cast<std::size_t>(y) * static_cast<std::size_t>(image->stride);
+        const std::size_t dst_row = static_cast<std::size_t>(y) * row_stride;
+        for (int x = 0; x < image->width; ++x) {
+            if (image->pixels[src_row + static_cast<std::size_t>(x)] != 0u) {
+                packed[dst_row + static_cast<std::size_t>(x / 8)] |=
+                    static_cast<std::uint8_t>(0x80u >> (x % 8));
+            }
         }
-        hr = encoder->Commit();
-        if (FAILED(hr)) {
-            return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return packed;
+}
+
+std::vector<std::uint8_t> tiff_i16b_to_i16_pixels(const PillowCImage* image)
+{
+    std::vector<std::uint8_t> swapped(image->pixels.size(), 0u);
+    for (std::size_t index = 0u; index + 1u < image->pixels.size(); index += 2u) {
+        swapped[index] = image->pixels[index + 1u];
+        swapped[index + 1u] = image->pixels[index];
+    }
+    return swapped;
+}
+
+std::vector<std::uint8_t> tiff_packbits_encode_pixels(
+    const std::uint8_t* pixels,
+    std::size_t row_stride,
+    int height)
+{
+    std::vector<std::uint8_t> encoded;
+    encoded.reserve(row_stride * static_cast<std::size_t>(height) + static_cast<std::size_t>(height));
+    for (int y = 0; y < height; ++y) {
+        const std::size_t row_offset = static_cast<std::size_t>(y) * row_stride;
+        append_packbits_encoded_row(
+            pixels + row_offset,
+            row_stride,
+            encoded);
+    }
+    return encoded;
+}
+
+struct TiffMsbBitWriter {
+    std::vector<std::uint8_t> bytes;
+    std::uint32_t bits = 0;
+    int bit_count = 0;
+
+    void write(int code, int size)
+    {
+        bits = (bits << size) | static_cast<std::uint32_t>(code);
+        bit_count += size;
+        while (bit_count >= 8) {
+            const int shift = bit_count - 8;
+            bytes.push_back(static_cast<std::uint8_t>((bits >> shift) & 0xffu));
+            bit_count -= 8;
+            bits = bit_count == 0 ? 0u : (bits & ((std::uint32_t{1} << bit_count) - 1u));
         }
-        return PILLOW_C_OK;
+    }
+
+    void flush()
+    {
+        if (bit_count > 0) {
+            bytes.push_back(static_cast<std::uint8_t>((bits << (8 - bit_count)) & 0xffu));
+            bits = 0;
+            bit_count = 0;
+        }
+    }
+};
+
+bool tiff_lzw_encode_pixels(
+    const std::uint8_t* pixels,
+    std::size_t row_stride,
+    int height,
+    std::vector<std::uint8_t>* out)
+{
+    if (!pixels || !out || row_stride == 0u || height <= 0 ||
+        row_stride > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(height)) {
+        return false;
+    }
+    const std::size_t pixel_byte_count = row_stride * static_cast<std::size_t>(height);
+    if (pixel_byte_count == 0u) {
+        return false;
+    }
+
+    constexpr int clear_code = 256;
+    constexpr int end_code = 257;
+    int next_code = 258;
+    int code_size = 9;
+
+    TiffMsbBitWriter writer;
+    writer.bytes.reserve(pixel_byte_count + pixel_byte_count / 8u + 8u);
+    std::unordered_map<std::uint32_t, int> dictionary;
+    dictionary.reserve(4096);
+
+    writer.write(clear_code, code_size);
+    int prefix = pixels[0];
+    for (std::size_t index = 1u; index < pixel_byte_count; ++index) {
+        const int value = pixels[index];
+        const std::uint32_t key = (static_cast<std::uint32_t>(prefix) << 8) |
+                                  static_cast<std::uint32_t>(value);
+        const auto found = dictionary.find(key);
+        if (found != dictionary.end()) {
+            prefix = found->second;
+            continue;
+        }
+
+        writer.write(prefix, code_size);
+        if (next_code <= 4095) {
+            dictionary.emplace(key, next_code++);
+            if (next_code == (1 << code_size) && code_size < 12) {
+                ++code_size;
+            }
+        } else {
+            writer.write(clear_code, code_size);
+            dictionary.clear();
+            next_code = 258;
+            code_size = 9;
+        }
+        prefix = value;
+    }
+    writer.write(prefix, code_size);
+    writer.write(end_code, code_size);
+    writer.flush();
+    *out = std::move(writer.bytes);
+    return true;
+}
+
+bool tiff_deflate_encode_pixels(
+    const std::uint8_t* pixels,
+    std::size_t row_stride,
+    int height,
+    std::vector<std::uint8_t>* out)
+{
+    if (!pixels || !out || row_stride == 0u || height <= 0 ||
+        row_stride > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(height)) {
+        return false;
+    }
+    const std::size_t pixel_byte_count = row_stride * static_cast<std::size_t>(height);
+    if (pixel_byte_count == 0u) {
+        return false;
+    }
+
+    std::vector<std::uint8_t> raw(pixels, pixels + pixel_byte_count);
+    out->clear();
+    out->reserve(pixel_byte_count + pixel_byte_count / 65535u * 5u + 11u);
+    return append_zlib_stored(*out, raw, 0x9Cu) == PILLOW_C_OK;
+}
+
+void append_tiff_palette_color_map(std::vector<std::uint8_t>& out, const std::vector<std::uint8_t>& palette_rgb)
+{
+    for (std::size_t channel = 0; channel < 3u; ++channel) {
+        for (std::size_t index = 0; index < 256u; ++index) {
+            const std::size_t offset = index * 3u + channel;
+            const std::uint16_t value = offset < palette_rgb.size()
+                ? static_cast<std::uint16_t>(palette_rgb[offset]) << 8
+                : 0u;
+            append_le16(out, value);
+        }
+    }
+}
+
+int save_tiff_i16b_image(const PillowCImage* image, const char* path)
+{
+    const int status = validate_tiff_save_image(image);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    if (image->mode != PILLOW_C_MODE_I16B || image->channels != 2) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    constexpr std::uint16_t entry_count = 9u;
+    constexpr std::uint32_t ifd_offset = 8u;
+    constexpr std::uint32_t strip_offset = ifd_offset + 2u + static_cast<std::uint32_t>(entry_count) * 12u + 4u;
+    if (image->pixels.size() > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        std::vector<std::uint8_t> out;
+        out.reserve(static_cast<std::size_t>(strip_offset) + image->pixels.size());
+        out.push_back('M');
+        out.push_back('M');
+        append_be16(out, 42u);
+        append_be32(out, ifd_offset);
+        append_be16(out, entry_count);
+        append_tiff_entry_be(out, 256u, 4u, 1u, static_cast<std::uint32_t>(image->width));
+        append_tiff_entry_be(out, 257u, 4u, 1u, static_cast<std::uint32_t>(image->height));
+        append_tiff_entry_be(out, 258u, 3u, 1u, 16u);
+        append_tiff_entry_be(out, 259u, 3u, 1u, TIFF_COMPRESSION_NONE);
+        append_tiff_entry_be(out, 262u, 3u, 1u, 1u);
+        append_tiff_entry_be(out, 273u, 4u, 1u, strip_offset);
+        append_tiff_entry_be(out, 278u, 4u, 1u, static_cast<std::uint32_t>(image->height));
+        append_tiff_entry_be(out, 279u, 4u, 1u, static_cast<std::uint32_t>(image->pixels.size()));
+        append_tiff_entry_be(out, 284u, 3u, 1u, 1u);
+        append_be32(out, 0u);
+        out.insert(out.end(), image->pixels.begin(), image->pixels.end());
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int save_tiff_frames_image_with_options(
+    const PillowCImage* const* images,
+    std::size_t image_count,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    std::uint16_t compression)
+{
+    if (!images || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image_count == 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    bool has_i16b = false;
+    for (std::size_t index = 0; index < image_count; ++index) {
+        const int refresh_status = refresh_const_buffer_view_image(images[index]);
+        if (refresh_status != PILLOW_C_OK) {
+            return refresh_status;
+        }
+        const int status = validate_tiff_save_image(images[index]);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        if (images[index]->mode == PILLOW_C_MODE_I16B) {
+            has_i16b = true;
+        }
+    }
+    if (has_i16b) {
+        if (image_count != 1u || has_dpi) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (compression == TIFF_COMPRESSION_NONE) {
+            return save_tiff_i16b_image(images[0], path);
+        }
+        try {
+            PillowCImage normalized = *images[0];
+            normalized.mode = PILLOW_C_MODE_I16;
+            normalized.pixels = tiff_i16b_to_i16_pixels(images[0]);
+            const PillowCImage* normalized_images[] = { &normalized };
+            return save_tiff_frames_image_with_options(
+                normalized_images,
+                1u,
+                path,
+                false,
+                0.0,
+                0.0,
+                compression);
+        } catch (const std::bad_alloc&) {
+            return PILLOW_C_ALLOCATION_FAILED;
+        }
+    }
+    std::uint32_t x_resolution_numerator = 0;
+    std::uint32_t y_resolution_numerator = 0;
+    int status = tiff_dpi_to_rational(has_dpi, dpi_x, dpi_y, &x_resolution_numerator, &y_resolution_numerator);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+
+    try {
+        std::vector<TiffFrameLayout> layouts(image_count);
+        std::vector<std::vector<std::uint8_t>> prepared_pixels(image_count);
+        for (std::size_t index = 0; index < image_count; ++index) {
+            const PillowCImage* image = images[index];
+            if (image->mode == PILLOW_C_MODE_1) {
+                prepared_pixels[index] = tiff_pack_mode_one_pixels(image);
+            }
+            if (compression == TIFF_COMPRESSION_PACKBITS) {
+                const std::uint8_t* source_pixels = image->mode == PILLOW_C_MODE_1
+                    ? prepared_pixels[index].data()
+                    : image->pixels.data();
+                const std::size_t source_row_stride = tiff_uncompressed_row_stride(image);
+                prepared_pixels[index] = tiff_packbits_encode_pixels(source_pixels, source_row_stride, image->height);
+            }
+            if (compression == TIFF_COMPRESSION_LZW) {
+                const std::uint8_t* source_pixels = image->mode == PILLOW_C_MODE_1
+                    ? prepared_pixels[index].data()
+                    : image->pixels.data();
+                const std::size_t source_row_stride = tiff_uncompressed_row_stride(image);
+                if (!tiff_lzw_encode_pixels(source_pixels, source_row_stride, image->height, &prepared_pixels[index])) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+            }
+            if (compression == TIFF_COMPRESSION_ADOBE_DEFLATE) {
+                const std::uint8_t* source_pixels = image->mode == PILLOW_C_MODE_1
+                    ? prepared_pixels[index].data()
+                    : image->pixels.data();
+                const std::size_t source_row_stride = tiff_uncompressed_row_stride(image);
+                if (!tiff_deflate_encode_pixels(source_pixels, source_row_stride, image->height, &prepared_pixels[index])) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+            }
+        }
+        std::size_t cursor = 8u;
+        for (std::size_t index = 0; index < image_count; ++index) {
+            const PillowCImage* image = images[index];
+            TiffFrameLayout& layout = layouts[index];
+            if (!tiff_u32_offset(cursor, &layout.ifd_offset)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+
+            const bool is_mode_one = image->mode == PILLOW_C_MODE_1;
+            const bool is_palette = image->mode == PILLOW_C_MODE_P;
+            const bool is_numeric = image->mode == PILLOW_C_MODE_I || image->mode == PILLOW_C_MODE_F;
+            const bool is_i16 = image->mode == PILLOW_C_MODE_I16;
+            const bool has_bits_per_sample = !is_mode_one;
+            const bool has_samples_per_pixel = !is_mode_one && !is_palette && !is_numeric && !is_i16;
+            const bool has_planar_config = image->channels > 1 || is_mode_one || is_palette || is_numeric || is_i16;
+            const bool has_extra_samples = image->mode == PILLOW_C_MODE_LA || image->mode == PILLOW_C_MODE_RGBA;
+            const bool has_sample_format = is_numeric;
+            layout.entry_count = static_cast<std::uint16_t>(
+                7u + (has_bits_per_sample ? 1u : 0u) + (has_samples_per_pixel ? 1u : 0u) +
+                (has_dpi ? 3u : 0u) + (has_planar_config ? 1u : 0u) + (has_extra_samples ? 1u : 0u) +
+                (is_palette ? 1u : 0u) + (has_sample_format ? 1u : 0u));
+
+            const std::size_t ifd_bytes = 2u + static_cast<std::size_t>(layout.entry_count) * 12u + 4u;
+            const std::uint32_t bits_per_sample_count =
+                (is_numeric || is_i16) ? 1u : static_cast<std::uint32_t>(image->channels);
+            const bool inline_bits_per_sample = bits_per_sample_count <= 2u;
+            const std::size_t bits_bytes = bits_per_sample_count > 1u && !inline_bits_per_sample
+                ? static_cast<std::size_t>(bits_per_sample_count) * 2u
+                : 0u;
+            const std::size_t bits_offset = cursor + ifd_bytes;
+            const std::size_t x_resolution_offset = bits_offset + bits_bytes;
+            const std::size_t y_resolution_offset = x_resolution_offset + 8u;
+            const std::size_t resolution_bytes = has_dpi ? 16u : 0u;
+            const std::size_t color_map_offset = align_tiff_offset(bits_offset + bits_bytes + resolution_bytes);
+            const std::size_t color_map_bytes = is_palette ? 256u * 3u * 2u : 0u;
+            const std::size_t pixel_offset = align_tiff_offset(color_map_offset + color_map_bytes);
+            const std::size_t pixel_byte_count = prepared_pixels[index].empty()
+                ? image->pixels.size()
+                : prepared_pixels[index].size();
+            const std::size_t next_cursor = align_tiff_offset(pixel_offset + pixel_byte_count);
+            if ((bits_bytes > 0u && !tiff_u32_offset(bits_offset, &layout.bits_offset)) ||
+                (has_dpi && (!tiff_u32_offset(x_resolution_offset, &layout.x_resolution_offset) ||
+                             !tiff_u32_offset(y_resolution_offset, &layout.y_resolution_offset))) ||
+                (is_palette && !tiff_u32_offset(color_map_offset, &layout.color_map_offset)) ||
+                !tiff_u32_offset(pixel_offset, &layout.pixel_offset) ||
+                !tiff_u32_offset(pixel_byte_count, &layout.pixel_byte_count)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            cursor = next_cursor;
+        }
+        for (std::size_t index = 0; index + 1u < image_count; ++index) {
+            layouts[index].next_ifd_offset = layouts[index + 1u].ifd_offset;
+        }
+        if (cursor > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::vector<std::uint8_t> out;
+        out.reserve(cursor);
+        out.push_back('I');
+        out.push_back('I');
+        append_le16(out, 42u);
+        append_le32(out, layouts[0].ifd_offset);
+
+        for (std::size_t index = 0; index < image_count; ++index) {
+            const PillowCImage* image = images[index];
+            const TiffFrameLayout& layout = layouts[index];
+            const bool is_mode_one = image->mode == PILLOW_C_MODE_1;
+            const bool is_palette = image->mode == PILLOW_C_MODE_P;
+            const bool is_numeric = image->mode == PILLOW_C_MODE_I || image->mode == PILLOW_C_MODE_F;
+            const bool is_i16 = image->mode == PILLOW_C_MODE_I16;
+            const bool has_planar_config = image->channels > 1 || is_mode_one || is_palette || is_numeric || is_i16;
+            if (out.size() < layout.ifd_offset) {
+                out.resize(layout.ifd_offset, 0);
+            }
+
+            append_le16(out, layout.entry_count);
+            append_tiff_entry(out, 256u, 4u, 1u, static_cast<std::uint32_t>(image->width));
+            append_tiff_entry(out, 257u, 4u, 1u, static_cast<std::uint32_t>(image->height));
+            if (image->mode != PILLOW_C_MODE_1) {
+                const std::uint32_t bits_per_sample_count =
+                    (is_numeric || is_i16) ? 1u : static_cast<std::uint32_t>(image->channels);
+                const std::uint32_t bits_per_sample_value =
+                    is_numeric ? 32u :
+                        (is_i16 ? 16u :
+                        (image->channels == 1 ? 8u :
+                            (image->channels == 2 ? (8u | (8u << 16)) : layout.bits_offset)));
+                append_tiff_entry(
+                    out,
+                    258u,
+                    3u,
+                    bits_per_sample_count,
+                    bits_per_sample_value);
+            }
+            append_tiff_entry(out, 259u, 3u, 1u, compression);
+            append_tiff_entry(
+                out,
+                262u,
+                3u,
+                1u,
+                is_palette ? 3u :
+                    (image->mode == PILLOW_C_MODE_CMYK ? 5u :
+                        ((image->channels == 1 || image->mode == PILLOW_C_MODE_LA || is_numeric || is_i16) ? 1u : 2u)));
+            append_tiff_entry(out, 273u, 4u, 1u, layout.pixel_offset);
+            if (!is_mode_one && !is_palette && !is_numeric && !is_i16) {
+                append_tiff_entry(out, 277u, 3u, 1u, static_cast<std::uint32_t>(image->channels));
+            }
+            append_tiff_entry(out, 278u, 4u, 1u, static_cast<std::uint32_t>(image->height));
+            append_tiff_entry(out, 279u, 4u, 1u, layout.pixel_byte_count);
+            if (has_dpi) {
+                append_tiff_entry(out, 282u, 5u, 1u, layout.x_resolution_offset);
+                append_tiff_entry(out, 283u, 5u, 1u, layout.y_resolution_offset);
+            }
+            if (has_planar_config) {
+                append_tiff_entry(out, 284u, 3u, 1u, 1u);
+            }
+            if (has_dpi) {
+                append_tiff_entry(out, 296u, 3u, 1u, 2u);
+            }
+            if (image->mode == PILLOW_C_MODE_LA || image->mode == PILLOW_C_MODE_RGBA) {
+                append_tiff_entry(out, 338u, 3u, 1u, 2u);
+            }
+            if (image->mode == PILLOW_C_MODE_P) {
+                append_tiff_entry(out, 320u, 3u, 768u, layout.color_map_offset);
+            }
+            if (is_numeric) {
+                append_tiff_entry(out, 339u, 3u, 1u, image->mode == PILLOW_C_MODE_I ? 2u : 3u);
+            }
+            append_le32(out, layout.next_ifd_offset);
+
+            if (!is_numeric && image->channels > 2) {
+                for (int channel = 0; channel < image->channels; ++channel) {
+                    append_le16(out, 8u);
+                }
+            }
+            if (has_dpi) {
+                append_le32(out, x_resolution_numerator);
+                append_le32(out, 1u);
+                append_le32(out, y_resolution_numerator);
+                append_le32(out, 1u);
+            }
+            if (image->mode == PILLOW_C_MODE_P) {
+                if (out.size() < layout.color_map_offset) {
+                    out.resize(layout.color_map_offset, 0);
+                }
+                append_tiff_palette_color_map(out, image->palette_rgb);
+            }
+            if (out.size() < layout.pixel_offset) {
+                out.resize(layout.pixel_offset, 0);
+            }
+            if (!prepared_pixels[index].empty()) {
+                out.insert(out.end(), prepared_pixels[index].begin(), prepared_pixels[index].end());
+            } else {
+                out.insert(out.end(), image->pixels.begin(), image->pixels.end());
+            }
+        }
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int save_tiff_frames_image(const PillowCImage* const* images, std::size_t image_count, const char* path)
+{
+    return save_tiff_frames_image_with_options(images, image_count, path, false, 0.0, 0.0, TIFF_COMPRESSION_NONE);
+}
+
+int save_tiff_image(const PillowCImage* image, const char* path)
+{
+    const PillowCImage* images[] = { image };
+    return save_tiff_frames_image(images, 1u, path);
+}
+
+int save_tiff_image_with_options(const PillowCImage* image, const char* path, bool has_dpi, double dpi_x, double dpi_y)
+{
+    const PillowCImage* images[] = { image };
+    return save_tiff_frames_image_with_options(images, 1u, path, has_dpi, dpi_x, dpi_y, TIFF_COMPRESSION_NONE);
+}
+
+int save_tiff_image_with_compression_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int compression)
+{
+    std::uint16_t normalized_compression = TIFF_COMPRESSION_NONE;
+    const int status = normalize_tiff_save_compression(compression, &normalized_compression);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    const PillowCImage* images[] = { image };
+    return save_tiff_frames_image_with_options(
+        images,
+        1u,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        normalized_compression);
 }
 
 int open_gif_frame_image(const char* path, int frame_index, PillowCImage** out_image)
@@ -5949,6 +19677,20 @@ int open_gif_frame_image(const char* path, int frame_index, PillowCImage** out_i
         image->palette_rgb = std::move(palette_rgb);
         image->palette_alpha.clear();
         image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+        GifMetadata frame_metadata;
+        if (!read_gif_metadata(path, 0, &frame_metadata)) {
+            delete image;
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (frame_metadata.transparency >= 0) {
+            const std::size_t palette_entries = image->palette_rgb.size() / 3u;
+            const std::size_t alpha_entries = std::max(
+                palette_entries,
+                static_cast<std::size_t>(frame_metadata.transparency) + 1u);
+            image->palette_alpha.assign(alpha_entries, std::uint8_t{255});
+            image->palette_alpha[static_cast<std::size_t>(frame_metadata.transparency)] = 0;
+            image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_RGBA;
+        }
         *out_image = image;
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
@@ -5963,15 +19705,39 @@ int open_gif_image(const char* path, PillowCImage** out_image)
 
 int quantize_exact_image_into(const PillowCImage* source, int colors, PillowCImage* target);
 int quantize_exact_rgba_gif_into(const PillowCImage* source, PillowCImage* target, bool* out_has_transparency, int* out_transparency);
-int save_gif_indexed_native(const PillowCImage* image, const char* path, bool has_transparency, int transparency);
+int quantize_median_cut_rgba_gif_into(const PillowCImage* source, PillowCImage* target, bool* out_has_transparency, int* out_transparency);
+int quantize_exact_rgba_gif_animation_frame_into(
+    const PillowCImage* source,
+    PillowCImage* target,
+    bool reserve_transparency,
+    bool* out_has_transparency);
+int quantize_exact_la_gif_animation_frame_into(const PillowCImage* source, PillowCImage* target);
+int save_gif_indexed_native(
+    const PillowCImage* image,
+    const char* path,
+    bool has_transparency,
+    int transparency,
+    const std::uint8_t* comment,
+    std::size_t comment_size);
 
-int save_gif_image(const PillowCImage* image, const char* path)
+int save_gif_image_with_comment(
+    const PillowCImage* image,
+    const char* path,
+    const std::uint8_t* comment,
+    std::size_t comment_size)
 {
     if (!image || !path) {
         return PILLOW_C_NULL_POINTER;
     }
+    if (comment_size > 0u && !comment) {
+        return PILLOW_C_NULL_POINTER;
+    }
     if (image->width <= 0 || image->height <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
     if ((image->mode == PILLOW_C_MODE_L && image->channels == 1) ||
         (image->mode == PILLOW_C_MODE_RGB && image->channels == 3)) {
@@ -5992,7 +19758,7 @@ int save_gif_image(const PillowCImage* image, const char* path)
             if (status != PILLOW_C_OK) {
                 return status;
             }
-            return save_gif_image(&quantized, path);
+            return save_gif_image_with_comment(&quantized, path, comment, comment_size);
         } catch (const std::bad_alloc&) {
             return PILLOW_C_ALLOCATION_FAILED;
         }
@@ -6017,7 +19783,7 @@ int save_gif_image(const PillowCImage* image, const char* path)
             if (status != PILLOW_C_OK) {
                 return status;
             }
-            return save_gif_indexed_native(&quantized, path, has_transparency, transparency);
+            return save_gif_indexed_native(&quantized, path, has_transparency, transparency, comment, comment_size);
         } catch (const std::bad_alloc&) {
             return PILLOW_C_ALLOCATION_FAILED;
         }
@@ -6031,6 +19797,9 @@ int save_gif_image(const PillowCImage* image, const char* path)
     if (image->stride > static_cast<std::size_t>(std::numeric_limits<UINT>::max()) ||
         image->pixels.size() > static_cast<std::size_t>(std::numeric_limits<UINT>::max())) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (comment_size > 0u) {
+        return save_gif_indexed_native(image, path, false, 0, comment, comment_size);
     }
 
     try {
@@ -6123,6 +19892,46 @@ int save_gif_image(const PillowCImage* image, const char* path)
     }
 }
 
+int save_gif_image_with_comment_options(
+    const PillowCImage* image,
+    const char* path,
+    bool has_transparency,
+    int transparency,
+    const std::uint8_t* comment,
+    std::size_t comment_size)
+{
+    if (!has_transparency) {
+        return save_gif_image_with_comment(image, path, comment, comment_size);
+    }
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (comment_size > 0u && !comment) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (transparency < 0 || transparency > 255 || image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+    if (image->mode != PILLOW_C_MODE_P || image->channels != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->palette_rgb.empty() || image->palette_rgb.size() % 3u != 0u || image->palette_rgb.size() > 256u * 3u ||
+        image->stride > static_cast<std::size_t>(std::numeric_limits<UINT>::max()) ||
+        image->pixels.size() > static_cast<std::size_t>(std::numeric_limits<UINT>::max())) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return save_gif_indexed_native(image, path, true, transparency, comment, comment_size);
+}
+
+int save_gif_image(const PillowCImage* image, const char* path)
+{
+    return save_gif_image_with_comment(image, path, nullptr, 0u);
+}
+
 struct GifBitWriter {
     std::vector<std::uint8_t> bytes;
     std::uint32_t bits = 0;
@@ -6181,6 +19990,29 @@ void append_gif_sub_blocks(std::vector<std::uint8_t>& out, const std::vector<std
         out.push_back(static_cast<std::uint8_t>(chunk));
         out.insert(out.end(), data.begin() + static_cast<std::ptrdiff_t>(offset),
                    data.begin() + static_cast<std::ptrdiff_t>(offset + chunk));
+        offset += chunk;
+    }
+    out.push_back(0);
+}
+
+void append_gif_comment_extension(
+    std::vector<std::uint8_t>& out,
+    const std::uint8_t* comment,
+    std::size_t comment_size)
+{
+    if (!comment || comment_size == 0u) {
+        return;
+    }
+    out.push_back(0x21);
+    out.push_back(0xfe);
+    std::size_t offset = 0;
+    while (offset < comment_size) {
+        const std::size_t chunk = std::min<std::size_t>(255u, comment_size - offset);
+        out.push_back(static_cast<std::uint8_t>(chunk));
+        out.insert(
+            out.end(),
+            comment + offset,
+            comment + offset + chunk);
         offset += chunk;
     }
     out.push_back(0);
@@ -6355,6 +20187,38 @@ bool gif_palette_pixels_equal(
            left_rgb[2] == right_rgb[2];
 }
 
+void zero_unused_gif_palette_entries(
+    const PillowCImage* image,
+    int left,
+    int top,
+    int width,
+    int height,
+    std::vector<std::uint8_t>* palette_rgb)
+{
+    if (!image || !palette_rgb || palette_rgb->empty() || palette_rgb->size() % 3u != 0u ||
+        width <= 0 || height <= 0) {
+        return;
+    }
+    std::vector<bool> used_indices(palette_rgb->size() / 3u, false);
+    for (int y = 0; y < height; ++y) {
+        const std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(top + y) * image->stride;
+        for (int x = 0; x < width; ++x) {
+            const std::size_t index = row[left + x];
+            if (index < used_indices.size()) {
+                used_indices[index] = true;
+            }
+        }
+    }
+    for (std::size_t index = 0; index < used_indices.size(); ++index) {
+        if (!used_indices[index]) {
+            const std::size_t palette_offset = index * 3u;
+            (*palette_rgb)[palette_offset] = 0;
+            (*palette_rgb)[palette_offset + 1u] = 0;
+            (*palette_rgb)[palette_offset + 2u] = 0;
+        }
+    }
+}
+
 bool gif_difference_bbox(const PillowCImage* previous, const PillowCImage* current, GifAnimationRect* out_rect)
 {
     if (!previous || !current || !out_rect ||
@@ -6437,6 +20301,44 @@ bool gif_difference_bbox_against_background_rgb(
     return true;
 }
 
+bool gif_difference_bbox_against_background_index(
+    const PillowCImage* current,
+    std::uint8_t background_index,
+    GifAnimationRect* out_rect)
+{
+    if (!current || !out_rect || current->channels != 1) {
+        return false;
+    }
+    int left = current->width;
+    int top = current->height;
+    int right = -1;
+    int bottom = -1;
+    for (int y = 0; y < current->height; ++y) {
+        const std::uint8_t* curr_row = current->pixels.data() + static_cast<std::size_t>(y) * current->stride;
+        for (int x = 0; x < current->width; ++x) {
+            if (curr_row[x] == background_index) {
+                continue;
+            }
+            left = std::min(left, x);
+            top = std::min(top, y);
+            right = std::max(right, x + 1);
+            bottom = std::max(bottom, y + 1);
+        }
+    }
+    if (right < 0 || bottom < 0) {
+        out_rect->left = 0;
+        out_rect->top = 0;
+        out_rect->width = 0;
+        out_rect->height = 0;
+        return true;
+    }
+    out_rect->left = left;
+    out_rect->top = top;
+    out_rect->width = right - left;
+    out_rect->height = bottom - top;
+    return true;
+}
+
 int gif_find_unused_palette_index(const PillowCImage* image, int palette_entries)
 {
     if (!image || palette_entries < 0 || palette_entries > 256) {
@@ -6460,6 +20362,38 @@ int gif_find_unused_palette_index(const PillowCImage* image, int palette_entries
     return -1;
 }
 
+bool gif_image_contains_palette_index(const PillowCImage* image, int index)
+{
+    if (!image || image->channels != 1 || index < 0 || index > 255) {
+        return false;
+    }
+    const auto needle = static_cast<std::uint8_t>(index);
+    for (int y = 0; y < image->height; ++y) {
+        const std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+        if (std::find(row, row + image->width, needle) != row + image->width) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool gif_image_uses_only_palette_index(const PillowCImage* image, int index)
+{
+    if (!image || image->channels != 1 || index < 0 || index > 255) {
+        return false;
+    }
+    const auto needle = static_cast<std::uint8_t>(index);
+    for (int y = 0; y < image->height; ++y) {
+        const std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+        for (int x = 0; x < image->width; ++x) {
+            if (row[x] != needle) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 int gif_sequence_value(const int* values, std::size_t count, std::size_t index, int fallback, bool* ok)
 {
     if (!ok || count == 0 || !values) {
@@ -6479,9 +20413,14 @@ int save_gif_indexed_native(
     const PillowCImage* image,
     const char* path,
     bool has_transparency,
-    int transparency)
+    int transparency,
+    const std::uint8_t* comment,
+    std::size_t comment_size)
 {
     if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (comment_size > 0u && !comment) {
         return PILLOW_C_NULL_POINTER;
     }
     if (image->width <= 0 || image->height <= 0 ||
@@ -6489,6 +20428,10 @@ int save_gif_indexed_native(
         image->width > std::numeric_limits<std::uint16_t>::max() ||
         image->height > std::numeric_limits<std::uint16_t>::max()) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
 
     int color_table_entries = 0;
@@ -6510,7 +20453,7 @@ int save_gif_indexed_native(
         gif.push_back('I');
         gif.push_back('F');
         gif.push_back('8');
-        gif.push_back(static_cast<std::uint8_t>(has_transparency ? '9' : '7'));
+        gif.push_back(static_cast<std::uint8_t>((has_transparency || comment_size > 0u) ? '9' : '7'));
         gif.push_back('a');
         append_le16(gif, static_cast<std::uint16_t>(image->width));
         append_le16(gif, static_cast<std::uint16_t>(image->height));
@@ -6524,6 +20467,8 @@ int save_gif_indexed_native(
         gif.push_back(0);
         gif.insert(gif.end(), image->palette_rgb.begin(), image->palette_rgb.end());
         gif.resize(gif.size() + static_cast<std::size_t>(color_table_entries) * 3u - image->palette_rgb.size(), 0);
+
+        append_gif_comment_extension(gif, comment, comment_size);
 
         if (has_transparency) {
             gif.insert(gif.end(), {0x21, 0xf9, 0x04, 0x01});
@@ -6565,9 +20510,14 @@ int save_gif_animation_image(
     int has_transparency,
     int transparency,
     int has_background,
-    int background)
+    int background,
+    const std::uint8_t* comment,
+    std::size_t comment_size)
 {
     if (!images || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (comment_size > 0u && !comment) {
         return PILLOW_C_NULL_POINTER;
     }
     if (image_count == 0 || image_count > static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
@@ -6584,9 +20534,102 @@ int save_gif_animation_image(
     }
     const bool force_first_local_color_table = include_color_table == 1;
     const bool optimize_enabled = optimize != 0;
-    const bool caller_has_transparency = has_transparency != 0;
-    const int caller_transparency = transparency & 0xff;
+    const bool user_has_transparency = has_transparency != 0;
+    bool caller_has_transparency = user_has_transparency;
+    int caller_transparency = transparency & 0xff;
     const int logical_screen_background = has_background ? (background & 0xff) : 0;
+    const PillowCImage* first_input = images[0];
+    if (!first_input || first_input->width <= 0 || first_input->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<PillowCImage> quantized_images;
+    std::vector<const PillowCImage*> quantized_image_ptrs;
+    std::vector<bool> quantized_frame_has_transparency;
+    bool rgba_animation_transparency = false;
+    if (first_input->mode != PILLOW_C_MODE_P || first_input->channels != 1) {
+        if (!((first_input->mode == PILLOW_C_MODE_L && first_input->channels == 1) ||
+              (first_input->mode == PILLOW_C_MODE_LA && first_input->channels == 2) ||
+              (first_input->mode == PILLOW_C_MODE_RGB && first_input->channels == 3) ||
+              (first_input->mode == PILLOW_C_MODE_RGBA && first_input->channels == 4))) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        try {
+            quantized_images.reserve(image_count);
+            quantized_image_ptrs.reserve(image_count);
+            quantized_frame_has_transparency.reserve(image_count);
+            for (std::size_t i = 0; i < image_count; ++i) {
+                const PillowCImage* image = images[i];
+                const bool frame_is_l =
+                    image && image->mode == PILLOW_C_MODE_L && image->channels == 1;
+                const bool frame_is_la =
+                    image && image->mode == PILLOW_C_MODE_LA && image->channels == 2;
+                const bool frame_is_rgb =
+                    image && image->mode == PILLOW_C_MODE_RGB && image->channels == 3;
+                const bool frame_is_rgba =
+                    image && image->mode == PILLOW_C_MODE_RGBA && image->channels == 4;
+                if (!image || (!frame_is_l && !frame_is_la && !frame_is_rgb && !frame_is_rgba) ||
+                    image->width != first_input->width || image->height != first_input->height ||
+                    image->stride > static_cast<std::size_t>(std::numeric_limits<UINT>::max())) {
+                    return i == 0 ? PILLOW_C_INVALID_ARGUMENT : PILLOW_C_MISMATCH;
+                }
+                const int refresh_status = refresh_const_buffer_view_image(image);
+                if (refresh_status != PILLOW_C_OK) {
+                    return refresh_status;
+                }
+                std::size_t stride = 0;
+                std::size_t size = 0;
+                if (!checked_image_size_allow_empty(image->width, image->height, 1, &stride, &size)) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                quantized_images.push_back(PillowCImage{
+                    image->width,
+                    image->height,
+                    PILLOW_C_MODE_P,
+                    1,
+                    stride,
+                    std::vector<std::uint8_t>(size)});
+                int quantize_status = PILLOW_C_OK;
+                if (frame_is_rgba) {
+                    bool frame_has_transparency = false;
+                    quantize_status = quantize_exact_rgba_gif_animation_frame_into(
+                        image,
+                        &quantized_images.back(),
+                        true,
+                        &frame_has_transparency);
+                    if (quantize_status == PILLOW_C_INVALID_ARGUMENT) {
+                        int frame_transparency = 0;
+                        quantize_status = quantize_median_cut_rgba_gif_into(
+                            image,
+                            &quantized_images.back(),
+                            &frame_has_transparency,
+                            &frame_transparency);
+                    }
+                    quantized_frame_has_transparency.push_back(frame_has_transparency);
+                    rgba_animation_transparency = rgba_animation_transparency || frame_has_transparency;
+                } else if (frame_is_la) {
+                    quantize_status = quantize_exact_la_gif_animation_frame_into(image, &quantized_images.back());
+                    quantized_frame_has_transparency.push_back(false);
+                } else {
+                    quantize_status = quantize_exact_image_into(image, 256, &quantized_images.back());
+                    quantized_frame_has_transparency.push_back(false);
+                }
+                if (quantize_status != PILLOW_C_OK) {
+                    return quantize_status;
+                }
+            }
+            if (rgba_animation_transparency && !user_has_transparency) {
+                caller_has_transparency = true;
+                caller_transparency = 0;
+            }
+            for (const PillowCImage& image : quantized_images) {
+                quantized_image_ptrs.push_back(&image);
+            }
+            images = quantized_image_ptrs.data();
+        } catch (const std::bad_alloc&) {
+            return PILLOW_C_ALLOCATION_FAILED;
+        }
+    }
+
     const PillowCImage* first = images[0];
     if (!first || first->width <= 0 || first->height <= 0 ||
         first->mode != PILLOW_C_MODE_P || first->channels != 1) {
@@ -6598,6 +20641,7 @@ int save_gif_animation_image(
     if (status != PILLOW_C_OK) {
         return status;
     }
+    const int first_source_palette_entries = static_cast<int>(first->palette_rgb.size() / 3u);
     if (color_table_entries < 4) {
         color_table_entries = 4;
     }
@@ -6609,9 +20653,7 @@ int save_gif_animation_image(
             return PILLOW_C_INVALID_ARGUMENT;
         }
     }
-    if (!optimize_enabled) {
-        min_code_size = 8;
-    }
+    min_code_size = 8;
     if (first->width > std::numeric_limits<std::uint16_t>::max() ||
         first->height > std::numeric_limits<std::uint16_t>::max()) {
         return PILLOW_C_INVALID_ARGUMENT;
@@ -6624,6 +20666,10 @@ int save_gif_animation_image(
             image->stride > static_cast<std::size_t>(std::numeric_limits<UINT>::max())) {
             return i == 0 ? PILLOW_C_INVALID_ARGUMENT : PILLOW_C_MISMATCH;
         }
+        const int refresh_status = refresh_const_buffer_view_image(image);
+        if (refresh_status != PILLOW_C_OK) {
+            return refresh_status;
+        }
         int image_color_table_entries = 0;
         int image_min_code_size = 0;
         status = gif_color_table_entries(image, &image_color_table_entries, &image_min_code_size);
@@ -6633,6 +20679,17 @@ int save_gif_animation_image(
     }
 
     try {
+        std::vector<std::uint8_t> global_palette_rgb = first->palette_rgb;
+        if (optimize_enabled && first_source_palette_entries > 2) {
+            zero_unused_gif_palette_entries(
+                first,
+                0,
+                0,
+                first->width,
+                first->height,
+                &global_palette_rgb);
+        }
+
         struct GifAnimationOutputFrame {
             int left = 0;
             int top = 0;
@@ -6645,6 +20702,7 @@ int save_gif_animation_image(
             int min_code_size = 0;
             bool include_local_color_table = false;
             std::vector<std::uint8_t> palette_rgb;
+            std::vector<std::uint8_t> palette_index_map;
             std::vector<std::uint8_t> pixels;
         };
 
@@ -6661,11 +20719,28 @@ int save_gif_animation_image(
             }
 
             const PillowCImage* image = images[i];
+            const bool current_frame_has_source_transparency =
+                rgba_animation_transparency &&
+                i < quantized_frame_has_transparency.size() &&
+                quantized_frame_has_transparency[i];
             GifAnimationOutputFrame frame;
             frame.duration_ms = duration;
             frame.disposal = disposal;
 
             if (frames.empty()) {
+                const bool first_rgb_frame_preserves_user_transparency =
+                    user_has_transparency && first_input->mode == PILLOW_C_MODE_RGB;
+                const bool first_frame_uses_user_transparency =
+                    user_has_transparency &&
+                    first_input->mode == PILLOW_C_MODE_P &&
+                    gif_image_contains_palette_index(image, caller_transparency);
+                const bool first_frame_collapses_to_transparency =
+                    user_has_transparency &&
+                    first_input->mode == PILLOW_C_MODE_P &&
+                    optimize_enabled &&
+                    first_source_palette_entries <= 2 &&
+                    caller_transparency < first_source_palette_entries &&
+                    !gif_image_uses_only_palette_index(image, caller_transparency);
                 frame.left = 0;
                 frame.top = 0;
                 frame.width = image->width;
@@ -6673,11 +20748,18 @@ int save_gif_animation_image(
                 frame.color_table_entries = color_table_entries;
                 frame.min_code_size = min_code_size;
                 frame.include_local_color_table = force_first_local_color_table;
-                if (caller_has_transparency && !optimize_enabled) {
+                if (current_frame_has_source_transparency) {
+                    frame.transparency = caller_transparency;
+                } else if (caller_has_transparency &&
+                    (first_frame_uses_user_transparency ||
+                     first_frame_collapses_to_transparency ||
+                     first_rgb_frame_preserves_user_transparency ||
+                     !optimize_enabled ||
+                     caller_transparency >= first_source_palette_entries)) {
                     frame.transparency = caller_transparency;
                 }
                 if (frame.include_local_color_table) {
-                    frame.palette_rgb = image->palette_rgb;
+                    frame.palette_rgb = global_palette_rgb;
                     if (caller_has_transparency && frame.transparency >= 0) {
                         const int current_palette_entries = static_cast<int>(frame.palette_rgb.size() / 3u);
                         if (frame.transparency >= current_palette_entries) {
@@ -6713,20 +20795,57 @@ int save_gif_animation_image(
             }
 
             const bool previous_restores_to_background = frames.back().disposal == 2;
+            const int source_palette_entries = static_cast<int>(image->palette_rgb.size() / 3u);
             const bool use_transparency_background_rediff =
-                previous_restores_to_background && caller_has_transparency && optimize_enabled;
+                previous_restores_to_background && caller_has_transparency;
+            bool restored_background_frame = false;
             if (use_transparency_background_rediff) {
-                std::uint8_t background_rgb[3] = {};
-                if (!gif_palette_index_rgb(
-                        first, static_cast<std::uint8_t>(caller_transparency), background_rgb) ||
-                    !gif_difference_bbox_against_background_rgb(image, background_rgb, &rect)) {
-                    return PILLOW_C_INVALID_ARGUMENT;
+                bool compare_background_index = false;
+                if (first->palette_rgb == image->palette_rgb) {
+                    if (!optimize_enabled ||
+                        (source_palette_entries <= 2 && caller_transparency >= source_palette_entries)) {
+                        compare_background_index = true;
+                    } else {
+                        std::vector<std::uint8_t> current_optimized_palette = image->palette_rgb;
+                        zero_unused_gif_palette_entries(
+                            image,
+                            0,
+                            0,
+                            image->width,
+                            image->height,
+                            &current_optimized_palette);
+                        compare_background_index = current_optimized_palette == global_palette_rgb;
+                    }
+                } else if (optimize_enabled && source_palette_entries > 2) {
+                    std::vector<std::uint8_t> current_optimized_palette = image->palette_rgb;
+                    zero_unused_gif_palette_entries(
+                        image,
+                        0,
+                        0,
+                        image->width,
+                        image->height,
+                        &current_optimized_palette);
+                    compare_background_index = current_optimized_palette == global_palette_rgb;
+                }
+                if (compare_background_index) {
+                    if (!gif_difference_bbox_against_background_index(
+                            image, static_cast<std::uint8_t>(caller_transparency), &rect)) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                } else {
+                    std::uint8_t background_rgb[3] = {};
+                    if (!gif_palette_index_rgb(
+                            first, static_cast<std::uint8_t>(caller_transparency), background_rgb) ||
+                        !gif_difference_bbox_against_background_rgb(image, background_rgb, &rect)) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
                 }
                 if (rect.width == 0 || rect.height == 0) {
                     rect.left = 0;
                     rect.top = 0;
                     rect.width = image->width;
                     rect.height = image->height;
+                    restored_background_frame = true;
                 }
             } else if (previous_restores_to_background) {
                 rect.left = 0;
@@ -6741,8 +20860,35 @@ int save_gif_animation_image(
             frame.height = rect.height;
             frame.include_local_color_table = true;
             frame.palette_rgb = image->palette_rgb;
-            const int source_palette_entries = static_cast<int>(image->palette_rgb.size() / 3u);
-            if (caller_has_transparency && !use_transparency_background_rediff) {
+            if ((restored_background_frame ||
+                 (previous_restores_to_background && optimize_enabled && !caller_has_transparency)) &&
+                optimize_enabled) {
+                zero_unused_gif_palette_entries(
+                    image,
+                    frame.left,
+                    frame.top,
+                    frame.width,
+                    frame.height,
+                    &frame.palette_rgb);
+            }
+            bool generated_optimized_transparency = false;
+            const bool optimized_transparent_restored_frame =
+                optimize_enabled && restored_background_frame && caller_has_transparency && has_background != 0;
+            const bool use_caller_transparency_for_frame =
+                current_frame_has_source_transparency ||
+                (caller_has_transparency && !rgba_animation_transparency &&
+                (!use_transparency_background_rediff || !optimize_enabled ||
+                 caller_transparency >= source_palette_entries));
+            if (optimized_transparent_restored_frame) {
+                frame.transparency = 0;
+                if (frame.palette_rgb.size() < 3u) {
+                    frame.palette_rgb.resize(3u, 0);
+                } else {
+                    frame.palette_rgb[0] = 0;
+                    frame.palette_rgb[1] = 0;
+                    frame.palette_rgb[2] = 0;
+                }
+            } else if (use_caller_transparency_for_frame) {
                 frame.transparency = caller_transparency;
                 const int current_palette_entries = static_cast<int>(frame.palette_rgb.size() / 3u);
                 if (frame.transparency >= current_palette_entries) {
@@ -6753,37 +20899,170 @@ int save_gif_animation_image(
                 }
             } else if (optimize_enabled && !previous_restores_to_background) {
                 frame.transparency = gif_find_unused_palette_index(image, source_palette_entries);
+                generated_optimized_transparency = true;
                 if (frame.transparency >= source_palette_entries) {
                     frame.palette_rgb.resize((static_cast<std::size_t>(frame.transparency) + 1u) * 3u, 0);
                 }
             }
-            status = gif_color_table_entries_for_palette_size(
-                frame.palette_rgb.size(), &frame.color_table_entries, &frame.min_code_size);
-            if (status != PILLOW_C_OK) {
-                return status;
+            if (!optimize_enabled &&
+                restored_background_frame &&
+                caller_has_transparency &&
+                frame.transparency == caller_transparency) {
+                bool all_transparency_index = true;
+                for (int y = 0; y < frame.height && all_transparency_index; ++y) {
+                    const std::uint8_t* curr_row = image->pixels.data() +
+                        static_cast<std::size_t>(frame.top + y) * image->stride;
+                    for (int x = 0; x < frame.width; ++x) {
+                        if (curr_row[frame.left + x] != static_cast<std::uint8_t>(caller_transparency)) {
+                            all_transparency_index = false;
+                            break;
+                        }
+                    }
+                }
+                if (all_transparency_index) {
+                    frame.include_local_color_table = false;
+                }
+            }
+            if (optimize_enabled && frame.include_local_color_table &&
+                !optimized_transparent_restored_frame &&
+                (caller_has_transparency || generated_optimized_transparency)) {
+                bool used_nontransparent_indices[256] = {};
+                for (int y = 0; y < frame.height; ++y) {
+                    const std::uint8_t* prev_row = previous_image->pixels.data() +
+                        static_cast<std::size_t>(frame.top + y) * previous_image->stride;
+                    const std::uint8_t* curr_row = image->pixels.data() +
+                        static_cast<std::size_t>(frame.top + y) * image->stride;
+                    for (int x = 0; x < frame.width; ++x) {
+                        const int src_x = frame.left + x;
+                        std::uint8_t value = curr_row[src_x];
+                        if (frame.transparency >= 0 &&
+                            gif_palette_pixels_equal(previous_image, prev_row[src_x], image, curr_row[src_x])) {
+                            value = static_cast<std::uint8_t>(frame.transparency);
+                        }
+                        if (frame.transparency < 0 || value != static_cast<std::uint8_t>(frame.transparency)) {
+                            used_nontransparent_indices[value] = true;
+                        }
+                    }
+                }
+
+                std::vector<std::uint8_t> compact_palette;
+                std::vector<std::uint8_t> compact_index_map(256u, 0);
+                auto copy_palette_entry = [&](int source_index, int target_index) -> bool {
+                    if (source_index < 0 || source_index > 255 || target_index < 0 || target_index > 255) {
+                        return false;
+                    }
+                    std::uint8_t rgb[3] = {};
+                    if (!gif_palette_index_rgb(image, static_cast<std::uint8_t>(source_index), rgb)) {
+                        return false;
+                    }
+                    const std::size_t required_size = (static_cast<std::size_t>(target_index) + 1u) * 3u;
+                    if (compact_palette.size() < required_size) {
+                        compact_palette.resize(required_size, 0);
+                    }
+                    const std::size_t offset = static_cast<std::size_t>(target_index) * 3u;
+                    compact_palette[offset] = rgb[0];
+                    compact_palette[offset + 1u] = rgb[1];
+                    compact_palette[offset + 2u] = rgb[2];
+                    compact_index_map[static_cast<std::size_t>(source_index)] =
+                        static_cast<std::uint8_t>(target_index);
+                    return true;
+                };
+                auto reserve_palette_entry = [&](int target_index) -> bool {
+                    if (target_index < 0 || target_index > 255) {
+                        return false;
+                    }
+                    const std::size_t required_size = (static_cast<std::size_t>(target_index) + 1u) * 3u;
+                    if (compact_palette.size() < required_size) {
+                        compact_palette.resize(required_size, 0);
+                    }
+                    compact_index_map[static_cast<std::size_t>(target_index)] =
+                        static_cast<std::uint8_t>(target_index);
+                    return true;
+                };
+
+                if (!copy_palette_entry(0, 0)) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                if (caller_has_transparency && frame.transparency >= 0) {
+                    const bool transparency_has_source_palette_entry = frame.transparency < source_palette_entries;
+                    if (transparency_has_source_palette_entry) {
+                        if (!copy_palette_entry(frame.transparency, frame.transparency)) {
+                            return PILLOW_C_INVALID_ARGUMENT;
+                        }
+                    } else if (!reserve_palette_entry(frame.transparency)) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                }
+                int next_compact_index = 1;
+                for (int source_index = 1; source_index < 256; ++source_index) {
+                    if (!used_nontransparent_indices[source_index] ||
+                        (caller_has_transparency && source_index == frame.transparency)) {
+                        continue;
+                    }
+                    while (caller_has_transparency && next_compact_index == frame.transparency) {
+                        ++next_compact_index;
+                    }
+                    if (next_compact_index > 255 ||
+                        !copy_palette_entry(source_index, next_compact_index)) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                    ++next_compact_index;
+                }
+                if (generated_optimized_transparency && frame.transparency >= 0) {
+                    if (next_compact_index > 255) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                    const std::size_t required_size =
+                        (static_cast<std::size_t>(next_compact_index) + 1u) * 3u;
+                    if (compact_palette.size() < required_size) {
+                        compact_palette.resize(required_size, 0);
+                    }
+                    frame.transparency = next_compact_index;
+                }
+                if (!compact_palette.empty()) {
+                    frame.palette_rgb = std::move(compact_palette);
+                    frame.palette_index_map = std::move(compact_index_map);
+                }
+            }
+            if (frame.include_local_color_table) {
+                status = gif_color_table_entries_for_palette_size(
+                    frame.palette_rgb.size(), &frame.color_table_entries, &frame.min_code_size);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+            } else {
+                frame.color_table_entries = color_table_entries;
+                frame.min_code_size = min_code_size;
             }
             if (frame.color_table_entries < 4) {
                 frame.color_table_entries = 4;
             }
-            if (!optimize_enabled) {
-                frame.min_code_size = 8;
-            }
+            frame.min_code_size = 8;
 
             frame.pixels.resize(static_cast<std::size_t>(frame.width) * static_cast<std::size_t>(frame.height));
-            for (int y = 0; y < frame.height; ++y) {
-                const std::uint8_t* prev_row = previous_image->pixels.data() +
-                    static_cast<std::size_t>(frame.top + y) * previous_image->stride;
-                const std::uint8_t* curr_row = image->pixels.data() +
-                    static_cast<std::size_t>(frame.top + y) * image->stride;
-                std::uint8_t* dst_row = frame.pixels.data() + static_cast<std::size_t>(y) * frame.width;
-                for (int x = 0; x < frame.width; ++x) {
-                    const int src_x = frame.left + x;
-                    std::uint8_t value = curr_row[src_x];
-                    if (frame.transparency >= 0 &&
-                        gif_palette_pixels_equal(previous_image, prev_row[src_x], image, curr_row[src_x])) {
-                        value = static_cast<std::uint8_t>(frame.transparency);
+            if (optimized_transparent_restored_frame) {
+                std::fill(frame.pixels.begin(), frame.pixels.end(), std::uint8_t{0});
+            } else {
+                for (int y = 0; y < frame.height; ++y) {
+                    const std::uint8_t* prev_row = previous_image->pixels.data() +
+                        static_cast<std::size_t>(frame.top + y) * previous_image->stride;
+                    const std::uint8_t* curr_row = image->pixels.data() +
+                        static_cast<std::size_t>(frame.top + y) * image->stride;
+                    std::uint8_t* dst_row = frame.pixels.data() + static_cast<std::size_t>(y) * frame.width;
+                    for (int x = 0; x < frame.width; ++x) {
+                        const int src_x = frame.left + x;
+                        std::uint8_t value = curr_row[src_x];
+                        bool transparent_pixel = false;
+                        if (optimize_enabled && frame.transparency >= 0 &&
+                            gif_palette_pixels_equal(previous_image, prev_row[src_x], image, curr_row[src_x])) {
+                            value = static_cast<std::uint8_t>(frame.transparency);
+                            transparent_pixel = true;
+                        }
+                        if (!frame.palette_index_map.empty() && !transparent_pixel) {
+                            value = frame.palette_index_map[value];
+                        }
+                        dst_row[x] = value;
                     }
-                    dst_row[x] = value;
                 }
             }
 
@@ -6791,8 +21070,12 @@ int save_gif_animation_image(
             previous_image = image;
         }
 
+        if (frames.size() == 1u && disposal_count > 1u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
         std::vector<std::uint8_t> gif;
-        gif.reserve(32u + first->palette_rgb.size() + frames.size() * (first->pixels.size() + 32u));
+        gif.reserve(32u + global_palette_rgb.size() + frames.size() * (first->pixels.size() + 32u));
         gif.insert(gif.end(), {'G', 'I', 'F', '8', '9', 'a'});
         append_le16(gif, static_cast<std::uint16_t>(first->width));
         append_le16(gif, static_cast<std::uint16_t>(first->height));
@@ -6801,8 +21084,8 @@ int save_gif_animation_image(
         gif.push_back(static_cast<std::uint8_t>(0x80 | ((color_resolution & 0x07) << 4) | (table_size_code & 0x07)));
         gif.push_back(static_cast<std::uint8_t>(logical_screen_background));
         gif.push_back(0);
-        gif.insert(gif.end(), first->palette_rgb.begin(), first->palette_rgb.end());
-        gif.resize(gif.size() + static_cast<std::size_t>(color_table_entries) * 3u - first->palette_rgb.size(), 0);
+        gif.insert(gif.end(), global_palette_rgb.begin(), global_palette_rgb.end());
+        gif.resize(gif.size() + static_cast<std::size_t>(color_table_entries) * 3u - global_palette_rgb.size(), 0);
 
         if (loop >= 0) {
             gif.insert(gif.end(), {0x21, 0xff, 0x0b, 'N', 'E', 'T', 'S', 'C', 'A', 'P', 'E', '2', '.', '0',
@@ -6810,6 +21093,8 @@ int save_gif_animation_image(
             append_le16(gif, static_cast<std::uint16_t>(loop));
             gif.push_back(0);
         }
+
+        append_gif_comment_extension(gif, comment, comment_size);
 
         for (const GifAnimationOutputFrame& frame : frames) {
             const int delay_cs = std::min(frame.duration_ms / 10, 65535);
@@ -7169,6 +21454,12 @@ void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::ui
         default:
             return;
         }
+    case PILLOW_C_MODE_RGBX:
+        dst[0] = src[0];
+        dst[1] = src[1];
+        dst[2] = src[2];
+        dst[3] = src[3];
+        return;
     case PILLOW_C_MODE_CMYK:
         dst[0] = src[0];
         dst[1] = src[1];
@@ -7228,6 +21519,18 @@ void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::ui
             dst[1] = src[2];
             dst[2] = src[1];
             dst[3] = src[0];
+        }
+        return;
+    case PILLOW_C_MODE_I16:
+        if (spec.kind == RawCodecKind::I16Little) {
+            dst[0] = src[0];
+            dst[1] = src[1];
+        }
+        return;
+    case PILLOW_C_MODE_I16B:
+        if (spec.kind == RawCodecKind::I16Big) {
+            dst[0] = src[0];
+            dst[1] = src[1];
         }
         return;
     default:
@@ -7397,6 +21700,12 @@ void encode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::ui
         default:
             return;
         }
+    case PILLOW_C_MODE_RGBX:
+        dst[0] = src[0];
+        dst[1] = src[1];
+        dst[2] = src[2];
+        dst[3] = src[3];
+        return;
     case PILLOW_C_MODE_CMYK:
         dst[0] = src[0];
         dst[1] = src[1];
@@ -7433,6 +21742,18 @@ void encode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::ui
             dst[1] = src[2];
             dst[2] = src[1];
             dst[3] = src[0];
+        }
+        return;
+    case PILLOW_C_MODE_I16:
+        if (spec.kind == RawCodecKind::I16Little) {
+            dst[0] = src[0];
+            dst[1] = src[1];
+        }
+        return;
+    case PILLOW_C_MODE_I16B:
+        if (spec.kind == RawCodecKind::I16Big) {
+            dst[0] = src[0];
+            dst[1] = src[1];
         }
         return;
     default:
@@ -7484,6 +21805,136 @@ int set_raw_bytes_image(
         }
     }
     return PILLOW_C_OK;
+}
+
+int refresh_buffer_view_image(PillowCImage* image)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!image->buffer_readonly) {
+        return PILLOW_C_OK;
+    }
+    if (!image->buffer_source || image->buffer_raw_mode.empty()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return set_raw_bytes_image(
+        image,
+        image->buffer_source,
+        image->buffer_source_size,
+        image->buffer_raw_mode.c_str(),
+        image->buffer_stride,
+        image->buffer_orientation);
+}
+
+void clear_buffer_view_image(PillowCImage* image)
+{
+    if (!image) {
+        return;
+    }
+    image->buffer_source = nullptr;
+    image->buffer_source_size = 0;
+    image->buffer_raw_mode.clear();
+    image->buffer_stride = 0;
+    image->buffer_orientation = 1;
+    image->buffer_readonly = false;
+}
+
+int detach_buffer_view_image(PillowCImage* image)
+{
+    const int status = refresh_buffer_view_image(image);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    clear_buffer_view_image(image);
+    return PILLOW_C_OK;
+}
+
+template <typename Func>
+int with_detached_buffer_view(PillowCImage* image, Func func)
+{
+    const int status = detach_buffer_view_image(image);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return func();
+}
+
+int refresh_const_buffer_view_image(const PillowCImage* image)
+{
+    return refresh_buffer_view_image(const_cast<PillowCImage*>(image));
+}
+
+int frombuffer_raw_image(
+    int width,
+    int height,
+    int mode,
+    const std::uint8_t* data,
+    std::size_t size,
+    const char* raw_mode,
+    int stride,
+    int orientation,
+    int alias_source,
+    PillowCImage** out_image)
+{
+    if (!out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (!data || !raw_mode) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    int output_mode = mode;
+    if (std::strcmp(raw_mode, "L") == 0) {
+        output_mode = PILLOW_C_MODE_L;
+    } else if (std::strcmp(raw_mode, "RGBA") == 0) {
+        output_mode = PILLOW_C_MODE_RGBA;
+    } else if (std::strcmp(raw_mode, "RGBX") == 0) {
+        output_mode = PILLOW_C_MODE_RGBX;
+    }
+
+    const int channels = channels_for_mode(output_mode);
+    if (channels == 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t image_stride = 0;
+    std::size_t image_size = 0;
+    if (!checked_image_size(width, height, channels, &image_stride, &image_size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            width,
+            height,
+            output_mode,
+            channels,
+            image_stride,
+            std::vector<std::uint8_t>(image_size)};
+        const int status = set_raw_bytes_image(image, data, size, raw_mode, stride, orientation);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
+        }
+        const bool can_alias_source =
+            std::strcmp(raw_mode, "L") == 0 ||
+            std::strcmp(raw_mode, "RGBA") == 0 ||
+            std::strcmp(raw_mode, "RGBX") == 0;
+        if (alias_source != 0 && can_alias_source) {
+            image->buffer_source = data;
+            image->buffer_source_size = size;
+            image->buffer_raw_mode = raw_mode;
+            image->buffer_stride = stride;
+            image->buffer_orientation = orientation;
+            image->buffer_readonly = true;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
 }
 
 int get_raw_bytes_image(
@@ -7560,6 +22011,16 @@ int floor_div_int(int numerator, int denominator)
     return quotient;
 }
 
+bool numeric_i_or_f_mode(const PillowCImage* image)
+{
+    return image && (image->mode == PILLOW_C_MODE_I || image->mode == PILLOW_C_MODE_F);
+}
+
+bool imagechops_binary_wrong_mode(const PillowCImage* image)
+{
+    return numeric_i_or_f_mode(image);
+}
+
 int validate_chops_binary_target(
     const PillowCImage* left,
     const PillowCImage* right,
@@ -7573,11 +22034,22 @@ int validate_chops_binary_target(
     if (left->mode != right->mode || left->channels != right->channels) {
         return PILLOW_C_MISMATCH;
     }
+    if (imagechops_binary_wrong_mode(left)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
 
     *out_width = overlapping_width(left, right);
     *out_height = overlapping_height(left, right);
     if (!image_shape_matches(target, *out_width, *out_height, left->mode, left->channels)) {
         return PILLOW_C_MISMATCH;
+    }
+    const int left_refresh_status = refresh_const_buffer_view_image(left);
+    if (left_refresh_status != PILLOW_C_OK) {
+        return left_refresh_status;
+    }
+    const int right_refresh_status = refresh_const_buffer_view_image(right);
+    if (right_refresh_status != PILLOW_C_OK) {
+        return right_refresh_status;
     }
     return PILLOW_C_OK;
 }
@@ -8075,6 +22547,10 @@ int copy_transpose_pixels_into(const PillowCImage* source, int method, PillowCIm
     if (!image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {
         return PILLOW_C_MISMATCH;
     }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
 
     for (int dst_y = 0; dst_y < target->height; ++dst_y) {
         for (int dst_x = 0; dst_x < target->width; ++dst_x) {
@@ -8139,6 +22615,10 @@ int offset_image_into(
     }
     if (!image_shape_matches(target, source)) {
         return PILLOW_C_MISMATCH;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
     if (target->pixels.empty()) {
         copy_palette_if_same_mode(source, target);
@@ -13124,6 +27604,18 @@ int composite_image_into(
     if (!image_shape_matches(target, target_source)) {
         return PILLOW_C_MISMATCH;
     }
+    const int source_refresh_status = refresh_const_buffer_view_image(source);
+    if (source_refresh_status != PILLOW_C_OK) {
+        return source_refresh_status;
+    }
+    const int target_source_refresh_status = refresh_const_buffer_view_image(target_source);
+    if (target_source_refresh_status != PILLOW_C_OK) {
+        return target_source_refresh_status;
+    }
+    const int mask_refresh_status = refresh_const_buffer_view_image(mask);
+    if (mask_refresh_status != PILLOW_C_OK) {
+        return mask_refresh_status;
+    }
 
     const PillowCImage* effective_source = source;
     PillowCImage converted_source{};
@@ -13220,6 +27712,13 @@ int apply_point_lut_into(const PillowCImage* source, const std::uint8_t* lut, st
     if (!image_shape_matches(target, source)) {
         return PILLOW_C_MISMATCH;
     }
+    if (source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     if (source->pixels.empty()) {
         copy_palette_if_same_mode(source, target);
         copy_palette_if_point_preserves_core_palette(source, target);
@@ -13277,6 +27776,10 @@ int apply_point_lut_mode_into(
     }
     if (!image_shape_matches(target, source->width, source->height, target_mode, target_channels)) {
         return PILLOW_C_MISMATCH;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
     if (source->pixels.empty()) {
         copy_palette_if_same_mode(source, target);
@@ -13336,6 +27839,10 @@ int apply_imageops_lut_into(const PillowCImage* source, const std::uint8_t* lut,
     if (!image_shape_matches(target, source)) {
         return PILLOW_C_MISMATCH;
     }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     if (source->pixels.empty()) {
         return PILLOW_C_OK;
     }
@@ -13381,6 +27888,10 @@ int chops_invert_image_into(const PillowCImage* source, PillowCImage* target)
     }
     if (!image_shape_matches(target, source)) {
         return PILLOW_C_MISMATCH;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
 
     const std::uint8_t* src = source->pixels.data();
@@ -13602,6 +28113,16 @@ int equalize_image_masked_into(const PillowCImage* source, const PillowCImage* m
     if (!image_shape_matches(target, source->width, source->height, target_mode, target_channels)) {
         return PILLOW_C_MISMATCH;
     }
+    const int source_refresh_status = refresh_const_buffer_view_image(source);
+    if (source_refresh_status != PILLOW_C_OK) {
+        return source_refresh_status;
+    }
+    if (mask) {
+        const int mask_refresh_status = refresh_const_buffer_view_image(mask);
+        if (mask_refresh_status != PILLOW_C_OK) {
+            return mask_refresh_status;
+        }
+    }
 
     try {
         if (source->mode == PILLOW_C_MODE_P) {
@@ -13795,7 +28316,10 @@ int convert_palette_image_into(const PillowCImage* source, int target_mode, Pill
             dst[0] = rgb[0];
             dst[1] = rgb[1];
             dst[2] = rgb[2];
-            dst[3] = 255;
+            const std::uint8_t index = source->pixels[i];
+            dst[3] = index < source->palette_alpha.size()
+                ? source->palette_alpha[index]
+                : std::uint8_t{255};
         } else if (target_mode == PILLOW_C_MODE_L) {
             target->pixels[i] = rgb_luma_u8(rgb);
         } else if (target_mode == PILLOW_C_MODE_CMYK) {
@@ -14154,6 +28678,64 @@ int quantize_exact_l_into(const PillowCImage* source, int colors, PillowCImage* 
     return PILLOW_C_OK;
 }
 
+int quantize_exact_la_gif_animation_frame_into(const PillowCImage* source, PillowCImage* target)
+{
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (source->mode != PILLOW_C_MODE_LA || source->channels != 2) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_P, 1)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (source->pixels.empty()) {
+        target->palette_rgb.clear();
+        target->palette_alpha.clear();
+        target->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+        return PILLOW_C_OK;
+    }
+
+    bool seen[256] = {};
+    int unique_count = 0;
+    for (int y = 0; y < source->height; ++y) {
+        const std::uint8_t* row = source->pixels.data() + static_cast<std::size_t>(y) * source->stride;
+        for (int x = 0; x < source->width; ++x) {
+            const std::uint8_t value = row[static_cast<std::size_t>(x) * 2u];
+            if (!seen[value]) {
+                seen[value] = true;
+                ++unique_count;
+            }
+        }
+    }
+
+    target->palette_rgb.clear();
+    target->palette_alpha.clear();
+    target->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+    target->palette_rgb.reserve(static_cast<std::size_t>(unique_count) * 3u);
+    std::uint8_t map[256] = {};
+    int palette_index = 0;
+    for (int value = 255; value >= 0; --value) {
+        if (!seen[value]) {
+            continue;
+        }
+        const auto u8 = static_cast<std::uint8_t>(value);
+        map[value] = static_cast<std::uint8_t>(palette_index++);
+        target->palette_rgb.push_back(u8);
+        target->palette_rgb.push_back(u8);
+        target->palette_rgb.push_back(u8);
+    }
+
+    for (int y = 0; y < source->height; ++y) {
+        const std::uint8_t* src_row = source->pixels.data() + static_cast<std::size_t>(y) * source->stride;
+        std::uint8_t* dst_row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+        for (int x = 0; x < source->width; ++x) {
+            dst_row[x] = map[src_row[static_cast<std::size_t>(x) * 2u]];
+        }
+    }
+    return PILLOW_C_OK;
+}
+
 int quantize_exact_rgb_into(const PillowCImage* source, int colors, PillowCImage* target)
 {
     std::vector<QuantizeRgbColor> unique_colors;
@@ -14479,6 +29061,90 @@ int quantize_exact_rgba_gif_into(const PillowCImage* source, PillowCImage* targe
     return PILLOW_C_OK;
 }
 
+int quantize_exact_rgba_gif_animation_frame_into(
+    const PillowCImage* source,
+    PillowCImage* target,
+    bool reserve_transparency,
+    bool* out_has_transparency)
+{
+    if (!source || !target || !out_has_transparency) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_has_transparency = false;
+    if (source->mode != PILLOW_C_MODE_RGBA || source->channels != 4) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (!image_shape_matches(target, source->width, source->height, PILLOW_C_MODE_P, 1)) {
+        return PILLOW_C_MISMATCH;
+    }
+    if (source->pixels.empty()) {
+        target->palette_rgb.clear();
+        target->palette_alpha.clear();
+        target->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+        return PILLOW_C_OK;
+    }
+
+    const std::size_t pixel_count = static_cast<std::size_t>(source->width) * source->height;
+    const std::size_t opaque_budget = reserve_transparency ? 255u : 256u;
+    std::vector<QuantizeRgbColor> opaque_colors;
+    std::vector<int> source_indices;
+    QuantizeRgbColor transparent_color{0, 0, 0};
+    bool has_transparency = false;
+    try {
+        opaque_colors.reserve(std::min<std::size_t>(pixel_count, opaque_budget));
+        source_indices.reserve(pixel_count);
+        for (std::size_t pixel = 0; pixel < pixel_count; ++pixel) {
+            const std::uint8_t* src = source->pixels.data() + pixel * 4u;
+            const QuantizeRgbColor color{src[0], src[1], src[2]};
+            if (src[3] == 0) {
+                if (!has_transparency) {
+                    has_transparency = true;
+                    transparent_color = color;
+                }
+                source_indices.push_back(-1);
+                continue;
+            }
+
+            int index = find_quantize_rgb_color(opaque_colors, color);
+            if (index < 0) {
+                if (opaque_colors.size() >= opaque_budget) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                index = static_cast<int>(opaque_colors.size());
+                opaque_colors.push_back(color);
+            }
+            source_indices.push_back(index);
+        }
+
+        target->palette_rgb.clear();
+        target->palette_alpha.clear();
+        target->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+        target->palette_rgb.reserve((opaque_colors.size() + (reserve_transparency ? 1u : 0u)) * 3u);
+
+        int opaque_index_offset = 0;
+        if (reserve_transparency) {
+            opaque_index_offset = 1;
+            target->palette_rgb.push_back(transparent_color.r);
+            target->palette_rgb.push_back(transparent_color.g);
+            target->palette_rgb.push_back(transparent_color.b);
+        }
+        for (const QuantizeRgbColor& color : opaque_colors) {
+            target->palette_rgb.push_back(color.r);
+            target->palette_rgb.push_back(color.g);
+            target->palette_rgb.push_back(color.b);
+        }
+        for (std::size_t pixel = 0; pixel < pixel_count; ++pixel) {
+            const int source_index = source_indices[pixel];
+            target->pixels[pixel] = static_cast<std::uint8_t>(
+                source_index < 0 ? 0 : source_index + opaque_index_offset);
+        }
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    *out_has_transparency = has_transparency;
+    return PILLOW_C_OK;
+}
+
 int quantize_exact_image_into(const PillowCImage* source, int colors, PillowCImage* target)
 {
     if (!source || !target) {
@@ -14624,6 +29290,24 @@ int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowC
     const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
     if (source->mode == PILLOW_C_MODE_P) {
         return convert_palette_image_into(source, target_mode, target);
+    }
+
+    if (target_mode == PILLOW_C_MODE_L && source->mode == PILLOW_C_MODE_I) {
+        const std::uint8_t* src = source->pixels.data();
+        std::uint8_t* dst = target->pixels.data();
+        for (std::size_t i = 0; i < pixels; ++i) {
+            dst[i] = clip_u8_int(static_cast<int>(read_i32_le(src + i * 4u)));
+        }
+        return PILLOW_C_OK;
+    }
+
+    if (target_mode == PILLOW_C_MODE_L && source->mode == PILLOW_C_MODE_F) {
+        const std::uint8_t* src = source->pixels.data();
+        std::uint8_t* dst = target->pixels.data();
+        for (std::size_t i = 0; i < pixels; ++i) {
+            dst[i] = clip_numeric_f32_to_l(read_f32_le(src + i * 4u));
+        }
+        return PILLOW_C_OK;
     }
 
     if (source->mode == PILLOW_C_MODE_CMYK) {
@@ -14777,7 +29461,12 @@ int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowC
             dst[0] = value;
             dst[1] = value;
             dst[2] = value;
-            dst[3] = 255;
+            dst[3] =
+                source->has_png_transparency &&
+                source->png_transparency >= 0 &&
+                value == static_cast<std::uint8_t>(source->png_transparency)
+                    ? 0
+                    : 255;
         }
         return PILLOW_C_OK;
     }
@@ -14822,7 +29511,13 @@ int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowC
             dst[0] = src[0];
             dst[1] = src[1];
             dst[2] = src[2];
-            dst[3] = 255;
+            dst[3] =
+                source->has_png_rgb_transparency &&
+                src[0] == source->png_rgb_transparency[0] &&
+                src[1] == source->png_rgb_transparency[1] &&
+                src[2] == source->png_rgb_transparency[2]
+                    ? 0
+                    : 255;
         }
         return PILLOW_C_OK;
     }
@@ -15105,6 +29800,13 @@ int merge_bands_into(int target_mode, const PillowCImage* const* bands, std::siz
     if (!image_shape_matches(target, first->width, first->height, target_mode, target_channels)) {
         return PILLOW_C_MISMATCH;
     }
+
+    for (std::size_t channel = 0; channel < band_count; ++channel) {
+        const int refresh_status = refresh_const_buffer_view_image(bands[channel]);
+        if (refresh_status != PILLOW_C_OK) {
+            return refresh_status;
+        }
+    }
     if (target->pixels.empty()) {
         return PILLOW_C_OK;
     }
@@ -15119,17 +29821,133 @@ int merge_bands_into(int target_mode, const PillowCImage* const* bands, std::siz
     return PILLOW_C_OK;
 }
 
+std::size_t histogram_required_count(const PillowCImage* source)
+{
+    if (source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F) {
+        return 256u;
+    }
+    return static_cast<std::size_t>(source->channels) * 256u;
+}
+
+int histogram_image_numeric_i(const PillowCImage* source, std::uint64_t* out_histogram)
+{
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    if (pixels == 0) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* data = source->pixels.data();
+    std::int32_t min_value = read_i32_le(data);
+    std::int32_t max_value = min_value;
+    for (std::size_t pixel = 1; pixel < pixels; ++pixel) {
+        const std::int32_t value = read_i32_le(data + pixel * 4u);
+        if (value < min_value) {
+            min_value = value;
+        } else if (value > max_value) {
+            max_value = value;
+        }
+    }
+    if (min_value == max_value) {
+        return PILLOW_C_OK;
+    }
+
+    const double range = static_cast<double>(max_value) - static_cast<double>(min_value);
+    if (!(range > 0.0) || !std::isfinite(range)) {
+        return PILLOW_C_OK;
+    }
+    const double scale = 255.0 / range;
+    for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
+        const std::int32_t value = read_i32_le(data + pixel * 4u);
+        double scaled = (static_cast<double>(value) - static_cast<double>(min_value)) * scale;
+        if (scaled < 0.0) {
+            scaled = 0.0;
+        } else if (scaled > 255.0) {
+            scaled = 255.0;
+        }
+        ++out_histogram[static_cast<std::size_t>(scaled)];
+    }
+    return PILLOW_C_OK;
+}
+
+int histogram_image_numeric_f(const PillowCImage* source, std::uint64_t* out_histogram)
+{
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    if (pixels == 0) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* data = source->pixels.data();
+    float min_value = read_f32_le(data);
+    float max_value = min_value;
+    for (std::size_t pixel = 1; pixel < pixels; ++pixel) {
+        const float value = read_f32_le(data + pixel * 4u);
+        if (value < min_value) {
+            min_value = value;
+        } else if (value > max_value) {
+            max_value = value;
+        }
+    }
+    if (std::isnan(min_value) || std::isnan(max_value) || min_value == max_value) {
+        return PILLOW_C_OK;
+    }
+    if (std::isinf(min_value)) {
+        return PILLOW_C_OK;
+    }
+    if (std::isinf(max_value)) {
+        if (max_value < 0.0f || !std::isfinite(min_value)) {
+            return PILLOW_C_OK;
+        }
+        for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
+            const float value = read_f32_le(data + pixel * 4u);
+            if (std::isfinite(value)) {
+                ++out_histogram[0];
+            }
+        }
+        return PILLOW_C_OK;
+    }
+    if (!std::isfinite(min_value) || !std::isfinite(max_value)) {
+        return PILLOW_C_OK;
+    }
+
+    const double range = static_cast<double>(max_value) - static_cast<double>(min_value);
+    if (!(range > 0.0) || !std::isfinite(range)) {
+        return PILLOW_C_OK;
+    }
+    const double scale = 255.0 / range;
+    for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
+        const float value = read_f32_le(data + pixel * 4u);
+        if (!std::isfinite(value)) {
+            continue;
+        }
+        double scaled = (static_cast<double>(value) - static_cast<double>(min_value)) * scale;
+        if (scaled < 0.0) {
+            scaled = 0.0;
+        } else if (scaled > 255.0) {
+            scaled = 255.0;
+        }
+        ++out_histogram[static_cast<std::size_t>(scaled)];
+    }
+    return PILLOW_C_OK;
+}
+
 int histogram_image(const PillowCImage* source, std::uint64_t* out_histogram, std::size_t out_count)
 {
     if (!source || !out_histogram) {
         return PILLOW_C_NULL_POINTER;
     }
-    const std::size_t required = static_cast<std::size_t>(source->channels) * 256u;
+    const std::size_t required = histogram_required_count(source);
     if (out_count != required) {
         return PILLOW_C_INVALID_LENGTH;
     }
 
     std::fill(out_histogram, out_histogram + out_count, 0);
+    if (source->mode == PILLOW_C_MODE_I) {
+        return histogram_image_numeric_i(source, out_histogram);
+    }
+    if (source->mode == PILLOW_C_MODE_F) {
+        return histogram_image_numeric_f(source, out_histogram);
+    }
+
     const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
     const std::uint8_t* data = source->pixels.data();
     if (source->mode == PILLOW_C_MODE_LA && source->channels == 2) {
@@ -15161,10 +29979,13 @@ int histogram_image_masked(
     if (!mask) {
         return histogram_image(source, out_histogram, out_count);
     }
+    if (source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
     if (!statistics_mask_matches(mask, source->width, source->height)) {
         return PILLOW_C_MISMATCH;
     }
-    const std::size_t required = static_cast<std::size_t>(source->channels) * 256u;
+    const std::size_t required = histogram_required_count(source);
     if (out_count != required) {
         return PILLOW_C_INVALID_LENGTH;
     }
@@ -15201,31 +30022,45 @@ int entropy_image(const PillowCImage* source, const PillowCImage* mask, double* 
     if (!source || !out_entropy) {
         return PILLOW_C_NULL_POINTER;
     }
+    const bool numeric_mode = source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F;
+    if (mask && numeric_mode) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
     if (mask && !statistics_mask_matches(mask, source->width, source->height)) {
         return PILLOW_C_MISMATCH;
     }
 
-    std::vector<std::uint64_t> histogram(static_cast<std::size_t>(source->channels) * 256u, 0);
     const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
-    const std::size_t samples = pixels * static_cast<std::size_t>(source->channels);
-    const std::uint8_t* data = source->pixels.data();
-    const std::uint8_t* mask_data = mask ? mask->pixels.data() : nullptr;
-    std::uint64_t total = 0;
-
-    for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
-        if (mask_data && mask_data[pixel] == 0) {
-            continue;
+    const std::size_t histogram_count = numeric_mode ? 256u : static_cast<std::size_t>(source->channels) * 256u;
+    const std::size_t samples = pixels * (numeric_mode ? 1u : static_cast<std::size_t>(source->channels));
+    std::vector<std::uint64_t> histogram(histogram_count, 0);
+    if (numeric_mode) {
+        const int status = histogram_image(source, histogram.data(), histogram.size());
+        if (status != PILLOW_C_OK) {
+            return status;
         }
-        const std::uint8_t* src = data + pixel * static_cast<std::size_t>(source->channels);
-        for (int channel = 0; channel < source->channels; ++channel) {
-            ++histogram[static_cast<std::size_t>(channel) * 256u + src[channel]];
-            ++total;
+    } else {
+        const std::uint8_t* data = source->pixels.data();
+        const std::uint8_t* mask_data = mask ? mask->pixels.data() : nullptr;
+
+        for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
+            if (mask_data && mask_data[pixel] == 0) {
+                continue;
+            }
+            const std::uint8_t* src = data + pixel * static_cast<std::size_t>(source->channels);
+            for (int channel = 0; channel < source->channels; ++channel) {
+                ++histogram[static_cast<std::size_t>(channel) * 256u + src[channel]];
+            }
         }
     }
 
     if (!mask && samples == 0) {
         *out_entropy = std::numeric_limits<double>::quiet_NaN();
         return PILLOW_C_OK;
+    }
+    std::uint64_t total = 0;
+    for (const std::uint64_t count : histogram) {
+        total += count;
     }
     if (total == 0) {
         *out_entropy = std::numeric_limits<double>::quiet_NaN();
@@ -15283,6 +30118,88 @@ int extrema_image(
                 out_min[channel] = value;
             } else if (value > out_max[channel]) {
                 out_max[channel] = value;
+            }
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+int extrema_image_numeric(
+    const PillowCImage* source,
+    double* out_min,
+    double* out_max,
+    std::uint8_t* out_has_value,
+    std::size_t out_count)
+{
+    if (!source || !out_min || !out_max || !out_has_value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    const bool mode_i = source->mode == PILLOW_C_MODE_I;
+    const bool mode_f = source->mode == PILLOW_C_MODE_F;
+    const std::size_t required = (mode_i || mode_f) ? 1u : static_cast<std::size_t>(source->channels);
+    if (out_count != required) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    std::fill(out_min, out_min + out_count, 0.0);
+    std::fill(out_max, out_max + out_count, 0.0);
+    std::fill(out_has_value, out_has_value + out_count, static_cast<std::uint8_t>(0));
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    if (pixels == 0) {
+        return PILLOW_C_OK;
+    }
+
+    const std::uint8_t* data = source->pixels.data();
+    if (mode_i) {
+        std::int32_t min_value = read_i32_le(data);
+        std::int32_t max_value = min_value;
+        for (std::size_t pixel = 1; pixel < pixels; ++pixel) {
+            const std::int32_t value = read_i32_le(data + pixel * 4u);
+            if (value < min_value) {
+                min_value = value;
+            } else if (value > max_value) {
+                max_value = value;
+            }
+        }
+        out_min[0] = static_cast<double>(min_value);
+        out_max[0] = static_cast<double>(max_value);
+        out_has_value[0] = 1;
+        return PILLOW_C_OK;
+    }
+
+    if (mode_f) {
+        float min_value = read_f32_le(data);
+        float max_value = min_value;
+        for (std::size_t pixel = 1; pixel < pixels; ++pixel) {
+            const float value = read_f32_le(data + pixel * 4u);
+            if (value < min_value) {
+                min_value = value;
+            } else if (value > max_value) {
+                max_value = value;
+            }
+        }
+        out_min[0] = static_cast<double>(min_value);
+        out_max[0] = static_cast<double>(max_value);
+        out_has_value[0] = 1;
+        return PILLOW_C_OK;
+    }
+
+    for (int channel = 0; channel < source->channels; ++channel) {
+        const std::uint8_t first = data[channel];
+        out_min[channel] = static_cast<double>(first);
+        out_max[channel] = static_cast<double>(first);
+        out_has_value[channel] = 1;
+    }
+
+    for (std::size_t pixel = 1; pixel < pixels; ++pixel) {
+        const std::uint8_t* src = data + pixel * source->channels;
+        for (int channel = 0; channel < source->channels; ++channel) {
+            const std::uint8_t value = src[channel];
+            if (value < out_min[channel]) {
+                out_min[channel] = static_cast<double>(value);
+            } else if (value > out_max[channel]) {
+                out_max[channel] = static_cast<double>(value);
             }
         }
     }
@@ -15406,6 +30323,16 @@ int find_color_entry(const std::vector<ColorCountEntry>& entries, const std::uin
     return -1;
 }
 
+int find_numeric_color_entry(const std::vector<ColorCountEntry>& entries, const std::uint8_t* color)
+{
+    for (std::size_t index = 0; index < entries.size(); ++index) {
+        if (std::memcmp(entries[index].color, color, 4u) == 0) {
+            return static_cast<int>(index);
+        }
+    }
+    return -1;
+}
+
 int getcolors_image(
     const PillowCImage* source,
     int maxcolors,
@@ -15476,6 +30403,84 @@ int getcolors_image(
             out_colors + index * static_cast<std::size_t>(source->channels),
             entries[index].color,
             static_cast<std::size_t>(source->channels));
+    }
+    return PILLOW_C_OK;
+}
+
+int getcolors_image_numeric(
+    const PillowCImage* source,
+    int maxcolors,
+    std::uint64_t* out_counts,
+    double* out_values,
+    std::size_t out_capacity,
+    std::size_t* out_count,
+    int* out_exceeded)
+{
+    if (!source || !out_count || !out_exceeded) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const bool mode_i = source->mode == PILLOW_C_MODE_I;
+    const bool mode_f = source->mode == PILLOW_C_MODE_F;
+    if (!mode_i && !mode_f) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    *out_count = 0;
+    *out_exceeded = 0;
+    const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
+    if (pixels == 0) {
+        if (maxcolors < 0) {
+            *out_exceeded = 1;
+        }
+        return PILLOW_C_OK;
+    }
+    if (maxcolors < 1) {
+        *out_exceeded = 1;
+        return PILLOW_C_OK;
+    }
+
+    std::vector<ColorCountEntry> entries;
+    const auto max_unique = static_cast<std::size_t>(maxcolors);
+    const std::uint8_t* data = source->pixels.data();
+    for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
+        const std::uint8_t* color = data + pixel * 4u;
+        const int existing = find_numeric_color_entry(entries, color);
+        if (existing >= 0) {
+            ++entries[static_cast<std::size_t>(existing)].count;
+            continue;
+        }
+
+        if (entries.size() >= max_unique) {
+            *out_exceeded = 1;
+            return PILLOW_C_OK;
+        }
+
+        ColorCountEntry entry{};
+        entry.count = 1;
+        std::memcpy(entry.color, color, 4u);
+        try {
+            entries.push_back(entry);
+        } catch (const std::bad_alloc&) {
+            return PILLOW_C_ALLOCATION_FAILED;
+        }
+    }
+
+    *out_count = entries.size();
+    if (!out_counts && !out_values && out_capacity == 0) {
+        return PILLOW_C_OK;
+    }
+    if (!out_counts || !out_values) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_capacity < entries.size()) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+
+    for (std::size_t index = 0; index < entries.size(); ++index) {
+        out_counts[index] = entries[index].count;
+        out_values[index] = mode_i
+            ? static_cast<double>(read_i32_le(entries[index].color))
+            : static_cast<double>(read_f32_le(entries[index].color));
     }
     return PILLOW_C_OK;
 }
@@ -15659,6 +30664,16 @@ int autocontrast_image_into(
     }
     if (!image_shape_matches(target, source)) {
         return PILLOW_C_MISMATCH;
+    }
+    const int source_refresh_status = refresh_const_buffer_view_image(source);
+    if (source_refresh_status != PILLOW_C_OK) {
+        return source_refresh_status;
+    }
+    if (mask) {
+        const int mask_refresh_status = refresh_const_buffer_view_image(mask);
+        if (mask_refresh_status != PILLOW_C_OK) {
+            return mask_refresh_status;
+        }
     }
 
     try {
@@ -17273,6 +32288,13 @@ int filter_kernel_image_into(
             return PILLOW_C_INVALID_ARGUMENT;
         }
     }
+    if (source->mode == PILLOW_C_MODE_F) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
 
     std::vector<std::uint8_t> source_snapshot;
     const std::uint8_t* source_data = source->pixels.data();
@@ -17288,6 +32310,38 @@ int filter_kernel_image_into(
 
     const int radius_x = kernel_width / 2;
     const int radius_y = kernel_height / 2;
+    if (source->mode == PILLOW_C_MODE_I) {
+        for (int y = radius_y; y < source->height - radius_y; ++y) {
+            for (int x = radius_x; x < source->width - radius_x; ++x) {
+                const std::size_t dst_offset =
+                    static_cast<std::size_t>(y) * target->stride +
+                    static_cast<std::size_t>(x) * 4u;
+                double sum = 0.0;
+                for (int ky = 0; ky < kernel_height; ++ky) {
+                    const int src_y = y + ky - radius_y;
+                    const int kernel_y = kernel_height - 1 - ky;
+                    const std::size_t src_row = static_cast<std::size_t>(src_y) * source->stride;
+                    const std::size_t kernel_row = static_cast<std::size_t>(kernel_y) * kernel_width;
+                    for (int kx = 0; kx < kernel_width; ++kx) {
+                        const int src_x = x + kx - radius_x;
+                        const std::size_t src_offset =
+                            src_row +
+                            static_cast<std::size_t>(src_x) * 4u;
+                        sum += static_cast<double>(read_i32_le(source_data + src_offset)) * kernel[kernel_row + kx];
+                    }
+                }
+
+                const std::int32_t filtered = scale == 0.0
+                    ? std::numeric_limits<std::int32_t>::min()
+                    : round_half_up_clip_i32_nonnegative((sum / scale) + offset);
+                write_i32_le(
+                    target->pixels.data() + dst_offset,
+                    static_cast<std::uint32_t>(filtered));
+            }
+        }
+        return PILLOW_C_OK;
+    }
+
     for (int y = radius_y; y < source->height - radius_y; ++y) {
         for (int x = radius_x; x < source->width - radius_x; ++x) {
             const std::size_t dst_offset =
@@ -17339,6 +32393,10 @@ int filter_rank_image_into(const PillowCImage* source, int size, int rank, Pillo
     if (!valid_rank_filter_arguments(size, rank)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
 
     if (source->pixels.empty()) {
         return PILLOW_C_OK;
@@ -17353,6 +32411,61 @@ int filter_rank_image_into(const PillowCImage* source, int size, int rank, Pillo
 
     const int radius = size / 2;
     const std::size_t window_size = static_cast<std::size_t>(size) * size;
+    if (source->mode == PILLOW_C_MODE_I) {
+        std::vector<std::int32_t> window(window_size);
+        for (int y = 0; y < source->height; ++y) {
+            for (int x = 0; x < source->width; ++x) {
+                const std::size_t dst_offset =
+                    static_cast<std::size_t>(y) * target->stride +
+                    static_cast<std::size_t>(x) * 4u;
+                std::size_t window_index = 0;
+                for (int ky = 0; ky < size; ++ky) {
+                    const int src_y = clamp_int(y + ky - radius, 0, source->height - 1);
+                    const std::size_t src_row = static_cast<std::size_t>(src_y) * source->stride;
+                    for (int kx = 0; kx < size; ++kx) {
+                        const int src_x = clamp_int(x + kx - radius, 0, source->width - 1);
+                        const std::size_t src_offset =
+                            src_row +
+                            static_cast<std::size_t>(src_x) * 4u;
+                        window[window_index++] = read_i32_le(source_data + src_offset);
+                    }
+                }
+                auto rank_iter = window.begin() + rank;
+                std::nth_element(window.begin(), rank_iter, window.end());
+                write_i32_le(
+                    target->pixels.data() + dst_offset,
+                    static_cast<std::uint32_t>(*rank_iter));
+            }
+        }
+        return PILLOW_C_OK;
+    }
+    if (source->mode == PILLOW_C_MODE_F) {
+        std::vector<float> window(window_size);
+        for (int y = 0; y < source->height; ++y) {
+            for (int x = 0; x < source->width; ++x) {
+                const std::size_t dst_offset =
+                    static_cast<std::size_t>(y) * target->stride +
+                    static_cast<std::size_t>(x) * 4u;
+                std::size_t window_index = 0;
+                for (int ky = 0; ky < size; ++ky) {
+                    const int src_y = clamp_int(y + ky - radius, 0, source->height - 1);
+                    const std::size_t src_row = static_cast<std::size_t>(src_y) * source->stride;
+                    for (int kx = 0; kx < size; ++kx) {
+                        const int src_x = clamp_int(x + kx - radius, 0, source->width - 1);
+                        const std::size_t src_offset =
+                            src_row +
+                            static_cast<std::size_t>(src_x) * 4u;
+                        window[window_index++] = read_f32_le(source_data + src_offset);
+                    }
+                }
+                auto rank_iter = window.begin() + rank;
+                std::nth_element(window.begin(), rank_iter, window.end());
+                write_f32_le(target->pixels.data() + dst_offset, *rank_iter);
+            }
+        }
+        return PILLOW_C_OK;
+    }
+
     std::vector<std::uint8_t> window(window_size);
     for (int y = 0; y < source->height; ++y) {
         for (int x = 0; x < source->width; ++x) {
@@ -17390,6 +32503,13 @@ int filter_mode_image_into(const PillowCImage* source, int size, PillowCImage* t
     }
     if (!image_shape_matches(target, source)) {
         return PILLOW_C_MISMATCH;
+    }
+    if (source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
     if (source->pixels.empty()) {
         return PILLOW_C_OK;
@@ -17666,6 +32786,13 @@ int filter_box_blur_passes_image_into(
     if (passes <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    if (source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     if (source->pixels.empty()) {
         return PILLOW_C_OK;
     }
@@ -17803,6 +32930,13 @@ int filter_unsharp_mask_image_into(
     }
     if (!std::isfinite(radius)) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
     if (source->pixels.empty()) {
         return PILLOW_C_OK;
@@ -18048,6 +33182,10 @@ int filter_color_3d_lut_image_into(
     const int prepare_status = prepare_color_lut_table(table, table_count, &prepared_table);
     if (prepare_status != PILLOW_C_OK) {
         return prepare_status;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
 
     std::vector<std::uint8_t> source_snapshot;
@@ -18757,6 +33895,10 @@ extern "C" __declspec(dllexport) int pillow_c_mode_from_string(
         *out_mode = PILLOW_C_MODE_RGBA;
         return PILLOW_C_OK;
     }
+    if (std::strcmp(mode_name_text, "RGBX") == 0) {
+        *out_mode = PILLOW_C_MODE_RGBX;
+        return PILLOW_C_OK;
+    }
     if (std::strcmp(mode_name_text, "P") == 0) {
         *out_mode = PILLOW_C_MODE_P;
         return PILLOW_C_OK;
@@ -18771,6 +33913,14 @@ extern "C" __declspec(dllexport) int pillow_c_mode_from_string(
     }
     if (std::strcmp(mode_name_text, "F") == 0) {
         *out_mode = PILLOW_C_MODE_F;
+        return PILLOW_C_OK;
+    }
+    if (std::strcmp(mode_name_text, "I;16") == 0) {
+        *out_mode = PILLOW_C_MODE_I16;
+        return PILLOW_C_OK;
+    }
+    if (std::strcmp(mode_name_text, "I;16B") == 0) {
+        *out_mode = PILLOW_C_MODE_I16B;
         return PILLOW_C_OK;
     }
     *out_mode = 0;
@@ -18931,7 +34081,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_create_mode(
 
     std::size_t stride = 0;
     std::size_t size = 0;
-    if (!checked_image_size(width, height, channels, &stride, &size)) {
+    if (!checked_image_size_allow_empty(width, height, channels, &stride, &size)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
@@ -18942,6 +34092,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_create_mode(
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_frombuffer_raw(
+    int width,
+    int height,
+    int mode,
+    const std::uint8_t* data,
+    std::size_t size,
+    const char* raw_mode,
+    int stride,
+    int orientation,
+    int alias_source,
+    PillowCImage** out_image)
+{
+    return frombuffer_raw_image(width, height, mode, data, size, raw_mode, stride, orientation, alias_source, out_image);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_linear_gradient_into(
@@ -19166,6 +34331,66 @@ extern "C" __declspec(dllexport) int pillow_c_image_open_ico(
     return open_ico_image(path, out_image);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_open_cur(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_cur_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_ico_size(
+    const char* path,
+    int width,
+    int height,
+    PillowCImage** out_image)
+{
+    return open_ico_image_size(path, width, height, true, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_ico_sizes(
+    const char* path,
+    int* out_sizes,
+    std::size_t out_pair_count,
+    std::size_t* out_required)
+{
+    return ico_image_sizes(path, out_sizes, out_pair_count, out_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_ico_payload_format(
+    const char* path,
+    int width,
+    int height,
+    int require_requested_size,
+    char* out_format,
+    std::size_t out_size,
+    std::size_t* out_required)
+{
+    return ico_payload_format(path, width, height, require_requested_size != 0, out_format, out_size, out_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_ico_payload_dib_metadata(
+    const char* path,
+    int width,
+    int height,
+    int require_requested_size,
+    int* out_has_dib,
+    int* out_has_dpi,
+    double* out_dpi_x,
+    double* out_dpi_y,
+    int* out_compression)
+{
+    return ico_payload_dib_metadata(
+        path,
+        width,
+        height,
+        require_requested_size != 0,
+        out_has_dib,
+        out_has_dpi,
+        out_dpi_x,
+        out_dpi_y,
+        out_compression);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_save_ico(
     const PillowCImage* image,
     const char* path)
@@ -19191,6 +34416,18 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_ico_format_options(
     const char* bitmap_format)
 {
     return save_ico_image_format_options(image, path, sizes, size_count, has_sizes, bitmap_format);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_ico_frames_format_options(
+    const PillowCImage* const* images,
+    std::size_t image_count,
+    const char* path,
+    const int* sizes,
+    std::size_t size_count,
+    int has_sizes,
+    const char* bitmap_format)
+{
+    return save_ico_images_format_options(images, image_count, path, sizes, size_count, has_sizes, bitmap_format);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_png(
@@ -19225,6 +34462,852 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_png_options(
     return save_png_image_with_options(image, path, compress_level, dpi_x, dpi_y);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_transparency_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    int has_transparency,
+    int transparency)
+{
+    return save_png_image_with_transparency_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        has_transparency,
+        transparency);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_transparency_table_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* transparency_table,
+    std::size_t transparency_table_size)
+{
+    return save_png_image_with_transparency_table_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        transparency_table,
+        transparency_table_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_rgb_transparency_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    int has_transparency,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    return save_png_image_with_rgb_transparency_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        has_transparency,
+        transparency_r,
+        transparency_g,
+        transparency_b);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_rgb_transparency_bytes_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* transparency,
+    std::size_t transparency_size)
+{
+    return save_png_image_with_rgb_transparency_bytes_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        transparency,
+        transparency_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* key,
+    const char* value)
+{
+    return save_png_image_with_text_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        key,
+        value);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_entries_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    std::size_t text_count)
+{
+    return save_png_image_with_text_entries_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        text_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_entries_value_sizes_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const std::size_t* value_sizes,
+    const int* compressed,
+    std::size_t text_count)
+{
+    return save_png_image_with_text_entries_value_sizes_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        value_sizes,
+        compressed,
+        text_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_entries_chunk_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    std::size_t text_count,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size)
+{
+    return save_png_image_with_text_entries_chunk_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        text_count,
+        chunk_type,
+        chunk_data,
+        chunk_data_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_entries_chunk_rgb_transparency_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    std::size_t text_count,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    int has_transparency,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    return save_png_image_with_text_entries_chunk_rgb_transparency_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        text_count,
+        chunk_type,
+        chunk_data,
+        chunk_data_size,
+        has_transparency,
+        transparency_r,
+        transparency_g,
+        transparency_b);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_chunk_icc_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size)
+{
+    return save_png_image_with_chunk_icc_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        chunk_type,
+        chunk_data,
+        chunk_data_size,
+        icc_profile,
+        icc_profile_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_chunk_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    return save_png_image_with_chunk_exif_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        chunk_type,
+        chunk_data,
+        chunk_data_size,
+        exif,
+        exif_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_chunk_rgb_transparency_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    int has_transparency,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    return save_png_image_with_chunk_rgb_transparency_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        chunk_type,
+        chunk_data,
+        chunk_data_size,
+        has_transparency,
+        transparency_r,
+        transparency_g,
+        transparency_b);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_chunk_rgb_transparency_bytes_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    const std::uint8_t* transparency,
+    std::size_t transparency_size)
+{
+    return save_png_image_with_chunk_rgb_transparency_bytes_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        chunk_type,
+        chunk_data,
+        chunk_data_size,
+        transparency,
+        transparency_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_entries_ex_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* compressed,
+    std::size_t text_count)
+{
+    return save_png_image_with_text_entries_ex_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        compressed,
+        text_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_entries_kind_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    std::size_t text_count)
+{
+    return save_png_image_with_text_entries_kind_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        text_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_entries_itxt_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    const char* const* langs,
+    const char* const* translated_keys,
+    std::size_t text_count)
+{
+    return save_png_image_with_text_entries_itxt_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        langs,
+        translated_keys,
+        text_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_entries_icc_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    std::size_t text_count,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size)
+{
+    return save_png_image_with_text_entries_icc_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        text_count,
+        icc_profile,
+        icc_profile_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_entries_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    std::size_t text_count,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    return save_png_image_with_text_entries_exif_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        text_count,
+        exif,
+        exif_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_entries_icc_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    std::size_t text_count,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    return save_png_image_with_text_entries_icc_exif_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        text_count,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_icc_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size)
+{
+    return save_png_image_with_icc_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        icc_profile,
+        icc_profile_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    return save_png_image_with_exif_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        exif,
+        exif_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_icc_exif_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    return save_png_image_with_icc_exif_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_interlace_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    int interlace)
+{
+    return save_png_image_with_interlace_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        interlace);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_gamma_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    double gamma)
+{
+    return save_png_image_with_gamma_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        gamma);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_gama_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    std::uint32_t gama_raw)
+{
+    return save_png_image_with_gama_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        gama_raw);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_chunk_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size)
+{
+    return save_png_image_with_chunk_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        chunk_type,
+        chunk_data,
+        chunk_data_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_optimize_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    int optimize)
+{
+    return save_png_image_with_optimize_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        optimize);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_metadata_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    const char* const* langs,
+    const char* const* translated_keys,
+    std::size_t text_count,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* chunk_type,
+    const std::uint8_t* chunk_data,
+    std::size_t chunk_data_size,
+    std::uint32_t flags,
+    std::uint32_t gama_raw,
+    int transparency,
+    const std::uint8_t* transparency_table,
+    std::size_t transparency_table_size,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    return save_png_image_with_metadata_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        langs,
+        translated_keys,
+        text_count,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        chunk_type,
+        chunk_data,
+        chunk_data_size,
+        flags,
+        gama_raw,
+        transparency,
+        transparency_table,
+        transparency_table_size,
+        transparency_r,
+        transparency_g,
+        transparency_b);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_metadata_custom_chunks_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    const char* const* langs,
+    const char* const* translated_keys,
+    std::size_t text_count,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* chunk_types,
+    const std::uint8_t* const* chunk_data,
+    const std::size_t* chunk_data_sizes,
+    const int* chunk_after_idat,
+    std::size_t chunk_count,
+    std::uint32_t flags,
+    std::uint32_t gama_raw,
+    int transparency,
+    const std::uint8_t* transparency_table,
+    std::size_t transparency_table_size,
+    int transparency_r,
+    int transparency_g,
+    int transparency_b)
+{
+    return save_png_image_with_metadata_custom_chunks_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        langs,
+        translated_keys,
+        text_count,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        chunk_types,
+        chunk_data,
+        chunk_data_sizes,
+        chunk_after_idat,
+        chunk_count,
+        flags,
+        gama_raw,
+        transparency,
+        transparency_table,
+        transparency_table_size,
+        transparency_r,
+        transparency_g,
+        transparency_b);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_custom_chunks_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* chunk_types,
+    const std::uint8_t* const* chunk_data,
+    const std::size_t* chunk_data_sizes,
+    const int* chunk_after_idat,
+    std::size_t chunk_count)
+{
+    return save_png_image_with_custom_chunks_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        chunk_types,
+        chunk_data,
+        chunk_data_sizes,
+        chunk_after_idat,
+        chunk_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_entries_custom_chunks_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    std::size_t text_count,
+    const std::uint8_t* chunk_types,
+    const std::uint8_t* const* chunk_data,
+    const std::size_t* chunk_data_sizes,
+    const int* chunk_after_idat,
+    std::size_t chunk_count)
+{
+    return save_png_image_with_text_entries_custom_chunks_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        text_count,
+        chunk_types,
+        chunk_data,
+        chunk_data_sizes,
+        chunk_after_idat,
+        chunk_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_text_entries_custom_chunks_kind_options(
+    const PillowCImage* image,
+    const char* path,
+    int compress_level,
+    double dpi_x,
+    double dpi_y,
+    const char* const* keys,
+    const char* const* values,
+    const int* kinds,
+    const int* compressed,
+    const char* const* langs,
+    const char* const* translated_keys,
+    std::size_t text_count,
+    const std::uint8_t* chunk_types,
+    const std::uint8_t* const* chunk_data,
+    const std::size_t* chunk_data_sizes,
+    const int* chunk_after_idat,
+    std::size_t chunk_count)
+{
+    return save_png_image_with_text_entries_custom_chunks_kind_options(
+        image,
+        path,
+        compress_level,
+        dpi_x,
+        dpi_y,
+        keys,
+        values,
+        kinds,
+        compressed,
+        langs,
+        translated_keys,
+        text_count,
+        chunk_types,
+        chunk_data,
+        chunk_data_sizes,
+        chunk_after_idat,
+        chunk_count);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_open_jpeg(
     const char* path,
     PillowCImage** out_image)
@@ -19255,7 +35338,559 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_options(
     double dpi_x,
     double dpi_y)
 {
-    return save_jpeg_image_with_options(image, path, quality, has_dpi != 0, dpi_x, dpi_y);
+    const int status = save_jpeg_image_with_options(image, path, quality, has_dpi != 0, dpi_x, dpi_y, -1, -1, -1);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return patch_jpeg_source_comment_segment(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_subsampling_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int subsampling)
+{
+    const int status = save_jpeg_image_with_options(image, path, quality, has_dpi != 0, dpi_x, dpi_y, subsampling, -1, -1);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return patch_jpeg_source_comment_segment(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_encode_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int subsampling,
+    int progressive,
+    int optimize)
+{
+    const int status = save_jpeg_image_with_options(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        subsampling,
+        progressive,
+        optimize);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return patch_jpeg_source_comment_segment(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_encode_keep_rgb_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int subsampling,
+    int progressive,
+    int optimize,
+    int keep_rgb)
+{
+    int status = PILLOW_C_OK;
+    if (image && image->mode == PILLOW_C_MODE_CMYK && image->channels == 4 && keep_rgb == 1) {
+        status = save_jpeg_image_with_options(
+            image,
+            path,
+            quality,
+            has_dpi != 0,
+            dpi_x,
+            dpi_y,
+            subsampling,
+            progressive,
+            optimize);
+    } else {
+        status = save_jpeg_rgb_keep_rgb_options(
+            image,
+            path,
+            quality,
+            has_dpi != 0,
+            dpi_x,
+            dpi_y,
+            subsampling,
+            progressive,
+            optimize,
+            keep_rgb);
+    }
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return patch_jpeg_source_comment_segment(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_qtables_encode_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const int* qtables,
+    std::size_t qtable_count,
+    int subsampling,
+    int progressive,
+    int optimize)
+{
+    const int status = save_jpeg_rgb_qtables_optimized_huffman(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        qtables,
+        qtable_count,
+        subsampling,
+        progressive,
+        optimize,
+        true);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return patch_jpeg_source_comment_segment(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_qtables_keep_rgb_encode_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const int* qtables,
+    std::size_t qtable_count,
+    int subsampling,
+    int progressive,
+    int optimize,
+    int keep_rgb)
+{
+    const int status = save_jpeg_rgb_qtables_keep_rgb_options(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        qtables,
+        qtable_count,
+        subsampling,
+        progressive,
+        optimize,
+        keep_rgb);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return patch_jpeg_source_comment_segment(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_metadata_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size)
+{
+    return save_jpeg_image_with_metadata_options(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        nullptr,
+        0u,
+        -1,
+        -1,
+        -1);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_metadata_subsampling_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    int subsampling)
+{
+    return save_jpeg_image_with_metadata_options(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        nullptr,
+        0u,
+        subsampling,
+        -1,
+        -1);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_metadata_encode_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    int subsampling,
+    int progressive,
+    int optimize)
+{
+    return save_jpeg_image_with_metadata_options(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        nullptr,
+        0u,
+        subsampling,
+        progressive,
+        optimize);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_metadata_xmp_encode_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* xmp,
+    std::size_t xmp_size,
+    int subsampling,
+    int progressive,
+    int optimize)
+{
+    return save_jpeg_image_with_metadata_options(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        xmp,
+        xmp_size,
+        subsampling,
+        progressive,
+        optimize);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_metadata_keep_rgb_encode_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    int subsampling,
+    int progressive,
+    int optimize,
+    int keep_rgb)
+{
+    return save_jpeg_image_with_metadata_keep_rgb_options(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        nullptr,
+        0u,
+        subsampling,
+        progressive,
+        optimize,
+        keep_rgb);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_metadata_keep_rgb_xmp_encode_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* xmp,
+    std::size_t xmp_size,
+    int subsampling,
+    int progressive,
+    int optimize,
+    int keep_rgb)
+{
+    return save_jpeg_image_with_metadata_keep_rgb_options(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        xmp,
+        xmp_size,
+        subsampling,
+        progressive,
+        optimize,
+        keep_rgb);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_qtables_metadata_encode_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const int* qtables,
+    std::size_t qtable_count,
+    int subsampling,
+    int progressive,
+    int optimize)
+{
+    return save_jpeg_image_with_qtables_metadata_options(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        nullptr,
+        0u,
+        qtables,
+        qtable_count,
+        subsampling,
+        progressive,
+        optimize,
+        true);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_qtables_metadata_xmp_encode_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* xmp,
+    std::size_t xmp_size,
+    const int* qtables,
+    std::size_t qtable_count,
+    int subsampling,
+    int progressive,
+    int optimize)
+{
+    return save_jpeg_image_with_qtables_metadata_options(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        xmp,
+        xmp_size,
+        qtables,
+        qtable_count,
+        subsampling,
+        progressive,
+        optimize,
+        true);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_encode_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const int* qtables,
+    std::size_t qtable_count,
+    int subsampling,
+    int progressive,
+    int optimize,
+    int keep_rgb)
+{
+    return save_jpeg_image_with_qtables_metadata_keep_rgb_options(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        qtables,
+        qtable_count,
+        subsampling,
+        progressive,
+        optimize,
+        keep_rgb);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_xmp_encode_options(
+    const PillowCImage* image,
+    const char* path,
+    int quality,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    const std::uint8_t* comment,
+    std::size_t comment_size,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    const std::uint8_t* xmp,
+    std::size_t xmp_size,
+    const int* qtables,
+    std::size_t qtable_count,
+    int subsampling,
+    int progressive,
+    int optimize,
+    int keep_rgb)
+{
+    return save_jpeg_image_with_qtables_metadata_keep_rgb_xmp_options(
+        image,
+        path,
+        quality,
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        comment,
+        comment_size,
+        icc_profile,
+        icc_profile_size,
+        exif,
+        exif_size,
+        xmp,
+        xmp_size,
+        qtables,
+        qtable_count,
+        subsampling,
+        progressive,
+        optimize,
+        keep_rgb);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_tiff(
@@ -19285,6 +35920,35 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_tiff(
     const char* path)
 {
     return save_tiff_image(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_options(
+    const PillowCImage* image,
+    const char* path,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y)
+{
+    return save_tiff_image_with_options(image, path, has_dpi != 0, dpi_x, dpi_y);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_compression_options(
+    const PillowCImage* image,
+    const char* path,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int compression)
+{
+    return save_tiff_image_with_compression_options(image, path, has_dpi != 0, dpi_x, dpi_y, compression);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_frames(
+    const PillowCImage* const* images,
+    std::size_t image_count,
+    const char* path)
+{
+    return save_tiff_frames_image(images, image_count, path);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_gif(
@@ -19394,7 +36058,76 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_gif_options(
     if (!has_transparency) {
         return save_gif_image(image, path);
     }
-    return save_gif_indexed_native(image, path, true, transparency);
+    return save_gif_indexed_native(image, path, true, transparency, nullptr, 0u);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_gif_comment(
+    const char* path,
+    int frame_index,
+    int* out_has_comment,
+    std::uint8_t* out_comment,
+    std::size_t out_comment_size,
+    std::size_t* out_comment_required)
+{
+    if (!path || !out_has_comment || !out_comment_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_has_comment = 0;
+    *out_comment_required = 0;
+    if (frame_index < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    try {
+        GifMetadata metadata;
+        if (!read_gif_metadata(path, frame_index, &metadata)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::size_t required = metadata.comment.size();
+        *out_has_comment = required > 0u ? 1 : 0;
+        *out_comment_required = required;
+        if (required == 0u) {
+            return PILLOW_C_OK;
+        }
+        if (!out_comment) {
+            return PILLOW_C_NULL_POINTER;
+        }
+        if (out_comment_size < required) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+        std::memcpy(out_comment, metadata.comment.data(), required);
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_gif_comment(
+    const PillowCImage* image,
+    const char* path,
+    const std::uint8_t* comment,
+    std::size_t comment_size)
+{
+    return save_gif_image_with_comment(image, path, comment, comment_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_gif_comment_options(
+    const PillowCImage* image,
+    const char* path,
+    int has_transparency,
+    int transparency,
+    const std::uint8_t* comment,
+    std::size_t comment_size)
+{
+    if (has_transparency != 0 && has_transparency != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return save_gif_image_with_comment_options(
+        image,
+        path,
+        has_transparency != 0,
+        transparency,
+        comment,
+        comment_size);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_gif_animation(
@@ -19408,7 +36141,22 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_gif_animation(
     std::size_t disposal_count)
 {
     return save_gif_animation_image(
-        images, image_count, path, durations_ms, duration_count, loop, disposals, disposal_count, -1, -1, 0, 0, 0, 0);
+        images,
+        image_count,
+        path,
+        durations_ms,
+        duration_count,
+        loop,
+        disposals,
+        disposal_count,
+        -1,
+        -1,
+        0,
+        0,
+        0,
+        0,
+        nullptr,
+        0u);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_gif_animation_options(
@@ -19437,7 +36185,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_gif_animation_options(
         0,
         0,
         0,
-        0);
+        0,
+        nullptr,
+        0u);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_gif_animation_metadata_options(
@@ -19468,7 +36218,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_gif_animation_metadata_
         has_transparency,
         transparency,
         0,
-        0);
+        0,
+        nullptr,
+        0u);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_gif_animation_background_options(
@@ -19501,7 +36253,112 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_gif_animation_backgroun
         has_transparency,
         transparency,
         has_background,
-        background);
+        background,
+        nullptr,
+        0u);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_gif_animation_comment(
+    const PillowCImage* const* images,
+    std::size_t image_count,
+    const char* path,
+    const int* durations_ms,
+    std::size_t duration_count,
+    int loop,
+    const int* disposals,
+    std::size_t disposal_count,
+    const std::uint8_t* comment,
+    std::size_t comment_size)
+{
+    return save_gif_animation_image(
+        images,
+        image_count,
+        path,
+        durations_ms,
+        duration_count,
+        loop,
+        disposals,
+        disposal_count,
+        -1,
+        -1,
+        0,
+        0,
+        0,
+        0,
+        comment,
+        comment_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_gif_animation_comment_metadata_options(
+    const PillowCImage* const* images,
+    std::size_t image_count,
+    const char* path,
+    const int* durations_ms,
+    std::size_t duration_count,
+    int loop,
+    const int* disposals,
+    std::size_t disposal_count,
+    int include_color_table,
+    int optimize,
+    int has_transparency,
+    int transparency,
+    const std::uint8_t* comment,
+    std::size_t comment_size)
+{
+    return save_gif_animation_image(
+        images,
+        image_count,
+        path,
+        durations_ms,
+        duration_count,
+        loop,
+        disposals,
+        disposal_count,
+        include_color_table,
+        optimize,
+        has_transparency,
+        transparency,
+        0,
+        0,
+        comment,
+        comment_size);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_gif_animation_comment_background_options(
+    const PillowCImage* const* images,
+    std::size_t image_count,
+    const char* path,
+    const int* durations_ms,
+    std::size_t duration_count,
+    int loop,
+    const int* disposals,
+    std::size_t disposal_count,
+    int include_color_table,
+    int optimize,
+    int has_transparency,
+    int transparency,
+    int has_background,
+    int background,
+    const std::uint8_t* comment,
+    std::size_t comment_size)
+{
+    return save_gif_animation_image(
+        images,
+        image_count,
+        path,
+        durations_ms,
+        duration_count,
+        loop,
+        disposals,
+        disposal_count,
+        include_color_table,
+        optimize,
+        has_transparency,
+        transparency,
+        has_background,
+        background,
+        comment,
+        comment_size);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_crop(
@@ -19533,6 +36390,11 @@ extern "C" __declspec(dllexport) int pillow_c_image_crop(
     std::size_t size = 0;
     if (!checked_image_size_allow_empty(out_width, out_height, source->channels, &stride, &size)) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
 
     try {
@@ -19667,7 +36529,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_paste(
     int left,
     int top)
 {
-    return paste_image_pixels_into(target, source, left, top);
+    return with_detached_buffer_view(target, [&]() {
+        return paste_image_pixels_into(target, source, left, top);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_paste_masked(
@@ -19677,7 +36541,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_paste_masked(
     int top,
     const PillowCImage* mask)
 {
-    return paste_image_masked_into(target, source, left, top, mask);
+    return with_detached_buffer_view(target, [&]() {
+        return paste_image_masked_into(target, source, left, top, mask);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_paste_color(
@@ -19690,7 +36556,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_paste_color(
     int bottom,
     const PillowCImage* mask)
 {
-    return paste_color_into(target, color, color_size, left, top, right, bottom, mask);
+    return with_detached_buffer_view(target, [&]() {
+        return paste_color_into(target, color, color_size, left, top, right, bottom, mask);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_copy_into(
@@ -19703,6 +36571,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_copy_into(
     if (!image_shape_matches(source, target)) {
         return PILLOW_C_MISMATCH;
     }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     if (!source->pixels.empty()) {
         std::memcpy(target->pixels.data(), source->pixels.data(), source->pixels.size());
     }
@@ -19710,9 +36582,46 @@ extern "C" __declspec(dllexport) int pillow_c_image_copy_into(
     target->palette_alpha = source->palette_alpha;
     target->palette_alpha_mode = source->palette_alpha_mode;
     target->exif_orientation = source->exif_orientation;
+    target->has_dpi = source->has_dpi;
+    target->dpi_x = source->dpi_x;
+    target->dpi_y = source->dpi_y;
+    target->has_jfif = source->has_jfif;
+    target->jfif_major = source->jfif_major;
+    target->jfif_minor = source->jfif_minor;
+    target->jfif_unit = source->jfif_unit;
+    target->jfif_density_x = source->jfif_density_x;
+    target->jfif_density_y = source->jfif_density_y;
     target->has_hotspot = source->has_hotspot;
     target->hotspot_x = source->hotspot_x;
     target->hotspot_y = source->hotspot_y;
+    target->has_dib_compression = source->has_dib_compression;
+    target->dib_compression = source->dib_compression;
+    target->has_png_gamma = source->has_png_gamma;
+    target->png_gamma = source->png_gamma;
+    target->has_png_srgb = source->has_png_srgb;
+    target->png_srgb = source->png_srgb;
+    target->has_png_chromaticity = source->has_png_chromaticity;
+    for (std::size_t i = 0; i < 8u; ++i) {
+        target->png_chromaticity[i] = source->png_chromaticity[i];
+    }
+    target->png_text = source->png_text;
+    target->png_icc_profile = source->png_icc_profile;
+    target->png_exif = source->png_exif;
+    target->tiff_exif = source->tiff_exif;
+    target->jpeg_comment = source->jpeg_comment;
+    target->jpeg_icc_profile = source->jpeg_icc_profile;
+    target->jpeg_exif = source->jpeg_exif;
+    target->xmp = source->xmp;
+    target->jpeg_qtables = source->jpeg_qtables;
+    target->jpeg_qtable_count = source->jpeg_qtable_count;
+    target->jpeg_subsampling = source->jpeg_subsampling;
+    target->has_png_transparency = source->has_png_transparency;
+    target->png_transparency = source->png_transparency;
+    target->png_transparency_table = source->png_transparency_table;
+    target->has_png_rgb_transparency = source->has_png_rgb_transparency;
+    target->png_rgb_transparency[0] = source->png_rgb_transparency[0];
+    target->png_rgb_transparency[1] = source->png_rgb_transparency[1];
+    target->png_rgb_transparency[2] = source->png_rgb_transparency[2];
     return PILLOW_C_OK;
 }
 
@@ -19742,6 +36651,17 @@ extern "C" __declspec(dllexport) int pillow_c_image_blend_into(
     }
     if (!images_match(left, right) || !image_shape_matches(target, left)) {
         return PILLOW_C_MISMATCH;
+    }
+    if (numeric_i_or_f_mode(left)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int left_refresh_status = refresh_const_buffer_view_image(left);
+    if (left_refresh_status != PILLOW_C_OK) {
+        return left_refresh_status;
+    }
+    const int right_refresh_status = refresh_const_buffer_view_image(right);
+    if (right_refresh_status != PILLOW_C_OK) {
+        return right_refresh_status;
     }
     if (target->pixels.empty()) {
         return PILLOW_C_OK;
@@ -20317,6 +37237,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_get_channel_into(
     int channel_index,
     PillowCImage* target)
 {
+    if (!source || !target) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (channel_index < 0 || channel_index >= source->channels) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return copy_channel_into(source, channel_index, target);
 }
 
@@ -20341,6 +37271,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_mode_into(
     int target_mode,
     PillowCImage* target)
 {
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return convert_image_mode_into(source, target_mode, target);
 }
 
@@ -20350,6 +37284,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_mode_dither_into(
     int dither,
     PillowCImage* target)
 {
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return convert_image_mode_dither_into(source, target_mode, dither, target);
 }
 
@@ -20401,6 +37339,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_split_bands(
     }
     if (out_count != static_cast<std::size_t>(source->channels)) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
 
     std::size_t stride = 0;
@@ -20535,6 +37477,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_crop_into(
     int bottom,
     PillowCImage* target)
 {
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return copy_crop_pixels_into(source, left, top, right, bottom, target);
 }
 
@@ -20567,6 +37513,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize_into(
     int resample,
     PillowCImage* target)
 {
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return resize_image_into(source, out_width, out_height, resample, target);
 }
 
@@ -20581,6 +37531,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize_box_into(
     double box_bottom,
     PillowCImage* target)
 {
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return resize_image_box_into(source, out_width, out_height, resample, box_left, box_top, box_right, box_bottom, target);
 }
 
@@ -20596,6 +37550,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize_reducing_gap_into(
     double reducing_gap,
     PillowCImage* target)
 {
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return resize_image_reducing_gap_into(
         source,
         out_width,
@@ -20860,56 +37818,11 @@ extern "C" __declspec(dllexport) int pillow_c_image_transpose(
             source->channels,
             stride,
             std::vector<std::uint8_t>(size)};
-
-        for (int dst_y = 0; dst_y < out_height; ++dst_y) {
-            for (int dst_x = 0; dst_x < out_width; ++dst_x) {
-                int src_x = 0;
-                int src_y = 0;
-                switch (method) {
-                case 0:
-                    src_x = source->width - 1 - dst_x;
-                    src_y = dst_y;
-                    break;
-                case 1:
-                    src_x = dst_x;
-                    src_y = source->height - 1 - dst_y;
-                    break;
-                case 2:
-                    src_x = source->width - 1 - dst_y;
-                    src_y = dst_x;
-                    break;
-                case 3:
-                    src_x = source->width - 1 - dst_x;
-                    src_y = source->height - 1 - dst_y;
-                    break;
-                case 4:
-                    src_x = dst_y;
-                    src_y = source->height - 1 - dst_x;
-                    break;
-                case 5:
-                    src_x = dst_y;
-                    src_y = dst_x;
-                    break;
-                case 6:
-                    src_x = source->width - 1 - dst_y;
-                    src_y = source->height - 1 - dst_x;
-                    break;
-                }
-
-                const std::size_t src_offset =
-                    static_cast<std::size_t>(src_y) * source->stride +
-                    static_cast<std::size_t>(src_x) * source->channels;
-                const std::size_t dst_offset =
-                    static_cast<std::size_t>(dst_y) * image->stride +
-                    static_cast<std::size_t>(dst_x) * image->channels;
-                std::memcpy(
-                    image->pixels.data() + dst_offset,
-                    source->pixels.data() + src_offset,
-                    static_cast<std::size_t>(source->channels));
-            }
+        const int status = copy_transpose_pixels_into(source, method, image);
+        if (status != PILLOW_C_OK) {
+            delete image;
+            return status;
         }
-
-        copy_palette_if_same_mode(source, image);
         *out_image = image;
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
@@ -21103,6 +38016,565 @@ extern "C" __declspec(dllexport) int pillow_c_image_exif_orientation(const Pillo
     return PILLOW_C_OK;
 }
 
+extern "C" __declspec(dllexport) int pillow_c_exif_orientation_bytes(
+    int orientation,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_orientation_bytes(orientation, out_exif, out_exif_size, out_exif_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_entries_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_entries_typed_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_typed_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_entries_full_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_full_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        rational_tags,
+        rational_numerators,
+        rational_denominators,
+        rational_count,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_entries_short_array_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    const int* short_array_tags,
+    const std::uint32_t* short_array_values,
+    std::size_t short_array_value_count,
+    const std::size_t* short_array_offsets,
+    const std::size_t* short_array_counts,
+    std::size_t short_array_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_short_array_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        rational_tags,
+        rational_numerators,
+        rational_denominators,
+        rational_count,
+        short_array_tags,
+        short_array_values,
+        short_array_value_count,
+        short_array_offsets,
+        short_array_counts,
+        short_array_count,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_entries_byte_array_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    const int* short_array_tags,
+    const std::uint32_t* short_array_values,
+    std::size_t short_array_value_count,
+    const std::size_t* short_array_offsets,
+    const std::size_t* short_array_counts,
+    std::size_t short_array_count,
+    const int* byte_array_tags,
+    const std::uint8_t* byte_array_values,
+    std::size_t byte_array_value_count,
+    const std::size_t* byte_array_offsets,
+    const std::size_t* byte_array_counts,
+    std::size_t byte_array_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_byte_array_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        rational_tags,
+        rational_numerators,
+        rational_denominators,
+        rational_count,
+        short_array_tags,
+        short_array_values,
+        short_array_value_count,
+        short_array_offsets,
+        short_array_counts,
+        short_array_count,
+        byte_array_tags,
+        byte_array_values,
+        byte_array_value_count,
+        byte_array_offsets,
+        byte_array_counts,
+        byte_array_count,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_entries_signed_rational_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    const int* short_array_tags,
+    const std::uint32_t* short_array_values,
+    std::size_t short_array_value_count,
+    const std::size_t* short_array_offsets,
+    const std::size_t* short_array_counts,
+    std::size_t short_array_count,
+    const int* byte_array_tags,
+    const std::uint8_t* byte_array_values,
+    std::size_t byte_array_value_count,
+    const std::size_t* byte_array_offsets,
+    const std::size_t* byte_array_counts,
+    std::size_t byte_array_count,
+    const int* signed_rational_tags,
+    const std::int32_t* signed_rational_numerators,
+    const std::int32_t* signed_rational_denominators,
+    std::size_t signed_rational_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_signed_rational_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        rational_tags,
+        rational_numerators,
+        rational_denominators,
+        rational_count,
+        short_array_tags,
+        short_array_values,
+        short_array_value_count,
+        short_array_offsets,
+        short_array_counts,
+        short_array_count,
+        byte_array_tags,
+        byte_array_values,
+        byte_array_value_count,
+        byte_array_offsets,
+        byte_array_counts,
+        byte_array_count,
+        signed_rational_tags,
+        signed_rational_numerators,
+        signed_rational_denominators,
+        signed_rational_count,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_entries_undefined_bytes(
+    int orientation,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    const int* short_array_tags,
+    const std::uint32_t* short_array_values,
+    std::size_t short_array_value_count,
+    const std::size_t* short_array_offsets,
+    const std::size_t* short_array_counts,
+    std::size_t short_array_count,
+    const int* byte_array_tags,
+    const std::uint8_t* byte_array_values,
+    std::size_t byte_array_value_count,
+    const std::size_t* byte_array_offsets,
+    const std::size_t* byte_array_counts,
+    std::size_t byte_array_count,
+    const int* signed_rational_tags,
+    const std::int32_t* signed_rational_numerators,
+    const std::int32_t* signed_rational_denominators,
+    std::size_t signed_rational_count,
+    const int* undefined_tags,
+    const std::uint8_t* undefined_values,
+    std::size_t undefined_value_count,
+    const std::size_t* undefined_offsets,
+    const std::size_t* undefined_counts,
+    std::size_t undefined_count,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    return copy_exif_entries_undefined_bytes(
+        orientation,
+        ascii_tags,
+        ascii_values,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        rational_tags,
+        rational_numerators,
+        rational_denominators,
+        rational_count,
+        short_array_tags,
+        short_array_values,
+        short_array_value_count,
+        short_array_offsets,
+        short_array_counts,
+        short_array_count,
+        byte_array_tags,
+        byte_array_values,
+        byte_array_value_count,
+        byte_array_offsets,
+        byte_array_counts,
+        byte_array_count,
+        signed_rational_tags,
+        signed_rational_numerators,
+        signed_rational_denominators,
+        signed_rational_count,
+        undefined_tags,
+        undefined_values,
+        undefined_value_count,
+        undefined_offsets,
+        undefined_counts,
+        undefined_count,
+        out_exif,
+        out_exif_size,
+        out_exif_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_ascii_tag(
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    int tag,
+    int* out_has_tag,
+    char* out_value,
+    std::size_t out_value_size,
+    std::size_t* out_value_required)
+{
+    if (!out_has_tag || !out_value_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    std::string value;
+    bool has_value = false;
+    const int status = parse_exif_ascii_tag(exif, exif_size, tag, &value, &has_value);
+    if (status != PILLOW_C_OK) {
+        *out_has_tag = 0;
+        *out_value_required = 0u;
+        return status;
+    }
+    *out_has_tag = has_value ? 1 : 0;
+    *out_value_required = has_value ? value.size() + 1u : 0u;
+    if (!has_value) {
+        return PILLOW_C_OK;
+    }
+    if (!out_value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_value_size < value.size() + 1u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    std::memcpy(out_value, value.c_str(), value.size() + 1u);
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_uint_tag(
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    int tag,
+    int* out_has_tag,
+    std::uint32_t* out_value)
+{
+    if (!out_has_tag || !out_value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    bool has_value = false;
+    std::uint32_t value = 0u;
+    const int status = parse_exif_uint_tag(exif, exif_size, tag, &value, &has_value);
+    if (status != PILLOW_C_OK) {
+        *out_has_tag = 0;
+        *out_value = 0u;
+        return status;
+    }
+    *out_has_tag = has_value ? 1 : 0;
+    *out_value = has_value ? value : 0u;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_rational_tag(
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    int tag,
+    int* out_has_tag,
+    std::uint32_t* out_numerator,
+    std::uint32_t* out_denominator)
+{
+    if (!out_has_tag || !out_numerator || !out_denominator) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    bool has_value = false;
+    std::uint32_t numerator = 0u;
+    std::uint32_t denominator = 0u;
+    const int status = parse_exif_rational_tag(exif, exif_size, tag, &numerator, &denominator, &has_value);
+    if (status != PILLOW_C_OK) {
+        *out_has_tag = 0;
+        *out_numerator = 0u;
+        *out_denominator = 0u;
+        return status;
+    }
+    *out_has_tag = has_value ? 1 : 0;
+    *out_numerator = has_value ? numerator : 0u;
+    *out_denominator = has_value ? denominator : 0u;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_signed_rational_tag(
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    int tag,
+    int* out_has_tag,
+    std::int32_t* out_numerator,
+    std::int32_t* out_denominator)
+{
+    if (!out_has_tag || !out_numerator || !out_denominator) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    bool has_value = false;
+    std::int32_t numerator = 0;
+    std::int32_t denominator = 0;
+    const int status = parse_exif_signed_rational_tag(exif, exif_size, tag, &numerator, &denominator, &has_value);
+    if (status != PILLOW_C_OK) {
+        *out_has_tag = 0;
+        *out_numerator = 0;
+        *out_denominator = 0;
+        return status;
+    }
+    *out_has_tag = has_value ? 1 : 0;
+    *out_numerator = has_value ? numerator : 0;
+    *out_denominator = has_value ? denominator : 0;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_ushort_array_tag(
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    int tag,
+    int* out_has_tag,
+    std::uint32_t* out_values,
+    std::size_t out_value_count,
+    std::size_t* out_value_required)
+{
+    if (!out_has_tag || !out_value_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    bool has_value = false;
+    std::vector<std::uint32_t> values;
+    const int status = parse_exif_ushort_array_tag(exif, exif_size, tag, &values, &has_value);
+    if (status != PILLOW_C_OK) {
+        *out_has_tag = 0;
+        *out_value_required = 0u;
+        return status;
+    }
+    *out_has_tag = has_value ? 1 : 0;
+    *out_value_required = has_value ? values.size() : 0u;
+    if (!has_value) {
+        return PILLOW_C_OK;
+    }
+    if (!out_values) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_value_count < values.size()) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    std::memcpy(out_values, values.data(), values.size() * sizeof(std::uint32_t));
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_byte_array_tag(
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    int tag,
+    int* out_has_tag,
+    std::uint8_t* out_values,
+    std::size_t out_value_size,
+    std::size_t* out_value_required)
+{
+    if (!out_has_tag || !out_value_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    bool has_value = false;
+    std::vector<std::uint8_t> values;
+    const int status = parse_exif_byte_array_tag(exif, exif_size, tag, &values, &has_value);
+    if (status != PILLOW_C_OK) {
+        *out_has_tag = 0;
+        *out_value_required = 0u;
+        return status;
+    }
+    *out_has_tag = has_value ? 1 : 0;
+    *out_value_required = has_value ? values.size() : 0u;
+    if (!has_value) {
+        return PILLOW_C_OK;
+    }
+    if (!out_values) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_value_size < values.size()) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    std::memcpy(out_values, values.data(), values.size());
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_exif_undefined_tag(
+    const std::uint8_t* exif,
+    std::size_t exif_size,
+    int tag,
+    int* out_has_tag,
+    std::uint8_t* out_values,
+    std::size_t out_value_size,
+    std::size_t* out_value_required)
+{
+    if (!out_has_tag || !out_value_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    bool has_value = false;
+    std::vector<std::uint8_t> values;
+    const int status = parse_exif_undefined_tag(exif, exif_size, tag, &values, &has_value);
+    if (status != PILLOW_C_OK) {
+        *out_has_tag = 0;
+        *out_value_required = 0u;
+        return status;
+    }
+    *out_has_tag = has_value ? 1 : 0;
+    *out_value_required = has_value ? values.size() : 0u;
+    if (!has_value) {
+        return PILLOW_C_OK;
+    }
+    if (!out_values) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_value_size < values.size()) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    std::memcpy(out_values, values.data(), values.size());
+    return PILLOW_C_OK;
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_metadata_resolution(
     const PillowCImage* image,
     int* out_has_dpi,
@@ -21146,6 +38618,340 @@ extern "C" __declspec(dllexport) int pillow_c_image_metadata_hotspot(
     return PILLOW_C_OK;
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_dib_compression(
+    const PillowCImage* image,
+    int* out_has_compression,
+    int* out_compression)
+{
+    if (!image || !out_has_compression || !out_compression) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_has_compression = image->has_dib_compression ? 1 : 0;
+    *out_compression = image->has_dib_compression ? image->dib_compression : -1;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_png_gamma(
+    const PillowCImage* image,
+    int* out_has_gamma,
+    double* out_gamma)
+{
+    if (!image || !out_has_gamma || !out_gamma) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_has_gamma = image->has_png_gamma ? 1 : 0;
+    *out_gamma = image->png_gamma;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_png_srgb(
+    const PillowCImage* image,
+    int* out_has_srgb,
+    int* out_srgb)
+{
+    if (!image || !out_has_srgb || !out_srgb) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_has_srgb = image->has_png_srgb ? 1 : 0;
+    *out_srgb = image->has_png_srgb ? image->png_srgb : 0;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_png_chromaticity(
+    const PillowCImage* image,
+    int* out_has_chromaticity,
+    double* out_values,
+    std::size_t value_count)
+{
+    if (!image || !out_has_chromaticity || !out_values) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (value_count < 8u) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    *out_has_chromaticity = image->has_png_chromaticity ? 1 : 0;
+    for (std::size_t i = 0; i < 8u; ++i) {
+        out_values[i] = image->png_chromaticity[i];
+    }
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_png_text_count(
+    const PillowCImage* image,
+    std::size_t* out_count)
+{
+    if (!image || !out_count) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_count = image->png_text.size();
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_png_text(
+    const PillowCImage* image,
+    std::size_t index,
+    char* out_key,
+    std::size_t out_key_size,
+    std::size_t* out_key_required,
+    char* out_value,
+    std::size_t out_value_size,
+    std::size_t* out_value_required)
+{
+    if (!image || !out_key_required || !out_value_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (index >= image->png_text.size()) {
+        *out_key_required = 0;
+        *out_value_required = 0;
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const auto& item = image->png_text[index];
+    const std::size_t key_required = item.first.size() + 1u;
+    const std::size_t value_required = item.second.size() + 1u;
+    *out_key_required = key_required;
+    *out_value_required = value_required;
+    if (!out_key || !out_value) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_key_size < key_required || out_value_size < value_required) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    std::memcpy(out_key, item.first.c_str(), key_required);
+    std::memcpy(out_value, item.second.c_str(), value_required);
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_png_icc_profile(
+    const PillowCImage* image,
+    int* out_has_profile,
+    std::uint8_t* out_profile,
+    std::size_t out_profile_size,
+    std::size_t* out_profile_required)
+{
+    if (!image || !out_has_profile || !out_profile_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const std::size_t required = image->png_icc_profile.size();
+    *out_has_profile = required > 0u ? 1 : 0;
+    *out_profile_required = required;
+    if (required == 0u) {
+        return PILLOW_C_OK;
+    }
+    if (!out_profile) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_profile_size < required) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    std::memcpy(out_profile, image->png_icc_profile.data(), required);
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_png_exif(
+    const PillowCImage* image,
+    int* out_has_exif,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    if (!image || !out_has_exif || !out_exif_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const std::size_t required = image->png_exif.size();
+    *out_has_exif = required > 0u ? 1 : 0;
+    *out_exif_required = required;
+    if (required == 0u) {
+        return PILLOW_C_OK;
+    }
+    if (!out_exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_exif_size < required) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    std::memcpy(out_exif, image->png_exif.data(), required);
+    return PILLOW_C_OK;
+}
+
+int copy_metadata_blob(
+    const std::vector<std::uint8_t>& data,
+    int* out_has_blob,
+    std::uint8_t* out_blob,
+    std::size_t out_blob_size,
+    std::size_t* out_blob_required)
+{
+    if (!out_has_blob || !out_blob_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const std::size_t required = data.size();
+    *out_has_blob = required > 0u ? 1 : 0;
+    *out_blob_required = required;
+    if (required == 0u) {
+        return PILLOW_C_OK;
+    }
+    if (!out_blob) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (out_blob_size < required) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    std::memcpy(out_blob, data.data(), required);
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_xmp(
+    const PillowCImage* image,
+    int* out_has_xmp,
+    std::uint8_t* out_xmp,
+    std::size_t out_xmp_size,
+    std::size_t* out_xmp_required)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    return copy_metadata_blob(image->xmp, out_has_xmp, out_xmp, out_xmp_size, out_xmp_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_jpeg_comment(
+    const PillowCImage* image,
+    int* out_has_comment,
+    std::uint8_t* out_comment,
+    std::size_t out_comment_size,
+    std::size_t* out_comment_required)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    return copy_metadata_blob(image->jpeg_comment, out_has_comment, out_comment, out_comment_size, out_comment_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_jpeg_icc_profile(
+    const PillowCImage* image,
+    int* out_has_profile,
+    std::uint8_t* out_profile,
+    std::size_t out_profile_size,
+    std::size_t* out_profile_required)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    return copy_metadata_blob(image->jpeg_icc_profile, out_has_profile, out_profile, out_profile_size, out_profile_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_jpeg_exif(
+    const PillowCImage* image,
+    int* out_has_exif,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    return copy_metadata_blob(image->jpeg_exif, out_has_exif, out_exif, out_exif_size, out_exif_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_tiff_exif(
+    const PillowCImage* image,
+    int* out_has_exif,
+    std::uint8_t* out_exif,
+    std::size_t out_exif_size,
+    std::size_t* out_exif_required)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    return copy_metadata_blob(image->tiff_exif, out_has_exif, out_exif, out_exif_size, out_exif_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_jpeg_qtable_count(
+    const PillowCImage* image,
+    std::size_t* out_count)
+{
+    if (!image || !out_count) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_count = image->jpeg_qtable_count;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_jpeg_qtable(
+    const PillowCImage* image,
+    std::size_t index,
+    int* out_values,
+    std::size_t out_value_count)
+{
+    if (!image || !out_values) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (index >= image->jpeg_qtable_count || out_value_count < 64u ||
+        image->jpeg_qtables.size() < (index + 1u) * 64u) {
+        return out_value_count < 64u ? PILLOW_C_INVALID_LENGTH : PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int* source = image->jpeg_qtables.data() + index * 64u;
+    std::memcpy(out_values, source, 64u * sizeof(int));
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_jpeg_subsampling(
+    const PillowCImage* image,
+    int* out_subsampling)
+{
+    if (!image || !out_subsampling) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_subsampling = image->jpeg_subsampling;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_png_transparency(
+    const PillowCImage* image,
+    int* out_has_transparency,
+    int* out_transparency)
+{
+    if (!image || !out_has_transparency || !out_transparency) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_has_transparency = image->has_png_transparency ? 1 : 0;
+    *out_transparency = image->has_png_transparency ? image->png_transparency : -1;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_png_transparency_table(
+    const PillowCImage* image,
+    int* out_has_transparency,
+    std::uint8_t* out_transparency,
+    std::size_t out_transparency_size,
+    std::size_t* out_transparency_required)
+{
+    if (!image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    return copy_metadata_blob(
+        image->png_transparency_table,
+        out_has_transparency,
+        out_transparency,
+        out_transparency_size,
+        out_transparency_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_png_rgb_transparency(
+    const PillowCImage* image,
+    int* out_has_transparency,
+    int* out_r,
+    int* out_g,
+    int* out_b)
+{
+    if (!image || !out_has_transparency || !out_r || !out_g || !out_b) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_has_transparency = image->has_png_rgb_transparency ? 1 : 0;
+    *out_r = image->has_png_rgb_transparency ? image->png_rgb_transparency[0] : -1;
+    *out_g = image->has_png_rgb_transparency ? image->png_rgb_transparency[1] : -1;
+    *out_b = image->has_png_rgb_transparency ? image->png_rgb_transparency[2] : -1;
+    return PILLOW_C_OK;
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_stride(const PillowCImage* image, int* out_stride)
 {
     if (!image || !out_stride) {
@@ -21180,6 +38986,27 @@ extern "C" __declspec(dllexport) int pillow_c_image_data(
     return PILLOW_C_OK;
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_readonly(
+    const PillowCImage* image,
+    int* out_readonly)
+{
+    if (!image || !out_readonly) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_readonly = image->buffer_readonly ? 1 : 0;
+    return PILLOW_C_OK;
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_refresh_buffer(PillowCImage* image)
+{
+    return refresh_buffer_view_image(image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_detach_buffer(PillowCImage* image)
+{
+    return detach_buffer_view_image(image);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_set_bytes(
     PillowCImage* image,
     const std::uint8_t* data,
@@ -21187,6 +39014,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_set_bytes(
 {
     if (!image || !data) {
         return PILLOW_C_NULL_POINTER;
+    }
+    const int detach_status = detach_buffer_view_image(image);
+    if (detach_status != PILLOW_C_OK) {
+        return detach_status;
     }
     if (size != image->pixels.size()) {
         return PILLOW_C_INVALID_LENGTH;
@@ -21400,6 +39231,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_set_raw_bytes(
     int stride,
     int orientation)
 {
+    const int detach_status = detach_buffer_view_image(image);
+    if (detach_status != PILLOW_C_OK) {
+        return detach_status;
+    }
     return set_raw_bytes_image(image, data, size, raw_mode, stride, orientation);
 }
 
@@ -21411,6 +39246,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_put_data(
 {
     if (!image || (!data && size > 0)) {
         return PILLOW_C_NULL_POINTER;
+    }
+    const int detach_status = detach_buffer_view_image(image);
+    if (detach_status != PILLOW_C_OK) {
+        return detach_status;
     }
     if (pixel_count > static_cast<std::size_t>(image->width) * static_cast<std::size_t>(image->height)) {
         return PILLOW_C_INVALID_LENGTH;
@@ -21430,6 +39269,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_fill(
     const std::uint8_t* color,
     std::size_t color_size)
 {
+    const int detach_status = detach_buffer_view_image(image);
+    if (detach_status != PILLOW_C_OK) {
+        return detach_status;
+    }
     return fill_image_pixels(image, color, color_size);
 }
 
@@ -21440,6 +39283,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_getpixel(
     std::uint8_t* out_color,
     std::size_t out_color_size)
 {
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return get_pixel_image(image, x, y, out_color, out_color_size);
 }
 
@@ -21450,6 +39297,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_putpixel(
     const std::uint8_t* color,
     std::size_t color_size)
 {
+    const int detach_status = detach_buffer_view_image(image);
+    if (detach_status != PILLOW_C_OK) {
+        return detach_status;
+    }
     return put_pixel_image(image, x, y, color, color_size);
 }
 
@@ -21465,7 +39316,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_rectangle(
     std::size_t outline_size,
     int width)
 {
-    return draw_rectangle_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_rectangle_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_ellipse(
@@ -21480,7 +39333,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_ellipse(
     std::size_t outline_size,
     int width)
 {
-    return draw_ellipse_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_ellipse_image(image, left, top, right, bottom, fill, fill_size, outline, outline_size, width);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_arc(
@@ -21495,7 +39350,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_arc(
     std::size_t color_size,
     int width)
 {
-    return draw_arc_image(image, left, top, right, bottom, start, end, color, color_size, width);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_arc_image(image, left, top, right, bottom, start, end, color, color_size, width);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_chord(
@@ -21512,7 +39369,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_chord(
     std::size_t outline_size,
     int width)
 {
-    return draw_chord_image(image, left, top, right, bottom, start, end, fill, fill_size, outline, outline_size, width);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_chord_image(image, left, top, right, bottom, start, end, fill, fill_size, outline, outline_size, width);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_pieslice(
@@ -21529,7 +39388,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_pieslice(
     std::size_t outline_size,
     int width)
 {
-    return draw_pieslice_image(image, left, top, right, bottom, start, end, fill, fill_size, outline, outline_size, width);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_pieslice_image(image, left, top, right, bottom, start, end, fill, fill_size, outline, outline_size, width);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_rounded_rectangle(
@@ -21546,19 +39407,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_rounded_rectangle(
     int width,
     int corners_mask)
 {
-    return draw_rounded_rectangle_image(
-        image,
-        left,
-        top,
-        right,
-        bottom,
-        radius,
-        fill,
-        fill_size,
-        outline,
-        outline_size,
-        width,
-        corners_mask);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_rounded_rectangle_image(
+            image,
+            left,
+            top,
+            right,
+            bottom,
+            radius,
+            fill,
+            fill_size,
+            outline,
+            outline_size,
+            width,
+            corners_mask);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_bitmap(
@@ -21569,7 +39432,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_bitmap(
     const std::uint8_t* color,
     std::size_t color_size)
 {
-    return draw_bitmap_image(image, left, top, mask, color, color_size);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_bitmap_image(image, left, top, mask, color, color_size);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_floodfill(
@@ -21582,7 +39447,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_floodfill(
     std::size_t border_size,
     double thresh)
 {
-    return draw_floodfill_image(image, seed_x, seed_y, value, value_size, border, border_size, thresh);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_floodfill_image(image, seed_x, seed_y, value, value_size, border, border_size, thresh);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_line(
@@ -21593,7 +39460,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_line(
     std::size_t color_size,
     int width)
 {
-    return draw_line_image(image, points, point_count, color, color_size, width);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_line_image(image, points, point_count, color, color_size, width);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_line_joint(
@@ -21605,7 +39474,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_line_joint(
     int width,
     int joint_curve)
 {
-    return draw_line_joint_image(image, points, point_count, color, color_size, width, joint_curve);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_line_joint_image(image, points, point_count, color, color_size, width, joint_curve);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_points(
@@ -21615,7 +39486,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_points(
     const std::uint8_t* color,
     std::size_t color_size)
 {
-    return draw_points_image(image, points, point_count, color, color_size);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_points_image(image, points, point_count, color, color_size);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_polygon(
@@ -21628,7 +39501,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_polygon(
     std::size_t outline_size,
     int width)
 {
-    return draw_polygon_image(image, points, point_count, fill, fill_size, outline, outline_size, width);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_polygon_image(image, points, point_count, fill, fill_size, outline, outline_size, width);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_text(
@@ -21639,7 +39514,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_text(
     const std::uint8_t* fill,
     std::size_t fill_size)
 {
-    return draw_text_image(image, left, top, text, fill, fill_size);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_text_image(image, left, top, text, fill, fill_size);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_text_anchor(
@@ -21651,7 +39528,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_text_anchor(
     std::size_t fill_size,
     const char* anchor)
 {
-    return draw_text_image_anchor(image, left, top, text, fill, fill_size, anchor);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_text_image_anchor(image, left, top, text, fill, fill_size, anchor);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_text_stroke(
@@ -21665,16 +39544,18 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_text_stroke(
     const std::uint8_t* stroke_fill,
     std::size_t stroke_fill_size)
 {
-    return draw_text_image_stroke(
-        image,
-        left,
-        top,
-        text,
-        fill,
-        fill_size,
-        stroke_width,
-        stroke_fill,
-        stroke_fill_size);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_text_image_stroke(
+            image,
+            left,
+            top,
+            text,
+            fill,
+            fill_size,
+            stroke_width,
+            stroke_fill,
+            stroke_fill_size);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_text_anchor_stroke(
@@ -21689,17 +39570,19 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_text_anchor_stroke(
     const std::uint8_t* stroke_fill,
     std::size_t stroke_fill_size)
 {
-    return draw_text_image_anchor_stroke(
-        image,
-        left,
-        top,
-        text,
-        fill,
-        fill_size,
-        anchor,
-        stroke_width,
-        stroke_fill,
-        stroke_fill_size);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_text_image_anchor_stroke(
+            image,
+            left,
+            top,
+            text,
+            fill,
+            fill_size,
+            anchor,
+            stroke_width,
+            stroke_fill,
+            stroke_fill_size);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_text_font(
@@ -21711,7 +39594,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_text_font(
     const std::uint8_t* fill,
     std::size_t fill_size)
 {
-    return draw_text_image_font(image, left, top, text, font, fill, fill_size);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_text_image_font(image, left, top, text, font, fill, fill_size);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_text_font_stroke(
@@ -21726,17 +39611,19 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_text_font_stroke(
     const std::uint8_t* stroke_fill,
     std::size_t stroke_fill_size)
 {
-    return draw_text_image_font_stroke(
-        image,
-        left,
-        top,
-        text,
-        font,
-        fill,
-        fill_size,
-        stroke_width,
-        stroke_fill,
-        stroke_fill_size);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_text_image_font_stroke(
+            image,
+            left,
+            top,
+            text,
+            font,
+            fill,
+            fill_size,
+            stroke_width,
+            stroke_fill,
+            stroke_fill_size);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_text_font_anchor(
@@ -21749,7 +39636,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_text_font_anchor(
     std::size_t fill_size,
     const char* anchor)
 {
-    return draw_text_image_font_anchor(image, left, top, text, font, fill, fill_size, anchor);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_text_image_font_anchor(image, left, top, text, font, fill, fill_size, anchor);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_text_font_anchor_stroke(
@@ -21765,18 +39654,20 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_text_font_anchor_stroke
     const std::uint8_t* stroke_fill,
     std::size_t stroke_fill_size)
 {
-    return draw_text_image_font_anchor_stroke(
-        image,
-        left,
-        top,
-        text,
-        font,
-        fill,
-        fill_size,
-        anchor,
-        stroke_width,
-        stroke_fill,
-        stroke_fill_size);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_text_image_font_anchor_stroke(
+            image,
+            left,
+            top,
+            text,
+            font,
+            fill,
+            fill_size,
+            anchor,
+            stroke_width,
+            stroke_fill,
+            stroke_fill_size);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text(
@@ -21788,7 +39679,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text(
     std::size_t fill_size,
     int spacing)
 {
-    return draw_multiline_text_image(image, left, top, text, fill, fill_size, spacing);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_multiline_text_image(image, left, top, text, fill, fill_size, spacing);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_align(
@@ -21801,7 +39694,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_align(
     int spacing,
     int align)
 {
-    return draw_multiline_text_image_align(image, left, top, text, fill, fill_size, spacing, align);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_multiline_text_image_align(image, left, top, text, fill, fill_size, spacing, align);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_anchor(
@@ -21815,16 +39710,18 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_anchor(
     int align,
     const char* anchor)
 {
-    return draw_multiline_text_image_anchor(
-        image,
-        left,
-        top,
-        text,
-        fill,
-        fill_size,
-        spacing,
-        align,
-        anchor);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_multiline_text_image_anchor(
+            image,
+            left,
+            top,
+            text,
+            fill,
+            fill_size,
+            spacing,
+            align,
+            anchor);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_align_stroke(
@@ -21840,18 +39737,20 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_align_st
     const std::uint8_t* stroke_fill,
     std::size_t stroke_fill_size)
 {
-    return draw_multiline_text_image_align_stroke(
-        image,
-        left,
-        top,
-        text,
-        fill,
-        fill_size,
-        spacing,
-        align,
-        stroke_width,
-        stroke_fill,
-        stroke_fill_size);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_multiline_text_image_align_stroke(
+            image,
+            left,
+            top,
+            text,
+            fill,
+            fill_size,
+            spacing,
+            align,
+            stroke_width,
+            stroke_fill,
+            stroke_fill_size);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_anchor_stroke(
@@ -21868,19 +39767,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_anchor_s
     const std::uint8_t* stroke_fill,
     std::size_t stroke_fill_size)
 {
-    return draw_multiline_text_image_anchor_stroke(
-        image,
-        left,
-        top,
-        text,
-        fill,
-        fill_size,
-        spacing,
-        align,
-        anchor,
-        stroke_width,
-        stroke_fill,
-        stroke_fill_size);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_multiline_text_image_anchor_stroke(
+            image,
+            left,
+            top,
+            text,
+            fill,
+            fill_size,
+            spacing,
+            align,
+            anchor,
+            stroke_width,
+            stroke_fill,
+            stroke_fill_size);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_font(
@@ -21893,7 +39794,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_font(
     std::size_t fill_size,
     int spacing)
 {
-    return draw_multiline_text_image_font(image, left, top, text, font, fill, fill_size, spacing);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_multiline_text_image_font(image, left, top, text, font, fill, fill_size, spacing);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_font_align(
@@ -21907,16 +39810,18 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_font_ali
     int spacing,
     int align)
 {
-    return draw_multiline_text_image_font_align(
-        image,
-        left,
-        top,
-        text,
-        font,
-        fill,
-        fill_size,
-        spacing,
-        align);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_multiline_text_image_font_align(
+            image,
+            left,
+            top,
+            text,
+            font,
+            fill,
+            fill_size,
+            spacing,
+            align);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_font_align_stroke(
@@ -21933,19 +39838,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_font_ali
     const std::uint8_t* stroke_fill,
     std::size_t stroke_fill_size)
 {
-    return draw_multiline_text_image_font_align_stroke(
-        image,
-        left,
-        top,
-        text,
-        font,
-        fill,
-        fill_size,
-        spacing,
-        align,
-        stroke_width,
-        stroke_fill,
-        stroke_fill_size);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_multiline_text_image_font_align_stroke(
+            image,
+            left,
+            top,
+            text,
+            font,
+            fill,
+            fill_size,
+            spacing,
+            align,
+            stroke_width,
+            stroke_fill,
+            stroke_fill_size);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_font_anchor(
@@ -21960,17 +39867,19 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_font_anc
     int align,
     const char* anchor)
 {
-    return draw_multiline_text_image_font_anchor(
-        image,
-        left,
-        top,
-        text,
-        font,
-        fill,
-        fill_size,
-        spacing,
-        align,
-        anchor);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_multiline_text_image_font_anchor(
+            image,
+            left,
+            top,
+            text,
+            font,
+            fill,
+            fill_size,
+            spacing,
+            align,
+            anchor);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_font_anchor_stroke(
@@ -21988,20 +39897,22 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_multiline_text_font_anc
     const std::uint8_t* stroke_fill,
     std::size_t stroke_fill_size)
 {
-    return draw_multiline_text_image_font_anchor_stroke(
-        image,
-        left,
-        top,
-        text,
-        font,
-        fill,
-        fill_size,
-        spacing,
-        align,
-        anchor,
-        stroke_width,
-        stroke_fill,
-        stroke_fill_size);
+    return with_detached_buffer_view(image, [&]() {
+        return draw_multiline_text_image_font_anchor_stroke(
+            image,
+            left,
+            top,
+            text,
+            font,
+            fill,
+            fill_size,
+            spacing,
+            align,
+            anchor,
+            stroke_width,
+            stroke_fill,
+            stroke_fill_size);
+    });
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_textlength(
@@ -22500,6 +40411,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_get_bytes(
     if (size != image->pixels.size()) {
         return PILLOW_C_INVALID_LENGTH;
     }
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     std::memcpy(out, image->pixels.data(), size);
     return PILLOW_C_OK;
 }
@@ -22511,6 +40426,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_get_raw_bytes(
     std::size_t out_size,
     std::size_t* out_required)
 {
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return get_raw_bytes_image(image, raw_mode, out, out_size, out_required);
 }
 
@@ -22519,6 +40438,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_histogram(
     std::uint64_t* out_histogram,
     std::size_t out_count)
 {
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return histogram_image(image, out_histogram, out_count);
 }
 
@@ -22528,6 +40451,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_histogram_masked(
     std::uint64_t* out_histogram,
     std::size_t out_count)
 {
+    const int image_refresh_status = refresh_const_buffer_view_image(image);
+    if (image_refresh_status != PILLOW_C_OK) {
+        return image_refresh_status;
+    }
+    if (mask) {
+        const int mask_refresh_status = refresh_const_buffer_view_image(mask);
+        if (mask_refresh_status != PILLOW_C_OK) {
+            return mask_refresh_status;
+        }
+    }
     return histogram_image_masked(image, mask, out_histogram, out_count);
 }
 
@@ -22536,6 +40469,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_entropy(
     const PillowCImage* mask,
     double* out_entropy)
 {
+    const int image_refresh_status = refresh_const_buffer_view_image(image);
+    if (image_refresh_status != PILLOW_C_OK) {
+        return image_refresh_status;
+    }
+    if (mask) {
+        const int mask_refresh_status = refresh_const_buffer_view_image(mask);
+        if (mask_refresh_status != PILLOW_C_OK) {
+            return mask_refresh_status;
+        }
+    }
     return entropy_image(image, mask, out_entropy);
 }
 
@@ -22546,7 +40489,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_get_extrema(
     std::uint8_t* out_has_value,
     std::size_t out_count)
 {
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return extrema_image(image, out_min, out_max, out_has_value, out_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_get_extrema_numeric(
+    const PillowCImage* image,
+    double* out_min,
+    double* out_max,
+    std::uint8_t* out_has_value,
+    std::size_t out_count)
+{
+    return extrema_image_numeric(image, out_min, out_max, out_has_value, out_count);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_getbbox(
@@ -22558,6 +40515,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_getbbox(
     int* out_bottom,
     int* out_has_bbox)
 {
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return getbbox_image(image, alpha_only != 0, out_left, out_top, out_right, out_bottom, out_has_bbox);
 }
 
@@ -22568,6 +40529,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_getprojection(
     std::uint8_t* out_y_projection,
     std::size_t out_y_count)
 {
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return getprojection_image(image, out_x_projection, out_x_count, out_y_projection, out_y_count);
 }
 
@@ -22580,7 +40545,27 @@ extern "C" __declspec(dllexport) int pillow_c_image_getcolors(
     std::size_t* out_count,
     int* out_exceeded)
 {
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     return getcolors_image(image, maxcolors, out_counts, out_colors, out_capacity, out_count, out_exceeded);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_getcolors_numeric(
+    const PillowCImage* image,
+    int maxcolors,
+    std::uint64_t* out_counts,
+    double* out_values,
+    std::size_t out_capacity,
+    std::size_t* out_count,
+    int* out_exceeded)
+{
+    const int refresh_status = refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+    return getcolors_image_numeric(image, maxcolors, out_counts, out_values, out_capacity, out_count, out_exceeded);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_copy(
@@ -22591,13 +40576,27 @@ extern "C" __declspec(dllexport) int pillow_c_image_copy(
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     try {
         auto* image = new PillowCImage{source->width, source->height, source->mode, source->channels, source->stride, source->pixels, source->palette_rgb, source->exif_orientation};
         image->palette_alpha = source->palette_alpha;
         image->palette_alpha_mode = source->palette_alpha_mode;
+        image->has_png_transparency = source->has_png_transparency;
+        image->png_transparency = source->png_transparency;
+        image->png_transparency_table = source->png_transparency_table;
+        image->has_png_rgb_transparency = source->has_png_rgb_transparency;
+        image->png_rgb_transparency[0] = source->png_rgb_transparency[0];
+        image->png_rgb_transparency[1] = source->png_rgb_transparency[1];
+        image->png_rgb_transparency[2] = source->png_rgb_transparency[2];
         image->has_hotspot = source->has_hotspot;
         image->hotspot_x = source->hotspot_x;
         image->hotspot_y = source->hotspot_y;
+        image->has_dib_compression = source->has_dib_compression;
+        image->dib_compression = source->dib_compression;
+        image->tiff_exif = source->tiff_exif;
         *out_image = image;
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
@@ -22682,6 +40681,17 @@ extern "C" __declspec(dllexport) int pillow_c_image_blend(
     *out_image = nullptr;
     if (!images_match(left, right)) {
         return PILLOW_C_MISMATCH;
+    }
+    if (numeric_i_or_f_mode(left)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int left_refresh_status = refresh_const_buffer_view_image(left);
+    if (left_refresh_status != PILLOW_C_OK) {
+        return left_refresh_status;
+    }
+    const int right_refresh_status = refresh_const_buffer_view_image(right);
+    if (right_refresh_status != PILLOW_C_OK) {
+        return right_refresh_status;
     }
 
     try {
@@ -23711,6 +41721,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_get_channel(
     if (channel_index < 0 || channel_index >= source->channels) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
 
     try {
         const int target_mode = channel_target_mode_for_source(source);
@@ -23827,6 +41841,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_mode(
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     const int target_channels = channels_for_mode(target_mode);
     if (target_channels == 0) {
         return PILLOW_C_INVALID_ARGUMENT;
@@ -23868,6 +41886,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_convert_mode_dither(
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
     const int target_channels = channels_for_mode(target_mode);
     if (target_channels == 0) {
         return PILLOW_C_INVALID_ARGUMENT;
@@ -24033,6 +42055,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize(
     if (resample != PILLOW_C_RESAMPLE_NEAREST && !filter_spec_for_resample(resample)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
 
     std::size_t stride = 0;
     std::size_t size = 0;
@@ -24080,6 +42106,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize_box(
     }
     if (resample != PILLOW_C_RESAMPLE_NEAREST && !filter_spec_for_resample(resample)) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
 
     std::size_t stride = 0;
@@ -24135,6 +42165,10 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize_reducing_gap(
     const int effective_resample = resize_resample_for_mode(source, resample);
     if (effective_resample != PILLOW_C_RESAMPLE_NEAREST && !filter_spec_for_resample(effective_resample)) {
         return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = refresh_const_buffer_view_image(source);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
     }
 
     std::size_t stride = 0;

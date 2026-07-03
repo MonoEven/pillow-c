@@ -4,6 +4,8 @@ Tests use `ahktest` from [MonoEven/stdlib-ahk](https://github.com/MonoEven/stdli
 
 In the current local workspace, run tests through the parent `visual_studio\tools\run-ahktest.ps1` wrapper. That runner adds `#ErrorStdOut`, captures unhandled AHK errors, writes reports, and prevents modal error popups from blocking automation.
 
+The wrapper validates discovered `.test.ahk` sources plus statically resolved AHK `#Include`, `-Config`, and `-Plugin` sources as strict UTF-8 before launching AutoHotkey. A source decoding warning such as `Some non-ASCII characters could not be decoded` is reported as an ahktest collection failure instead of timing out behind a modal warning.
+
 Use `-TimeoutSeconds 120` for every AHK test run, including filtered and single-file runs, so incremental checks have the same timeout behavior as the full suite.
 
 ## Build
