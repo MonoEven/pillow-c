@@ -10775,6 +10775,8 @@ class Pillow {
             compressionOption := Pillow.Image.SaveOption(options, "Compression", "compression")
             iccProfileOption := Pillow.Image.SaveOption(options, "IccProfile", "icc_profile")
             tiffInfoOption := Pillow.Image.SaveOption(options, "TiffInfo", "tiffinfo")
+            if tiffInfoOption.Set && exifOption.Set
+                exifOption := { Set: false }
             if tiffInfoOption.Set {
                 if !(tiffInfoOption.Value is Map)
                     throw Error("Pillow.Image.Save tiffinfo expects a Map", -1)

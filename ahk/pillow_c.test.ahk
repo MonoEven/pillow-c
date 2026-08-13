@@ -46679,6 +46679,99 @@ PillowCTestImagePatchTiffExifEntries(*) {
             PillowCFreeImage(image)
         PillowCDeleteFile(path)
     }
+
+    ; The patch composes with a dpi-saved base: the base 282/283/296 trio is
+    ; kept and the patched ascii tag joins it.
+    dpiPath := PillowCTempTiffPath("patch-tiff-exif-dpi")
+    dpiImage := PillowCCreateImageMode(2, 2, 1)
+    dpiLoaded := 0
+    try {
+        PillowCImageSetBytes(dpiImage, [1, 2, 3, 4])
+        PillowCAssertStatus(PillowCImageSaveTiffOptionsStatus(dpiImage, dpiPath, 1, 300.0, 150.0))
+
+        dpiPathBytes := PillowCUtf8Buffer(dpiPath)
+        dpiAscii := PillowCUtf8Buffer("Patched Text")
+        dpiAsciiTags := Buffer(4, 0)
+        dpiAsciiPtrs := Buffer(A_PtrSize, 0)
+        dpiAsciiSizes := Buffer(A_PtrSize, 0)
+        NumPut("Int", 270, dpiAsciiTags, 0)
+        NumPut("Ptr", dpiAscii.Ptr, dpiAsciiPtrs, 0)
+        NumPut("UPtr", dpiAscii.Size, dpiAsciiSizes, 0)
+        dpiStatus := DllCall(
+            PillowCDllPath() "\pillow_c_image_patch_tiff_exif_entries",
+            "Ptr", dpiPathBytes,
+            "Ptr", dpiAsciiTags,
+            "Ptr", dpiAsciiPtrs,
+            "Ptr", dpiAsciiSizes,
+            "UPtr", 1,
+            "Ptr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Int"
+        )
+        PillowCAssertStatus(dpiStatus)
+
+        dpiLoaded := PillowCImageOpenTiff(dpiPath)
+        dpiExif := PillowCImageMetadataTiffExif(dpiLoaded)
+        dpiResolution := PillowCImageMetadataResolution(dpiLoaded)
+        AhkTest.AssertEqual(1, PillowCImageMode(dpiLoaded))
+        AhkTest.AssertEqual([1, 2, 3, 4], PillowCImageToArray(dpiLoaded, 4))
+        AhkTest.AssertEqual(1, dpiResolution.HasDpi)
+        AhkTest.AssertTrue(Abs(dpiResolution.DpiX - 300.0) < 0.0001)
+        AhkTest.AssertTrue(Abs(dpiResolution.DpiY - 150.0) < 0.0001)
+        AhkTest.AssertEqual("Patched Text", PillowCExifAsciiTagValue(dpiExif.Exif, 270))
+        AhkTest.AssertEqual([300, 1], PillowCExifRationalTagValue(dpiExif.Exif, 282))
+        AhkTest.AssertEqual([150, 1], PillowCExifRationalTagValue(dpiExif.Exif, 283))
+        AhkTest.AssertEqual(2, PillowCExifUintTagValue(dpiExif.Exif, 296, -1))
+    } finally {
+        if dpiLoaded
+            PillowCFreeImage(dpiLoaded)
+        if dpiImage
+            PillowCFreeImage(dpiImage)
+        PillowCDeleteFile(dpiPath)
+    }
 }
 
 AhkTest.Test("pillow_c image patch_tiff_exif_entries writes IFD0 exif tags", PillowCTestImagePatchTiffExifEntries)

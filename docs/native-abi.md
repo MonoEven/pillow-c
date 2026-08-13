@@ -183,8 +183,12 @@ existing save seams and then this export, matching Pillow 11.3.0's
 direct-into-IFD0 `exif=` layout and the unit-2 282/283/296 reopened
 `Info["dpi"]` behavior; scalar exif composes with every TIFF compression
 like Pillow, and array exif plus compression keeps working where libtiff
-fails upstream (benign superset). Existing save exports, handle
-ownership, and synchronous path lifetime contracts remain unchanged.
+fails upstream (benign superset). `FMT-TIFF-003AX` changes no native code:
+the facade mirrors Pillow 11.3.0's `tiffinfo` precedence by dropping
+`exif` whenever `tiffinfo` is set, and the patch export's collision rule
+keeps a dpi-saved base's 282/283/296 trio when patched ascii tags are
+added. Existing save exports, handle ownership, and synchronous path
+lifetime contracts remain unchanged.
 
 ## TIFF Classic ExifIFD/GPSInfo Sub-IFD ABI Behavior
 

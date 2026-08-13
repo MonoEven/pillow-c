@@ -47,8 +47,23 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2728` AHK tests: `1352` raw DLL tests and
-`1376` facade tests.
+This suite currently registers `2729` AHK tests: `1352` raw DLL tests and
+`1377` facade tests.
+
+Latest `FMT-TIFF-003AX` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_exif_combos.py`) confirms `exif=`+`dpi=` and
+`exif=`+`icc_profile=` compose with every exif tag surviving, while
+`tiffinfo` takes precedence and silently drops `exif`. The facade mirrors
+the drop with one guard in `SaveTiffFrames`, and the raw patch test gained
+a dpi-saved base case (collision rule keeps the base 282/283/296 trio).
+Raw/facade compose targets pass `1/1` and `1/1`; the TIFF filter passes
+`677/677` in `5453ms`; and the full directory suite passes `2729/2729` in
+`19578ms`, with zero failures, errors, or skips. No native change;
+source/DLL export parity remains `454/454` with zero difference; and the
+DLL SHA-256 remains
+`A008AA7ED59172DE327959B3DEA6103A19CDA6E122A650C7CC79D773FCFC53D9`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The overall
+Pillow replacement-readiness estimate moves to `70% ±4%`.
 
 Latest `FMT-TIFF-003AW` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_tiff_exif_save.py` and the new

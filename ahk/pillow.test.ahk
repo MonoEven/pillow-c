@@ -43599,6 +43599,88 @@ PillowTestImageSaveTiffExifOptionRoundTrip(*) {
 
 AhkTest.Test("Pillow Image.Save TIFF exif option round-trips IFD0 tags", PillowTestImageSaveTiffExifOptionRoundTrip)
 
+PillowTestImageSaveTiffExifOptionComposes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    exif := Pillow.Image.Exif(
+        unset,
+        false,
+        Map(270, "Description Text"),
+        Map(),
+        Map(),
+        Map(),
+        Map(),
+        Map(37380, [3, 7]),
+        Map(),
+        Map())
+    cases := [
+        {
+            Name: "dpi",
+            Path: PillowTestTempTiffPath("save-tiff-exif-dpi"),
+            Options: Map("exif", exif, "dpi", [300, 150]),
+            HasDpi: 1,
+            HasIcc: 0,
+            HasTiffInfo: 0,
+        },
+        {
+            Name: "icc",
+            Path: PillowTestTempTiffPath("save-tiff-exif-icc"),
+            Options: Map("exif", exif, "icc_profile", PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])),
+            HasDpi: 0,
+            HasIcc: 1,
+            HasTiffInfo: 0,
+        },
+        {
+            Name: "tiffinfo",
+            Path: PillowTestTempTiffPath("save-tiff-exif-tiffinfo"),
+            Options: Map("exif", exif, "tiffinfo", Map(315, "Ada Lovelace")),
+            HasDpi: 0,
+            HasIcc: 0,
+            HasTiffInfo: 1,
+        },
+    ]
+    for item in cases {
+        source := Pillow.Image.New("L", [2, 2])
+        reopened := 0
+        try {
+            Pillow.ImageDraw.Draw(source).Point([[0, 0], [1, 0], [0, 1], [1, 1]], 9)
+            source.Save(item.Path, "TIFF", item.Options)
+            source.Close()
+
+            reopened := Pillow.Image.Open(item.Path, ["TIFF"])
+            exif2 := reopened.GetExif()
+
+            AhkTest.AssertEqual("L", reopened.Mode)
+            AhkTest.AssertEqual([9, 9, 9, 9], PillowTestBufferToArray(reopened.ToBytes()))
+            if item.HasDpi {
+                AhkTest.AssertTrue(reopened.Info.Has("dpi"))
+                PillowTestAssertFloatArrayClose([300.0, 150.0], reopened.Info["dpi"], 0.0001)
+            }
+            if item.HasIcc {
+                AhkTest.AssertTrue(reopened.Info.Has("icc_profile"))
+                AhkTest.AssertEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], PillowTestBufferToArray(reopened.Info["icc_profile"]))
+            }
+            if item.HasTiffInfo {
+                AhkTest.AssertTrue(exif2.Has(315))
+                AhkTest.AssertEqual("Ada Lovelace", exif2[315])
+                ; Pillow drops exif when tiffinfo is present.
+                AhkTest.AssertFalse(exif2.Has(270))
+                AhkTest.AssertFalse(exif2.Has(37380))
+            } else {
+                AhkTest.AssertTrue(exif2.Has(270))
+                AhkTest.AssertEqual("Description Text", exif2[270])
+                AhkTest.AssertTrue(exif2.Has(37380))
+                AhkTest.AssertEqual([3, 7], exif2[37380])
+            }
+        } finally {
+            if IsObject(reopened)
+                reopened.Close()
+            PillowTestDeleteFile(item.Path)
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF exif composes with dpi icc and tiffinfo options", PillowTestImageSaveTiffExifOptionComposes)
+
 PillowTestImageOpenTiffAppliesBigTiffOrientationMatrix(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     for storage in ["L", "RGB", "RGBA", "LA"] {
