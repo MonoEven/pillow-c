@@ -29,8 +29,8 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`463/463`; the full AHK suite is `2779/2779`; and the current DLL SHA-256 is
-`2CADF992A741F27D32A7E72F5A3881162F2FE882920ADD8F7601A348FE742F1B`.
+`463/463`; the full AHK suite is `2781/2781`; and the current DLL SHA-256 is
+`77D2F0BB93546810708B69A4F39671FE6186A93762DB00D9871186D1AC4BEE9F`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
@@ -100,8 +100,18 @@ numeric transform family: `mesh_transform_image_into` routes
 `PILLOW_C_MODE_I` and `PILLOW_C_MODE_F` through the same per-sample
 helpers (its own per-byte channel loop was the last holdout), while the
 perspective and quad exports already shared the
-`transform_with_mapper_into` numeric branch. Numeric Resize
-interpolation, I;16, and the other transform families remain separate.
+`transform_with_mapper_into` numeric branch.
+
+`MODE-NUM-001CK` adds no public export either and covers numeric
+resize: `ResampleCoefficients` retains the unquantized normalized
+double weights alongside the 22-bit fixed-point ones, and
+`resize_filter_box_into` gains a numeric two-pass branch that resamples
+one 32-bit sample per pixel for `PILLOW_C_MODE_I` and
+`PILLOW_C_MODE_F` with Pillow 11.3.0 `Resample.c` 32bpc semantics
+(float32 intermediates for F, round-half-away after each pass for I,
+no clipping) across BILINEAR/BICUBIC/LANCZOS/BOX/HAMMING. Numeric
+boxed-Resize/Thumbnail composition, I;16, and the other numeric
+families remain separate.
 
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.

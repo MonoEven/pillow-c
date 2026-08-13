@@ -33,6 +33,7 @@ struct ResampleCoefficients {
     int kernel_size;
     std::vector<int> bounds;
     std::vector<std::int32_t> weights;
+    std::vector<double> normalized_weights;
 };
 
 struct ResampleFilterSpec {
@@ -190,6 +191,7 @@ bool precompute_filter_coefficients_for_box(
     coeffs->kernel_size = kernel_size;
     coeffs->bounds.assign(static_cast<std::size_t>(out_size) * 2u, 0);
     coeffs->weights.assign(static_cast<std::size_t>(out_size) * kernel_size, 0);
+    coeffs->normalized_weights.assign(static_cast<std::size_t>(out_size) * kernel_size, 0.0);
 
     const double scale = (box_end - box_start) / out_size;
     const double ss = 1.0 / filterscale;
@@ -220,8 +222,13 @@ bool precompute_filter_coefficients_for_box(
         std::int32_t* weights =
             coeffs->weights.data() +
             static_cast<std::size_t>(out_index) * kernel_size;
+        double* normalized_weights =
+            coeffs->normalized_weights.data() +
+            static_cast<std::size_t>(out_index) * kernel_size;
         for (int i = 0; i < kernel_size; ++i) {
-            const double scaled = normalized[static_cast<std::size_t>(i)] * RESAMPLE_PRECISION_SCALE;
+            const double value = normalized[static_cast<std::size_t>(i)];
+            normalized_weights[i] = value;
+            const double scaled = value * RESAMPLE_PRECISION_SCALE;
             weights[i] = scaled < 0.0 ?
                 static_cast<std::int32_t>(-0.5 + scaled) :
                 static_cast<std::int32_t>(0.5 + scaled);
@@ -255,6 +262,22 @@ std::uint8_t source_sample_for_resize(const PillowCImage* source, int x, int y, 
         return pillow_c_mul_div_255(px[channel], px[alpha_channel]);
     }
     return px[channel];
+}
+
+double resize_numeric_sample(const PillowCImage* source, int x, int y)
+{
+    const std::uint8_t* px =
+        source->pixels.data() +
+        static_cast<std::size_t>(y) * source->stride +
+        static_cast<std::size_t>(x) * 4u;
+    return source->mode == PILLOW_C_MODE_I
+        ? static_cast<double>(read_le_i32(px))
+        : static_cast<double>(pillow_c_read_f32_le(px));
+}
+
+std::int32_t resize_round_i32_sample(double value)
+{
+    return static_cast<std::int32_t>(value >= 0.0 ? value + 0.5 : value - 0.5);
 }
 
 bool valid_resize_box(const PillowCImage* source, double left, double top, double right, double bottom)
@@ -306,6 +329,57 @@ int resize_filter_box_into(
         if (!precompute_filter_coefficients_for_box(source->width, out_width, box_left, box_right, *filter, &x_coeffs) ||
             !precompute_filter_coefficients_for_box(source->height, out_height, box_top, box_bottom, *filter, &y_coeffs)) {
             return PILLOW_C_ALLOCATION_FAILED;
+        }
+
+        if (source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F) {
+            ; // Pillow 11.3.0 resamples 32-bit modes per sample with
+              // unquantized double weights (Resample.c 32bpc paths):
+              // mode F keeps float32 intermediates, mode I rounds half
+              // away from zero after EACH pass.
+            const bool float_mode = source->mode == PILLOW_C_MODE_F;
+            std::vector<double> temp(
+                static_cast<std::size_t>(out_width) *
+                static_cast<std::size_t>(source->height),
+                0.0);
+            const double* x_norm = x_coeffs.normalized_weights.data();
+            const double* y_norm = y_coeffs.normalized_weights.data();
+            for (int y = 0; y < source->height; ++y) {
+                for (int out_x = 0; out_x < out_width; ++out_x) {
+                    const int xmin = x_coeffs.bounds[static_cast<std::size_t>(out_x) * 2u];
+                    const int count = x_coeffs.bounds[static_cast<std::size_t>(out_x) * 2u + 1u];
+                    const double* weights = x_norm + static_cast<std::size_t>(out_x) * x_coeffs.kernel_size;
+                    double sum = 0.0;
+                    for (int i = 0; i < count; ++i) {
+                        sum += resize_numeric_sample(source, xmin + i, y) * weights[i];
+                    }
+                    double value = float_mode ? sum : static_cast<double>(resize_round_i32_sample(sum));
+                    temp[static_cast<std::size_t>(y) * out_width + out_x] =
+                        float_mode ? static_cast<double>(static_cast<float>(value)) : value;
+                }
+            }
+            for (int out_y = 0; out_y < out_height; ++out_y) {
+                const int ymin = y_coeffs.bounds[static_cast<std::size_t>(out_y) * 2u];
+                const int count = y_coeffs.bounds[static_cast<std::size_t>(out_y) * 2u + 1u];
+                const double* weights = y_norm + static_cast<std::size_t>(out_y) * y_coeffs.kernel_size;
+                for (int out_x = 0; out_x < out_width; ++out_x) {
+                    double sum = 0.0;
+                    for (int i = 0; i < count; ++i) {
+                        sum += temp[static_cast<std::size_t>(ymin + i) * out_width + out_x] * weights[i];
+                    }
+                    std::uint8_t* dst =
+                        target->pixels.data() +
+                        static_cast<std::size_t>(out_y) * target->stride +
+                        static_cast<std::size_t>(out_x) * 4u;
+                    if (float_mode) {
+                        pillow_c_write_f32_le(dst, static_cast<float>(sum));
+                    } else {
+                        pillow_c_write_i32_le(
+                            dst,
+                            static_cast<std::uint32_t>(resize_round_i32_sample(sum)));
+                    }
+                }
+            }
+            return PILLOW_C_OK;
         }
 
         std::vector<std::uint8_t> temp(

@@ -22234,6 +22234,67 @@ PillowTestImageTransformPerspectiveQuadMeshNumeric(*) {
 
 AhkTest.Test("Pillow Image.Transform interpolates numeric PERSPECTIVE/QUAD/MESH samples", PillowTestImageTransformPerspectiveQuadMeshNumeric)
 
+PillowTestImageResizeNumeric(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    i := Pillow.Image.FromBytes("I", [2, 2], PillowTestBuffer(PillowTestBytesFromI32([1000, -2000, 3000, 7])))
+    f := Pillow.Image.FromBytes("F", [2, 2], PillowTestBuffer(PillowTestBytesFromF32([1.5, -2.5, 3.5, 0.25])))
+    out := 0
+    try {
+        out := i.Resize([3, 3], Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual("I", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([1000, -500, -2000, 2000, 502, -997, 3000, 1504, 7]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := i.Resize([3, 3], Pillow.Resampling.BICUBIC)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([1065, -632, -2329, 2197, 502, -1194, 3329, 1636, -58]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := i.Resize([3, 3], Pillow.Resampling.LANCZOS)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([1124, -749, -2621, 2372, 502, -1369, 3620, 1753, -116]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := f.Resize([3, 3], Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual("F", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([1.5, -0.5, -2.5, 2.5, 0.6875, -1.125, 3.5, 1.875, 0.25]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := f.Resize([3, 3], Pillow.Resampling.BICUBIC)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([
+                1.6348251104354858, -0.65625, -2.9473249912261963,
+                2.7384867668151855, 0.6875, -1.3634867668151855,
+                3.842148542404175, 2.03125, 0.2203514575958252,
+            ]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := f.Resize([3, 3], Pillow.Resampling.LANCZOS)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([
+                1.7598578929901123, -0.7948539853096008, -3.3495657444000244,
+                2.950040340423584, 0.6875, -1.5750402212142944,
+                4.140222549438477, 2.169853925704956, 0.1994851976633072,
+            ]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+    } finally {
+        if IsObject(out)
+            out.Close()
+        i.Close()
+        f.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Resize resamples numeric mode I/F samples", PillowTestImageResizeNumeric)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])

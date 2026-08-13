@@ -37,6 +37,48 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-13 MODE-NUM-001CK Numeric Resize Interpolation (GREEN)
+
+`MODE-NUM-001CK` closes the bounded mode I/F `Image.Resize()` per-sample
+resampling slice.
+
+Pillow 11.3.0's `Resample.c` 32bpc paths (source downloaded from the
+11.3.0 tag) resample one 32-bit sample per pixel with the UNQUANTIZED
+normalized double weights from the same coefficient precompute as the
+8-bit path: mode F keeps float32 intermediates between the two
+separable passes and stores the float32 cast, while mode I rounds half
+away from zero (`ROUND_UP(f) = (int)(f >= 0 ? f + 0.5 : f - 0.5)`)
+after EACH pass with no clipping. The native `ResampleCoefficients` now
+retains the double weights alongside the 22-bit fixed-point ones, and
+`resize_filter_box_into` gains a numeric two-pass branch
+(`resize_numeric_sample`, `resize_round_i32_sample`) that serves
+BILINEAR/BICUBIC/LANCZOS/BOX/HAMMING uniformly; NEAREST already
+whole-copied 4-byte samples. No new export: parity remains `463/463`.
+
+Verification:
+
+- Red evidence: the pre-change filter loops interpolated the four
+  storage bytes as u8 channels with fixed-point weights (the same
+  per-byte failure class as the transform family packets).
+- ctypes cross-check (`oracle/probe_mode_resize_dll_compose.py`): the
+  DLL's 2x2-to-3x3 I/F outputs match Pillow exactly for NEAREST,
+  BILINEAR, BICUBIC, LANCZOS, BOX, and HAMMING; `FAILURES: 0`.
+- Raw/facade numeric resize targets pass `2/2` in `47ms`.
+- Resize filter: `25/25` in `47ms`; numeric filter: `123/123` in
+  `578ms`.
+- Full AHK directory suite: `2781/2781` in `19296ms`; zero failures,
+  errors, or skips.
+- Release x64 Rebuild: `0 Warning(s), 0 Error(s)`.
+- Source/DLL export parity: `463/463`, zero difference.
+- DLL SHA-256:
+  `77D2F0BB93546810708B69A4F39671FE6186A93762DB00D9871186D1AC4BEE9F`.
+
+Boxed resize, Thumbnail, and reducing-gap numeric composition remain
+unverified; I;16 and the other numeric families remain separate. No
+facade lifetime rule, fallback, or AHK pixel loop changed. The estimate
+moves to `93% ±4%`. The next bounded child is `MODE-NUM-001CL`, the
+numeric boxed-Resize/Thumbnail lock-in.
+
 ## 2026-08-13 MODE-NUM-001CJ Numeric PERSPECTIVE/QUAD/MESH Lock-In (GREEN)
 
 `MODE-NUM-001CJ` completes the numeric transform family with the
@@ -39332,6 +39374,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | MODE-NUM-001CH | Modes | covered | Bounded mode I/F `Image.Transform()` AFFINE/EXTENT per-sample interpolation: Pillow 11.3.0 supports NEAREST/BILINEAR/BICUBIC on I and F, converts EXTENT to an AFFINE matrix in `Image.py`, interpolates ONE 32-bit sample per pixel with the existing byte-mode geometry (NEAREST truncation of `(dst + 0.5) * matrix`, bilinear `-0.5` edge-clamped fractional interpolation, bicubic clamped 4-point Catmull-Rom), stores the float32 cast for F and int32 truncation toward zero for I, and packs numeric fills as one int32/float32 sample (scalars, single-element tuples, color names through the grayscale map; I float tuples reject with `color must be int or single-element tuple`, F multi-element sequences with `must be real number, not tuple`). The shared `transform_with_mapper_into` loop now routes mode I/F through `bilinear_transform_numeric_sample`/`bicubic_transform_numeric_sample`/`write_transform_numeric_sample`, and the facade `TransformFillBuffer` packs the numeric fill branch. A ctypes cross-check matches Pillow exactly (`FAILURES: 0`); export parity remains `463/463`. The same loop serves perspective/quad/mesh but only AFFINE/EXTENT are verified; numeric Rotate interpolation, I;16, and other transform families remain separate. | `oracle/probe_mode_transform.py`, `oracle/probe_mode_transform_math.py`, `oracle/probe_mode_transform_fill_errors.py`, `oracle/probe_mode_transform_fill_accept.py`, `oracle/probe_mode_transform_dll_compose.py`, `bilinear_transform_numeric_sample`, `bicubic_transform_numeric_sample`, `write_transform_numeric_sample`, facade `TransformFillBuffer` numeric branch, raw/facade numeric transform tests. |
 | MODE-NUM-001CI | Modes | covered | Bounded mode I/F `Image.Rotate()` per-sample interpolation, the rotate twin of MODE-NUM-001CH: Pillow 11.3.0's `rotate()` builds the same affine matrix as the existing native `rotate_affine_geometry` and dispatches through the AFFINE transform path, so the rotate bilinear/bicubic loops now route numeric modes through `bilinear_transform_numeric_sample`/`bicubic_transform_numeric_sample`/`write_transform_numeric_sample` (NEAREST already whole-copied samples with equivalent geometry), and the rotate fill reuses the numeric `TransformFillBuffer` packing. A ctypes cross-check matches Pillow's I/F NEAREST/BILINEAR/BICUBIC rotate outputs at 45 degrees with expand=False/True plus fills exactly (`FAILURES: 0`). Export parity remains `463/463`. Numeric PERSPECTIVE/QUAD/MESH verification, I;16, and the other transform families remain separate. | `oracle/probe_mode_rotate.py`, `oracle/probe_mode_rotate_dll_compose.py`, `rotate_bilinear_into`/`rotate_bicubic_into` numeric branches, raw/facade numeric rotate tests. |
 | MODE-NUM-001CJ | Modes | covered | Bounded mode I/F PERSPECTIVE/QUAD/MESH transform lock-in completing the numeric transform family: Pillow 11.3.0 interpolates one 32-bit sample per pixel for all three methods. PERSPECTIVE and QUAD already matched through the shared `transform_with_mapper_into` numeric branch from MODE-NUM-001CH, while `mesh_transform_image_into` kept its own per-byte channel loop; it now routes numeric modes through `bilinear_transform_numeric_sample`/`bicubic_transform_numeric_sample`/`write_transform_numeric_sample`. A ctypes cross-check matches Pillow's I/F perspective/quad/mesh NEAREST/BILINEAR/BICUBIC outputs exactly (`FAILURES: 0`, after the pre-fix mesh divergence recorded `FAILURES: 4`). Export parity remains `463/463`. Numeric Resize interpolation, I;16, and the other transform families remain separate. | `oracle/probe_mode_pqm.py`, `oracle/probe_mode_pqm_dll_compose.py`, `mesh_transform_image_into` numeric branch, raw/facade numeric PQM tests. |
+| MODE-NUM-001CK | Modes | covered | Bounded mode I/F `Image.Resize()` per-sample resampling: Pillow 11.3.0's `Resample.c` 32bpc paths (11.3.0 tag source) resample one 32-bit sample per pixel with the UNQUANTIZED normalized double weights from the same coefficient precompute as the 8-bit path — mode F keeps float32 intermediates between the two separable passes and stores the float32 cast, mode I rounds half away from zero (`ROUND_UP`) after EACH pass with no clipping. `ResampleCoefficients` now retains the double weights, and `resize_filter_box_into` gains a numeric two-pass branch (`resize_numeric_sample`, `resize_round_i32_sample`) serving BILINEAR/BICUBIC/LANCZOS/BOX/HAMMING uniformly; NEAREST already whole-copied samples. A ctypes cross-check matches Pillow's 2x2-to-3x3 I/F outputs for all six kernels exactly (`FAILURES: 0`). Export parity remains `463/463`. Boxed resize, Thumbnail, and reducing-gap numeric composition remain unverified; I;16 and the other numeric families remain separate. | `oracle/probe_mode_resize.py`, `oracle/probe_mode_resize_dll_compose.py`, `ResampleCoefficients.normalized_weights`, `resize_filter_box_into` numeric branch, raw/facade numeric resize tests. |
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
 | FMT-WEBP-001 | WebP | not started | Open/save WebP and animation if a codec strategy is selected. | New format module boundary. |
 | FMT-AVIF-001 | AVIF | not started | Open/save AVIF if dependency and packaging constraints allow it. | New format module boundary. |

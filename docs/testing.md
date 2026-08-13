@@ -47,8 +47,29 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2779` AHK tests: `1379` raw DLL tests and
-`1400` facade tests.
+This suite currently registers `2781` AHK tests: `1380` raw DLL tests and
+`1401` facade tests.
+
+Latest `MODE-NUM-001CK` verification: Pillow 11.3.0's `Resample.c`
+32bpc paths (source from the 11.3.0 tag) resample one 32-bit sample
+per pixel with the unquantized normalized double weights from the same
+coefficient precompute as the 8-bit path: mode F keeps float32
+intermediates between the two separable passes, mode I rounds half away
+from zero after each pass. The native `ResampleCoefficients` now
+retains the double weights, and `resize_filter_box_into` gains a
+numeric two-pass branch serving BILINEAR/BICUBIC/LANCZOS/BOX/HAMMING
+uniformly. The ctypes cross-check (kept in
+`oracle/probe_mode_resize_dll_compose.py`) matches Pillow's 2x2-to-3x3
+I/F outputs for all six kernels exactly (`FAILURES: 0`). Raw/facade
+numeric resize targets pass `2/2` in `47ms`; the resize filter passes
+`25/25` in `47ms`; the numeric filter passes `123/123` in `578ms`;
+and the full directory suite passes `2781/2781` in `19296ms`, with
+zero failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity remains `463/463`
+with zero difference; and the rebuilt DLL SHA-256 is
+`77D2F0BB93546810708B69A4F39671FE6186A93762DB00D9871186D1AC4BEE9F`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `93% ±4%`.
 
 Latest `MODE-NUM-001CJ` verification: the Pillow 11.3.0 oracle (kept
 in `oracle/probe_mode_pqm.py`) shows perspective/quad/mesh on modes I

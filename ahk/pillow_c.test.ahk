@@ -22630,6 +22630,98 @@ PillowCTestImageTransformPerspectiveQuadMeshNumericSamples(*) {
 
 AhkTest.Test("pillow_c perspective/quad/mesh interpolate numeric mode I/F samples", PillowCTestImageTransformPerspectiveQuadMeshNumericSamples)
 
+PillowCTestImageResizeNumericSamples(*) {
+    ; Pillow 11.3.0 resamples mode I/F per 32-bit sample with unquantized
+    ; double weights (Resample.c 32bpc): F keeps float32 intermediates, I
+    ; rounds half away from zero after each pass.
+    i := PillowCCreateImageMode(2, 2, 8)
+    f := PillowCCreateImageMode(2, 2, 9)
+    out := 0
+    try {
+        ; 1000, -2000, 3000, 7
+        PillowCImageSetBytes(i, [
+            232, 3, 0, 0, 48, 248, 255, 255, 184, 11, 0, 0, 7, 0, 0, 0,
+        ])
+        ; 1.5, -2.5, 3.5, 0.25
+        PillowCImageSetBytes(f, [
+            0, 0, 192, 63, 0, 0, 32, 192, 0, 0, 96, 64, 0, 0, 128, 62,
+        ])
+
+        out := PillowCImageResize(i, 3, 3, 2)
+        AhkTest.AssertEqual(8, PillowCImageMode(out))
+        ; 1000, -500, -2000, 2000, 502, -997, 3000, 1504, 7
+        AhkTest.AssertEqual(
+            [232, 3, 0, 0, 12, 254, 255, 255, 48, 248, 255, 255,
+             208, 7, 0, 0, 246, 1, 0, 0, 27, 252, 255, 255,
+             184, 11, 0, 0, 224, 5, 0, 0, 7, 0, 0, 0],
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResize(i, 3, 3, 3)
+        ; 1065, -632, -2329, 2197, 502, -1194, 3329, 1636, -58
+        AhkTest.AssertEqual(
+            [41, 4, 0, 0, 136, 253, 255, 255, 231, 246, 255, 255,
+             149, 8, 0, 0, 246, 1, 0, 0, 86, 251, 255, 255,
+             1, 13, 0, 0, 100, 6, 0, 0, 198, 255, 255, 255],
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResize(i, 3, 3, 1)
+        ; 1124, -749, -2621, 2372, 502, -1369, 3620, 1753, -116
+        AhkTest.AssertEqual(
+            [100, 4, 0, 0, 19, 253, 255, 255, 195, 245, 255, 255,
+             68, 9, 0, 0, 246, 1, 0, 0, 167, 250, 255, 255,
+             36, 14, 0, 0, 217, 6, 0, 0, 140, 255, 255, 255],
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResize(f, 3, 3, 2)
+        AhkTest.AssertEqual(9, PillowCImageMode(out))
+        ; 1.5, -0.5, -2.5, 2.5, 0.6875, -1.125, 3.5, 1.875, 0.25
+        AhkTest.AssertEqual(
+            [0, 0, 192, 63, 0, 0, 0, 191, 0, 0, 32, 192,
+             0, 0, 32, 64, 0, 0, 48, 63, 0, 0, 144, 191,
+             0, 0, 96, 64, 0, 0, 240, 63, 0, 0, 128, 62],
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResize(f, 3, 3, 3)
+        ; 1.6348251104354858, -0.65625, -2.9473249912261963,
+        ; 2.7384867668151855, 0.6875, -1.3634867668151855,
+        ; 3.842148542404175, 2.03125, 0.2203514575958252
+        AhkTest.AssertEqual(
+            [243, 65, 209, 63, 0, 0, 40, 191, 249, 160, 60, 192,
+             94, 67, 47, 64, 0, 0, 48, 63, 188, 134, 174, 191,
+             195, 229, 117, 64, 0, 0, 2, 64, 208, 163, 97, 62],
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResize(f, 3, 3, 1)
+        ; 1.7598578929901123, -0.7948539853096008, -3.3495657444000244,
+        ; 2.950040340423584, 0.6875, -1.5750402212142944,
+        ; 4.140222549438477, 2.169853925704956, 0.1994851976633072
+        AhkTest.AssertEqual(
+            [6, 67, 225, 63, 141, 123, 75, 191, 73, 95, 86, 192,
+             118, 205, 60, 64, 0, 0, 48, 63, 235, 154, 201, 191,
+             180, 124, 132, 64, 227, 222, 10, 64, 217, 69, 76, 62],
+            PillowCImageToArray(out, 36))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        if i
+            PillowCFreeImage(i)
+        if f
+            PillowCFreeImage(f)
+    }
+}
+
+AhkTest.Test("pillow_c image_resize resamples numeric mode I/F samples", PillowCTestImageResizeNumericSamples)
+
 
 PillowCTestImageIcoSizesReportsAvailableFrames(*) {
     path := PillowCTempIcoPath("ico-sizes")
