@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 96% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 97% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
@@ -45,26 +45,27 @@ Pillow's list/non-linear rejections), the numeric transform family
 family (`MODE-NUM-001CK` per-sample two-pass resampling,
 `MODE-NUM-001CL` boxed-Resize/Thumbnail lock-in, `MODE-NUM-001CM`
 I;16 uint16 semantics with documented boundaries, and
-`MODE-NUM-001CN` the reducing-gap composition — Pillow's 32bpc
-block-average reduce step now serves I and F with ROUND_UP/float
-math, and the I;16 reduce step keeps Pillow's "image has wrong mode"
-rejection).
+`MODE-NUM-001CN` the reducing-gap composition), and `MODE-NUM-001CO`
+the I;16/I;16B transform fill packing (uint16 scalars/tuples/color
+names with modulo-65536 wrapping and Pillow's rejection messages).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. Reducing-gap was cross-verified against
-Pillow (exact int32/float32/uint16 samples, `FAILURES: 0`), the
-numeric filter passes `127/127` in `609ms`, the resize filter passes
-`31/31` in `62ms`, and the full directory suite passes `2787/2787` in
-`18859ms`; source/DLL exports remain `463/463` with zero difference;
-and the DLL SHA-256 is
-`ADAB3C0F6DBFD41B8C116D35F5B92C9B7A968F817F292C5B675EA1A667F0BA05`.
+IFD as a writer artifact. The I;16 fill slice was cross-verified
+against Pillow's fill matrix (exact uint16 samples including the
+wrap-around, `FAILURES: 0` via pinned test values), the numeric filter
+passes `128/128` in `641ms`, the Rotate filter passes `22/22` in
+`47ms`, and the full directory suite passes `2789/2789` in `18219ms`;
+source/DLL exports remain `463/463` with zero difference; and the DLL
+SHA-256 remains
+`ADAB3C0F6DBFD41B8C116D35F5B92C9B7A968F817F292C5B675EA1A667F0BA05`
+(facade-only slice).
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
-the next selected compatibility work packet is
-`FMT-JPEG-002B2CB`, the default-4:2:0 rows-2 exact per-scan
-DHT/SOS/entropy counterpart. Dither exact parity, libimagequant,
-broader quantize cross-products, qtables with more than two tables,
-malformed marker streams, and exact whole-file parity remain separate.
+the next selected compatibility work packet is the bounded
+`MODE-NUM-001CP` I;16 statistics/conversion semantics. Dither exact
+parity, libimagequant, broader quantize cross-products, qtables with
+more than two tables, malformed marker streams, and exact whole-file
+parity remain separate.
 ```
 
 Current work packet:
@@ -407,9 +408,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `FMT-JPEG-002B2CB`, the default-4:2:0 rows-2 exact
-  per-scan DHT/SOS/entropy counterpart, with broader numeric-mode and
-  format gaps staying separate.
+- Selected next gap: bounded `MODE-NUM-001CP` I;16
+  statistics/conversion semantics, with broader numeric-mode and format
+  gaps staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -484,6 +485,28 @@ Current work packet:
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
 
+2026-08-13: `MODE-NUM-001CO` is GREEN for the bounded I;16/I;16B
+transform/rotate fill packing (facade-only). The Pillow 11.3.0 oracles
+(kept in `oracle/probe_mode_i16_fill.py` and
+`oracle/probe_mode_i16_fill_range.py`) show I;16/I;16B NEAREST
+transform/rotate fills pack ONE uint16 sample: int scalars and
+single-element tuples wrap modulo 65536 (70000 -> 4464, -5 -> 65531),
+color names resolve through the grayscale map (`"red"` -> 76), floats
+and multi-element sequences reject with `color must be int or
+single-element tuple`, and I;16B keeps big-endian raw bytes. The
+facade `TransformFillBuffer` gains the I;16/I;16B branch (UShort
+little-endian for I;16, byte-swapped big-endian for I;16B), while the
+native ABI already accepted the raw 2-byte fill. Raw/facade I;16 fill
+targets pass `2/2` in `32ms`; the numeric filter passes `128/128` in
+`641ms`; the Rotate filter passes `22/22` in `47ms`; and the full
+directory suite passes `2789/2789` in `18219ms`, with zero failures,
+errors, or skips. Source/DLL export parity remains `463/463` with zero
+difference, and the DLL SHA-256 remains
+`ADAB3C0F6DBFD41B8C116D35F5B92C9B7A968F817F292C5B675EA1A667F0BA05`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+estimate moves to `97% ±4%`. The next bounded child is
+`MODE-NUM-001CP`, bounded I;16 statistics/conversion semantics.
+
 2026-08-13: `MODE-NUM-001CN` is GREEN for the bounded numeric
 reducing-gap Resize composition, completing the numeric resize family.
 The Pillow 11.3.0 oracles (kept in `oracle/probe_mode_reducing_gap.py`
@@ -512,8 +535,7 @@ has `0 Warning(s), 0 Error(s)`; source/DLL export parity remains
 `ADAB3C0F6DBFD41B8C116D35F5B92C9B7A968F817F292C5B675EA1A667F0BA05`.
 No facade lifetime rule, fallback, or AHK pixel loop changed. The
 estimate moves to `96% ±4%`. The next bounded child is
-`FMT-JPEG-002B2CB`, the default-4:2:0 rows-2 exact per-scan
-DHT/SOS/entropy counterpart.
+`MODE-NUM-001CO`, the I;16/I;16B transform fill packing.
 
 2026-08-13: `MODE-NUM-001CM` is GREEN for the bounded I;16 sample
 semantics. The Pillow 11.3.0 oracle (kept in
@@ -17793,8 +17815,10 @@ Current highest-value remaining areas:
    boundaries, and `MODE-NUM-001CN` completes the numeric resize family
    with the reducing-gap composition (32bpc block-average reduce for I/F,
    Pillow's `image has wrong mode` rejection for the I;16 reduce step).
-   The other transform families remain separate. Continue only through a
-   new explicit gap ID.
+   `MODE-NUM-001CO` covers the I;16/I;16B transform fill packing (uint16
+   scalars/tuples/color names, modulo-65536 wrapping, Pillow rejection
+   messages). I;16 statistics/conversion and the other transform families
+   remain separate. Continue only through a new explicit gap ID.
 3. `FMT-TIFF-002` to `FMT-TIFF-005`: TIFF tag/compression behavior and broader
    mode coverage after the now-covered `FMT-TIFF-001A` bounded multipage
    `save_all` child. `FMT-TIFF-002A` covers Orientation=3 open-side

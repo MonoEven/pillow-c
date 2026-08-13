@@ -37,6 +37,44 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-13 MODE-NUM-001CO I;16 Transform Fill Packing (GREEN)
+
+`MODE-NUM-001CO` closes the bounded I;16/I;16B transform/rotate fill
+packing slice (facade-only).
+
+The Pillow 11.3.0 oracles (kept in `oracle/probe_mode_i16_fill.py`
+and `oracle/probe_mode_i16_fill_range.py`) show I;16/I;16B NEAREST
+transform/rotate fills pack ONE uint16 sample: int scalars and
+single-element tuples wrap modulo 65536 (70000 -> 4464, -5 -> 65531),
+color names resolve through the grayscale map (`"red"` -> 76), floats
+and multi-element sequences reject with `color must be int or
+single-element tuple`, and I;16B keeps big-endian raw bytes. The
+facade `TransformFillBuffer` gains the I;16/I;16B branch (UShort
+little-endian for I;16, byte-swapped big-endian for I;16B) ahead of
+the storage-channel branches, while the native ABI already accepted
+the raw 2-byte fill (`normalize_transform_fill` size-2 memcpy). No
+export change: parity remains `463/463`, and the DLL SHA-256 is
+unchanged.
+
+Verification:
+
+- Red evidence: the previous storage-channel branch packed scalar
+  fills as one byte (`300` -> `[44, 0]`), diverging from Pillow's
+  uint16 sample.
+- Raw/facade I;16 fill targets pass `2/2` in `32ms` (raw pins the
+  native 2-byte fill verbatim copy for I;16 and I;16B).
+- Numeric filter: `128/128` in `641ms`; Rotate filter: `22/22` in
+  `47ms`.
+- Full AHK directory suite: `2789/2789` in `18219ms`; zero failures,
+  errors, or skips.
+- Source/DLL export parity: `463/463`, zero difference; DLL SHA-256
+  remains
+  `ADAB3C0F6DBFD41B8C116D35F5B92C9B7A968F817F292C5B675EA1A667F0BA05`.
+
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+estimate moves to `97% ±4%`. The next bounded child is
+`MODE-NUM-001CP`, bounded I;16 statistics/conversion semantics.
+
 ## 2026-08-13 MODE-NUM-001CN Numeric Reducing-Gap Resize (GREEN)
 
 `MODE-NUM-001CN` completes the numeric resize family with the bounded
@@ -78,8 +116,7 @@ Verification:
 
 No facade lifetime rule, fallback, or AHK pixel loop changed. The
 estimate moves to `96% ±4%`. The next bounded child is
-`FMT-JPEG-002B2CB`, the default-4:2:0 rows-2 exact per-scan
-DHT/SOS/entropy counterpart.
+`MODE-NUM-001CO`, the I;16/I;16B transform fill packing.
 
 ## 2026-08-13 MODE-NUM-001CM I;16 Sample Semantics (GREEN)
 
@@ -39509,6 +39546,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | MODE-NUM-001CL | Modes | covered | Bounded numeric boxed-Resize/Thumbnail lock-in with zero native changes: Pillow 11.3.0's boxed `resize(..., box=...)` on I and F runs through the same 32bpc two-pass resampler as the plain resize, and `thumbnail()` applies the aspect-preserving size math then the plain resize. The MODE-NUM-001CK numeric branch in `resize_filter_box_into` already serves the `pillow_c_image_resize_box` route, and the facade thumbnail aspect math already routes through `pillow_c_image_resize`. A ctypes cross-check matches Pillow's I/F boxed NEAREST/BILINEAR/BICUBIC outputs and 4x3-to-2x2 thumbnail-dimension resizes exactly (`FAILURES: 0`). Export parity remains `463/463` and the DLL SHA-256 is unchanged. Numeric reducing-gap composition remains unverified; I;16 and the other numeric families remain separate. | `oracle/probe_mode_box_thumb.py`, `oracle/probe_mode_box_thumb_dll_compose.py`, existing `resize_filter_box_into` numeric branch, existing facade Thumbnail/Resize box routing, raw/facade box/thumbnail tests. |
 | MODE-NUM-001CM | Modes | covered | Bounded I;16 resize/transform sample semantics: Pillow 11.3.0's I;16 resize runs the 16bpc two-pass resampler (ROUND_UP plus per-byte CLIP8 writes per pass — values above 65535 wrap the high byte to 255), while I;16 transform/rotate NEAREST whole-copies samples and bilinear/bicubic transform/rotate interpolate the storage bytes as byte channels (endian-bug garbage on I;16B, whose 16bpc resampler misreads big-endian raw bytes). The native resize filter gains a uint16 branch (`resize_read_i16_sample`, `resize_round_clip_i16_sample` replicating the CLIP8 artifact, `resize_write_i16_sample`), and bilinear/bicubic on I;16/I;16B plus I;16B filter resizes become explicit documented boundaries (`PILLOW_C_INVALID_ARGUMENT`). The facade defaults `;`-modes to NEAREST and surfaces the boundary errors. A ctypes cross-check matches Pillow exactly on resize and NEAREST transform/rotate with the boundary statuses (`FAILURES: 0`). Export parity remains `463/463`. I;16 fill packing and reducing-gap composition remain separate. | `oracle/probe_mode_i16.py`, `oracle/probe_mode_i16_dll_compose.py`, `resize_read_i16_sample`/`resize_round_clip_i16_sample`/`resize_write_i16_sample`, `transform_resample_unsupported_for_mode`, facade `ThrowUnsupportedTransformResample` + I;16B resize guard + `;`-mode NEAREST default, raw/facade I;16 tests. |
 | MODE-NUM-001CN | Modes | covered | Bounded numeric reducing-gap Resize composition completing the numeric resize family: Pillow 11.3.0 computes per-axis factors and, when a factor exceeds 1, runs `reduce(factor, box=safe_box)` then a boxed resize — Reduce.c's 32bpc path block-averages one sample per pixel (I stores `ROUND_UP(sum/count)`, F stores the float32 cast) with partial-edge corner multipliers, while I;16's reduce step raises `ValueError: image has wrong mode` (IMAGING_TYPE_SPECIAL). `supports_reduce_mode` now accepts I and F, `reduce_image_into` gains the numeric branch, the I;16 reduce step stays rejected, and the facade surfaces Pillow's `image has wrong mode` message when the factor exceeds 1. A ctypes cross-check matches Pillow's 24x24-to-3x3 I/F NEAREST/BILINEAR/BICUBIC outputs, the I;16 NEAREST output, and the boundary exactly (`FAILURES: 0`). Export parity remains `463/463`. | `oracle/probe_mode_reducing_gap.py`, `oracle/probe_mode_reducing_gap2.py`, `oracle/probe_mode_reducing_gap_dll_compose.py`, `supports_reduce_mode` + `reduce_image_into` numeric branch, facade I;16 reducing-gap guard, raw/facade reducing-gap tests. |
+| MODE-NUM-001CO | Modes | covered | Bounded I;16/I;16B transform/rotate fill packing (facade-only): Pillow 11.3.0 packs NEAREST fills as one uint16 sample — int scalars and single-element tuples wrap modulo 65536 (70000 -> 4464, -5 -> 65531), color names resolve through the grayscale map (`"red"` -> 76), floats and multi-element sequences reject with `color must be int or single-element tuple`, and I;16B keeps big-endian raw bytes. The facade `TransformFillBuffer` gains the I;16/I;16B branch (UShort LE for I;16, byte-swapped BE for I;16B), while the native ABI already accepted the raw 2-byte fill. Export parity remains `463/463` and the DLL SHA-256 is unchanged. | `oracle/probe_mode_i16_fill.py`, `oracle/probe_mode_i16_fill_range.py`, facade `TransformFillBuffer` I;16/I;16B branch, raw 2-byte fill pin, facade fill-matrix test. |
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
 | FMT-WEBP-001 | WebP | not started | Open/save WebP and animation if a codec strategy is selected. | New format module boundary. |
 | FMT-AVIF-001 | AVIF | not started | Open/save AVIF if dependency and packaging constraints allow it. | New format module boundary. |

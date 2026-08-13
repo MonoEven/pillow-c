@@ -12076,6 +12076,32 @@ class Pillow {
         }
 
         TransformFillBuffer(color) {
+            if this.Mode = "I;16" || this.Mode = "I;16B" {
+                ; Pillow 11.3.0 packs I;16/I;16B transform fill colors as
+                ; one uint16 sample (int scalars and single-element tuples
+                ; wrap modulo 65536; color names resolve to grayscale).
+                if IsObject(color) {
+                    if !(color is Array) || color.Length != 1
+                        throw Error("color must be int or single-element tuple", -1)
+                    color := color[1]
+                }
+                if color is String {
+                    rgb := Pillow.ImageColor.GetRgb(color)
+                    if rgb.Length = 4
+                        rgb := [rgb[1], rgb[2], rgb[3]]
+                    color := (rgb[1] * 19595 + rgb[2] * 38470 + rgb[3] * 7471 + 0x8000) >> 16
+                }
+                if !(color is Integer)
+                    throw Error("color must be int or single-element tuple", -1)
+                buf := Buffer(2, 0)
+                if this.Mode = "I;16B" {
+                    NumPut("UChar", color >> 8, buf, 0)
+                    NumPut("UChar", color & 0xFF, buf, 1)
+                } else {
+                    NumPut("UShort", color, buf, 0)
+                }
+                return buf
+            }
             if this.Mode = "I" || this.Mode = "F" {
                 ; Pillow 11.3.0 packs numeric transform fill colors as one
                 ; int32/float32 sample: scalars, single-element sequences,

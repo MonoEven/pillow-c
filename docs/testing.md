@@ -47,8 +47,28 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2787` AHK tests: `1383` raw DLL tests and
-`1404` facade tests.
+This suite currently registers `2789` AHK tests: `1384` raw DLL tests and
+`1405` facade tests.
+
+Latest `MODE-NUM-001CO` verification: the Pillow 11.3.0 oracles (kept
+in `oracle/probe_mode_i16_fill.py` and
+`oracle/probe_mode_i16_fill_range.py`) show I;16/I;16B NEAREST
+transform/rotate fills pack one uint16 sample: int scalars and
+single-element tuples wrap modulo 65536 (70000 -> 4464, -5 -> 65531),
+color names resolve through the grayscale map, floats and
+multi-element sequences reject with `color must be int or
+single-element tuple`, and I;16B keeps big-endian raw bytes. The
+facade `TransformFillBuffer` gains the I;16/I;16B branch while the
+native ABI already accepted the raw 2-byte fill. Raw/facade I;16 fill
+targets pass `2/2` in `32ms`; the numeric filter passes `128/128` in
+`641ms`; the Rotate filter passes `22/22` in `47ms`; and the full
+directory suite passes `2789/2789` in `18219ms`, with zero failures,
+errors, or skips. Source/DLL export parity remains `463/463` with zero
+difference, and the DLL SHA-256 remains
+`ADAB3C0F6DBFD41B8C116D35F5B92C9B7A968F817F292C5B675EA1A667F0BA05`
+(facade-only slice). No facade lifetime rule, fallback, or AHK pixel
+loop changed. The overall Pillow replacement-readiness estimate moves
+to `97% ±4%`.
 
 Latest `MODE-NUM-001CN` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_mode_reducing_gap.py` and

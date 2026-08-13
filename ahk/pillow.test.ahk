@@ -42,6 +42,15 @@ PillowTestBytesFromU16(values) {
     return PillowTestBufferToArray(buf)
 }
 
+PillowTestBytesFromU16BE(values) {
+    buf := Buffer(values.Length * 2, 0)
+    for index, value in values {
+        NumPut("UChar", value >> 8, buf, (index - 1) * 2)
+        NumPut("UChar", value & 0xFF, buf, (index - 1) * 2 + 1)
+    }
+    return PillowTestBufferToArray(buf)
+}
+
 PillowTestRowSums(values, width, height) {
     rows := []
     loop height {
@@ -22513,6 +22522,87 @@ PillowTestImageResizeReducingGapNumeric(*) {
 }
 
 AhkTest.Test("Pillow Image.Resize reducing_gap resamples numeric mode I/F samples", PillowTestImageResizeReducingGapNumeric)
+
+PillowTestImageTransformFillI16(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("I;16", [3, 2], PillowTestBuffer(PillowTestBytesFromU16([1000, 50000, 60000, 300, 200, 65535])))
+    imageB := Pillow.Image.FromBytes("I;16B", [3, 2], PillowTestBuffer(PillowTestBytesFromU16BE([1000, 50000, 60000, 300, 200, 65535])))
+    out := 0
+    try {
+        ; AFFINE NEAREST: (200, 65535) are real samples; the rest is fill.
+        out := image.TransformAffine([4, 3], [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.NEAREST, 300)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([200, 65535, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.TransformAffine([4, 3], [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.NEAREST, -5)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([200, 65535, 65531, 65531, 65531, 65531, 65531, 65531, 65531, 65531, 65531, 65531]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.TransformAffine([4, 3], [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.NEAREST, 70000)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([200, 65535, 4464, 4464, 4464, 4464, 4464, 4464, 4464, 4464, 4464, 4464]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.TransformAffine([4, 3], [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.NEAREST, [300])
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([200, 65535, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.TransformAffine([4, 3], [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.NEAREST, "red")
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([200, 65535, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Rotate(45, Pillow.Resampling.NEAREST, false, unset, unset, 300)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([300, 50000, 65535, 1000, 200, 300]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        fillError := ""
+        try {
+            image.TransformAffine([4, 3], [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.NEAREST, [50000, 70000])
+        } catch Error as err {
+            fillError := err.Message
+        }
+        AhkTest.AssertEqual("color must be int or single-element tuple", fillError)
+
+        fillError := ""
+        try {
+            image.TransformAffine([4, 3], [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.NEAREST, 7.5)
+        } catch Error as err {
+            fillError := err.Message
+        }
+        AhkTest.AssertEqual("color must be int or single-element tuple", fillError)
+
+        ; I;16B keeps big-endian raw storage in the packed fill.
+        out := imageB.TransformAffine([4, 3], [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.NEAREST, 300)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16BE([200, 65535, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := imageB.Rotate(45, Pillow.Resampling.NEAREST, false, unset, unset, 300)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16BE([300, 50000, 65535, 1000, 200, 300]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+    } finally {
+        if IsObject(out)
+            out.Close()
+        image.Close()
+        imageB.Close()
+    }
+}
+
+AhkTest.Test("Pillow I;16 Transform/Rotate packs numeric fill colors as uint16 samples", PillowTestImageTransformFillI16)
 
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

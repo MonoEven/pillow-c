@@ -136,6 +136,12 @@ stores the float32 cast, partial-edge corner multipliers — Pillow
 rejected with `PILLOW_C_INVALID_ARGUMENT` (Pillow's `image has wrong
 mode`), surfaced by a facade guard that reproduces the factor check.
 
+`MODE-NUM-001CO` changes no ABI at all: the facade
+`TransformFillBuffer` gains the I;16/I;16B uint16 packing branch
+(UShort little-endian for I;16, byte-swapped big-endian for I;16B),
+while the native 2-byte fill copy already worked; the DLL SHA-256 is
+unchanged. I;16 statistics/conversion semantics remain separate.
+
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.
 

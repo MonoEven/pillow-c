@@ -22969,6 +22969,47 @@ PillowCTestImageResizeTransformI16Samples(*) {
 
 AhkTest.Test("pillow_c I;16 resize/transform resamples per-sample with documented boundaries", PillowCTestImageResizeTransformI16Samples)
 
+PillowCTestImageRotateI16FillSamples(*) {
+    ; The native rotate/transform ABI accepts a raw 2-byte fill for I;16
+    ; (little-endian) and I;16B (big-endian raw) — the facade packs it.
+    i16 := PillowCCreateImageMode(3, 2, 11)
+    i16b := PillowCCreateImageMode(3, 2, 12)
+    out := 0
+    try {
+        ; 1000, 50000, 60000, 300, 200, 65535
+        PillowCImageSetBytes(i16, [
+            232, 3, 80, 195, 96, 234, 44, 1, 200, 0, 255, 255,
+        ])
+        PillowCImageSetBytes(i16b, [
+            232, 3, 80, 195, 96, 234, 44, 1, 200, 0, 255, 255,
+        ])
+
+        out := PillowCImageRotate(i16, 45, 0, false, 0.0, 0.0, false, 0.0, 0.0, false, [44, 1])
+        ; 300, 50000, 65535, 1000, 200, 300
+        AhkTest.AssertEqual(
+            [44, 1, 80, 195, 255, 255, 232, 3, 200, 0, 44, 1],
+            PillowCImageToArray(out, 12))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageRotate(i16b, 45, 0, false, 0.0, 0.0, false, 0.0, 0.0, false, [1, 44])
+        ; The raw ABI copies the 2-byte fill and samples verbatim.
+        ; 300, 50000, 65535, 1000, 200, 300
+        AhkTest.AssertEqual(
+            [1, 44, 80, 195, 255, 255, 232, 3, 200, 0, 1, 44],
+            PillowCImageToArray(out, 12))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        if i16
+            PillowCFreeImage(i16)
+        if i16b
+            PillowCFreeImage(i16b)
+    }
+}
+
+AhkTest.Test("pillow_c image_rotate accepts raw uint16 I;16/I;16B fill samples", PillowCTestImageRotateI16FillSamples)
+
 PillowCTestI32Bytes(values) {
     bytes := []
     for value in values {
