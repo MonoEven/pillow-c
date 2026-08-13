@@ -46604,6 +46604,46 @@ PillowCTestImageSaveTiffBigTiffMatrix(*) {
 
 AhkTest.Test("pillow_c image save_tiff_bigtiff round-trips the uncompressed mode matrix", PillowCTestImageSaveTiffBigTiffMatrix)
 
+PillowCTestImageSaveTiffBigTiffCompressionMatrix(*) {
+    cases := [
+        { Mode: 1, Name: "L", Bytes: [1, 2, 3, 4] },
+        { Mode: 3, Name: "RGB", Bytes: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120] },
+        { Mode: 4, Name: "RGBA", Bytes: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160] },
+        { Mode: 2, Name: "LA", Bytes: [5, 6, 7, 8, 9, 10, 11, 12] },
+    ]
+    for compression in [32773, 5, 8] {
+        for item in cases {
+            path := PillowCTempTiffPath("save-bigtiff-cmp-" compression "-" item.Name)
+            image := PillowCCreateImageMode(2, 2, item.Mode)
+            loaded := 0
+            try {
+                PillowCImageSetBytes(image, item.Bytes)
+                status := DllCall(
+                    PillowCDllPath() "\pillow_c_image_save_tiff_bigtiff_compression_options",
+                    "Ptr", image,
+                    "Ptr", PillowCUtf8Buffer(path),
+                    "Int", compression,
+                    "Int"
+                )
+                PillowCAssertStatus(status)
+                AhkTest.AssertEqual([73, 73, 43, 0], PillowCArraySlice(PillowCReadFileBytes(path), 1, 4))
+                AhkTest.AssertEqual(1, PillowCImageFrameCountTiff(path))
+                loaded := PillowCImageOpenTiff(path)
+                AhkTest.AssertEqual(item.Mode, PillowCImageMode(loaded))
+                AhkTest.AssertEqual(item.Bytes, PillowCImageToArray(loaded, item.Bytes.Length))
+            } finally {
+                if loaded
+                    PillowCFreeImage(loaded)
+                if image
+                    PillowCFreeImage(image)
+                PillowCDeleteFile(path)
+            }
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image save_tiff_bigtiff_compression_options round-trips PackBits LZW Deflate", PillowCTestImageSaveTiffBigTiffCompressionMatrix)
+
 PillowCTestImageOpenTiffReadsPillowBigTiffStripL(*) {
     path := PillowCTempTiffPath("open-bigtiff-strip-l")
     loaded := 0

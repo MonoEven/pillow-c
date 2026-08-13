@@ -3244,32 +3244,37 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
         }
     }
 
+    const bool supported_compression =
+        compression == TIFF_COMPRESSION_NONE ||
+        compression == TIFF_COMPRESSION_PACKBITS ||
+        compression == TIFF_COMPRESSION_LZW ||
+        compression == TIFF_COMPRESSION_ADOBE_DEFLATE;
     const bool matches_l =
         has_width && has_height && has_bits && has_photometric &&
         has_strip_offset && has_strip_byte_count &&
         bits_per_sample.size() == 1u && bits_per_sample[0] == 8u && photometric == 1u &&
-        compression == TIFF_COMPRESSION_NONE &&
+        supported_compression &&
         (!has_samples_per_pixel || samples_per_pixel == 1u);
     const bool matches_rgb =
         has_width && has_height && has_bits && has_photometric &&
         has_strip_offset && has_strip_byte_count &&
         bits_per_sample.size() == 3u && bits_per_sample[0] == 8u &&
         bits_per_sample[1] == 8u && bits_per_sample[2] == 8u && photometric == 2u &&
-        compression == TIFF_COMPRESSION_NONE &&
+        supported_compression &&
         has_samples_per_pixel && samples_per_pixel == 3u;
     const bool matches_rgba =
         has_width && has_height && has_bits && has_photometric &&
         has_strip_offset && has_strip_byte_count &&
         bits_per_sample.size() == 4u && bits_per_sample[0] == 8u &&
         bits_per_sample[1] == 8u && bits_per_sample[2] == 8u && bits_per_sample[3] == 8u &&
-        photometric == 2u && compression == TIFF_COMPRESSION_NONE &&
+        photometric == 2u && supported_compression &&
         has_samples_per_pixel && samples_per_pixel == 4u &&
         has_extra_samples && extra_samples == 2u;
     const bool matches_la =
         has_width && has_height && has_bits && has_photometric &&
         has_strip_offset && has_strip_byte_count &&
         bits_per_sample.size() == 2u && bits_per_sample[0] == 8u && bits_per_sample[1] == 8u &&
-        photometric == 1u && compression == TIFF_COMPRESSION_NONE &&
+        photometric == 1u && supported_compression &&
         has_samples_per_pixel && samples_per_pixel == 2u &&
         has_extra_samples && extra_samples == 2u;
     if (!matches_l && !matches_rgb && !matches_rgba && !matches_la) {
@@ -3290,21 +3295,34 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
         return PILLOW_C_INVALID_ARGUMENT;
     }
     if (strip_offset > static_cast<std::uint64_t>(tiff_size) ||
-        strip_byte_count > static_cast<std::uint64_t>(tiff_size) - strip_offset ||
-        strip_byte_count != static_cast<std::uint64_t>(image_size)) {
+        strip_byte_count > static_cast<std::uint64_t>(tiff_size) - strip_offset) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
     try {
+        const std::uint8_t* strip_source = tiff + static_cast<std::size_t>(strip_offset);
+        std::vector<std::uint8_t> strip_storage;
+        if (compression != TIFF_COMPRESSION_NONE) {
+            if (!tiff_decode_tiled_payload(
+                    strip_source,
+                    static_cast<std::size_t>(strip_byte_count),
+                    static_cast<std::uint16_t>(compression),
+                    image_size,
+                    &strip_storage) ||
+                strip_storage.size() != image_size) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            strip_source = strip_storage.data();
+        } else if (strip_byte_count != static_cast<std::uint64_t>(image_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
         auto* image = new PillowCImage{
             static_cast<int>(width),
             static_cast<int>(height),
             mode,
             channels,
             stride,
-            std::vector<std::uint8_t>(
-                tiff + static_cast<std::size_t>(strip_offset),
-                tiff + static_cast<std::size_t>(strip_offset) + static_cast<std::size_t>(strip_byte_count))};
+            std::vector<std::uint8_t>(strip_source, strip_source + image_size)};
         *recognized = true;
         *out_image = image;
         return PILLOW_C_OK;
@@ -7485,10 +7503,19 @@ int patch_tiff_ifd0_exif_blob(
     }
 }
 
-int save_tiff_bigtiff_image(const PillowCImage* image, const char* path)
+int save_tiff_bigtiff_image_with_compression(
+    const PillowCImage* image,
+    const char* path,
+    std::uint16_t compression)
 {
     if (!image || !path) {
         return PILLOW_C_NULL_POINTER;
+    }
+    if (compression != TIFF_COMPRESSION_NONE &&
+        compression != TIFF_COMPRESSION_PACKBITS &&
+        compression != TIFF_COMPRESSION_LZW &&
+        compression != TIFF_COMPRESSION_ADOBE_DEFLATE) {
+        return PILLOW_C_INVALID_ARGUMENT;
     }
     const int refresh_status = pillow_c_refresh_const_buffer_view_image(image);
     if (refresh_status != PILLOW_C_OK) {
@@ -7535,15 +7562,32 @@ int save_tiff_bigtiff_image(const PillowCImage* image, const char* path)
 
     const std::size_t entry_count = 9u + (channels > 1 ? 1u : 0u) + (has_extra_samples ? 1u : 0u);
     const std::uint64_t pixel_offset = 16u + 8u + static_cast<std::uint64_t>(entry_count) * 20u + 8u;
-    const std::uint64_t byte_count = static_cast<std::uint64_t>(image->pixels.size());
     std::uint64_t bits_value = 0u;
     for (int channel = 0; channel < channels; ++channel) {
         bits_value |= static_cast<std::uint64_t>(8u) << (channel * 16);
     }
 
     try {
+        std::vector<std::uint8_t> strip_bytes;
+        const std::uint8_t* source_pixels = image->pixels.data();
+        const std::size_t source_row_stride = static_cast<std::size_t>(image->width) * static_cast<std::size_t>(channels);
+        if (compression == TIFF_COMPRESSION_PACKBITS) {
+            strip_bytes = tiff_packbits_encode_pixels(source_pixels, source_row_stride, image->height);
+        } else if (compression == TIFF_COMPRESSION_LZW) {
+            if (!tiff_lzw_encode_pixels(source_pixels, source_row_stride, image->height, &strip_bytes)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+        } else if (compression == TIFF_COMPRESSION_ADOBE_DEFLATE) {
+            if (!tiff_deflate_encode_pixels(source_pixels, source_row_stride, image->height, &strip_bytes)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+        } else {
+            strip_bytes.assign(image->pixels.begin(), image->pixels.end());
+        }
+        const std::uint64_t byte_count = static_cast<std::uint64_t>(strip_bytes.size());
+
         std::vector<std::uint8_t> out;
-        out.reserve(static_cast<std::size_t>(pixel_offset) + image->pixels.size());
+        out.reserve(static_cast<std::size_t>(pixel_offset) + strip_bytes.size());
         out.push_back('I');
         out.push_back('I');
         append_le16(out, 43u);
@@ -7560,7 +7604,7 @@ int save_tiff_bigtiff_image(const PillowCImage* image, const char* path)
         append_entry(256u, 4u, 1u, static_cast<std::uint64_t>(image->width));
         append_entry(257u, 4u, 1u, static_cast<std::uint64_t>(image->height));
         append_entry(258u, 3u, static_cast<std::uint64_t>(channels), bits_value);
-        append_entry(259u, 3u, 1u, TIFF_COMPRESSION_NONE);
+        append_entry(259u, 3u, 1u, compression);
         append_entry(262u, 3u, 1u, photometric);
         append_entry(273u, 4u, 1u, pixel_offset);
         if (channels > 1) {
@@ -7573,11 +7617,16 @@ int save_tiff_bigtiff_image(const PillowCImage* image, const char* path)
             append_entry(338u, 3u, 1u, 2u);
         }
         append_le64(out, 0u);
-        out.insert(out.end(), image->pixels.begin(), image->pixels.end());
+        out.insert(out.end(), strip_bytes.begin(), strip_bytes.end());
         return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int save_tiff_bigtiff_image(const PillowCImage* image, const char* path)
+{
+    return save_tiff_bigtiff_image_with_compression(image, path, TIFF_COMPRESSION_NONE);
 }
 
 } // namespace
@@ -7815,6 +7864,19 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_bigtiff(
     const char* path)
 {
     return save_tiff_bigtiff_image(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_bigtiff_compression_options(
+    const PillowCImage* image,
+    const char* path,
+    int compression)
+{
+    std::uint16_t normalized_compression = TIFF_COMPRESSION_NONE;
+    const int status = normalize_tiff_save_compression(compression, &normalized_compression);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return save_tiff_bigtiff_image_with_compression(image, path, normalized_compression);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_options(

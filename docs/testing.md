@@ -47,8 +47,27 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2734` AHK tests: `1355` raw DLL tests and
+This suite currently registers `2735` AHK tests: `1356` raw DLL tests and
 `1379` facade tests.
+
+Latest `FMT-TIFF-003BA` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_bigtiff_compressed_save.py`) confirms Pillow's
+`big_tiff`+compression silently falls back to classic TIFF (the libtiff
+encoder ignores `big_tiff`), so compressed BigTIFF round trips are a
+standards extension with the open side covering compressed BigTIFF from
+other writers. The new `pillow_c_image_save_tiff_bigtiff_compression_-
+options` export reuses the existing PackBits/LZW/Adobe-Deflate encoders,
+and the strip open route decodes through the shared decoder seam. The raw
+compression matrix (3 compressions x 4 modes) and the facade
+`big_tiff`+`compression` composition pass `1/1` each; the TIFF filter
+passes `683/683` in `5750ms`; and the full directory suite passes
+`2735/2735` in `18359ms`, with zero failures, errors, or skips. Release
+x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity is
+`457/457` (one deliberate new export) with zero difference; and the
+rebuilt DLL SHA-256 is
+`8034E4AB70BD9475DE31595AE019A270F603FB7EAEA02CDDD3A7A7AC4A7C2FB5`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The overall
+Pillow replacement-readiness estimate moves to `73% ±4%`.
 
 Latest `FMT-TIFF-003AZ` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_tiff_bigtiff_save.py` and

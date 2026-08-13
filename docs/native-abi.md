@@ -169,12 +169,18 @@ AHK per-pixel loop was added.
 exact `big_tiff=True` strip layout (`II 2B 00`, offset size 8, IFD0 at 16,
 64-bit counts, 20-byte entries, LONG 273/279, inline SHORT bits) for the
 uncompressed single-frame L/RGB/RGBA/LA matrix and rejects other modes.
-The private `parse_tiff_bigtiff_strip_image_for_ifd` open route accepts
+`FMT-TIFF-003BA` adds `pillow_c_image_save_tiff_bigtiff_compression_options`
+(export parity `457/457`) reusing the existing PackBits/LZW/Adobe-Deflate
+encoders, and extends the strip open route to decode those compression
+tags through the shared decoder seam; Pillow 11.3.0's
+`big_tiff`+compression falls back to classic TIFF upstream, so the save
+side is a standards extension. The private
+`parse_tiff_bigtiff_strip_image_for_ifd` open route accepts
 the same layout, and the open/frame-count dispatchers fall back to it
 when the tiled parser rejects the shape, so Pillow-written strip BigTIFFs
 reopen natively. Existing open/save exports, handle ownership, and
 synchronous path lifetime contracts remain unchanged; the facade routes
-`big_tiff: true` through the new export with single-frame and
+`big_tiff: true` through the new exports with single-frame and
 option-composition guards.
 
 ## TIFF Save exif= ABI Behavior

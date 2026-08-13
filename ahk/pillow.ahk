@@ -10797,12 +10797,16 @@ class Pillow {
                     throw Error("Pillow.Image.Save big_tiff currently supports single-frame saves", -1)
                 if this.Mode != "L" && this.Mode != "RGB" && this.Mode != "RGBA" && this.Mode != "LA"
                     throw Error("Pillow.Image.Save big_tiff currently supports L, RGB, RGBA, and LA modes", -1)
-                if exifOption.Set || iccProfileOption.Set || tiffInfoOption.Set || dpiOption.Set || compressionOption.Set
-                    throw Error("Pillow.Image.Save big_tiff does not compose with other options yet", -1)
+                if exifOption.Set || iccProfileOption.Set || tiffInfoOption.Set || dpiOption.Set
+                    throw Error("Pillow.Image.Save big_tiff does not compose with exif, icc_profile, tiffinfo, or dpi yet", -1)
+                compression := compressionOption.Set
+                    ? Pillow.Image.SaveTiffCompression(compressionOption.Value)
+                    : 1
                 Pillow.CheckStatus(DllCall(
-                    Pillow.RequireDllPath() "\pillow_c_image_save_tiff_bigtiff",
+                    Pillow.RequireDllPath() "\pillow_c_image_save_tiff_bigtiff_compression_options",
                     "Ptr", this.RequireHandle(),
                     "Ptr", pathBytes,
+                    "Int", compression,
                     "Int"
                 ))
                 return

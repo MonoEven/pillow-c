@@ -43777,6 +43777,21 @@ PillowTestImageSaveTiffBigTiffOption(*) {
                 loaded.Close()
             PillowTestDeleteFile(stripPath)
         }
+
+        ; big_tiff composes with compression (standards extension: Pillow's
+        ; big_tiff+compression falls back to classic TIFF upstream).
+        lzwPath := PillowTestTempTiffPath("save-bigtiff-lzw-facade")
+        try {
+            image.Save(lzwPath, "TIFF", { big_tiff: true, compression: "lzw" })
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(lzwPath), 1, 4))
+            loaded := Pillow.Image.Open(lzwPath, ["TIFF"])
+            AhkTest.AssertEqual("RGB", loaded.Mode)
+            AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowTestBufferToArray(loaded.ToBytes()))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            PillowTestDeleteFile(lzwPath)
+        }
     } finally {
         if IsObject(loaded)
             loaded.Close()
