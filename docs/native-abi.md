@@ -174,7 +174,12 @@ uncompressed single-frame L/RGB/RGBA/LA matrix and rejects other modes.
 encoders, and extends the strip open route to decode those compression
 tags through the shared decoder seam; Pillow 11.3.0's
 `big_tiff`+compression falls back to classic TIFF upstream, so the save
-side is a standards extension. The private
+side is a standards extension. `FMT-TIFF-003BB` adds
+`pillow_c_image_save_tiff_bigtiff_frames_compression_options` (export
+parity `458/458`) writing standard chained-IFD multi-frame BigTIFF with
+same-mode frames, per-frame strip offsets, and u64 next pointers;
+Pillow's own save_all emits concatenated single-frame BigTIFFs instead,
+recorded as the next gap. The private
 `parse_tiff_bigtiff_strip_image_for_ifd` open route accepts
 the same layout, and the open/frame-count dispatchers fall back to it
 when the tiled parser rejects the shape, so Pillow-written strip BigTIFFs

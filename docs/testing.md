@@ -47,8 +47,26 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2735` AHK tests: `1356` raw DLL tests and
+This suite currently registers `2736` AHK tests: `1357` raw DLL tests and
 `1379` facade tests.
+
+Latest `FMT-TIFF-003BB` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_bigtiff_two_frame_save.py`) confirms Pillow's own
+`save_all`+`big_tiff` emits CONCATENATED single-frame BigTIFFs, while the
+new `pillow_c_image_save_tiff_bigtiff_frames_compression_options` export
+writes standard chained-IFD multi-frame BigTIFF (same-mode frames,
+per-frame strip offsets, u64 next pointers) and the facade composes
+`big_tiff`+`save_all`+`append_images`. The chained layout reopens in both
+readers; opening Pillow's concatenated layout is the next gap. Raw
+chained two-frame and facade save_all targets pass `1/1` each; the TIFF
+filter passes `684/684` in `4985ms`; and the full directory suite passes
+`2736/2736` in `18687ms`, with zero failures, errors, or skips. Release
+x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity is
+`458/458` (one deliberate new export) with zero difference; and the
+rebuilt DLL SHA-256 is
+`A71C8407B801A45AF5C86A980E59146B966C10C4B9F6342AD6AE4D41C022EB41`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The overall
+Pillow replacement-readiness estimate moves to `74% ±4%`.
 
 Latest `FMT-TIFF-003BA` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_tiff_bigtiff_compressed_save.py`) confirms Pillow's

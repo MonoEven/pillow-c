@@ -46644,6 +46644,49 @@ PillowCTestImageSaveTiffBigTiffCompressionMatrix(*) {
 
 AhkTest.Test("pillow_c image save_tiff_bigtiff_compression_options round-trips PackBits LZW Deflate", PillowCTestImageSaveTiffBigTiffCompressionMatrix)
 
+PillowCTestImageSaveTiffBigTiffFrames(*) {
+    path := PillowCTempTiffPath("save-bigtiff-frames")
+    first := PillowCCreateImageMode(2, 2, 1)
+    second := PillowCCreateImageMode(2, 2, 1)
+    firstLoaded := 0
+    secondLoaded := 0
+    try {
+        PillowCImageSetBytes(first, [1, 2, 3, 4])
+        PillowCImageSetBytes(second, [5, 6, 7, 8])
+        handleBuffer := Buffer(2 * A_PtrSize, 0)
+        NumPut("Ptr", first, handleBuffer, 0)
+        NumPut("Ptr", second, handleBuffer, A_PtrSize)
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_tiff_bigtiff_frames_compression_options",
+            "Ptr", handleBuffer,
+            "UPtr", 2,
+            "Ptr", PillowCUtf8Buffer(path),
+            "Int", 1,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual(2, PillowCImageFrameCountTiff(path))
+        firstLoaded := PillowCImageOpenTiffFrame(path, 0)
+        secondLoaded := PillowCImageOpenTiffFrame(path, 1)
+        AhkTest.AssertEqual(1, PillowCImageMode(firstLoaded))
+        AhkTest.AssertEqual([1, 2, 3, 4], PillowCImageToArray(firstLoaded, 4))
+        AhkTest.AssertEqual(1, PillowCImageMode(secondLoaded))
+        AhkTest.AssertEqual([5, 6, 7, 8], PillowCImageToArray(secondLoaded, 4))
+    } finally {
+        if firstLoaded
+            PillowCFreeImage(firstLoaded)
+        if secondLoaded
+            PillowCFreeImage(secondLoaded)
+        if first
+            PillowCFreeImage(first)
+        if second
+            PillowCFreeImage(second)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_tiff_bigtiff_frames_compression_options writes chained two-frame BigTIFF", PillowCTestImageSaveTiffBigTiffFrames)
+
 PillowCTestImageOpenTiffReadsPillowBigTiffStripL(*) {
     path := PillowCTempTiffPath("open-bigtiff-strip-l")
     loaded := 0

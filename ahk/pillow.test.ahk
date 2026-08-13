@@ -43792,6 +43792,28 @@ PillowTestImageSaveTiffBigTiffOption(*) {
                 loaded.Close()
             PillowTestDeleteFile(lzwPath)
         }
+
+        ; big_tiff + save_all writes chained two-frame BigTIFF (Pillow's
+        ; own save_all emits concatenated sub-IFDs; the DLL's chained layout
+        ; reopens in both readers).
+        twoPath := PillowTestTempTiffPath("save-bigtiff-two-facade")
+        frame0 := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([1, 2, 3, 4]))
+        frame1 := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([5, 6, 7, 8]))
+        try {
+            frame0.Save(twoPath, "TIFF", { big_tiff: true, save_all: true, append_images: [frame1] })
+            loaded := Pillow.Image.Open(twoPath, ["TIFF"])
+            AhkTest.AssertEqual(2, loaded.NFrames)
+            AhkTest.AssertEqual("L", loaded.Mode)
+            AhkTest.AssertEqual([1, 2, 3, 4], PillowTestBufferToArray(loaded.ToBytes()))
+            loaded.Seek(1)
+            AhkTest.AssertEqual([5, 6, 7, 8], PillowTestBufferToArray(loaded.ToBytes()))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            frame0.Close()
+            frame1.Close()
+            PillowTestDeleteFile(twoPath)
+        }
     } finally {
         if IsObject(loaded)
             loaded.Close()
