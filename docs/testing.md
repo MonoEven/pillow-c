@@ -47,8 +47,24 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2736` AHK tests: `1357` raw DLL tests and
-`1379` facade tests.
+This suite currently registers `2738` AHK tests: `1358` raw DLL tests and
+`1380` facade tests.
+
+Latest `FMT-TIFF-003BC` verification: rechecking the next pointers (kept
+in `oracle/probe_tiff_classic_two_frame_save.py` and
+`oracle/probe_tiff_bigtiff_two_frame_save.py`) CORRECTS the round-16
+note — Pillow 11.3.0's `save_all` output (classic AND `big_tiff`) is
+CHAIN-LINKED with each page's own inline header as a writer artifact, so
+the DLL's chained readers already open Pillow-written multi-frame files.
+Hand-built oracle-layout fixtures (classic 256-byte, BigTIFF 448-byte
+two-frame files) lock the interop in; raw/facade targets pass `1/1` and
+`1/1`; the TIFF filter passes `686/686` in `5063ms`; and the full
+directory suite passes `2738/2738` in `18453ms`, with zero failures,
+errors, or skips. No native change; source/DLL export parity remains
+`458/458` with zero difference; and the DLL SHA-256 remains
+`A71C8407B801A45AF5C86A980E59146B966C10C4B9F6342AD6AE4D41C022EB41`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The overall
+Pillow replacement-readiness estimate moves to `75% ±4%`.
 
 Latest `FMT-TIFF-003BB` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_tiff_bigtiff_two_frame_save.py`) confirms Pillow's own

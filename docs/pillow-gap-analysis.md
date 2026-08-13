@@ -513,7 +513,44 @@ Verification:
 
 No export, facade lifetime rule, fallback, or AHK pixel loop changed.
 
-The next bounded child is `FMT-TIFF-003BC`, concatenated sub-IFD open.
+The next bounded child is `FMT-TIFF-003BD`, numeric BigTIFF strip
+save/open.
+
+## 2026-08-13 FMT-TIFF-003BC Pillow Multi-Frame Layout Lock-In (GREEN)
+
+`FMT-TIFF-003BC` is a lock-in packet that CORRECTS the round-16 oracle
+note. Rechecking the next pointers (and a ctypes verification against
+Pillow-generated files) shows Pillow 11.3.0's `save_all` output — classic
+AND `big_tiff` — is CHAIN-LINKED: IFD0's next pointer jumps directly to
+page 1's IFD, with each page's own inline header preceding its IFD as a
+writer artifact. The DLL's chained readers therefore already open
+Pillow-written multi-frame files with the right frame count and per-frame
+bytes; no concatenated-header scanning was needed.
+
+Hand-built oracle-layout fixtures lock the interop in:
+
+- Classic two-frame (256 bytes, IFD0@8 next→136, inline header@128,
+  IFD1@136, strips at 122/250).
+- BigTIFF two-frame (448 bytes, IFD0@16 next→240, inline header@224,
+  IFD1@240, strips at 212/436).
+
+Raw/facade tests assert frame count `2`, mode `L`, and per-frame bytes
+`[7,7,7,7]`/`[9,9,9,9]`.
+
+Verification:
+
+- Raw/facade targeted GREEN: `1/1` and `1/1`.
+- TIFF filter: `686/686` in `5063ms`.
+- Full AHK directory suite: `2738/2738` in `18453ms`; zero failures, errors,
+  or skips.
+- No native change: source/DLL export parity remains `458/458`, DLL
+  SHA-256 remains
+  `A71C8407B801A45AF5C86A980E59146B966C10C4B9F6342AD6AE4D41C022EB41`.
+
+No facade lifetime rule, fallback, or AHK pixel loop changed.
+
+The next bounded child is `FMT-TIFF-003BD`, numeric BigTIFF strip
+save/open.
 
 ## 2026-08-13 FMT-TIFF-003BB Two-Frame BigTIFF Save (GREEN)
 
@@ -38481,7 +38518,8 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-TIFF-003AZ | TIFF | covered | Bounded little-endian BigTIFF save matrix and matching strip open route: the new public export `pillow_c_image_save_tiff_bigtiff` writes Pillow 11.3.0's exact `big_tiff=True` strip layout (`II 2B 00`, offset size 8, IFD0 at 16, u64 counts, 20-byte entries, LONG 273/279, inline SHORT bits) for the uncompressed single-frame L/RGB/RGBA/LA matrix; the private `parse_tiff_bigtiff_strip_image_for_ifd` open route accepts the same layout, and the open/frame-count dispatchers fall back to the strip parser when the tiled parser rejects the shape. Pillow ignores `tile=` for BigTIFF saves (oracle note). Export parity is now `456/456`. Compressed/multi-frame/numeric BigTIFF save remain separate. | `oracle/probe_tiff_bigtiff_save.py`, `oracle/probe_tiff_bigtiff_tiled_save.py`, `pillow_c_image_save_tiff_bigtiff`, `save_tiff_bigtiff_image`, `parse_tiff_bigtiff_strip_image_for_ifd`, dispatch fallbacks, raw/facade BigTIFF save tests. |
 | FMT-TIFF-003BA | TIFF | covered | Bounded compressed BigTIFF strip save/open: the new public export `pillow_c_image_save_tiff_bigtiff_compression_options` reuses the existing PackBits/LZW/Adobe-Deflate encoders for the BigTIFF strip layout, and `parse_tiff_bigtiff_strip_image_for_ifd` decodes compressed strips through the shared `tiff_decode_tiled_payload` seam. Pillow 11.3.0's `big_tiff`+compression silently falls back to classic TIFF (libtiff ignores `big_tiff`), so this is a standards extension with the open side covering compressed BigTIFF from other writers. Export parity is now `457/457`. Multi-frame and numeric BigTIFF save remain separate. | `oracle/probe_tiff_bigtiff_compressed_save.py`, `save_tiff_bigtiff_image_with_compression`, `pillow_c_image_save_tiff_bigtiff_compression_options`, strip-parser decode extension, raw/facade compressed BigTIFF tests. |
 | FMT-TIFF-003BB | TIFF | covered | Bounded two-frame BigTIFF save: the new public export `pillow_c_image_save_tiff_bigtiff_frames_compression_options` writes standard chained-IFD multi-frame BigTIFF (same-mode frames, per-frame strip offsets, u64 next pointers), and the facade composes `big_tiff`+`save_all`+`append_images`. Pillow 11.3.0's own `save_all`+`big_tiff` emits CONCATENATED single-frame BigTIFFs (second header after page 0); the chained layout reopens in both readers, and opening Pillow's concatenated layout is the next gap. Export parity is now `458/458`. Numeric-mode BigTIFF save remains separate. | `oracle/probe_tiff_bigtiff_two_frame_save.py`, `save_tiff_bigtiff_frames_image_with_compression`, `pillow_c_image_save_tiff_bigtiff_frames_compression_options`, facade big_tiff save_all routing, raw/facade two-frame tests. |
-| FMT-TIFF-003BC | TIFF | not started | Bounded concatenated sub-IFD open: Pillow's own multi-frame layout (a second TIFF header after page 0's data) for classic and BigTIFF. | Pillow 11.3.0 save_all layout oracle, frame-count/open sub-IFD scanning, raw/facade Pillow-multiframe open tests. |
+| FMT-TIFF-003BC | TIFF | covered | Pillow multi-frame layout lock-in with a round-16 oracle correction: Pillow 11.3.0's `save_all` output (classic AND `big_tiff`) is CHAIN-LINKED (IFD0's next pointer jumps to page 1's IFD, with each page's own inline header as a writer artifact), so the DLL's chained readers already open Pillow-written multi-frame files. Hand-built oracle-layout fixtures (classic 256-byte, BigTIFF 448-byte two-frame files) lock the interop in with raw/facade tests; no native change, export parity remains `458/458`. | `oracle/probe_tiff_classic_two_frame_save.py`, `oracle/probe_tiff_bigtiff_two_frame_save.py` next-pointer recheck, raw/facade Pillow-layout two-frame fixtures and tests. |
+| FMT-TIFF-003BD | TIFF | not started | Bounded numeric BigTIFF strip save/open: I16/I/F/CMYK on the strip route. | `save_tiff_bigtiff_frames_image_with_compression` numeric extension, `parse_tiff_bigtiff_strip_image_for_ifd` numeric extension, raw/facade numeric BigTIFF tests. |
 | FMT-TIFF-004 | TIFF | covered | TIFF LZW now follows Pillow/libtiff interop semantics instead of only internal round-tripping. Native decode widens the LZW code size at the TIFF early-change boundary (`next_code == (1 << code_size) - 1`) and opens a Pillow-written mode `I;16` `256x1` fixture whose raw `0..255` repeated bytes cross the 9-to-10-bit boundary. Native encode also clears immediately when the next free dictionary code reaches `4094`, matching Pillow's dictionary-full strip length `5585` and boundary bytes for a deterministic `I;16` `2048x1` fixture instead of the previous `5586`-byte stream. | `tiff_lzw_decode_strip`, `tiff_lzw_encode_pixels`, raw open/save early-change LZW tests, facade `Image.Open` / `Image.Save` TIFF LZW test, TIFF filter regressions. |
 | FMT-TIFF-005 | TIFF | covered | The TIFF palette parser now rejects malformed palette ColorMap metadata instead of installing a garbage palette from offset `0`. The local Pillow 11.3.0 oracle rejects a malformed palette TIFF with `PhotometricInterpretation=3`, invalid `SamplesPerPixel=3`, and `ColorMap` tag `320` declared as `SHORT[769]`; the previous native path let WIC open it as mode `P` and `parse_tiff_palette_rgb` treated offset `0` as the palette because no valid `SHORT[768]` ColorMap was found. Native open now requires the valid tag before reading palette bytes, and raw/facade open tests reject the malformed file. | `parse_tiff_palette_rgb` found-flag guard, `open_tiff_frame_image`, raw `pillow_c_image_open_tiff` malformed ColorMap rejection test, facade `Image.Open` malformed ColorMap rejection test. |
 | ROBUST-001 | Robustness | covered | Native deflate inflation is now bounded during decode instead of only after full output allocation. The local Pillow 11.3.0 source proves `PngImagePlugin.MAX_TEXT_CHUNK == 1048576` through `_safe_zlib_decompress(...)` for `zTXt`, compressed `iTXt`, and `iCCP`; native `inflate_zlib_deflate` accepts an `expected_max` cap, rejects stored/fixed/dynamic output growth beyond that cap, and lets PNG open reject cap-exceeded compressed `zTXt` / `iTXt` / `iCCP` metadata with `PILLOW_C_INVALID_ARGUMENT` while preserving malformed-compressed-metadata ignore behavior. TIFF Adobe Deflate passes the known strip byte count as the same cap. | `inflate_deflate_huffman_block`, `inflate_zlib_deflate`, `png_has_oversized_compressed_metadata`, TIFF Adobe Deflate decode call sites, raw oversized-compressed PNG metadata rejection test, facade `Image.Open` oversized zTXt rejection test, compressed/iCCP/deflate regression filters. |

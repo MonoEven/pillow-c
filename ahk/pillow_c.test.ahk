@@ -46705,6 +46705,132 @@ PillowCTestImageOpenTiffReadsPillowBigTiffStripL(*) {
 
 AhkTest.Test("pillow_c image open_tiff reads Pillow 11.3.0 BigTIFF strip L", PillowCTestImageOpenTiffReadsPillowBigTiffStripL)
 
+PillowCTiffClassicTwoFramePillowBytes() {
+    ; Pillow 11.3.0 save_all two-frame classic layout: IFD0 at 8 (next ->
+    ; IFD1 at 136), strip0 at 122, an inline page-1 header at 128, IFD1 at
+    ; 136 (next 0), strip1 at 250 (oracle/probe_tiff_classic_two_frame_save.py).
+    bytes := [73, 73, 42, 0]
+    PillowCAppendLe32(bytes, 8)
+    PillowCAppendLe16(bytes, 9)
+    entries0 := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 2],
+        [258, 3, 1, 8],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [273, 4, 1, 122],
+        [278, 4, 1, 2],
+        [279, 4, 1, 4],
+        [284, 3, 1, 1],
+    ]
+    for entry in entries0 {
+        PillowCAppendLe16(bytes, entry[1])
+        PillowCAppendLe16(bytes, entry[2])
+        PillowCAppendLe32(bytes, entry[3])
+        PillowCAppendLe32(bytes, entry[4])
+    }
+    PillowCAppendLe32(bytes, 136)
+    bytes.Push(7, 7, 7, 7, 0, 0)
+    bytes.Push(73, 73, 42, 0)
+    PillowCAppendLe32(bytes, 8)
+    PillowCAppendLe16(bytes, 9)
+    entries1 := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 2],
+        [258, 3, 1, 8],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [273, 4, 1, 250],
+        [278, 4, 1, 2],
+        [279, 4, 1, 4],
+        [284, 3, 1, 1],
+    ]
+    for entry in entries1 {
+        PillowCAppendLe16(bytes, entry[1])
+        PillowCAppendLe16(bytes, entry[2])
+        PillowCAppendLe32(bytes, entry[3])
+        PillowCAppendLe32(bytes, entry[4])
+    }
+    PillowCAppendLe32(bytes, 0)
+    bytes.Push(9, 9, 9, 9, 0, 0)
+    return bytes
+}
+
+PillowCTiffBigTiffTwoFramePillowBytes() {
+    ; Pillow 11.3.0 save_all two-frame BigTIFF layout: header/IFD0 at 0/16
+    ; (next -> IFD1 at 240), strip0 at 212, an inline page-1 header at 224,
+    ; IFD1 at 240 (next 0), strip1 at 436
+    ; (oracle/probe_tiff_bigtiff_two_frame_save.py).
+    bytes := [73, 73, 43, 0, 8, 0, 0, 0]
+    PillowCAppendLe64(bytes, 16)
+    PillowCAppendLe64(bytes, 9)
+    entries0 := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 2],
+        [258, 3, 1, 8],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [273, 4, 1, 212],
+        [278, 4, 1, 2],
+        [279, 4, 1, 4],
+        [284, 3, 1, 1],
+    ]
+    for entry in entries0
+        PillowCAppendBigTiffEntry(bytes, entry, true)
+    PillowCAppendLe64(bytes, 240)
+    bytes.Push(7, 7, 7, 7, 0, 0, 0, 0, 0, 0, 0, 0)
+    ; inline page-1 header at 224
+    bytes.Push(73, 73, 43, 0, 8, 0, 0, 0)
+    PillowCAppendLe64(bytes, 16)
+    PillowCAppendLe64(bytes, 9)
+    entries1 := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 2],
+        [258, 3, 1, 8],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [273, 4, 1, 436],
+        [278, 4, 1, 2],
+        [279, 4, 1, 4],
+        [284, 3, 1, 1],
+    ]
+    for entry in entries1
+        PillowCAppendBigTiffEntry(bytes, entry, true)
+    PillowCAppendLe64(bytes, 0)
+    bytes.Push(9, 9, 9, 9, 0, 0, 0, 0, 0, 0, 0, 0)
+    return bytes
+}
+
+PillowCTestImageOpenTiffReadsPillowTwoFrameLayouts(*) {
+    fixtures := [
+        { Name: "classic", Bytes: PillowCTiffClassicTwoFramePillowBytes() },
+        { Name: "bigtiff", Bytes: PillowCTiffBigTiffTwoFramePillowBytes() },
+    ]
+    for fixture in fixtures {
+        path := PillowCTempTiffPath("open-pillow-two-frame-" fixture.Name)
+        firstLoaded := 0
+        secondLoaded := 0
+        try {
+            PillowCWriteFileBytes(path, fixture.Bytes)
+            AhkTest.AssertEqual(2, PillowCImageFrameCountTiff(path))
+            firstLoaded := PillowCImageOpenTiffFrame(path, 0)
+            secondLoaded := PillowCImageOpenTiffFrame(path, 1)
+            AhkTest.AssertEqual(1, PillowCImageMode(firstLoaded))
+            AhkTest.AssertEqual([7, 7, 7, 7], PillowCImageToArray(firstLoaded, 4))
+            AhkTest.AssertEqual(1, PillowCImageMode(secondLoaded))
+            AhkTest.AssertEqual([9, 9, 9, 9], PillowCImageToArray(secondLoaded, 4))
+        } finally {
+            if firstLoaded
+                PillowCFreeImage(firstLoaded)
+            if secondLoaded
+                PillowCFreeImage(secondLoaded)
+            PillowCDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image open_tiff reads Pillow 11.3.0 two-frame classic and BigTIFF layouts", PillowCTestImageOpenTiffReadsPillowTwoFrameLayouts)
+
 PillowCTestImagePatchTiffExifEntries(*) {
     path := PillowCTempTiffPath("patch-tiff-exif")
     image := PillowCCreateImageMode(2, 2, 1)

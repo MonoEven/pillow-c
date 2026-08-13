@@ -178,8 +178,9 @@ side is a standards extension. `FMT-TIFF-003BB` adds
 `pillow_c_image_save_tiff_bigtiff_frames_compression_options` (export
 parity `458/458`) writing standard chained-IFD multi-frame BigTIFF with
 same-mode frames, per-frame strip offsets, and u64 next pointers;
-Pillow's own save_all emits concatenated single-frame BigTIFFs instead,
-recorded as the next gap. The private
+Pillow's own save_all output is also chain-linked (each page's inline
+header is a writer artifact), which `FMT-TIFF-003BC` locks in with
+oracle-layout fixtures and no native change. The private
 `parse_tiff_bigtiff_strip_image_for_ifd` open route accepts
 the same layout, and the open/frame-count dispatchers fall back to it
 when the tiled parser rejects the shape, so Pillow-written strip BigTIFFs

@@ -43824,6 +43824,125 @@ PillowTestImageSaveTiffBigTiffOption(*) {
 
 AhkTest.Test("Pillow Image.Save TIFF big_tiff option round-trips the uncompressed matrix", PillowTestImageSaveTiffBigTiffOption)
 
+PillowTestTiffClassicTwoFramePillowBytes() {
+    ; Pillow 11.3.0 save_all two-frame classic layout (see
+    ; oracle/probe_tiff_classic_two_frame_save.py).
+    bytes := [73, 73, 42, 0]
+    PillowTestAppendLe32(bytes, 8)
+    PillowTestAppendLe16(bytes, 9)
+    entries0 := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 2],
+        [258, 3, 1, 8],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [273, 4, 1, 122],
+        [278, 4, 1, 2],
+        [279, 4, 1, 4],
+        [284, 3, 1, 1],
+    ]
+    for entry in entries0 {
+        PillowTestAppendLe16(bytes, entry[1])
+        PillowTestAppendLe16(bytes, entry[2])
+        PillowTestAppendLe32(bytes, entry[3])
+        PillowTestAppendLe32(bytes, entry[4])
+    }
+    PillowTestAppendLe32(bytes, 136)
+    bytes.Push(7, 7, 7, 7, 0, 0)
+    bytes.Push(73, 73, 42, 0)
+    PillowTestAppendLe32(bytes, 8)
+    PillowTestAppendLe16(bytes, 9)
+    entries1 := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 2],
+        [258, 3, 1, 8],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [273, 4, 1, 250],
+        [278, 4, 1, 2],
+        [279, 4, 1, 4],
+        [284, 3, 1, 1],
+    ]
+    for entry in entries1 {
+        PillowTestAppendLe16(bytes, entry[1])
+        PillowTestAppendLe16(bytes, entry[2])
+        PillowTestAppendLe32(bytes, entry[3])
+        PillowTestAppendLe32(bytes, entry[4])
+    }
+    PillowTestAppendLe32(bytes, 0)
+    bytes.Push(9, 9, 9, 9, 0, 0)
+    return bytes
+}
+
+PillowTestTiffBigTiffTwoFramePillowBytes() {
+    ; Pillow 11.3.0 save_all two-frame BigTIFF layout (see
+    ; oracle/probe_tiff_bigtiff_two_frame_save.py).
+    bytes := [73, 73, 43, 0, 8, 0, 0, 0]
+    PillowTestAppendLe64(bytes, 16)
+    PillowTestAppendLe64(bytes, 9)
+    entries0 := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 2],
+        [258, 3, 1, 8],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [273, 4, 1, 212],
+        [278, 4, 1, 2],
+        [279, 4, 1, 4],
+        [284, 3, 1, 1],
+    ]
+    for entry in entries0
+        PillowTestAppendBigTiffEntry(bytes, entry, true)
+    PillowTestAppendLe64(bytes, 240)
+    bytes.Push(7, 7, 7, 7, 0, 0, 0, 0, 0, 0, 0, 0)
+    bytes.Push(73, 73, 43, 0, 8, 0, 0, 0)
+    PillowTestAppendLe64(bytes, 16)
+    PillowTestAppendLe64(bytes, 9)
+    entries1 := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 2],
+        [258, 3, 1, 8],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [273, 4, 1, 436],
+        [278, 4, 1, 2],
+        [279, 4, 1, 4],
+        [284, 3, 1, 1],
+    ]
+    for entry in entries1
+        PillowTestAppendBigTiffEntry(bytes, entry, true)
+    PillowTestAppendLe64(bytes, 0)
+    bytes.Push(9, 9, 9, 9, 0, 0, 0, 0, 0, 0, 0, 0)
+    return bytes
+}
+
+PillowTestImageOpenTiffReadsPillowTwoFrameLayouts(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    fixtures := [
+        { Name: "classic", Bytes: PillowTestTiffClassicTwoFramePillowBytes() },
+        { Name: "bigtiff", Bytes: PillowTestTiffBigTiffTwoFramePillowBytes() },
+    ]
+    for fixture in fixtures {
+        path := PillowTestTempTiffPath("open-pillow-two-frame-" fixture.Name)
+        image := 0
+        try {
+            PillowTestWriteFileBytes(path, fixture.Bytes)
+            image := Pillow.Image.Open(path, ["TIFF"])
+            AhkTest.AssertEqual(2, image.NFrames)
+            AhkTest.AssertEqual("L", image.Mode)
+            AhkTest.AssertEqual([7, 7, 7, 7], PillowTestBufferToArray(image.ToBytes()))
+            image.Seek(1)
+            AhkTest.AssertEqual([9, 9, 9, 9], PillowTestBufferToArray(image.ToBytes()))
+        } finally {
+            if IsObject(image)
+                image.Close()
+            PillowTestDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Open TIFF reads Pillow 11.3.0 two-frame classic and BigTIFF layouts", PillowTestImageOpenTiffReadsPillowTwoFrameLayouts)
+
 PillowTestImageOpenTiffAppliesBigTiffOrientationMatrix(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     for storage in ["L", "RGB", "RGBA", "LA"] {
