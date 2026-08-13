@@ -43456,6 +43456,74 @@ PillowTestImageOpenTiffFlattensSubIfdMetadata(*) {
 
 AhkTest.Test("Pillow Image.Open TIFF flattens ExifIFD GPSInfo sub-IFD metadata", PillowTestImageOpenTiffFlattensSubIfdMetadata)
 
+PillowTestTiffBigTiffSubIfdBytes() {
+    ; Little-endian BigTIFF 4x3 2x2-tiled L with ExifIFD (34665) and GPSInfo
+    ; (34853) sub-IFD pointers, mirroring oracle/probe_bigtiff_subifd.py:
+    ; IFD0 (13 entries) ends at 292, Exif sub-IFD at 372 (3 entries), GPS
+    ; sub-IFD at 448 (4 entries), blobs at 544.
+    bytes := PillowTestTiffBigTiffChunkyTiledUintFixture([[34665, 4, 1, 372], [34853, 4, 1, 448]]).Bytes
+    PillowTestAppendLe64(bytes, 3)
+    PillowTestAppendBigTiffEntry(bytes, [36867, 2, 20, 544], true)
+    PillowTestAppendBigTiffEntry(bytes, [33434, 5, 1, 1 | (125 << 32)], true)
+    PillowTestAppendBigTiffEntry(bytes, [37377, 10, 1, (-3 & 0xFFFFFFFF) | (1 << 32)], true)
+    PillowTestAppendLe64(bytes, 0)
+    PillowTestAppendLe64(bytes, 4)
+    PillowTestAppendBigTiffEntry(bytes, [1, 2, 2, 0x4E], true)
+    PillowTestAppendBigTiffEntry(bytes, [2, 5, 3, 564], true)
+    PillowTestAppendBigTiffEntry(bytes, [5, 3, 1, 1], true)
+    PillowTestAppendBigTiffEntry(bytes, [6, 5, 1, 36 | (1 << 32)], true)
+    PillowTestAppendLe64(bytes, 0)
+    for value in PillowTestTextBytes("2024:01:01 00:00:00")
+        bytes.Push(value)
+    bytes.Push(0)
+    for pair in [[36, 1], [0, 1], [0, 1]] {
+        PillowTestAppendLe32(bytes, pair[1])
+        PillowTestAppendLe32(bytes, pair[2])
+    }
+    return bytes
+}
+
+PillowTestImageOpenTiffFlattensBigTiffSubIfdMetadata(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempTiffPath("bigtiff-subifd")
+    loaded := 0
+    try {
+        PillowTestWriteFileBytes(path, PillowTestTiffBigTiffSubIfdBytes())
+
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        exif := loaded.GetExif()
+
+        AhkTest.AssertEqual("TIFF", loaded.Format)
+        AhkTest.AssertEqual("L", loaded.Mode)
+        AhkTest.AssertEqual([4, 3], loaded.Size)
+        AhkTest.AssertEqual([1, 2, 5, 6, 3, 4, 7, 8, 9, 10, 13, 14], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertTrue(exif.Has(34665))
+        AhkTest.AssertEqual(372, exif[34665])
+        AhkTest.AssertTrue(exif.Has(34853))
+        AhkTest.AssertEqual(448, exif[34853])
+        AhkTest.AssertTrue(exif.Has(36867))
+        AhkTest.AssertEqual("2024:01:01 00:00:00", exif[36867])
+        AhkTest.AssertTrue(exif.Has(33434))
+        AhkTest.AssertEqual([1, 125], exif[33434])
+        AhkTest.AssertTrue(exif.Has(37377))
+        AhkTest.AssertEqual([-3, 1], exif[37377])
+        AhkTest.AssertTrue(exif.Has(1))
+        AhkTest.AssertEqual("N", exif[1])
+        AhkTest.AssertTrue(exif.Has(2))
+        AhkTest.AssertEqual([[36, 1], [0, 1], [0, 1]], exif[2])
+        AhkTest.AssertTrue(exif.Has(5))
+        AhkTest.AssertEqual(1, exif[5])
+        AhkTest.AssertTrue(exif.Has(6))
+        AhkTest.AssertEqual([36, 1], exif[6])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Open TIFF flattens BigTIFF ExifIFD GPSInfo sub-IFD metadata", PillowTestImageOpenTiffFlattensBigTiffSubIfdMetadata)
+
 PillowTestImageOpenTiffAppliesBigTiffOrientationMatrix(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     for storage in ["L", "RGB", "RGBA", "LA"] {

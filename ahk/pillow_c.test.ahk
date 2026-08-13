@@ -40571,6 +40571,64 @@ PillowCTestImageOpenTiffFlattensSubIfdMetadata(*) {
 
 AhkTest.Test("pillow_c image open_tiff flattens ExifIFD GPSInfo sub-IFD metadata", PillowCTestImageOpenTiffFlattensSubIfdMetadata)
 
+PillowCTiffBigTiffSubIfdBytes() {
+    ; Little-endian BigTIFF 4x3 2x2-tiled L with ExifIFD (34665) and GPSInfo
+    ; (34853) sub-IFD pointers, mirroring oracle/probe_bigtiff_subifd.py:
+    ; IFD0 (13 entries) ends at 292, Exif sub-IFD at 372 (3 entries), GPS
+    ; sub-IFD at 448 (4 entries), blobs at 544.
+    bytes := PillowCTiffBigTiffChunkyTiledUintFixture([[34665, 4, 1, 372], [34853, 4, 1, 448]]).Bytes
+    PillowCAppendLe64(bytes, 3)
+    PillowCAppendBigTiffEntry(bytes, [36867, 2, 20, 544], true)
+    PillowCAppendBigTiffEntry(bytes, [33434, 5, 1, 1 | (125 << 32)], true)
+    PillowCAppendBigTiffEntry(bytes, [37377, 10, 1, (-3 & 0xFFFFFFFF) | (1 << 32)], true)
+    PillowCAppendLe64(bytes, 0)
+    PillowCAppendLe64(bytes, 4)
+    PillowCAppendBigTiffEntry(bytes, [1, 2, 2, 0x4E], true)
+    PillowCAppendBigTiffEntry(bytes, [2, 5, 3, 564], true)
+    PillowCAppendBigTiffEntry(bytes, [5, 3, 1, 1], true)
+    PillowCAppendBigTiffEntry(bytes, [6, 5, 1, 36 | (1 << 32)], true)
+    PillowCAppendLe64(bytes, 0)
+    for value in PillowCTextBytes("2024:01:01 00:00:00")
+        bytes.Push(value)
+    bytes.Push(0)
+    for pair in [[36, 1], [0, 1], [0, 1]] {
+        PillowCAppendLe32(bytes, pair[1])
+        PillowCAppendLe32(bytes, pair[2])
+    }
+    return bytes
+}
+
+PillowCTestImageOpenTiffFlattensBigTiffSubIfdMetadata(*) {
+    path := PillowCTempTiffPath("bigtiff-subifd")
+    loaded := 0
+    try {
+        PillowCWriteFileBytes(path, PillowCTiffBigTiffSubIfdBytes())
+
+        loaded := PillowCImageOpenTiff(path)
+        exif := PillowCImageMetadataTiffExif(loaded)
+
+        AhkTest.AssertEqual(1, PillowCImageMode(loaded))
+        AhkTest.AssertEqual(12, PillowCImageSize(loaded))
+        AhkTest.AssertEqual([1, 2, 5, 6, 3, 4, 7, 8, 9, 10, 13, 14], PillowCImageToArray(loaded, 12))
+        AhkTest.AssertEqual(1, exif.HasExif)
+        AhkTest.AssertEqual(372, PillowCExifUintTagValue(exif.Exif, 34665, -1))
+        AhkTest.AssertEqual(448, PillowCExifUintTagValue(exif.Exif, 34853, -1))
+        AhkTest.AssertEqual("2024:01:01 00:00:00", PillowCExifAsciiTagValue(exif.Exif, 36867))
+        AhkTest.AssertEqual([1, 125], PillowCExifRationalTagValue(exif.Exif, 33434))
+        AhkTest.AssertEqual([-3, 1], PillowCExifSignedRationalTagValue(exif.Exif, 37377))
+        AhkTest.AssertEqual("N", PillowCExifAsciiTagValue(exif.Exif, 1))
+        AhkTest.AssertEqual([[36, 1], [0, 1], [0, 1]], PillowCExifRationalArrayTagValue(exif.Exif, 2))
+        AhkTest.AssertEqual(1, PillowCExifUintTagValue(exif.Exif, 5, -1))
+        AhkTest.AssertEqual([36, 1], PillowCExifRationalTagValue(exif.Exif, 6))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_tiff flattens BigTIFF ExifIFD GPSInfo sub-IFD metadata", PillowCTestImageOpenTiffFlattensBigTiffSubIfdMetadata)
+
 PillowCTiffBigTiffTwoFrameCompressedChunkyTiledFixture(storage, compression, littleEndian := true) {
     if storage = "L" {
         channels := 1

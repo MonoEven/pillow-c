@@ -60,8 +60,8 @@ a standards extension.
 `FMT-TIFF-003AG`/`FMT-TIFF-003AH`/`FMT-TIFF-003AI`/`FMT-TIFF-003AJ`/
 `FMT-TIFF-003AK`/`FMT-TIFF-003AL`/`FMT-TIFF-003AM`/`FMT-TIFF-003AN`/
 `FMT-TIFF-003AO`/`FMT-TIFF-003AP`/`FMT-TIFF-003AQ`/`FMT-TIFF-003AR`/
-`FMT-TIFF-003AS` change no exported name or signature. Existing
-`pillow_c_image_open_tiff`, `pillow_c_image_open_tiff_frame`,
+`FMT-TIFF-003AS`/`FMT-TIFF-003AU` change no exported name or signature.
+Existing `pillow_c_image_open_tiff`, `pillow_c_image_open_tiff_frame`,
 `pillow_c_image_frame_count_tiff`, `pillow_c_image_metadata_tiff_exif`,
 `pillow_c_image_metadata_tiff_icc_profile`, and
 `pillow_c_image_metadata_xmp` status, ownership, and synchronous
@@ -141,7 +141,15 @@ BigTIFF metadata reader already validates type, count, offset, and
 denominator before accepting an entry. Pillow 11.3.0 reinterprets
 invalid-type tags by tag semantics and exposes zero denominators as `nan`;
 the DLL keeps the classic strict-type convention and skips those entries —
-documented divergence. The blob reader `read_tiff_bigtiff_blob_entry_value`
+documented divergence. `FMT-TIFF-003AU` adds the same one-level flattening
+on the BigTIFF route: the BigTIFF entry-collection loop moves into the
+private `collect_tiff_bigtiff_exif_entries` seam reusing the shared
+`TiffExifCollector` struct (moved above both builders), the builder captures
+type-4 `34665`/`34853` offsets (LONG8 scalars normalize to type 4 through
+the existing reader), bounds-checks each sub-IFD with a 64-bit count read,
+a 20-byte-entry span check, and a 4096-entry cap, and re-collects one
+sub-IFD level with the bounded GPS tag sets; per-frame attachment makes the
+flattening per-frame automatically. The blob reader `read_tiff_bigtiff_blob_entry_value`
 accepts BYTE/type-1 and UNDEFINED/type-7 entries with 64-bit counts; counts
 of eight or fewer bytes are inline in the eight-byte value field, and larger
 blobs are located through the LONG8 offset, matching the local Pillow 11.3.0

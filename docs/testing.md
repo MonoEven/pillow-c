@@ -47,8 +47,27 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2724` AHK tests: `1350` raw DLL tests and
-`1374` facade tests.
+This suite currently registers `2726` AHK tests: `1351` raw DLL tests and
+`1375` facade tests.
+
+Latest `FMT-TIFF-003AU` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_bigtiff_subifd.py`) confirms that a BigTIFF fixture with
+ExifIFD (34665) and GPSInfo (34853) sub-IFDs keeps the sub-IFD tags ONLY in
+`Exif.get_ifd(0x8769)`/`get_ifd(0x8825)` while the flat `getexif()` holds
+just the pointer values — the same container split as the classic route.
+The DLL flattens one BigTIFF sub-IFD level into `tiff_exif` through the
+private `collect_tiff_bigtiff_exif_entries` seam reusing the shared
+`TiffExifCollector` struct, with 64-bit count reads, 20-byte-entry span
+checks, a 4096-entry cap, and the bounded GPS tag sets; per-frame
+attachment makes the flattening per-frame. Raw/facade BigTIFF sub-IFD
+targets pass `1/1` and `1/1`; the TIFF filter passes `674/674` in `5094ms`;
+and the full directory suite passes `2726/2726` in `18515ms`, with zero
+failures, errors, or skips. Release x64 Rebuild has `0 Warning(s),
+0 Error(s)`; source/DLL export parity is `453/453` with zero difference;
+and the rebuilt DLL SHA-256 is
+`D80CF40D8D44AF04830C89EC577B4CCC34529EAAE8AEC9FA68D6B765EDCC8671`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `67% ±4%`.
 
 Latest `FMT-TIFF-003AT` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_tiff_subifd.py`) confirms that a classic strip TIFF with

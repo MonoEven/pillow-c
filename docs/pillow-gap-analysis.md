@@ -513,7 +513,55 @@ Verification:
 
 No export, facade lifetime rule, fallback, or AHK pixel loop changed.
 
-The next bounded child is `FMT-TIFF-003AU`, BigTIFF sub-IFD traversal.
+The next bounded child is `FMT-TIFF-003AV`, TIFF save `exif=` on the
+classic route.
+
+## 2026-08-13 FMT-TIFF-003AU BigTIFF Sub-IFD Traversal (GREEN)
+
+`FMT-TIFF-003AU` adds one-level sub-IFD traversal on the BigTIFF route. The
+new Pillow 11.3.0 oracle (kept in `oracle/probe_bigtiff_subifd.py`) builds
+a 4x3, 2x2 chunky tiled little-endian BigTIFF whose IFD0 carries ExifIFD
+(34665) and GPSInfo (34853) LONG pointers with populated 20-byte-entry
+sub-IFDs; Pillow keeps the sub-IFD tags ONLY in `get_ifd(0x8769)`/
+`get_ifd(0x8825)` and leaves the flat `getexif()` with just the pointer
+values, exactly matching the classic-route container split.
+
+Implementation:
+
+- The BigTIFF entry-collection loop is extracted into the private
+  `collect_tiff_bigtiff_exif_entries(tiff, size, little_endian,
+  first_entry, entry_count, collector)` seam, reusing the shared
+  `TiffExifCollector` struct (now defined above both builders, with a
+  forward-declared helper for the earlier call site).
+- The BigTIFF uint branch captures type-4 `34665`/`34853` values (LONG8
+  scalars are normalized to type 4 by the existing reader, so LONG8
+  pointers are captured too); the builder bounds-checks each sub-IFD with
+  a 64-bit count read, a 20-byte-entry span check, and a 4096-entry cap,
+  then re-collects one sub-IFD level. Per-frame attachment makes the
+  flattening per-frame automatically.
+- The bounded GPS tag sets (`tiff_gps_ascii_tag`, `tiff_gps_uint_tag`,
+  `tiff_gps_rational_tag`, count-3 rational arrays 2/4/20/22, and GPS 0
+  byte array) join the BigTIFF classification chain through the BigTIFF
+  reader variants; facade parse lists already carry the same sets from
+  `FMT-TIFF-003AT`.
+
+Verification:
+
+- Raw/facade targeted GREEN: `1/1` and `1/1`; both assert the pointer
+  values plus ascii 36867/1, rational 33434/6, signed rational 37377,
+  rational array 2, and uint 5 from the BigTIFF sub-IFDs.
+- TIFF filter: `674/674` in `5094ms`.
+- Full AHK directory suite: `2726/2726` in `18515ms`; zero failures, errors,
+  or skips.
+- Release x64 Rebuild: `0 Warning(s), 0 Error(s)`.
+- Source/DLL export parity: `453/453`, zero difference.
+- DLL SHA-256:
+  `D80CF40D8D44AF04830C89EC577B4CCC34529EAAE8AEC9FA68D6B765EDCC8671`.
+
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+
+The next bounded child is `FMT-TIFF-003AV`, TIFF save `exif=` on the
+classic route.
 
 ## 2026-08-13 FMT-TIFF-003AT Classic ExifIFD/GPSInfo Sub-IFD Traversal (GREEN)
 
@@ -38167,7 +38215,8 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-TIFF-003AR | TIFF/Metadata | covered | Bounded big-endian BigTIFF metadata attachment on the tiled route: an `MM` BigTIFF fixture carrying the rational/signed-rational/double/float/byte/undefined families plus the unit-2 282/283/296 trio reopens through the existing endian-aware readers with zero native changes; the raw/facade typed fixture builders gained a big-endian inline-field and type-3/type-4 value layout. Pillow 11.3.0 itself rejects valid MM BigTIFF, so this is a standards extension and does not raise the compatibility estimate. Save/writeback, malformed metadata, and nested EXIF/GPS sub-IFD traversal remain separate. | Existing `parse_tiff_bigtiff_header`/`locate_tiff_bigtiff_ifd` endian seams, `attach_tiff_bigtiff_metadata_for_ifd`, raw/facade MM metadata tests. |
 | FMT-TIFF-003AS | TIFF/Metadata | covered | Bounded malformed BigTIFF metadata robustness on the tiled route: truncated out-of-line blobs, count-overflow rationals, invalid-type entries, zero-count blobs, and zero denominators all open with exact pixels while the malformed tag is skipped (the BigTIFF readers already validated type, count, offset, and denominator, so zero native changes were needed). Pillow 11.3.0 reinterprets invalid-type tags by tag semantics (`exif[270] == 7` for a type-4 ascii entry, `exif[282] == 2` for a type-3 rational entry) and exposes zero denominators as `nan`; the DLL keeps the classic strict-type convention and skips those entries — documented divergence. Save/writeback and nested EXIF/GPS sub-IFD traversal remain separate. | Pillow 11.3.0 BigTIFF malformed-entry oracle probe, `build_malformed_fixture`/`run_malformed_cases`, existing BigTIFF metadata readers, raw/facade malformed matrices. |
 | FMT-TIFF-003AT | TIFF/Metadata | covered | Bounded ExifIFD (34665) and GPSInfo (34853) sub-IFD traversal on the classic strip route: the classic builder's entry-collection loop is extracted into the private `TiffExifCollector` struct plus `collect_tiff_exif_entries` seam, the builder captures type-4 pointer offsets, bounds-checks each sub-IFD (count and 12-byte-entry span), and re-collects one sub-IFD level with the same classification chain plus bounded GPS tag sets (ascii 1/3/9/10/12/14/16/18/19/23/25/27/28, uint 5/7/11/29/30/31, rational 6/13/15/17/21/24/26, rational arrays 2/4/20/22 with count 3). Pillow 11.3.0 keeps sub-IFD tags ONLY in `Exif.get_ifd(...)` and leaves the flat `getexif()` with just the pointers; the DLL flattens them into the existing EXIF blob exports instead (documented divergence, `get_ifd()` itself an explicit boundary). BigTIFF sub-IFD traversal, save/writeback, and nested sub-sub-IFDs remain separate. | New `oracle/probe_tiff_subifd.py`, `TiffExifCollector`, `collect_tiff_exif_entries`, `tiff_gps_*` predicates, facade GPS parse-list extension, raw/facade sub-IFD tests, updated legacy pointer fixtures. |
-| FMT-TIFF-003AU | TIFF/Metadata | not started | Bounded BigTIFF sub-IFD traversal: the same one-level 34665/34853 flattening over 20-byte-entry BigTIFF sub-IFDs with 64-bit counts and LONG8 pointers. | Existing `read_tiff_bigtiff_uint_scalar_entry_value`/`locate_tiff_bigtiff_ifd` endian seams, `build_tiff_bigtiff_common_ascii_exif_for_ifd` extension, raw/facade BigTIFF sub-IFD tests. |
+| FMT-TIFF-003AU | TIFF/Metadata | covered | Bounded BigTIFF sub-IFD traversal: the same one-level 34665/34853 flattening over 20-byte-entry BigTIFF sub-IFDs with 64-bit counts and LONG8 pointers. The BigTIFF entry-collection loop is extracted into the private `collect_tiff_bigtiff_exif_entries` seam reusing the shared `TiffExifCollector` struct (moved above both builders); the builder captures type-4 pointer offsets, bounds-checks each sub-IFD (64-bit count, 20-byte-entry span, 4096 cap), and re-collects one sub-IFD level with the same classification chain plus the bounded GPS tag sets. Pillow 11.3.0 keeps BigTIFF sub-IFD tags only in `get_ifd(...)`; the DLL flattens them into `tiff_exif` (documented divergence, `get_ifd()` an explicit boundary). Save/writeback and nested sub-sub-IFDs remain separate. | New `oracle/probe_bigtiff_subifd.py`, `collect_tiff_bigtiff_exif_entries`, shared `TiffExifCollector`, `tiff_gps_*` predicates, raw/facade BigTIFF sub-IFD tests. |
+| FMT-TIFF-003AV | TIFF/Metadata | not started | Bounded TIFF save `exif=` option on the classic route: write the caller's EXIF tag map into IFD0 and reopen it through `GetExif()`. | Pillow 11.3.0 TIFF `exif=` save oracle probe, native TIFF save seam extension, facade Save option routing, raw/facade round-trip tests. |
 | FMT-TIFF-004 | TIFF | covered | TIFF LZW now follows Pillow/libtiff interop semantics instead of only internal round-tripping. Native decode widens the LZW code size at the TIFF early-change boundary (`next_code == (1 << code_size) - 1`) and opens a Pillow-written mode `I;16` `256x1` fixture whose raw `0..255` repeated bytes cross the 9-to-10-bit boundary. Native encode also clears immediately when the next free dictionary code reaches `4094`, matching Pillow's dictionary-full strip length `5585` and boundary bytes for a deterministic `I;16` `2048x1` fixture instead of the previous `5586`-byte stream. | `tiff_lzw_decode_strip`, `tiff_lzw_encode_pixels`, raw open/save early-change LZW tests, facade `Image.Open` / `Image.Save` TIFF LZW test, TIFF filter regressions. |
 | FMT-TIFF-005 | TIFF | covered | The TIFF palette parser now rejects malformed palette ColorMap metadata instead of installing a garbage palette from offset `0`. The local Pillow 11.3.0 oracle rejects a malformed palette TIFF with `PhotometricInterpretation=3`, invalid `SamplesPerPixel=3`, and `ColorMap` tag `320` declared as `SHORT[769]`; the previous native path let WIC open it as mode `P` and `parse_tiff_palette_rgb` treated offset `0` as the palette because no valid `SHORT[768]` ColorMap was found. Native open now requires the valid tag before reading palette bytes, and raw/facade open tests reject the malformed file. | `parse_tiff_palette_rgb` found-flag guard, `open_tiff_frame_image`, raw `pillow_c_image_open_tiff` malformed ColorMap rejection test, facade `Image.Open` malformed ColorMap rejection test. |
 | ROBUST-001 | Robustness | covered | Native deflate inflation is now bounded during decode instead of only after full output allocation. The local Pillow 11.3.0 source proves `PngImagePlugin.MAX_TEXT_CHUNK == 1048576` through `_safe_zlib_decompress(...)` for `zTXt`, compressed `iTXt`, and `iCCP`; native `inflate_zlib_deflate` accepts an `expected_max` cap, rejects stored/fixed/dynamic output growth beyond that cap, and lets PNG open reject cap-exceeded compressed `zTXt` / `iTXt` / `iCCP` metadata with `PILLOW_C_INVALID_ARGUMENT` while preserving malformed-compressed-metadata ignore behavior. TIFF Adobe Deflate passes the known strip byte count as the same cap. | `inflate_deflate_huffman_block`, `inflate_zlib_deflate`, `png_has_oversized_compressed_metadata`, TIFF Adobe Deflate decode call sites, raw oversized-compressed PNG metadata rejection test, facade `Image.Open` oversized zTXt rejection test, compressed/iCCP/deflate regression filters. |

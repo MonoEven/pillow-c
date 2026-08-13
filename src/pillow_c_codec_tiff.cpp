@@ -3093,42 +3093,7 @@ int parse_tiff_bigtiff_tiled_image_for_ifd(
     }
 }
 
-int build_tiff_bigtiff_common_ascii_exif_for_ifd(
-    const std::uint8_t* tiff,
-    std::size_t tiff_size,
-    int ifd_index,
-    int orientation,
-    std::vector<std::uint8_t>* out_exif)
-{
-    if (!out_exif) {
-        return PILLOW_C_NULL_POINTER;
-    }
-    out_exif->clear();
-    if (!tiff || tiff_size < 16u) {
-        return PILLOW_C_OK;
-    }
-
-    bool little_endian = false;
-    std::uint64_t entry_count = 0u;
-    std::size_t entries_offset = 0u;
-    if (!locate_tiff_bigtiff_ifd(
-            tiff,
-            tiff_size,
-            ifd_index,
-            &little_endian,
-            &entry_count,
-            &entries_offset)) {
-        return PILLOW_C_OK;
-    }
-    if (entry_count > std::numeric_limits<std::size_t>::max() / 20u) {
-        return PILLOW_C_INVALID_ARGUMENT;
-    }
-
-    // Bounded BigTIFF per-IFD surface: ICCProfile (34675) and XMP (700) blobs,
-    // the scalar orientation tag, and the full classic common-EXIF family matrix
-    // (ASCII, scalar uint, uint arrays, SHORT arrays, rationals, rational arrays,
-    // signed rationals, signed rational arrays, double arrays, float arrays,
-    // byte arrays, and undefined blobs), with BigTIFF inline/LONG8-offset layout.
+struct TiffExifCollector {
     std::vector<int> ascii_tags;
     std::vector<std::string> ascii_values;
     std::vector<int> uint_tags;
@@ -3174,6 +3139,7 @@ int build_tiff_bigtiff_common_ascii_exif_for_ifd(
     std::vector<std::uint8_t> undefined_values;
     std::vector<std::size_t> undefined_offsets;
     std::vector<std::size_t> undefined_counts;
+    std::vector<std::uint32_t> sub_ifd_offsets;
     bool has_x_resolution = false;
     bool has_y_resolution = false;
     bool has_resolution_unit = false;
@@ -3183,340 +3149,179 @@ int build_tiff_bigtiff_common_ascii_exif_for_ifd(
     std::uint32_t y_resolution_denominator = 0u;
     std::uint32_t resolution_unit = 0u;
     int resolution_unit_type = 0;
-    for (std::uint64_t index = 0u; index < entry_count; ++index) {
-        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 20u;
-        const int tag = static_cast<int>(read_tiff16(entry, little_endian));
-        const std::uint16_t entry_value_type = read_tiff16(entry + 2u, little_endian);
-        const std::uint64_t entry_value_count = read_tiff64(entry + 4u, little_endian);
-        if (tiff_common_ascii_tag(tag)) {
-            std::string value;
-            if (read_tiff_bigtiff_ascii_entry_value(tiff, tiff_size, little_endian, entry, &value)) {
-                ascii_tags.push_back(tag);
-                ascii_values.push_back(std::move(value));
-            }
-        } else if (tag == 282 || tag == 283) {
-            std::uint32_t numerator = 0u;
-            std::uint32_t denominator = 0u;
-            if (!read_tiff_bigtiff_rational_entry_value(little_endian, entry, &numerator, &denominator)) {
-                continue;
-            }
-            if (tag == 282) {
-                has_x_resolution = true;
-                x_resolution_numerator = numerator;
-                x_resolution_denominator = denominator;
-            } else {
-                has_y_resolution = true;
-                y_resolution_numerator = numerator;
-                y_resolution_denominator = denominator;
-            }
-        } else if (tag == 37377 || tag == 37379 || tag == 37380 || tag == 50716 || tag == 50730 || tag == 50739 ||
-                   tag == 51044 || tag == 51109) {
-            std::int32_t numerator = 0;
-            std::int32_t denominator = 0;
-            if (!read_tiff_bigtiff_signed_rational_entry_value(little_endian, entry, &numerator, &denominator)) {
-                continue;
-            }
-            signed_rational_tags.push_back(tag);
-            signed_rational_numerators.push_back(numerator);
-            signed_rational_denominators.push_back(denominator);
-        } else if (tag == 50715 || (tag >= 50721 && tag <= 50726) || tag == 50832 || tag == 50834 || tag == 50964 ||
-                   tag == 50965 || (tag >= 52530 && tag <= 52532)) {
-            std::vector<std::int32_t> numerators;
-            std::vector<std::int32_t> denominators;
-            if (read_tiff_bigtiff_signed_rational_array_entry_value(
-                    tiff,
-                    tiff_size,
-                    little_endian,
-                    entry,
-                    &numerators,
-                    &denominators) &&
-                ((tag == 50715 && numerators.size() == 2u) || (tag != 50715 && numerators.size() == 9u))) {
-                signed_rational_array_tags.push_back(tag);
-                signed_rational_array_offsets.push_back(signed_rational_array_numerators.size());
-                signed_rational_array_counts.push_back(numerators.size());
-                signed_rational_array_numerators.insert(
-                    signed_rational_array_numerators.end(), numerators.begin(), numerators.end());
-                signed_rational_array_denominators.insert(
-                    signed_rational_array_denominators.end(), denominators.begin(), denominators.end());
-            }
-        } else if (tag == 286 || tag == 287 || tag == 33434 || tag == 33437 || tag == 37122 || tag == 37378 ||
-            tag == 37381 || tag == 37382 || tag == 37386 || tag == 41483 || tag == 41486 || tag == 41487 ||
-            tag == 41493 || tag == 41988 || tag == 42240 || tag == 50731 || tag == 50732 || tag == 50734 ||
-            tag == 50737 || tag == 50738 || tag == 50780 || tag == 50935 || tag == 51058 || tag == 51112 || tag == 51178 || tag == 51179) {
-            std::uint32_t numerator = 0u;
-            std::uint32_t denominator = 0u;
-            if (!read_tiff_bigtiff_rational_entry_value(little_endian, entry, &numerator, &denominator)) {
-                continue;
-            }
-            rational_tags.push_back(tag);
-            rational_numerators.push_back(numerator);
-            rational_denominators.push_back(denominator);
-        } else if (tag == 318 || tag == 319 || tag == 529 || tag == 532 || tag == 42034 || tag == 42082 ||
-            tag == 50714 || tag == 50718 || (tag == 50719 && entry_value_type == 5u) || (tag == 50720 && entry_value_type == 5u) || tag == 50727 || tag == 50728 || tag == 50729 || tag == 50736 ||
-            (tag == 51091 && entry_value_type == 5u) || tag == 51125) {
-            std::vector<std::uint32_t> numerators;
-            std::vector<std::uint32_t> denominators;
-            if (read_tiff_bigtiff_rational_array_entry_value(tiff, tiff_size, little_endian, entry, &numerators, &denominators) &&
-                ((tag == 318 && numerators.size() == 2u) ||
-                    (tag == 319 && numerators.size() == 6u) ||
-                    (tag == 529 && numerators.size() == 3u) ||
-                    (tag == 532 && numerators.size() == 6u) ||
-                    ((tag == 42034 || tag == 50714) && numerators.size() == 4u) ||
-                    ((tag == 42082 || tag == 50718 || tag == 50719 || tag == 50720) && numerators.size() == 2u) ||
-                    ((tag == 50727 || tag == 50728) && numerators.size() == 3u) ||
-                    (tag == 50729 && numerators.size() == 2u) ||
-                    (tag == 51091 && numerators.size() == 2u) ||
-                    ((tag == 50736 || tag == 51125) && numerators.size() == 4u))) {
-                rational_array_tags.push_back(tag);
-                rational_array_offsets.push_back(rational_array_numerators.size());
-                rational_array_counts.push_back(numerators.size());
-                rational_array_numerators.insert(rational_array_numerators.end(), numerators.begin(), numerators.end());
-                rational_array_denominators.insert(rational_array_denominators.end(), denominators.begin(), denominators.end());
-            }
-        } else if (tag == 296) {
-            std::uint32_t value = 0u;
-            int value_type = 0;
-            if (!read_tiff_bigtiff_uint_scalar_entry_value(little_endian, entry, &value, &value_type)) {
-                continue;
-            }
-            has_resolution_unit = true;
-            resolution_unit = value;
-            resolution_unit_type = value_type;
-        } else if (tag == 291 || tag == 297 || tag == 301 || tag == 320 || tag == 321 || tag == 336 ||
-                   tag == 342 || tag == 530 || tag == 34735 || tag == 37396 || tag == 41492 || tag == 42081 ||
-                   tag == 50712 || tag == 50713 ||
-                   ((tag == 50719 || tag == 50720) && entry_value_type == 3u) ||
-                   (tag == 50829 && entry_value_type == 3u)) {
-            std::vector<std::uint32_t> values;
-            if (read_tiff_bigtiff_ushort_array_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
-                (((tag == 291 || tag == 301) && values.size() == 3u) ||
-                    (tag == 342 && values.size() == 6u) ||
-                    (tag == 34735 && values.size() == 8u) ||
-                    (tag == 37396 && (values.size() == 2u || values.size() == 3u || values.size() == 4u)) ||
-                    (tag == 50712 && values.size() == 4u) ||
-                    (tag == 50829 && values.size() == 4u) ||
-                    (tag == 320 && values.size() == 768u) ||
-                    (tag != 291 && tag != 301 && tag != 320 && tag != 342 && tag != 34735 && tag != 37396 &&
-                        tag != 50712 && values.size() == 2u))) {
-                short_array_tags.push_back(tag);
-                short_array_offsets.push_back(short_array_values.size());
-                short_array_counts.push_back(values.size());
-                short_array_values.insert(short_array_values.end(), values.begin(), values.end());
-            }
-        } else if (((tag == 50719 || tag == 50720) && entry_value_type == 4u) ||
-                   ((tag == 50829 || tag == 50830) && entry_value_type == 4u) ||
-                   tag == 50937 || tag == 50981 || tag == 51089 || tag == 51090 ||
-                   (tag == 51091 && entry_value_type == 4u) || tag == 52536 ||
-                   ((tag == 273 || tag == 279) && entry_value_count > 1u) ||
-                   ((tag == 324 || tag == 325) && entry_value_count > 1u)) {
-            std::vector<std::uint32_t> values;
-            const std::size_t expected_count =
-                (tag == 50937 || tag == 50981) ? 3u :
-                ((tag == 50719 || tag == 50720 || tag == 51089 || tag == 51090 || tag == 51091) ? 2u :
-                    ((tag == 50829 || tag == 52536) ? 4u : static_cast<std::size_t>(entry_value_count)));
-            if (read_tiff_bigtiff_uint_array_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
-                ((tag == 50830 && (values.size() == 4u || values.size() == 8u)) ||
-                    (tag != 50830 && values.size() == expected_count))) {
-                uint_array_tags.push_back(tag);
-                uint_array_offsets.push_back(uint_array_values.size());
-                uint_array_counts.push_back(values.size());
-                uint_array_values.insert(uint_array_values.end(), values.begin(), values.end());
-            }
-        } else if (tag == 33550 || tag == 33922 || tag == 34264 || tag == 34736 || tag == 50844 || tag == 51041) {
-            std::vector<double> values;
-            const std::size_t expected_count =
-                tag == 33550 ? 3u : (tag == 33922 ? 6u : (tag == 34264 ? 16u : (tag == 34736 ? 3u : (tag == 50844 ? 92u : 6u))));
-            if (read_tiff_bigtiff_double_array_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
-                ((tag == 51041 && (values.size() == 2u || values.size() == 4u || values.size() == 6u || values.size() == 8u)) ||
-                    (tag != 51041 && values.size() == expected_count))) {
-                double_array_tags.push_back(tag);
-                double_array_offsets.push_back(double_array_values.size());
-                double_array_counts.push_back(values.size());
-                double_array_values.insert(double_array_values.end(), values.begin(), values.end());
-            }
-        } else if (tag == 50938 || tag == 50939 || tag == 50940 || tag == 50982) {
-            std::vector<float> values;
-            if (read_tiff_bigtiff_float_array_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
-                (values.size() == 6u ||
-                    ((tag == 50940 || tag == 50982) && values.size() == 18u) ||
-                    ((tag == 50938 || tag == 50939 || tag == 50982) && values.size() == 54u))) {
-                float_array_tags.push_back(tag);
-                float_array_offsets.push_back(float_array_values.size());
-                float_array_counts.push_back(values.size());
-                float_array_values.insert(float_array_values.end(), values.begin(), values.end());
-            }
-        } else if (tiff_common_byte_array_tag(tag)) {
-            std::vector<std::uint8_t> values;
-            if (read_tiff_bigtiff_blob_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
-                (((tag == 50781 || tag == 50972 || tag == 50973) && values.size() == 16u) ||
-                 (tag != 50781 && tag != 50972 && tag != 50973 &&
-                  ((tag != 50831 && tag != 50833 && tag != 51043) || values.size() == 8u)))) {
-                byte_array_tags.push_back(tag);
-                byte_array_offsets.push_back(byte_array_values.size());
-                byte_array_counts.push_back(values.size());
-                byte_array_values.insert(byte_array_values.end(), values.begin(), values.end());
-            }
-        } else if (tiff_common_uint_tag(tag)) {
-            if (tag == 258 && entry_value_type == 3u && entry_value_count > 1u) {
-                std::vector<std::uint32_t> values;
-                if (read_tiff_bigtiff_ushort_array_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
-                    (values.size() == 2u || values.size() == 3u || values.size() == 4u)) {
-                    short_array_tags.push_back(tag);
-                    short_array_offsets.push_back(short_array_values.size());
-                    short_array_counts.push_back(values.size());
-                    short_array_values.insert(short_array_values.end(), values.begin(), values.end());
-                    continue;
-                }
-            }
-            std::uint32_t value = 0u;
-            int value_type = 0;
-            if (read_tiff_bigtiff_uint_scalar_entry_value(little_endian, entry, &value, &value_type)) {
-                if ((tag == 50717 && value_type != 3) || ((tag == 50974 || tag == 50975) && value_type != 4)) {
-                    continue;
-                }
-                uint_tags.push_back(tag);
-                uint_values.push_back(value);
-                uint_types.push_back(value_type);
-            }
-        } else if (tag == 34675 || tag == 700) {
-            std::vector<std::uint8_t> values;
-            if (read_tiff_bigtiff_blob_entry_value(tiff, tiff_size, little_endian, entry, &values)) {
-                undefined_tags.push_back(tag);
-                undefined_offsets.push_back(undefined_values.size());
-                undefined_counts.push_back(values.size());
-                undefined_values.insert(undefined_values.end(), values.begin(), values.end());
-            }
-        } else if ((tag == 37510 || tag == 37724) && entry_value_type == 7u) {
-            std::vector<std::uint8_t> values;
-            if (read_tiff_bigtiff_blob_entry_value(tiff, tiff_size, little_endian, entry, &values)) {
-                undefined_tags.push_back(tag);
-                undefined_offsets.push_back(undefined_values.size());
-                undefined_counts.push_back(values.size());
-                undefined_values.insert(undefined_values.end(), values.begin(), values.end());
-            }
-        } else if (tag == 347 || tag == 33723 || tag == 34856 || tag == 36864 || tag == 37121 || tag == 37500 ||
-            tag == 40960 || tag == 41484 || tag == 41728 || tag == 41729 || tag == 41730 || tag == 41995 ||
-            tag == 50828 || tag == 50969 || tag == 51008 || tag == 51009 || tag == 51022 || tag == 52525 ||
-            (tag >= 52533 && tag <= 52535)) {
-            std::vector<std::uint8_t> values;
-            if (read_tiff_bigtiff_blob_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
-                ((tag == 50969 && values.size() == 16u) ||
-                 (tag == 52525 && (values.size() == 4u || values.size() == 8u)) ||
-                 (tag != 50969 && tag != 52525 &&
-                  ((tag != 50828 && tag != 51008 && tag != 51009 && tag != 51022) || values.size() == 8u)))) {
-                undefined_tags.push_back(tag);
-                undefined_offsets.push_back(undefined_values.size());
-                undefined_counts.push_back(values.size());
-                undefined_values.insert(undefined_values.end(), values.begin(), values.end());
-            }
-        }
+};
+
+
+void collect_tiff_bigtiff_exif_entries(
+    const std::uint8_t* tiff,
+    std::size_t tiff_size,
+    bool little_endian,
+    const std::uint8_t* first_entry,
+    std::uint64_t entry_count,
+    TiffExifCollector* collector);
+
+
+int build_tiff_bigtiff_common_ascii_exif_for_ifd(
+    const std::uint8_t* tiff,
+    std::size_t tiff_size,
+    int ifd_index,
+    int orientation,
+    std::vector<std::uint8_t>* out_exif)
+{
+    if (!out_exif) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    out_exif->clear();
+    if (!tiff || tiff_size < 16u) {
+        return PILLOW_C_OK;
     }
 
+    bool little_endian = false;
+    std::uint64_t entry_count = 0u;
+    std::size_t entries_offset = 0u;
+    if (!locate_tiff_bigtiff_ifd(
+            tiff,
+            tiff_size,
+            ifd_index,
+            &little_endian,
+            &entry_count,
+            &entries_offset)) {
+        return PILLOW_C_OK;
+    }
+    if (entry_count > std::numeric_limits<std::size_t>::max() / 20u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    // Bounded BigTIFF per-IFD surface: ICCProfile (34675) and XMP (700) blobs,
+    // the scalar orientation tag, and the full classic common-EXIF family matrix
+    // (ASCII, scalar uint, uint arrays, SHORT arrays, rationals, rational arrays,
+    // signed rationals, signed rational arrays, double arrays, float arrays,
+    // byte arrays, and undefined blobs), with BigTIFF inline/LONG8-offset layout.
+    TiffExifCollector collector;
+    collect_tiff_bigtiff_exif_entries(tiff, tiff_size, little_endian, tiff + entries_offset, entry_count, &collector);
+    for (std::size_t sub_index = 0u; sub_index < collector.sub_ifd_offsets.size(); ++sub_index) {
+        const std::uint32_t sub_offset = collector.sub_ifd_offsets[sub_index];
+        if (static_cast<std::size_t>(sub_offset) + 8u > tiff_size) {
+            continue;
+        }
+        const std::uint64_t sub_count = read_tiff64(tiff + sub_offset, little_endian);
+        if (sub_count == 0u || sub_count > 4096u ||
+            sub_count > (static_cast<std::uint64_t>(tiff_size) - static_cast<std::uint64_t>(sub_offset) - 8u) / 20u) {
+            continue;
+        }
+        collect_tiff_bigtiff_exif_entries(
+            tiff,
+            tiff_size,
+            little_endian,
+            tiff + static_cast<std::size_t>(sub_offset) + 8u,
+            sub_count,
+            &collector);
+    }
     const int serialized_orientation = orientation == 1 ? 1 : 0;
     const bool has_resolution_exif =
-        has_x_resolution && has_y_resolution && has_resolution_unit && resolution_unit == 2u;
-    if (ascii_tags.empty() && uint_tags.empty() && rational_tags.empty() && rational_array_tags.empty() &&
-        short_array_tags.empty() && uint_array_tags.empty() && double_array_tags.empty() && float_array_tags.empty() &&
-        byte_array_tags.empty() && signed_rational_tags.empty() && signed_rational_array_tags.empty() &&
-        undefined_tags.empty() && serialized_orientation == 0 && !has_resolution_exif) {
+        collector.has_x_resolution && collector.has_y_resolution && collector.has_resolution_unit && collector.resolution_unit == 2u;
+    if (collector.ascii_tags.empty() && collector.uint_tags.empty() && collector.rational_tags.empty() && collector.rational_array_tags.empty() &&
+        collector.short_array_tags.empty() && collector.uint_array_tags.empty() && collector.double_array_tags.empty() && collector.float_array_tags.empty() &&
+        collector.byte_array_tags.empty() && collector.signed_rational_tags.empty() && collector.signed_rational_array_tags.empty() &&
+        collector.undefined_tags.empty() && serialized_orientation == 0 && !has_resolution_exif) {
         return PILLOW_C_OK;
     }
 
     std::vector<const char*> ascii_value_ptrs;
-    ascii_value_ptrs.reserve(ascii_values.size());
-    for (const std::string& value : ascii_values) {
+    ascii_value_ptrs.reserve(collector.ascii_values.size());
+    for (const std::string& value : collector.ascii_values) {
         ascii_value_ptrs.push_back(value.c_str());
     }
     if (has_resolution_exif) {
-        uint_tags.push_back(296);
-        uint_values.push_back(resolution_unit);
-        uint_types.push_back(resolution_unit_type);
-        rational_tags.push_back(282);
-        rational_numerators.push_back(x_resolution_numerator);
-        rational_denominators.push_back(x_resolution_denominator);
-        rational_tags.push_back(283);
-        rational_numerators.push_back(y_resolution_numerator);
-        rational_denominators.push_back(y_resolution_denominator);
+        collector.uint_tags.push_back(296);
+        collector.uint_values.push_back(collector.resolution_unit);
+        collector.uint_types.push_back(collector.resolution_unit_type);
+        collector.rational_tags.push_back(282);
+        collector.rational_numerators.push_back(collector.x_resolution_numerator);
+        collector.rational_denominators.push_back(collector.x_resolution_denominator);
+        collector.rational_tags.push_back(283);
+        collector.rational_numerators.push_back(collector.y_resolution_numerator);
+        collector.rational_denominators.push_back(collector.y_resolution_denominator);
     }
-    const std::size_t ascii_count = ascii_tags.size();
-    const std::size_t uint_count = uint_tags.size();
-    const std::size_t rational_count = rational_tags.size();
-    const std::size_t rational_array_count = rational_array_tags.size();
-    const std::size_t short_array_count = short_array_tags.size();
-    const std::size_t uint_array_count = uint_array_tags.size();
-    const std::size_t double_array_count = double_array_tags.size();
-    const std::size_t float_array_count = float_array_tags.size();
-    const std::size_t byte_array_count = byte_array_tags.size();
-    const std::size_t signed_rational_count = signed_rational_tags.size();
-    const std::size_t signed_rational_array_count = signed_rational_array_tags.size();
-    const std::size_t undefined_count = undefined_tags.size();
+    const std::size_t ascii_count = collector.ascii_tags.size();
+    const std::size_t uint_count = collector.uint_tags.size();
+    const std::size_t rational_count = collector.rational_tags.size();
+    const std::size_t rational_array_count = collector.rational_array_tags.size();
+    const std::size_t short_array_count = collector.short_array_tags.size();
+    const std::size_t uint_array_count = collector.uint_array_tags.size();
+    const std::size_t double_array_count = collector.double_array_tags.size();
+    const std::size_t float_array_count = collector.float_array_tags.size();
+    const std::size_t byte_array_count = collector.byte_array_tags.size();
+    const std::size_t signed_rational_count = collector.signed_rational_tags.size();
+    const std::size_t signed_rational_array_count = collector.signed_rational_array_tags.size();
+    const std::size_t undefined_count = collector.undefined_tags.size();
     std::size_t required = 0u;
     int status = copy_exif_entries_internal_uint_array_bytes(
         serialized_orientation,
-        ascii_count == 0u ? nullptr : ascii_tags.data(),
+        ascii_count == 0u ? nullptr : collector.ascii_tags.data(),
         ascii_count == 0u ? nullptr : ascii_value_ptrs.data(),
         ascii_count,
-        uint_count == 0u ? nullptr : uint_tags.data(),
-        uint_count == 0u ? nullptr : uint_values.data(),
-        uint_count == 0u ? nullptr : uint_types.data(),
+        uint_count == 0u ? nullptr : collector.uint_tags.data(),
+        uint_count == 0u ? nullptr : collector.uint_values.data(),
+        uint_count == 0u ? nullptr : collector.uint_types.data(),
         uint_count,
-        rational_count == 0u ? nullptr : rational_tags.data(),
-        rational_count == 0u ? nullptr : rational_numerators.data(),
-        rational_count == 0u ? nullptr : rational_denominators.data(),
+        rational_count == 0u ? nullptr : collector.rational_tags.data(),
+        rational_count == 0u ? nullptr : collector.rational_numerators.data(),
+        rational_count == 0u ? nullptr : collector.rational_denominators.data(),
         rational_count,
-        rational_array_count == 0u ? nullptr : rational_array_tags.data(),
-        rational_array_count == 0u ? nullptr : rational_array_numerators.data(),
-        rational_array_count == 0u ? nullptr : rational_array_denominators.data(),
-        rational_array_numerators.size(),
-        rational_array_count == 0u ? nullptr : rational_array_offsets.data(),
-        rational_array_count == 0u ? nullptr : rational_array_counts.data(),
+        rational_array_count == 0u ? nullptr : collector.rational_array_tags.data(),
+        rational_array_count == 0u ? nullptr : collector.rational_array_numerators.data(),
+        rational_array_count == 0u ? nullptr : collector.rational_array_denominators.data(),
+        collector.rational_array_numerators.size(),
+        rational_array_count == 0u ? nullptr : collector.rational_array_offsets.data(),
+        rational_array_count == 0u ? nullptr : collector.rational_array_counts.data(),
         rational_array_count,
-        short_array_count == 0u ? nullptr : short_array_tags.data(),
-        short_array_count == 0u ? nullptr : short_array_values.data(),
-        short_array_values.size(),
-        short_array_count == 0u ? nullptr : short_array_offsets.data(),
-        short_array_count == 0u ? nullptr : short_array_counts.data(),
+        short_array_count == 0u ? nullptr : collector.short_array_tags.data(),
+        short_array_count == 0u ? nullptr : collector.short_array_values.data(),
+        collector.short_array_values.size(),
+        short_array_count == 0u ? nullptr : collector.short_array_offsets.data(),
+        short_array_count == 0u ? nullptr : collector.short_array_counts.data(),
         short_array_count,
-        uint_array_count == 0u ? nullptr : uint_array_tags.data(),
-        uint_array_count == 0u ? nullptr : uint_array_values.data(),
-        uint_array_values.size(),
-        uint_array_count == 0u ? nullptr : uint_array_offsets.data(),
-        uint_array_count == 0u ? nullptr : uint_array_counts.data(),
+        uint_array_count == 0u ? nullptr : collector.uint_array_tags.data(),
+        uint_array_count == 0u ? nullptr : collector.uint_array_values.data(),
+        collector.uint_array_values.size(),
+        uint_array_count == 0u ? nullptr : collector.uint_array_offsets.data(),
+        uint_array_count == 0u ? nullptr : collector.uint_array_counts.data(),
         uint_array_count,
-        double_array_count == 0u ? nullptr : double_array_tags.data(),
-        double_array_count == 0u ? nullptr : double_array_values.data(),
-        double_array_values.size(),
-        double_array_count == 0u ? nullptr : double_array_offsets.data(),
-        double_array_count == 0u ? nullptr : double_array_counts.data(),
+        double_array_count == 0u ? nullptr : collector.double_array_tags.data(),
+        double_array_count == 0u ? nullptr : collector.double_array_values.data(),
+        collector.double_array_values.size(),
+        double_array_count == 0u ? nullptr : collector.double_array_offsets.data(),
+        double_array_count == 0u ? nullptr : collector.double_array_counts.data(),
         double_array_count,
-        float_array_count == 0u ? nullptr : float_array_tags.data(),
-        float_array_count == 0u ? nullptr : float_array_values.data(),
-        float_array_values.size(),
-        float_array_count == 0u ? nullptr : float_array_offsets.data(),
-        float_array_count == 0u ? nullptr : float_array_counts.data(),
+        float_array_count == 0u ? nullptr : collector.float_array_tags.data(),
+        float_array_count == 0u ? nullptr : collector.float_array_values.data(),
+        collector.float_array_values.size(),
+        float_array_count == 0u ? nullptr : collector.float_array_offsets.data(),
+        float_array_count == 0u ? nullptr : collector.float_array_counts.data(),
         float_array_count,
-        byte_array_count == 0u ? nullptr : byte_array_tags.data(),
-        byte_array_count == 0u ? nullptr : byte_array_values.data(),
-        byte_array_values.size(),
-        byte_array_count == 0u ? nullptr : byte_array_offsets.data(),
-        byte_array_count == 0u ? nullptr : byte_array_counts.data(),
+        byte_array_count == 0u ? nullptr : collector.byte_array_tags.data(),
+        byte_array_count == 0u ? nullptr : collector.byte_array_values.data(),
+        collector.byte_array_values.size(),
+        byte_array_count == 0u ? nullptr : collector.byte_array_offsets.data(),
+        byte_array_count == 0u ? nullptr : collector.byte_array_counts.data(),
         byte_array_count,
-        signed_rational_count == 0u ? nullptr : signed_rational_tags.data(),
-        signed_rational_count == 0u ? nullptr : signed_rational_numerators.data(),
-        signed_rational_count == 0u ? nullptr : signed_rational_denominators.data(),
+        signed_rational_count == 0u ? nullptr : collector.signed_rational_tags.data(),
+        signed_rational_count == 0u ? nullptr : collector.signed_rational_numerators.data(),
+        signed_rational_count == 0u ? nullptr : collector.signed_rational_denominators.data(),
         signed_rational_count,
-        signed_rational_array_count == 0u ? nullptr : signed_rational_array_tags.data(),
-        signed_rational_array_count == 0u ? nullptr : signed_rational_array_numerators.data(),
-        signed_rational_array_count == 0u ? nullptr : signed_rational_array_denominators.data(),
-        signed_rational_array_numerators.size(),
-        signed_rational_array_count == 0u ? nullptr : signed_rational_array_offsets.data(),
-        signed_rational_array_count == 0u ? nullptr : signed_rational_array_counts.data(),
+        signed_rational_array_count == 0u ? nullptr : collector.signed_rational_array_tags.data(),
+        signed_rational_array_count == 0u ? nullptr : collector.signed_rational_array_numerators.data(),
+        signed_rational_array_count == 0u ? nullptr : collector.signed_rational_array_denominators.data(),
+        collector.signed_rational_array_numerators.size(),
+        signed_rational_array_count == 0u ? nullptr : collector.signed_rational_array_offsets.data(),
+        signed_rational_array_count == 0u ? nullptr : collector.signed_rational_array_counts.data(),
         signed_rational_array_count,
-        undefined_count == 0u ? nullptr : undefined_tags.data(),
-        undefined_count == 0u ? nullptr : undefined_values.data(),
-        undefined_values.size(),
-        undefined_count == 0u ? nullptr : undefined_offsets.data(),
-        undefined_count == 0u ? nullptr : undefined_counts.data(),
+        undefined_count == 0u ? nullptr : collector.undefined_tags.data(),
+        undefined_count == 0u ? nullptr : collector.undefined_values.data(),
+        collector.undefined_values.size(),
+        undefined_count == 0u ? nullptr : collector.undefined_offsets.data(),
+        undefined_count == 0u ? nullptr : collector.undefined_counts.data(),
         undefined_count,
         nullptr,
         0u,
@@ -3531,70 +3336,70 @@ int build_tiff_bigtiff_common_ascii_exif_for_ifd(
     out_exif->assign(required, std::uint8_t{0});
     status = copy_exif_entries_internal_uint_array_bytes(
         serialized_orientation,
-        ascii_count == 0u ? nullptr : ascii_tags.data(),
+        ascii_count == 0u ? nullptr : collector.ascii_tags.data(),
         ascii_count == 0u ? nullptr : ascii_value_ptrs.data(),
         ascii_count,
-        uint_count == 0u ? nullptr : uint_tags.data(),
-        uint_count == 0u ? nullptr : uint_values.data(),
-        uint_count == 0u ? nullptr : uint_types.data(),
+        uint_count == 0u ? nullptr : collector.uint_tags.data(),
+        uint_count == 0u ? nullptr : collector.uint_values.data(),
+        uint_count == 0u ? nullptr : collector.uint_types.data(),
         uint_count,
-        rational_count == 0u ? nullptr : rational_tags.data(),
-        rational_count == 0u ? nullptr : rational_numerators.data(),
-        rational_count == 0u ? nullptr : rational_denominators.data(),
+        rational_count == 0u ? nullptr : collector.rational_tags.data(),
+        rational_count == 0u ? nullptr : collector.rational_numerators.data(),
+        rational_count == 0u ? nullptr : collector.rational_denominators.data(),
         rational_count,
-        rational_array_count == 0u ? nullptr : rational_array_tags.data(),
-        rational_array_count == 0u ? nullptr : rational_array_numerators.data(),
-        rational_array_count == 0u ? nullptr : rational_array_denominators.data(),
-        rational_array_numerators.size(),
-        rational_array_count == 0u ? nullptr : rational_array_offsets.data(),
-        rational_array_count == 0u ? nullptr : rational_array_counts.data(),
+        rational_array_count == 0u ? nullptr : collector.rational_array_tags.data(),
+        rational_array_count == 0u ? nullptr : collector.rational_array_numerators.data(),
+        rational_array_count == 0u ? nullptr : collector.rational_array_denominators.data(),
+        collector.rational_array_numerators.size(),
+        rational_array_count == 0u ? nullptr : collector.rational_array_offsets.data(),
+        rational_array_count == 0u ? nullptr : collector.rational_array_counts.data(),
         rational_array_count,
-        short_array_count == 0u ? nullptr : short_array_tags.data(),
-        short_array_count == 0u ? nullptr : short_array_values.data(),
-        short_array_values.size(),
-        short_array_count == 0u ? nullptr : short_array_offsets.data(),
-        short_array_count == 0u ? nullptr : short_array_counts.data(),
+        short_array_count == 0u ? nullptr : collector.short_array_tags.data(),
+        short_array_count == 0u ? nullptr : collector.short_array_values.data(),
+        collector.short_array_values.size(),
+        short_array_count == 0u ? nullptr : collector.short_array_offsets.data(),
+        short_array_count == 0u ? nullptr : collector.short_array_counts.data(),
         short_array_count,
-        uint_array_count == 0u ? nullptr : uint_array_tags.data(),
-        uint_array_count == 0u ? nullptr : uint_array_values.data(),
-        uint_array_values.size(),
-        uint_array_count == 0u ? nullptr : uint_array_offsets.data(),
-        uint_array_count == 0u ? nullptr : uint_array_counts.data(),
+        uint_array_count == 0u ? nullptr : collector.uint_array_tags.data(),
+        uint_array_count == 0u ? nullptr : collector.uint_array_values.data(),
+        collector.uint_array_values.size(),
+        uint_array_count == 0u ? nullptr : collector.uint_array_offsets.data(),
+        uint_array_count == 0u ? nullptr : collector.uint_array_counts.data(),
         uint_array_count,
-        double_array_count == 0u ? nullptr : double_array_tags.data(),
-        double_array_count == 0u ? nullptr : double_array_values.data(),
-        double_array_values.size(),
-        double_array_count == 0u ? nullptr : double_array_offsets.data(),
-        double_array_count == 0u ? nullptr : double_array_counts.data(),
+        double_array_count == 0u ? nullptr : collector.double_array_tags.data(),
+        double_array_count == 0u ? nullptr : collector.double_array_values.data(),
+        collector.double_array_values.size(),
+        double_array_count == 0u ? nullptr : collector.double_array_offsets.data(),
+        double_array_count == 0u ? nullptr : collector.double_array_counts.data(),
         double_array_count,
-        float_array_count == 0u ? nullptr : float_array_tags.data(),
-        float_array_count == 0u ? nullptr : float_array_values.data(),
-        float_array_values.size(),
-        float_array_count == 0u ? nullptr : float_array_offsets.data(),
-        float_array_count == 0u ? nullptr : float_array_counts.data(),
+        float_array_count == 0u ? nullptr : collector.float_array_tags.data(),
+        float_array_count == 0u ? nullptr : collector.float_array_values.data(),
+        collector.float_array_values.size(),
+        float_array_count == 0u ? nullptr : collector.float_array_offsets.data(),
+        float_array_count == 0u ? nullptr : collector.float_array_counts.data(),
         float_array_count,
-        byte_array_count == 0u ? nullptr : byte_array_tags.data(),
-        byte_array_count == 0u ? nullptr : byte_array_values.data(),
-        byte_array_values.size(),
-        byte_array_count == 0u ? nullptr : byte_array_offsets.data(),
-        byte_array_count == 0u ? nullptr : byte_array_counts.data(),
+        byte_array_count == 0u ? nullptr : collector.byte_array_tags.data(),
+        byte_array_count == 0u ? nullptr : collector.byte_array_values.data(),
+        collector.byte_array_values.size(),
+        byte_array_count == 0u ? nullptr : collector.byte_array_offsets.data(),
+        byte_array_count == 0u ? nullptr : collector.byte_array_counts.data(),
         byte_array_count,
-        signed_rational_count == 0u ? nullptr : signed_rational_tags.data(),
-        signed_rational_count == 0u ? nullptr : signed_rational_numerators.data(),
-        signed_rational_count == 0u ? nullptr : signed_rational_denominators.data(),
+        signed_rational_count == 0u ? nullptr : collector.signed_rational_tags.data(),
+        signed_rational_count == 0u ? nullptr : collector.signed_rational_numerators.data(),
+        signed_rational_count == 0u ? nullptr : collector.signed_rational_denominators.data(),
         signed_rational_count,
-        signed_rational_array_count == 0u ? nullptr : signed_rational_array_tags.data(),
-        signed_rational_array_count == 0u ? nullptr : signed_rational_array_numerators.data(),
-        signed_rational_array_count == 0u ? nullptr : signed_rational_array_denominators.data(),
-        signed_rational_array_numerators.size(),
-        signed_rational_array_count == 0u ? nullptr : signed_rational_array_offsets.data(),
-        signed_rational_array_count == 0u ? nullptr : signed_rational_array_counts.data(),
+        signed_rational_array_count == 0u ? nullptr : collector.signed_rational_array_tags.data(),
+        signed_rational_array_count == 0u ? nullptr : collector.signed_rational_array_numerators.data(),
+        signed_rational_array_count == 0u ? nullptr : collector.signed_rational_array_denominators.data(),
+        collector.signed_rational_array_numerators.size(),
+        signed_rational_array_count == 0u ? nullptr : collector.signed_rational_array_offsets.data(),
+        signed_rational_array_count == 0u ? nullptr : collector.signed_rational_array_counts.data(),
         signed_rational_array_count,
-        undefined_count == 0u ? nullptr : undefined_tags.data(),
-        undefined_count == 0u ? nullptr : undefined_values.data(),
-        undefined_values.size(),
-        undefined_count == 0u ? nullptr : undefined_offsets.data(),
-        undefined_count == 0u ? nullptr : undefined_counts.data(),
+        undefined_count == 0u ? nullptr : collector.undefined_tags.data(),
+        undefined_count == 0u ? nullptr : collector.undefined_values.data(),
+        collector.undefined_values.size(),
+        undefined_count == 0u ? nullptr : collector.undefined_offsets.data(),
+        undefined_count == 0u ? nullptr : collector.undefined_counts.data(),
         undefined_count,
         out_exif->data(),
         out_exif->size(),
@@ -3706,63 +3511,6 @@ bool parse_tiff_xmp_for_ifd(
     return false;
 }
 
-struct TiffExifCollector {
-    std::vector<int> ascii_tags;
-    std::vector<std::string> ascii_values;
-    std::vector<int> uint_tags;
-    std::vector<std::uint32_t> uint_values;
-    std::vector<int> uint_types;
-    std::vector<int> rational_tags;
-    std::vector<std::uint32_t> rational_numerators;
-    std::vector<std::uint32_t> rational_denominators;
-    std::vector<int> rational_array_tags;
-    std::vector<std::uint32_t> rational_array_numerators;
-    std::vector<std::uint32_t> rational_array_denominators;
-    std::vector<std::size_t> rational_array_offsets;
-    std::vector<std::size_t> rational_array_counts;
-    std::vector<int> short_array_tags;
-    std::vector<std::uint32_t> short_array_values;
-    std::vector<std::size_t> short_array_offsets;
-    std::vector<std::size_t> short_array_counts;
-    std::vector<int> uint_array_tags;
-    std::vector<std::uint32_t> uint_array_values;
-    std::vector<std::size_t> uint_array_offsets;
-    std::vector<std::size_t> uint_array_counts;
-    std::vector<int> double_array_tags;
-    std::vector<double> double_array_values;
-    std::vector<std::size_t> double_array_offsets;
-    std::vector<std::size_t> double_array_counts;
-    std::vector<int> float_array_tags;
-    std::vector<float> float_array_values;
-    std::vector<std::size_t> float_array_offsets;
-    std::vector<std::size_t> float_array_counts;
-    std::vector<int> byte_array_tags;
-    std::vector<std::uint8_t> byte_array_values;
-    std::vector<std::size_t> byte_array_offsets;
-    std::vector<std::size_t> byte_array_counts;
-    std::vector<int> signed_rational_tags;
-    std::vector<std::int32_t> signed_rational_numerators;
-    std::vector<std::int32_t> signed_rational_denominators;
-    std::vector<int> signed_rational_array_tags;
-    std::vector<std::int32_t> signed_rational_array_numerators;
-    std::vector<std::int32_t> signed_rational_array_denominators;
-    std::vector<std::size_t> signed_rational_array_offsets;
-    std::vector<std::size_t> signed_rational_array_counts;
-    std::vector<int> undefined_tags;
-    std::vector<std::uint8_t> undefined_values;
-    std::vector<std::size_t> undefined_offsets;
-    std::vector<std::size_t> undefined_counts;
-    std::vector<std::uint32_t> sub_ifd_offsets;
-    bool has_x_resolution = false;
-    bool has_y_resolution = false;
-    bool has_resolution_unit = false;
-    std::uint32_t x_resolution_numerator = 0u;
-    std::uint32_t x_resolution_denominator = 0u;
-    std::uint32_t y_resolution_numerator = 0u;
-    std::uint32_t y_resolution_denominator = 0u;
-    std::uint32_t resolution_unit = 0u;
-    int resolution_unit_type = 0;
-};
 
 void collect_tiff_exif_entries(
     const std::uint8_t* tiff,
@@ -4058,6 +3806,290 @@ void collect_tiff_exif_entries(
             collector->uint_types.push_back(value_type);
             if ((tag == 34665 || tag == 34853) && value_type == 4u) {
                 collector->sub_ifd_offsets.push_back(value);
+            }
+        }    }
+}
+
+void collect_tiff_bigtiff_exif_entries(
+    const std::uint8_t* tiff,
+    std::size_t tiff_size,
+    bool little_endian,
+    const std::uint8_t* first_entry,
+    std::uint64_t entry_count,
+    TiffExifCollector* collector)
+{
+    for (std::uint64_t index = 0u; index < entry_count; ++index) {
+        const std::uint8_t* entry = first_entry + static_cast<std::size_t>(index) * 20u;
+        const int tag = static_cast<int>(read_tiff16(entry, little_endian));
+        const std::uint16_t entry_value_type = read_tiff16(entry + 2u, little_endian);
+        const std::uint64_t entry_value_count = read_tiff64(entry + 4u, little_endian);
+        if (tiff_common_ascii_tag(tag)) {
+            std::string value;
+            if (read_tiff_bigtiff_ascii_entry_value(tiff, tiff_size, little_endian, entry, &value)) {
+                collector->ascii_tags.push_back(tag);
+                collector->ascii_values.push_back(std::move(value));
+            }
+        } else if (tag == 282 || tag == 283) {
+            std::uint32_t numerator = 0u;
+            std::uint32_t denominator = 0u;
+            if (!read_tiff_bigtiff_rational_entry_value(little_endian, entry, &numerator, &denominator)) {
+                continue;
+            }
+            if (tag == 282) {
+                collector->has_x_resolution = true;
+                collector->x_resolution_numerator = numerator;
+                collector->x_resolution_denominator = denominator;
+            } else {
+                collector->has_y_resolution = true;
+                collector->y_resolution_numerator = numerator;
+                collector->y_resolution_denominator = denominator;
+            }
+        } else if (tag == 37377 || tag == 37379 || tag == 37380 || tag == 50716 || tag == 50730 || tag == 50739 ||
+                   tag == 51044 || tag == 51109) {
+            std::int32_t numerator = 0;
+            std::int32_t denominator = 0;
+            if (!read_tiff_bigtiff_signed_rational_entry_value(little_endian, entry, &numerator, &denominator)) {
+                continue;
+            }
+            collector->signed_rational_tags.push_back(tag);
+            collector->signed_rational_numerators.push_back(numerator);
+            collector->signed_rational_denominators.push_back(denominator);
+        } else if (tag == 50715 || (tag >= 50721 && tag <= 50726) || tag == 50832 || tag == 50834 || tag == 50964 ||
+                   tag == 50965 || (tag >= 52530 && tag <= 52532)) {
+            std::vector<std::int32_t> numerators;
+            std::vector<std::int32_t> denominators;
+            if (read_tiff_bigtiff_signed_rational_array_entry_value(
+                    tiff,
+                    tiff_size,
+                    little_endian,
+                    entry,
+                    &numerators,
+                    &denominators) &&
+                ((tag == 50715 && numerators.size() == 2u) || (tag != 50715 && numerators.size() == 9u))) {
+                collector->signed_rational_array_tags.push_back(tag);
+                collector->signed_rational_array_offsets.push_back(collector->signed_rational_array_numerators.size());
+                collector->signed_rational_array_counts.push_back(numerators.size());
+                collector->signed_rational_array_numerators.insert(
+                    collector->signed_rational_array_numerators.end(), numerators.begin(), numerators.end());
+                collector->signed_rational_array_denominators.insert(
+                    collector->signed_rational_array_denominators.end(), denominators.begin(), denominators.end());
+            }
+        } else if (tag == 286 || tag == 287 || tag == 33434 || tag == 33437 || tag == 37122 || tag == 37378 ||
+            tag == 37381 || tag == 37382 || tag == 37386 || tag == 41483 || tag == 41486 || tag == 41487 ||
+            tag == 41493 || tag == 41988 || tag == 42240 || tag == 50731 || tag == 50732 || tag == 50734 ||
+            tag == 50737 || tag == 50738 || tag == 50780 || tag == 50935 || tag == 51058 || tag == 51112 || tag == 51178 || tag == 51179) {
+            std::uint32_t numerator = 0u;
+            std::uint32_t denominator = 0u;
+            if (!read_tiff_bigtiff_rational_entry_value(little_endian, entry, &numerator, &denominator)) {
+                continue;
+            }
+            collector->rational_tags.push_back(tag);
+            collector->rational_numerators.push_back(numerator);
+            collector->rational_denominators.push_back(denominator);
+        } else if (tag == 318 || tag == 319 || tag == 529 || tag == 532 || tag == 42034 || tag == 42082 ||
+            tag == 50714 || tag == 50718 || (tag == 50719 && entry_value_type == 5u) || (tag == 50720 && entry_value_type == 5u) || tag == 50727 || tag == 50728 || tag == 50729 || tag == 50736 ||
+            (tag == 51091 && entry_value_type == 5u) || tag == 51125) {
+            std::vector<std::uint32_t> numerators;
+            std::vector<std::uint32_t> denominators;
+            if (read_tiff_bigtiff_rational_array_entry_value(tiff, tiff_size, little_endian, entry, &numerators, &denominators) &&
+                ((tag == 318 && numerators.size() == 2u) ||
+                    (tag == 319 && numerators.size() == 6u) ||
+                    (tag == 529 && numerators.size() == 3u) ||
+                    (tag == 532 && numerators.size() == 6u) ||
+                    ((tag == 42034 || tag == 50714) && numerators.size() == 4u) ||
+                    ((tag == 42082 || tag == 50718 || tag == 50719 || tag == 50720) && numerators.size() == 2u) ||
+                    ((tag == 50727 || tag == 50728) && numerators.size() == 3u) ||
+                    (tag == 50729 && numerators.size() == 2u) ||
+                    (tag == 51091 && numerators.size() == 2u) ||
+                    ((tag == 50736 || tag == 51125) && numerators.size() == 4u))) {
+                collector->rational_array_tags.push_back(tag);
+                collector->rational_array_offsets.push_back(collector->rational_array_numerators.size());
+                collector->rational_array_counts.push_back(numerators.size());
+                collector->rational_array_numerators.insert(collector->rational_array_numerators.end(), numerators.begin(), numerators.end());
+                collector->rational_array_denominators.insert(collector->rational_array_denominators.end(), denominators.begin(), denominators.end());
+            }
+        } else if (tag == 296) {
+            std::uint32_t value = 0u;
+            int value_type = 0;
+            if (!read_tiff_bigtiff_uint_scalar_entry_value(little_endian, entry, &value, &value_type)) {
+                continue;
+            }
+            collector->has_resolution_unit = true;
+            collector->resolution_unit = value;
+            collector->resolution_unit_type = value_type;
+        } else if (tag == 291 || tag == 297 || tag == 301 || tag == 320 || tag == 321 || tag == 336 ||
+                   tag == 342 || tag == 530 || tag == 34735 || tag == 37396 || tag == 41492 || tag == 42081 ||
+                   tag == 50712 || tag == 50713 ||
+                   ((tag == 50719 || tag == 50720) && entry_value_type == 3u) ||
+                   (tag == 50829 && entry_value_type == 3u)) {
+            std::vector<std::uint32_t> values;
+            if (read_tiff_bigtiff_ushort_array_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
+                (((tag == 291 || tag == 301) && values.size() == 3u) ||
+                    (tag == 342 && values.size() == 6u) ||
+                    (tag == 34735 && values.size() == 8u) ||
+                    (tag == 37396 && (values.size() == 2u || values.size() == 3u || values.size() == 4u)) ||
+                    (tag == 50712 && values.size() == 4u) ||
+                    (tag == 50829 && values.size() == 4u) ||
+                    (tag == 320 && values.size() == 768u) ||
+                    (tag != 291 && tag != 301 && tag != 320 && tag != 342 && tag != 34735 && tag != 37396 &&
+                        tag != 50712 && values.size() == 2u))) {
+                collector->short_array_tags.push_back(tag);
+                collector->short_array_offsets.push_back(collector->short_array_values.size());
+                collector->short_array_counts.push_back(values.size());
+                collector->short_array_values.insert(collector->short_array_values.end(), values.begin(), values.end());
+            }
+        } else if (((tag == 50719 || tag == 50720) && entry_value_type == 4u) ||
+                   ((tag == 50829 || tag == 50830) && entry_value_type == 4u) ||
+                   tag == 50937 || tag == 50981 || tag == 51089 || tag == 51090 ||
+                   (tag == 51091 && entry_value_type == 4u) || tag == 52536 ||
+                   ((tag == 273 || tag == 279) && entry_value_count > 1u) ||
+                   ((tag == 324 || tag == 325) && entry_value_count > 1u)) {
+            std::vector<std::uint32_t> values;
+            const std::size_t expected_count =
+                (tag == 50937 || tag == 50981) ? 3u :
+                ((tag == 50719 || tag == 50720 || tag == 51089 || tag == 51090 || tag == 51091) ? 2u :
+                    ((tag == 50829 || tag == 52536) ? 4u : static_cast<std::size_t>(entry_value_count)));
+            if (read_tiff_bigtiff_uint_array_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
+                ((tag == 50830 && (values.size() == 4u || values.size() == 8u)) ||
+                    (tag != 50830 && values.size() == expected_count))) {
+                collector->uint_array_tags.push_back(tag);
+                collector->uint_array_offsets.push_back(collector->uint_array_values.size());
+                collector->uint_array_counts.push_back(values.size());
+                collector->uint_array_values.insert(collector->uint_array_values.end(), values.begin(), values.end());
+            }
+        } else if (tag == 33550 || tag == 33922 || tag == 34264 || tag == 34736 || tag == 50844 || tag == 51041) {
+            std::vector<double> values;
+            const std::size_t expected_count =
+                tag == 33550 ? 3u : (tag == 33922 ? 6u : (tag == 34264 ? 16u : (tag == 34736 ? 3u : (tag == 50844 ? 92u : 6u))));
+            if (read_tiff_bigtiff_double_array_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
+                ((tag == 51041 && (values.size() == 2u || values.size() == 4u || values.size() == 6u || values.size() == 8u)) ||
+                    (tag != 51041 && values.size() == expected_count))) {
+                collector->double_array_tags.push_back(tag);
+                collector->double_array_offsets.push_back(collector->double_array_values.size());
+                collector->double_array_counts.push_back(values.size());
+                collector->double_array_values.insert(collector->double_array_values.end(), values.begin(), values.end());
+            }
+        } else if (tag == 50938 || tag == 50939 || tag == 50940 || tag == 50982) {
+            std::vector<float> values;
+            if (read_tiff_bigtiff_float_array_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
+                (values.size() == 6u ||
+                    ((tag == 50940 || tag == 50982) && values.size() == 18u) ||
+                    ((tag == 50938 || tag == 50939 || tag == 50982) && values.size() == 54u))) {
+                collector->float_array_tags.push_back(tag);
+                collector->float_array_offsets.push_back(collector->float_array_values.size());
+                collector->float_array_counts.push_back(values.size());
+                collector->float_array_values.insert(collector->float_array_values.end(), values.begin(), values.end());
+            }
+        } else if (tiff_common_byte_array_tag(tag)) {
+            std::vector<std::uint8_t> values;
+            if (read_tiff_bigtiff_blob_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
+                (((tag == 50781 || tag == 50972 || tag == 50973) && values.size() == 16u) ||
+                 (tag != 50781 && tag != 50972 && tag != 50973 &&
+                  ((tag != 50831 && tag != 50833 && tag != 51043) || values.size() == 8u)))) {
+                collector->byte_array_tags.push_back(tag);
+                collector->byte_array_offsets.push_back(collector->byte_array_values.size());
+                collector->byte_array_counts.push_back(values.size());
+                collector->byte_array_values.insert(collector->byte_array_values.end(), values.begin(), values.end());
+            }
+        } else if (tiff_gps_ascii_tag(tag)) {
+            std::string value;
+            if (read_tiff_bigtiff_ascii_entry_value(tiff, tiff_size, little_endian, entry, &value)) {
+                collector->ascii_tags.push_back(tag);
+                collector->ascii_values.push_back(std::move(value));
+            }
+        } else if (tag == 2 || tag == 4 || tag == 20 || tag == 22) {
+            std::vector<std::uint32_t> numerators;
+            std::vector<std::uint32_t> denominators;
+            if (read_tiff_bigtiff_rational_array_entry_value(tiff, tiff_size, little_endian, entry, &numerators, &denominators) &&
+                numerators.size() == 3u) {
+                collector->rational_array_tags.push_back(tag);
+                collector->rational_array_offsets.push_back(collector->rational_array_numerators.size());
+                collector->rational_array_counts.push_back(numerators.size());
+                collector->rational_array_numerators.insert(
+                    collector->rational_array_numerators.end(), numerators.begin(), numerators.end());
+                collector->rational_array_denominators.insert(
+                    collector->rational_array_denominators.end(), denominators.begin(), denominators.end());
+            }
+        } else if (tiff_gps_rational_tag(tag)) {
+            std::uint32_t numerator = 0u;
+            std::uint32_t denominator = 0u;
+            if (read_tiff_bigtiff_rational_entry_value(little_endian, entry, &numerator, &denominator)) {
+                collector->rational_tags.push_back(tag);
+                collector->rational_numerators.push_back(numerator);
+                collector->rational_denominators.push_back(denominator);
+            }
+        } else if (tiff_gps_uint_tag(tag)) {
+            std::uint32_t value = 0u;
+            int value_type = 0;
+            if (read_tiff_bigtiff_uint_scalar_entry_value(little_endian, entry, &value, &value_type)) {
+                collector->uint_tags.push_back(tag);
+                collector->uint_values.push_back(value);
+                collector->uint_types.push_back(value_type);
+            }
+        } else if (tag == 0) {
+            std::vector<std::uint8_t> values;
+            if (read_tiff_bigtiff_blob_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
+                values.size() == 4u) {
+                collector->byte_array_tags.push_back(tag);
+                collector->byte_array_offsets.push_back(collector->byte_array_values.size());
+                collector->byte_array_counts.push_back(values.size());
+                collector->byte_array_values.insert(collector->byte_array_values.end(), values.begin(), values.end());
+            }
+        } else if (tiff_common_uint_tag(tag)) {
+            if (tag == 258 && entry_value_type == 3u && entry_value_count > 1u) {
+                std::vector<std::uint32_t> values;
+                if (read_tiff_bigtiff_ushort_array_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
+                    (values.size() == 2u || values.size() == 3u || values.size() == 4u)) {
+                    collector->short_array_tags.push_back(tag);
+                    collector->short_array_offsets.push_back(collector->short_array_values.size());
+                    collector->short_array_counts.push_back(values.size());
+                    collector->short_array_values.insert(collector->short_array_values.end(), values.begin(), values.end());
+                    continue;
+                }
+            }
+            std::uint32_t value = 0u;
+            int value_type = 0;
+            if (read_tiff_bigtiff_uint_scalar_entry_value(little_endian, entry, &value, &value_type)) {
+                if ((tag == 50717 && value_type != 3) || ((tag == 50974 || tag == 50975) && value_type != 4)) {
+                    continue;
+                }
+                collector->uint_tags.push_back(tag);
+                collector->uint_values.push_back(value);
+                collector->uint_types.push_back(value_type);
+            if ((tag == 34665 || tag == 34853) && value_type == 4u) {
+                collector->sub_ifd_offsets.push_back(value);
+            }
+            }
+        } else if (tag == 34675 || tag == 700) {
+            std::vector<std::uint8_t> values;
+            if (read_tiff_bigtiff_blob_entry_value(tiff, tiff_size, little_endian, entry, &values)) {
+                collector->undefined_tags.push_back(tag);
+                collector->undefined_offsets.push_back(collector->undefined_values.size());
+                collector->undefined_counts.push_back(values.size());
+                collector->undefined_values.insert(collector->undefined_values.end(), values.begin(), values.end());
+            }
+        } else if ((tag == 37510 || tag == 37724) && entry_value_type == 7u) {
+            std::vector<std::uint8_t> values;
+            if (read_tiff_bigtiff_blob_entry_value(tiff, tiff_size, little_endian, entry, &values)) {
+                collector->undefined_tags.push_back(tag);
+                collector->undefined_offsets.push_back(collector->undefined_values.size());
+                collector->undefined_counts.push_back(values.size());
+                collector->undefined_values.insert(collector->undefined_values.end(), values.begin(), values.end());
+            }
+        } else if (tag == 347 || tag == 33723 || tag == 34856 || tag == 36864 || tag == 37121 || tag == 37500 ||
+            tag == 40960 || tag == 41484 || tag == 41728 || tag == 41729 || tag == 41730 || tag == 41995 ||
+            tag == 50828 || tag == 50969 || tag == 51008 || tag == 51009 || tag == 51022 || tag == 52525 ||
+            (tag >= 52533 && tag <= 52535)) {
+            std::vector<std::uint8_t> values;
+            if (read_tiff_bigtiff_blob_entry_value(tiff, tiff_size, little_endian, entry, &values) &&
+                ((tag == 50969 && values.size() == 16u) ||
+                 (tag == 52525 && (values.size() == 4u || values.size() == 8u)) ||
+                 (tag != 50969 && tag != 52525 &&
+                  ((tag != 50828 && tag != 51008 && tag != 51009 && tag != 51022) || values.size() == 8u)))) {
+                collector->undefined_tags.push_back(tag);
+                collector->undefined_offsets.push_back(collector->undefined_values.size());
+                collector->undefined_counts.push_back(values.size());
+                collector->undefined_values.insert(collector->undefined_values.end(), values.begin(), values.end());
             }
         }    }
 }
