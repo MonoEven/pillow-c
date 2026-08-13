@@ -43524,6 +43524,55 @@ PillowTestImageOpenTiffFlattensBigTiffSubIfdMetadata(*) {
 
 AhkTest.Test("Pillow Image.Open TIFF flattens BigTIFF ExifIFD GPSInfo sub-IFD metadata", PillowTestImageOpenTiffFlattensBigTiffSubIfdMetadata)
 
+PillowTestImageSaveTiffExifOptionRoundTrip(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempTiffPath("save-tiff-exif-option")
+    source := Pillow.Image.New("L", [2, 2])
+    reopened := 0
+    try {
+        Pillow.ImageDraw.Draw(source).Point([[0, 0], [1, 0], [0, 1], [1, 1]], 9)
+        exif := Pillow.Image.Exif(
+            unset,
+            false,
+            Map(270, "Description Text"),
+            Map(296, 2),
+            Map(282, [300, 1], 283, [150, 1]),
+            Map(),
+            Map(),
+            Map(37380, [3, 7]),
+            Map(),
+            Map())
+        source.Save(path, "TIFF", Map("exif", exif))
+        source.Close()
+
+        reopened := Pillow.Image.Open(path, ["TIFF"])
+        exif2 := reopened.GetExif()
+
+        AhkTest.AssertEqual("TIFF", reopened.Format)
+        AhkTest.AssertEqual("L", reopened.Mode)
+        AhkTest.AssertEqual([2, 2], reopened.Size)
+        AhkTest.AssertEqual([9, 9, 9, 9], PillowTestBufferToArray(reopened.ToBytes()))
+        AhkTest.AssertTrue(reopened.Info.Has("dpi"))
+        PillowTestAssertFloatArrayClose([300.0, 150.0], reopened.Info["dpi"], 0.0001)
+        AhkTest.AssertTrue(exif2.Has(270))
+        AhkTest.AssertEqual("Description Text", exif2[270])
+        AhkTest.AssertTrue(exif2.Has(37380))
+        AhkTest.AssertEqual([3, 7], exif2[37380])
+        AhkTest.AssertTrue(exif2.Has(282))
+        AhkTest.AssertEqual([300, 1], exif2[282])
+        AhkTest.AssertTrue(exif2.Has(283))
+        AhkTest.AssertEqual([150, 1], exif2[283])
+        AhkTest.AssertTrue(exif2.Has(296))
+        AhkTest.AssertEqual(2, exif2[296])
+    } finally {
+        if IsObject(reopened)
+            reopened.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF exif option round-trips IFD0 tags", PillowTestImageSaveTiffExifOptionRoundTrip)
+
 PillowTestImageOpenTiffAppliesBigTiffOrientationMatrix(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     for storage in ["L", "RGB", "RGBA", "LA"] {

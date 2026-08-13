@@ -46542,6 +46542,111 @@ PillowCTestImageSaveTiffRoundTripsCoreModes(*) {
 
 AhkTest.Test("pillow_c image save_tiff round-trips L RGB and RGBA modes", PillowCTestImageSaveTiffRoundTripsCoreModes)
 
+PillowCTestImagePatchTiffExifEntries(*) {
+    path := PillowCTempTiffPath("patch-tiff-exif")
+    image := PillowCCreateImageMode(2, 2, 1)
+    loaded := 0
+    try {
+        PillowCImageSetBytes(image, [1, 2, 3, 4])
+        PillowCImageSaveTiff(image, path)
+
+        pathBytes := PillowCUtf8Buffer(path)
+        ascii := PillowCUtf8Buffer("Description Text")
+        asciiTags := Buffer(4, 0)
+        asciiPtrs := Buffer(A_PtrSize, 0)
+        asciiSizes := Buffer(A_PtrSize, 0)
+        NumPut("Int", 270, asciiTags, 0)
+        NumPut("Ptr", ascii.Ptr, asciiPtrs, 0)
+        NumPut("UPtr", ascii.Size, asciiSizes, 0)
+        uintTags := Buffer(4, 0)
+        uintValues := Buffer(4, 0)
+        uintTypes := Buffer(4, 0)
+        NumPut("Int", 296, uintTags, 0)
+        NumPut("UInt", 2, uintValues, 0)
+        NumPut("Int", 3, uintTypes, 0)
+        rationalTags := Buffer(12, 0)
+        rationalNumerators := Buffer(12, 0)
+        rationalDenominators := Buffer(12, 0)
+        for index, pair in [[282, 300], [283, 150], [33434, 1]] {
+            NumPut("Int", pair[1], rationalTags, (index - 1) * 4)
+            NumPut("UInt", pair[2], rationalNumerators, (index - 1) * 4)
+            NumPut("UInt", 1, rationalDenominators, (index - 1) * 4)
+        }
+        NumPut("UInt", 125, rationalDenominators, 8)
+        signedRationalTags := Buffer(4, 0)
+        signedRationalNumerators := Buffer(4, 0)
+        signedRationalDenominators := Buffer(4, 0)
+        NumPut("Int", 37377, signedRationalTags, 0)
+        NumPut("Int", -3, signedRationalNumerators, 0)
+        NumPut("Int", 1, signedRationalDenominators, 0)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_patch_tiff_exif_entries",
+            "Ptr", pathBytes,
+            "Ptr", asciiTags,
+            "Ptr", asciiPtrs,
+            "Ptr", asciiSizes,
+            "UPtr", 1,
+            "Ptr", uintTags,
+            "Ptr", uintValues,
+            "Ptr", uintTypes,
+            "UPtr", 1,
+            "Ptr", rationalTags,
+            "Ptr", rationalNumerators,
+            "Ptr", rationalDenominators,
+            "UPtr", 3,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", signedRationalTags,
+            "Ptr", signedRationalNumerators,
+            "Ptr", signedRationalDenominators,
+            "UPtr", 1,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+
+        loaded := PillowCImageOpenTiff(path)
+        exif := PillowCImageMetadataTiffExif(loaded)
+        resolution := PillowCImageMetadataResolution(loaded)
+        AhkTest.AssertEqual(1, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([1, 2, 3, 4], PillowCImageToArray(loaded, 4))
+        AhkTest.AssertEqual(1, exif.HasExif)
+        AhkTest.AssertEqual("Description Text", PillowCExifAsciiTagValue(exif.Exif, 270))
+        AhkTest.AssertEqual([1, 125], PillowCExifRationalTagValue(exif.Exif, 33434))
+        AhkTest.AssertEqual([-3, 1], PillowCExifSignedRationalTagValue(exif.Exif, 37377))
+        AhkTest.AssertEqual([300, 1], PillowCExifRationalTagValue(exif.Exif, 282))
+        AhkTest.AssertEqual([150, 1], PillowCExifRationalTagValue(exif.Exif, 283))
+        AhkTest.AssertEqual(2, PillowCExifUintTagValue(exif.Exif, 296, -1))
+        AhkTest.AssertEqual(1, resolution.HasDpi)
+        AhkTest.AssertTrue(Abs(resolution.DpiX - 300.0) < 0.0001)
+        AhkTest.AssertTrue(Abs(resolution.DpiY - 150.0) < 0.0001)
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        if image
+            PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image patch_tiff_exif_entries writes IFD0 exif tags", PillowCTestImagePatchTiffExifEntries)
+
 PillowCTestImageSaveTiffOptionsWritesDpiMetadata(*) {
     image := PillowCCreateImageMode(2, 1, 3)
     path := PillowCTempTiffPath("dpi-rgb")

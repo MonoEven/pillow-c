@@ -8705,6 +8705,7 @@ class Pillow {
                 tiffInfoOption := Pillow.Image.SaveOption(saveOptions, "TiffInfo", "tiffinfo")
                 iccProfileOption := Pillow.Image.SaveOption(saveOptions, "IccProfile", "icc_profile")
                 dpiOption := Pillow.Image.SaveOption(saveOptions, "Dpi", "dpi")
+                exifOption := Pillow.Image.SaveOption(saveOptions, "Exif", "exif")
                 hasXmpTiffInfo := tiffInfoOption.Set
                     && tiffInfoOption.Value is Map
                     && tiffInfoOption.Value.Has(700)
@@ -8715,7 +8716,8 @@ class Pillow {
                     && tiffInfoOption.Value is Map
                     && tiffInfoOption.Value.Has(315)
                 if (iccProfileOption.Set && (tiffInfoOption.Set || dpiOption.Set))
-                    || (dpiOption.Set && (hasXmpTiffInfo || hasDescriptionTiffInfo || hasArtistTiffInfo)) {
+                    || (dpiOption.Set && (hasXmpTiffInfo || hasDescriptionTiffInfo || hasArtistTiffInfo))
+                    || exifOption.Set {
                     this.SaveTiffFrames(path, saveOptions)
                     return
                 }
@@ -10552,8 +10554,154 @@ class Pillow {
             ))
         }
 
+        static PatchTiffExifEntries(pathBytes, exif) {
+            asciiCount := exif.AsciiTags.Count
+            intCount := exif.IntTags.Count
+            rationalCount := exif.RationalTags.Count
+            shortArrayCount := exif.ShortArrayTags.Count
+            byteArrayCount := exif.ByteArrayTags.Count
+            signedRationalCount := exif.SignedRationalTags.Count
+            undefinedCount := exif.UndefinedTags.Count
+            if exif.RationalArrayTags.Count
+                throw Error("Pillow.Image.Save TIFF exif rational-array serialization is not covered by this native route", -1)
+            if exif.UintArrayTags.Count
+                throw Error("Pillow.Image.Save TIFF exif LONG-array serialization is not covered by this native route", -1)
+            tags := asciiCount ? Buffer(asciiCount * 4, 0) : 0
+            valuePtrs := asciiCount ? Buffer(asciiCount * A_PtrSize, 0) : 0
+            valueSizes := asciiCount ? Buffer(asciiCount * A_PtrSize, 0) : 0
+            valueBuffers := []
+            index := 0
+            for tag, value in exif.AsciiTags {
+                index += 1
+                valueBuffers.Push(Pillow.Image.Utf8Buffer(value))
+                NumPut("Int", tag, tags, (index - 1) * 4)
+                NumPut("Ptr", valueBuffers[index].Ptr, valuePtrs, (index - 1) * A_PtrSize)
+                NumPut("UPtr", valueBuffers[index].Size, valueSizes, (index - 1) * A_PtrSize)
+            }
+            intTags := intCount ? Buffer(intCount * 4, 0) : 0
+            intValues := intCount ? Buffer(intCount * 4, 0) : 0
+            intTypes := intCount ? Buffer(intCount * 4, 0) : 0
+            index := 0
+            for tag, value in exif.IntTags {
+                index += 1
+                NumPut("Int", tag, intTags, (index - 1) * 4)
+                NumPut("UInt", value, intValues, (index - 1) * 4)
+                NumPut("Int", Pillow.Image.Exif.UintTagType(tag), intTypes, (index - 1) * 4)
+            }
+            rationalTags := rationalCount ? Buffer(rationalCount * 4, 0) : 0
+            rationalNumerators := rationalCount ? Buffer(rationalCount * 4, 0) : 0
+            rationalDenominators := rationalCount ? Buffer(rationalCount * 4, 0) : 0
+            index := 0
+            for tag, value in exif.RationalTags {
+                index += 1
+                NumPut("Int", tag, rationalTags, (index - 1) * 4)
+                NumPut("UInt", value[1], rationalNumerators, (index - 1) * 4)
+                NumPut("UInt", value[2], rationalDenominators, (index - 1) * 4)
+            }
+            shortArrayTags := shortArrayCount ? Buffer(shortArrayCount * 4, 0) : 0
+            shortArrayOffsets := shortArrayCount ? Buffer(shortArrayCount * A_PtrSize, 0) : 0
+            shortArrayCounts := shortArrayCount ? Buffer(shortArrayCount * A_PtrSize, 0) : 0
+            flatShortArrayValues := []
+            index := 0
+            for tag, value in exif.ShortArrayTags {
+                index += 1
+                NumPut("Int", tag, shortArrayTags, (index - 1) * 4)
+                NumPut("UPtr", flatShortArrayValues.Length, shortArrayOffsets, (index - 1) * A_PtrSize)
+                NumPut("UPtr", value.Length, shortArrayCounts, (index - 1) * A_PtrSize)
+                for item in value
+                    flatShortArrayValues.Push(item)
+            }
+            shortArrayValues := flatShortArrayValues.Length ? Buffer(flatShortArrayValues.Length * 4, 0) : 0
+            for index, value in flatShortArrayValues
+                NumPut("UInt", value, shortArrayValues, (index - 1) * 4)
+            byteArrayTags := byteArrayCount ? Buffer(byteArrayCount * 4, 0) : 0
+            byteArrayOffsets := byteArrayCount ? Buffer(byteArrayCount * A_PtrSize, 0) : 0
+            byteArrayCounts := byteArrayCount ? Buffer(byteArrayCount * A_PtrSize, 0) : 0
+            flatByteArrayValues := []
+            index := 0
+            for tag, value in exif.ByteArrayTags {
+                index += 1
+                NumPut("Int", tag, byteArrayTags, (index - 1) * 4)
+                NumPut("UPtr", flatByteArrayValues.Length, byteArrayOffsets, (index - 1) * A_PtrSize)
+                NumPut("UPtr", value.Size, byteArrayCounts, (index - 1) * A_PtrSize)
+                loop value.Size
+                    flatByteArrayValues.Push(NumGet(value, A_Index - 1, "UChar"))
+            }
+            byteArrayValues := flatByteArrayValues.Length ? Buffer(flatByteArrayValues.Length, 0) : 0
+            for index, value in flatByteArrayValues
+                NumPut("UChar", value, byteArrayValues, index - 1)
+            signedRationalTags := signedRationalCount ? Buffer(signedRationalCount * 4, 0) : 0
+            signedRationalNumerators := signedRationalCount ? Buffer(signedRationalCount * 4, 0) : 0
+            signedRationalDenominators := signedRationalCount ? Buffer(signedRationalCount * 4, 0) : 0
+            index := 0
+            for tag, value in exif.SignedRationalTags {
+                index += 1
+                NumPut("Int", tag, signedRationalTags, (index - 1) * 4)
+                NumPut("Int", value[1], signedRationalNumerators, (index - 1) * 4)
+                NumPut("Int", value[2], signedRationalDenominators, (index - 1) * 4)
+            }
+            undefinedTags := undefinedCount ? Buffer(undefinedCount * 4, 0) : 0
+            undefinedOffsets := undefinedCount ? Buffer(undefinedCount * A_PtrSize, 0) : 0
+            undefinedCounts := undefinedCount ? Buffer(undefinedCount * A_PtrSize, 0) : 0
+            flatUndefinedValues := []
+            index := 0
+            for tag, value in exif.UndefinedTags {
+                index += 1
+                NumPut("Int", tag, undefinedTags, (index - 1) * 4)
+                NumPut("UPtr", flatUndefinedValues.Length, undefinedOffsets, (index - 1) * A_PtrSize)
+                NumPut("UPtr", value.Size, undefinedCounts, (index - 1) * A_PtrSize)
+                loop value.Size
+                    flatUndefinedValues.Push(NumGet(value, A_Index - 1, "UChar"))
+            }
+            undefinedValues := flatUndefinedValues.Length ? Buffer(flatUndefinedValues.Length, 0) : 0
+            for index, value in flatUndefinedValues
+                NumPut("UChar", value, undefinedValues, index - 1)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_patch_tiff_exif_entries",
+                "Ptr", pathBytes,
+                "Ptr", tags,
+                "Ptr", valuePtrs,
+                "Ptr", valueSizes,
+                "UPtr", asciiCount,
+                "Ptr", intTags,
+                "Ptr", intValues,
+                "Ptr", intTypes,
+                "UPtr", intCount,
+                "Ptr", rationalTags,
+                "Ptr", rationalNumerators,
+                "Ptr", rationalDenominators,
+                "UPtr", rationalCount,
+                "Ptr", shortArrayTags,
+                "Ptr", shortArrayValues,
+                "UPtr", flatShortArrayValues.Length,
+                "Ptr", shortArrayOffsets,
+                "Ptr", shortArrayCounts,
+                "UPtr", shortArrayCount,
+                "Ptr", byteArrayTags,
+                "Ptr", byteArrayValues,
+                "UPtr", flatByteArrayValues.Length,
+                "Ptr", byteArrayOffsets,
+                "Ptr", byteArrayCounts,
+                "UPtr", byteArrayCount,
+                "Ptr", signedRationalTags,
+                "Ptr", signedRationalNumerators,
+                "Ptr", signedRationalDenominators,
+                "UPtr", signedRationalCount,
+                "Ptr", undefinedTags,
+                "Ptr", undefinedValues,
+                "UPtr", flatUndefinedValues.Length,
+                "Ptr", undefinedOffsets,
+                "Ptr", undefinedCounts,
+                "UPtr", undefinedCount,
+                "Int"
+            ))
+        }
+
         SaveTiffFrames(path, options) {
             appendOption := Pillow.Image.SaveOption(options, "AppendImages", "append_images")
+            exifOption := Pillow.Image.SaveOption(options, "Exif", "exif")
+            if exifOption.Set && !(IsObject(exifOption.Value) && exifOption.Value is Pillow.Image.Exif)
+                throw Error("Pillow.Image.Save TIFF exif expects a Pillow.Image.Exif value", -1)
             images := [this]
             if appendOption.Set {
                 appendImages := appendOption.Value
@@ -10572,6 +10720,8 @@ class Pillow {
 
             pathBytes := Pillow.Image.Utf8Buffer(path)
             handles := Pillow.Image.HandleArray(images)
+            if exifOption.Set && images.Length > 1
+                throw Error("Pillow.Image.Save TIFF exif currently supports single-frame saves", -1)
             dpiOption := Pillow.Image.SaveOption(options, "Dpi", "dpi")
             compressionOption := Pillow.Image.SaveOption(options, "Compression", "compression")
             iccProfileOption := Pillow.Image.SaveOption(options, "IccProfile", "icc_profile")
@@ -10655,6 +10805,8 @@ class Pillow {
                         "UPtr", asciiTags.Length,
                         "Int"
                     ))
+                    if exifOption.Set
+                        Pillow.Image.PatchTiffExifEntries(pathBytes, exifOption.Value)
                     return
                 }
                 if asciiTags.Length = 1 {
@@ -10676,6 +10828,8 @@ class Pillow {
                         "UPtr", asciiValues[1].Size,
                         "Int"
                     ))
+                    if exifOption.Set
+                        Pillow.Image.PatchTiffExifEntries(pathBytes, exifOption.Value)
                     return
                 }
                 Pillow.CheckStatus(DllCall(
@@ -10693,6 +10847,8 @@ class Pillow {
                     "UPtr", xmp.Size,
                     "Int"
                 ))
+                if exifOption.Set
+                    Pillow.Image.PatchTiffExifEntries(pathBytes, exifOption.Value)
                 return
             }
             if iccProfileOption.Set {
@@ -10727,6 +10883,8 @@ class Pillow {
                     "UPtr", iccProfile.Size,
                     "Int"
                 ))
+                if exifOption.Set
+                    Pillow.Image.PatchTiffExifEntries(pathBytes, exifOption.Value)
                 return
             }
             if dpiOption.Set {
@@ -10745,6 +10903,8 @@ class Pillow {
                     "Int", compression,
                     "Int"
                 ))
+                if exifOption.Set
+                    Pillow.Image.PatchTiffExifEntries(pathBytes, exifOption.Value)
                 return
             }
             if compressionOption.Set {
@@ -10757,6 +10917,8 @@ class Pillow {
                     "Int", compression,
                     "Int"
                 ))
+                if exifOption.Set
+                    Pillow.Image.PatchTiffExifEntries(pathBytes, exifOption.Value)
                 return
             }
             Pillow.CheckStatus(DllCall(
@@ -10766,6 +10928,8 @@ class Pillow {
                 "Ptr", pathBytes,
                 "Int"
             ))
+            if exifOption.Set
+                Pillow.Image.PatchTiffExifEntries(pathBytes, exifOption.Value)
         }
 
         SaveGifAnimation(path, options) {

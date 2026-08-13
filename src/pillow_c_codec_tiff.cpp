@@ -6549,6 +6549,377 @@ int save_tiff_image_with_compression_options(
         0u);
 }
 
+struct TiffPatchExifEntry
+{
+    std::uint16_t tag;
+    std::uint16_t type;
+    std::uint32_t count;
+    std::uint32_t value;
+    bool has_blob;
+    std::vector<std::uint8_t> blob;
+};
+
+int patch_tiff_ifd0_exif_entries(
+    const char* path,
+    const int* ascii_tags,
+    const std::uint8_t* const* ascii_values,
+    const std::size_t* ascii_sizes,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    const int* short_array_tags,
+    const std::uint32_t* short_array_values,
+    std::size_t short_array_value_count,
+    const std::size_t* short_array_offsets,
+    const std::size_t* short_array_counts,
+    std::size_t short_array_count,
+    const int* byte_array_tags,
+    const std::uint8_t* byte_array_values,
+    std::size_t byte_array_value_count,
+    const std::size_t* byte_array_offsets,
+    const std::size_t* byte_array_counts,
+    std::size_t byte_array_count,
+    const int* signed_rational_tags,
+    const std::int32_t* signed_rational_numerators,
+    const std::int32_t* signed_rational_denominators,
+    std::size_t signed_rational_count,
+    const int* undefined_tags,
+    const std::uint8_t* undefined_values,
+    std::size_t undefined_value_count,
+    const std::size_t* undefined_offsets,
+    const std::size_t* undefined_counts,
+    std::size_t undefined_count)
+{
+    if (!path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (ascii_count > 0u && (!ascii_tags || !ascii_values || !ascii_sizes)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (uint_count > 0u && (!uint_tags || !uint_values || !uint_types)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (rational_count > 0u && (!rational_tags || !rational_numerators || !rational_denominators)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (short_array_count > 0u &&
+        (!short_array_tags || !short_array_values || !short_array_offsets || !short_array_counts)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (byte_array_count > 0u &&
+        (!byte_array_tags || !byte_array_values || !byte_array_offsets || !byte_array_counts)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (signed_rational_count > 0u &&
+        (!signed_rational_tags || !signed_rational_numerators || !signed_rational_denominators)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (undefined_count > 0u &&
+        (!undefined_tags || !undefined_values || !undefined_offsets || !undefined_counts)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data) || data.size() < 8u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (data[0] != 'I' || data[1] != 'I' || read_le16(data.data() + 2u) != 42u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::uint32_t ifd_offset = read_le32(data.data() + 4u);
+    if (ifd_offset > data.size() || data.size() - ifd_offset < 6u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::uint16_t old_count = read_le16(data.data() + ifd_offset);
+    const std::size_t old_ifd_bytes = 2u + static_cast<std::size_t>(old_count) * 12u + 4u;
+    if (old_ifd_bytes > data.size() - ifd_offset) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::uint32_t next_ifd = read_le32(data.data() + ifd_offset + 2u + static_cast<std::size_t>(old_count) * 12u);
+    if (next_ifd != 0u) {
+        // Bounded: patch only the single-frame save layout.
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    struct OldEntry
+    {
+        std::uint16_t tag;
+        std::uint16_t type;
+        std::uint32_t count;
+        std::uint32_t value;
+    };
+    std::vector<OldEntry> old_entries;
+    old_entries.reserve(old_count);
+    for (std::uint16_t index = 0u; index < old_count; ++index) {
+        const std::uint8_t* entry = data.data() + ifd_offset + 2u + static_cast<std::size_t>(index) * 12u;
+        OldEntry parsed;
+        parsed.tag = read_le16(entry);
+        parsed.type = read_le16(entry + 2u);
+        parsed.count = read_le32(entry + 4u);
+        parsed.value = read_le32(entry + 8u);
+        old_entries.push_back(parsed);
+    }
+    const auto old_type_size = [](std::uint16_t type) -> std::size_t {
+        switch (type) {
+        case 1u:
+        case 2u:
+        case 7u:
+            return 1u;
+        case 3u:
+            return 2u;
+        case 4u:
+        case 11u:
+            return 4u;
+        case 5u:
+        case 10u:
+        case 12u:
+        case 16u:
+            return 8u;
+        default:
+            return 0u;
+        }
+    };
+    const auto tag_in_old = [&old_entries](std::uint16_t tag) {
+        for (const OldEntry& entry : old_entries) {
+            if (entry.tag == tag) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    std::vector<TiffPatchExifEntry> new_entries;
+    const auto add_blob_entry = [&new_entries, &tag_in_old](
+                                    std::uint16_t tag,
+                                    std::uint16_t type,
+                                    std::uint32_t count,
+                                    const std::uint8_t* bytes,
+                                    std::size_t size) {
+        if (tag_in_old(tag)) {
+            return;
+        }
+        TiffPatchExifEntry entry;
+        entry.tag = tag;
+        entry.type = type;
+        entry.count = count;
+        entry.value = 0u;
+        if (size <= 4u) {
+            for (std::size_t byte_index = 0u; byte_index < size; ++byte_index) {
+                entry.value |= static_cast<std::uint32_t>(bytes[byte_index]) << (byte_index * 8u);
+            }
+            entry.has_blob = false;
+        } else {
+            entry.has_blob = true;
+            entry.blob.assign(bytes, bytes + size);
+        }
+        new_entries.push_back(entry);
+    };
+
+    try {
+        for (std::size_t index = 0u; index < ascii_count; ++index) {
+            const std::uint8_t* value = ascii_values[index];
+            const std::size_t size = ascii_sizes[index];
+            if (!value || size == 0u || size > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) - 1u) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            std::vector<std::uint8_t> terminated(value, value + size);
+            if (terminated.back() != 0u) {
+                terminated.push_back(0u);
+            }
+            add_blob_entry(
+                static_cast<std::uint16_t>(ascii_tags[index]),
+                2u,
+                static_cast<std::uint32_t>(terminated.size()),
+                terminated.data(),
+                terminated.size());
+        }
+        for (std::size_t index = 0u; index < uint_count; ++index) {
+            const int type = uint_types[index];
+            const std::uint32_t value = uint_values[index];
+            if (type == 3 && value <= static_cast<std::uint32_t>(std::numeric_limits<std::uint16_t>::max())) {
+                const std::uint8_t bytes[2] = {
+                    static_cast<std::uint8_t>(value & 0xFFu),
+                    static_cast<std::uint8_t>((value >> 8u) & 0xFFu)};
+                add_blob_entry(static_cast<std::uint16_t>(uint_tags[index]), 3u, 1u, bytes, 2u);
+            } else if (value <= static_cast<std::uint32_t>(std::numeric_limits<std::uint32_t>::max())) {
+                const std::uint8_t bytes[4] = {
+                    static_cast<std::uint8_t>(value & 0xFFu),
+                    static_cast<std::uint8_t>((value >> 8u) & 0xFFu),
+                    static_cast<std::uint8_t>((value >> 16u) & 0xFFu),
+                    static_cast<std::uint8_t>((value >> 24u) & 0xFFu)};
+                add_blob_entry(static_cast<std::uint16_t>(uint_tags[index]), 4u, 1u, bytes, 4u);
+            }
+        }
+        for (std::size_t index = 0u; index < rational_count; ++index) {
+            const std::uint32_t numerator = rational_numerators[index];
+            const std::uint32_t denominator = rational_denominators[index];
+            if (denominator == 0u) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            const std::uint8_t bytes[8] = {
+                static_cast<std::uint8_t>(numerator & 0xFFu),
+                static_cast<std::uint8_t>((numerator >> 8u) & 0xFFu),
+                static_cast<std::uint8_t>((numerator >> 16u) & 0xFFu),
+                static_cast<std::uint8_t>((numerator >> 24u) & 0xFFu),
+                static_cast<std::uint8_t>(denominator & 0xFFu),
+                static_cast<std::uint8_t>((denominator >> 8u) & 0xFFu),
+                static_cast<std::uint8_t>((denominator >> 16u) & 0xFFu),
+                static_cast<std::uint8_t>((denominator >> 24u) & 0xFFu)};
+            add_blob_entry(static_cast<std::uint16_t>(rational_tags[index]), 5u, 1u, bytes, 8u);
+        }
+        for (std::size_t index = 0u; index < signed_rational_count; ++index) {
+            const std::int32_t numerator = signed_rational_numerators[index];
+            const std::int32_t denominator = signed_rational_denominators[index];
+            if (denominator == 0) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            const std::uint32_t raw_numerator = static_cast<std::uint32_t>(numerator);
+            const std::uint32_t raw_denominator = static_cast<std::uint32_t>(denominator);
+            const std::uint8_t bytes[8] = {
+                static_cast<std::uint8_t>(raw_numerator & 0xFFu),
+                static_cast<std::uint8_t>((raw_numerator >> 8u) & 0xFFu),
+                static_cast<std::uint8_t>((raw_numerator >> 16u) & 0xFFu),
+                static_cast<std::uint8_t>((raw_numerator >> 24u) & 0xFFu),
+                static_cast<std::uint8_t>(raw_denominator & 0xFFu),
+                static_cast<std::uint8_t>((raw_denominator >> 8u) & 0xFFu),
+                static_cast<std::uint8_t>((raw_denominator >> 16u) & 0xFFu),
+                static_cast<std::uint8_t>((raw_denominator >> 24u) & 0xFFu)};
+            add_blob_entry(static_cast<std::uint16_t>(signed_rational_tags[index]), 10u, 1u, bytes, 8u);
+        }
+        for (std::size_t index = 0u; index < short_array_count; ++index) {
+            const std::size_t offset = short_array_offsets[index];
+            const std::size_t count = short_array_counts[index];
+            if (offset > short_array_value_count || count > short_array_value_count - offset ||
+                count > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            std::vector<std::uint8_t> bytes;
+            bytes.reserve(count * 2u);
+            for (std::size_t value_index = 0u; value_index < count; ++value_index) {
+                const std::uint32_t value = short_array_values[offset + value_index];
+                bytes.push_back(static_cast<std::uint8_t>(value & 0xFFu));
+                bytes.push_back(static_cast<std::uint8_t>((value >> 8u) & 0xFFu));
+            }
+            add_blob_entry(
+                static_cast<std::uint16_t>(short_array_tags[index]),
+                3u,
+                static_cast<std::uint32_t>(count),
+                bytes.data(),
+                bytes.size());
+        }
+        for (std::size_t index = 0u; index < byte_array_count; ++index) {
+            const std::size_t offset = byte_array_offsets[index];
+            const std::size_t count = byte_array_counts[index];
+            if (offset > byte_array_value_count || count > byte_array_value_count - offset ||
+                count > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            add_blob_entry(
+                static_cast<std::uint16_t>(byte_array_tags[index]),
+                1u,
+                static_cast<std::uint32_t>(count),
+                byte_array_values + offset,
+                count);
+        }
+        for (std::size_t index = 0u; index < undefined_count; ++index) {
+            const std::size_t offset = undefined_offsets[index];
+            const std::size_t count = undefined_counts[index];
+            if (offset > undefined_value_count || count > undefined_value_count - offset ||
+                count > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            add_blob_entry(
+                static_cast<std::uint16_t>(undefined_tags[index]),
+                7u,
+                static_cast<std::uint32_t>(count),
+                undefined_values + offset,
+                count);
+        }
+
+        std::sort(new_entries.begin(), new_entries.end(), [](const TiffPatchExifEntry& left, const TiffPatchExifEntry& right) {
+            return left.tag < right.tag;
+        });
+        const std::size_t total_count = static_cast<std::size_t>(old_count) + new_entries.size();
+        if (total_count > static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max())) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+        const std::size_t new_ifd_bytes = 2u + total_count * 12u + 4u;
+        std::size_t exif_blob_bytes = 0u;
+        for (TiffPatchExifEntry& entry : new_entries) {
+            if (entry.has_blob) {
+                entry.value = static_cast<std::uint32_t>(8u + new_ifd_bytes + exif_blob_bytes);
+                exif_blob_bytes += entry.blob.size();
+            }
+        }
+        const std::size_t old_region_offset = ifd_offset + old_ifd_bytes;
+        const std::size_t old_region_size = data.size() - old_region_offset;
+        const std::ptrdiff_t delta = static_cast<std::ptrdiff_t>(new_ifd_bytes + exif_blob_bytes) -
+            static_cast<std::ptrdiff_t>(old_ifd_bytes);
+
+        std::vector<std::uint8_t> out;
+        out.reserve(8u + new_ifd_bytes + exif_blob_bytes + old_region_size);
+        out.push_back('I');
+        out.push_back('I');
+        append_le16(out, 42u);
+        append_le32(out, 8u);
+        append_le16(out, static_cast<std::uint16_t>(total_count));
+        std::size_t old_index = 0u;
+        std::size_t new_index = 0u;
+        while (old_index < old_entries.size() || new_index < new_entries.size()) {
+            const bool take_old =
+                new_index >= new_entries.size() ||
+                (old_index < old_entries.size() && old_entries[old_index].tag <= new_entries[new_index].tag);
+            if (take_old) {
+                const OldEntry& entry = old_entries[old_index];
+                std::uint32_t value = entry.value;
+                const std::size_t type_size = old_type_size(entry.type);
+                if (type_size == 0u) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                const bool inline_file_offset =
+                    entry.tag == 273u && entry.type == 4u && entry.count == 1u;
+                if (entry.count > 0u &&
+                    ((inline_file_offset) ||
+                        (entry.count > static_cast<std::uint32_t>(std::numeric_limits<std::size_t>::max() / type_size) ||
+                            static_cast<std::size_t>(entry.count) * type_size > 4u))) {
+                    if (delta > 0) {
+                        if (entry.value > static_cast<std::uint32_t>(std::numeric_limits<std::uint32_t>::max()) - static_cast<std::uint32_t>(delta)) {
+                            return PILLOW_C_INVALID_ARGUMENT;
+                        }
+                        value += static_cast<std::uint32_t>(delta);
+                    } else if (value < static_cast<std::uint32_t>(-delta)) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    } else {
+                        value -= static_cast<std::uint32_t>(-delta);
+                    }
+                }
+                append_tiff_entry(out, entry.tag, entry.type, entry.count, value);
+                ++old_index;
+            } else {
+                const TiffPatchExifEntry& entry = new_entries[new_index];
+                append_tiff_entry(out, entry.tag, entry.type, entry.count, entry.value);
+                ++new_index;
+            }
+        }
+        append_le32(out, 0u);
+        for (const TiffPatchExifEntry& entry : new_entries) {
+            if (entry.has_blob) {
+                out.insert(out.end(), entry.blob.begin(), entry.blob.end());
+            }
+        }
+        out.insert(out.end(), data.begin() + static_cast<std::ptrdiff_t>(old_region_offset), data.end());
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 } // namespace
 
 int pillow_c_tiff_parse_orientation(const std::uint8_t* tiff, std::size_t tiff_size)
@@ -6936,6 +7307,82 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_frames_metadata_as
         ascii_values,
         ascii_sizes,
         ascii_count);
+}
+
+
+extern "C" __declspec(dllexport) int pillow_c_image_patch_tiff_exif_entries(
+    const char* path,
+    const int* ascii_tags,
+    const std::uint8_t* const* ascii_values,
+    const std::size_t* ascii_sizes,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    const int* short_array_tags,
+    const std::uint32_t* short_array_values,
+    std::size_t short_array_value_count,
+    const std::size_t* short_array_offsets,
+    const std::size_t* short_array_counts,
+    std::size_t short_array_count,
+    const int* byte_array_tags,
+    const std::uint8_t* byte_array_values,
+    std::size_t byte_array_value_count,
+    const std::size_t* byte_array_offsets,
+    const std::size_t* byte_array_counts,
+    std::size_t byte_array_count,
+    const int* signed_rational_tags,
+    const std::int32_t* signed_rational_numerators,
+    const std::int32_t* signed_rational_denominators,
+    std::size_t signed_rational_count,
+    const int* undefined_tags,
+    const std::uint8_t* undefined_values,
+    std::size_t undefined_value_count,
+    const std::size_t* undefined_offsets,
+    const std::size_t* undefined_counts,
+    std::size_t undefined_count)
+{
+    return patch_tiff_ifd0_exif_entries(
+        path,
+        ascii_tags,
+        ascii_values,
+        ascii_sizes,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        rational_tags,
+        rational_numerators,
+        rational_denominators,
+        rational_count,
+        short_array_tags,
+        short_array_values,
+        short_array_value_count,
+        short_array_offsets,
+        short_array_counts,
+        short_array_count,
+        byte_array_tags,
+        byte_array_values,
+        byte_array_value_count,
+        byte_array_offsets,
+        byte_array_counts,
+        byte_array_count,
+        signed_rational_tags,
+        signed_rational_numerators,
+        signed_rational_denominators,
+        signed_rational_count,
+        undefined_tags,
+        undefined_values,
+        undefined_value_count,
+        undefined_offsets,
+        undefined_counts,
+        undefined_count);
 }
 
 

@@ -161,6 +161,25 @@ as PNG/JPEG, so seeking to a frame without XMP removes the previous frame's
 `Info["xmp"]` like Pillow. No new pointer, facade lifetime rule, fallback, or
 AHK per-pixel loop was added.
 
+## TIFF Save exif= ABI Behavior
+
+`FMT-TIFF-003AV` adds one public export,
+`pillow_c_image_patch_tiff_exif_entries`, raising source/DLL export parity
+from `453/453` to `454/454` with zero difference. It takes a saved classic
+single-frame TIFF path plus the caller's EXIF tag families (ascii values,
+uint scalars with type normalization, rational pairs, signed rational
+pairs, short arrays, byte arrays, and undefined blobs) and post-patches
+IFD0: entries are merged in ascending tag order, the inline 273/strip
+offset and every out-of-line offset are shifted by the IFD0 growth delta,
+and the new blobs are appended before the old blob region. IFD0-tag
+collisions keep the base entry; multi-frame files return
+`PILLOW_C_INVALID_ARGUMENT`; zero denominators and malformed layouts are
+rejected. The facade `Image.Save` routes `exif=<Image.Exif>` through the
+existing save seams and then this export, matching Pillow 11.3.0's
+direct-into-IFD0 `exif=` layout and the unit-2 282/283/296 reopened
+`Info["dpi"]` behavior. Existing save exports, handle ownership, and
+synchronous path lifetime contracts remain unchanged.
+
 ## TIFF Classic ExifIFD/GPSInfo Sub-IFD ABI Behavior
 
 `FMT-TIFF-003AT` changes no exported name or signature. Existing
