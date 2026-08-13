@@ -54,6 +54,12 @@ a documented WIC reopen boundary.
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the ICO source-selection family above.
 
+`FMT-ICO-001C` changes no ABI: the broader ICO multi-source matrix
+(per-source modes, first same-size PNG wins, bmp duplicate bit-depths)
+is a lock-in over the existing frames writer, verified against Pillow
+11.3.0 ctypes. 24-bit RGB and grayscale PNG payloads remain a
+documented WIC reopen boundary.
+
 ## TIFF BigTIFF Save Bilevel ABI Behavior
 
 `FMT-TIFF-003BI` changes no exported name or signature. Existing

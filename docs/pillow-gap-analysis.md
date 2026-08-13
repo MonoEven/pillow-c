@@ -37,6 +37,44 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-13 FMT-ICO-001C ICO Multi-Source Matrix (GREEN)
+
+`FMT-ICO-001C` closes the bounded broader ICO multi-source matrix as a
+lock-in with zero native changes, completing the bounded ICO save
+family.
+
+The Pillow 11.3.0 oracle (kept in
+`oracle/probe_ico_multi_source_matrix.py`) confirms three behaviors:
+each exact-size source keeps its own mode (an L source emits an L entry,
+RGB emits RGB, RGBA emits RGBA); with multiple same-size PNG sources the
+FIRST one wins; and with `bitmap_format="bmp"` Pillow writes same-size
+frames with distinct BMP bit depths (both entries exist; Pillow's own
+reopen picks the 24-bit one). The existing ICO frames writer already
+implements all three (per-image PNG mode specs, the first-match break
+for PNG, and the `used_bit_counts` duplicate-depth logic), so no native
+source, ABI, or facade route changed.
+
+Verification:
+
+- ctypes cross-check
+  (`oracle/probe_ico_multi_source_dll_compose.py`): DLL-written
+  mixed-mode (RGB/L/RGBA) and same-size first-wins ICOs reopen in
+  Pillow 11.3.0 with exact modes and pixels; `FAILURES: 0`.
+- Raw/facade matrix targets pass `1/1` each (RGBA multi-size content and
+  the first-same-size-PNG-wins shape). 24-bit RGB and grayscale PNG
+  payloads remain a documented WIC reopen boundary, so the AHK reopen
+  assertions use RGBA sources.
+- ICO filter: `28/28` in `282ms`.
+- Full AHK directory suite: `2763/2763` in `18922ms`; zero failures,
+  errors, or skips.
+- Source/DLL export parity remains `461/461` with zero difference, and
+  the DLL SHA-256 remains
+  `984A7D84657C5D9EF8D236A44CF13697A6C8939F2932FC5CB19A7B4CCDD180A3`.
+
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `84% ±4%`. The next bounded child is
+`FMT-ICO-002G`, CUR save with hotspot exposure.
+
 ## 2026-08-13 FMT-ICO-001B ICO Non-Exact Thumbnail Source Selection (GREEN)
 
 `FMT-ICO-001B` closes the bounded ICO save non-exact thumbnail source
@@ -38943,7 +38981,8 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | API-PNG-001 | PNG | covered | `PngInfo.add(cid, data)` no longer silently drops string chunk IDs. The local Pillow 11.3.0 oracle accepts string `cid` values at add time, ignores public/reserved string names such as `"eXIf"` and `"tEXt"` during save, and raises `TypeError: can't concat str to bytes` when a private string chunk such as `"vpAg"` would be emitted. The facade now stores string chunk IDs, keeps Buffer chunk IDs on the existing native custom-chunk route, and raises the matching public error message during PNG save for private string chunks. | Facade `Pillow.PngImagePlugin.PngInfo.add`, `Pillow.Image.SavePngTextEntries`, local Pillow str-cid probe, facade string private chunk failure test, PNG `pnginfo` filter. |
 | FMT-ICO-001 | ICO | partial | `FMT-ICO-001A` covers `append_images` exact source-size PNG-backed entries. Remaining children include non-exact thumbnail source selection, duplicate-size BMP bit-depth entries, and broader multi-source matrices. | `pillow_c_image_save_ico_frames_format_options`, shared native ICO writer, facade ICO save option parsing. |
 | FMT-ICO-001B | ICO | covered | Bounded ICO save non-exact thumbnail source selection: exact-size sources win, otherwise the LAST provided image is thumbnailed proportionally with LANCZOS and never upscaled (Pillow 11.3.0's `provided_im.thumbnail(size, LANCZOS)` fallback; sizes larger than the base are skipped). `save_ico_images_with_sizes` caps the proportional fallback at the last source's own dimensions (the previous version upscaled, diverging from Pillow) and skips the resize when the capped size equals the source. A ctypes cross-check reopens the DLL-written downscale/aspect/smaller-source ICOs in Pillow 11.3.0 with exact per-size source pixels (`FAILURES: 0`); raw/facade tests lock the three shapes in. Grayscale PNG payloads stay a documented WIC boundary on the reopen side, so tests use RGBA sources like the earlier ICO packets. Export parity remains `461/461`. Broader mixed-mode multi-source matrices remain separate. | `oracle/probe_ico_non_exact_sources.py`, `oracle/probe_ico_thumbnail_fallback.py`, `oracle/probe_ico_non_exact_dll_compose.py`, `save_ico_images_with_sizes` thumbnail cap, raw/facade non-exact selection tests. |
-| FMT-ICO-001C | ICO | not started | Bounded broader ICO multi-source matrix: mixed-mode sources (RGBA/RGB/P), multiple same-size PNG sources (first wins), and the bmp-format duplicate bit-depth lock-in. | Existing ICO frames writer, raw/facade matrix tests. |
+| FMT-ICO-001C | ICO | covered | Bounded broader ICO multi-source matrix lock-in: each exact-size source keeps its own mode (RGB/L/RGBA verified through Pillow 11.3.0 ctypes), the first same-size PNG source wins, and the bmp-format duplicate bit-depth behavior stays on the existing writer. Zero native changes were needed; the Pillow cross-check (oracle/probe_ico_multi_source_dll_compose.py) reopens the DLL-written mixed-mode and same-size ICOs with exact modes and pixels (`FAILURES: 0`), and raw/facade matrix tests lock the RGBA multi-size and first-wins shapes in. 24-bit RGB and grayscale PNG payloads remain a documented WIC reopen boundary, so the AHK reopen assertions use RGBA sources. Export parity remains `461/461` and the DLL SHA-256 is unchanged. This completes the bounded ICO save family. | `oracle/probe_ico_multi_source_matrix.py`, `oracle/probe_ico_multi_source_dll_compose.py`, existing ICO frames writer, raw/facade matrix tests. |
+| FMT-ICO-002G | ICO/CUR | not started | Bounded CUR save with hotspot exposure: write the CUR container with hotspot fields on the shared ICO frames route. | CUR save export/facade routing, raw/facade hotspot save tests. |
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
 | FMT-WEBP-001 | WebP | not started | Open/save WebP and animation if a codec strategy is selected. | New format module boundary. |
 | FMT-AVIF-001 | AVIF | not started | Open/save AVIF if dependency and packaging constraints allow it. | New format module boundary. |

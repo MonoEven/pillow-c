@@ -22144,6 +22144,75 @@ PillowCTestImageSaveIcoNonExactSourceSelection(*) {
 
 AhkTest.Test("pillow_c image save_ico selects exact sources and thumbnails the last provided image", PillowCTestImageSaveIcoNonExactSourceSelection)
 
+PillowCTestImageSaveIcoMultiSourceMatrix(*) {
+    ; Pillow 11.3.0 keeps each exact-size source's own mode, and the first
+    ; same-size PNG source wins (oracle/probe_ico_multi_source_matrix.py).
+    path := PillowCTempIcoPath("ico-matrix-mixed")
+    base := PillowCCreateImageMode(32, 32, 4)
+    rgba := PillowCCreateImageMode(24, 24, 4)
+    opened := []
+    try {
+        baseBytes := []
+        loop 32 * 32
+            baseBytes.Push(200, 0, 0, 255)
+        rgbaBytes := []
+        loop 24 * 24
+            rgbaBytes.Push(0, 0, 255, 255)
+        PillowCImageSetBytes(base, baseBytes)
+        PillowCImageSetBytes(rgba, rgbaBytes)
+        PillowCImageSaveIcoFramesFormatOptions([base, rgba], path, [[24, 24], [32, 32]], "")
+        AhkTest.AssertEqual([[24, 24], [32, 32]], PillowCImageIcoSizes(path))
+        image := PillowCImageOpenIcoSize(path, 24, 24)
+        opened.Push(image)
+        AhkTest.AssertEqual(4, PillowCImageMode(image))
+        AhkTest.AssertEqual([0, 0, 255, 255], PillowCArraySlice(PillowCImageToArray(image, 24 * 24 * 4), 1, 4))
+        image := PillowCImageOpenIcoSize(path, 32, 32)
+        opened.Push(image)
+        AhkTest.AssertEqual(4, PillowCImageMode(image))
+        AhkTest.AssertEqual([200, 0, 0, 255], PillowCArraySlice(PillowCImageToArray(image, 32 * 32 * 4), 1, 4))
+    } finally {
+        for image in opened
+            PillowCFreeImage(image)
+        PillowCFreeImage(rgba)
+        PillowCFreeImage(base)
+        PillowCDeleteFile(path)
+    }
+
+    samePath := PillowCTempIcoPath("ico-matrix-samesize")
+    sameBase := PillowCCreateImageMode(32, 32, 4)
+    first := PillowCCreateImageMode(16, 16, 4)
+    second := PillowCCreateImageMode(16, 16, 4)
+    opened := []
+    try {
+        sameBaseBytes := []
+        loop 32 * 32
+            sameBaseBytes.Push(255, 0, 0, 255)
+        firstBytes := []
+        loop 16 * 16
+            firstBytes.Push(0, 255, 0, 255)
+        secondBytes := []
+        loop 16 * 16
+            secondBytes.Push(0, 0, 255, 255)
+        PillowCImageSetBytes(sameBase, sameBaseBytes)
+        PillowCImageSetBytes(first, firstBytes)
+        PillowCImageSetBytes(second, secondBytes)
+        PillowCImageSaveIcoFramesFormatOptions([sameBase, first, second], samePath, [[16, 16], [32, 32]], "")
+        AhkTest.AssertEqual([[16, 16], [32, 32]], PillowCImageIcoSizes(samePath))
+        image := PillowCImageOpenIcoSize(samePath, 16, 16)
+        opened.Push(image)
+        AhkTest.AssertEqual([0, 255, 0, 255], PillowCArraySlice(PillowCImageToArray(image, 16 * 16 * 4), 1, 4))
+    } finally {
+        for image in opened
+            PillowCFreeImage(image)
+        PillowCFreeImage(second)
+        PillowCFreeImage(first)
+        PillowCFreeImage(sameBase)
+        PillowCDeleteFile(samePath)
+    }
+}
+
+AhkTest.Test("pillow_c image save_ico writes mixed-mode sources and first same-size PNG wins", PillowCTestImageSaveIcoMultiSourceMatrix)
+
 PillowCTestImageIcoSizesReportsAvailableFrames(*) {
     path := PillowCTempIcoPath("ico-sizes")
     base := PillowCCreateImageMode(32, 32, 4)

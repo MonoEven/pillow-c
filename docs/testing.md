@@ -47,8 +47,26 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2761` AHK tests: `1372` raw DLL tests and
-`1389` facade tests.
+This suite currently registers `2763` AHK tests: `1373` raw DLL tests and
+`1390` facade tests.
+
+Latest `FMT-ICO-001C` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_ico_multi_source_matrix.py`) confirms each exact-size
+source keeps its own mode, the first same-size PNG source wins, and
+bmp-format same-size frames use distinct bit depths; the existing ICO
+frames writer already implements all three, so zero native changes were
+needed. The ctypes cross-check (kept in
+`oracle/probe_ico_multi_source_dll_compose.py`) reopens the DLL-written
+mixed-mode and same-size ICOs in Pillow 11.3.0 with exact modes and
+pixels (`FAILURES: 0`). Raw/facade matrix targets pass `1/1` each; the
+ICO filter passes `28/28` in `282ms`; and the full directory suite
+passes `2763/2763` in `18922ms`, with zero failures, errors, or skips.
+24-bit RGB and grayscale PNG payloads remain a documented WIC reopen
+boundary. Source/DLL export parity remains `461/461` with zero
+difference, and the DLL SHA-256 remains
+`984A7D84657C5D9EF8D236A44CF13697A6C8939F2932FC5CB19A7B4CCDD180A3`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The overall Pillow replacement-readiness estimate moves to `84% ±4%`.
 
 Latest `FMT-ICO-001B` verification: the Pillow 11.3.0 oracles (kept in
 `oracle/probe_ico_non_exact_sources.py` and

@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 83% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 84% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
@@ -34,26 +34,26 @@ family (I16/I16B/I/F/CMYK), the BigTIFF save metadata composition, the
 BigTIFF save `exif=` family, the BigTIFF save_all composition lock-in,
 the BigTIFF save palette (P) mode, the BigTIFF save bilevel (1) mode,
 and the mixed-size BigTIFF frames lock-in (the bounded BigTIFF save
-family is COMPLETE), plus `FMT-ICO-001B` ICO save non-exact thumbnail
-source selection (exact sources win, otherwise the LAST provided image
-is thumbnailed proportionally with LANCZOS and never upscaled, matching
-Pillow's `thumbnail()` fallback).
+family is COMPLETE), plus the bounded ICO save family
+(`FMT-ICO-001B` non-exact thumbnail source selection with Pillow's
+`thumbnail()` semantics and `FMT-ICO-001C` the multi-source matrix
+lock-in: per-source modes, first same-size PNG wins, bmp duplicate
+bit-depths — also COMPLETE).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. ICO non-exact selections were cross-verified
-through Pillow 11.3.0 ctypes (exact per-size source pixels,
-`FAILURES: 0`), the ICO filter passes `26/26` in `250ms`, and the full
-directory suite passes `2761/2761` in `18672ms`; source/DLL exports
-remain `461/461` with zero difference; and the DLL SHA-256 is
+IFD as a writer artifact. ICO multi-source matrices were cross-verified
+through Pillow 11.3.0 ctypes (exact modes and pixels, `FAILURES: 0`),
+the ICO filter passes `28/28` in `282ms`, and the full directory suite
+passes `2763/2763` in `18922ms`; source/DLL exports remain `461/461`
+with zero difference; and the DLL SHA-256 remains
 `984A7D84657C5D9EF8D236A44CF13697A6C8939F2932FC5CB19A7B4CCDD180A3`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`FMT-ICO-001C` broader ICO multi-source matrix (mixed-mode sources,
-multiple same-size PNG sources, bmp duplicate bit-depths). Dither exact
-parity, libimagequant, broader quantize cross-products, qtables with
-more than two tables, malformed marker streams, and exact whole-file
-parity remain separate.
+`FMT-ICO-002G` CUR save with hotspot exposure. Dither exact parity,
+libimagequant, broader quantize cross-products, qtables with more than
+two tables, malformed marker streams, and exact whole-file parity remain
+separate.
 ```
 
 Current work packet:
@@ -396,9 +396,8 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `FMT-ICO-001C` broader ICO multi-source
-  matrix (mixed-mode sources, multiple same-size PNG sources, bmp
-  duplicate bit-depths), with wider ICO matrices staying separate.
+- Selected next gap: bounded `FMT-ICO-002G` CUR save with hotspot
+  exposure, with broader ICO/CUR matrices staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -472,6 +471,26 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `FMT-ICO-001C` is GREEN as the broader ICO multi-source matrix
+lock-in with zero native changes, completing the bounded ICO save
+family. The Pillow 11.3.0 oracle (kept in
+`oracle/probe_ico_multi_source_matrix.py`) confirms each exact-size
+source keeps its own mode, the first same-size PNG source wins, and
+bmp-format same-size frames use distinct bit depths; the existing ICO
+frames writer already implements all three. A ctypes cross-check (kept
+in `oracle/probe_ico_multi_source_dll_compose.py`) reopens the
+DLL-written mixed-mode (RGB/L/RGBA) and same-size ICOs in Pillow 11.3.0
+with exact modes and pixels (`FAILURES: 0`); raw/facade matrix targets
+pass `1/1` each; the ICO filter passes `28/28` in `282ms`; and the full
+directory suite passes `2763/2763` in `18922ms`, with zero failures,
+errors, or skips. 24-bit RGB and grayscale PNG payloads remain a
+documented WIC reopen boundary. Source/DLL export parity remains
+`461/461` with zero difference, and the DLL SHA-256 remains
+`984A7D84657C5D9EF8D236A44CF13697A6C8939F2932FC5CB19A7B4CCDD180A3`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `84% ±4%`. The next bounded child is
+`FMT-ICO-002G`, CUR save with hotspot exposure.
 
 2026-08-13: `FMT-ICO-001B` is GREEN for the bounded ICO save non-exact
 thumbnail source selection. The Pillow 11.3.0 oracles (kept in

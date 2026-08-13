@@ -21697,6 +21697,63 @@ PillowTestImageSaveIcoNonExactSourceSelection(*) {
 
 AhkTest.Test("Pillow Image.Save ICO selects exact sources and thumbnails the last provided image", PillowTestImageSaveIcoNonExactSourceSelection)
 
+PillowTestImageSaveIcoMultiSourceMatrix(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    base := Pillow.Image.New("RGBA", [32, 32], [200, 0, 0, 255])
+    rgba := Pillow.Image.New("RGBA", [24, 24], [0, 0, 255, 255])
+    path := PillowTestTempIcoPath("save-matrix-mixed")
+    loaded := 0
+    opened := []
+    try {
+        base.Save(path, "ICO", { Sizes: [[24, 24], [32, 32]], AppendImages: [rgba] })
+        loaded := Pillow.Image.Open(path)
+        AhkTest.AssertEqual([[24, 24], [32, 32]], loaded.ico.sizes())
+        image := loaded.ico.getimage([24, 24])
+        opened.Push(image)
+        AhkTest.AssertEqual("RGBA", image.Mode)
+        AhkTest.AssertEqual([0, 0, 255, 255], PillowTestArraySlice(PillowTestBufferToArray(image.ToBytes()), 1, 4))
+        image := loaded.ico.getimage([32, 32])
+        opened.Push(image)
+        AhkTest.AssertEqual("RGBA", image.Mode)
+        AhkTest.AssertEqual([200, 0, 0, 255], PillowTestArraySlice(PillowTestBufferToArray(image.ToBytes()), 1, 4))
+    } finally {
+        for item in opened
+            item.Close()
+        if IsObject(loaded)
+            loaded.Close()
+        rgba.Close()
+        base.Close()
+        PillowTestDeleteFile(path)
+    }
+
+    ; first same-size PNG source wins
+    sameBase := Pillow.Image.New("RGBA", [32, 32], [255, 0, 0, 255])
+    first := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])
+    second := Pillow.Image.New("RGBA", [16, 16], [0, 0, 255, 255])
+    samePath := PillowTestTempIcoPath("save-matrix-samesize")
+    loaded := 0
+    opened := []
+    try {
+        sameBase.Save(samePath, "ICO", { Sizes: [[16, 16], [32, 32]], AppendImages: [first, second] })
+        loaded := Pillow.Image.Open(samePath)
+        AhkTest.AssertEqual([[16, 16], [32, 32]], loaded.ico.sizes())
+        image := loaded.ico.getimage([16, 16])
+        opened.Push(image)
+        AhkTest.AssertEqual([0, 255, 0, 255], PillowTestArraySlice(PillowTestBufferToArray(image.ToBytes()), 1, 4))
+    } finally {
+        for item in opened
+            item.Close()
+        if IsObject(loaded)
+            loaded.Close()
+        second.Close()
+        first.Close()
+        sameBase.Close()
+        PillowTestDeleteFile(samePath)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save ICO writes mixed-mode sources and first same-size PNG wins", PillowTestImageSaveIcoMultiSourceMatrix)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])
