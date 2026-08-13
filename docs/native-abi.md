@@ -29,8 +29,36 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`453/453`; the full AHK suite is `2700/2700`; and the current DLL SHA-256 is
-`AE3EC777D5CAD0DCB6B242BBFA8F9DFD38BDD8062D94908E1B8BB635F1191EF1`.
+`458/458`; the full AHK suite is `2744/2744`; and the current DLL SHA-256 is
+`B893B53F49D4B3B20F7BD4C0AD79FBAEC2A2F15374BC8DE16C2A37A2BBFC4DDE`.
+
+## TIFF Numeric BigTIFF Strip Save/Open ABI Behavior
+
+`FMT-TIFF-003BD` changes no exported name or signature. Existing
+`pillow_c_image_open_tiff`, `pillow_c_image_open_tiff_frame`,
+`pillow_c_image_frame_count_tiff`, and
+`pillow_c_image_save_tiff_bigtiff(_frames_compression_options)` status,
+handle ownership, and synchronous path/source-file lifetime contracts
+remain unchanged.
+
+`save_tiff_bigtiff_frames_image_with_compression` now accepts I16, I16B,
+I, F, and CMYK frames. I16/I/F write a count-1 `258` BitsPerSample (16 or
+32) with no `277` SamplesPerPixel; I and F add `339` SampleFormat 2 or 3;
+CMYK writes count-4 8-bit bits with photometric 5; I16B pixels are swapped
+to little-endian strips through `tiff_i16b_to_i16_pixels`. Numeric modes
+combined with any compression return `PILLOW_C_INVALID_ARGUMENT` because
+Pillow's `big_tiff`+compression falls back to classic TIFF upstream.
+
+`parse_tiff_bigtiff_strip_image_for_ifd` recognizes the same layouts and
+returns `PILLOW_C_MODE_I16`/`I16B`/`I`/`F`/`CMYK`. Big-endian 32-bit I/F
+strips are byte-swapped once into little-endian DLL storage; big-endian
+16-bit strips keep raw bytes under `PILLOW_C_MODE_I16B`. A 32-bit strip
+without the `339` tag is not recognized and open returns
+`PILLOW_C_INVALID_ARGUMENT`. The facade mirrors Pillow by routing numeric
+`big_tiff`+compression saves through the classic TIFF writer.
+
+No export, facade lifetime rule, fallback, or AHK per-pixel loop was
+added beyond the numeric save/open family above.
 
 ## TIFF Big-Endian BigTIFF ABI Behavior
 

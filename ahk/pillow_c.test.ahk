@@ -46687,6 +46687,170 @@ PillowCTestImageSaveTiffBigTiffFrames(*) {
 
 AhkTest.Test("pillow_c image save_tiff_bigtiff_frames_compression_options writes chained two-frame BigTIFF", PillowCTestImageSaveTiffBigTiffFrames)
 
+PillowCTiffBigTiffNumericStripBytes(endian, bits, sampleFormat, hasSampleFormat, pixelBytes) {
+    ; Hand-built 2x2 numeric BigTIFF strip file (FMT-TIFF-003BD). Pillow
+    ; 11.3.0 numeric big_tiff saves use exactly this classic-strip layout:
+    ; 258 SHORT bits, 339 SHORT sample format (I=2/F=3), photometric 1,
+    ; 284 planar 1, single strip (oracle/probe_tiff_bigtiff_numeric_save.py).
+    littleEndian := endian = "LE"
+    append16 := littleEndian ? PillowCAppendLe16 : PillowCAppendBe16
+    append64 := littleEndian ? PillowCAppendLe64 : PillowCAppendBe64
+    bytes := littleEndian ? [73, 73, 43, 0] : [77, 77, 0, 43]
+    append16.Call(bytes, 8)
+    append16.Call(bytes, 0)
+    append64.Call(bytes, 16)
+    entryCount := hasSampleFormat ? 10 : 9
+    stripOffset := 16 + 8 + entryCount * 20 + 8
+    entries := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 2],
+        [258, 3, 1, bits],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [273, 4, 1, stripOffset],
+        [278, 4, 1, 2],
+        [279, 4, 1, pixelBytes.Length],
+        [284, 3, 1, 1],
+    ]
+    if hasSampleFormat
+        entries.Push([339, 3, 1, sampleFormat])
+    append64.Call(bytes, entries.Length)
+    for entry in entries
+        PillowCAppendBigTiffEntry(bytes, entry, littleEndian)
+    append64.Call(bytes, 0)
+    for value in pixelBytes
+        bytes.Push(value)
+    return bytes
+}
+
+PillowCTestImageSaveTiffBigTiffNumericMatrix(*) {
+    cases := [
+        { Mode: 11, Name: "I16", Bytes: [1, 0, 2, 0, 3, 0, 4, 0] },
+        { Mode: 12, Name: "I16B", Bytes: [0, 1, 0, 2, 0, 3, 0, 4], Expected: [1, 0, 2, 0, 3, 0, 4, 0], ExpectedMode: 11 },
+        { Mode: 8, Name: "I", Bytes: [255, 255, 255, 255, 7, 0, 0, 0, 4, 3, 2, 1, 0, 0, 0, 0] },
+        { Mode: 9, Name: "F", Bytes: [0, 0, 0, 0, 0, 0, 192, 63, 0, 0, 16, 192, 208, 15, 73, 64] },
+        { Mode: 7, Name: "CMYK", Bytes: [10, 20, 30, 40, 0, 0, 0, 0, 255, 255, 255, 255, 1, 2, 3, 4] },
+    ]
+    for item in cases {
+        path := PillowCTempTiffPath("save-bigtiff-num-" item.Name)
+        image := PillowCCreateImageMode(2, 2, item.Mode)
+        loaded := 0
+        try {
+            PillowCImageSetBytes(image, item.Bytes)
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_save_tiff_bigtiff",
+                "Ptr", image,
+                "Ptr", PillowCUtf8Buffer(path),
+                "Int"
+            )
+            PillowCAssertStatus(status)
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowCArraySlice(PillowCReadFileBytes(path), 1, 4))
+            AhkTest.AssertEqual(1, PillowCImageFrameCountTiff(path))
+            loaded := PillowCImageOpenTiff(path)
+            expectedMode := item.HasProp("ExpectedMode") ? item.ExpectedMode : item.Mode
+            AhkTest.AssertEqual(expectedMode, PillowCImageMode(loaded))
+            expectedBytes := item.HasProp("Expected") ? item.Expected : item.Bytes
+            AhkTest.AssertEqual(expectedBytes, PillowCImageToArray(loaded, expectedBytes.Length))
+        } finally {
+            if loaded
+                PillowCFreeImage(loaded)
+            if image
+                PillowCFreeImage(image)
+            PillowCDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image save_tiff_bigtiff round-trips I16 I16B I F and CMYK numeric modes", PillowCTestImageSaveTiffBigTiffNumericMatrix)
+
+PillowCTestImageSaveTiffBigTiffNumericRejectsCompression(*) {
+    ; Pillow falls back to classic TIFF when big_tiff combines with
+    ; compression, so numeric BigTIFF strips stay uncompressed.
+    cases := [
+        { Mode: 11, Bytes: [1, 0, 2, 0, 3, 0, 4, 0] },
+        { Mode: 8, Bytes: [7, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 10, 0, 0, 0] },
+        { Mode: 9, Bytes: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+        { Mode: 7, Bytes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] },
+    ]
+    for item in cases {
+        path := PillowCTempTiffPath("save-bigtiff-num-cmp-" item.Mode)
+        image := PillowCCreateImageMode(2, 2, item.Mode)
+        try {
+            PillowCImageSetBytes(image, item.Bytes)
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_save_tiff_bigtiff_compression_options",
+                "Ptr", image,
+                "Ptr", PillowCUtf8Buffer(path),
+                "Int", 32773,
+                "Int"
+            )
+            AhkTest.AssertEqual(-3, status)
+        } finally {
+            if image
+                PillowCFreeImage(image)
+            PillowCDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image save_tiff_bigtiff_compression_options rejects numeric modes", PillowCTestImageSaveTiffBigTiffNumericRejectsCompression)
+
+PillowCTestImageOpenTiffBigTiffNumericStripFixtures(*) {
+    cases := [
+        { Name: "i16be", Endian: "BE", Bits: 16, Format: 1, HasFormat: false,
+          Pixels: [0, 7, 0, 8, 0, 9, 0, 10], ExpectedMode: 12, Expected: [0, 7, 0, 8, 0, 9, 0, 10] },
+        { Name: "i32be", Endian: "BE", Bits: 32, Format: 2, HasFormat: true,
+          Pixels: [0, 0, 0, 7, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 10], ExpectedMode: 8,
+          Expected: [7, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 10, 0, 0, 0] },
+        { Name: "f32be", Endian: "BE", Bits: 32, Format: 3, HasFormat: true,
+          Pixels: [63, 192, 0, 0, 64, 0, 0, 0, 191, 192, 0, 0, 63, 0, 0, 0], ExpectedMode: 9,
+          Expected: [0, 0, 192, 63, 0, 0, 0, 64, 0, 0, 192, 191, 0, 0, 0, 63] },
+        { Name: "i16le", Endian: "LE", Bits: 16, Format: 1, HasFormat: false,
+          Pixels: [1, 0, 2, 0, 3, 0, 4, 0], ExpectedMode: 11, Expected: [1, 0, 2, 0, 3, 0, 4, 0] },
+    ]
+    for item in cases {
+        path := PillowCTempTiffPath("open-bigtiff-num-" item.Name)
+        loaded := 0
+        try {
+            PillowCWriteFileBytes(path, PillowCTiffBigTiffNumericStripBytes(item.Endian, item.Bits, item.Format, item.HasFormat, item.Pixels))
+            AhkTest.AssertEqual(1, PillowCImageFrameCountTiff(path))
+            loaded := PillowCImageOpenTiff(path)
+            AhkTest.AssertEqual(item.ExpectedMode, PillowCImageMode(loaded))
+            AhkTest.AssertEqual(item.Expected, PillowCImageToArray(loaded, item.Expected.Length))
+        } finally {
+            if loaded
+                PillowCFreeImage(loaded)
+            PillowCDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image open_tiff reads numeric BigTIFF strip fixtures including big-endian samples", PillowCTestImageOpenTiffBigTiffNumericStripFixtures)
+
+PillowCTestImageOpenTiffBigTiffNumericRejectsMissingSampleFormat(*) {
+    path := PillowCTempTiffPath("open-bigtiff-num-nosf")
+    try {
+        ; 32-bit float strip without the 339 SampleFormat tag must not match
+        ; any bounded mode.
+        PillowCWriteFileBytes(path, PillowCTiffBigTiffNumericStripBytes(
+            "LE", 32, 3, false,
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+        handle := 0
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_open_tiff",
+            "Ptr", PillowCUtf8Buffer(path),
+            "Ptr*", &handle,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, handle)
+    } finally {
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_tiff rejects a numeric BigTIFF strip missing SampleFormat", PillowCTestImageOpenTiffBigTiffNumericRejectsMissingSampleFormat)
+
 PillowCTestImageOpenTiffReadsPillowBigTiffStripL(*) {
     path := PillowCTempTiffPath("open-bigtiff-strip-l")
     loaded := 0

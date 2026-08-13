@@ -43824,6 +43824,67 @@ PillowTestImageSaveTiffBigTiffOption(*) {
 
 AhkTest.Test("Pillow Image.Save TIFF big_tiff option round-trips the uncompressed matrix", PillowTestImageSaveTiffBigTiffOption)
 
+PillowTestImageSaveTiffBigTiffNumericModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    cases := [
+        { Mode: "I;16", Bytes: [1, 0, 2, 0, 3, 0, 4, 0] },
+        { Mode: "I;16B", Bytes: [0, 1, 0, 2, 0, 3, 0, 4], Expected: [1, 0, 2, 0, 3, 0, 4, 0], ExpectedMode: "I;16" },
+        { Mode: "I", Bytes: [255, 255, 255, 255, 7, 0, 0, 0, 4, 3, 2, 1, 0, 0, 0, 0] },
+        { Mode: "F", Bytes: [0, 0, 0, 0, 0, 0, 192, 63, 0, 0, 16, 192, 208, 15, 73, 64] },
+        { Mode: "CMYK", Bytes: [10, 20, 30, 40, 0, 0, 0, 0, 255, 255, 255, 255, 1, 2, 3, 4] },
+    ]
+    for item in cases {
+        path := PillowTestTempTiffPath("save-bigtiff-num-facade-" StrReplace(item.Mode, ";", ""))
+        image := Pillow.Image.FromBytes(item.Mode, [2, 2], PillowTestBuffer(item.Bytes))
+        loaded := 0
+        try {
+            image.Save(path, "TIFF", { big_tiff: true })
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+            loaded := Pillow.Image.Open(path, ["TIFF"])
+            expectedMode := item.HasProp("ExpectedMode") ? item.ExpectedMode : item.Mode
+            AhkTest.AssertEqual(expectedMode, loaded.Mode)
+            expectedBytes := item.HasProp("Expected") ? item.Expected : item.Bytes
+            AhkTest.AssertEqual(expectedBytes, PillowTestBufferToArray(loaded.ToBytes()))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            image.Close()
+            PillowTestDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF big_tiff round-trips I;16 I F and CMYK numeric modes", PillowTestImageSaveTiffBigTiffNumericModes)
+
+PillowTestImageSaveTiffBigTiffNumericCompressionFallsBack(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    ; Pillow 11.3.0 ignores big_tiff when compression is set (libtiff falls
+    ; back to classic TIFF); the facade mirrors that for numeric modes.
+    cases := [
+        { Mode: "I;16", Bytes: [1, 0, 2, 0, 3, 0, 4, 0] },
+        { Mode: "F", Bytes: [0, 0, 0, 0, 0, 0, 192, 63, 0, 0, 16, 192, 208, 15, 73, 64] },
+    ]
+    for item in cases {
+        path := PillowTestTempTiffPath("save-bigtiff-num-cmp-facade-" StrReplace(item.Mode, ";", ""))
+        image := Pillow.Image.FromBytes(item.Mode, [2, 2], PillowTestBuffer(item.Bytes))
+        loaded := 0
+        try {
+            image.Save(path, "TIFF", { big_tiff: true, compression: "packbits" })
+            AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+            loaded := Pillow.Image.Open(path, ["TIFF"])
+            AhkTest.AssertEqual(item.Mode, loaded.Mode)
+            AhkTest.AssertEqual(item.Bytes, PillowTestBufferToArray(loaded.ToBytes()))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            image.Close()
+            PillowTestDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF big_tiff numeric compression falls back to classic TIFF", PillowTestImageSaveTiffBigTiffNumericCompressionFallsBack)
+
 PillowTestTiffClassicTwoFramePillowBytes() {
     ; Pillow 11.3.0 save_all two-frame classic layout (see
     ; oracle/probe_tiff_classic_two_frame_save.py).

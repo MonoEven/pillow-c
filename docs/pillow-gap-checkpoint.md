@@ -21,36 +21,36 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 75% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 76% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
-Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BC` closes the bounded
+Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BD` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
 malformed-metadata robustness slice, one-level ExifIFD/GPSInfo sub-IFD
 traversal on both routes, the classic-route TIFF save `exif=` option with
 its array families, compression/option composition, raw-bytes form, the
-BigTIFF save matrix with compression, the two-frame BigTIFF save, and the
-Pillow multi-frame layout lock-in. `003BC` CORRECTS the round-16 oracle
+BigTIFF save matrix with compression, the two-frame BigTIFF save, the
+Pillow multi-frame layout lock-in, and the numeric BigTIFF strip
+save/open family (I16/I16B/I/F/CMYK: count-1 258 bits, 339 SampleFormat
+2/3, photometric 5, big-endian I/F normalization, I;16B swap on save,
+numeric+compression -3 rejection plus the facade classic-TIFF fallback
+matching Pillow's libtiff behavior). `003BC` CORRECTS the round-16 oracle
 note: Pillow 11.3.0's `save_all` (classic AND `big_tiff`) output is
 CHAIN-LINKED — IFD0's next pointer jumps to page 1's IFD, with each
 page's own inline header preceding its IFD as a writer artifact — so the
 DLL's chained readers already open Pillow-written multi-frame files with
-the right frame count and per-frame bytes. No native change was needed;
-hand-built oracle-layout fixtures (classic 256-byte and BigTIFF 448-byte
-two-frame files, mirroring `oracle/probe_tiff_classic_two_frame_save.py`
-and `oracle/probe_tiff_bigtiff_two_frame_save.py`) lock the interop in
-with raw/facade tests asserting `2` frames and per-frame bytes. Raw and
-facade targets pass `1/1` each; the TIFF filter passes `686/686` in
-`5063ms`; the full directory suite passes `2738/2738` in `18453ms`;
-source/DLL exports remain `458/458` with zero difference; and the DLL
-SHA-256 remains
-`A71C8407B801A45AF5C86A980E59146B966C10C4B9F6342AD6AE4D41C022EB41`.
+the right frame count and per-frame bytes. Numeric BigTIFF saves were
+cross-verified through Pillow 11.3.0 ctypes (exact bytes, `FAILURES: 0`),
+the TIFF filter passes `692/692` in `5157ms`, and the full directory
+suite passes `2744/2744` in `18109ms`; source/DLL exports remain `458/458`
+with zero difference; and the DLL SHA-256 is
+`B893B53F49D4B3B20F7BD4C0AD79FBAEC2A2F15374BC8DE16C2A37A2BBFC4DDE`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`FMT-TIFF-003BD` numeric BigTIFF strip save/open (I16/I/F/CMYK on the
-strip route), with wider BigTIFF save remaining separate. Dither exact
-parity, libimagequant, broader quantize cross-products, qtables with more
-than two tables, malformed marker streams, and exact whole-file parity
-remain separate.
+`FMT-TIFF-003BE` BigTIFF save metadata composition (dpi/icc_profile/
+tiffinfo/exif on the big_tiff route), with wider BigTIFF save remaining
+separate. Dither exact parity, libimagequant, broader quantize
+cross-products, qtables with more than two tables, malformed marker
+streams, and exact whole-file parity remain separate.
 ```
 
 Current work packet:
@@ -393,9 +393,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `FMT-TIFF-003BD` numeric BigTIFF strip
-  save/open (I16/I/F/CMYK on the strip route), with wider BigTIFF save
-  staying separate.
+- Selected next gap: bounded `FMT-TIFF-003BE` BigTIFF save metadata
+  composition (dpi/icc_profile/tiffinfo/exif on the big_tiff route), with
+  wider BigTIFF save staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -469,6 +469,33 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `FMT-TIFF-003BD` is GREEN for the bounded numeric BigTIFF strip
+save/open family (I16/I16B/I/F/CMYK). The Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_bigtiff_numeric_save.py`) confirms all four numeric
+`big_tiff=True` saves use the classic-strip layout: count-1 `258` bits
+(16/32), `339` SampleFormat 2/3 for I/F, photometric 1 (or 5 for CMYK),
+LONG 273/279, planar 1. The frames writer gained the numeric family (258
+count-1 bits, 339, CMYK photometric 5, I16B swapped to little-endian
+strips, numeric+compression rejected with -3), and
+`parse_tiff_bigtiff_strip_image_for_ifd` gained the matching predicates
+plus big-endian I/F sample normalization and I;16B passthrough; the 258
+count bug (channels instead of samples) was caught by the DLL's own
+frame-count validator and fixed. The facade extends the big_tiff mode
+guard to CMYK/I;16/I;16B/I/F and mirrors Pillow's classic-TIFF fallback
+for numeric+compression. A ctypes cross-check reopens every DLL-written
+numeric BigTIFF through Pillow 11.3.0 with exact bytes (`FAILURES: 0`).
+Raw/facade targets pass `1/1` each (save matrix, compression rejection,
+BE/LE strip fixtures, missing-SampleFormat rejection); the TIFF filter
+passes `692/692` in `5157ms`; and the full directory suite passes
+`2744/2744` in `18109ms`, with zero failures, errors, or skips. Release
+x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity
+remains `458/458` with zero difference; and the rebuilt DLL SHA-256 is
+`B893B53F49D4B3B20F7BD4C0AD79FBAEC2A2F15374BC8DE16C2A37A2BBFC4DDE`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed
+beyond the numeric save/open family. The estimate moves to `76% ±4%`.
+The next bounded child is `FMT-TIFF-003BE`, BigTIFF save metadata
+composition.
 
 2026-08-13: `FMT-TIFF-003BC` is GREEN as a Pillow multi-frame layout
 lock-in and CORRECTS the round-16 oracle note. Rechecking the next

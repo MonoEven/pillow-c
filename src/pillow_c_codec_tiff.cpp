@@ -3191,6 +3191,7 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
     std::uint64_t samples_per_pixel = 1u;
     std::uint64_t extra_samples = 0u;
     std::uint64_t sample_format = 1u;
+    std::uint64_t planar_config = 1u;
     std::uint64_t strip_offset = 0u;
     std::uint64_t strip_byte_count = 0u;
     bool has_width = false;
@@ -3199,6 +3200,8 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
     bool has_photometric = false;
     bool has_samples_per_pixel = false;
     bool has_extra_samples = false;
+    bool has_sample_format = false;
+    bool has_planar_config = false;
     bool has_strip_offset = false;
     bool has_strip_byte_count = false;
 
@@ -3233,11 +3236,14 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
         case 279u:
             has_strip_byte_count = read_scalar(entry, &strip_byte_count);
             break;
+        case 284u:
+            has_planar_config = read_scalar(entry, &planar_config);
+            break;
         case 338u:
             has_extra_samples = read_scalar(entry, &extra_samples);
             break;
         case 339u:
-            read_scalar(entry, &sample_format);
+            has_sample_format = read_scalar(entry, &sample_format);
             break;
         default:
             break;
@@ -3277,7 +3283,41 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
         photometric == 1u && supported_compression &&
         has_samples_per_pixel && samples_per_pixel == 2u &&
         has_extra_samples && extra_samples == 2u;
-    if (!matches_l && !matches_rgb && !matches_rgba && !matches_la) {
+    const bool matches_i16 =
+        has_width && has_height && has_bits && has_photometric &&
+        has_strip_offset && has_strip_byte_count &&
+        bits_per_sample.size() == 1u && bits_per_sample[0] == 16u && photometric == 1u &&
+        supported_compression &&
+        (!has_samples_per_pixel || samples_per_pixel == 1u) &&
+        (!has_sample_format || sample_format == 1u) &&
+        (!has_planar_config || planar_config == 1u);
+    const bool matches_i =
+        has_width && has_height && has_bits && has_photometric &&
+        has_strip_offset && has_strip_byte_count &&
+        bits_per_sample.size() == 1u && bits_per_sample[0] == 32u && photometric == 1u &&
+        supported_compression &&
+        (!has_samples_per_pixel || samples_per_pixel == 1u) &&
+        has_sample_format && sample_format == 2u &&
+        (!has_planar_config || planar_config == 1u);
+    const bool matches_f =
+        has_width && has_height && has_bits && has_photometric &&
+        has_strip_offset && has_strip_byte_count &&
+        bits_per_sample.size() == 1u && bits_per_sample[0] == 32u && photometric == 1u &&
+        supported_compression &&
+        (!has_samples_per_pixel || samples_per_pixel == 1u) &&
+        has_sample_format && sample_format == 3u &&
+        (!has_planar_config || planar_config == 1u);
+    const bool matches_cmyk =
+        has_width && has_height && has_bits && has_photometric &&
+        has_strip_offset && has_strip_byte_count &&
+        bits_per_sample.size() == 4u && bits_per_sample[0] == 8u &&
+        bits_per_sample[1] == 8u && bits_per_sample[2] == 8u && bits_per_sample[3] == 8u &&
+        photometric == 5u && supported_compression &&
+        has_samples_per_pixel && samples_per_pixel == 4u &&
+        !has_extra_samples &&
+        (!has_planar_config || planar_config == 1u);
+    if (!matches_l && !matches_rgb && !matches_rgba && !matches_la &&
+        !matches_i16 && !matches_i && !matches_f && !matches_cmyk) {
         return PILLOW_C_OK;
     }
     if (width == 0u || height == 0u ||
@@ -3285,10 +3325,22 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
         height > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    const int mode = matches_rgba
-        ? PILLOW_C_MODE_RGBA
-        : (matches_la ? PILLOW_C_MODE_LA : (matches_rgb ? PILLOW_C_MODE_RGB : PILLOW_C_MODE_L));
-    const int channels = matches_rgba ? 4 : (matches_la ? 2 : (matches_rgb ? 3 : 1));
+    const int mode = matches_i16
+        ? (little_endian ? PILLOW_C_MODE_I16 : PILLOW_C_MODE_I16B)
+        : (matches_i
+            ? PILLOW_C_MODE_I
+            : (matches_f
+                ? PILLOW_C_MODE_F
+                : (matches_cmyk
+                    ? PILLOW_C_MODE_CMYK
+                    : (matches_rgba
+                        ? PILLOW_C_MODE_RGBA
+                        : (matches_la ? PILLOW_C_MODE_LA : (matches_rgb ? PILLOW_C_MODE_RGB : PILLOW_C_MODE_L))))));
+    const int channels = matches_i16
+        ? 2
+        : ((matches_i || matches_f || matches_cmyk || matches_rgba)
+            ? 4
+            : (matches_la ? 2 : (matches_rgb ? 3 : 1)));
     std::size_t stride = 0u;
     std::size_t image_size = 0u;
     if (!checked_image_size(static_cast<int>(width), static_cast<int>(height), channels, &stride, &image_size)) {
@@ -3315,6 +3367,18 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
             strip_source = strip_storage.data();
         } else if (strip_byte_count != static_cast<std::uint64_t>(image_size)) {
             return PILLOW_C_INVALID_ARGUMENT;
+        }
+        // Big-endian I/F strip samples are byte-swapped into little-endian
+        // storage (Pillow normalizes I/F to native byte order); I16 keeps its
+        // raw big-endian bytes under PILLOW_C_MODE_I16B.
+        std::vector<std::uint8_t> numeric_storage;
+        if (!little_endian && (matches_i || matches_f)) {
+            numeric_storage.assign(strip_source, strip_source + image_size);
+            for (std::size_t index = 0u; index + 4u <= image_size; index += 4u) {
+                std::swap(numeric_storage[index], numeric_storage[index + 3u]);
+                std::swap(numeric_storage[index + 1u], numeric_storage[index + 2u]);
+            }
+            strip_source = numeric_storage.data();
         }
         auto* image = new PillowCImage{
             static_cast<int>(width),
@@ -7648,6 +7712,10 @@ int save_tiff_bigtiff_frames_image_with_compression(
         const PillowCImage* image;
         std::uint64_t photometric;
         bool has_extra_samples;
+        std::uint16_t bits_per_sample;
+        bool has_sample_format;
+        std::uint16_t sample_format;
+        bool is_i16;
         std::uint64_t bits_value;
         std::size_t entry_count;
         std::size_t ifd_bytes;
@@ -7673,6 +7741,10 @@ int save_tiff_bigtiff_frames_image_with_compression(
             frame.image = image;
             frame.photometric = 0u;
             frame.has_extra_samples = false;
+            frame.bits_per_sample = 8u;
+            frame.has_sample_format = false;
+            frame.sample_format = 1u;
+            frame.is_i16 = false;
             frame.bits_value = 0u;
             frame.entry_count = 0u;
             frame.ifd_bytes = 0u;
@@ -7696,19 +7768,63 @@ int save_tiff_bigtiff_frames_image_with_compression(
                 frame.photometric = 1u;
                 frame.has_extra_samples = true;
                 break;
+            case PILLOW_C_MODE_I16:
+                channels = 2;
+                frame.photometric = 1u;
+                frame.bits_per_sample = 16u;
+                frame.is_i16 = true;
+                break;
+            case PILLOW_C_MODE_I16B:
+                channels = 2;
+                frame.photometric = 1u;
+                frame.bits_per_sample = 16u;
+                frame.is_i16 = true;
+                break;
+            case PILLOW_C_MODE_I:
+                channels = 4;
+                frame.photometric = 1u;
+                frame.bits_per_sample = 32u;
+                frame.has_sample_format = true;
+                frame.sample_format = 2u;
+                break;
+            case PILLOW_C_MODE_F:
+                channels = 4;
+                frame.photometric = 1u;
+                frame.bits_per_sample = 32u;
+                frame.has_sample_format = true;
+                frame.sample_format = 3u;
+                break;
+            case PILLOW_C_MODE_CMYK:
+                channels = 4;
+                frame.photometric = 5u;
+                break;
             default:
                 return PILLOW_C_INVALID_ARGUMENT;
             }
             if (image->channels != channels) {
                 return PILLOW_C_INVALID_ARGUMENT;
             }
-            for (int channel = 0; channel < channels; ++channel) {
-                frame.bits_value |= static_cast<std::uint64_t>(8u) << (channel * 16);
+            if ((frame.has_sample_format || frame.is_i16 || image->mode == PILLOW_C_MODE_CMYK) &&
+                compression != TIFF_COMPRESSION_NONE) {
+                // Pillow falls back to classic TIFF when big_tiff combines with
+                // compression; numeric BigTIFF strips stay uncompressed.
+                return PILLOW_C_INVALID_ARGUMENT;
             }
-            frame.entry_count = 9u + (channels > 1 ? 1u : 0u) + (frame.has_extra_samples ? 1u : 0u);
+            for (int channel = 0; channel < channels; ++channel) {
+                frame.bits_value |= static_cast<std::uint64_t>(frame.bits_per_sample) << (channel * 16);
+            }
+            const bool has_samples_per_pixel =
+                channels > 1 && !frame.is_i16 && !frame.has_sample_format;
+            frame.entry_count = 9u + (has_samples_per_pixel ? 1u : 0u) +
+                (frame.has_extra_samples ? 1u : 0u) + (frame.has_sample_format ? 1u : 0u);
             frame.ifd_bytes = 8u + frame.entry_count * 20u + 8u;
 
+            std::vector<std::uint8_t> swapped_pixels;
             const std::uint8_t* source_pixels = image->pixels.data();
+            if (image->mode == PILLOW_C_MODE_I16B) {
+                swapped_pixels = tiff_i16b_to_i16_pixels(image);
+                source_pixels = swapped_pixels.data();
+            }
             const std::size_t source_row_stride =
                 static_cast<std::size_t>(image->width) * static_cast<std::size_t>(channels);
             if (compression == TIFF_COMPRESSION_PACKBITS) {
@@ -7722,7 +7838,7 @@ int save_tiff_bigtiff_frames_image_with_compression(
                     return PILLOW_C_INVALID_ARGUMENT;
                 }
             } else {
-                frame.strip_bytes.assign(image->pixels.begin(), image->pixels.end());
+                frame.strip_bytes.assign(source_pixels, source_pixels + image->pixels.size());
             }
             frames.push_back(std::move(frame));
         }
@@ -7762,11 +7878,17 @@ int save_tiff_bigtiff_frames_image_with_compression(
             append_le64(out, static_cast<std::uint64_t>(frame.entry_count));
             append_entry(256u, 4u, 1u, static_cast<std::uint64_t>(image->width));
             append_entry(257u, 4u, 1u, static_cast<std::uint64_t>(image->height));
-            append_entry(258u, 3u, static_cast<std::uint64_t>(image->channels), frame.bits_value);
+            append_entry(
+                258u,
+                3u,
+                (frame.is_i16 || frame.has_sample_format)
+                    ? 1u
+                    : static_cast<std::uint64_t>(image->channels),
+                frame.bits_value);
             append_entry(259u, 3u, 1u, compression);
             append_entry(262u, 3u, 1u, frame.photometric);
             append_entry(273u, 4u, 1u, strip_offsets[index]);
-            if (image->channels > 1) {
+            if (image->channels > 1 && !frame.is_i16 && !frame.has_sample_format) {
                 append_entry(277u, 3u, 1u, static_cast<std::uint64_t>(image->channels));
             }
             append_entry(278u, 4u, 1u, static_cast<std::uint64_t>(image->height));
@@ -7774,6 +7896,9 @@ int save_tiff_bigtiff_frames_image_with_compression(
             append_entry(284u, 3u, 1u, 1u);
             if (frame.has_extra_samples) {
                 append_entry(338u, 3u, 1u, 2u);
+            }
+            if (frame.has_sample_format) {
+                append_entry(339u, 3u, 1u, static_cast<std::uint64_t>(frame.sample_format));
             }
             append_le64(out, index + 1u < image_count ? ifd_offsets[index + 1u] : 0u);
             if (out.size() < static_cast<std::size_t>(strip_offsets[index])) {

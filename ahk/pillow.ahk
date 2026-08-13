@@ -10794,21 +10794,30 @@ class Pillow {
             bigTiffOption := Pillow.Image.SaveOption(options, "BigTiff", "big_tiff")
             if bigTiffOption.Set && bigTiffOption.Value {
                 if this.Mode != "L" && this.Mode != "RGB" && this.Mode != "RGBA" && this.Mode != "LA"
-                    throw Error("Pillow.Image.Save big_tiff currently supports L, RGB, RGBA, and LA modes", -1)
+                    && this.Mode != "CMYK" && this.Mode != "I;16" && this.Mode != "I;16B"
+                    && this.Mode != "I" && this.Mode != "F"
+                    throw Error("Pillow.Image.Save big_tiff currently supports L, RGB, RGBA, LA, CMYK, I;16, I, and F modes", -1)
                 if exifOption.Set || iccProfileOption.Set || tiffInfoOption.Set || dpiOption.Set
                     throw Error("Pillow.Image.Save big_tiff does not compose with exif, icc_profile, tiffinfo, or dpi yet", -1)
                 compression := compressionOption.Set
                     ? Pillow.Image.SaveTiffCompression(compressionOption.Value)
                     : 1
-                Pillow.CheckStatus(DllCall(
-                    Pillow.RequireDllPath() "\pillow_c_image_save_tiff_bigtiff_frames_compression_options",
-                    "Ptr", handles,
-                    "UPtr", images.Length,
-                    "Ptr", pathBytes,
-                    "Int", compression,
-                    "Int"
-                ))
-                return
+                numericMode := this.Mode = "CMYK" || this.Mode = "I;16" || this.Mode = "I;16B"
+                    || this.Mode = "I" || this.Mode = "F"
+                if !numericMode || compression = 1 {
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_tiff_bigtiff_frames_compression_options",
+                        "Ptr", handles,
+                        "UPtr", images.Length,
+                        "Ptr", pathBytes,
+                        "Int", compression,
+                        "Int"
+                    ))
+                    return
+                }
+                ; Pillow falls back to classic TIFF when big_tiff combines with
+                ; compression (libtiff ignores big_tiff); numeric modes reuse
+                ; the classic writer below.
             }
             if tiffInfoOption.Set {
                 if !(tiffInfoOption.Value is Map)

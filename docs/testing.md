@@ -47,8 +47,31 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2738` AHK tests: `1358` raw DLL tests and
-`1380` facade tests.
+This suite currently registers `2744` AHK tests: `1362` raw DLL tests and
+`1382` facade tests.
+
+Latest `FMT-TIFF-003BD` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_bigtiff_numeric_save.py`) confirms every numeric
+`big_tiff=True` save uses the classic-strip layout (count-1 `258` bits
+16/32, `339` SampleFormat 2/3 for I/F, photometric 1 or 5, LONG 273/279,
+planar 1), and the ctypes cross-check (kept in
+`oracle/probe_tiff_bigtiff_numeric_dll_save.py`) reopens every
+DLL-written I16/I16B/I/F/CMYK BigTIFF through Pillow 11.3.0 with exact
+bytes (`FAILURES: 0`). The frames writer gained the numeric family
+(count-1 258 bits, 339, CMYK photometric 5, I16B little-endian swap,
+numeric+compression -3 rejection), the strip open route gained the
+matching predicates plus big-endian I/F normalization and I;16B
+passthrough, and the facade extends the big_tiff mode guard to
+CMYK/I;16/I;16B/I/F with Pillow's classic-TIFF fallback for
+numeric+compression. Raw/facade targets pass `1/1` each; the TIFF filter
+passes `692/692` in `5157ms`; and the full directory suite passes
+`2744/2744` in `18109ms`, with zero failures, errors, or skips. Release
+x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity
+remains `458/458` with zero difference; and the rebuilt DLL SHA-256 is
+`B893B53F49D4B3B20F7BD4C0AD79FBAEC2A2F15374BC8DE16C2A37A2BBFC4DDE`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed
+beyond the numeric save/open family. The overall Pillow
+replacement-readiness estimate moves to `76% ±4%`.
 
 Latest `FMT-TIFF-003BC` verification: rechecking the next pointers (kept
 in `oracle/probe_tiff_classic_two_frame_save.py` and
