@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 93% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 94% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
@@ -41,26 +41,29 @@ the numeric point() slice (`MODE-I-001B` int32 and `MODE-F-001B`
 float32 linear callables through `pillow_c_image_point_transform` with
 Pillow's list/non-linear rejections), the numeric transform family
 (`MODE-NUM-001CH` AFFINE/EXTENT, `MODE-NUM-001CI` Rotate, and
-`MODE-NUM-001CJ` PERSPECTIVE/QUAD/MESH lock-in), and `MODE-NUM-001CK`
+`MODE-NUM-001CJ` PERSPECTIVE/QUAD/MESH lock-in), `MODE-NUM-001CK`
 numeric `Image.Resize` (per-sample two-pass resampling with Pillow's
 unquantized double weights, float32 intermediates for F, round-half-
-away per pass for I, across BILINEAR/BICUBIC/LANCZOS/BOX/HAMMING).
+away per pass for I, across BILINEAR/BICUBIC/LANCZOS/BOX/HAMMING), and
+`MODE-NUM-001CL` the numeric boxed-Resize/Thumbnail lock-in (the
+MODE-NUM-001CK 32bpc path serves the `box=` route verbatim and the
+facade thumbnail aspect math routes through the plain resize).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. Numeric resize was cross-verified against
-Pillow's 2x2-to-3x3 outputs for all six kernels (exact int32/float32
-samples, `FAILURES: 0`), the resize filter passes `25/25` in `47ms`,
-the numeric filter passes `123/123` in `578ms`, and the full directory
-suite passes `2781/2781` in `19296ms`; source/DLL exports remain
-`463/463` with zero difference; and the DLL SHA-256 is
+IFD as a writer artifact. The box/thumbnail lock-in was cross-verified
+against Pillow (exact int32/float32 samples, `FAILURES: 0`, zero
+native changes), the resize filter passes `27/27` in `62ms`, the
+Thumbnail filter passes `7/7` in `125ms`, and the full directory suite
+passes `2783/2783` in `18797ms`; source/DLL exports remain `463/463`
+with zero difference; and the DLL SHA-256 remains
 `77D2F0BB93546810708B69A4F39671FE6186A93762DB00D9871186D1AC4BEE9F`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`MODE-NUM-001CL` numeric boxed-Resize/Thumbnail lock-in. Dither exact
-parity, libimagequant, broader quantize cross-products, qtables with
-more than two tables, malformed marker streams, and exact whole-file
-parity remain separate.
+`MODE-NUM-001CM` I;16 numeric resize/transform sample semantics. Dither
+exact parity, libimagequant, broader quantize cross-products, qtables
+with more than two tables, malformed marker streams, and exact
+whole-file parity remain separate.
 ```
 
 Current work packet:
@@ -403,8 +406,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `MODE-NUM-001CL` numeric boxed-Resize /
-  Thumbnail lock-in, with broader numeric-mode gaps staying separate.
+- Selected next gap: bounded `MODE-NUM-001CM` I;16 numeric
+  resize/transform sample semantics, with broader numeric-mode gaps
+  staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -478,6 +482,31 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `MODE-NUM-001CL` is GREEN for the bounded numeric
+boxed-Resize/Thumbnail lock-in with ZERO native changes. The Pillow
+11.3.0 oracle (kept in `oracle/probe_mode_box_thumb.py`) shows boxed
+`resize(..., box=(left, top, right, bottom))` on I and F runs through
+the same 32bpc two-pass resampler, and `thumbnail()` applies the
+aspect-preserving size math then the plain resize. The ctypes
+cross-check (kept in `oracle/probe_mode_box_thumb_dll_compose.py`)
+matches Pillow's I/F boxed NEAREST/BILINEAR/BICUBIC outputs and the
+4x3-to-2x2 thumbnail-dimension resizes exactly (`FAILURES: 0`): the
+`MODE-NUM-001CK` numeric branch in `resize_filter_box_into` already
+serves the `pillow_c_image_resize_box` route, and the facade thumbnail
+aspect math already routes through `pillow_c_image_resize`.
+Raw/facade box/thumbnail numeric targets pass `2/2` in `31ms`; the
+resize filter passes `27/27` in `62ms`; the Thumbnail filter passes
+`7/7` in `125ms`; and the full directory suite passes `2783/2783` in
+`18797ms`, with zero failures, errors, or skips. Source/DLL export
+parity remains `463/463` with zero difference, and the DLL SHA-256
+remains
+`77D2F0BB93546810708B69A4F39671FE6186A93762DB00D9871186D1AC4BEE9F`.
+Numeric reducing-gap composition remains unverified; I;16 and the
+other numeric families remain separate. No facade lifetime rule,
+fallback, or AHK pixel loop changed. The estimate moves to `94% ±4%`.
+The next bounded child is `MODE-NUM-001CM`, I;16 numeric
+resize/transform sample semantics.
 
 2026-08-13: `MODE-NUM-001CK` is GREEN for the bounded mode I/F
 `Image.Resize()` per-sample resampling. Pillow 11.3.0's
@@ -17691,9 +17720,11 @@ Current highest-value remaining areas:
    PERSPECTIVE/QUAD/MESH lock-in (the mesh loop was the last per-byte
    holdout), and `MODE-NUM-001CK` covers numeric `Image.Resize` per-sample
    two-pass resampling (unquantized double weights, float32 intermediates
-   for F, round-half-away per pass for I, all filter kernels). Numeric
-   boxed-Resize/Thumbnail composition, I;16, and the other transform
-   families remain separate. Continue only through a new explicit gap ID.
+   for F, round-half-away per pass for I, all filter kernels), and
+   `MODE-NUM-001CL` locks in the numeric boxed-Resize/Thumbnail composition
+   with zero native changes. I;16 numeric resize/transform semantics,
+   numeric reducing-gap composition, and the other transform families
+   remain separate. Continue only through a new explicit gap ID.
 3. `FMT-TIFF-002` to `FMT-TIFF-005`: TIFF tag/compression behavior and broader
    mode coverage after the now-covered `FMT-TIFF-001A` bounded multipage
    `save_all` child. `FMT-TIFF-002A` covers Orientation=3 open-side

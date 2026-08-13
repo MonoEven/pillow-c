@@ -22295,6 +22295,59 @@ PillowTestImageResizeNumeric(*) {
 
 AhkTest.Test("Pillow Image.Resize resamples numeric mode I/F samples", PillowTestImageResizeNumeric)
 
+PillowTestImageResizeBoxThumbnailNumeric(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    i := Pillow.Image.FromBytes("I", [2, 2], PillowTestBuffer(PillowTestBytesFromI32([1000, -2000, 3000, 7])))
+    f := Pillow.Image.FromBytes("F", [2, 2], PillowTestBuffer(PillowTestBytesFromF32([1.5, -2.5, 3.5, 0.25])))
+    iBig := Pillow.Image.FromBytes("I", [4, 3], PillowTestBuffer(PillowTestBytesFromI32([100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200])))
+    fBig := Pillow.Image.FromBytes("F", [4, 3], PillowTestBuffer(PillowTestBytesFromF32([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2])))
+    out := 0
+    try {
+        out := i.Resize([3, 3], Pillow.Resampling.BILINEAR, [0.5, 0.5, 1.5, 1.5])
+        AhkTest.AssertEqual("I", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([834, -166, -1166, 1501, 502, -497, 2168, 1170, 172]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := i.Resize([3, 3], Pillow.Resampling.BICUBIC, [0.5, 0.5, 1.5, 1.5])
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([877, -253, -1383, 1631, 502, -627, 2384, 1257, 129]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := f.Resize([3, 3], Pillow.Resampling.BILINEAR, [0.5, 0.5, 1.5, 1.5])
+        AhkTest.AssertEqual("F", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([
+                1.1875, -0.1041666641831398, -1.3958333730697632,
+                1.8958332538604736, 0.6875, -0.5208333730697632,
+                2.6041665077209473, 1.4791666269302368, 0.3541666865348816,
+            ]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        iBig.Thumbnail([2, 2], Pillow.Resampling.BICUBIC)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([283, 465, 835, 1017]),
+            PillowTestBufferToArray(iBig.ToBytes()))
+
+        fBig.Thumbnail([2, 2], Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([0.3214285969734192, 0.47857141494750977, 0.8214285969734192, 0.9785714745521545]),
+            PillowTestBufferToArray(fBig.ToBytes()))
+    } finally {
+        if IsObject(out)
+            out.Close()
+        i.Close()
+        f.Close()
+        iBig.Close()
+        fBig.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Resize box and Image.Thumbnail resample numeric mode I/F samples", PillowTestImageResizeBoxThumbnailNumeric)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])

@@ -109,9 +109,15 @@ double weights alongside the 22-bit fixed-point ones, and
 one 32-bit sample per pixel for `PILLOW_C_MODE_I` and
 `PILLOW_C_MODE_F` with Pillow 11.3.0 `Resample.c` 32bpc semantics
 (float32 intermediates for F, round-half-away after each pass for I,
-no clipping) across BILINEAR/BICUBIC/LANCZOS/BOX/HAMMING. Numeric
-boxed-Resize/Thumbnail composition, I;16, and the other numeric
-families remain separate.
+no clipping) across BILINEAR/BICUBIC/LANCZOS/BOX/HAMMING.
+
+`MODE-NUM-001CL` changes no ABI at all: the boxed numeric resize route
+(`pillow_c_image_resize_box`) is served by the same
+`MODE-NUM-001CK` numeric branch, and the facade `Thumbnail` aspect
+math routes through `pillow_c_image_resize`; the DLL SHA-256 is
+unchanged. I;16 numeric resize/transform semantics, numeric
+reducing-gap composition, and the other numeric families remain
+separate.
 
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.

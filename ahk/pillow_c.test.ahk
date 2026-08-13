@@ -22722,6 +22722,122 @@ PillowCTestImageResizeNumericSamples(*) {
 
 AhkTest.Test("pillow_c image_resize resamples numeric mode I/F samples", PillowCTestImageResizeNumericSamples)
 
+PillowCTestImageResizeBoxNumericSamples(*) {
+    ; Pillow 11.3.0 routes boxed resize through the same 32bpc two-pass
+    ; resampler, so the numeric path from MODE-NUM-001CK applies verbatim.
+    i := PillowCCreateImageMode(2, 2, 8)
+    f := PillowCCreateImageMode(2, 2, 9)
+    iBig := PillowCCreateImageMode(4, 3, 8)
+    fBig := PillowCCreateImageMode(4, 3, 9)
+    out := 0
+    try {
+        ; 1000, -2000, 3000, 7
+        PillowCImageSetBytes(i, [
+            232, 3, 0, 0, 48, 248, 255, 255, 184, 11, 0, 0, 7, 0, 0, 0,
+        ])
+        ; 1.5, -2.5, 3.5, 0.25
+        PillowCImageSetBytes(f, [
+            0, 0, 192, 63, 0, 0, 32, 192, 0, 0, 96, 64, 0, 0, 128, 62,
+        ])
+        ; 100..1200 step 100 (4x3)
+        PillowCImageSetBytes(iBig, [
+            100, 0, 0, 0, 200, 0, 0, 0, 44, 1, 0, 0, 144, 1, 0, 0,
+            244, 1, 0, 0, 88, 2, 0, 0, 188, 2, 0, 0, 32, 3, 0, 0,
+            132, 3, 0, 0, 232, 3, 0, 0, 76, 4, 0, 0, 176, 4, 0, 0,
+        ])
+        ; 0.1..1.2 step 0.1 (4x3)
+        PillowCImageSetBytes(fBig, [
+            205, 204, 204, 61, 205, 204, 76, 62, 154, 153, 153, 62, 205, 204, 204, 62,
+            0, 0, 0, 63, 154, 153, 25, 63, 51, 51, 51, 63, 205, 204, 76, 63,
+            102, 102, 102, 63, 0, 0, 128, 63, 205, 204, 140, 63, 154, 153, 153, 63,
+        ])
+
+        out := PillowCImageResizeBox(i, 3, 3, 0, [0.5, 0.5, 1.5, 1.5])
+        AhkTest.AssertEqual(8, PillowCImageMode(out))
+        ; 1000, -2000, -2000, 3000, 7, 7, 3000, 7, 7
+        AhkTest.AssertEqual(
+            [232, 3, 0, 0, 48, 248, 255, 255, 48, 248, 255, 255,
+             184, 11, 0, 0, 7, 0, 0, 0, 7, 0, 0, 0,
+             184, 11, 0, 0, 7, 0, 0, 0, 7, 0, 0, 0],
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResizeBox(i, 3, 3, 2, [0.5, 0.5, 1.5, 1.5])
+        ; 834, -166, -1166, 1501, 502, -497, 2168, 1170, 172
+        AhkTest.AssertEqual(
+            [66, 3, 0, 0, 90, 255, 255, 255, 114, 251, 255, 255,
+             221, 5, 0, 0, 246, 1, 0, 0, 15, 254, 255, 255,
+             120, 8, 0, 0, 146, 4, 0, 0, 172, 0, 0, 0],
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResizeBox(i, 3, 3, 3, [0.5, 0.5, 1.5, 1.5])
+        ; 877, -253, -1383, 1631, 502, -627, 2384, 1257, 129
+        AhkTest.AssertEqual(
+            [109, 3, 0, 0, 3, 255, 255, 255, 153, 250, 255, 255,
+             95, 6, 0, 0, 246, 1, 0, 0, 141, 253, 255, 255,
+             80, 9, 0, 0, 233, 4, 0, 0, 129, 0, 0, 0],
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResizeBox(f, 3, 3, 2, [0.5, 0.5, 1.5, 1.5])
+        AhkTest.AssertEqual(9, PillowCImageMode(out))
+        ; 1.1875, -0.1041666641831398, -1.3958333730697632,
+        ; 1.8958332538604736, 0.6875, -0.5208333730697632,
+        ; 2.6041665077209473, 1.4791666269302368, 0.3541666865348816
+        AhkTest.AssertEqual(
+            [0, 0, 152, 63, 85, 85, 213, 189, 171, 170, 178, 191,
+             170, 170, 242, 63, 0, 0, 48, 63, 86, 85, 5, 191,
+             170, 170, 38, 64, 85, 85, 189, 63, 86, 85, 181, 62],
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResizeBox(f, 3, 3, 3, [0.5, 0.5, 1.5, 1.5])
+        ; 1.2646631002426147, -0.20698052644729614, -1.678624153137207,
+        ; 2.0527596473693848, 0.6875, -0.6777597665786743,
+        ; 2.8408563137054443, 1.5819804668426514, 0.3231046497821808
+        AhkTest.AssertEqual(
+            [123, 224, 161, 63, 180, 242, 83, 190, 40, 221, 214, 191,
+             106, 96, 3, 64, 0, 0, 48, 63, 170, 129, 45, 191,
+             151, 208, 53, 64, 86, 126, 202, 63, 249, 109, 165, 62],
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; Thumbnail-dimension resizes (4x3 -> 2x2) through the plain export.
+        out := PillowCImageResize(iBig, 2, 2, 3)
+        ; 283, 465, 835, 1017
+        AhkTest.AssertEqual(
+            [27, 1, 0, 0, 209, 1, 0, 0, 67, 3, 0, 0, 249, 3, 0, 0],
+            PillowCImageToArray(out, 16))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResize(fBig, 2, 2, 2)
+        ; 0.3214285969734192, 0.47857141494750977, 0.8214285969734192, 0.9785714745521545
+        AhkTest.AssertEqual(
+            [74, 146, 164, 62, 80, 7, 245, 62, 37, 73, 82, 63, 169, 131, 122, 63],
+            PillowCImageToArray(out, 16))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        if i
+            PillowCFreeImage(i)
+        if f
+            PillowCFreeImage(f)
+        if iBig
+            PillowCFreeImage(iBig)
+        if fBig
+            PillowCFreeImage(fBig)
+    }
+}
+
+AhkTest.Test("pillow_c image_resize_box and thumbnail resizes resample numeric mode I/F samples", PillowCTestImageResizeBoxNumericSamples)
+
 
 PillowCTestImageIcoSizesReportsAvailableFrames(*) {
     path := PillowCTempIcoPath("ico-sizes")
