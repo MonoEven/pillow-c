@@ -44197,6 +44197,28 @@ PillowTestImageSaveTiffBigTiffPaletteMode(*) {
 
 AhkTest.Test("Pillow Image.Save TIFF big_tiff round-trips palette P mode", PillowTestImageSaveTiffBigTiffPaletteMode)
 
+PillowTestImageSaveTiffBigTiffBilevelMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("1", [9, 2], PillowTestBuffer([0xAA, 0x80, 0x55, 0x80]))
+    path := PillowTestTempTiffPath("save-bigtiff-1-facade")
+    loaded := 0
+    try {
+        image.Save(path, "TIFF", { big_tiff: true })
+        AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("1", loaded.Mode)
+        AhkTest.AssertEqual([9, 2], loaded.Size)
+        AhkTest.AssertEqual([0xAA, 0x80, 0x55, 0x80], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF big_tiff round-trips bilevel 1 mode", PillowTestImageSaveTiffBigTiffBilevelMode)
+
 PillowTestTiffClassicTwoFramePillowBytes() {
     ; Pillow 11.3.0 save_all two-frame classic layout (see
     ; oracle/probe_tiff_classic_two_frame_save.py).

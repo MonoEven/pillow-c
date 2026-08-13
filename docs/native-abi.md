@@ -29,11 +29,31 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`461/461`; the full AHK suite is `2754/2754`; and the current DLL SHA-256 is
-`E920652B69C1F2733281781B5A09A74FE0A25B38840B26A60C589A36ECCB91E9`.
+`461/461`; the full AHK suite is `2757/2757`; and the current DLL SHA-256 is
+`D829043BE5BF716DAD7A5D6FBA958958D01D777A10D0C5C86921D9195EE4EC6E`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
+
+## TIFF BigTIFF Save Bilevel ABI Behavior
+
+`FMT-TIFF-003BI` changes no exported name or signature. Existing
+`pillow_c_image_save_tiff_bigtiff(_frames_metadata_ascii_entries_
+options)`, `pillow_c_image_open_tiff`, and
+`pillow_c_image_frame_count_tiff` status, handle ownership, and
+synchronous path/source-file lifetime contracts remain unchanged.
+
+The frames metadata writer now accepts `PILLOW_C_MODE_1` frames: an
+eight-entry IFD with NO 258 tag, photometric 1, and strips packed
+MSB-first per row via `tiff_pack_mode_one_pixels` (packed rows also feed
+the compression branches with `tiff_uncompressed_row_stride`). The
+BigTIFF strip parser recognizes the same layout (no 258, photometric 1,
+samples 1, planar 1) and unpacks the packed rows into the established
+0/255-per-pixel mode-1 storage convention, keeping the existing
+`get_mode1_raw_bytes_image` re-pack semantics intact.
+
+No facade lifetime rule, fallback, or AHK per-pixel loop was added
+beyond the BigTIFF bilevel save family above.
 
 ## TIFF BigTIFF Save Palette ABI Behavior
 

@@ -47283,6 +47283,83 @@ PillowCTestImageOpenTiffBigTiffPaletteStripFixture(*) {
 
 AhkTest.Test("pillow_c image open_tiff reads Pillow 11.3.0 BigTIFF palette strip", PillowCTestImageOpenTiffBigTiffPaletteStripFixture)
 
+PillowCTiffBigTiffModeOneStripBytes() {
+    ; Pillow 11.3.0 big_tiff=True mode-1 save layout (oracle/probe_tiff_
+    ; bigtiff_1_save.py): no 258 tag, photometric 1, packed MSB-first
+    ; rows at 192.
+    bytes := [73, 73, 43, 0, 8, 0, 0, 0]
+    PillowCAppendLe64(bytes, 16)
+    PillowCAppendLe64(bytes, 8)
+    entries := [
+        [256, 4, 1, 9],
+        [257, 4, 1, 2],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [273, 4, 1, 192],
+        [278, 4, 1, 2],
+        [279, 4, 1, 4],
+        [284, 3, 1, 1],
+    ]
+    for entry in entries
+        PillowCAppendBigTiffEntry(bytes, entry, true)
+    PillowCAppendLe64(bytes, 0)
+    bytes.Push(0xAA, 0x80, 0x55, 0x80)
+    return bytes
+}
+
+PillowCTestImageSaveTiffBigTiffModeOne(*) {
+    ; Pillow 11.3.0 saves mode-1 BigTIFFs without the 258 tag, photometric
+    ; 1, and packed MSB-first strips; the DLL round-trips both.
+    path := PillowCTempTiffPath("save-bigtiff-1")
+    image := PillowCCreateImageMode(9, 2, 5)
+    loaded := 0
+    try {
+        PillowCImageSetBytes(image, [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_tiff_bigtiff",
+            "Ptr", image,
+            "Ptr", PillowCUtf8Buffer(path),
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual([73, 73, 43, 0], PillowCArraySlice(PillowCReadFileBytes(path), 1, 4))
+        AhkTest.AssertEqual(1, PillowCImageFrameCountTiff(path))
+        loaded := PillowCImageOpenTiff(path)
+        AhkTest.AssertEqual(5, PillowCImageMode(loaded))
+        AhkTest.AssertEqual(
+            [255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 255],
+            PillowCImageToArray(loaded, 18))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        if image
+            PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_tiff_bigtiff round-trips bilevel 1 mode", PillowCTestImageSaveTiffBigTiffModeOne)
+
+PillowCTestImageOpenTiffBigTiffModeOneStripFixture(*) {
+    path := PillowCTempTiffPath("open-bigtiff-1")
+    loaded := 0
+    try {
+        PillowCWriteFileBytes(path, PillowCTiffBigTiffModeOneStripBytes())
+        AhkTest.AssertEqual(1, PillowCImageFrameCountTiff(path))
+        loaded := PillowCImageOpenTiff(path)
+        AhkTest.AssertEqual(5, PillowCImageMode(loaded))
+        AhkTest.AssertEqual(
+            [255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 255],
+            PillowCImageToArray(loaded, 18))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_tiff reads Pillow 11.3.0 BigTIFF bilevel strip", PillowCTestImageOpenTiffBigTiffModeOneStripFixture)
+
 PillowCTestImageOpenTiffReadsPillowBigTiffStripL(*) {
     path := PillowCTempTiffPath("open-bigtiff-strip-l")
     loaded := 0
