@@ -161,6 +161,22 @@ as PNG/JPEG, so seeking to a frame without XMP removes the previous frame's
 `Info["xmp"]` like Pillow. No new pointer, facade lifetime rule, fallback, or
 AHK per-pixel loop was added.
 
+## TIFF BigTIFF Save and Strip Open ABI Behavior
+
+`FMT-TIFF-003AZ` adds one public export,
+`pillow_c_image_save_tiff_bigtiff`, raising source/DLL export parity from
+`455/455` to `456/456` with zero difference. It writes Pillow 11.3.0's
+exact `big_tiff=True` strip layout (`II 2B 00`, offset size 8, IFD0 at 16,
+64-bit counts, 20-byte entries, LONG 273/279, inline SHORT bits) for the
+uncompressed single-frame L/RGB/RGBA/LA matrix and rejects other modes.
+The private `parse_tiff_bigtiff_strip_image_for_ifd` open route accepts
+the same layout, and the open/frame-count dispatchers fall back to it
+when the tiled parser rejects the shape, so Pillow-written strip BigTIFFs
+reopen natively. Existing open/save exports, handle ownership, and
+synchronous path lifetime contracts remain unchanged; the facade routes
+`big_tiff: true` through the new export with single-frame and
+option-composition guards.
+
 ## TIFF Save exif= ABI Behavior
 
 `FMT-TIFF-003AV` adds one public export,

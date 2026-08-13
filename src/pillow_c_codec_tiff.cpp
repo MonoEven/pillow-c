@@ -3093,6 +3093,226 @@ int parse_tiff_bigtiff_tiled_image_for_ifd(
     }
 }
 
+int parse_tiff_bigtiff_strip_image_for_ifd(
+    const std::uint8_t* tiff,
+    std::size_t tiff_size,
+    int ifd_index,
+    bool* is_bigtiff,
+    bool* recognized,
+    PillowCImage** out_image)
+{
+    if (!is_bigtiff || !recognized || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *is_bigtiff = false;
+    *recognized = false;
+    *out_image = nullptr;
+    if (!tiff || tiff_size < 16u) {
+        return PILLOW_C_OK;
+    }
+    const bool has_bigtiff_magic =
+        (tiff[0] == 'I' && tiff[1] == 'I' && read_tiff16(tiff + 2u, true) == 43u) ||
+        (tiff[0] == 'M' && tiff[1] == 'M' && read_tiff16(tiff + 2u, false) == 43u);
+    if (!has_bigtiff_magic) {
+        return PILLOW_C_OK;
+    }
+    *is_bigtiff = true;
+
+    bool little_endian = false;
+    std::uint64_t entry_count = 0u;
+    std::size_t entries_offset = 0u;
+    if (!locate_tiff_bigtiff_ifd(
+            tiff,
+            tiff_size,
+            ifd_index,
+            &little_endian,
+            &entry_count,
+            &entries_offset)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    auto read_scalar = [little_endian](const std::uint8_t* entry, std::uint64_t* out_value) -> bool {
+        if (!entry || !out_value || read_tiff64(entry + 4u, little_endian) != 1u) {
+            return false;
+        }
+        const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+        if (type == 3u) {
+            *out_value = read_tiff16(entry + 12u, little_endian);
+            return true;
+        }
+        if (type == 4u) {
+            *out_value = read_tiff32(entry + 12u, little_endian);
+            return true;
+        }
+        if (type == 16u) {
+            *out_value = read_tiff64(entry + 12u, little_endian);
+            return true;
+        }
+        return false;
+    };
+    auto read_short_array = [tiff, tiff_size, little_endian](
+        const std::uint8_t* entry,
+        std::vector<std::uint32_t>* out_values) -> bool {
+        if (!entry || !out_values || read_tiff16(entry + 2u, little_endian) != 3u) {
+            return false;
+        }
+        const std::uint64_t count = read_tiff64(entry + 4u, little_endian);
+        if (count == 0u || count > std::numeric_limits<std::size_t>::max() / 2u) {
+            return false;
+        }
+        const std::size_t value_size = static_cast<std::size_t>(count) * 2u;
+        out_values->clear();
+        out_values->resize(static_cast<std::size_t>(count));
+        if (value_size <= 8u) {
+            for (std::size_t index = 0u; index < out_values->size(); ++index) {
+                (*out_values)[index] = read_tiff16(entry + 12u + index * 2u, little_endian);
+            }
+            return true;
+        }
+        const std::uint64_t value_offset = read_tiff64(entry + 12u, little_endian);
+        if (value_offset > static_cast<std::uint64_t>(tiff_size) ||
+            static_cast<std::uint64_t>(value_size) > static_cast<std::uint64_t>(tiff_size) - value_offset) {
+            out_values->clear();
+            return false;
+        }
+        for (std::size_t index = 0u; index < out_values->size(); ++index) {
+            (*out_values)[index] = read_tiff16(
+                tiff + static_cast<std::size_t>(value_offset) + index * 2u,
+                little_endian);
+        }
+        return true;
+    };
+
+    std::uint64_t width = 0u;
+    std::uint64_t height = 0u;
+    std::vector<std::uint32_t> bits_per_sample;
+    std::uint64_t compression = 1u;
+    std::uint64_t photometric = 0u;
+    std::uint64_t samples_per_pixel = 1u;
+    std::uint64_t extra_samples = 0u;
+    std::uint64_t sample_format = 1u;
+    std::uint64_t strip_offset = 0u;
+    std::uint64_t strip_byte_count = 0u;
+    bool has_width = false;
+    bool has_height = false;
+    bool has_bits = false;
+    bool has_photometric = false;
+    bool has_samples_per_pixel = false;
+    bool has_extra_samples = false;
+    bool has_strip_offset = false;
+    bool has_strip_byte_count = false;
+
+    if (entry_count > std::numeric_limits<std::size_t>::max() / 20u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    for (std::uint64_t index = 0u; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 20u;
+        const std::uint16_t tag = read_tiff16(entry, little_endian);
+        switch (tag) {
+        case 256u:
+            has_width = read_scalar(entry, &width);
+            break;
+        case 257u:
+            has_height = read_scalar(entry, &height);
+            break;
+        case 258u:
+            has_bits = read_short_array(entry, &bits_per_sample);
+            break;
+        case 259u:
+            read_scalar(entry, &compression);
+            break;
+        case 262u:
+            has_photometric = read_scalar(entry, &photometric);
+            break;
+        case 273u:
+            has_strip_offset = read_scalar(entry, &strip_offset);
+            break;
+        case 277u:
+            has_samples_per_pixel = read_scalar(entry, &samples_per_pixel);
+            break;
+        case 279u:
+            has_strip_byte_count = read_scalar(entry, &strip_byte_count);
+            break;
+        case 338u:
+            has_extra_samples = read_scalar(entry, &extra_samples);
+            break;
+        case 339u:
+            read_scalar(entry, &sample_format);
+            break;
+        default:
+            break;
+        }
+    }
+
+    const bool matches_l =
+        has_width && has_height && has_bits && has_photometric &&
+        has_strip_offset && has_strip_byte_count &&
+        bits_per_sample.size() == 1u && bits_per_sample[0] == 8u && photometric == 1u &&
+        compression == TIFF_COMPRESSION_NONE &&
+        (!has_samples_per_pixel || samples_per_pixel == 1u);
+    const bool matches_rgb =
+        has_width && has_height && has_bits && has_photometric &&
+        has_strip_offset && has_strip_byte_count &&
+        bits_per_sample.size() == 3u && bits_per_sample[0] == 8u &&
+        bits_per_sample[1] == 8u && bits_per_sample[2] == 8u && photometric == 2u &&
+        compression == TIFF_COMPRESSION_NONE &&
+        has_samples_per_pixel && samples_per_pixel == 3u;
+    const bool matches_rgba =
+        has_width && has_height && has_bits && has_photometric &&
+        has_strip_offset && has_strip_byte_count &&
+        bits_per_sample.size() == 4u && bits_per_sample[0] == 8u &&
+        bits_per_sample[1] == 8u && bits_per_sample[2] == 8u && bits_per_sample[3] == 8u &&
+        photometric == 2u && compression == TIFF_COMPRESSION_NONE &&
+        has_samples_per_pixel && samples_per_pixel == 4u &&
+        has_extra_samples && extra_samples == 2u;
+    const bool matches_la =
+        has_width && has_height && has_bits && has_photometric &&
+        has_strip_offset && has_strip_byte_count &&
+        bits_per_sample.size() == 2u && bits_per_sample[0] == 8u && bits_per_sample[1] == 8u &&
+        photometric == 1u && compression == TIFF_COMPRESSION_NONE &&
+        has_samples_per_pixel && samples_per_pixel == 2u &&
+        has_extra_samples && extra_samples == 2u;
+    if (!matches_l && !matches_rgb && !matches_rgba && !matches_la) {
+        return PILLOW_C_OK;
+    }
+    if (width == 0u || height == 0u ||
+        width > static_cast<std::uint64_t>(std::numeric_limits<int>::max()) ||
+        height > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int mode = matches_rgba
+        ? PILLOW_C_MODE_RGBA
+        : (matches_la ? PILLOW_C_MODE_LA : (matches_rgb ? PILLOW_C_MODE_RGB : PILLOW_C_MODE_L));
+    const int channels = matches_rgba ? 4 : (matches_la ? 2 : (matches_rgb ? 3 : 1));
+    std::size_t stride = 0u;
+    std::size_t image_size = 0u;
+    if (!checked_image_size(static_cast<int>(width), static_cast<int>(height), channels, &stride, &image_size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (strip_offset > static_cast<std::uint64_t>(tiff_size) ||
+        strip_byte_count > static_cast<std::uint64_t>(tiff_size) - strip_offset ||
+        strip_byte_count != static_cast<std::uint64_t>(image_size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            static_cast<int>(width),
+            static_cast<int>(height),
+            mode,
+            channels,
+            stride,
+            std::vector<std::uint8_t>(
+                tiff + static_cast<std::size_t>(strip_offset),
+                tiff + static_cast<std::size_t>(strip_offset) + static_cast<std::size_t>(strip_byte_count))};
+        *recognized = true;
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 struct TiffExifCollector {
     std::vector<int> ascii_tags;
     std::vector<std::string> ascii_values;
@@ -4449,12 +4669,35 @@ int open_tiff_frame_image(const char* path, int frame_index, PillowCImage** out_
             &is_tiff_bigtiff,
             &is_tiff_bigtiff_shape,
             &bigtiff_image);
-        if (status != PILLOW_C_OK) {
+        if (status != PILLOW_C_OK && !is_tiff_bigtiff) {
             return status;
         }
         if (is_tiff_bigtiff) {
-            if (!is_tiff_bigtiff_shape) {
-                return PILLOW_C_INVALID_ARGUMENT;
+            if (status != PILLOW_C_OK || !is_tiff_bigtiff_shape) {
+                // The tiled parser rejected the shape (e.g. Pillow 11.3.0
+                // big_tiff strip saves); fall back to the bounded strip
+                // layout. The tiled parser already freed its image on
+                // failure, so drop the stale pointer.
+                bigtiff_image = nullptr;
+                bool strip_is_bigtiff = false;
+                bool strip_recognized = false;
+                PillowCImage* strip_image = nullptr;
+                status = parse_tiff_bigtiff_strip_image_for_ifd(
+                    tiff_bytes.data(),
+                    tiff_bytes.size(),
+                    frame_index,
+                    &strip_is_bigtiff,
+                    &strip_recognized,
+                    &strip_image);
+                if (status != PILLOW_C_OK) {
+                    delete strip_image;
+                    return status;
+                }
+                if (!strip_is_bigtiff || !strip_recognized) {
+                    delete strip_image;
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                bigtiff_image = strip_image;
             }
             const int metadata_status = attach_tiff_bigtiff_metadata_for_ifd(
                 tiff_bytes.data(),
@@ -7242,6 +7485,101 @@ int patch_tiff_ifd0_exif_blob(
     }
 }
 
+int save_tiff_bigtiff_image(const PillowCImage* image, const char* path)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const int refresh_status = pillow_c_refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+    const int validate_status = validate_tiff_save_image(image);
+    if (validate_status != PILLOW_C_OK) {
+        return validate_status;
+    }
+    int channels = 0;
+    std::uint64_t photometric = 0u;
+    bool has_extra_samples = false;
+    switch (image->mode) {
+    case PILLOW_C_MODE_L:
+        channels = 1;
+        photometric = 1u;
+        break;
+    case PILLOW_C_MODE_RGB:
+        channels = 3;
+        photometric = 2u;
+        break;
+    case PILLOW_C_MODE_RGBA:
+        channels = 4;
+        photometric = 2u;
+        has_extra_samples = true;
+        break;
+    case PILLOW_C_MODE_LA:
+        channels = 2;
+        photometric = 1u;
+        has_extra_samples = true;
+        break;
+    default:
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->channels != channels) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const auto append_le64 = [](std::vector<std::uint8_t>& out, std::uint64_t value) {
+        for (int byte_index = 0; byte_index < 8; ++byte_index) {
+            out.push_back(static_cast<std::uint8_t>((value >> (byte_index * 8)) & 0xFFu));
+        }
+    };
+
+    const std::size_t entry_count = 9u + (channels > 1 ? 1u : 0u) + (has_extra_samples ? 1u : 0u);
+    const std::uint64_t pixel_offset = 16u + 8u + static_cast<std::uint64_t>(entry_count) * 20u + 8u;
+    const std::uint64_t byte_count = static_cast<std::uint64_t>(image->pixels.size());
+    std::uint64_t bits_value = 0u;
+    for (int channel = 0; channel < channels; ++channel) {
+        bits_value |= static_cast<std::uint64_t>(8u) << (channel * 16);
+    }
+
+    try {
+        std::vector<std::uint8_t> out;
+        out.reserve(static_cast<std::size_t>(pixel_offset) + image->pixels.size());
+        out.push_back('I');
+        out.push_back('I');
+        append_le16(out, 43u);
+        append_le16(out, 8u);
+        append_le16(out, 0u);
+        append_le64(out, 16u);
+        append_le64(out, static_cast<std::uint64_t>(entry_count));
+        const auto append_entry = [&out, &append_le64](std::uint16_t tag, std::uint16_t type, std::uint64_t count, std::uint64_t value) {
+            append_le16(out, tag);
+            append_le16(out, type);
+            append_le64(out, count);
+            append_le64(out, value);
+        };
+        append_entry(256u, 4u, 1u, static_cast<std::uint64_t>(image->width));
+        append_entry(257u, 4u, 1u, static_cast<std::uint64_t>(image->height));
+        append_entry(258u, 3u, static_cast<std::uint64_t>(channels), bits_value);
+        append_entry(259u, 3u, 1u, TIFF_COMPRESSION_NONE);
+        append_entry(262u, 3u, 1u, photometric);
+        append_entry(273u, 4u, 1u, pixel_offset);
+        if (channels > 1) {
+            append_entry(277u, 3u, 1u, static_cast<std::uint64_t>(channels));
+        }
+        append_entry(278u, 4u, 1u, static_cast<std::uint64_t>(image->height));
+        append_entry(279u, 4u, 1u, byte_count);
+        append_entry(284u, 3u, 1u, 1u);
+        if (has_extra_samples) {
+            append_entry(338u, 3u, 1u, 2u);
+        }
+        append_le64(out, 0u);
+        out.insert(out.end(), image->pixels.begin(), image->pixels.end());
+        return write_binary_file(path, out) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 } // namespace
 
 int pillow_c_tiff_parse_orientation(const std::uint8_t* tiff, std::size_t tiff_size)
@@ -7410,12 +7748,28 @@ extern "C" __declspec(dllexport) int pillow_c_image_frame_count_tiff(
                 &is_tiff_bigtiff_shape,
                 &bigtiff_image);
             delete bigtiff_image;
-            if (bigtiff_status != PILLOW_C_OK) {
+            if (bigtiff_status != PILLOW_C_OK && !is_tiff_bigtiff) {
                 return bigtiff_status;
             }
             if (is_tiff_bigtiff) {
-                if (!is_tiff_bigtiff_shape) {
-                    return PILLOW_C_INVALID_ARGUMENT;
+                if (bigtiff_status != PILLOW_C_OK || !is_tiff_bigtiff_shape) {
+                    bool strip_is_bigtiff = false;
+                    bool strip_recognized = false;
+                    PillowCImage* strip_image = nullptr;
+                    const int strip_status = parse_tiff_bigtiff_strip_image_for_ifd(
+                        tiff_bytes.data(),
+                        tiff_bytes.size(),
+                        0,
+                        &strip_is_bigtiff,
+                        &strip_recognized,
+                        &strip_image);
+                    delete strip_image;
+                    if (strip_status != PILLOW_C_OK) {
+                        return strip_status;
+                    }
+                    if (!strip_is_bigtiff || !strip_recognized) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
                 }
                 if (!count_tiff_bigtiff_ifds(tiff_bytes.data(), tiff_bytes.size(), out_count)) {
                     return PILLOW_C_INVALID_ARGUMENT;
@@ -7454,6 +7808,13 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_tiff(
     const char* path)
 {
     return save_tiff_image(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_bigtiff(
+    const PillowCImage* image,
+    const char* path)
+{
+    return save_tiff_bigtiff_image(image, path);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_options(

@@ -46542,6 +46542,86 @@ PillowCTestImageSaveTiffRoundTripsCoreModes(*) {
 
 AhkTest.Test("pillow_c image save_tiff round-trips L RGB and RGBA modes", PillowCTestImageSaveTiffRoundTripsCoreModes)
 
+PillowCTiffBigTiffStripLBytes() {
+    ; Pillow 11.3.0 big_tiff=True save output for a 2x2 mode-L image filled
+    ; with 7: II 2B 00, offset size 8, IFD0 at 16, nine 20-byte entries,
+    ; strip at 212 (oracle/probe_tiff_bigtiff_save.py L case).
+    bytes := [73, 73, 43, 0, 8, 0, 0, 0]
+    PillowCAppendLe64(bytes, 16)
+    PillowCAppendLe64(bytes, 9)
+    entries := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 2],
+        [258, 3, 1, 8],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [273, 4, 1, 212],
+        [278, 4, 1, 2],
+        [279, 4, 1, 4],
+        [284, 3, 1, 1],
+    ]
+    for entry in entries
+        PillowCAppendBigTiffEntry(bytes, entry, true)
+    PillowCAppendLe64(bytes, 0)
+    bytes.Push(7, 7, 7, 7)
+    return bytes
+}
+
+PillowCTestImageSaveTiffBigTiffMatrix(*) {
+    cases := [
+        { Mode: 1, Name: "L", Bytes: [1, 2, 3, 4] },
+        { Mode: 3, Name: "RGB", Bytes: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120] },
+        { Mode: 4, Name: "RGBA", Bytes: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160] },
+        { Mode: 2, Name: "LA", Bytes: [5, 6, 7, 8, 9, 10, 11, 12] },
+    ]
+    for item in cases {
+        path := PillowCTempTiffPath("save-bigtiff-" item.Name)
+        image := PillowCCreateImageMode(2, 2, item.Mode)
+        loaded := 0
+        try {
+            PillowCImageSetBytes(image, item.Bytes)
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_save_tiff_bigtiff",
+                "Ptr", image,
+                "Ptr", PillowCUtf8Buffer(path),
+                "Int"
+            )
+            PillowCAssertStatus(status)
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowCArraySlice(PillowCReadFileBytes(path), 1, 4))
+            AhkTest.AssertEqual(1, PillowCImageFrameCountTiff(path))
+            loaded := PillowCImageOpenTiff(path)
+            AhkTest.AssertEqual(item.Mode, PillowCImageMode(loaded))
+            AhkTest.AssertEqual(item.Bytes, PillowCImageToArray(loaded, item.Bytes.Length))
+        } finally {
+            if loaded
+                PillowCFreeImage(loaded)
+            if image
+                PillowCFreeImage(image)
+            PillowCDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image save_tiff_bigtiff round-trips the uncompressed mode matrix", PillowCTestImageSaveTiffBigTiffMatrix)
+
+PillowCTestImageOpenTiffReadsPillowBigTiffStripL(*) {
+    path := PillowCTempTiffPath("open-bigtiff-strip-l")
+    loaded := 0
+    try {
+        PillowCWriteFileBytes(path, PillowCTiffBigTiffStripLBytes())
+        AhkTest.AssertEqual(1, PillowCImageFrameCountTiff(path))
+        loaded := PillowCImageOpenTiff(path)
+        AhkTest.AssertEqual(1, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([7, 7, 7, 7], PillowCImageToArray(loaded, 4))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_tiff reads Pillow 11.3.0 BigTIFF strip L", PillowCTestImageOpenTiffReadsPillowBigTiffStripL)
+
 PillowCTestImagePatchTiffExifEntries(*) {
     path := PillowCTempTiffPath("patch-tiff-exif")
     image := PillowCCreateImageMode(2, 2, 1)

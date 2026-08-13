@@ -513,7 +513,49 @@ Verification:
 
 No export, facade lifetime rule, fallback, or AHK pixel loop changed.
 
-The next bounded child is `FMT-TIFF-003AZ`, BigTIFF save.
+The next bounded child is `FMT-TIFF-003BA`, compressed BigTIFF strip
+save/open.
+
+## 2026-08-13 FMT-TIFF-003AZ BigTIFF Save Matrix and Strip Open (GREEN)
+
+`FMT-TIFF-003AZ` closes the bounded little-endian BigTIFF save matrix and
+adds the matching strip open route. The Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_bigtiff_save.py` and
+`oracle/probe_tiff_bigtiff_tiled_save.py`) shows the option name is
+`big_tiff`, the save layout is strip-only (`II 2B 00`, offset size 8, IFD0
+at 16, u64 counts, 20-byte entries, LONG 273/279, inline SHORT bits), and
+Pillow ignores `tile=` for BigTIFF saves.
+
+Implementation:
+
+- New public export `pillow_c_image_save_tiff_bigtiff` writes that exact
+  layout for the uncompressed single-frame L/RGB/RGBA/LA matrix (nine
+  base entries, inline SHORT bits, LONG 273/279, optional 277/338).
+- New private `parse_tiff_bigtiff_strip_image_for_ifd` open route accepts
+  the same layout (scalar 3/4/16 readers, inline/out-of-line SHORT bits,
+  exact strip byte-count validation, contiguous row-major copy).
+- The open/frame-count dispatchers fall back to the strip parser when the
+  tiled parser rejects the shape, so Pillow-written strip BigTIFFs reopen
+  natively instead of returning invalid argument.
+
+Verification:
+
+- Raw/facade targeted GREEN: the raw save matrix covers L/RGB/RGBA/LA
+  round trips plus the Pillow-layout strip open; the facade covers
+  `big_tiff: true` save and Pillow-strip open.
+- TIFF filter: `682/682` in `5109ms`.
+- Full AHK directory suite: `2734/2734` in `19265ms`; zero failures, errors,
+  or skips.
+- Release x64 Rebuild: `0 Warning(s), 0 Error(s)`.
+- Source/DLL export parity: `456/456` (one deliberate new export), zero
+  difference.
+- DLL SHA-256:
+  `9A1726906A0EB96F19D4222CCC6E1BB2271CA2D9D96D18A888BD99E6B6933E1E`.
+
+No facade lifetime rule, fallback, or AHK pixel loop changed.
+
+The next bounded child is `FMT-TIFF-003BA`, compressed BigTIFF strip
+save/open.
 
 ## 2026-08-13 FMT-TIFF-003AY TIFF Save exif= Raw-Bytes Form (GREEN)
 
@@ -38368,7 +38410,8 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-TIFF-003AW | TIFF/Metadata | covered | Bounded TIFF save `exif=` rational-array and LONG-array families plus compression composition: `pillow_c_image_patch_tiff_exif_entries` gains type-5 count-N rational arrays and type-4 count-N LONG arrays with inline/out-of-line layouts; the facade `PatchTiffExifEntries` drops its two array serialization boundaries and serializes `RationalArrayTags`/`UintArrayTags`. Pillow 11.3.0 writes 318 rational arrays and 50719 LONG arrays directly into IFD0; scalar exif composes with every TIFF compression, while array exif plus compression fails upstream in libtiff (`RuntimeError: Error setting from dictionary`) — the DLL's generic offset-shifting patch keeps working for that combo (benign superset note). Export parity remains `454/454`. | `oracle/probe_tiff_exif_save.py` extension, new `oracle/probe_tiff_exif_compression.py`, `patch_tiff_ifd0_exif_entries` array groups, facade `PatchTiffExifEntries` array groups, extended raw/facade exif tests with lzw composition. |
 | FMT-TIFF-003AX | TIFF/Metadata | covered | Bounded TIFF save `exif=` composition with `dpi=`/`icc_profile=`/`tiffinfo` options: `exif=`+`dpi=` and `exif=`+`icc_profile=` compose with every exif tag surviving; Pillow 11.3.0's `tiffinfo` precedence silently drops `exif`, and the facade now does the same (one guard in `SaveTiffFrames`). The raw patch test gained a dpi-saved base case proving the collision rule keeps the base 282/283/296 trio while the patched ascii tag joins. No native change; export parity remains `454/454`. | New `oracle/probe_tiff_exif_combos.py`, facade `SaveTiffFrames` tiffinfo-exif guard, facade exif+dpi/icc/tiffinfo compose test, raw dpi-base patch case. |
 | FMT-TIFF-003AY | TIFF/Metadata | covered | Bounded TIFF save `exif=` raw-bytes form: the new public export `pillow_c_image_patch_tiff_exif_bytes` parses a caller-supplied EXIF blob (`Exif\0\0`-prefixed MM TIFF, the facade `Exif.ToBytes()` layout) into the bounded tag families (ascii with NUL stripping, uint scalars, rational/signed-rational scalars, rational/short/LONG arrays, byte and undefined blobs, 4096-entry and 0xFFFFFF-count caps) and patches IFD0 through the same vector path; the facade accepts a Buffer for `exif=`. Pillow 11.3.0's bytes form parses the same blob into IFD0 with identical reopen behavior. Export parity is now `455/455`. Double/float/LONG8 blob entries remain skipped (bounded). | `oracle/probe_tiff_exif_save.py` bytes-form case, `pillow_c_image_patch_tiff_exif_bytes`, `patch_tiff_ifd0_exif_blob`, facade Buffer routing in `PatchTiffExifEntries`, raw/facade bytes-form tests. |
-| FMT-TIFF-003AZ | TIFF | not started | Bounded little-endian BigTIFF save for the uncompressed single-frame mode matrix. | Pillow 11.3.0 BigTIFF save oracle, native BigTIFF writer, raw/facade save tests. |
+| FMT-TIFF-003AZ | TIFF | covered | Bounded little-endian BigTIFF save matrix and matching strip open route: the new public export `pillow_c_image_save_tiff_bigtiff` writes Pillow 11.3.0's exact `big_tiff=True` strip layout (`II 2B 00`, offset size 8, IFD0 at 16, u64 counts, 20-byte entries, LONG 273/279, inline SHORT bits) for the uncompressed single-frame L/RGB/RGBA/LA matrix; the private `parse_tiff_bigtiff_strip_image_for_ifd` open route accepts the same layout, and the open/frame-count dispatchers fall back to the strip parser when the tiled parser rejects the shape. Pillow ignores `tile=` for BigTIFF saves (oracle note). Export parity is now `456/456`. Compressed/multi-frame/numeric BigTIFF save remain separate. | `oracle/probe_tiff_bigtiff_save.py`, `oracle/probe_tiff_bigtiff_tiled_save.py`, `pillow_c_image_save_tiff_bigtiff`, `save_tiff_bigtiff_image`, `parse_tiff_bigtiff_strip_image_for_ifd`, dispatch fallbacks, raw/facade BigTIFF save tests. |
+| FMT-TIFF-003BA | TIFF | not started | Bounded compressed BigTIFF strip save/open: PackBits, TIFF LZW, and Adobe Deflate on the same single-frame matrix. | `save_tiff_bigtiff_image` compression extension, `parse_tiff_bigtiff_strip_image_for_ifd` decode extension, raw/facade compressed BigTIFF tests. |
 | FMT-TIFF-004 | TIFF | covered | TIFF LZW now follows Pillow/libtiff interop semantics instead of only internal round-tripping. Native decode widens the LZW code size at the TIFF early-change boundary (`next_code == (1 << code_size) - 1`) and opens a Pillow-written mode `I;16` `256x1` fixture whose raw `0..255` repeated bytes cross the 9-to-10-bit boundary. Native encode also clears immediately when the next free dictionary code reaches `4094`, matching Pillow's dictionary-full strip length `5585` and boundary bytes for a deterministic `I;16` `2048x1` fixture instead of the previous `5586`-byte stream. | `tiff_lzw_decode_strip`, `tiff_lzw_encode_pixels`, raw open/save early-change LZW tests, facade `Image.Open` / `Image.Save` TIFF LZW test, TIFF filter regressions. |
 | FMT-TIFF-005 | TIFF | covered | The TIFF palette parser now rejects malformed palette ColorMap metadata instead of installing a garbage palette from offset `0`. The local Pillow 11.3.0 oracle rejects a malformed palette TIFF with `PhotometricInterpretation=3`, invalid `SamplesPerPixel=3`, and `ColorMap` tag `320` declared as `SHORT[769]`; the previous native path let WIC open it as mode `P` and `parse_tiff_palette_rgb` treated offset `0` as the palette because no valid `SHORT[768]` ColorMap was found. Native open now requires the valid tag before reading palette bytes, and raw/facade open tests reject the malformed file. | `parse_tiff_palette_rgb` found-flag guard, `open_tiff_frame_image`, raw `pillow_c_image_open_tiff` malformed ColorMap rejection test, facade `Image.Open` malformed ColorMap rejection test. |
 | ROBUST-001 | Robustness | covered | Native deflate inflation is now bounded during decode instead of only after full output allocation. The local Pillow 11.3.0 source proves `PngImagePlugin.MAX_TEXT_CHUNK == 1048576` through `_safe_zlib_decompress(...)` for `zTXt`, compressed `iTXt`, and `iCCP`; native `inflate_zlib_deflate` accepts an `expected_max` cap, rejects stored/fixed/dynamic output growth beyond that cap, and lets PNG open reject cap-exceeded compressed `zTXt` / `iTXt` / `iCCP` metadata with `PILLOW_C_INVALID_ARGUMENT` while preserving malformed-compressed-metadata ignore behavior. TIFF Adobe Deflate passes the known strip byte count as the same cap. | `inflate_deflate_huffman_block`, `inflate_zlib_deflate`, `png_has_oversized_compressed_metadata`, TIFF Adobe Deflate decode call sites, raw oversized-compressed PNG metadata rejection test, facade `Image.Open` oversized zTXt rejection test, compressed/iCCP/deflate regression filters. |

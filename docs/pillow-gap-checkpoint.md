@@ -21,37 +21,37 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 71% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 72% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
-Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003AY` closes the bounded
+Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003AZ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
 malformed-metadata robustness slice, one-level ExifIFD/GPSInfo sub-IFD
-traversal on both routes, and the classic-route TIFF save `exif=` option
-with its array families, compression composition, option composition, and
-raw-bytes form. `003AY` adds the new public export
-`pillow_c_image_patch_tiff_exif_bytes` (source/DLL export parity is now
-`455/455` with zero difference), which parses a caller-supplied EXIF blob
-(`Exif\0\0`-prefixed MM TIFF, the same layout the facade `Exif.ToBytes()`
-produces) into the bounded tag families — ascii with NUL stripping, uint
-scalars, rational/signed-rational scalars, rational/short/LONG arrays,
-byte and undefined blobs, with 4096-entry and 0xFFFFFF-count caps — and
-patches the saved TIFF's IFD0 exactly like the vector form. The facade
-`Image.Save` accepts a Buffer for `exif=` and routes it through the bytes
-export. Pillow 11.3.0's bytes form parses the same blob into IFD0 with
-identical reopen behavior (oracle in `oracle/probe_tiff_exif_save.py`).
-Raw/facade bytes-form targets pass `1/1` each; the TIFF filter passes
-`679/679` in `5297ms`; the full directory suite passes `2731/2731` in
-`19171ms`; Release x64 has `0 Warning(s), 0 Error(s)`; and the current DLL
-SHA-256 is
-`8CE63E4837EF18A39A16124FE2187032AF83FC624C86538BEAD93E5DD0BDFC05`.
+traversal on both routes, the classic-route TIFF save `exif=` option with
+its array families, compression/option composition, raw-bytes form, and
+the little-endian BigTIFF save matrix. `003AZ` adds the new public export
+`pillow_c_image_save_tiff_bigtiff` (source/DLL export parity is now
+`456/456` with zero difference) writing the exact Pillow 11.3.0
+`big_tiff=True` strip layout (`II 2B 00`, offset size 8, IFD0 at 16, u64
+counts, 20-byte entries, LONG 273/279, inline SHORT bits) for the
+uncompressed single-frame L/RGB/RGBA/LA matrix, plus the private
+`parse_tiff_bigtiff_strip_image_for_ifd` open route so Pillow-written
+strip BigTIFFs reopen natively; the open/frame-count dispatchers now fall
+back to the strip parser when the tiled parser rejects the shape. The
+Pillow 11.3.0 oracle (`oracle/probe_tiff_bigtiff_save.py` +
+`oracle/probe_tiff_bigtiff_tiled_save.py`) shows the `big_tiff` option
+name and the strip-only layout (Pillow ignores `tile=` for BigTIFF save).
+Raw save matrix, raw Pillow-layout strip open, and facade `big_tiff:`
+targets pass `1/1` each; the TIFF filter passes `682/682` in `5109ms`; the
+full directory suite passes `2734/2734` in `19265ms`; Release x64 has
+`0 Warning(s), 0 Error(s)`; and the current DLL SHA-256 is
+`9A1726906A0EB96F19D4222CCC6E1BB2271CA2D9D96D18A888BD99E6B6933E1E`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`FMT-TIFF-003AZ` little-endian BigTIFF save for the uncompressed
-single-frame mode matrix, with compressed/multi-frame BigTIFF save and
-wider codec boundaries remaining separate. Dither exact parity,
-libimagequant, broader quantize cross-products, qtables with more than two
-tables, malformed marker streams, and exact whole-file parity remain
-separate.
+`FMT-TIFF-003BA` compressed BigTIFF strip save/open (PackBits, TIFF LZW,
+Adobe Deflate on the same matrix), with multi-frame and numeric BigTIFF
+save remaining separate. Dither exact parity, libimagequant, broader
+quantize cross-products, qtables with more than two tables, malformed
+marker streams, and exact whole-file parity remain separate.
 ```
 
 Current work packet:
@@ -394,9 +394,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `FMT-TIFF-003AZ` little-endian BigTIFF save for
-  the uncompressed single-frame mode matrix, with compressed/multi-frame
-  BigTIFF save staying separate.
+- Selected next gap: bounded `FMT-TIFF-003BA` compressed BigTIFF strip
+  save/open (PackBits, TIFF LZW, Adobe Deflate on the same matrix), with
+  multi-frame and numeric BigTIFF save staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -470,6 +470,29 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `FMT-TIFF-003AZ` is GREEN for the bounded little-endian BigTIFF
+save matrix and the matching strip open route. The Pillow 11.3.0 oracle
+(kept in `oracle/probe_tiff_bigtiff_save.py` and
+`oracle/probe_tiff_bigtiff_tiled_save.py`) shows the option name is
+`big_tiff`, the save layout is strip-only (`II 2B 00`, offset size 8, IFD0
+at 16, u64 counts, 20-byte entries, LONG 273/279, inline SHORT bits), and
+Pillow ignores `tile=` for BigTIFF saves. The new public export
+`pillow_c_image_save_tiff_bigtiff` writes that exact layout for the
+uncompressed single-frame L/RGB/RGBA/LA matrix; the private
+`parse_tiff_bigtiff_strip_image_for_ifd` open route accepts the same
+layout, and the open/frame-count dispatchers fall back to the strip
+parser when the tiled parser rejects the shape (Pillow-written strip
+BigTIFFs now reopen natively). Source/DLL export parity moves to `456/456`
+with zero difference. Raw save matrix, raw Pillow-layout strip open, and
+facade `big_tiff:` targets pass `1/1` each; the TIFF filter passes
+`682/682` in `5109ms`; and the full directory suite passes `2734/2734` in
+`19265ms`, with zero failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; and the rebuilt DLL SHA-256 is
+`9A1726906A0EB96F19D4222CCC6E1BB2271CA2D9D96D18A888BD99E6B6933E1E`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The estimate
+moves to `72% ±4%`. The next bounded child is `FMT-TIFF-003BA`, compressed
+BigTIFF strip save/open.
 
 2026-08-13: `FMT-TIFF-003AY` is GREEN for the bounded TIFF save `exif=`
 raw-bytes form. The new public export

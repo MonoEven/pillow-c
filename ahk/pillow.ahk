@@ -8717,7 +8717,8 @@ class Pillow {
                     && tiffInfoOption.Value.Has(315)
                 if (iccProfileOption.Set && (tiffInfoOption.Set || dpiOption.Set))
                     || (dpiOption.Set && (hasXmpTiffInfo || hasDescriptionTiffInfo || hasArtistTiffInfo))
-                    || exifOption.Set {
+                    || exifOption.Set
+                    || Pillow.Image.SaveOptionBool(saveOptions, false, "BigTiff", "big_tiff") {
                     this.SaveTiffFrames(path, saveOptions)
                     return
                 }
@@ -10790,6 +10791,22 @@ class Pillow {
             tiffInfoOption := Pillow.Image.SaveOption(options, "TiffInfo", "tiffinfo")
             if tiffInfoOption.Set && exifOption.Set
                 exifOption := { Set: false }
+            bigTiffOption := Pillow.Image.SaveOption(options, "BigTiff", "big_tiff")
+            if bigTiffOption.Set && bigTiffOption.Value {
+                if images.Length != 1
+                    throw Error("Pillow.Image.Save big_tiff currently supports single-frame saves", -1)
+                if this.Mode != "L" && this.Mode != "RGB" && this.Mode != "RGBA" && this.Mode != "LA"
+                    throw Error("Pillow.Image.Save big_tiff currently supports L, RGB, RGBA, and LA modes", -1)
+                if exifOption.Set || iccProfileOption.Set || tiffInfoOption.Set || dpiOption.Set || compressionOption.Set
+                    throw Error("Pillow.Image.Save big_tiff does not compose with other options yet", -1)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_tiff_bigtiff",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", pathBytes,
+                    "Int"
+                ))
+                return
+            }
             if tiffInfoOption.Set {
                 if !(tiffInfoOption.Value is Map)
                     throw Error("Pillow.Image.Save tiffinfo expects a Map", -1)

@@ -47,8 +47,26 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2731` AHK tests: `1353` raw DLL tests and
-`1378` facade tests.
+This suite currently registers `2734` AHK tests: `1355` raw DLL tests and
+`1379` facade tests.
+
+Latest `FMT-TIFF-003AZ` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_bigtiff_save.py` and
+`oracle/probe_tiff_bigtiff_tiled_save.py`) confirms the option name
+`big_tiff`, the strip-only save layout, and that Pillow ignores `tile=`
+for BigTIFF saves. The new `pillow_c_image_save_tiff_bigtiff` export
+writes that exact layout for the uncompressed single-frame L/RGB/RGBA/LA
+matrix, and the private `parse_tiff_bigtiff_strip_image_for_ifd` open
+route plus dispatcher fallbacks make Pillow-written strip BigTIFFs reopen
+natively. Raw/facade BigTIFF save and strip-open targets pass `1/1` each;
+the TIFF filter passes `682/682` in `5109ms`; and the full directory suite
+passes `2734/2734` in `19265ms`, with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export
+parity is `456/456` (one deliberate new export) with zero difference; and
+the rebuilt DLL SHA-256 is
+`9A1726906A0EB96F19D4222CCC6E1BB2271CA2D9D96D18A888BD99E6B6933E1E`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The overall
+Pillow replacement-readiness estimate moves to `72% ±4%`.
 
 Latest `FMT-TIFF-003AY` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_tiff_exif_save.py`) confirms the `exif=` bytes form parses

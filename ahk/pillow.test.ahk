@@ -43728,6 +43728,65 @@ PillowTestImageSaveTiffExifBytesFormRoundTrip(*) {
 
 AhkTest.Test("Pillow Image.Save TIFF exif bytes form round-trips IFD0 tags", PillowTestImageSaveTiffExifBytesFormRoundTrip)
 
+PillowTestTiffBigTiffStripLBytes() {
+    ; Pillow 11.3.0 big_tiff=True save output for a 2x2 mode-L image filled
+    ; with 7: II 2B 00, offset size 8, IFD0 at 16, nine 20-byte entries,
+    ; strip at 212 (oracle/probe_tiff_bigtiff_save.py L case).
+    bytes := [73, 73, 43, 0, 8, 0, 0, 0]
+    PillowTestAppendLe64(bytes, 16)
+    PillowTestAppendLe64(bytes, 9)
+    entries := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 2],
+        [258, 3, 1, 8],
+        [259, 3, 1, 1],
+        [262, 3, 1, 1],
+        [273, 4, 1, 212],
+        [278, 4, 1, 2],
+        [279, 4, 1, 4],
+        [284, 3, 1, 1],
+    ]
+    for entry in entries
+        PillowTestAppendBigTiffEntry(bytes, entry, true)
+    PillowTestAppendLe64(bytes, 0)
+    bytes.Push(7, 7, 7, 7)
+    return bytes
+}
+
+PillowTestImageSaveTiffBigTiffOption(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := PillowTestTempTiffPath("save-bigtiff-facade")
+    image := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+    loaded := 0
+    try {
+        image.Save(path, "TIFF", { big_tiff: true })
+        AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("RGB", loaded.Mode)
+        AhkTest.AssertEqual([10, 20, 30, 40, 50, 60], PillowTestBufferToArray(loaded.ToBytes()))
+        loaded.Close()
+
+        stripPath := PillowTestTempTiffPath("open-bigtiff-strip-facade")
+        try {
+            PillowTestWriteFileBytes(stripPath, PillowTestTiffBigTiffStripLBytes())
+            loaded := Pillow.Image.Open(stripPath, ["TIFF"])
+            AhkTest.AssertEqual("L", loaded.Mode)
+            AhkTest.AssertEqual([7, 7, 7, 7], PillowTestBufferToArray(loaded.ToBytes()))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            PillowTestDeleteFile(stripPath)
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF big_tiff option round-trips the uncompressed matrix", PillowTestImageSaveTiffBigTiffOption)
+
 PillowTestImageOpenTiffAppliesBigTiffOrientationMatrix(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     for storage in ["L", "RGB", "RGBA", "LA"] {
