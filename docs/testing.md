@@ -47,8 +47,28 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2767` AHK tests: `1374` raw DLL tests and
-`1393` facade tests.
+This suite currently registers `2769` AHK tests: `1375` raw DLL tests and
+`1394` facade tests.
+
+Latest `MODE-I-001B` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_mode_i_point.py`) shows list tables on I/I;16/F are
+rejected with `ValueError: point operation not supported for this mode`
+while linear callables on I route through `point_transform(scale,
+offset)` with int32 truncating math. The ctypes cross-check (kept in
+`oracle/probe_mode_i_point_dll_compose.py`) matches Pillow's identity/
+2x+5/x-1000/negate/constant outputs exactly (`FAILURES: 0`). The new
+`pillow_c_image_point_transform` export applies the transform for mode
+I only, and the facade Point routes linear callables through it while
+rejecting lists, non-linear callables, modeName, and I;16/F with the
+Pillow message. Raw/facade targets pass `1/1` each; the point filter
+passes `157/157` in `1437ms`; and the full directory suite passes
+`2769/2769` in `19797ms`, with zero failures, errors, or skips. Release
+x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity
+moves to `463/463` (one deliberate new export) with zero difference;
+and the rebuilt DLL SHA-256 is
+`80255CEA0BA94055F2C7CC11D7A415CF58C381BA84D558B743868FF43F977152`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `88% ±4%`.
 
 Latest `API-IMG-001E` verification: the Pillow 11.3.0 probe (kept in
 `oracle/probe_image_display_apis.py`, run in isolated subprocesses)

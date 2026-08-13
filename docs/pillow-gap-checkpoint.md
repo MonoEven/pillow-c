@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 87% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 88% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
@@ -36,23 +36,25 @@ the BigTIFF save palette (P) mode, the BigTIFF save bilevel (1) mode,
 and the mixed-size BigTIFF frames lock-in (the bounded BigTIFF save
 family is COMPLETE), plus the bounded ICO/CUR family (`FMT-ICO-001B`,
 `FMT-ICO-001C`, and `FMT-ICO-002G` CUR save with hotspot exposure —
-also COMPLETE), and the facade API slice (`API-IMG-001D` the `getim()`
-accessor and `API-IMG-001E` the explicit documented boundaries for
-`show()`/`toqimage()`/`toqpixmap()` with Pillow-shaped errors).
+also COMPLETE), the facade API slice (`API-IMG-001D`/`API-IMG-001E`),
+and `MODE-I-001B` mode I point() (linear callables through the new
+`pillow_c_image_point_transform` export with int32 truncating math;
+lists/non-linear callables/I;16/F reject with the Pillow message).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. Both facade packets are facade-only (no
-native rebuild); the full directory suite passes `2767/2767` in
-`19469ms`; source/DLL exports remain `462/462` with zero difference;
-and the DLL SHA-256 remains
-`13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
+IFD as a writer artifact. Mode-I transforms were cross-verified against
+Pillow's point_transform outputs (exact int32 bytes, `FAILURES: 0`),
+the point filter passes `157/157` in `1437ms`, and the full directory
+suite passes `2769/2769` in `19797ms`; source/DLL exports remain
+`463/463` with zero difference; and the DLL SHA-256 is
+`80255CEA0BA94055F2C7CC11D7A415CF58C381BA84D558B743868FF43F977152`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`MODE-I-001B` mode I `Image.Point()` table operations. Dither exact
-parity, libimagequant, broader quantize cross-products, qtables with
-more than two tables, malformed marker streams, and exact whole-file
-parity remain separate.
+`MODE-F-001B` mode F point transforms. Dither exact parity,
+libimagequant, broader quantize cross-products, qtables with more than
+two tables, malformed marker streams, and exact whole-file parity remain
+separate.
 ```
 
 Current work packet:
@@ -395,8 +397,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `MODE-I-001B` mode I `Image.Point()` table
-  operations, with broader numeric-mode gaps staying separate.
+- Selected next gap: bounded `MODE-F-001B` mode F `Image.Point()` linear
+  callables (float32 transform) plus the list-table rejection, with
+  broader numeric-mode gaps staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -470,6 +473,30 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `MODE-I-001B` is GREEN for the bounded mode I `Image.Point()`
+table operations. The Pillow 11.3.0 oracle (kept in
+`oracle/probe_mode_i_point.py`) shows list tables on I/I;16/F are
+rejected with `ValueError: point operation not supported for this
+mode`, while LINEAR callables on I route through `point_transform
+(scale, offset)` with int32 truncating math; non-linear callables hit
+an internal lazy-transform TypeError upstream (recorded as a bounded
+divergence, rejected with the same Pillow message). The new native
+export `pillow_c_image_point_transform` applies `scale * x + offset`
+per int32 sample for mode I only, and the facade `Point` gains the
+mode-I branch with three-point linearity detection. A ctypes
+cross-check (kept in `oracle/probe_mode_i_point_dll_compose.py`)
+matches Pillow's identity/2x+5/x-1000/negate/constant outputs exactly
+and rejects mode L with `-3` (`FAILURES: 0`). Raw/facade targets pass
+`1/1` each; the point filter passes `157/157` in `1437ms`; and the full
+directory suite passes `2769/2769` in `19797ms`, with zero failures,
+errors, or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity moves to `463/463` (one deliberate new export)
+with zero difference; and the rebuilt DLL SHA-256 is
+`80255CEA0BA94055F2C7CC11D7A415CF58C381BA84D558B743868FF43F977152`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+estimate moves to `88% ±4%`. The next bounded child is `MODE-F-001B`,
+mode F point transforms.
 
 2026-08-13: `API-IMG-001E` is GREEN as the explicit documented boundaries
 for `Image.show()`, `toqimage()`, and `toqpixmap()`. The Pillow 11.3.0

@@ -22254,6 +22254,52 @@ PillowCTestImageSaveCurWithHotspot(*) {
 
 AhkTest.Test("pillow_c image save_cur_options writes a CUR with hotspot fields", PillowCTestImageSaveCurWithHotspot)
 
+PillowCTestImagePointTransformModeI(*) {
+    ; Pillow 11.3.0 routes linear callables on mode I through
+    ; point_transform(scale, offset) with int32 truncating math.
+    image := PillowCCreateImageMode(2, 2, 8)
+    out := 0
+    try {
+        PillowCImageSetBytes(image, [255, 255, 255, 255, 7, 0, 0, 0, 44, 1, 0, 0, 0, 0, 0, 0])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_point_transform",
+            "Ptr", image,
+            "Double", 2.0,
+            "Double", 5.0,
+            "Ptr*", &out,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertTrue(out != 0)
+        AhkTest.AssertEqual(8, PillowCImageMode(out))
+        AhkTest.AssertEqual(
+            [3, 0, 0, 0, 19, 0, 0, 0, 93, 2, 0, 0, 5, 0, 0, 0],
+            PillowCImageToArray(out, 16))
+
+        ; wrong-mode rejection: mode L returns PILLOW_C_INVALID_ARGUMENT
+        l := PillowCCreateImageMode(2, 2, 1)
+        rejected := 0
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_point_transform",
+            "Ptr", l,
+            "Double", 1.0,
+            "Double", 0.0,
+            "Ptr*", &rejected,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, rejected)
+        PillowCFreeImage(l)
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        if image
+            PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image_point_transform applies linear int32 transforms to mode I", PillowCTestImagePointTransformModeI)
+
 PillowCTestImageIcoSizesReportsAvailableFrames(*) {
     path := PillowCTempIcoPath("ico-sizes")
     base := PillowCCreateImageMode(32, 32, 4)

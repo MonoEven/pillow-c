@@ -37,6 +37,54 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-13 MODE-I-001B Mode I Point Operations (GREEN)
+
+`MODE-I-001B` closes the bounded mode I `Image.Point()` table-operation
+slice.
+
+The Pillow 11.3.0 oracle (kept in
+`oracle/probe_mode_i_point.py`) shows list tables on numeric modes are
+rejected — `ValueError: point operation not supported for this mode`
+for I, I;16, and F — while LINEAR callables on mode I route through
+`point_transform(scale, offset)` with C-style int32 truncating math
+(`2x+5` on `[-1, 7, 300, 0]` yields `[3, 19, 605, 5]`, `x-1000` keeps
+negatives); constant functions become scale 0 / offset c; and
+non-linear callables hit an internal lazy-transform TypeError upstream
+(recorded as a bounded divergence — the facade rejects them with the
+same Pillow message).
+
+The new native export `pillow_c_image_point_transform` applies
+`scale * x + offset` per little-endian int32 sample with double math
+and C-cast truncation for `PILLOW_C_MODE_I` only (other modes return
+`PILLOW_C_INVALID_ARGUMENT`). The facade `Point` gains a mode-I branch:
+AHK callables are checked for linearity over `f(0)`/`f(1)`/`f(2)` and
+routed through the transform export, while lists, non-linear callables,
+the `modeName` output-mode parameter, and I;16/F inputs raise
+`point operation not supported for this mode`.
+
+Verification:
+
+- Original raw/facade REDs: native `-3` (no transform export) and facade
+  8-bit-LUT mishandling of int32 samples.
+- ctypes cross-check
+  (`oracle/probe_mode_i_point_dll_compose.py`): identity, `2x+5`,
+  `x-1000`, negate, and constant transforms match Pillow's
+  `point_transform` outputs exactly, and mode L rejects with `-3`;
+  `FAILURES: 0`.
+- Raw point-transform and facade mode-I point targets pass `1/1` each.
+- Point filter: `157/157` in `1437ms`.
+- Full AHK directory suite: `2769/2769` in `19797ms`; zero failures,
+  errors, or skips.
+- Release x64 Rebuild: `0 Warning(s), 0 Error(s)`.
+- Source/DLL export parity: `463/463` (one deliberate new export), zero
+  difference.
+- DLL SHA-256:
+  `80255CEA0BA94055F2C7CC11D7A415CF58C381BA84D558B743868FF43F977152`.
+
+No facade lifetime rule, fallback, or AHK pixel loop changed beyond the
+mode-I point family above. The estimate moves to `88% ±4%`. The next
+bounded child is `MODE-F-001B`, mode F point transforms.
+
 ## 2026-08-13 API-IMG-001E Display API Boundaries (GREEN)
 
 `API-IMG-001E` records the bounded explicit boundaries for
@@ -39095,7 +39143,8 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-ICO-002G | ICO/CUR | covered | Bounded CUR save with hotspot exposure: the new public export `pillow_c_image_save_cur_options` writes the ICO type-2 container (magic `00 00 02 00`) with a single DIB payload (Pillow 11.3.0's CUR reader only accepts DIB bodies) and the hotspot in the entry's planes/bit_count fields, plus a color-count byte; `open_cur_image` now attaches `has_hotspot`/`hotspot_x`/`hotspot_y` from those fields through the existing `pillow_c_image_metadata_hotspot` export. The facade routes `Save(path, "CUR", { hotspot: [x, y] })` (default 0/0) and exposes `Info["hotspot"]` on open through the existing generic metadata block. Pillow 11.3.0 registers NO CUR save (`KeyError 'CUR'`), so this is a standards extension following the XBM hotspot precedent; a ctypes cross-check reopens the DLL-written CUR through Pillow's CUR reader (format/size/bytes) and our open exposes (5, 7) (`FAILURES: 0`). Export parity is now `462/462`. The bounded ICO/CUR family is now complete. | `oracle/probe_cur_save_dll_compose.py`, `save_cur_image_with_hotspot`, `pillow_c_image_save_cur_options`, `open_cur_image` hotspot attachment, facade CUR save routing, raw/facade CUR hotspot tests. |
 | API-IMG-001D | Facade API | covered | Bounded `Image.getim()` accessor parity: Pillow 11.3.0's `getim()` returns the low-level "Pillow Imaging" capsule for open (including empty) images and raises `ValueError: Operation on closed image` once closed. The facade adds `Image.GetIm()` returning the native handle pointer (the AHK analogue; AHK identifiers are case-insensitive so `getim()` resolves to the same method) with the Pillow-shaped closed-image error. Facade-only change; no native rebuild. | `Image.GetIm`, facade getim test. |
 | API-IMG-001E | Facade API | covered | Bounded explicit boundaries for `Image.show()`, `toqimage()`, and `toqpixmap()`: Pillow 11.3.0 raises `ImportError("Qt bindings are not installed")` from both Qt methods without PyQt6/PySide6 and dispatches `show()` to a registered system viewer. The AHK runtime ships no Qt binding and no viewer registry, so the facade adds `ToQImage()`/`ToQPixmap()` (AHK case-insensitivity serves `toqimage()`/`toqpixmap()`) raising the exact Qt message and `Show()` raising the Pillow-shaped `no viewers found`; the boundaries are recorded in the ledger. Facade-only change; no native rebuild. | `oracle/probe_image_display_apis.py`, facade boundary stubs, facade display-API boundary test. |
-| MODE-I-001B | Modes | not started | Bounded mode I `Image.Point()` table operations: int32 lookup semantics, bounds, and wrong-mode behavior (probe Pillow 11.3.0 first). | Facade/native point route for mode I, local Pillow probe, raw/facade tests. |
+| MODE-I-001B | Modes | covered | Bounded mode I `Image.Point()` table operations: Pillow 11.3.0 rejects list tables on I/I;16/F with `ValueError: point operation not supported for this mode`, routes LINEAR callables on I through `point_transform(scale, offset)` (int32 truncating math; constant functions become scale 0), and raises an internal lazy-transform TypeError for non-linear callables. The new native export `pillow_c_image_point_transform` applies `scale * x + offset` per int32 sample with C-cast truncation for mode I only, and the facade `Point` routes linear AHK callables (three-point linearity detection) through it while rejecting lists, non-linear callables, `modeName`, and I;16/F with the Pillow message (the non-linear TypeError quirk is recorded as a bounded divergence). A ctypes cross-check matches Pillow's `2x+5`/identity/negative/constant outputs exactly (`FAILURES: 0`). Export parity is now `463/463`. Mode F point transforms remain separate. | `oracle/probe_mode_i_point.py`, `oracle/probe_mode_i_point_dll_compose.py`, `pillow_c_image_point_transform`, facade Point mode-I branch, raw/facade mode-I point tests. |
+| MODE-F-001B | Modes | not started | Bounded mode F `Image.Point()` linear callables (float32 transform) plus the list-table rejection, the F twin of MODE-I-001B. | `pillow_c_image_point_transform` F extension, facade Point mode-F branch, raw/facade tests. |
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
 | FMT-WEBP-001 | WebP | not started | Open/save WebP and animation if a codec strategy is selected. | New format module boundary. |
 | FMT-AVIF-001 | AVIF | not started | Open/save AVIF if dependency and packaging constraints allow it. | New format module boundary. |

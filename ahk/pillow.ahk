@@ -12110,6 +12110,34 @@ class Pillow {
         }
 
         Point(lut, modeName := unset) {
+            if this.Mode = "I" {
+                ; Pillow 11.3.0 rejects list tables on numeric modes with
+                ; "point operation not supported for this mode" and routes
+                ; LINEAR callables through point_transform(scale, offset).
+                if !(lut is Func)
+                    throw Error("point operation not supported for this mode", -1)
+                if IsSet(modeName)
+                    throw Error("point operation not supported for this mode", -1)
+                v0 := lut.Call(0)
+                v1 := lut.Call(1)
+                v2 := lut.Call(2)
+                if v1 - v0 != v2 - v1
+                    throw Error("point operation not supported for this mode", -1)
+                scale := v1 - v0
+                offset := v0
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_point_transform",
+                    "Ptr", this.RequireHandle(),
+                    "Double", scale,
+                    "Double", offset,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return this.WrapDerivedHandle(outHandle)
+            }
+            if this.Mode = "I;16" || this.Mode = "F"
+                throw Error("point operation not supported for this mode", -1)
             if lut is Func
                 lut := this.CallablePointLut(lut)
             lutBytes := this.LutBuffer(lut)

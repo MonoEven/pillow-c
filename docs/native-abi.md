@@ -29,8 +29,8 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`462/462`; the full AHK suite is `2767/2767`; and the current DLL SHA-256 is
-`13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
+`463/463`; the full AHK suite is `2769/2769`; and the current DLL SHA-256 is
+`80255CEA0BA94055F2C7CC11D7A415CF58C381BA84D558B743868FF43F977152`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
@@ -42,6 +42,24 @@ returns the existing native handle with Pillow's closed-image error.
 `API-IMG-001E` changes no ABI: the facade `ToQImage()`/`ToQPixmap()`/
 `Show()` methods are explicit documented boundaries (no Qt binding or
 viewer registry in this runtime) with Pillow-shaped errors.
+
+## Mode I Point Transform ABI Behavior
+
+`MODE-I-001B` adds one public export:
+`pillow_c_image_point_transform(source, scale, offset, out_image)`.
+Existing exported names, signatures, status codes, image-handle
+ownership, source-pointer lifetimes, and facade routes remain
+unchanged. The export applies `scale * x + offset` per little-endian
+int32 sample with double math and C-cast truncation (mirroring Pillow's
+C `point_transform` semantics) for `PILLOW_C_MODE_I` images only; other
+modes return `PILLOW_C_INVALID_ARGUMENT`. The facade routes linear AHK
+callables on mode I through this export and rejects list tables,
+non-linear callables, the `modeName` output-mode parameter, and I;16/F
+inputs with Pillow's `point operation not supported for this mode`
+message.
+
+No facade lifetime rule, fallback, or AHK per-pixel loop was added
+beyond the mode-I point family above.
 
 ## CUR Save With Hotspot ABI Behavior
 

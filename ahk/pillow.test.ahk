@@ -21868,6 +21868,72 @@ PillowTestImageDisplayApiBoundaries(*) {
 
 AhkTest.Test("Pillow Image.show toqimage and toqpixmap are explicit documented boundaries", PillowTestImageDisplayApiBoundaries)
 
+PillowTestImagePointModeI(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("I", [2, 2], PillowTestBuffer(PillowTestBytesFromI32([-1, 7, 300, 0])))
+    out := 0
+    try {
+        out := image.Point((value) => 2 * value + 5)
+        AhkTest.AssertEqual("I", out.Mode)
+        AhkTest.AssertEqual([2, 2], out.Size)
+        AhkTest.AssertEqual(PillowTestBytesFromI32([3, 19, 605, 5]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Point((value) => 42)
+        AhkTest.AssertEqual("I", out.Mode)
+        AhkTest.AssertEqual(PillowTestBytesFromI32([42, 42, 42, 42]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        listError := ""
+        try {
+            image.Point([0, 1, 2])
+        } catch Error as err {
+            listError := err.Message
+        }
+        AhkTest.AssertEqual("point operation not supported for this mode", listError)
+
+        nonlinearError := ""
+        try {
+            image.Point((value) => value * value)
+        } catch Error as err {
+            nonlinearError := err.Message
+        }
+        AhkTest.AssertEqual("point operation not supported for this mode", nonlinearError)
+    } finally {
+        if IsObject(out)
+            out.Close()
+        image.Close()
+    }
+
+    i16 := Pillow.Image.FromBytes("I;16", [2, 1], PillowTestBuffer([1, 0, 2, 0]))
+    try {
+        i16Error := ""
+        try {
+            i16.Point([0, 1, 2])
+        } catch Error as err {
+            i16Error := err.Message
+        }
+        AhkTest.AssertEqual("point operation not supported for this mode", i16Error)
+    } finally {
+        i16.Close()
+    }
+
+    f := Pillow.Image.FromBytes("F", [2, 1], PillowTestBuffer([0, 0, 128, 63, 0, 0, 0, 64]))
+    try {
+        fError := ""
+        try {
+            f.Point([0, 1, 2])
+        } catch Error as err {
+            fError := err.Message
+        }
+        AhkTest.AssertEqual("point operation not supported for this mode", fError)
+    } finally {
+        f.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Point applies linear transforms to mode I and rejects numeric list tables", PillowTestImagePointModeI)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])
