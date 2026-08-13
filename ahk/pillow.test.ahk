@@ -21777,6 +21777,50 @@ PillowTestImageSaveCurWithHotspot(*) {
 
 AhkTest.Test("Pillow Image.Save CUR writes the hotspot fields", PillowTestImageSaveCurWithHotspot)
 
+PillowTestImageGetImReturnsNativeHandle(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [2, 2], 7)
+    try {
+        handle := image.GetIm()
+        AhkTest.AssertTrue(handle is Integer)
+        AhkTest.AssertTrue(handle > 0)
+        AhkTest.AssertEqual(handle, image.GetIm())
+        AhkTest.AssertEqual(handle, image.getim())
+    } finally {
+        image.Close()
+    }
+    closedError := ""
+    try {
+        image.GetIm()
+    } catch Error as err {
+        closedError := err.Message
+    }
+    AhkTest.AssertEqual("Operation on closed image", closedError)
+
+    opened := 0
+    path := PillowTestTempPngPath("getim-opened")
+    try {
+        source := Pillow.Image.New("RGBA", [2, 2], [1, 2, 3, 4])
+        source.Save(path, "PNG")
+        source.Close()
+        opened := Pillow.Image.Open(path, ["PNG"])
+        AhkTest.AssertTrue(opened.GetIm() > 0)
+    } finally {
+        if IsObject(opened)
+            opened.Close()
+        PillowTestDeleteFile(path)
+    }
+
+    empty := Pillow.Image.New("L", [0, 0])
+    try {
+        AhkTest.AssertTrue(empty.GetIm() > 0)
+    } finally {
+        empty.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.getim returns the native handle and rejects closed images", PillowTestImageGetImReturnsNativeHandle)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])

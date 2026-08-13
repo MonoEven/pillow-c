@@ -7854,6 +7854,17 @@ class Pillow {
             return this.Handle
         }
 
+        GetIm() {
+            ; Pillow 11.3.0's getim() returns the low-level "Pillow Imaging"
+            ; capsule for open images and raises "Operation on closed image"
+            ; once closed; the AHK analogue is the native handle pointer.
+            ; (AHK identifiers are case-insensitive, so GetIm() also serves
+            ; as the getim() alias.)
+            if !this.HasOwnProp("Handle") || this.Handle = 0
+                throw Error("Operation on closed image", -1)
+            return this.Handle
+        }
+
         RefreshBufferView() {
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_refresh_buffer",

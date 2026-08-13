@@ -47,8 +47,22 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2765` AHK tests: `1374` raw DLL tests and
-`1391` facade tests.
+This suite currently registers `2766` AHK tests: `1374` raw DLL tests and
+`1392` facade tests.
+
+Latest `API-IMG-001D` verification: the Pillow 11.3.0 probe shows
+`getim()` returns the low-level "Pillow Imaging" capsule for open
+(including empty) images and raises `ValueError: Operation on closed
+image` once closed. The facade adds `Image.GetIm()` returning the
+native handle pointer with the Pillow-shaped closed-image error; AHK
+identifiers are case-insensitive so `getim()` resolves to the same
+method. Facade-only change, no native rebuild: the getim target passes
+`1/1`, and the full directory suite passes `2766/2766` in `19203ms`,
+with zero failures, errors, or skips. Source/DLL export parity remains
+`462/462` with zero difference, and the DLL SHA-256 remains
+`13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The overall Pillow replacement-readiness estimate moves to `86% ±4%`.
 
 Latest `FMT-ICO-002G` verification: Pillow 11.3.0 registers no CUR save
 and its CUR reader only accepts DIB payloads, so the CUR save is a

@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 85% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 86% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
@@ -34,26 +34,24 @@ family (I16/I16B/I/F/CMYK), the BigTIFF save metadata composition, the
 BigTIFF save `exif=` family, the BigTIFF save_all composition lock-in,
 the BigTIFF save palette (P) mode, the BigTIFF save bilevel (1) mode,
 and the mixed-size BigTIFF frames lock-in (the bounded BigTIFF save
-family is COMPLETE), plus the bounded ICO/CUR family
-(`FMT-ICO-001B` non-exact thumbnail source selection, `FMT-ICO-001C`
-the multi-source matrix lock-in, and `FMT-ICO-002G` CUR save with
-hotspot exposure — a standards extension since Pillow 11.3.0 registers
-no CUR save — also COMPLETE).
+family is COMPLETE), plus the bounded ICO/CUR family (`FMT-ICO-001B`,
+`FMT-ICO-001C`, and `FMT-ICO-002G` CUR save with hotspot exposure —
+also COMPLETE), and `API-IMG-001D` the `getim()` accessor (native
+handle pointer with Pillow's closed-image error).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. CUR saves were cross-verified through Pillow
-11.3.0's CUR reader (format/size/bytes plus hotspot fields,
-`FAILURES: 0`), the CUR filter passes `18/18` in `140ms`, and the full
-directory suite passes `2765/2765` in `19016ms`; source/DLL exports
-remain `462/462` with zero difference; and the DLL SHA-256 is
+IFD as a writer artifact. The getim accessor is facade-only (no native
+rebuild); the full directory suite passes `2766/2766` in `19203ms`;
+source/DLL exports remain `462/462` with zero difference; and the DLL
+SHA-256 remains
 `13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`API-IMG-001D` `Image.getim()` accessor parity. Dither exact parity,
-libimagequant, broader quantize cross-products, qtables with more than
-two tables, malformed marker streams, and exact whole-file parity remain
-separate.
+`API-IMG-001E` explicit boundaries for `show()`/`toqimage()`/
+`toqpixmap()`. Dither exact parity, libimagequant, broader quantize
+cross-products, qtables with more than two tables, malformed marker
+streams, and exact whole-file parity remain separate.
 ```
 
 Current work packet:
@@ -396,8 +394,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `API-IMG-001D` `Image.getim()` accessor
-  parity, with broader object/API gaps staying separate.
+- Selected next gap: bounded `API-IMG-001E` explicit boundaries for
+  `Image.show()`/`toqimage()`/`toqpixmap()`, with broader object/API
+  gaps staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -471,6 +470,24 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `API-IMG-001D` is GREEN for the bounded `Image.getim()`
+accessor parity. The Pillow 11.3.0 probe shows `getim()` returns the
+low-level "Pillow Imaging" capsule for open (including empty) images
+and raises `ValueError: Operation on closed image` once closed. The
+facade adds `Image.GetIm()` returning the native handle pointer (AHK
+identifiers are case-insensitive, so `getim()` resolves to the same
+method) with the Pillow-shaped closed-image error. Facade-only change,
+no native rebuild: the getim target passes `1/1` (open, repeat-call
+stability, lowercase alias, closed-image error message, opened-PNG
+handle, empty-image handle), and the full directory suite passes
+`2766/2766` in `19203ms`, with zero failures, errors, or skips.
+Source/DLL export parity remains `462/462` with zero difference, and
+the DLL SHA-256 remains
+`13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `86% ±4%`. The next bounded child is
+`API-IMG-001E`, the show/toqimage/toqpixmap explicit boundaries.
 
 2026-08-13: `FMT-ICO-002G` is GREEN for the bounded CUR save with hotspot
 exposure, completing the bounded ICO/CUR family. Pillow 11.3.0 registers
