@@ -37,6 +37,64 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-13 MODE-NUM-001CH Numeric Transform Interpolation (GREEN)
+
+`MODE-NUM-001CH` closes the bounded mode I/F `Image.Transform()`
+AFFINE/EXTENT per-sample interpolation slice.
+
+The Pillow 11.3.0 oracles (kept in `oracle/probe_mode_transform.py`,
+`oracle/probe_mode_transform_math.py`,
+`oracle/probe_mode_transform_fill_errors.py`, and
+`oracle/probe_mode_transform_fill_accept.py`) show Pillow supports mode
+I and F for AFFINE/EXTENT with NEAREST, BILINEAR, and BICUBIC: EXTENT is
+converted to an AFFINE matrix in `Image.py`, all three resamplers
+interpolate ONE 32-bit sample per pixel (the transform geometry matches
+the existing byte-mode path: NEAREST truncates `(dst + 0.5) * matrix`,
+bilinear subtracts `0.5` then interpolates with edge clamping, and
+bicubic uses the clamped 4-point Catmull-Rom), mode F stores the
+float32 cast of the double result, mode I stores the int32 truncation
+toward zero, and the numeric fill packs one int32/float32 sample
+(scalars, single-element tuples, and color names through the grayscale
+map; I rejects float tuples with `color must be int or single-element
+tuple` and F rejects multi-element sequences with `must be real number,
+not tuple`).
+
+The shared `transform_with_mapper_into` loop now routes mode I/F
+through `bilinear_transform_numeric_sample` /
+`bicubic_transform_numeric_sample` and
+`write_transform_numeric_sample` instead of interpolating the four
+storage bytes as independent channels; NEAREST already whole-copied
+4-byte samples. The facade `TransformFillBuffer` gains the numeric
+packing branch with the Pillow error messages. No new export: parity
+remains `463/463`. The same native loop serves perspective/quad/mesh,
+but only AFFINE/EXTENT are verified; numeric `Image.Rotate`
+interpolation, `I;16`, and the other transform families remain
+separate.
+
+Verification:
+
+- Original raw/facade REDs: per-byte interpolation garbage (e.g.
+  `[133, 126, 127, 127, ...]` instead of the int32 `-250` sample) and
+  one-byte numeric fill packing.
+- ctypes cross-check
+  (`oracle/probe_mode_transform_dll_compose.py`): I/F NEAREST,
+  BILINEAR, and BICUBIC affine outputs plus the numeric fill match
+  Pillow exactly; `FAILURES: 0`.
+- Raw/facade numeric transform targets pass `3/3` in `141ms`.
+- Transform filter: `178/178` in `4969ms`; numeric filter: `116/116`
+  in `578ms`.
+- Full AHK directory suite: `2774/2774` in `18938ms`; zero failures,
+  errors, or skips.
+- Release x64 Rebuild: `0 Warning(s), 0 Error(s)`.
+- Source/DLL export parity: `463/463`, zero difference.
+- DLL SHA-256:
+  `DD2247B6595424F722922E86FA9E7F05D054286D4C7F52E5E45F4BC37DD2ABDC`.
+
+No facade lifetime rule, fallback, or AHK pixel loop changed beyond the
+numeric transform family above. The estimate moves to `90% ±4%`. The
+next bounded child is `MODE-NUM-001CI`, numeric `Image.Rotate`
+interpolation.
+
 ## 2026-08-13 MODE-F-001B Mode F Point Operations (GREEN)
 
 `MODE-F-001B` closes the bounded mode F `Image.Point()` slice as the F
@@ -76,7 +134,7 @@ Verification:
 
 No facade lifetime rule, fallback, or AHK pixel loop changed beyond the
 mode-F point family above. The estimate moves to `89% ±4%`. The next
-bounded child is `MODE-NUM-001Z`, numeric transforms.
+bounded child is `MODE-NUM-001CH`, numeric transforms.
 
 ## 2026-08-13 MODE-I-001B Mode I Point Operations (GREEN)
 
@@ -39186,7 +39244,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | API-IMG-001E | Facade API | covered | Bounded explicit boundaries for `Image.show()`, `toqimage()`, and `toqpixmap()`: Pillow 11.3.0 raises `ImportError("Qt bindings are not installed")` from both Qt methods without PyQt6/PySide6 and dispatches `show()` to a registered system viewer. The AHK runtime ships no Qt binding and no viewer registry, so the facade adds `ToQImage()`/`ToQPixmap()` (AHK case-insensitivity serves `toqimage()`/`toqpixmap()`) raising the exact Qt message and `Show()` raising the Pillow-shaped `no viewers found`; the boundaries are recorded in the ledger. Facade-only change; no native rebuild. | `oracle/probe_image_display_apis.py`, facade boundary stubs, facade display-API boundary test. |
 | MODE-I-001B | Modes | covered | Bounded mode I `Image.Point()` table operations: Pillow 11.3.0 rejects list tables on I/I;16/F with `ValueError: point operation not supported for this mode`, routes LINEAR callables on I through `point_transform(scale, offset)` (int32 truncating math; constant functions become scale 0), and raises an internal lazy-transform TypeError for non-linear callables. The new native export `pillow_c_image_point_transform` applies `scale * x + offset` per int32 sample with C-cast truncation for mode I only, and the facade `Point` routes linear AHK callables (three-point linearity detection) through it while rejecting lists, non-linear callables, `modeName`, and I;16/F with the Pillow message (the non-linear TypeError quirk is recorded as a bounded divergence). A ctypes cross-check matches Pillow's `2x+5`/identity/negative/constant outputs exactly (`FAILURES: 0`). Export parity is now `463/463`. Mode F point transforms remain separate. | `oracle/probe_mode_i_point.py`, `oracle/probe_mode_i_point_dll_compose.py`, `pillow_c_image_point_transform`, facade Point mode-I branch, raw/facade mode-I point tests. |
 | MODE-F-001B | Modes | covered | Bounded mode F `Image.Point()` linear callables plus the list-table rejection, the F twin of MODE-I-001B: Pillow 11.3.0 routes linear callables on F through `point_transform(scale, offset)` with float32 math (fractional scales included: `0.5*x` on `[1.5,-2.5,3.5,0]` gives `[0.75,-1.25,1.75,0]`), constants become scale 0, lists raise `ValueError: point operation not supported for this mode`, and non-linear callables hit the same internal TypeError quirk. `pillow_c_image_point_transform` now serves both I (int32 truncating) and F (float32), and the facade `Point` F branch mirrors the I branch (three-point linearity detection, rejections). A ctypes cross-check matches Pillow's identity/2x+5/half/constant F outputs exactly (`FAILURES: 0`). Export parity remains `463/463`. Numeric transforms remain separate. | `oracle/probe_mode_f_point.py`, `oracle/probe_mode_f_point_dll_compose.py`, `pillow_c_image_point_transform` F extension, facade Point mode-F branch, raw/facade mode-F point tests. |
-| MODE-NUM-001CH | Modes | not started | Bounded mode I/F `Image.Transform()` numeric semantics (AFFINE/EXTENT with per-sample int32/float32 interpolation, probe Pillow 11.3.0 first). | Native numeric transform route, facade Transform routing, raw/facade tests. |
+| MODE-NUM-001CH | Modes | covered | Bounded mode I/F `Image.Transform()` AFFINE/EXTENT per-sample interpolation: Pillow 11.3.0 supports NEAREST/BILINEAR/BICUBIC on I and F, converts EXTENT to an AFFINE matrix in `Image.py`, interpolates ONE 32-bit sample per pixel with the existing byte-mode geometry (NEAREST truncation of `(dst + 0.5) * matrix`, bilinear `-0.5` edge-clamped fractional interpolation, bicubic clamped 4-point Catmull-Rom), stores the float32 cast for F and int32 truncation toward zero for I, and packs numeric fills as one int32/float32 sample (scalars, single-element tuples, color names through the grayscale map; I float tuples reject with `color must be int or single-element tuple`, F multi-element sequences with `must be real number, not tuple`). The shared `transform_with_mapper_into` loop now routes mode I/F through `bilinear_transform_numeric_sample`/`bicubic_transform_numeric_sample`/`write_transform_numeric_sample`, and the facade `TransformFillBuffer` packs the numeric fill branch. A ctypes cross-check matches Pillow exactly (`FAILURES: 0`); export parity remains `463/463`. The same loop serves perspective/quad/mesh but only AFFINE/EXTENT are verified; numeric Rotate interpolation, I;16, and other transform families remain separate. | `oracle/probe_mode_transform.py`, `oracle/probe_mode_transform_math.py`, `oracle/probe_mode_transform_fill_errors.py`, `oracle/probe_mode_transform_fill_accept.py`, `oracle/probe_mode_transform_dll_compose.py`, `bilinear_transform_numeric_sample`, `bicubic_transform_numeric_sample`, `write_transform_numeric_sample`, facade `TransformFillBuffer` numeric branch, raw/facade numeric transform tests. |
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
 | FMT-WEBP-001 | WebP | not started | Open/save WebP and animation if a codec strategy is selected. | New format module boundary. |
 | FMT-AVIF-001 | AVIF | not started | Open/save AVIF if dependency and packaging constraints allow it. | New format module boundary. |

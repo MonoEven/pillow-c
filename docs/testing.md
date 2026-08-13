@@ -47,8 +47,35 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2771` AHK tests: `1376` raw DLL tests and
-`1395` facade tests.
+This suite currently registers `2774` AHK tests: `1377` raw DLL tests and
+`1397` facade tests.
+
+Latest `MODE-NUM-001CH` verification: the Pillow 11.3.0 oracles (kept
+in `oracle/probe_mode_transform.py`,
+`oracle/probe_mode_transform_math.py`,
+`oracle/probe_mode_transform_fill_errors.py`, and
+`oracle/probe_mode_transform_fill_accept.py`) show Pillow converts
+EXTENT to an AFFINE matrix in `Image.py` and interpolates ONE 32-bit
+sample per pixel for NEAREST/BILINEAR/BICUBIC on modes I and F with the
+existing byte-mode geometry; mode F stores the float32 cast, mode I
+stores the int32 truncation toward zero, and numeric fills pack one
+int32/float32 sample (scalars, single-element tuples, color names
+through the grayscale map, plus the two Pillow error messages). The
+ctypes cross-check (kept in
+`oracle/probe_mode_transform_dll_compose.py`) matches Pillow's I/F
+NEAREST/BILINEAR/BICUBIC outputs and fills exactly (`FAILURES: 0`).
+The shared native transform loop now routes numeric modes through
+per-sample bilinear/bicubic helpers, and the facade
+`TransformFillBuffer` packs the numeric fill branch. Raw/facade numeric
+transform targets pass `3/3` in `141ms`; the transform filter passes
+`178/178` in `4969ms`; the numeric filter passes `116/116` in `578ms`;
+and the full directory suite passes `2774/2774` in `18938ms`, with
+zero failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity remains `463/463`
+with zero difference; and the rebuilt DLL SHA-256 is
+`DD2247B6595424F722922E86FA9E7F05D054286D4C7F52E5E45F4BC37DD2ABDC`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `90% ±4%`.
 
 Latest `MODE-F-001B` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_mode_f_point.py`) shows list tables on I/I;16/F are

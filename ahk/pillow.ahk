@@ -12066,6 +12066,33 @@ class Pillow {
         }
 
         TransformFillBuffer(color) {
+            if this.Mode = "I" || this.Mode = "F" {
+                ; Pillow 11.3.0 packs numeric transform fill colors as one
+                ; int32/float32 sample: scalars, single-element sequences,
+                ; and strings through the grayscale color map.
+                if IsObject(color) {
+                    if !(color is Array) || color.Length != 1
+                        throw Error(this.Mode = "I" ? "color must be int or single-element tuple" : "must be real number, not tuple", -1)
+                    color := color[1]
+                }
+                if color is String {
+                    rgb := Pillow.ImageColor.GetRgb(color)
+                    if rgb.Length = 4
+                        rgb := [rgb[1], rgb[2], rgb[3]]
+                    color := (rgb[1] * 19595 + rgb[2] * 38470 + rgb[3] * 7471 + 0x8000) >> 16
+                }
+                if !(color is Number)
+                    throw Error(this.Mode = "I" ? "color must be int or single-element tuple" : "must be real number, not tuple", -1)
+                buf := Buffer(4, 0)
+                if this.Mode = "I" {
+                    if !(color is Integer)
+                        throw Error("color must be int or single-element tuple", -1)
+                    NumPut("Int", Integer(color), buf, 0)
+                } else {
+                    NumPut("Float", Float(color), buf, 0)
+                }
+                return buf
+            }
             if color is String
                 color := Pillow.ImageColor.GetColor(color, this.Mode)
             channels := this.Channels

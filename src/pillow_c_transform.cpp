@@ -439,6 +439,88 @@ void write_transform_values(const PillowCImage* source, const std::uint8_t* valu
     }
 }
 
+bool is_numeric_transform_mode(const PillowCImage* source)
+{
+    return source &&
+           (source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F);
+}
+
+double transform_numeric_sample(const PillowCImage* source, int x, int y)
+{
+    const std::uint8_t* px =
+        source->pixels.data() +
+        static_cast<std::size_t>(y) * source->stride +
+        static_cast<std::size_t>(x) * 4u;
+    return source->mode == PILLOW_C_MODE_I
+        ? static_cast<double>(read_le_i32(px))
+        : static_cast<double>(pillow_c_read_f32_le(px));
+}
+
+void write_transform_numeric_sample(const PillowCImage* source, double value, std::uint8_t* dst)
+{
+    if (source->mode == PILLOW_C_MODE_I) {
+        pillow_c_write_i32_le(dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(value)));
+    } else {
+        pillow_c_write_f32_le(dst, static_cast<float>(value));
+    }
+}
+
+double bilinear_transform_numeric_sample(
+    const PillowCImage* source,
+    double source_x,
+    double source_y)
+{
+    source_x -= 0.5;
+    source_y -= 0.5;
+    const int x = static_cast<int>(std::floor(source_x));
+    const int y = static_cast<int>(std::floor(source_y));
+    const double dx = source_x - x;
+    const double dy = source_y - y;
+    const int x0 = clamp_index(x, source->width);
+    const int x1 = clamp_index(x + 1, source->width);
+    const int y0 = clamp_index(y, source->height);
+    const int y1 = (y + 1 >= 0 && y + 1 < source->height) ? y + 1 : y0;
+    const double top_left = transform_numeric_sample(source, x0, y0);
+    const double top_right = transform_numeric_sample(source, x1, y0);
+    const double bottom_left = transform_numeric_sample(source, x0, y1);
+    const double bottom_right = transform_numeric_sample(source, x1, y1);
+    const double v1 = top_left + (top_right - top_left) * dx;
+    const double v2 = bottom_left + (bottom_right - bottom_left) * dx;
+    return v1 + (v2 - v1) * dy;
+}
+
+double bicubic_transform_numeric_sample(
+    const PillowCImage* source,
+    double source_x,
+    double source_y)
+{
+    source_x -= 0.5;
+    source_y -= 0.5;
+    int x = static_cast<int>(std::floor(source_x));
+    int y = static_cast<int>(std::floor(source_y));
+    const double dx = source_x - x;
+    const double dy = source_y - y;
+    --x;
+    --y;
+    const int x0 = clamp_index(x, source->width);
+    const int x1 = clamp_index(x + 1, source->width);
+    const int x2 = clamp_index(x + 2, source->width);
+    const int x3 = clamp_index(x + 3, source->width);
+    const auto horizontal_value = [source, x0, x1, x2, x3, dx](int row_y) -> double {
+        return bicubic_interpolate(
+            transform_numeric_sample(source, x0, row_y),
+            transform_numeric_sample(source, x1, row_y),
+            transform_numeric_sample(source, x2, row_y),
+            transform_numeric_sample(source, x3, row_y),
+            dx);
+    };
+    const double v1 = horizontal_value(clamp_index(y, source->height));
+    const double v2 = y + 1 >= 0 && y + 1 < source->height ? horizontal_value(y + 1) : v1;
+    const double v3 = y + 2 >= 0 && y + 2 < source->height ? horizontal_value(y + 2) : v2;
+    const double v4 = y + 3 >= 0 && y + 3 < source->height ? horizontal_value(y + 3) : v3;
+    return bicubic_interpolate(v1, v2, v3, v4, dy);
+}
+
 int rotate_nearest_into(
     const PillowCImage* source,
     double angle,
@@ -855,6 +937,13 @@ int transform_with_mapper_into(
             }
             if (source_x < 0.0 || source_y < 0.0 || source_x >= source->width || source_y >= source->height) {
                 write_transform_values(source, fill, dst);
+                continue;
+            }
+            if (is_numeric_transform_mode(source)) {
+                const double value = resample == PILLOW_C_RESAMPLE_BILINEAR
+                    ? bilinear_transform_numeric_sample(source, source_x, source_y)
+                    : bicubic_transform_numeric_sample(source, source_x, source_y);
+                write_transform_numeric_sample(source, value, dst);
                 continue;
             }
             std::uint8_t values[4]{0, 0, 0, 0};

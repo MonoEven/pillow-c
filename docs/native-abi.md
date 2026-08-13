@@ -29,8 +29,8 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`463/463`; the full AHK suite is `2771/2771`; and the current DLL SHA-256 is
-`1D6F3743A14FCC4D37C16FF99B6D2C7ADAD76143F6BEB82DBDD093A5CED37E5B`.
+`463/463`; the full AHK suite is `2774/2774`; and the current DLL SHA-256 is
+`DD2247B6595424F722922E86FA9E7F05D054286D4C7F52E5E45F4BC37DD2ABDC`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
@@ -62,6 +62,32 @@ Pillow's `point operation not supported for this mode` message.
 
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the mode I/F point family above.
+
+## Numeric Transform Interpolation ABI Behavior
+
+`MODE-NUM-001CH` adds no public export. Existing exported names,
+signatures, status codes, image-handle ownership, source-pointer
+lifetimes, and facade routes remain unchanged. The shared
+`transform_with_mapper_into` loop used by the affine, perspective,
+quad, and mesh exports now routes `PILLOW_C_MODE_I` and
+`PILLOW_C_MODE_F` sources through per-sample helpers
+(`bilinear_transform_numeric_sample`,
+`bicubic_transform_numeric_sample`,
+`write_transform_numeric_sample`) instead of interpolating the four
+storage bytes as independent byte channels: NEAREST already whole-copied
+4-byte samples, bilinear/bicubic now interpolate ONE 32-bit sample with
+the same geometry as the byte-mode path, mode F stores the float32 cast
+and mode I stores the int32 truncation toward zero. The facade
+`TransformFillBuffer` packs numeric fill colors as one int32/float32
+sample (scalars, single-element Arrays, and color names through the
+grayscale map) with Pillow's `color must be int or single-element
+tuple` / `must be real number, not tuple` rejections. Only the
+AFFINE/EXTENT routes are verified against Pillow 11.3.0 for numeric
+modes; rotate interpolation, I;16, and the other transform families
+remain separate.
+
+No facade lifetime rule, fallback, or AHK per-pixel loop was added
+beyond the numeric transform family above.
 
 ## CUR Save With Hotspot ABI Behavior
 

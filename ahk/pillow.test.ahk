@@ -21969,6 +21969,138 @@ PillowTestImagePointModeF(*) {
 
 AhkTest.Test("Pillow Image.Point applies linear float32 transforms to mode F", PillowTestImagePointModeF)
 
+PillowTestImageTransformAffineModeI(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("I", [3, 2], PillowTestBuffer(PillowTestBytesFromI32([1000, -2000, 3000, 7, -8, 9])))
+    out := 0
+    try {
+        out := image.TransformAffine([4, 3], [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual("I", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([-250, 250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.TransformAffine([4, 3], [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.BICUBIC)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([-563, 61, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Transform([4, 3], Pillow.Transform.EXTENT, [0.5, 0.5, 2.5, 1.5], Pillow.Resampling.NEAREST)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([1000, -2000, -2000, 3000, 7, -8, -8, 9, 7, -8, -8, 9]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Transform([4, 3], Pillow.Transform.EXTENT, [0.5, 0.5, 2.5, 1.5], Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([208, -1042, -625, 1459, 126, -627, -376, 877, 44, -211, -128, 295]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.TransformAffine([4, 3], [2, 0, 0, 0, 2, 0], Pillow.Resampling.NEAREST, -33)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([-8, -33, -33, -33, -33, -33, -33, -33, -33, -33, -33, -33]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.TransformAffine([4, 3], [2, 0, 0, 0, 2, 0], Pillow.Resampling.NEAREST, [300])
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([-8, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.TransformAffine([4, 3], [2, 0, 0, 0, 2, 0], Pillow.Resampling.NEAREST, "red")
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([-8, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        fillError := ""
+        try {
+            image.TransformAffine([4, 3], [2, 0, 0, 0, 2, 0], Pillow.Resampling.NEAREST, [7.5])
+        } catch Error as err {
+            fillError := err.Message
+        }
+        AhkTest.AssertEqual("color must be int or single-element tuple", fillError)
+    } finally {
+        if IsObject(out)
+            out.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Transform interpolates numeric mode I AFFINE/EXTENT samples", PillowTestImageTransformAffineModeI)
+
+PillowTestImageTransformAffineModeF(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("F", [3, 2], PillowTestBuffer(PillowTestBytesFromF32([1.5, -2.5, 3.5, 0.25, -0.125, 2.0])))
+    out := 0
+    try {
+        out := image.TransformAffine([4, 3], [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual("F", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([-0.21875, 0.71875, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.TransformAffine([4, 3], [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.BICUBIC)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([-0.7265625, 0.4453125, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Transform([4, 3], Pillow.Transform.EXTENT, [0.5, 0.5, 2.5, 1.5], Pillow.Resampling.NEAREST)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([1.5, -2.5, -2.5, 3.5, 0.25, -0.125, -0.125, 2.0, 0.25, -0.125, -0.125, 2.0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Transform([4, 3], Pillow.Transform.EXTENT, [0.5, 0.5, 2.5, 1.5], Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([
+                0.4427083432674408, -1.2552083730697632, -0.765625, 1.9114583730697632,
+                0.328125, -0.765625, -0.296875, 1.734375,
+                0.2135416716337204, -0.2760416567325592, 0.171875, 1.5572916269302368,
+            ]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.TransformAffine([4, 3], [2, 0, 0, 0, 2, 0], Pillow.Resampling.NEAREST, 7.5)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([-0.125, 7.5, 7.5, 7.5, 7.5, 7.5, 7.5, 7.5, 7.5, 7.5, 7.5, 7.5]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.TransformAffine([4, 3], [2, 0, 0, 0, 2, 0], Pillow.Resampling.NEAREST, [7.5])
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([-0.125, 7.5, 7.5, 7.5, 7.5, 7.5, 7.5, 7.5, 7.5, 7.5, 7.5, 7.5]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.TransformAffine([4, 3], [2, 0, 0, 0, 2, 0], Pillow.Resampling.NEAREST, "red")
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([-0.125, 76.0, 76.0, 76.0, 76.0, 76.0, 76.0, 76.0, 76.0, 76.0, 76.0, 76.0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        fillError := ""
+        try {
+            image.TransformAffine([4, 3], [2, 0, 0, 0, 2, 0], Pillow.Resampling.NEAREST, [1, 2])
+        } catch Error as err {
+            fillError := err.Message
+        }
+        AhkTest.AssertEqual("must be real number, not tuple", fillError)
+    } finally {
+        if IsObject(out)
+            out.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Transform interpolates numeric mode F AFFINE/EXTENT samples", PillowTestImageTransformAffineModeF)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])

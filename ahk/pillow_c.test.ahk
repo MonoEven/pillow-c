@@ -22332,6 +22332,90 @@ PillowCTestImagePointTransformModeF(*) {
 
 AhkTest.Test("pillow_c image_point_transform applies linear float32 transforms to mode F", PillowCTestImagePointTransformModeF)
 
+PillowCTestImageTransformAffineNumericSamples(*) {
+    ; Pillow 11.3.0 interpolates mode I/F AFFINE transforms per 32-bit
+    ; sample: F with float32 casts, I with int32 truncation toward zero.
+    i := PillowCCreateImageMode(3, 2, 8)
+    f := PillowCCreateImageMode(3, 2, 9)
+    out := 0
+    try {
+        ; 1000, -2000, 3000, 7, -8, 9
+        PillowCImageSetBytes(i, [
+            232, 3, 0, 0, 48, 248, 255, 255, 184, 11, 0, 0,
+            7, 0, 0, 0, 248, 255, 255, 255, 9, 0, 0, 0,
+        ])
+        ; 1.5, -2.5, 3.5, 0.25, -0.125, 2.0
+        PillowCImageSetBytes(f, [
+            0, 0, 192, 63, 0, 0, 32, 192, 0, 0, 96, 64,
+            0, 0, 128, 62, 0, 0, 0, 190, 0, 0, 0, 64,
+        ])
+        matrix := [1.0, 0.0, 0.5, 0.0, 1.0, 0.5]
+
+        out := PillowCImageTransformAffine(i, 4, 3, matrix, 2)
+        AhkTest.AssertEqual(8, PillowCImageMode(out))
+        ; -250, 250, then default zero fill
+        AhkTest.AssertEqual(
+            [6, 255, 255, 255, 250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            PillowCImageToArray(out, 48))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageTransformAffine(i, 4, 3, matrix, 3)
+        AhkTest.AssertEqual(8, PillowCImageMode(out))
+        ; -563, 61, then default zero fill
+        AhkTest.AssertEqual(
+            [205, 253, 255, 255, 61, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            PillowCImageToArray(out, 48))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageTransformAffine(f, 4, 3, matrix, 2)
+        AhkTest.AssertEqual(9, PillowCImageMode(out))
+        ; -0.21875, 0.71875, then default zero fill
+        AhkTest.AssertEqual(
+            [0, 0, 96, 190, 0, 0, 56, 63, 0, 0, 0, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            PillowCImageToArray(out, 48))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageTransformAffine(f, 4, 3, matrix, 3)
+        AhkTest.AssertEqual(9, PillowCImageMode(out))
+        ; -0.7265625, 0.4453125, then default zero fill
+        AhkTest.AssertEqual(
+            [0, 0, 58, 191, 0, 0, 228, 62, 0, 0, 0, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            PillowCImageToArray(out, 48))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; Numeric fill: 4-byte int32 -33 through a scale-2 out-of-bounds matrix.
+        out := PillowCImageTransformAffine(i, 4, 3, [2.0, 0.0, 0.0, 0.0, 2.0, 0.0], 0, [223, 255, 255, 255])
+        ; dst(0,0) samples (-8); the rest is the fill
+        AhkTest.AssertEqual(
+            [248, 255, 255, 255, 223, 255, 255, 255, 223, 255, 255, 255, 223, 255, 255, 255,
+             223, 255, 255, 255, 223, 255, 255, 255, 223, 255, 255, 255, 223, 255, 255, 255,
+             223, 255, 255, 255, 223, 255, 255, 255, 223, 255, 255, 255, 223, 255, 255, 255],
+            PillowCImageToArray(out, 48))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        if i
+            PillowCFreeImage(i)
+        if f
+            PillowCFreeImage(f)
+    }
+}
+
+AhkTest.Test("pillow_c image_transform_affine interpolates numeric mode I/F samples", PillowCTestImageTransformAffineNumericSamples)
+
+
 PillowCTestImageIcoSizesReportsAvailableFrames(*) {
     path := PillowCTempIcoPath("ico-sizes")
     base := PillowCCreateImageMode(32, 32, 4)
