@@ -22969,6 +22969,151 @@ PillowCTestImageResizeTransformI16Samples(*) {
 
 AhkTest.Test("pillow_c I;16 resize/transform resamples per-sample with documented boundaries", PillowCTestImageResizeTransformI16Samples)
 
+PillowCTestI32Bytes(values) {
+    bytes := []
+    for value in values {
+        buf := Buffer(4, 0)
+        NumPut("Int", value, buf, 0)
+        loop 4
+            bytes.Push(NumGet(buf, A_Index - 1, "UChar"))
+    }
+    return bytes
+}
+
+PillowCTestF32Bytes(values) {
+    bytes := []
+    for value in values {
+        buf := Buffer(4, 0)
+        NumPut("Float", value, buf, 0)
+        loop 4
+            bytes.Push(NumGet(buf, A_Index - 1, "UChar"))
+    }
+    return bytes
+}
+
+PillowCTestU16Bytes(values) {
+    bytes := []
+    for value in values {
+        buf := Buffer(2, 0)
+        NumPut("UShort", value, buf, 0)
+        loop 2
+            bytes.Push(NumGet(buf, A_Index - 1, "UChar"))
+    }
+    return bytes
+}
+
+PillowCTestImageResizeReducingGapNumericSamples(*) {
+    ; Pillow 11.3.0 reducing-gap resize = reduce() then boxed resize; the
+    ; 32bpc reduce block-averages per sample (ROUND_UP for I, float for F),
+    ; and special modes reject the reduce step with "image has wrong mode".
+    i := PillowCCreateImageMode(24, 24, 8)
+    f := PillowCCreateImageMode(24, 24, 9)
+    i16 := PillowCCreateImageMode(24, 24, 11)
+    out := 0
+    try {
+        iBytes := []
+        fBytes := []
+        i16Bytes := []
+        loop 576 {
+            iValue := Mod((A_Index - 1) * 37, 4000)
+            iBytes.Push(iValue & 0xFF, (iValue >> 8) & 0xFF, (iValue >> 16) & 0xFF, (iValue >> 24) & 0xFF)
+            fValue := Mod((A_Index - 1) * 13, 100) / 7.0 - 3.0
+            fBuf := Buffer(4, 0)
+            NumPut("Float", fValue, fBuf, 0)
+            loop 4
+                fBytes.Push(NumGet(fBuf, A_Index - 1, "UChar"))
+            i16Value := Mod((A_Index - 1) * 977, 60000)
+            i16Bytes.Push(i16Value & 0xFF, (i16Value >> 8) & 0xFF)
+        }
+        PillowCImageSetBytes(i, iBytes)
+        PillowCImageSetBytes(f, fBytes)
+        PillowCImageSetBytes(i16, i16Bytes)
+
+        out := PillowCImageResizeReducingGap(i, 3, 3, 0, [0.0, 0.0, 24.0, 24.0], 2.0)
+        AhkTest.AssertEqual(8, PillowCImageMode(out))
+        AhkTest.AssertEqual(
+            PillowCTestI32Bytes([3700, 3996, 292, 2804, 3100, 3396, 1908, 2204, 2500]),
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResizeReducingGap(i, 3, 3, 2, [0.0, 0.0, 24.0, 24.0], 2.0)
+        AhkTest.AssertEqual(
+            PillowCTestI32Bytes([1761, 1835, 1860, 1928, 1935, 1920, 2048, 2035, 1980]),
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResizeReducingGap(i, 3, 3, 3, [0.0, 0.0, 24.0, 24.0], 2.0)
+        AhkTest.AssertEqual(
+            PillowCTestI32Bytes([1740, 1831, 1854, 1931, 1936, 1917, 2060, 2047, 1981]),
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResizeReducingGap(f, 3, 3, 2, [0.0, 0.0, 24.0, 24.0], 2.0)
+        AhkTest.AssertEqual(9, PillowCImageMode(out))
+        AhkTest.AssertEqual(
+            PillowCTestF32Bytes([
+                3.9424197673797607, 3.8080356121063232, 4.288629531860352,
+                4.382015228271484, 4.003348350524902, 3.8080356121063232,
+                4.051749229431152, 4.382015228271484, 3.9424197673797607,
+            ]),
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResizeReducingGap(f, 3, 3, 3, [0.0, 0.0, 24.0, 24.0], 2.0)
+        AhkTest.AssertEqual(
+            PillowCTestF32Bytes([
+                3.9142696857452393, 3.733076333999634, 4.383805751800537,
+                4.490569114685059, 3.970604419708252, 3.733076572418213,
+                3.9779224395751953, 4.490569114685059, 3.9142696857452393,
+            ]),
+            PillowCImageToArray(out, 36))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResizeReducingGap(i16, 3, 3, 0, [0.0, 0.0, 24.0, 24.0], 2.0)
+        AhkTest.AssertEqual(11, PillowCImageMode(out))
+        AhkTest.AssertEqual(
+            PillowCTestU16Bytes([37700, 45516, 53332, 45284, 53100, 916, 52868, 684, 8500]),
+            PillowCImageToArray(out, 18))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; Boundary: the I;16 reduce step rejects like Pillow's ModeError.
+        boundaryOut := 0
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_resize_reducing_gap",
+            "Ptr", i16,
+            "Int", 3,
+            "Int", 3,
+            "Int", 2,
+            "Double", 0.0,
+            "Double", 0.0,
+            "Double", 24.0,
+            "Double", 24.0,
+            "Double", 2.0,
+            "Ptr*", &boundaryOut,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, boundaryOut)
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        if i
+            PillowCFreeImage(i)
+        if f
+            PillowCFreeImage(f)
+        if i16
+            PillowCFreeImage(i16)
+    }
+}
+
+AhkTest.Test("pillow_c image_resize_reducing_gap resamples numeric mode I/F samples", PillowCTestImageResizeReducingGapNumericSamples)
+
 
 PillowCTestImageIcoSizesReportsAvailableFrames(*) {
     path := PillowCTempIcoPath("ico-sizes")

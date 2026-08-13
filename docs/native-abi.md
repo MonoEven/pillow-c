@@ -29,8 +29,8 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`463/463`; the full AHK suite is `2785/2785`; and the current DLL SHA-256 is
-`9280B7142878AB5A8CF17A379AA40E1B22CB2C5FB0C4FA5B0FBC380CECEFF26E`.
+`463/463`; the full AHK suite is `2787/2787`; and the current DLL SHA-256 is
+`ADAB3C0F6DBFD41B8C116D35F5B92C9B7A968F817F292C5B675EA1A667F0BA05`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
@@ -126,8 +126,15 @@ perspective, quad, mesh, rotate) on `PILLOW_C_MODE_I16`/
 return `PILLOW_C_INVALID_ARGUMENT` as explicit documented boundaries
 instead of interpolating storage bytes (Pillow itself emits
 byte-channel garbage there). NEAREST paths keep whole-copying samples.
-Numeric reducing-gap composition and I;16 fill packing remain
-separate.
+
+`MODE-NUM-001CN` adds no public export either and completes the
+numeric resize family: `supports_reduce_mode` accepts
+`PILLOW_C_MODE_I` and `PILLOW_C_MODE_F`, and `reduce_image_into` gains
+the numeric block-average branch (I stores `ROUND_UP(sum / count)`, F
+stores the float32 cast, partial-edge corner multipliers — Pillow
+11.3.0 `Reduce.c` 32bpc semantics). The I;16/I;16B reduce step stays
+rejected with `PILLOW_C_INVALID_ARGUMENT` (Pillow's `image has wrong
+mode`), surfaced by a facade guard that reproduces the factor check.
 
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.

@@ -22434,6 +22434,86 @@ PillowTestImageResizeTransformI16(*) {
 
 AhkTest.Test("Pillow I;16 Resize/Transform resamples per-sample with documented boundaries", PillowTestImageResizeTransformI16)
 
+PillowTestImageResizeReducingGapNumeric(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    iValues := []
+    fValues := []
+    i16Values := []
+    loop 576 {
+        iValues.Push(Mod((A_Index - 1) * 37, 4000))
+        fValues.Push(Mod((A_Index - 1) * 13, 100) / 7.0 - 3.0)
+        i16Values.Push(Mod((A_Index - 1) * 977, 60000))
+    }
+    i := Pillow.Image.FromBytes("I", [24, 24], PillowTestBuffer(PillowTestBytesFromI32(iValues)))
+    f := Pillow.Image.FromBytes("F", [24, 24], PillowTestBuffer(PillowTestBytesFromF32(fValues)))
+    i16 := Pillow.Image.FromBytes("I;16", [24, 24], PillowTestBuffer(PillowTestBytesFromU16(i16Values)))
+    out := 0
+    try {
+        out := i.Resize([3, 3], Pillow.Resampling.NEAREST, unset, 2.0)
+        AhkTest.AssertEqual("I", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([3700, 3996, 292, 2804, 3100, 3396, 1908, 2204, 2500]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := i.Resize([3, 3], Pillow.Resampling.BILINEAR, unset, 2.0)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([1761, 1835, 1860, 1928, 1935, 1920, 2048, 2035, 1980]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := i.Resize([3, 3], Pillow.Resampling.BICUBIC, unset, 2.0)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([1740, 1831, 1854, 1931, 1936, 1917, 2060, 2047, 1981]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := f.Resize([3, 3], Pillow.Resampling.BILINEAR, unset, 2.0)
+        AhkTest.AssertEqual("F", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([
+                3.9424197673797607, 3.8080356121063232, 4.288629531860352,
+                4.382015228271484, 4.003348350524902, 3.8080356121063232,
+                4.051749229431152, 4.382015228271484, 3.9424197673797607,
+            ]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := f.Resize([3, 3], Pillow.Resampling.BICUBIC, unset, 2.0)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([
+                3.9142696857452393, 3.733076333999634, 4.383805751800537,
+                4.490569114685059, 3.970604419708252, 3.733076572418213,
+                3.9779224395751953, 4.490569114685059, 3.9142696857452393,
+            ]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := i16.Resize([3, 3], Pillow.Resampling.NEAREST, unset, 2.0)
+        AhkTest.AssertEqual("I;16", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([37700, 45516, 53332, 45284, 53100, 916, 52868, 684, 8500]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        boundaryError := ""
+        try {
+            i16.Resize([3, 3], Pillow.Resampling.BILINEAR, unset, 2.0)
+        } catch Error as err {
+            boundaryError := err.Message
+        }
+        AhkTest.AssertEqual("image has wrong mode", boundaryError)
+    } finally {
+        if IsObject(out)
+            out.Close()
+        i.Close()
+        f.Close()
+        i16.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Resize reducing_gap resamples numeric mode I/F samples", PillowTestImageResizeReducingGapNumeric)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])

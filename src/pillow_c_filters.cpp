@@ -1892,7 +1892,9 @@ bool supports_reduce_mode(const PillowCImage* source)
             source->mode == PILLOW_C_MODE_LA ||
             source->mode == PILLOW_C_MODE_RGB ||
             source->mode == PILLOW_C_MODE_RGBA ||
-            source->mode == PILLOW_C_MODE_CMYK);
+            source->mode == PILLOW_C_MODE_CMYK ||
+            source->mode == PILLOW_C_MODE_I ||
+            source->mode == PILLOW_C_MODE_F);
 }
 
 int reduce_output_width(int left, int right, int xscale)
@@ -1931,6 +1933,44 @@ int reduce_image_into(
         return PILLOW_C_MISMATCH;
     }
     if (target->pixels.empty()) {
+        return PILLOW_C_OK;
+    }
+
+    if (source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F) {
+        // Pillow 11.3.0 Reduce.c 32bpc: one 32-bit sample per pixel,
+        // block average in double; I stores ROUND_UP(ss / count), F
+        // stores the float32 cast (no rounding).
+        const bool float_mode = source->mode == PILLOW_C_MODE_F;
+        for (int out_y = 0; out_y < out_height; ++out_y) {
+            const int y0 = top + out_y * yscale;
+            const int y1 = std::min(y0 + yscale, bottom);
+            std::uint8_t* dst_row = target->pixels.data() + static_cast<std::size_t>(out_y) * target->stride;
+            for (int out_x = 0; out_x < out_width; ++out_x) {
+                const int x0 = left + out_x * xscale;
+                const int x1 = std::min(x0 + xscale, right);
+                const auto count = static_cast<std::uint32_t>((x1 - x0) * (y1 - y0));
+                double sum = 0.0;
+                for (int y = y0; y < y1; ++y) {
+                    const std::uint8_t* src_row =
+                        source->pixels.data() + static_cast<std::size_t>(y) * source->stride;
+                    for (int x = x0; x < x1; ++x) {
+                        const std::uint8_t* px = src_row + static_cast<std::size_t>(x) * 4u;
+                        sum += float_mode
+                            ? static_cast<double>(pillow_c_read_f32_le(px))
+                            : static_cast<double>(read_le_i32(px));
+                    }
+                }
+                const double average = sum / static_cast<double>(count);
+                std::uint8_t* dst = dst_row + static_cast<std::size_t>(out_x) * 4u;
+                if (float_mode) {
+                    pillow_c_write_f32_le(dst, static_cast<float>(average));
+                } else {
+                    pillow_c_write_i32_le(
+                        dst,
+                        static_cast<std::uint32_t>(resize_round_i32_sample(average)));
+                }
+            }
+        }
         return PILLOW_C_OK;
     }
 

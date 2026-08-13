@@ -12621,6 +12621,15 @@ class Pillow {
                 } else {
                     box := [0.0, 0.0, this.Width + 0.0, this.Height + 0.0]
                 }
+                if (this.Mode = "I;16" || this.Mode = "I;16B") && resample != Pillow.Resampling.NEAREST {
+                    ; Pillow 11.3.0's reduce() rejects special modes with
+                    ; "image has wrong mode" whenever a reducing step is
+                    ; actually needed.
+                    factorX := Max(1, Integer(((box[3] - box[1]) / size[1]) / reducingGap))
+                    factorY := Max(1, Integer(((box[4] - box[2]) / size[2]) / reducingGap))
+                    if factorX > 1 || factorY > 1
+                        throw Error("image has wrong mode", -1)
+                }
                 Pillow.CheckStatus(DllCall(
                     Pillow.RequireDllPath() "\pillow_c_image_resize_reducing_gap",
                     "Ptr", this.RequireHandle(),

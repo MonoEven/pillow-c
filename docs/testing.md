@@ -47,8 +47,31 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2785` AHK tests: `1382` raw DLL tests and
-`1403` facade tests.
+This suite currently registers `2787` AHK tests: `1383` raw DLL tests and
+`1404` facade tests.
+
+Latest `MODE-NUM-001CN` verification: the Pillow 11.3.0 oracles (kept
+in `oracle/probe_mode_reducing_gap.py` and
+`oracle/probe_mode_reducing_gap2.py`) show reducing-gap resize runs
+`reduce()` (32bpc block-average per sample: ROUND_UP for I, float32
+for F, partial-edge corner multipliers) then a boxed resize, while the
+I;16 reduce step raises `ValueError: image has wrong mode`. The native
+`supports_reduce_mode` now accepts I and F, `reduce_image_into` gains
+the numeric branch, the I;16 reduce step stays rejected, and the
+facade surfaces Pillow's `image has wrong mode` message when the
+factor exceeds 1. The ctypes cross-check (kept in
+`oracle/probe_mode_reducing_gap_dll_compose.py`) matches Pillow's
+24x24-to-3x3 I/F NEAREST/BILINEAR/BICUBIC outputs, the I;16 NEAREST
+output, and the boundary exactly (`FAILURES: 0`). Raw/facade
+reducing-gap numeric targets pass `4/4` in `47ms`; the numeric filter
+passes `127/127` in `609ms`; the resize filter passes `31/31` in
+`62ms`; and the full directory suite passes `2787/2787` in `18859ms`,
+with zero failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity remains `463/463`
+with zero difference; and the rebuilt DLL SHA-256 is
+`ADAB3C0F6DBFD41B8C116D35F5B92C9B7A968F817F292C5B675EA1A667F0BA05`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `96% ±4%`.
 
 Latest `MODE-NUM-001CM` verification: the Pillow 11.3.0 oracle (kept
 in `oracle/probe_mode_i16.py`) shows I;16 resize runs the 16bpc
