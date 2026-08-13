@@ -29,14 +29,30 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`461/461`; the full AHK suite is `2757/2757`; and the current DLL SHA-256 is
-`D829043BE5BF716DAD7A5D6FBA958958D01D777A10D0C5C86921D9195EE4EC6E`.
+`461/461`; the full AHK suite is `2761/2761`; and the current DLL SHA-256 is
+`984A7D84657C5D9EF8D236A44CF13697A6C8939F2932FC5CB19A7B4CCDD180A3`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
 `FMT-TIFF-003BJ` likewise changes no ABI: the mixed-size chained BigTIFF
 frames lock-in completes the bounded BigTIFF save family over the
 existing per-frame writer, verified against Pillow 11.3.0 ctypes.
+
+## ICO Non-Exact Thumbnail Source Selection ABI Behavior
+
+`FMT-ICO-001B` changes no exported name or signature. Existing
+`pillow_c_image_save_ico_frames_format_options` status, handle
+ownership, and synchronous pointer lifetimes remain unchanged. The
+fallback inside `save_ico_images_with_sizes` now caps the proportional
+LANCZOS fit at the last provided image's own dimensions (Pillow's
+`thumbnail()` semantics: exact-size sources win, otherwise the LAST
+provided image is thumbnailed, never upscaled), and skips the resize
+when the capped size equals the source. Sizes larger than the base
+image and larger than 256 remain skipped. Grayscale PNG payloads remain
+a documented WIC reopen boundary.
+
+No facade lifetime rule, fallback, or AHK per-pixel loop was added
+beyond the ICO source-selection family above.
 
 ## TIFF BigTIFF Save Bilevel ABI Behavior
 

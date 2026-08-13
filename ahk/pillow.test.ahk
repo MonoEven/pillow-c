@@ -21634,6 +21634,69 @@ PillowTestImageOpenIcoGetImageReturnsRequestedOrLargestFrame(*) {
 
 AhkTest.Test("Pillow Image.Open ICO getimage returns requested or largest frame", PillowTestImageOpenIcoGetImageReturnsRequestedOrLargestFrame)
 
+PillowTestImageSaveIcoNonExactSourceSelection(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    ; Pillow 11.3.0 picks exact-size sources and thumbnails the LAST
+    ; provided image proportionally, never upscaling.
+    base := Pillow.Image.New("RGBA", [64, 64], [64, 0, 0, 255])
+    mid := Pillow.Image.New("RGBA", [48, 48], [48, 0, 0, 255])
+    small := Pillow.Image.New("RGBA", [16, 16], [16, 0, 0, 255])
+    path := PillowTestTempIcoPath("save-nonexact")
+    loaded := 0
+    opened := []
+    try {
+        base.Save(path, "ICO", {
+            Sizes: [[16, 16], [32, 32], [48, 48], [64, 64]],
+            AppendImages: [small, mid],
+        })
+        loaded := Pillow.Image.Open(path)
+        AhkTest.AssertEqual([[16, 16], [32, 32], [48, 48], [64, 64]], loaded.ico.sizes())
+        for check in [[16, 16, 16], [32, 32, 48], [48, 48, 48], [64, 64, 64]] {
+            image := loaded.ico.getimage([check[1], check[2]])
+            opened.Push(image)
+            AhkTest.AssertEqual(check[3], PillowTestBufferToArray(image.ToBytes())[1])
+        }
+
+        ; no-upscale boundary: a 24x24 last source stays 24x24 for the
+        ; 32 request and 16 for the 16 request.
+        tinyPath := PillowTestTempIcoPath("save-nonexact-tiny")
+        loaded2 := 0
+        opened2 := []
+        tiny := Pillow.Image.New("RGBA", [24, 24], [24, 0, 0, 255])
+        try {
+            base.Save(tinyPath, "ICO", {
+                Sizes: [[16, 16], [32, 32], [64, 64]],
+                AppendImages: [tiny],
+            })
+            loaded2 := Pillow.Image.Open(tinyPath)
+            AhkTest.AssertEqual([[16, 16], [24, 24], [64, 64]], loaded2.ico.sizes())
+            for check in [[16, 16, 24], [24, 24, 24], [64, 64, 64]] {
+                image := loaded2.ico.getimage([check[1], check[2]])
+                opened2.Push(image)
+                AhkTest.AssertEqual(check[3], PillowTestBufferToArray(image.ToBytes())[1])
+            }
+        } finally {
+            for item in opened2
+                item.Close()
+            if IsObject(loaded2)
+                loaded2.Close()
+            tiny.Close()
+            PillowTestDeleteFile(tinyPath)
+        }
+    } finally {
+        for item in opened
+            item.Close()
+        if IsObject(loaded)
+            loaded.Close()
+        small.Close()
+        mid.Close()
+        base.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save ICO selects exact sources and thumbnails the last provided image", PillowTestImageSaveIcoNonExactSourceSelection)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])

@@ -22084,6 +22084,66 @@ PillowCTestImageOpenIcoSizeReadsRequestedIconFrame(*) {
 
 AhkTest.Test("pillow_c image open_ico_size reads requested icon frame", PillowCTestImageOpenIcoSizeReadsRequestedIconFrame)
 
+PillowCTestImageSaveIcoNonExactSourceSelection(*) {
+    ; Pillow 11.3.0 picks exact-size sources, else thumbnails the LAST
+    ; provided image proportionally (never upscaling) — oracle/probe_ico_
+    ; non_exact_sources.py and probe_ico_thumbnail_fallback.py.
+    cases := [
+        {
+            Name: "downscale",
+            Sources: [[64, 64, 64], [16, 16, 16], [48, 48, 48]],
+            Sizes: [[16, 16], [32, 32], [48, 48], [64, 64]],
+            ExpectedSizes: [[16, 16], [32, 32], [48, 48], [64, 64]],
+            Checks: [[16, 16, 16], [32, 32, 48], [48, 48, 48], [64, 64, 64]],
+        },
+        {
+            Name: "aspect",
+            Sources: [[64, 64, 64], [64, 32, 32]],
+            Sizes: [[16, 16], [32, 32], [64, 64]],
+            ExpectedSizes: [[16, 8], [32, 16], [64, 64]],
+            Checks: [[16, 8, 32], [32, 16, 32], [64, 64, 64]],
+        },
+        {
+            Name: "small-last",
+            Sources: [[64, 64, 64], [24, 24, 24]],
+            Sizes: [[16, 16], [32, 32], [64, 64]],
+            ExpectedSizes: [[16, 16], [24, 24], [64, 64]],
+            Checks: [[16, 16, 24], [24, 24, 24], [64, 64, 64]],
+        },
+    ]
+    for item in cases {
+        path := PillowCTempIcoPath("ico-nonexact-" item.Name)
+        handles := []
+        opened := []
+        try {
+            for source in item.Sources {
+                handle := PillowCCreateImageMode(source[1], source[2], 4)
+                handles.Push(handle)
+                bytes := []
+                loop source[1] * source[2]
+                    bytes.Push(source[3], 0, 0, 255)
+                PillowCImageSetBytes(handle, bytes)
+            }
+            PillowCImageSaveIcoFramesFormatOptions(handles, path, item.Sizes, "")
+            AhkTest.AssertEqual(item.ExpectedSizes, PillowCImageIcoSizes(path))
+            for check in item.Checks {
+                image := PillowCImageOpenIcoSize(path, check[1], check[2])
+                opened.Push(image)
+                firstPixel := PillowCArraySlice(PillowCImageToArray(image, check[1] * check[2] * 4), 1, 4)
+                AhkTest.AssertEqual(check[3], firstPixel[1])
+            }
+        } finally {
+            for image in opened
+                PillowCFreeImage(image)
+            for handle in handles
+                PillowCFreeImage(handle)
+            PillowCDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image save_ico selects exact sources and thumbnails the last provided image", PillowCTestImageSaveIcoNonExactSourceSelection)
+
 PillowCTestImageIcoSizesReportsAvailableFrames(*) {
     path := PillowCTempIcoPath("ico-sizes")
     base := PillowCCreateImageMode(32, 32, 4)

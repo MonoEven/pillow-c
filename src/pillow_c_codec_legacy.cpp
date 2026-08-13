@@ -2792,24 +2792,34 @@ int save_ico_images_with_sizes(
                 if (status != PILLOW_C_OK) {
                     return status;
                 }
-                std::size_t stride = 0;
-                std::size_t size = 0;
-                if (!checked_image_size(out_width, out_height, resize_source->channels, &stride, &size)) {
-                    return PILLOW_C_INVALID_ARGUMENT;
+                // Pillow's thumbnail() never upscales: the fallback frame is
+                // capped at the last provided image's own dimensions.
+                if (out_width > resize_source->width) {
+                    out_width = resize_source->width;
                 }
-                resized = PillowCImage{
-                    out_width,
-                    out_height,
-                    resize_source->mode,
-                    resize_source->channels,
-                    stride,
-                    std::vector<std::uint8_t>(size)};
-                status = pillow_c_resize_image_into(resize_source, out_width, out_height, PILLOW_C_LEGACY_RESAMPLE_LANCZOS, &resized);
-                if (status != PILLOW_C_OK) {
-                    return status;
+                if (out_height > resize_source->height) {
+                    out_height = resize_source->height;
                 }
-                pillow_c_copy_palette_if_same_mode(resize_source, &resized);
-                frame = &resized;
+                if (out_width != resize_source->width || out_height != resize_source->height) {
+                    std::size_t stride = 0;
+                    std::size_t size = 0;
+                    if (!checked_image_size(out_width, out_height, resize_source->channels, &stride, &size)) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                    resized = PillowCImage{
+                        out_width,
+                        out_height,
+                        resize_source->mode,
+                        resize_source->channels,
+                        stride,
+                        std::vector<std::uint8_t>(size)};
+                    status = pillow_c_resize_image_into(resize_source, out_width, out_height, PILLOW_C_LEGACY_RESAMPLE_LANCZOS, &resized);
+                    if (status != PILLOW_C_OK) {
+                        return status;
+                    }
+                    pillow_c_copy_palette_if_same_mode(resize_source, &resized);
+                    frame = &resized;
+                }
             }
 
             status = append_resource(frame, nullptr);
