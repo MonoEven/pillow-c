@@ -52,6 +52,7 @@
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;PILLOW_C_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\third_party\lcms2\include;$(ProjectDir)..\third_party\lcms2\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
@@ -68,6 +69,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;PILLOW_C_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\third_party\lcms2\include;$(ProjectDir)..\third_party\lcms2\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
@@ -81,6 +83,35 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="pillow_c.cpp" />
+    <ClCompile Include="pillow_c_raw.cpp" />
+    <ClCompile Include="pillow_c_effects.cpp" />
+    <ClCompile Include="pillow_c_abi.cpp" />
+     <ClCompile Include="pillow_c_codec_tiff.cpp" />
+    <ClCompile Include="pillow_c_codec_jpeg_decode.cpp" />
+    <ClCompile Include="pillow_c_codec_jpeg_common.cpp" />
+    <ClCompile Include="pillow_c_codec_jpeg_encode_l.cpp" />
+    <ClCompile Include="pillow_c_codec_jpeg_encode_rgb.cpp" />
+    <ClCompile Include="pillow_c_codec_jpeg_encode_cmyk.cpp" />
+    <ClCompile Include="pillow_c_codec_jpeg_save.cpp" />
+    <ClCompile Include="pillow_c_codec_jpeg_metadata.cpp" />
+    <ClCompile Include="pillow_c_codec_png.cpp" />
+    <ClCompile Include="pillow_c_codec_legacy.cpp" />
+    <ClCompile Include="pillow_c_codec_gif.cpp" />
+    <ClCompile Include="pillow_c_ops.cpp" />
+    <ClCompile Include="pillow_c_ops_statistics.cpp" />
+     <ClCompile Include="pillow_c_cms.cpp" />
+     <ClCompile Include="pillow_c_filters.cpp" />
+     <ClCompile Include="pillow_c_transform.cpp" />
+     <ClCompile Include="pillow_c_draw.cpp" />
+    <ClCompile Include="pillow_c_codec_wic.cpp" />
+    <ClCompile Include="pillow_c_core.cpp" />
+    <ClCompile Include="pillow_c_metadata.cpp" />
+    <ClCompile Include="pillow_c_memory.cpp" />
+    <ClCompile Include="..\third_party\lcms2\src\*.c">
+      <CompileAs>CompileAsC</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <SDLCheck>false</SDLCheck>
+    </ClCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

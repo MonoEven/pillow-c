@@ -11,3 +11,6 @@ docs/codex-goal-plan.md
 *.suo
 *.VC.db
 *.VC.VC.opendb
+
+third_party/
+.codex-tiff-001ay-oracle.tif

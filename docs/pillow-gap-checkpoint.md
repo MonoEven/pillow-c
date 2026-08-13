@@ -1,10 +1,10 @@
-﻿# Pillow Gap Checkpoint
+# Pillow Gap Checkpoint
 
 This is the short resume layer for Pillow work in this repository. Read this
 file first, then open `docs/pillow-gap-analysis.md` only for the selected gap
 card or broader evidence.
 
-Last updated: 2026-07-03
+Last updated: 2026-08-13
 
 ## Required Resume Order
 
@@ -21,8 +21,10113 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first high-performance Pillow-compatible runtime about 52-55%; full Pillow replacement 26-31%.
-    Latest covered gap: META-001M bounded TIFF ImageDescription tag 270 getexif readback.
+Estimate: AHK-first Pillow-runtime overall completion 66% (about ±4%) under
+the real-workload Pillow replacement-readiness model.
+Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003AT` closes the bounded
+BigTIFF common-EXIF family matrix, its big-endian counterpart, the
+malformed-metadata robustness slice, and the classic-route ExifIFD/GPSInfo
+sub-IFD traversal. `003AN`–`003AQ` batch the little-endian BigTIFF families
+(type-5 rationals, type-10 signed rationals, type-12 double and type-11
+float arrays, byte-array and extended-undefined blobs); `003AR` proves the
+same surface from an `MM` header; `003AS` locks in malformed-metadata
+skip behavior with raw/facade rejection tests; `003AT` follows ExifIFD
+(34665) and GPSInfo (34853) LONG sub-IFD pointers on the classic strip
+route and flattens one sub-IFD level into `tiff_exif` (new private
+`TiffExifCollector` struct and `collect_tiff_exif_entries` seam extracted
+from the classic builder, plus bounded GPS ascii/uint/rational/rational-
+array tag sets). The Pillow 11.3.0 oracle keeps sub-IFD tags ONLY in
+`Exif.get_ifd(...)` and leaves the flat `getexif()` with just the pointer
+values; the DLL flattens them into the existing EXIF blob exports instead,
+so facade `GetExif()` exposes `exif[36867]`/`exif[33434]`/`exif[1]`/
+`exif[2]`/`exif[6]`/`exif[20]`/`exif[21]` alongside the pointers —
+documented divergence, with `get_ifd()` itself an explicit boundary. The
+four legacy pointer fixtures now also assert their flattened sub-IFD
+contents. Raw/facade sub-IFD targets pass `1/1` each; the TIFF filter
+passes `672/672` in `5015ms`; the full directory suite passes `2724/2724`;
+Release x64 has `0 Warning(s), 0 Error(s)`; source/DLL exports are
+`453/453` with zero difference; and the current DLL SHA-256 is
+`6738D442FCA4F49D19259E951B0D93DB18BA8D8E4CBDA8A05D107001B20F987F`.
+`ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
+the next selected compatibility work packet is the bounded
+`FMT-TIFF-003AU` BigTIFF sub-IFD traversal (the same one-level flattening
+over 20-byte-entry BigTIFF sub-IFDs with 64-bit counts), with TIFF
+save/writeback and wider codec boundaries remaining separate. Dither exact
+parity, libimagequant, broader quantize cross-products, qtables with more
+than two tables, malformed marker streams, and exact whole-file parity
+remain separate.
+```
+
+Current work packet:
+
+- Completed architecture packets: `ARCH-MOD-001`, `ARCH-MOD-002`,
+  `ARCH-MOD-003`, `ARCH-MOD-004`, `ARCH-MOD-005`, `ARCH-MOD-006`,
+  `ARCH-MOD-007`, `ARCH-MOD-008`, `ARCH-MOD-009`, `ARCH-MOD-010`,
+  `ARCH-MOD-011`, `ARCH-MOD-012`.
+- `ARCH-MOD-009` is GREEN: `pillow_c_raw.cpp` physically owns raw mode
+  specifications, pixel packing/unpacking, Mode-1 packing, raw byte sizing,
+  FromBuffer alias refresh/detach lifetime, byte transfer implementation, and
+  all raw/buffer exports. `pillow_c.cpp` retains no duplicate raw body or
+  forwarding raw export; its current size is 956 lines and the raw Module is
+  1,189 lines. Release explicitly compiles the new unit.
+- `ARCH-MOD-010` is GREEN: `pillow_c_core.cpp` owns the shared numeric,
+  shape/mask/palette, mode-name, and mode ABI seams; `pillow_c_effects.cpp`
+  owns gradient/effect implementations and public exports. `pillow_c.cpp` is a
+  one-line include-only translation unit with no implementation body or
+  forwarding export shell.
+- `ARCH-MOD-011` is GREEN: JPEG is physically owned by seven independently
+  compiled Modules: `pillow_c_codec_jpeg_decode.cpp`,
+  `pillow_c_codec_jpeg_common.cpp`, `pillow_c_codec_jpeg_encode_l.cpp`,
+  `pillow_c_codec_jpeg_encode_rgb.cpp`,
+  `pillow_c_codec_jpeg_encode_cmyk.cpp`, `pillow_c_codec_jpeg_save.cpp`, and
+  `pillow_c_codec_jpeg_metadata.cpp`. The private contract is
+  `pillow_c_codec_jpeg_internal.h`; `pillow_c.cpp` remains include-only and
+  has no forwarding JPEG shell. Raw/facade JPEG filters are `212/212` and
+  `219/219`; Release explicitly compiles every module.
+- `ARCH-MOD-012` is GREEN: the former 7,993-line operations unit is now two
+  independently compiled Modules. `pillow_c_ops.cpp` retains arithmetic,
+  conversion, palette/compositing, ImageChops, point/LUT, quantization, and
+  spatial ownership; `pillow_c_ops_statistics.cpp` owns histogram, entropy,
+  extrema, bbox, projection, getcolors, and autocontrast implementation plus
+  eleven public exports. `pillow_c_ops_internal.h` is the private seam. The
+  units are 6,960 and 1,079 lines, with no copied implementation or forwarding
+  export shell.
+- `FMT-JPEG-002B2` tail is GREEN for the bounded JPEG `extra` marker stream,
+  custom qtables, explicit core-metadata composition, and restart markers:
+  the native save route inserts caller-supplied raw marker bytes after the
+  JFIF/Adobe header and before DQT, while the facade keeps the source Buffer
+  alive for the call and rejects unsupported option combinations explicitly.
+  The metadata-free route covers `L`, `RGB`, and `CMYK`; the new metadata-plus-
+  extra route covers explicit comment/ICC/EXIF/XMP composition on the same
+  modes; the qtables-plus-extra route covers one or two custom tables on the
+  same modes and includes a bounded qtables+XMP composition. The new restart-
+  plus-extra route composes block or row restart markers with the same bounded
+  qtables and metadata surfaces. DPI, optimize, progressive, and bounded RGB
+  subsampling are routed through the existing native encoders. The four
+  bounded JPEG extra exports plus the keep-rgb composition exports are
+  compiled into Release x64 and are included in the `453/453` parity check.
+  The keep-rgb-plus-extra route now carries one or two qtables, and the
+  bounded keep-rgb/restart/extra composition is covered; qtables with more
+  than two tables, malformed marker streams, and exact whole-file parity
+  remain explicit boundaries.
+- `FMT-TIFF-003L` is GREEN for the bounded uncompressed tiled mode-`L` open
+  route. `pillow_c_codec_tiff.cpp` reads LONG tile offset/count arrays,
+  reconstructs row-major tiles in DLL-owned storage, clips edge tiles, and
+  exposes the existing single-frame count ABI route for the facade. The parser
+  keeps ordinary strip, orientation, and multi-frame TIFF dispatch on the
+  existing native/WIC routes; no AHK pixel loop or ABI export was added.
+- `FMT-TIFF-003M` is GREEN for the bounded uncompressed chunky tiled mode-`RGB`
+  open route. The generalized parser reads out-of-line `SHORT[3]`
+  `BitsPerSample`, reconstructs 3-byte chunky rows with clipped edge tiles,
+  and reuses the existing single-frame count route; no new export or AHK
+  pixel loop was added.
+- `FMT-TIFF-003N` is GREEN for the bounded uncompressed chunky tiled mode-`RGBA`
+  open route. The generalized parser reads `SHORT[4]` bits and scalar
+  `ExtraSamples=2`, allocates four-channel storage, clips edge tile rows, and
+  reuses the existing single-frame count route; no new export or AHK pixel loop
+  was added.
+- `FMT-TIFF-003O` is GREEN for the bounded uncompressed chunky tiled mode-`LA`
+  open route. The generalized parser reuses the native tile-grid, range,
+  stride, edge-clipping, and row-copy seams with `Photometric=1`,
+  `SamplesPerPixel=2`, and `ExtraSamples=2`.
+- `FMT-TIFF-003P` is GREEN for the bounded uncompressed chunky tiled RGBX
+  storage route. Pillow exposes the fixture as public mode `RGB` with rawmode
+  `RGBX`; the native parser validates `Photometric=2`,
+  `BitsPerSample=[8,8,8,8]`, `SamplesPerPixel=4`, `ExtraSamples=0`, and
+  `PlanarConfiguration=1`, then copies RGB output bytes while skipping each
+  fourth X byte in the four-byte tile input stride. The existing frame-count
+  route is reused; no export, lifetime rule, or AHK pixel loop changed.
+- `FMT-TIFF-003Q` is GREEN for PackBits compression tag `32773` on the same
+  five chunky tiled storage shapes. The native parser reuses the existing
+  DLL PackBits decoder once per complete tile, then applies the same clipped
+  row copy and RGBX X-byte removal; no export, lifetime rule, or AHK pixel
+  loop changed.
+- `FMT-TIFF-003R` is GREEN for Compression tags `5` (LZW) and `8` (Adobe
+  Deflate) on the same five chunky tiled storage shapes. Each complete tile is
+  decoded in the DLL through the existing TIFF LZW or zlib decoder, then enters
+  the shared clipped row-copy and RGBX X-byte removal path. Raw/facade targeted
+  tests pass `1/1` and `1/1`; TIFF filters pass `308/308` and `306/306`; the
+  full suite passes `2664/2664`; Release x64 is clean; source/DLL exports are
+  `452/452`; and the rebuilt DLL SHA-256 is
+  `550C606EB56C4E5062A75EFAE5F26189521419AB54648766E34FDF5BF28D905A`.
+  No export, lifetime rule, or AHK pixel loop changed.
+- `FMT-TIFF-003S` is GREEN for the uncompressed planar-separate tiled
+  `L`/`RGB`/`RGBA`/`LA` matrix. Native plane-major tile validation, edge
+  clipping, and interleave copies stay in the DLL; raw/facade targets pass
+  `1/1` and `1/1`; TIFF filters pass `309/309` and `307/307`; the full suite
+  passes `2666/2666`; no export, lifetime rule, or AHK pixel loop changed.
+- `FMT-TIFF-003T` is GREEN for PackBits/LZW/Adobe Deflate compressed
+  planar-separate tiles across the same `L`/`RGB`/`RGBA`/`LA` matrix. The
+  existing native per-tile decoder seam was already present; new raw/facade
+  tests pass `1/1` and `1/1`; TIFF filters pass `310/310` and `308/308`; the
+  full suite passes `2668/2668`; and no native source, ABI, export, lifetime
+  rule, or AHK pixel loop changed.
+- `FMT-TIFF-003U` is GREEN for the bounded two-frame, 4×3, 2×2 uncompressed
+  chunky tiled matrix across `L`, `RGB`, `RGBA`, and `LA`. The native route
+  reuses `parse_tiff_chunky_image_for_ifd` for frame 1, attaches per-IFD
+  metadata through the existing synchronous lifetime, and counts the next-IFD
+  chain with repeated-offset rejection. Raw/facade targets pass `2/2` and
+  `2/2`; TIFF filters pass `312/312` and `310/310`; the full suite passes
+  `2672/2672` in `18782ms`; Release x64 is clean; source/DLL exports are
+  `452/452`; and the current DLL SHA-256 is
+  `83FF14E210B7FE5791616C1D55AC7999164844B24013D1A08E8A16757DC751F9`.
+- `FMT-TIFF-003V` is GREEN for the bounded three-frame extension of the same
+  uncompressed chunky tiled `L`/`RGB`/`RGBA`/`LA` matrix. The existing native
+  per-IFD parser and validated next-IFD count route handle frame 2 without a
+  facade special case; raw/facade targets pass `1/1` and `1/1`; TIFF filters
+  pass `313/313` and `311/311`; the full suite passes `2674/2674` in
+  `18031ms`; source/DLL exports remain `452/452`; and the current DLL
+  SHA-256 remains
+  `83FF14E210B7FE5791616C1D55AC7999164844B24013D1A08E8A16757DC751F9`.
+  No native rebuild, export, lifetime rule, or AHK pixel loop changed.
+- `FMT-TIFF-003W` is GREEN for the bounded Orientation 2–8 extension of the
+  uncompressed chunky tiled `L`/`RGB`/`RGBA`/`LA` route. The native transform
+  helper is shared with the existing strip/WIC route and owns all dimension
+  swaps, mirrors, rotations, and pixel copies; raw/facade targets pass `1/1`
+  and `1/1`; TIFF filters pass `314/314` and `312/312`; the full suite passes
+  `2676/2676` in `18422ms`; Release x64 is clean; source/DLL exports are
+  `452/452`; and the rebuilt DLL SHA-256 is
+  `ABE167C3F4BB52A5E4E3A5F6A5AA48FCC363F81EAEC4696CFABBC963930E1A26`.
+- `FMT-TIFF-003X` is GREEN for the bounded little-endian BigTIFF extension of
+  the same native chunky tiled route. The parser recognizes BigTIFF magic
+  `43`, offset size `8`, one IFD with 20-byte entries, scalar SHORT/LONG/
+  LONG8 values, and LONG8 `TileOffsets`/`TileByteCounts`; it reconstructs
+  uncompressed 2×2 row-major tiles for `L`, `RGB`, `RGBA`, and `LA`, clips the
+  right/bottom edges, and returns frame count `1`. Raw/facade targeted tests
+  pass `2/2` and `2/2`; TIFF filters pass `316/316` and `314/314`; the full
+  suite passes `2680/2680` in `19078ms`; Release x64 is clean; source/DLL
+  exports are `452/452`; and the rebuilt DLL SHA-256 is
+  `D7CE5A49145F26A231C95EF522F64355B3E1BEFAA44355BB1DCB578306583A2D`.
+  Multi-frame BigTIFF, BigTIFF Orientation combinations, RGBX planar storage,
+  and broader BigTIFF mode breadth remain separate.
+- `FMT-TIFF-003Y` is GREEN for PackBits (`32773`), TIFF LZW (`5`), and Adobe
+  Deflate (`8`) on the same single-frame BigTIFF chunky tiled mode matrix.
+  Native decoding stays in the DLL and raw/facade tests cover all three
+  compression tags and `L`/`RGB`/`RGBA`/`LA`; no export or facade lifetime rule
+  changed.
+- `FMT-TIFF-003Z` is GREEN for two chained compressed BigTIFF IFDs using the
+  same three compression tags and four public modes. The native parser now
+  selects nonzero BigTIFF frames and the frame-count route walks the validated
+  64-bit next-IFD chain with repeated-offset rejection; raw/facade targeted
+  tests pass `1/1` and `1/1`, TIFF filters pass `318/318` and `316/316`, and
+  the full suite passes `2686/2686`.
+- `FMT-TIFF-003AA` is GREEN for BigTIFF Orientation 2–8 over the same four
+  chunky tiled modes. The parser reads tag `274` and reuses the existing DLL
+  orientation transform helper after tile reconstruction; raw/facade targets
+  pass `1/1` and `1/1`, TIFF filters pass `319/319` and `317/317`, and the
+  full suite passes `2688/2688` in `18500ms`. Release x64 is clean and
+  source/DLL exports remain `453/453`; the current DLL SHA-256 is
+  `6C4D462439E30467C67BBC599DEBA3B13307B23225B13519FC2F782D84147141`.
+- `FMT-TIFF-003AB` is GREEN for bounded BigTIFF uncompressed chunky tiled
+  RGBX storage. The parser requires `Photometric=2`,
+  `BitsPerSample=[8,8,8,8]`, `SamplesPerPixel=4`, explicit
+  `ExtraSamples=0`, and `PlanarConfiguration=1`; it decodes four-byte tile
+  rows into three-channel public RGB while skipping X bytes. The corrected
+  raw/facade oracle fixtures pass `1/1` and `1/1`; TIFF filters pass `320/320`
+  and `318/318`; and the full suite passes `2690/2690` in `19078ms`. Release
+  x64 is clean, source/DLL exports remain `453/453`, and DLL SHA-256 is
+  `005EC635204D81FBEE7F4C1FFBA756AD1ECB955B6CEC4CACBAD0857C1158F9A1`.
+- `FMT-TIFF-003AC` is GREEN for bounded BigTIFF uncompressed
+  planar-separate tiled `L`, `RGB`, and `RGBA`. The parser accepts
+  `PlanarConfiguration=2`, requires plane-major LONG8 tile offsets/counts,
+  computes one-channel tile strides, clips edge tiles per plane, and writes
+  interleaved public bytes in native storage. The Pillow 11.3.0 probe accepts
+  those three modes with exact bytes but rejects the probed planar `LA`
+  fixture at `load()`/`tobytes()` with `ValueError: unknown raw mode for given
+  image mode`; `LA` is therefore excluded rather than reported as covered.
+  Raw/facade targets pass `1/1` and `1/1`; TIFF filters pass `321/321` and
+  `319/319`; and the full suite passes `2692/2692` in `18578ms`. Release x64
+  is clean, source/DLL exports remain `453/453`, and DLL SHA-256 is
+  `3D37666B94FD63654DE5D850B69FD0569847F1ACDA1F4F7D8A7310914411726E`.
+  No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+- `FMT-TIFF-003AD` is GREEN for the bounded BigTIFF planar-separate
+  compressed/storage matrix. PackBits, TIFF LZW, and Adobe Deflate cover
+  `L`, `RGB`, `RGBA`, `RGBX`, and `LA` in one raw/facade matrix. The cached
+  Pillow 11.3.0 oracle exposes RGBX as public `RGB` and discards the X plane;
+  its libtiff path exposes compressed planar LA with a zero alpha plane. The
+  generalized native `parse_tiff_bigtiff_tiled_image_for_ifd` validates and
+  decodes all plane payloads, skips only the non-public X/LA-alpha planes,
+  and retains rejection of Pillow-invalid uncompressed planar RGBX/LA. Raw
+  and facade REDs were native `-3` and `pillow_c: invalid argument`; GREEN
+  targets pass `1/1` and `1/1`; TIFF filters pass `322/322` and `320/320`;
+  and the full suite passes `2694/2694` in `19109ms`. Release x64 is clean,
+  source/DLL exports remain `453/453`, and DLL SHA-256 is
+  `B0929C5AB1CB8592A1CE0265A37F0D9EC7EA22D1E43969EAAB4A7346F1663DDF`.
+  No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+- `FMT-TIFF-003AE` is GREEN for bounded BigTIFF tiled mode breadth across
+  raw, PackBits, TIFF LZW, and Adobe Deflate. A 16-case Pillow 11.3.0 oracle
+  and raw/facade matrix cover little-endian `I;16`, signed `I` with
+  `SampleFormat=2`, float `F` with `SampleFormat=3`, and four-channel CMYK
+  with `Photometric=5`. The DLL preserves exact little-endian numeric bytes
+  and CMYK samples while reusing LONG8 range validation, per-tile decode, and
+  clipped native row copies. Raw and facade REDs were native `-3` and
+  `pillow_c: invalid argument`; GREEN targets pass `1/1` and `1/1`; TIFF
+  filters pass `323/323` and `321/321`; and the full suite passes `2696/2696`
+  in `19407ms`. Release x64 is clean, source/DLL exports remain `453/453`, and
+  DLL SHA-256 is
+  `6D508D23C3043F1D3B0BE15412B18D17FB5BB14DBC77B8E2BC773E51D0D17CCF`.
+  No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+- `FMT-TIFF-003AF` is GREEN for the bounded big-endian BigTIFF tiled parity
+  matrix. `parse_tiff_bigtiff_header` validates either `II` or `MM`, and the
+  IFD locator, tiled parser, LONG8 arrays, next-IFD walker, and frame counter
+  consume the decoded byte order. Raw/PackBits/LZW/Adobe-Deflate fixtures
+  cover byte, planar, numeric, and CMYK storage; MM unsigned 16-bit returns
+  `I;16B`, MM `I`/`F` samples normalize to little-endian DLL storage, and
+  8-bit/RGBX/LA/CMYK bytes are not swapped. The two-frame compressed matrix
+  additionally proves MM frame count and frame 0/1 selection. MM single-frame
+  raw/facade targets pass `2/2` and `2/2`; two-frame raw/facade targets pass
+  `1/1` and `1/1`; TIFF filters pass `325/325` and `323/323`; and the full
+  suite passes `2700/2700` in `19625ms`. Release x64 is clean, source/DLL
+  exports remain `453/453`, and DLL SHA-256 is
+  `AE3EC777D5CAD0DCB6B242BBFA8F9DFD38BDD8062D94908E1B8BB635F1191EF1`.
+  Pillow 11.3.0 checks the one-byte `ifh[2]` value for BigTIFF and therefore
+  rejects valid `MM 00 2B`; this standards extension is not counted as a
+  positive Pillow-oracle compatibility increment. No export, facade lifetime
+  rule, fallback, or AHK pixel loop changed.
+- `FMT-TIFF-003AG` is GREEN for the bounded Pillow-valid little-endian
+  BigTIFF IFD0 ICC/XMP metadata attachment on the native chunky tiled route.
+  `read_tiff_bigtiff_blob_entry_value` handles the 20-byte entry layout with
+  64-bit counts, LONG8 offsets, and the count-≤-8 inline value-field rule
+  that the local Pillow 11.3.0 oracle also applies.
+  `parse_tiff_bigtiff_icc_profile_for_ifd` / `parse_tiff_bigtiff_xmp_for_ifd`
+  attach tag 34675/700 bytes to the frame-0 image, and the bounded
+  `build_tiff_bigtiff_common_ascii_exif_for_ifd` serializes those undefined
+  tags plus scalar orientation through the shared EXIF serializer.
+  `attach_tiff_bigtiff_ifd0_metadata` runs only for frame index 0; a
+  two-frame raw test proves nonzero-IFD metadata stays absent. The facade
+  exposes the bytes through the existing `Info["icc_profile"]`,
+  `Info["xmp"]`, and `GetExif()` seams without a facade change. Raw/facade
+  targets pass `1/1` and `1/1`; TIFF filters pass `327/327` in `1125ms` and
+  `324/324` in `3782ms`; the full suite passes `2703/2703` in `18625ms`;
+  Release x64 is clean; source/DLL exports remain `453/453`; and the rebuilt
+  DLL SHA-256 is
+  `84E80429DDD51C7ACE54ECA5EB89604F9DC41971DA7AD6C039958F08FD1BA06C`.
+  No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+- `FMT-TIFF-003AH` is GREEN for the bounded per-frame (nonzero-IFD)
+  little-endian BigTIFF ICC/XMP metadata attachment. The private
+  `attach_tiff_bigtiff_metadata_for_ifd` seam attaches tag 34675/700 bytes
+  plus the bounded undefined-plus-orientation EXIF blob from the requested
+  frame's own IFD for every frame index. The two-frame Pillow 11.3.0 oracle
+  confirms distinct per-IFD metadata through `info` and per-frame
+  `getexif()`; Pillow's stale `info["icc_profile"]` when IFD1 lacks the tag
+  is recorded as an oracle note instead of reproduced. The facade
+  XMP-refresh deletion now covers TIFF so `Seek(1)` without XMP removes the
+  stale `Info["xmp"]` like Pillow. Raw/facade per-frame targets pass `1/1`
+  and `1/1`; TIFF filters pass `327/327` in `1125ms` and `325/325` in
+  `3609ms`; the full suite passes `2704/2704` in `17469ms`; Release x64 is
+  clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
+  `4F9ED0A4222300A8919B1B7E362A2687D210603E0F75166794FBADD586EE3470`.
+  No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+- `FMT-TIFF-003AI` is GREEN for the bounded little-endian BigTIFF DPI
+  resolution metadata attachment.
+  `parse_tiff_bigtiff_resolution_for_ifd` reads RATIONAL `282`/`283`
+  (count 1, inline eight-byte value field) and SHORT `296` with the decoded
+  byte order, rejects zero denominators, and requires the explicit unit-2
+  trio before filling `has_dpi`/`dpi_x`/`dpi_y` per frame through the
+  `attach_tiff_bigtiff_metadata_for_ifd` seam. The facade surfaces
+  `Info["dpi"]` through the existing
+  `pillow_c_image_metadata_resolution` export with no facade change. The
+  Pillow 11.3.0 oracle confirms unit-2 parity `(300.0, 150.0)` and
+  `(145.5, 144.0)`; Pillow's no-unit/cm-unit/absent-tag defaults are recorded
+  as boundary notes. Raw/facade DPI targets pass `1/1` and `1/1`; TIFF
+  filters pass `328/328` in `1140ms` and `326/326` in `3657ms`; the full
+  suite passes `2706/2706` in `18234ms`; Release x64 is clean; source/DLL
+  exports remain `453/453`; and the rebuilt DLL SHA-256 is
+  `2689C9A364C3671356D6D06C4D546708FA9A7E977EB8AB84E252318BA8D436A0`.
+  No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+- `FMT-TIFF-003AJ` is GREEN for the bounded little-endian BigTIFF ASCII
+  common-EXIF tag attachment.
+  `read_tiff_bigtiff_ascii_entry_value` handles type-2 entries with 64-bit
+  counts, the count-≤-8 inline value field, LONG8 offsets, and NUL
+  stripping; `build_tiff_bigtiff_common_ascii_exif_for_ifd` serializes the
+  `tiff_common_ascii_tag` set alongside orientation and 34675/700 undefined
+  tags. Raw `HasExif` and facade `GetExif()` expose the strings through the
+  existing ascii-tag parsing with no facade change. The Pillow 11.3.0 oracle
+  confirms out-of-line and inline ascii parity through per-frame `getexif()`
+  with no `info` keys. Raw/facade ascii targets pass `1/1` and `1/1`; TIFF
+  filters pass `329/329` in `1406ms` and `327/327` in `3765ms`; the full
+  suite passes `2708/2708` in `18438ms`; Release x64 is clean; source/DLL
+  exports remain `453/453`; and the rebuilt DLL SHA-256 is
+  `266F6DBAE44FDB56AE981B63D4CF075892AEF5D94575232610F7ECE3B53178C7`.
+  No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+- `FMT-TIFF-003AK` is GREEN for the bounded little-endian BigTIFF scalar uint
+  common-EXIF tag attachment.
+  `read_tiff_bigtiff_uint_scalar_entry_value` reads count-1 SHORT/LONG/LONG8
+  scalars from the inline eight-byte value field and normalizes
+  uint32-fitting LONG8 into the serializer's LONG shape;
+  `build_tiff_bigtiff_common_ascii_exif_for_ifd` serializes the
+  `tiff_common_uint_tag` set alongside ascii, orientation, and 34675/700
+  undefined tags. The plain tiled fixture now always yields a HasExif blob
+  with its base tags (256=4, 257=3, 258=8, 259=1, 262=1, 277=1, 284=1,
+  322=2, 323=2), and the extras matrix adds SHORT 317=1/340=0/341=255 plus
+  LONG8 339=1, matching the Pillow 11.3.0 oracle through per-frame
+  `getexif()`. Raw/facade uint targets pass `1/1` and `1/1`; TIFF filters
+  pass `330/330` in `1203ms` and `328/328` in `6235ms`; the full suite
+  passes `2710/2710` in `18500ms`; Release x64 is clean; source/DLL exports
+  remain `453/453`; and the rebuilt DLL SHA-256 is
+  `9DC6FDAC375ABEB29AB8F594FE828E17F4EAC87B70CA86A56D9D9E038955EC28`.
+  No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+- `FMT-TIFF-003AL` is GREEN for the bounded little-endian BigTIFF uint-array
+  common-EXIF tag attachment.
+  `read_tiff_bigtiff_uint_array_entry_value` reads type-4/type-16 arrays
+  with 64-bit counts, inline and LONG8-offset layouts, and uint32-fitting
+  LONG8 validation; `build_tiff_bigtiff_common_ascii_exif_for_ifd`
+  serializes LONG8 `324`/`325`, type-4 `273`/`279`, and the bounded
+  50719/50720/50829/50830/50937/50981/51089/51090/51091/52536 families with
+  the classic expected-count rules. The plain tiled fixture now exposes
+  `exif[324]`/`exif[325]` arrays alongside the base uint scalars, and an
+  inline type-4 count-2 `279` reopens as `(12, 34)`, matching the Pillow
+  11.3.0 oracle. Raw/facade uint-array targets pass `1/1` and `1/1`; TIFF
+  filters pass `330/330` in `1141ms` and `328/328` in `3765ms`; the full
+  suite passes `2710/2710` in `18890ms`; Release x64 is clean; source/DLL
+  exports remain `453/453`; and the rebuilt DLL SHA-256 is
+  `FABED34225AA68493F81800D06BEF179626FB8A1B93D86B3395901419A82121C`.
+  No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+- `FMT-TIFF-003AM` is GREEN for the bounded little-endian BigTIFF SHORT-array
+  common-EXIF tag attachment.
+  `read_tiff_bigtiff_ushort_array_entry_value` reads type-3 arrays with
+  64-bit counts, inline and LONG8-offset layouts;
+  `build_tiff_bigtiff_common_ascii_exif_for_ifd` serializes the classic
+  SHORT-array tag set (291/297/301/320/321/336/342/530/34735/37396/41492/
+  42081/50712/50713, type-3 50719/50720/50829, and multi-channel `258`)
+  with the classic size rules. Facade `GetExif()` exposes `exif[530]`,
+  `exif[34735]`, and multi-channel `exif[258]` arrays with no facade change,
+  matching the Pillow 11.3.0 oracle. Raw/facade SHORT-array targets pass
+  `1/1` and `1/1`; TIFF filters pass `331/331` in `1219ms` and `329/329` in
+  `3610ms`; the full suite passes `2712/2712` in `19203ms`; Release x64 is
+  clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
+  `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
+  No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+- Selected next gap: bounded `FMT-TIFF-003AU` BigTIFF sub-IFD traversal (the
+  same one-level 34665/34853 flattening over 20-byte-entry BigTIFF sub-IFDs
+  with 64-bit counts), with TIFF save/writeback staying separate.
+- Completed compatibility baseline: single-frame, two-frame, and three-frame
+  uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
+  normalization.
+- Completed native seams: `pillow_c_internal.h`, `pillow_c_wic_internal.h`,
+  `pillow_c_core.cpp`, `pillow_c_memory.cpp`, `pillow_c_metadata.cpp`,
+  `pillow_c_codec_wic.cpp`, `pillow_c_codec_tiff.cpp`, and
+  `pillow_c_abi.cpp`; `pillow_c_metadata.cpp` now also owns the EXIF parser,
+  EXIF ABI exports, and generic/PNG metadata read exports. `pillow_c.cpp` no
+  longer owns the extracted core, memory, EXIF serializer/parser, WIC helper,
+  TIFF codec, metadata accessors, or ABI adapter bodies.
+- `pillow_c.cpp` fell from about 51,579 lines to 1 line across the completed
+  extraction waves; `pillow_c_core.cpp` is 679 lines,
+  `pillow_c_effects.cpp` is 371 lines, `pillow_c_raw.cpp` is 1,189 lines, and
+  `pillow_c_metadata.cpp` is 3,218 lines. The Release project explicitly
+  compiles the new translation units; no public
+  signature, export name, handle ownership, or pointer lifetime changed.
+- JPEG implementation ownership is now physically split across the seven
+  modules above: decode/open, common codec mathematics and marker machinery,
+  grayscale encode, RGB/qtables/keep-rgb encode, CMYK/YCCK encode, save-option
+  routing, and metadata exports. `pillow_c_codec_jpeg_internal.h` is the
+  explicit private seam; no JPEG implementation is duplicated in
+  `pillow_c.cpp`, and the Release project lists every module explicitly.
+- `pillow_c_codec_png.cpp` now owns the complete PNG parser, WIC decode,
+  zlib helpers, metadata/chunk writer, all PNG save option implementations,
+  and all PNG exports. `pillow_c.cpp` is about 30,895 lines and the PNG unit
+  is about 6,482 lines. ICO save reuses two explicit internal PNG seams;
+  there is no duplicated PNG body and no AHK pixel loop.
+- `pillow_c_draw.cpp` owns the complete ImageDraw raster/font implementation,
+  including flood-fill, shapes, bitmap compositing, default-font glyph data,
+  text layout, font handles, and all draw/text/font exports. It is 6,310 lines;
+  `pillow_c.cpp` is now 15,261 lines. The public ABI and draw/font lifetime
+  contract are unchanged.
+- `pillow_c_codec_legacy.cpp` owns the complete BMP, PPM/Netpbm, QOI, TGA,
+  XBM, and ICO implementations plus their public exports. It is 3,237 lines;
+  ICO reuses the explicit PNG encoder seams and resize seam without copying
+  PNG or adding an AHK pixel loop. The main unit no longer defines these
+  legacy codec bodies or exports.
+- `pillow_c_codec_gif.cpp` owns the complete GIF parser, LZW decoder/encoder,
+  frame compositor, disposal/transparency metadata, indexed and animation
+  writers, optimization logic, and all GIF exports. It is 2,836 lines and
+  `pillow_c.cpp` is now 12,482 lines. The codec consumes explicit internal
+   buffer-refresh and shared quantization seams; no GIF body or forwarding
+   export remains in the main unit.
+- The operations family is now split between `pillow_c_ops.cpp` and
+  `pillow_c_ops_statistics.cpp`. The first owns arithmetic/conversion,
+  palette/compositing, ImageChops, point/ImageOps, crop/paste/transpose, and
+  quantization; the second owns native statistics and autocontrast loops.
+  Their 37-line private seam preserves equalize/LUT reuse. The units are 6,960
+  and 1,079 lines; `pillow_c.cpp` remains include-only, and no forwarding
+  export exists.
+- `pillow_c_metadata.cpp` now owns the complete EXIF reader/writer surface:
+  orientation and typed-entry parsers, all EXIF byte serializers, all EXIF
+  public exports, generic resolution/hotspot/DIB accessors, PNG gamma/sRGB/
+  chromaticity/text/ICC/EXIF/XMP/transparency accessors, and the shared blob
+  copy seam. The module is 3,218 lines and `pillow_c.cpp` is 1 line; the
+  main unit contains no metadata implementation or forwarding export.
+- The independently compiled CMS, filter/resampling, and geometric transform
+  units remain explicit source ownership modules; their current sizes are
+  1,971, 2,932, and 1,597 lines respectively. The Release project lists all
+  native units explicitly.
+- `QUANT-001` is GREEN for its bounded native algorithm slice: quantization
+  collection, palette construction, pixel assignment, RGBA palette alpha, and
+  k-means refinement are implemented in `pillow_c_ops.cpp`; all pixel loops
+  remain in the DLL. `MEDIANCUT` with `kmeans=0` retains the older exact ABI
+  route for `L`/`RGB`; method-specific options use the additive native export.
+  Explicit `LIBIMAGEQUANT` remains an exposed dependency boundary because that
+  optional library is not linked in this build.
+- Next compatibility packet: the next bounded META/TIFF/MODE child from the
+  checkpoint. Architecture extraction is not counted as Pillow compatibility
+  coverage.
+- Native/facade/test entry points to preserve: the existing TIFF metadata-ex
+  exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
+  `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `FMT-TIFF-003AT` is GREEN for bounded classic-route ExifIFD
+(34665) and GPSInfo (34853) sub-IFD traversal. The new Pillow 11.3.0 oracle
+(kept in `oracle/probe_tiff_subifd.py`) builds a 2x2 strip TIFF whose IFD0
+carries both pointers with populated one-level sub-IFDs; Pillow keeps the
+sub-IFD tags ONLY in `Exif.get_ifd(0x8769)`/`get_ifd(0x8825)` and leaves the
+flat `getexif()` with just the pointer values. The DLL instead follows the
+LONG pointers and flattens one sub-IFD level into the serialized EXIF blob
+through the existing exports: the classic builder's entry-collection loop is
+extracted into the private `TiffExifCollector` struct plus
+`collect_tiff_exif_entries` seam (mechanical, no behavior change), the
+builder captures type-4 `34665`/`34853` offsets, bounds-checks each sub-IFD
+(count, 12-byte-entry span), and re-collects its entries with the same
+classification chain plus new bounded GPS tag sets (ascii 1/3/9/10/12/14/
+16/18/19/23/25/27/28, uint 5/7/11/29/30/31, rational 6/13/15/17/21/24/26,
+rational arrays 2/4/20/22 with count 3). Facade `GetExif()` exposes
+`exif[36867]`/`exif[33434]`/`exif[37377]`/`exif[1]`/`exif[2]`/`exif[3]`/
+`exif[5]`/`exif[6]`/`exif[20]`/`exif[21]` alongside the pointer ints; the
+four legacy pointer fixtures now assert their flattened contents.
+`get_ifd()` itself remains an explicit boundary, and the flat-vs-get_ifd
+container difference is a recorded divergence. Raw/facade sub-IFD targets
+pass `1/1` and `1/1`; the TIFF filter passes `672/672` in `5015ms`; and the
+full directory suite passes `2724/2724` in `19016ms`, with zero failures,
+errors, or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity is `453/453` with zero difference; and the rebuilt
+DLL SHA-256 is
+`6738D442FCA4F49D19259E951B0D93DB18BA8D8E4CBDA8A05D107001B20F987F`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed. The
+estimate moves to `66% ±4%`. The next bounded child is `FMT-TIFF-003AU`,
+BigTIFF sub-IFD traversal.
+
+2026-08-13: `FMT-TIFF-003AS` is GREEN for bounded malformed BigTIFF metadata
+robustness. The Pillow 11.3.0 oracle probe (kept in
+`oracle/probe_bigtiff_icc_xmp.py`) confirms the malformed-entry surface:
+truncated out-of-line blobs, count-overflow rationals, and zero-count blobs
+open with exact pixels and the tag absent; invalid-type entries are
+reinterpreted by tag semantics (`exif[270] == 7` for a type-4 ascii entry,
+`exif[282] == 2` for a type-3 rational entry) and zero denominators expose
+`exif[33434] == nan` — those two Pillow behaviors are recorded as documented
+divergences because the DLL keeps the classic strict-type convention and
+skips the malformed entries. Raw/facade malformed matrices pass `1/1` and
+`1/1` with zero native changes (the BigTIFF readers already validated type,
+count, offset, and denominator); the BigTIFF filter passes `44/44` in
+`953ms`; the TIFF filter passes `670/670`; and the full directory suite
+passes `2722/2722`, with zero failures, errors, or skips. No native rebuild,
+export, facade lifetime rule, fallback, or AHK pixel loop changed, and the
+DLL SHA-256 remains
+`BC81F6446CC71FA32B5B9B9CB87C8782B6A39E362F508A67C9D162F37B1F425E`.
+The estimate moves to `65% ±4%`. The next bounded child is
+`FMT-TIFF-003AT`, ExifIFD/GPSInfo sub-IFD traversal.
+
+2026-08-13: `FMT-TIFF-003AR` is GREEN for bounded big-endian BigTIFF metadata
+attachment. An `MM` BigTIFF fixture carrying the same rational/signed-
+rational/double/float/byte/undefined families plus the unit-2 `282`/`283`/
+`296` trio reopens through the existing endian-aware readers with zero
+native changes: `parse_tiff_bigtiff_header` already decodes the byte order
+and every BigTIFF metadata reader consumes it. The raw/facade typed fixture
+builders gained a big-endian inline-field and type-3/type-4 value layout
+plus `PillowCPackBeRationalBytes`/`PillowTestPackBeRationalBytes`; raw and
+facade MM metadata targets pass `1/1` and `1/1`; the BigTIFF filter passes
+`42/42` in `1047ms`; the TIFF filter passes `668/668` in `4875ms`; and the
+full directory suite passes `2720/2720` in `18750ms`, with zero failures,
+errors, or skips. No native rebuild, export, facade lifetime rule, fallback,
+or AHK pixel loop changed, and the DLL SHA-256 remains
+`BC81F6446CC71FA32B5B9B9CB87C8782B6A39E362F508A67C9D162F37B1F425E`.
+Pillow 11.3.0 itself rejects valid MM BigTIFF, so this is a standards
+extension and the estimate stays `64% ±4%`. The next bounded child is
+`FMT-TIFF-003AS`, malformed BigTIFF metadata robustness.
+
+2026-08-13: `FMT-TIFF-003AN` through `FMT-TIFF-003AQ` are GREEN in one batch
+round, closing the bounded little-endian BigTIFF common-EXIF family matrix.
+The Pillow 11.3.0 oracle probe (kept in `oracle/probe_bigtiff_icc_xmp.py`)
+now also covers signed rationals, double arrays, float arrays, byte arrays,
+and undefined blobs; it confirms every family opens on the same 4×3, 2×2
+chunky tiled BigTIFF shape and exposes floats for rational families and raw
+bytes for byte/undefined families, while the DLL/facade keep the established
+`[num, den]` pair contract for rationals (recorded divergence) and numeric
+arrays/byte buffers for the rest. `FMT-TIFF-003AN` adds
+`read_tiff_bigtiff_rational_entry_value` (count-1 type-5, inline
+eight-byte value field) and `read_tiff_bigtiff_rational_array_entry_value`
+(type-5 arrays with 64-bit counts, inline/LONG8-offset layouts,
+zero-denominator rejection), serializing the scalar rational tag set, the
+rational-array set, and the unit-2 `282`/`283`/`296` resolution trio into
+`tiff_exif` with the classic expected-size rules. `FMT-TIFF-003AO` adds the
+type-10 signed-rational scalar/array readers for 37377/37379/37380/50716/
+50730/50739/51044/51109 and 50715/50721-50726/50832/50834/50964/50965/
+52530-52532. `FMT-TIFF-003AP` adds the type-12 double (33550/33922/34264/
+34736/50844/51041) and type-11 float (50938/50939/50940/50982) array
+readers. `FMT-TIFF-003AQ` serializes the `tiff_common_byte_array_tag` set
+and the extended undefined list (type-7 37510/37724 plus 347/33723/34856/
+36864/37121/37500/40960/41484/41728/41729/41730/41995/50828/50969/51008/
+51009/51022/52525/52533-52535) through the existing blob reader with the
+classic size rules. Raw/facade rational, double/float, and byte/undefined
+targets pass `1/1` each; the BigTIFF filter passes `40/40` in `953ms`; the
+TIFF filter passes `666/666` in `11031ms`; and the full directory suite
+passes `2718/2718` in `25766ms`, with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity
+is `453/453` with zero difference; and the rebuilt DLL SHA-256 is
+`BC81F6446CC71FA32B5B9B9CB87C8782B6A39E362F508A67C9D162F37B1F425E`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed. The
+next bounded child is `FMT-TIFF-003AR`, big-endian BigTIFF metadata
+attachment; the estimate moves to `64% ±4%`.
+
+2026-08-13: `FMT-TIFF-003AM` is GREEN. The Pillow 11.3.0 oracle probe (kept
+in `oracle/probe_bigtiff_icc_xmp.py`) confirms BigTIFF SHORT-array parity:
+a nine-tag matrix covering inline (530/291/297/42081/37396) and out-of-line
+(34735/342/50712/50829) type-3 arrays exposes exact tuples through
+`getexif()`. `read_tiff_bigtiff_ushort_array_entry_value` reads 64-bit
+counts with inline and LONG8-offset layouts;
+`build_tiff_bigtiff_common_ascii_exif_for_ifd` serializes the classic
+SHORT-array tag set with the classic size rules, and multi-channel tiled
+fixtures additionally expose `exif[258]` as `[8,8,8]`-style arrays, all with
+no facade change. Raw and facade SHORT-array targets pass `1/1` and `1/1`;
+TIFF filters pass `331/331` in `1219ms` and `329/329` in `3610ms`; and the
+full directory suite passes `2712/2712` in `19203ms`, with zero failures,
+errors, or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity is `453/453` with zero difference; and the rebuilt
+DLL SHA-256 is
+`A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed. The
+next bounded child is `FMT-TIFF-003AN`, BigTIFF rational common-EXIF tags;
+the estimate remains `62% ±4%`.
+
+2026-08-13: `FMT-TIFF-003AL` is GREEN. The Pillow 11.3.0 oracle probe (kept
+in `oracle/probe_bigtiff_icc_xmp.py`) confirms BigTIFF uint-array parity:
+`exif[324]`/`exif[325]` tuples match each fixture's tile offsets and counts,
+and an inline type-4 count-2 `279` array reopens as `(12, 34)`.
+`read_tiff_bigtiff_uint_array_entry_value` reads type-4/type-16 arrays with
+64-bit counts, inline and LONG8-offset layouts, and uint32-fitting LONG8
+validation; `build_tiff_bigtiff_common_ascii_exif_for_ifd` serializes LONG8
+`324`/`325`, type-4 `273`/`279`, and the bounded 50719/50720/50829/50830/
+50937/50981/51089/51090/51091/52536 families with the classic
+expected-count rules, so facade `GetExif()` exposes the arrays with no
+facade change. Raw and facade uint-array targets pass `1/1` and `1/1`; TIFF
+filters pass `330/330` in `1141ms` and `328/328` in `3765ms`; and the full
+directory suite passes `2710/2710` in `18890ms`, with zero failures, errors,
+or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity is `453/453` with zero difference; and the rebuilt DLL SHA-256
+is `FABED34225AA68493F81800D06BEF179626FB8A1B93D86B3395901419A82121C`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed. The
+next bounded child is `FMT-TIFF-003AM`, BigTIFF SHORT-array common-EXIF
+tags; the estimate remains `62% ±4%`.
+
+2026-08-13: `FMT-TIFF-003AK` is GREEN. The Pillow 11.3.0 oracle probe (kept
+in `oracle/probe_bigtiff_icc_xmp.py`) confirms BigTIFF scalar uint parity:
+the base tiled tags (256=4, 257=3, 258=8, 259=1, 262=1, 277=1, 284=1, 322=2,
+323=2) plus SHORT 317=1/340=0/341=255 and a LONG8 339=1 scalar all expose as
+integers through `getexif()`.
+`read_tiff_bigtiff_uint_scalar_entry_value` reads count-1 SHORT/LONG/LONG8
+scalars from the inline value field and normalizes uint32-fitting LONG8 into
+the serializer's LONG shape;
+`build_tiff_bigtiff_common_ascii_exif_for_ifd` serializes the
+`tiff_common_uint_tag` set alongside ascii/orientation/undefined, so the
+plain tiled fixture now always yields a HasExif blob and facade `GetExif()`
+exposes the integers with no facade change. Raw and facade uint targets pass
+`1/1` and `1/1`; TIFF filters pass `330/330` in `1203ms` and `328/328` in
+`6235ms`; and the full directory suite passes `2710/2710` in `18500ms`, with
+zero failures, errors, or skips. Release x64 Rebuild has `0 Warning(s),
+0 Error(s)`; source/DLL export parity is `453/453` with zero difference; and
+the rebuilt DLL SHA-256 is
+`9DC6FDAC375ABEB29AB8F594FE828E17F4EAC87B70CA86A56D9D9E038955EC28`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed. The
+next bounded child is `FMT-TIFF-003AL`, BigTIFF uint-array common-EXIF tags;
+the estimate remains `62% ±4%`.
+
+2026-08-13: `FMT-TIFF-003AJ` is GREEN. The Pillow 11.3.0 oracle probe (kept
+in `oracle/probe_bigtiff_icc_xmp.py`) confirms BigTIFF ASCII parity:
+out-of-line `exif[270] == "Document Alpha"` and `exif[315] == "Ada
+Lovelace"`, inline `exif[305] == "pillow-c"` / `exif[315] == "A"`, all
+through per-frame `getexif()` with no ascii `info` keys.
+`read_tiff_bigtiff_ascii_entry_value` reads type-2 entries with 64-bit
+counts, the count-≤-8 inline value field, LONG8 offsets, and NUL stripping,
+and `build_tiff_bigtiff_common_ascii_exif_for_ifd` passes the
+`tiff_common_ascii_tag` set into the shared serializer alongside orientation
+and 34675/700 undefined tags; facade `GetExif()` exposes the strings with no
+facade change. Raw and facade ascii targets pass `1/1` and `1/1`; TIFF
+filters pass `329/329` in `1406ms` and `327/327` in `3765ms`; and the full
+directory suite passes `2708/2708` in `18438ms`, with zero failures, errors,
+or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity is `453/453` with zero difference; and the rebuilt DLL SHA-256
+is `266F6DBAE44FDB56AE981B63D4CF075892AEF5D94575232610F7ECE3B53178C7`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed. The
+next bounded child is `FMT-TIFF-003AK`, BigTIFF scalar uint common-EXIF
+tags; the estimate remains `62% ±4%`.
+
+2026-08-13: `FMT-TIFF-003AI` is GREEN. The Pillow 11.3.0 oracle probe (kept in
+`oracle/probe_bigtiff_icc_xmp.py`) confirms BigTIFF DPI parity for the
+unit-2 trio: RATIONAL count 1 occupies exactly eight bytes and sits inline in
+the value field, and `282/283/296` reopen with exact `info["dpi"]` doubles
+`(300.0, 150.0)` and `(145.5, 144.0)`. Pillow's no-unit raw-dpi,
+centimeter-to-dpi `2.54` conversion, and absent-tag `(1, 1)` defaults are
+recorded as boundary notes; the DLL keeps the established classic-route
+convention (explicit unit-2 trio, otherwise no DPI).
+`parse_tiff_bigtiff_resolution_for_ifd` reads the 32-bit numerator and
+denominator halves with the decoded byte order and rejects zero denominators;
+`attach_tiff_bigtiff_metadata_for_ifd` fills `has_dpi`/`dpi_x`/`dpi_y` per
+frame, and the facade surfaces `Info["dpi"]` with no facade change. Raw and
+facade DPI targets pass `1/1` and `1/1`; TIFF filters pass `328/328` in
+`1140ms` and `326/326` in `3657ms`; and the full directory suite passes
+`2706/2706` in `18234ms`, with zero failures, errors, or skips. Release x64
+Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity is `453/453`
+with zero difference; and the rebuilt DLL SHA-256 is
+`2689C9A364C3671356D6D06C4D546708FA9A7E977EB8AB84E252318BA8D436A0`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed. The
+next bounded child is `FMT-TIFF-003AJ`, BigTIFF ASCII common-EXIF tags; the
+estimate remains `62% ±4%`.
+
+2026-08-13: `FMT-TIFF-003AH` is GREEN. The two-frame Pillow 11.3.0 oracle
+probe (kept in `oracle/probe_bigtiff_icc_xmp.py`) confirms per-frame reload:
+`seek(0)`/`seek(1)` expose each IFD's own ICC/XMP through `info` and a
+per-frame `getexif()`. When IFD1 lacks a tag, Pillow deletes `info["xmp"]`
+and empties `getexif()` but leaves `info["icc_profile"]` stale; the DLL keeps
+its fresh-handle per-frame convention and records the staleness as an oracle
+note. The private attach seam generalizes to
+`attach_tiff_bigtiff_metadata_for_ifd(tiff, size, ifd_index, image)` and runs
+for every frame index. The facade XMP-refresh deletion now covers TIFF so
+`Seek(1)` without XMP removes the previous frame's `Info["xmp"]`. Raw/facade
+per-frame targets pass `1/1` and `1/1`; TIFF filters pass `327/327` in
+`1125ms` and `325/325` in `3609ms`; and the full directory suite passes
+`2704/2704` in `17469ms`, with zero failures, errors, or skips. Release x64
+Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity is `453/453`
+with zero difference; and the rebuilt DLL SHA-256 is
+`4F9ED0A4222300A8919B1B7E362A2687D210603E0F75166794FBADD586EE3470`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed. The
+next bounded child is `FMT-TIFF-003AI`, BigTIFF IFD0 DPI resolution metadata;
+the estimate remains `62% ±4%`.
+
+2026-08-13: `FMT-TIFF-003AG` is GREEN. A local Pillow 11.3.0 oracle built from
+the exact 4×3, 2×2 chunky tiled little-endian BigTIFF fixture confirms
+`info["icc_profile"]`/`info["xmp"]` byte parity for out-of-line type-7/type-1
+ICC (twelve bytes) and XMP (324 bytes), plus the count-≤-8 inline value-field
+behavior for a six-byte ICC. The native route attaches IFD0 tag 34675/700
+bytes and a bounded undefined-plus-orientation EXIF blob only for frame 0;
+the facade exposes them through the existing `Info["icc_profile"]`,
+`Info["xmp"]`, and `GetExif()` seams without a facade change. Raw/facade
+targeted matrices pass `1/1` and `1/1`; TIFF filters pass `327/327` in
+`1125ms` and `324/324` in `3782ms`; and the full directory suite passes
+`2703/2703` in `18625ms`, with zero failures, errors, or skips. Release x64
+Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity is `453/453`
+with zero difference; and the rebuilt DLL SHA-256 is
+`84E80429DDD51C7ACE54ECA5EB89604F9DC41971DA7AD6C039958F08FD1BA06C`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed. The
+next bounded child is `FMT-TIFF-003AH`, per-frame (nonzero-IFD) BigTIFF
+ICC/XMP metadata attachment; the estimate remains `62% ±4%`.
+
+2026-08-07: `FMT-TIFF-003U` is GREEN. The cached Pillow 11.3.0 source archive
+at `third_party/pillow-11.3.0/Pillow-11.3.0-source.zip` (SHA-256
+`E884A87A512B168A5F55B2F6B721A432F699027CD7D2755D31677DC48E2011C5`) and
+the local Pillow 11.3.0 oracle confirm two 4×3, 2×2 uncompressed chunky tiled
+IFDs for `L`, `RGB`, `RGBA`, and `LA`. The raw/facade tests prove frame count 2,
+frame 1 open/seek, and exact clipped public bytes; targeted raw/facade tests
+pass `2/2` and `2/2`; TIFF filters pass `312/312` and `310/310`; and the full
+directory suite passes `2672/2672` in `18782ms`, with zero failures, errors, or
+skips. The native source reuses the existing per-IFD tiled parser and adds the
+internal next-IFD count route; Release x64 rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity remains `452/452` with zero difference; and the current
+DLL SHA-256 is
+`83FF14E210B7FE5791616C1D55AC7999164844B24013D1A08E8A16757DC751F9`.
+No export, status code, handle ownership, facade lifetime rule, or AHK pixel
+loop changed. Three-frame tiled files, tiled orientation transforms, RGBX
+planar storage, and BigTIFF remain open.
+
+2026-08-07: `FMT-TIFF-003T` is GREEN. The cached Pillow 11.3.0 source archive
+at `third_party/pillow-11.3.0/Pillow-11.3.0-source.zip` (SHA-256
+`E884A87A512B168A5F55B2F6B721A432F699027CD7D2755D31677DC48E2011C5`) and
+the local Pillow 11.3.0 source mapping confirm Compression `32773`
+(`packbits`), `5` (`tiff_lzw`), and `8` (`tiff_adobe_deflate`) for the
+existing plane-major planar-separate tiled matrix. Raw/facade compressed
+planar tests pass `1/1` and `1/1`; TIFF filters pass `310/310` and `308/308`;
+and the full directory suite passes `2668/2668` in `18969ms`, with zero
+failures, errors, or skips. The existing native decoder seam already handled
+the compressed plane tiles, so no production source or ABI export changed and
+no Release rebuild was required. Source/DLL export parity remains `452/452`
+with zero difference; the current DLL SHA-256 is
+`A49F66602B02F097D3E42596BA75F33C64FB8BF7EB2ABBEAE775914F5784DA0F`.
+No facade lifetime rule or AHK pixel loop changed. `LA` remains covered by the
+native public-byte matrix; the local Pillow/libtiff compressed planar LA probe
+exposes an upstream decoder limitation and is recorded as an oracle note.
+Multi-frame tiled files, tiled orientation transforms, RGBX planar storage,
+and BigTIFF remain open.
+
+2026-08-07: `FMT-TIFF-003S` is GREEN. The cached Pillow 11.3.0 source archive
+at `third_party/pillow-11.3.0/Pillow-11.3.0-source.zip` (SHA-256
+`E884A87A512B168A5F55B2F6B721A432F699027CD7D2755D31677DC48E2011C5`) and
+the local Pillow 11.3.0 oracle confirm `PlanarConfiguration=2` with plane-major
+tile streams for `L`, `RGB`, `RGBA`, and `LA` on a 4×3 image with 2×2 tiles.
+Native validates `TileOffsets`/`TileByteCounts` for all planes, copies padded
+edge tiles into interleaved DLL-owned output, and reuses the existing frame
+count route. Raw/facade REDs failed with native `-3` and facade invalid
+argument; GREEN targets pass `1/1` and `1/1`; TIFF filters pass `309/309` and
+`307/307`; and the full directory suite passes `2666/2666` in `18625ms`, with
+zero failures, errors, or skips. Release x64 Rebuild has `0 Warning(s),
+0 Error(s)`; source/DLL export parity is `452/452` with zero difference; and
+the rebuilt DLL SHA-256 is
+`A49F66602B02F097D3E42596BA75F33C64FB8BF7EB2ABBEAE775914F5784DA0F`.
+No ABI/export, facade lifetime rule, or AHK pixel loop changed. RGBX planar
+storage, compressed planar fixtures, multi-frame tiled files, tiled
+orientation transforms, and BigTIFF remain open.
+
+2026-08-07: `FMT-TIFF-003R` is GREEN. The cached Pillow 11.3.0 source archive
+at `third_party/pillow-11.3.0/Pillow-11.3.0-source.zip` (SHA-256
+`E884A87A512B168A5F55B2F6B721A432F699027CD7D2755D31677DC48E2011C5`) and
+`TiffImagePlugin.OPEN_INFO` confirm Compression `5` (`tiff_lzw`) and `8`
+(`tiff_adobe_deflate`) for the same 4×3, 2×2 row-major tiled matrix. The
+fixture covers storage `L`, `RGB`, `RGBA`, `LA`, and RGBX exposed as public
+`RGB` with rawmode `RGBX`, including complete padded right/bottom tile
+payloads. Native decodes each tile with the existing DLL LZW or zlib decoder,
+then reuses clipping and RGBX X-byte removal. Raw/facade targeted tests pass
+`1/1` and `1/1`; TIFF filters pass `308/308` and `306/306`; and the full
+directory suite passes `2664/2664` in `19438ms`, with zero failures, errors,
+or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity is `452/452` with zero difference; and the rebuilt DLL SHA-256
+is
+`550C606EB56C4E5062A75EFAE5F26189521419AB54648766E34FDF5BF28D905A`.
+No ABI/export, facade lifetime rule, or AHK pixel loop changed. Planar-
+separate storage, multi-frame tiled files, tiled orientation transforms, and
+BigTIFF remain open.
+
+2026-08-07: `FMT-TIFF-003Q` is GREEN. The cached Pillow 11.3.0 source archive
+at `third_party/pillow-11.3.0/Pillow-11.3.0-source.zip` (SHA-256
+`E884A87A512B168A5F55B2F6B721A432F699027CD7D2755D31677DC48E2011C5`) and
+`TiffImagePlugin.OPEN_INFO` confirm Compression `32773` (`packbits`) for the
+4×3, 2×2 row-major tiled matrix. The fixture covers storage `L`, `RGB`,
+`RGBA`, `LA`, and RGBX exposed as public `RGB`/rawmode `RGBX`; each tile is a
+complete literal-run PackBits payload, including padded right/bottom samples.
+The native parser now decodes each tile in the DLL before the existing clipped
+row copy, and RGBX removes its X byte. Raw/facade REDs failed with native
+`-3`/`pillow_c: invalid argument`; after implementation targeted tests pass
+`1/1` and `1/1`, TIFF filters pass `307/307` and `305/305`, and the full suite
+passes `2662/2662` in `17704ms`, with zero failures, errors, or skips. Release
+x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity is
+`452/452` with zero difference; and the rebuilt DLL SHA-256 is
+`F7D5D4513672C22D41B368EEA3B27FBC4E8D635BA3CF884C0E2167D31DD21BE2`.
+LZW/Adobe Deflate tiled compression, planar-separate storage, multi-frame
+tiled files, tiled orientation transforms, and BigTIFF remain open.
+
+2026-08-07: `FMT-TIFF-003P` is GREEN. The cached Pillow 11.3.0 source archive
+at `third_party/pillow-11.3.0/Pillow-11.3.0-source.zip` (SHA-256
+`E884A87A512B168A5F55B2F6B721A432F699027CD7D2755D31677DC48E2011C5`) and
+`TiffImagePlugin.OPEN_INFO` confirm that the 4×3 uncompressed chunky RGBX
+tiled shape maps to public mode `RGB` and rawmode `RGBX`, with
+`Photometric=2`, `BitsPerSample=(8,8,8,8)`, `SamplesPerPixel=4`, and
+`ExtraSamples=(0,)`. The generalized native parser now copies three output
+channels from the four-byte tile stride and clips right/bottom edges; the
+existing frame-count ABI route recognizes the single-frame shape. Raw and
+facade targeted tests pass `1/1` and `1/1`; TIFF filters pass `306/306` and
+`304/304`; files pass `1318/1318` and `1342/1342`; the full suite passes
+`2660/2660` in `18860ms`; Release is clean; export parity is `452/452`; and
+the rebuilt DLL SHA-256 is
+`35D7DF93688837456DBDAF1CE21A1BC410D37B60C48AA7A78A06F917017A2CF6`.
+No export, facade lifetime rule, or AHK pixel loop changed. LZW/Adobe Deflate
+tiled compression, planar-separate storage, multi-frame tiled files, tiled
+orientation transforms, and BigTIFF remain explicit boundaries.
+
+2026-08-07: `FMT-TIFF-003O` is GREEN. The cached Pillow 11.3.0 source archive
+at `third_party/pillow-11.3.0/Pillow-11.3.0-source.zip` (SHA-256
+`E884A87A512B168A5F55B2F6B721A432F699027CD7D2755D31677DC48E2011C5`) and
+`TiffImagePlugin.OPEN_INFO` confirm the 4×3 uncompressed chunky mode-`LA`
+tiled shape with inline `BitsPerSample=(8,8)`, photometric 1,
+`SamplesPerPixel=2`, and `ExtraSamples=(2,)`. The generalized native parser
+now allocates LA images, copies full tile rows with two-byte strides, clips
+right/bottom edges, and the existing frame-count ABI route recognizes the
+single-frame shape. Raw and facade targeted tests pass `1/1` and `1/1`; TIFF
+filters pass `305/305` and `303/303`; files pass `1317/1317` and `1341/1341`;
+the full suite passes `2658/2658` in `18797ms`; Release is clean; export parity
+is `452/452`; and the rebuilt DLL SHA-256 is
+`F16E5063EA263486676BF57ED09227213D64E55EE80597CFB6A5EAB66F8D6D1C`.
+
+2026-08-07: `FMT-TIFF-003N` is GREEN. The cached Pillow 11.3.0 source archive
+at `third_party/pillow-11.3.0/Pillow-11.3.0-source.zip` (SHA-256
+`E884A87A512B168A5F55B2F6B721A432F699027CD7D2755D31677DC48E2011C5`) and
+`TiffImagePlugin.OPEN_INFO` confirm the 4×3 uncompressed chunky mode-`RGBA`
+tiled shape with `BitsPerSample=(8,8,8,8)`, photometric 2, and
+`ExtraSamples=(2,)`. The generalized native parser now allocates RGBA images,
+copies full tile rows with four-byte strides, clips right/bottom edges, and
+the existing frame-count ABI route recognizes the single-frame shape. Raw and
+facade targeted tests pass `1/1` and `1/1`; TIFF filters pass `304/304` and
+`302/302`; files pass `1316/1316` and `1340/1340`; the full suite passes
+`2656/2656` in `17984ms`; Release is clean; export parity is `452/452`; and
+the DLL SHA-256 is
+`19A363B144A4D021AC07F0EFA60800C93F2F90C0B91BAF2EE0B188E26413E956`.
+
+2026-08-07: `FMT-TIFF-003M` is GREEN. The cached Pillow 11.3.0 source archive
+at `third_party/pillow-11.3.0/Pillow-11.3.0-source.zip` (SHA-256
+`E884A87A512B168A5F55B2F6B721A432F699027CD7D2755D31677DC48E2011C5`) and
+`TiffImagePlugin.OPEN_INFO` confirm the 4×3 uncompressed chunky mode-`RGB`
+tiled shape with `BitsPerSample=(8,8,8)`, photometric 2, and row-major raw
+tile descriptors. The generalized native parser now allocates RGB images,
+copies full tile rows with RGB byte strides, clips right/bottom edges, and
+the existing frame-count ABI route recognizes the single-frame shape. Raw and
+facade targeted tests pass `1/1` and `1/1`; TIFF filters pass `303/303` and
+`301/301`; files pass `1315/1315` and `1339/1339`; the full suite passes
+`2654/2654` in `18157ms`; Release is clean; export parity is `452/452`; and
+the DLL SHA-256 is
+`26BD8B97BB38817311A492F3818AFED4266637EBF579D275B65011D0DD2C35B3`.
+
+2026-08-07: `FMT-TIFF-003L` is GREEN. The cached Pillow 11.3.0 source archive
+at `third_party/pillow-11.3.0/Pillow-11.3.0-source.zip` (SHA-256
+`E884A87A512B168A5F55B2F6B721A432F699027CD7D2755D31677DC48E2011C5`) confirms
+that Pillow opens a 4×3 mode-`L` TIFF with 2×2 tiles by reading four full tile
+payloads in row-major order and clipping the right/bottom edge to the image
+size. Native `src/pillow_c_codec_tiff.cpp` now reads the LONG
+`TileOffsets`/`TileByteCounts` arrays, validates the bounded tile shape and
+byte ranges, allocates the output image in the DLL, and copies each tile row
+without an AHK per-pixel loop. The existing
+`pillow_c_image_frame_count_tiff` export recognizes this single-frame tiled
+route so `Pillow.Image.Open` can finish its `n_frames` initialization; ordinary
+strip TIFFs, orientation transforms, and multi-frame TIFF frame counts remain
+on their prior paths. Raw/facade targeted tests pass `1/1` each; raw/facade
+TIFF filters pass `302/302` and `300/300`; raw/facade files pass `1314/1314`
+and `1338/1338`; and the full directory suite passes `2652/2652` in `18234ms`,
+with zero failures, errors, or skips. Release x64 has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity remains `452/452` with zero difference; and the
+rebuilt DLL SHA-256 is
+`E8731BF65D99E016F851D97257A02793BAE2147DACBDFEFD7A5D35E21F1DC86C`.
+Compressed tiled strips, planar-separate storage, tiled modes other than `L`,
+multi-frame tiled files, tiled orientation transforms, and BigTIFF remain
+explicit boundaries.
+
+2026-08-07: `FMT-JPEG-002B2T-KEEP-RGB-QTABLES-EXTRA` is GREEN. The cached
+Pillow 11.3.0 source confirms that `keep_rgb=True` uses an Adobe APP14
+transform-0 RGB-component encoder; one or two qtables are passed to the
+native qtables path and `extra` remains a raw marker stream inserted after
+APP14 and before DQT. The additive
+`pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`
+export reuses the DLL-owned RGB qtables/keep-rgb encoder and composes
+explicit comment/ICC/EXIF/XMP metadata plus raw `extra` once inside the DLL.
+Raw/facade files pass `1313/1313` and `1337/1337`; the full suite passes
+`2650/2650` in `17953ms`, with zero failures, errors, or skips. Release x64
+has `0 Warning(s), 0 Error(s)`; source/DLL export parity is `452/452` with
+zero difference; and the rebuilt DLL SHA-256 is
+`27937210D81D2DEE52E879CFF4EA6BC68C42E8B41953C51F4CF7E8A19E7F8011`.
+The facade still rejects keep-rgb plus extra plus restart markers, three or
+four qtables, malformed marker streams, broader option precedence, and exact
+whole-file/entropy parity.
+
+2026-08-07: `FMT-JPEG-002B2T-RESTART-EXTRA` is GREEN. The cached Pillow
+11.3.0 source confirms that `extra` remains a raw marker stream passed to the
+JPEG encoder; the native route composes it once with restart-aware output
+inside `src/pillow_c_codec_jpeg_save.cpp`. The additive
+`pillow_c_image_save_jpeg_metadata_restart_marker_extra_encode_options` export
+carries core metadata, one/two custom qtables, block/row restart intervals,
+and raw `extra` for bounded `L`, `RGB`, and `CMYK` saves. Marker order remains
+`EXIF -> raw extra -> XMP -> ICC -> COM -> DQT -> DRI`; the facade retains all
+normalized Buffers through the synchronous `DllCall` and now reports the
+restart-capable boundary accurately. Raw/facade files pass `1311/1311` and
+`1335/1335`; the full suite passes `2646/2646` in `18422ms`, with zero
+failures, errors, or skips. Release x64 has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity is `450/450` with zero difference; and the rebuilt
+DLL SHA-256 is
+`C874D7B0A435FE70178C661039FABF3C95F4AAD2B945F968EE275B14F7A9FF12`.
+Keep-rgb plus extra, qtables with more than two tables, malformed marker
+streams, broader option precedence, and exact whole-file/entropy parity remain
+open boundaries.
+
+2026-08-07: `FMT-JPEG-002B2T` tail is GREEN. The saved Pillow 11.3.0 source
+archive at `third_party/pillow-11.3.0/Pillow-11.3.0-source.zip` (SHA-256
+`E884A87A512B168A5F55B2F6B721A432F699027CD7D2755D31677DC48E2011C5`) was used
+to confirm Pillow's `extra` contract: raw marker bytes are appended after the
+JFIF/Adobe header and before DQT, without native marker rewriting. The new
+`pillow_c_image_save_jpeg_extra_options` export reuses the native L/RGB/CMYK
+encoder routes and then inserts the caller's marker stream inside the DLL;
+the facade only normalizes `Extra`/`extra`, holds its `BinaryBuffer` for the
+call, and rejects metadata/qtables/keep-rgb/restart combinations explicitly.
+The bounded matrix covers `L`, `RGB`, and `CMYK` with DPI, optimize,
+progressive, and RGB subsampling options. Raw and facade targeted files pass
+`1305/1305` and `1329/1329`; the full AHK directory suite passes
+`2634/2634` in `38703ms`, with zero failures, errors, or skips. Release x64
+rebuilt with `0 Warning(s), 0 Error(s)`; source/DLL exports are `447/447` with
+zero difference; and the current DLL SHA-256 is
+`DFE783230FB400C7A6FEAC20F03F0DDA307AB4E2AAB0349E13F32AC4E88C0C4C`.
+This closes only the bounded marker-stream tail; metadata plus `extra`,
+qtables plus `extra`, keep-rgb/restart plus `extra`, other modes, and exact
+whole-file parity remain open.
+
+2026-08-07: `FMT-JPEG-002B2T-META` is GREEN. Local Pillow 11.3.0 confirms
+that explicit EXIF, raw `extra`, generated XMP, generated ICC, and explicit
+comment are serialized in that order after JFIF/Adobe headers and before DQT.
+The native `pillow_c_image_save_jpeg_metadata_extra_encode_options` export
+builds the encoder output once, inserts all groups once inside the DLL, and
+preserves raw `extra` bytes without parsing or rewriting them. The facade
+routes `Comment`/`comment`, `IccProfile`/`icc_profile`, `Exif`/`exif`, and
+`Xmp`/`xmp` with `Extra`/`extra`, retaining every Buffer through `DllCall`.
+Raw/facade combination tracers pass `2/2` each; their complete files pass
+`1307/1307` and `1331/1331`; the full directory suite passes `2638/2638` in
+`29203ms`; Release x64 is clean; and source/DLL export parity is `448/448`.
+QTables, keep-rgb, restart-marker, other-mode, malformed-marker, and exact
+whole-file/entropy parity combinations remain explicit boundaries.
+
+2026-08-07: `FMT-JPEG-002B2T-QTABLES` is GREEN. The cached Pillow 11.3.0
+source confirms qtables validation up to four tables, while this native
+increment intentionally closes the existing DLL encoder's bounded one/two
+table surfaces for `L`, `RGB`, and `CMYK`. The additive
+`pillow_c_image_save_jpeg_qtables_metadata_extra_encode_options` export reuses
+the DLL qtables encoder, composes raw `extra` bytes with generated XMP and
+the existing metadata packetizers, and leaves the marker stream unchanged.
+The facade roots qtables and every metadata/extra Buffer through `DllCall`;
+no AHK pixel loop was added. Raw and facade qtables+extra files pass
+`1309/1309` and `1333/1333`; the full directory suite passes `2642/2642` in
+`18844ms`, with zero failures, errors, or skips. Release x64 reports
+`0 Warning(s), 0 Error(s)`; source/DLL exports are `449/449` with zero
+difference; and the rebuilt DLL SHA-256 is
+`793E71B180B949BC7D23D2F707077698AE239503EF689BB83C1F3528503A98AF`.
+Progressive/optimized qtables+extra and bounded XMP composition are covered.
+Qtables with more than two tables, keep-rgb/restart plus extra, malformed
+marker streams, broader option precedence, and exact whole-file/entropy parity
+remain open.
+
+2026-08-06: `QUANT-001` bounded native algorithm slice is GREEN. The saved
+Pillow 11.3.0 source archive at
+`third_party/pillow-11.3.0/Pillow-11.3.0-source.zip` (SHA-256
+`E884A87A512B168A5F55B2F6B721A432F699027CD7D2755D31677DC48E2011C5`) was used
+to pin the native dispatch/source boundary. `pillow_c_ops.cpp` now owns native
+`MEDIANCUT`, `MAXCOVERAGE`, `FASTOCTREE`, RGBA palette alpha, `L`/`RGB`/`RGBA`/`P`
+input collection, and bounded k-means refinement; the facade only normalizes
+arguments and routes method/options calls. The additive
+`pillow_c_image_quantize_options` export preserves the existing exact
+`pillow_c_image_quantize` ABI. Explicit `LIBIMAGEQUANT` returns the documented
+dependency boundary because libimagequant is not linked. Red was a missing
+export/unsupported algorithm route; targeted raw+facade green is `2/2`, the
+full directory suite is `2630/2630` in `29906ms`, Release x64 rebuild is
+`0 Warning(s), 0 Error(s)`, source/DLL exports are `446/446` with zero
+difference, and the current DLL SHA-256 is
+`FE00E99AE5524552D45AC49824C9EA413AA63A88BB2F8DB447F08AC38A55BF56`.
+This bounded slice raises the replacement-readiness estimate from `59%` to
+`60% ±4%`; reference-palette dither parity, libimagequant algorithm support,
+and broader Pillow quantize cross-products remain open under `QUANT-001`.
+
+2026-08-06: `ARCH-MOD-010` core/effects monolith closure is GREEN. The shared
+numeric, shape/mask/palette, mode-name, and mode ABI Implementation moved into
+`pillow_c_core.cpp`; gradient/effect native hot loops and all corresponding
+public exports moved into `pillow_c_effects.cpp`. `pillow_c.cpp` is now a
+one-line include-only translation unit. Structural ownership is `1/1`; raw
+linear/radial/effects are `1/1`, `1/1`, and `3/3`; facade linear/radial/effects
+are `1/1`, `1/1`, and `4/4`; Release x64 has `0 Warning(s), 0 Error(s)`; the
+full suite is `2626/2626` in `28843ms`; source/DLL exports remain `445/445`
+with zero difference; and the rebuilt DLL SHA-256 is
+`69FF7A140E8EA0E3AA5E1B75BF394D1ADA8C9B5271709242A89497C1D23DF484`. This
+architecture packet does not increase the `59% ±4%` compatibility estimate.
+
+2026-08-06: `ARCH-MOD-011` JPEG physical modularization is GREEN. The prior
+single JPEG translation unit was decomposed into seven independently compiled
+Modules: decode, common DCT/Huffman/marker machinery, grayscale encode, RGB
+encode, CMYK encode, save routing, and metadata exports. The private seam is
+`src/pillow_c_codec_jpeg_internal.h`; `src/pillow_c.cpp` remains a 31-byte
+include-only translation unit. The structural ownership test passes `1/1`;
+raw JPEG passes `212/212`; facade JPEG passes `219/219`; Release x64 builds
+with `0 Warning(s), 0 Error(s)`; the full directory suite passes `2627/2627`
+in `34375ms`; source/DLL exports are `445/445` with zero difference; and the
+rebuilt DLL SHA-256 is
+`988DAA0F12507201F4AF8B01C889703FAD69614839868A71E3C6DB9ABD670462`. A
+cross-module `optimize == 1` normalization fix restored default baseline DHT
+semantics after the extraction. This architecture packet does not change the
+`59% ±4%` compatibility estimate.
+
+2026-08-06: `ARCH-MOD-012` operations deep decomposition is GREEN. Native
+histogram, entropy, extrema, bbox, projection, getcolors, and autocontrast
+algorithms plus their eleven exports moved from `pillow_c_ops.cpp` into the
+independently compiled `pillow_c_ops_statistics.cpp`; the 37-line
+`pillow_c_ops_internal.h` seam keeps equalize and LUT reuse explicit. The
+source units are 6,960 and 1,079 lines, with no implementation inclusion,
+duplicate body, or forwarding export shell. Operations structural coverage is
+`13/13`; targeted statistics and restored cross-cutting operation filters are
+green; Release x64 has `0 Warning(s), 0 Error(s)`; the full suite passes
+`2628/2628` in `28375ms`; source/DLL exports are `445/445` with zero
+difference; and DLL SHA-256 is
+`F98BC86BF9181F0473AD2C7320D9FFC16157E97220C7380DDE49D86F295313E2`.
+This architecture packet does not change the `59% ±4%` compatibility
+estimate or the selected `FMT-JPEG-002B2` compatibility packet.
+
+2026-08-06: `ARCH-MOD-009` raw codec/buffer native modularization is GREEN.
+`pillow_c_raw.cpp` now owns raw mode decode/encode specs, native raw pixel
+packing, Mode-1 packing, FromBuffer alias refresh/detach lifetime, byte/raw
+transfer implementation, and all eight raw/buffer public exports. The main
+unit fell from 2,127 to 956 lines and retains no duplicate raw body or
+forwarding export. Structural ownership is `1/1`; raw bytes is `3/3`; raw
+numeric/Mode-1 is `8/8`; raw FromBuffer map/alias is `4/4`; raw readonly
+refresh/detach is `41/41`; facade Image.FromBuffer is `32/32`; facade
+FromBytes is `5/5`; facade ToBytes is `1/1`; Release x64 has `0 Warning(s),
+0 Error(s)`; the full suite is `2625/2625` in `28422ms`; source/DLL exports
+remain `445/445` with zero difference; and the rebuilt DLL SHA-256 is
+`0756B2D899800BA9E0A81B95C220E9E712F694F44C99280B2B88F2BFCF49A269`. This
+architecture packet does not increase the `59% ±4%` compatibility estimate.
+
+2026-08-06: `ARCH-MOD-008` metadata/EXIF native modularization is GREEN. The
+EXIF helper block and generic/PNG metadata ABI block moved into the independently
+compiled `src/pillow_c_metadata.cpp`; `pillow_c.cpp` fell from 4,606 to 2,127
+lines and metadata grew from 733 to 3,218 lines. Structural ownership passes
+`1/1`; raw EXIF passes `23/23`; raw PNG metadata passes `12/12`; the combined
+raw metadata filter passes `182/182`; facade PNG metadata passes `12/12`; and
+facade JPEG metadata/open passes `25/25`. Release x64 builds with
+`0 Warning(s), 0 Error(s)`; the full suite passes `2624/2624` in `28796ms`;
+source/DLL exports remain `445/445` with zero difference; and the rebuilt DLL
+SHA-256 is
+`BF103E627C2DAD72C8781AD42A289818F1074F4FC53D915555F4CBC72BEBE31D`.
+This architecture packet does not increase the `59% ±4%` compatibility
+estimate or change the next compatibility packet `FMT-JPEG-002B2`.
+
+2026-08-06: `ARCH-MOD-006` GIF native modularization is GREEN. The complete
+GIF reader/writer implementation and all GIF exports moved into
+`src/pillow_c_codec_gif.cpp`; shared RGB/L and GIF palette quantization remain
+behind explicit internal seams for the forthcoming ops extraction.
+`src/pillow_c.cpp` fell from 15,261 to 12,482 lines and the GIF unit is 2,836
+lines. Structural RED was `0/1` before extraction and GREEN is `1/1`; raw GIF
+passes `52/52`, facade GIF `51/51`, raw full-file `1296/1296`, facade
+full-file `1326/1326`, and the complete directory suite `2622/2622` in
+`28485ms`. Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL
+exports remain `445/445` with zero difference; DLL SHA-256 is
+`9B84DFA634A14EAEC4ABD3607446C05DFC8D878BB8EE8B1BD46880695FB566FD`.
+This architecture packet does not increase the `59% ±4%` compatibility
+estimate.
+
+2026-08-06: `ARCH-MOD-007` operations native modularization is GREEN. The
+operations family moved into the independently compiled
+`src/pillow_c_ops.cpp`, including public fill/getpixel/putpixel exports and
+the shared quantization implementations used by GIF. `src/pillow_c.cpp` fell
+from 12,482 to 4,606 lines; the ops unit is 7,993 lines. Structural ownership
+passes `1/1`; targeted raw operations pass fill `2/2`, get/putpixel `2/2`,
+paste `13/13`, transpose `12/12`, point LUT `6/6`, and handle `3/3`.
+Targeted facade fill passes `1/1` and get/putpixel passes `2/2`. Release x64
+builds with `0 Warning(s), 0 Error(s)`; the full directory suite passes
+`2623/2623` in `29453ms`; source/DLL exports remain `445/445` with zero
+difference; and the rebuilt DLL SHA-256 is
+`50C0FCB6CCABBA75098C5CB90732F540624EBD4BD562F24EE852E18D4E900EBE`.
+This architecture packet does not increase the `59% ±4%` compatibility
+estimate.
+
+2026-08-06: `FMT-TIFF-001AY` GREEN evidence is closed. Raw and facade
+targeted tests passed `1/1`; TIFF raw/facade filters passed `300/300` and
+`298/298`; Release x64 built with zero warnings/errors; the full suite passed
+`2613/2613` in `17500ms`; source/DLL exports are `445/445`; and the current
+DLL SHA-256 is
+`4870243958A0CB738CD123BB23472CABABD0B554ED6FCEA83106FA33E046B869`.
+
+2026-08-06: `FMT-TIFF-001AZ` GREEN evidence is closed. The native route now
+supports the bounded three-frame same-route extension without a new export.
+Raw and facade targeted composition tests pass `3/3` each; TIFF filters pass
+`301/301` raw and `299/299` facade; the full suite passes `2615/2615` in
+`19750ms`; Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL
+exports remain `445/445`, zero difference; and the rebuilt DLL SHA-256 is
+`33DC056E15794A5E451BD430BAAE9696AC8FE0960B793A8859C8A233699E2AA`.
+
+2026-08-06: `ARCH-MOD-002` initial JPEG native modularization is GREEN. The
+complete JPEG codec implementation and all JPEG exports first moved into one
+independent translation unit; `ARCH-MOD-011` later decomposed that historical
+unit into seven physical JPEG Modules. EXIF orientation parsing and the
+metadata blob overload are explicit shared internal seams. At the initial
+wave, `src/pillow_c.cpp` fell from about 46,059 to 37,318 lines.
+Release x64 builds with `0 Warning(s), 0 Error(s)`; JPEG raw/facade filters
+pass `430/430`; the full suite passes `2615/2615` in `17813ms`; source/DLL
+exports remain `445/445` with zero difference; and the rebuilt DLL SHA-256 is
+`1ABA5BF3997ECB4AE9A7662EC3B4B4AB955130253F93039BE7522BE133BDAF1F`.
+This architecture packet does not increase the `59% ±4%` compatibility
+estimate.
+
+2026-08-06: `ARCH-MOD-003` PNG native modularization is GREEN. The complete
+PNG implementation and all PNG exports moved into
+`src/pillow_c_codec_png.cpp`; ICO save consumes two explicit PNG internal
+seams, while GIF remained in the main unit at this wave and later moved under
+`ARCH-MOD-006`. `src/pillow_c.cpp` fell from about
+37,318 to 30,895 lines and the PNG unit is about 6,482 lines. Release x64
+built with `0 Warning(s), 0 Error(s)`; PNG raw/facade tests pass `221/221`;
+the full suite passes `2616/2616` in `18016ms`; source/DLL exports remain
+`445/445` with zero difference; and the rebuilt DLL SHA-256 is
+`6236EE06518E445F2830D81D4F4D8C4F2F148FDACE05A1A3ECF8B1BCFFF1BCEB`.
+This architecture packet does not increase the `59% ±4%` compatibility
+estimate.
+
+2026-08-06: `ARCH-MOD-001` full first-wave native modularization is GREEN. The
+shared internal contract now connects explicit core, memory, metadata, WIC,
+TIFF codec, and ABI translation units. `pillow_c_codec_tiff.cpp` owns the
+complete TIFF parser/writer, IFD layout, strip codecs, metadata routes, and
+TIFF exports; `pillow_c_metadata.cpp` owns EXIF serialization;
+`pillow_c_codec_wic.cpp` owns shared WIC factory/palette/format/frame helpers;
+and `pillow_c_abi.cpp` owns status and image ABI adapters. `pillow_c.cpp` is
+about 46,059 lines after removing those bodies from the about-51,579-line
+monolith. Release x64 builds with zero warnings/errors; source/DLL exports are
+`445/445` with zero difference; raw/facade targeted composition is `3/3` each;
+TIFF filters are `301/301` and `299/299`; and the full suite is `2615/2615` in
+`19750ms`. The DLL SHA-256 is
+`33DC056E15794A5E451BD430BAAE9696AC8FE0960B793A8859C8A233699E2AA`.
+
+2026-08-06: the user approved the formal multi-translation-unit
+modularization direction. The design is recorded in
+`docs/superpowers/specs/2026-08-06-pillow-c-modularization-design.md`.
+The approved design is implemented in the first full migration wave while
+preserving `FMT-TIFF-001AY` and `FMT-TIFF-001AZ` through the new
+core/memory/metadata/WIC/TIFF/ABI seams. No public ABI changed. No subagents,
+parent-tool edits, Git commit, or push are part of this work.
+
+2026-07-04: a full repository audit verified 379/379 source/DLL exports,
+1326/1326 tests green in 4016ms, a clean tracked tree, and in-sync oracle
+fixtures, refreshed all docs, and filed audit findings as ledger rows
+`FMT-TIFF-004`, `FMT-TIFF-005`, `ROBUST-001`, `ROBUST-002`,
+`API-STATUS-001`, `API-JPEG-001`, and `API-PNG-001`; see the
+"2026-07-04 Full Repository Audit" section below. Do not re-run a broad
+audit to rediscover these.
+2026-08-06: the user requested a second comprehensive recalibration that
+ignores the former goal-attainment model. The replacement-readiness model
+scores native hot-path/storage ownership `17/20`, common public API/mode/
+operation compatibility `17/25`, end-to-end formats/codecs/multiframe breadth
+`15/30`, metadata/color/fonts/dependency interoperability `6/15`, and
+performance/ABI/testing/packaging/release maturity `4/10`. Total: `59/100`,
+reported as `59%` with an uncertainty band of about four points. Tests,
+exports, source size, and narrow gap counts remain closure evidence rather
+than points. The main deductions are the roughly ten practical format-family
+surface versus Pillow's broad plugin set, WebP/APNG/AVIF/JPEG2000, incomplete
+mode/API cross-products and mutable metadata lifecycles, FreeType/Unicode/
+RAQM, broad quantize and array/Arrow/Qt interop, repeatable benchmarks, SIMD/
+threading, fuzz/leak/stress, versioned ABI, CI, packaging, and release
+automation. This supersedes the former `70%` baseline and all earlier models.
+`FMT-JPEG-003BH` extends `pillow_c_image_open_jpeg_draft_mode` to the bounded
+requested `YCbCr` mode on the stable 4:2:2 RGB fixture. Pillow 11.3.0 returns
+`("YCbCr", (0,0,24.0,16.0))`, produces pixel SHA-256
+`47A50DA85103D91CF0B19FB13FA64C0F2FDA80EBA1986CA09CD6E6ACF86ECC13`,
+returns `None` on the second call, and differs from draft-RGB followed by
+`convert("YCbCr")`, whose hash is
+`6F05C698DE44C8B5E822E620403ADB33448B2CD5D60BD7C7AB44A6C42434A600`.
+WIC reports Y `24x16` and Cb/Cr `12x16`; the DLL uses libjpeg-turbo 3.1.1's
+h2v1 3/4-1/4 triangle filter with alternating `+1`/`+2` rounding, then
+interleaves decoder-native planes. Raw/facade RED returned `-3` / no tuple,
+both `0/1` in `31ms`; GREEN passes `1/1` in `157ms` / `1/1` in `47ms`.
+Raw/facade draft filters pass `4/4` in `47ms` / `5/5` in `31ms`; raw
+`open_jpeg` passes `36/36` in `187ms`; full passes `2593/2593` in `18750ms`.
+Registrations are `1278/1315`; Release x64 builds with zero warnings/errors;
+source/DLL exports remain `445/445`, zero difference; DLL SHA-256 is
+`75172FA128F0A0CCBA892014C2444CB7BFA517B3CC06B9DA9F5B0DD52B5C58B8`.
+`FMT-JPEG-003BK` extends the same requested-mode ABI to one native-generated
+RGB 4:2:0 JPEG. The source is 1431 bytes with file SHA-256
+`F9564EAECD07E15111F7D6539FAC64B99DE2D7A77F84715C5370E83B9C5D8819`.
+Pillow 11.3.0 returns `("YCbCr", (0,0,6.0,4.0))`, produces pixel SHA-256
+`43DB98CCF817AFBE33D98A16A86BCAFE0D526ED282714A93A1B166B7628762EE`,
+returns `None` on the second call, and emits no warnings. Draft-RGB then
+`convert("YCbCr")` instead hashes to
+`18216EDA1CE6F7FB1E8D2476201CA09AE2DBACA580EC425515B67779BEB08D79`.
+The existing route selected decoder scale 8 and interleaved the native
+`6x4` planes. The raw/facade tests were GREEN on first run (`1/1` in `47ms`
+/ `1/1` in `31ms`); raw/facade draft filters pass `7/7` in `63ms` / `8/8`
+in `62ms`; raw `open_jpeg` passes `39/39` in `281ms`; full passes
+`2599/2599` in `18172ms`. Registrations are `1281/1318`. No native source
+changed and no rebuild was required; source/DLL exports remain `445/445`,
+zero difference; DLL SHA-256 remains
+`6CD7A23D500A6C8D37AC3600CC2769186A9CA42F360A7CB305D021FBD56F6FA1`.
+`FMT-JPEG-003BL` verifies the existing requested-mode ABI on the stable
+4:2:2 RGB fixture at decoder scale 4. Pillow 11.3.0 returns
+`("YCbCr", (0,0,12.0,8.0))`, produces pixel SHA-256
+`111820C0CB10B4EAC6F7E3D80660FC24E2FE6782AF9C1FD2C6ADD716648589E9`,
+returns `None` on the second call, and emits no warnings. The native h2v1
+route exposes exact `12x8` YCbCr bytes; raw/facade GREEN tests pass `1/1` in
+`31ms` / `1/1` in `31ms`; draft filters pass `8/8` in `46ms` / `9/9` in
+`94ms`; raw `open_jpeg` passes `39/39` in `250ms`; and full passes
+`2601/2601` in `17391ms`. Registrations are `1282/1319`. No native source or
+ABI changed and no rebuild was required; source/DLL exports remain `445/445`,
+zero difference; DLL SHA-256 remains
+`6CD7A23D500A6C8D37AC3600CC2769186A9CA42F360A7CB305D021FBD56F6FA1`.
+`FMT-JPEG-003BM` closes the adjacent decoder scale-8 path on the same stable
+4:2:2 RGB fixture. Pillow 11.3.0 returns
+`("YCbCr", (0,0,6.0,4.0))`, produces pixel SHA-256
+`53089E589F2DE2C2A4D538388B608CAEAAA3602ADB75843A2FF6C09EB2D2BCDC`,
+returns `None` on the second call, and emits no warnings. Draft-RGB followed
+by `convert("YCbCr")` hashes to
+`EC837EEC3E2EC91F4E77EF0B49473BF3EA48A3A83F4D6C01D99947E837C2D838`.
+Raw RED isolated h2v1 chroma drift at `0/1` in `31ms`; WIC reported planes
+`6x4 / 3x4 / 3x4`. Pillow duplicates each scale-8 chroma sample horizontally,
+so the DLL now uses native nearest interleave at scale 8 while retaining
+fancy h2v1 at scales 2/4. Raw/facade GREEN pass `1/1` in `93ms` / `31ms`;
+draft filters pass `9/9` in `47ms` / `10/10` in `63ms`; raw `open_jpeg`
+passes `40/40` in `250ms`; and full passes `2603/2603` in `17687ms`.
+Registrations are `1283/1320`; Release x64 builds with zero warnings/errors;
+source/DLL exports remain `445/445`, zero difference; DLL SHA-256 is
+`E9C69DDDC99210311F4B543C20E7B0ABA801FE88A0C845AA1402446A3BCBE43C`.
+`FMT-JPEG-003BN` closes the full-scale path on the same stable 4:2:2 RGB
+fixture. Pillow 11.3.0 returns `("YCbCr", (0,0,48.0,32.0))`, produces pixel
+SHA-256 `C17E5465A1FD9F0418A620F09FCA0EBDD3862B82A71BA5C36B5005AE2524121A`,
+returns `None` on the second call, and emits no warnings. Draft-RGB followed
+by `convert("YCbCr")` instead hashes to
+`53DDBF576E8A116F7AA0E85B96E72D9022092BB6177D2762E3E6D7B6478EC9BB`.
+The existing decoder-native scale-1 planar route matched on its first run;
+raw/facade targeted tests pass `1/1` in `47ms` / `1/1` in `31ms`, draft
+filters pass `10/10` in `47ms` / `11/11` in `78ms`, raw `open_jpeg` passes
+`42/42` in `219ms`, and full passes `2605/2605` in `18375ms`. Registrations
+are `1284/1321`. No production source, ABI, or DLL artifact changed, so no
+rebuild was required; source/DLL exports remain `445/445`, zero difference,
+and DLL SHA-256 remains
+`E9C69DDDC99210311F4B543C20E7B0ABA801FE88A0C845AA1402446A3BCBE43C`.
+`FMT-JPEG-003BO` closes the full-scale path on the repeatable native-generated
+4:2:0 RGB fixture. Pillow 11.3.0 returns
+`("YCbCr", (0,0,48.0,32.0))`, produces pixel SHA-256
+`BED3C13D33544DF3EF1DF583CCA583CED5AA3BA3BD511E80557F34AB273E610D`,
+returns `None` on the second call, and emits no warnings. Draft-RGB followed
+by `convert("YCbCr")` instead hashes to
+`7BC97380D6B254CA8526E4A5937A81719822B7209515F479D1E7515FE859CC00`.
+Raw/facade RED returned `-3` / `pillow_c: invalid argument` at `0/1` in `62ms`
+/ `0/1` error in `31ms`. One diagnostic build proved WIC planes
+`48x32 / 24x16 / 24x16`; the final DLL removes that diagnostic and applies
+native h2v2 3/4-1/4 fancy filtering with exact fused `+8/+7` rounding. Final
+raw/facade targeted tests pass `1/1` in `110ms` / `1/1` in `31ms`, draft
+filters pass `11/11` in `78ms` / `12/12` in `78ms`, raw `open_jpeg` passes
+`43/43` in `234ms`, and full passes `2607/2607` in `18937ms`. Registrations
+are `1285/1322`; Release x64 builds with zero warnings/errors; source/DLL
+exports remain `445/445`, zero difference; DLL SHA-256 is
+`F8BCA8B5A57D28241FA996DF686253DF3655F68FA97609D6577E1C15936EC92A`.
+`FMT-JPEG-003BP` closes the decoder scale-4 L path on the stable 4:2:2 RGB
+fixture. Pillow 11.3.0 returns `("L", (0,0,12.0,8.0))`, produces pixel
+SHA-256 `E7FBFB3D41429AEE13906FEC3D4F9FDA3F370B7E953FE655D1B6D6FC835748A4`,
+returns `None` on the second call, and emits no warnings. At this scale,
+draft-RGB followed by `convert("L")` has the same pixel hash. The existing
+decoder-native Y-plane route matched on its first run; raw/facade targeted
+tests pass `1/1` in `31ms` / `1/1` in `31ms`, draft filters pass `12/12` in
+`62ms` / `13/13` in `109ms`, raw `open_jpeg` passes `44/44` in `219ms`, and
+full passes `2609/2609` in `17766ms`. Registrations are `1286/1323`. No
+production source, ABI, or DLL artifact changed, so no rebuild was required;
+source/DLL exports remain `445/445`, zero difference, and DLL SHA-256 remains
+`F8BCA8B5A57D28241FA996DF686253DF3655F68FA97609D6577E1C15936EC92A`.
+`FMT-JPEG-003BQ` closes the adjacent decoder scale-8 L path on the same stable
+RGB 4:2:2 fixture. Pillow 11.3.0 returns `("L", (0,0,6.0,4.0))`, produces
+pixel SHA-256
+`4F1BFE45ACDE072617748D7095B446061302477DBBC41DA2173C445D4FE0C137`,
+returns `None` on the second call, and emits no warnings. Draft-RGB followed
+by `convert("L")` has the same hash at this scale. The existing native route
+matched on first run; raw/facade targeted tests pass `1/1` in `31ms` / `16ms`,
+draft filters pass `13/13` in `62ms` / `14/14` in `79ms`, raw `open_jpeg`
+passes `45/45` in `218ms`, and the full suite passes `2611/2611` in `17922ms`.
+Registrations are `1287/1324`; no production source, ABI, or DLL artifact
+changed, so no rebuild was required. Source/DLL exports remain `445/445`,
+zero difference; DLL SHA-256 remains
+`F8BCA8B5A57D28241FA996DF686253DF3655F68FA97609D6577E1C15936EC92A`.
+`FMT-JPEG-003BE` adds `pillow_c_image_open_jpeg_draft(path, target_width,
+target_height, out_image, out_scale)`. Native open selects from JPEG draft
+scales `{8,4,2,1}` and uses `IWICBitmapSourceTransform::CopyPixels` for the
+actual decoder-reduced CMYK output; ordinary `pillow_c_image_open_jpeg`
+remains scale 1. For target `8x5`, Pillow 11.3.0 returns
+`("CMYK", (0,0,8.5,5.5))`, mutates the odd `17x11` source to `9x6`, produces
+pixel SHA-256
+`4FF2199B3E6C02946B2C64FBB75480161A55DB07548663DF7BC41074F7A4E60E`,
+returns `None` on the second call, and emits no warnings. Raw RED lacked the
+new export and facade RED returned no tuple. Final raw/facade draft tests pass
+`1/1` in `47ms` / `1/1` in `63ms`; raw/facade YCCK filters pass `35/35` in
+`1078ms` / `36/36` in `1437ms`; raw `open_jpeg` passes `33/33` in `312ms`;
+full passes `2587/2587` in `28328ms`. Registrations are `1275/1312`.
+Release x64 builds with zero warnings/errors; source/DLL exports are
+`444/444`, zero difference; DLL SHA-256 is
+`901CA0B96ECA45305BCF43FD81A4F348E08FAB7E98B76AD7366402EFE4534235`.
+`FMT-JPEG-003BF` extends the same native draft export to three-component JPEGs.
+WIC's source transform rejects reduced `24bppRGB` but accepts reduced
+`24bppBGR`; the DLL requests that exact format and swaps B/R in one contiguous
+native hot loop. There is no full-size decode/resize or fallback. Pillow
+11.3.0 returns `("RGB", (0,0,24.0,16.0))` for the stable 1806-byte `48x32`
+4:2:2 fixture and target `24x16`, produces pixel SHA-256
+`5FBBC621CFC49F97902D811AA2E78F69E2D48034ACB7A93AED420E6EFA024192`,
+returns `None` on the second call, and emits no warnings. Fixture SHA-256 is
+`BC199D543E5867C8CC948824F3EF89773A57B9CEDF159F557D2C289151DFE486`.
+Raw RED returned `-3`; facade RED returned no tuple, both `0/1` in `47ms`.
+GREEN passes `1/1` in `125ms` / `1/1` in `47ms`; raw/facade draft filters
+pass `2/2` in `47ms` / `3/3` in `62ms`; raw `open_jpeg` passes `34/34` in
+`297ms`; full passes `2589/2589` in `29328ms`. Registrations are `1276/1313`.
+Release x64 builds with zero warnings/errors; source/DLL exports remain
+`444/444`, zero difference; DLL SHA-256 is
+`A837676696AF28A1FB5FF500AA0BEC5532629DB997CC4B8322A3A669063B1155`.
+`FMT-JPEG-003BG` adds
+`pillow_c_image_open_jpeg_draft_mode(path, mode, target_width, target_height,
+out_image, out_scale)` and the bounded requested L mode. Pillow 11.3.0 returns
+`("L", (0,0,24.0,16.0))`, mutates to L `24x16`, produces pixel SHA-256
+`AD0FDBB2BD3421A5F8F9192DBFCD783DD06B95B9357EABDDE503A210191943B8`,
+returns `None` on the second call, and emits no warnings. Reduced RGB followed
+by Pillow `convert("L")` instead hashes to
+`6B6BB5EAC12F42F474B227F09CBA1BDE4FA38349965CAE00892496C255BE2EA8`,
+so no conversion fallback is used. WIC packed gray and a lone planar Y request
+are unsupported for this color JPEG; the decoder requires a complete reduced
+`{Y,Cb,Cr}` planar request, after which the DLL retains Y and releases temporary
+Cb/Cr buffers. Raw RED lacked the export and facade RED returned no tuple,
+both `0/1` in `32ms`; GREEN passes `1/1` in `93ms` / `1/1` in `31ms`.
+Raw/facade draft filters pass `3/3` in `32ms` / `4/4` in `31ms`; raw
+`open_jpeg` passes `35/35` in `296ms`; full passes `2591/2591` in `18016ms`.
+Registrations are `1277/1314`; Release x64 builds with zero warnings/errors;
+source/DLL exports are `445/445`, zero difference; DLL SHA-256 is
+`C8EEEFE67A4EDCB7484F24064BB5986C70A0270FCD6AC8E6E2D42E84DB922EDD`.
+`FMT-JPEG-003BD` adds the 397-byte project-owned
+`imagemagick_ycck_h2v2_17x11.jpg`, generated by ImageMagick 7.1.1 Q16-HDRI
+with explicit YCCK and `2x2,1x1,1x1,2x2` sampling. SHA-256 is
+`42F5019F3F9C6B5EFA153E24160206573141A9641402ABCA39E89D22C3EECCFC`.
+Pillow 11.3.0 opens CMYK `17x11`, reports Adobe `100` / transform `2`, and
+produces pixel SHA-256
+`9849846710971F610072C1AC91430CFF74391B2278DD4E95CC54E530148EF620`.
+`quality="keep"` and `qtables="keep"` both write identical 563-byte APP14
+transform-0 CMYK files, preserve both DQT tables, and normalize all components
+to `1x1`; output SHA-256 is
+`70AB11ABC399316E0C824F50EEC1BBEFD59135D3B3D8ABF2970C634E31957306`.
+Raw YCCK tests pass `34/34` in `1078ms`; facade YCCK tests pass `35/35` in
+`1438ms`; full passes `2585/2585` in `28891ms`. Registrations are
+`1274/1311`; no production source changed after BC and no rebuild was needed.
+Source/DLL exports remain `443/443`, zero difference; DLL SHA-256 remains
+`6E871350292B5B9D07B2336F4E0BDEB205B2B3653DC81515B4C0E5C24CD4F831`.
+`FMT-JPEG-003BC` brackets the structured Photoshop ResolutionInfo read
+boundary with two 68-byte APP13 payloads. Pillow 11.3.0 uses the duplicate
+tuple `(72.25,4,96.5,5)` at data length 14, ignores it at length 13 and retains
+the first tuple `(300.5,1,150.25,3)`, opens RGB `16x8`, and emits no warnings.
+The batched raw/facade tests were already GREEN (`1/1` in `47ms` / `1/1` in
+`62ms`). Photoshop regressions passed `10/10` in `125ms` / `10/10` in
+`203ms`; full passed `2583/2583` in `28719ms`. Registrations are `1273/1310`.
+No production source changed after BB and no rebuild was required;
+source/DLL exports remain `443/443`, zero difference; SHA-256 remains
+`6E871350292B5B9D07B2336F4E0BDEB205B2B3653DC81515B4C0E5C24CD4F831`.
+`FMT-JPEG-003BB` covers a valid 16-byte Photoshop ResolutionInfo followed by
+a 15-byte duplicate in one recognized APP13 marker. Pillow 11.3.0 consumes
+the second resource's available fields as `(72.25,4,96.5,5)`, emits no
+warnings, and opens RGB `16x8`. Raw RED retained the first XResolution
+`300.5` instead of `72.25` (`0/1` in `47ms`). Lowering the native structured
+read threshold from 16 to the actual 14 bytes required by the exposed fields
+produced raw/facade GREEN `1/1` in `141ms` / `47ms`. Photoshop regressions
+passed `9/9` in `125ms` / `9/9` in `203ms`; full passed `2581/2581` in
+`28485ms`. Registrations are `1272/1309`; Release x64 built with zero warnings
+and errors; source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`6E871350292B5B9D07B2336F4E0BDEB205B2B3653DC81515B4C0E5C24CD4F831`.
+`FMT-JPEG-003BA` locks duplicate structured Photoshop ResolutionInfo
+last-wins precedence inside one recognized APP13 marker. Pillow 11.3.0 exposes
+only the second tuple `(72.25,4,96.5,5)` from the exact 70-byte payload and
+emits no warnings. The new raw and facade tests were already GREEN on first
+run (`1/1` in `62ms` / `1/1` in `47ms`), confirming that native parser state
+already overwrote all four scalar fields and the facade already materialized
+the final nested Map. Raw/facade Photoshop regressions passed `8/8` in `109ms`
+/ `8/8` in `188ms`; full passed `2579/2579` in `28625ms`. Registrations are
+`1271/1308`. No production or native source changed, so no rebuild was
+required; source/DLL exports remain `443/443`, zero difference, and the DLL
+SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002DG` adds bounded explicit BYTE/type-1 `Image.Exif` serialization and
+JPEG/PNG save/reopen readback for registered `XMLPacket`/`XMP` tag 700 while
+retaining TIFF UNDEFINED/type-7 open readback. Pillow 11.3.0 emits an exact
+38-byte EXIF blob with count 5 at offset 26; JPEG/PNG reopen exact bytes,
+preserve PNG pixels, leave codec-level `Info["xmp"]` absent, return empty
+`getxmp()`, and emit no warnings. Raw serializer proof passed `1/1` in `47ms`;
+facade RED rejected 700 in `47ms`, then GREEN passed `1/1` in `63ms`; XMP
+regressions passed `36/36` in `1187ms`; full passed `2577/2577` in `28735ms`.
+Registrations are `1270/1307`; BYTE read/write allowlists are `35/35`, zero
+difference, and every current TIFF binary-read tag now has a bounded BYTE or
+UNDEFINED write route. No native source changed, so no rebuild was required;
+source/DLL exports remain `443/443`, zero difference, and the current DLL
+SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002DF` adds bounded explicit BYTE/type-1 `Image.Exif` serialization and
+JPEG/PNG save/reopen readback for `OECF` 34856, `ComponentsConfiguration`
+37121, `MakerNote` 37500, and `SpatialFrequencyResponse` 41484 while retaining
+TIFF UNDEFINED/type-7 open routes. Pillow 11.3.0 leaves all four unregistered
+and emits one exact 86-byte EXIF blob with counts `6/4/5/5`, inline 37121,
+and offsets `62/68/74`; JPEG/PNG reopen every value, PNG pixels remain exact,
+and no warnings are emitted. Raw serializer proof passed `1/1` in `31ms`;
+facade RED rejected 34856 in `32ms`, then GREEN passed `1/1` in `94ms`;
+`getexif` regressions passed `222/222` in `3578ms`; full passed `2575/2575`
+in `28766ms`. Registrations are `1269/1306`; BYTE read/write allowlists are
+`34/34`, zero difference. No native source changed, so no rebuild was
+required; source/DLL exports remain `443/443`, zero difference, and the current
+DLL SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002DE` adds bounded `Image.Exif` UNDEFINED/type-7 serialization and
+explicit JPEG/PNG save/reopen readback for `JPEGTables` 347, `IptcNaaInfo`
+33723, `ICCProfile` 34675, and `ImageSourceData` 37724. Pillow 11.3.0
+registers all four as type-7 and emits one exact 92-byte EXIF blob with counts
+`5/6/5/5` at offsets `62/68/74/80`; JPEG/PNG reopen every value, PNG pixels
+remain exact, and no warnings are emitted. Raw generic serializer proof passed
+`1/1` in `47ms`; facade RED rejected 347 in `31ms`, then GREEN passed `1/1`
+in `62ms`; `getexif` regressions passed `222/222` in `3469ms`; full passed
+`2573/2573` in `29109ms`. Registrations are `1268/1305`; all four tags occur
+in both bounded UNDEFINED read/write routes, and BYTE read/write allowlists
+remain `30/30`, zero difference. No native source changed, so no rebuild was
+required; source/DLL exports remain `443/443`, zero difference, and the current
+DLL SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002DD` adds bounded mixed-type `Image.Exif` write serialization and
+explicit JPEG/PNG save/reopen readback for `FlashPixVersion` 40960,
+`FileSource` 41728, `SceneType` 41729, `CFAPattern` 41730, and
+`DeviceSettingDescription` 41995. Pillow 11.3.0 serializes 40960/41730 as
+UNDEFINED/type-7 with counts 4/4 and 41728/41729/41995 as BYTE/type-1 with
+counts 1/1/5, emits one exact 86-byte EXIF blob with 41995 at offset 74 plus
+one final alignment byte, reopens every value from JPEG/PNG, preserves PNG
+pixels, and emits no warnings. Raw exact serializer proof passed `1/1` in
+`31ms`; facade RED rejected 40960 in `31ms`, then GREEN passed `1/1` in
+`78ms`; the TIFF regression passed `297/297` in `4797ms`; full passed
+`2571/2571` in `27969ms`. Registrations are `1267/1304`; BYTE read/write
+allowlists are `30/30`, zero difference. No native source changed, so no
+rebuild was required; source/DLL exports remain `443/443`, zero difference,
+and the current DLL SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002DC` adds bounded `Image.Exif` write-side serialization and explicit
+JPEG/PNG save/reopen readback for DNG `OriginalRawFileData` 50828 and
+`IlluminantData1/2/3` 52533/52534/52535. Pillow 11.3.0 leaves all four
+unregistered, serializes them as BYTE/type-1 with counts `8/4/5/6`, stores
+52533 inline and the others at offsets `62/70/76`, includes the expected
+alignment byte after count-5, and emits one exact 88-byte EXIF blob. JPEG/PNG
+reopen every value, PNG pixels remain exact, and no warnings are emitted;
+TIFF open remains UNDEFINED/type-7. Raw exact serializer proof passed `1/1`
+in `31ms`; facade RED rejected 50828, then GREEN passed `1/1` in `62ms`;
+IlluminantData and OriginalRawFileData TIFF regressions passed `1/1` in
+`78ms` / `63ms`; full passed `2569/2569` in `28500ms`. Registrations are
+`1266/1303`; read/write BYTE allowlists are `27/27`, zero difference. No
+native source changed, so no rebuild was required; source/DLL exports remain
+`443/443`, zero difference, and the current DLL SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002DB` adds bounded `Image.Exif` write-side serialization and explicit
+JPEG/PNG save/reopen readback for DNG `OpcodeList1` 51008, `OpcodeList2`
+51009, and `OpcodeList3` 51022. Pillow 11.3.0 leaves all three unregistered,
+serializes three eight-byte values as BYTE/type-1, count-8 with offsets
+`50/58/66` in one exact 80-byte EXIF blob, reopens every value from JPEG/PNG,
+preserves PNG pixels, and emits no warnings; TIFF open remains UNDEFINED/
+type-7. Raw exact serializer proof passed `1/1` in `47ms`; facade RED rejected
+51008. The first GREEN run exposed AHK's 20-parameter-per-case syntax limit;
+splitting the exact 23-tag set into `20+3` branches fixed the root cause.
+Facade GREEN then passed `1/1` in `78ms`; OpcodeList dual-representation
+regressions passed `4/4` in `125ms`; full passed `2567/2567` in `28453ms`.
+Registrations are `1265/1302`; read/write BYTE allowlists are `23/23`, zero
+difference. No native source changed, so no rebuild was required; source/DLL
+exports remain `443/443`, zero difference, and the current DLL SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002DA` adds bounded `Image.Exif` write-side serialization and explicit
+JPEG/PNG save/reopen readback for `PhotoshopInfo` 34377 and `TimeCodes` 51043.
+Pillow 11.3.0 registers 34377 in `TAGS`/`TAGS_V2` but leaves 51043
+unregistered, serializes both eight-byte values as BYTE/type-1, count-8 with
+offsets 38/46 in one exact 60-byte EXIF blob, reopens both values from
+JPEG/PNG, preserves PNG pixels, and emits no warnings. Raw exact serializer
+proof passed `1/1` in `31ms`; facade RED rejected 34377, then GREEN passed
+`1/1` in `63ms`; PhotoshopInfo and TimeCodes read regressions each passed
+`2/2` in `78ms` / `94ms`; full passed `2565/2565` in `28734ms`.
+Registrations are `1264/1301`; read/write BYTE allowlists are `20/20` with
+zero difference. No native source changed, so no rebuild was required;
+source/DLL exports remain `443/443`, zero difference, and the current DLL
+SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002CZ` adds bounded `Image.Exif` write-side serialization and explicit
+JPEG/PNG save/reopen readback for `XPComment` 40092, `XPAuthor` 40093,
+`XPKeywords` 40094, and `XPSubject` 40095. Pillow 11.3.0 leaves all four
+unregistered, serializes realistic UTF-16LE+NUL Buffer values as BYTE/type-1
+with counts `10/8/16/16` and offsets `62/72/80/96` in one exact 118-byte
+EXIF blob, reopens every value from JPEG/PNG, preserves PNG pixels, and emits
+no warnings. Raw exact serializer proof passed `1/1` in `31ms`; facade RED
+rejected 40092, then GREEN passed `1/1` in `62ms`; filtered XP regressions
+passed `84/84` in `859ms`; full passed `2563/2563` in `28718ms`.
+Registrations are `1263/1300`. No native source changed, so no rebuild was
+required; source/DLL exports remain `443/443`, zero difference, and the
+current DLL SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002CY` adds bounded `Image.Exif` write-side serialization and explicit
+JPEG/PNG save/reopen readback for DNG embedded-profile BYTE tags
+`AsShotICCProfile` 50831 and `CurrentICCProfile` 50833. Pillow 11.3.0 leaves
+both unregistered, serializes two eight-byte values as BYTE/type-1, count-8
+with offsets 38/46 in one exact 60-byte EXIF blob, reopens both values from
+JPEG/PNG, preserves PNG pixels, and emits no warnings. Raw exact serializer
+proof passed `1/1` in `32ms`; facade RED rejected 50831, then GREEN passed
+`1/1` in `79ms`; TIFF profile-tag regressions passed `2/2` in `78ms`; full
+passed `2561/2561` in `29375ms`. Registrations are `1262/1299`. No native
+source changed, so no rebuild was required; source/DLL exports remain
+`443/443`, zero difference, and the current DLL SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002CX` adds bounded `Image.Exif` write-side serialization and explicit
+JPEG/PNG save/reopen readback for `DNGVersion` 50706,
+`DNGBackwardVersion` 50707, `LocalizedCameraModel` 50709, and
+`CFAPlaneColor` 50710. Pillow 11.3.0 names all four in `TiffTags.TAGS` but not
+`TAGS_V2`, serializes them inline as BYTE/type-1 with counts `4/4/4/3` in one
+exact 68-byte EXIF blob, reopens every value from JPEG/PNG, preserves PNG
+pixels, and emits no warnings. Raw exact serializer proof passed `1/1` in
+`31ms`; facade RED rejected 50706, then GREEN passed `1/1` in `78ms`; DNG
+regressions passed `37/37` in `703ms`; full passed `2559/2559` in `27547ms`.
+Registrations are `1261/1298`. No native source changed, so no rebuild was
+required; source/DLL exports remain `443/443`, zero difference, and the
+current DLL SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002CW` adds bounded `Image.Exif` write-side serialization and explicit
+JPEG/PNG save/reopen readback for five 16-byte DNG digest/identifier tags:
+`PreviewSettingsDigest` 50969, `RawImageDigest` 50972,
+`OriginalRawFileDigest` 50973, `RawDataUniqueID` 50781, and
+`NewRawImageDigest` 51111. Pillow 11.3.0 leaves all five unregistered,
+serializes each Buffer/bytes value as BYTE/type-1, count-16 in one exact
+160-byte EXIF blob, reopens every value from JPEG/PNG, preserves PNG pixels,
+and emits no warnings. Raw exact serializer proof passed `1/1` in `31ms`;
+facade RED rejected 50969, then GREEN passed `1/1` in `78ms`; digest
+regressions passed `5/5` in `141ms`; facade `getexif` passed `223/223` in
+`3438ms`; full passed `2557/2557` in `26953ms`. Registrations are `1260/1297`.
+No native source changed, so no rebuild was required; source/DLL exports remain
+`443/443`, zero difference, and the current DLL SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002CV` adds bounded `Image.Exif` write-side `ProfileGainTableMap` 52525
+serialization and explicit JPEG/PNG save/reopen readback. The local Pillow
+11.3.0 oracle serializes Buffer/bytes `01..08` as a 40-byte EXIF blob with
+BYTE/type-1, count-8 and value offset 26, and both formats reopen with the
+exact bytes; PNG pixels remain exact and no warnings are emitted. The facade
+RED rejected 52525 with `Pillow.Image.Exif BYTE array tag is not covered by
+this native route`; the raw exact serializer proof passed `1/1` in `32ms`
+through the existing generic native export, and facade GREEN passed `1/1` in
+`78ms`. The combined ProfileGainTableMap target passed `6/6` in `156ms`; raw
+`open_tiff` passed `230/230` in `796ms`; fresh facade `getexif` passed
+`223/223` in `3344ms`; full passed `2555/2555` in `27531ms`. Registrations are
+`1259/1296`. No native source changed, so no rebuild was required; source/DLL
+exports remain `443/443`, zero difference, and the current DLL SHA-256 remains
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002CU` adds bounded inline TIFF/DNG `ProfileGainTableMap` 52525
+UNDEFINED/count-4 metadata readback. The 136-byte strip-decoded 2x1 L fixture
+stores bytes `01..04` inline, preserves pixels `[17,34]`, returns exact bytes
+from `getexif()` and `tag_v2`, reports raw compression plus `(1,1)` DPI/
+resolution, and emits no warnings. Raw RED received `[]`; facade RED missed
+52525. Raw/facade GREEN passed `1/1` in `140ms` / `1/1` in `62ms`; the
+count-4/count-8 combined target passed `4/4` in `109ms`; raw `open_tiff`
+passed `230/230` in `813ms`; facade `getexif` passed `223/223` in `3375ms`;
+full passed `2553/2553` in `27797ms`. Registrations are `1258/1295`; Release
+x64 built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`6A955215D77C1B38DCC5D10B751E518D7F5F42671CC3FDD67823C7ABF5993937`.
+`META-002CT` adds bounded TIFF/DNG `ProfileGainTableMap` 52525 UNDEFINED/
+count-8 metadata readback. The 144-byte strip-decoded 2x1 L fixture stores
+bytes `01..08` out of line, preserves pixels `[17,34]`, returns exact bytes
+from `getexif()` and `tag_v2`, reports raw compression plus `(1,1)` DPI/
+resolution, and emits no warnings. Raw RED received `[]`; facade RED missed
+52525. Raw/facade GREEN passed `1/1` in `141ms` / `1/1` in `140ms`; the
+combined target passed `2/2` in `109ms`; raw `open_tiff` passed `229/229` in
+`797ms`; facade `getexif` passed `222/222` in `3437ms`; full passed
+`2551/2551` in `28328ms`. Registrations are `1257/1294`; Release x64 built
+with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`250360EA186F9EB4A6296762B68C3E0FBEC51F45D2D7D452A60254716F40F90B`.
+`META-002CS` adds bounded TIFF/DNG `DefaultCropOrigin` 50719 SHORT/count-2
+metadata readback and completes the exact RATIONAL/LONG/SHORT matrix. The
+136-byte strip-decoded 2x1 L fixture stores inline `(12,34)`, preserves pixels
+`[17,34]`, returns an integer tuple from `getexif()` and `tag_v2`, reports raw
+compression plus `(1,1)` DPI/resolution, and emits no warnings. Raw RED
+received `[]`; facade RED missed 50719. Raw/facade GREEN passed `1/1` in
+`141ms` / `1/1` in `78ms`; the three-type target passed `6/6` in `125ms`; raw
+`open_tiff` passed `228/228` in `750ms`; facade `getexif` passed `221/221` in
+`3312ms`; full passed `2549/2549` in `27688ms`. Registrations are `1256/1293`;
+Release x64 built with zero warnings/errors; source/DLL exports remain
+`443/443`, zero difference; SHA-256 is
+`41A4F6E7B0466195870D253D56B235542041D7BA1D8EF6A66763A9C0DCDC5FD1`.
+`META-002CR` adds bounded TIFF/DNG `DefaultCropOrigin` 50719 LONG/count-2
+metadata readback. The 144-byte strip-decoded 2x1 L fixture stores `(12,34)`,
+preserves pixels `[17,34]`, returns an integer tuple from `getexif()` and
+`tag_v2`, reports raw compression plus `(1,1)` DPI/resolution, and emits no
+warnings. Raw RED received `[]`; facade RED missed 50719. Raw/facade GREEN
+passed `1/1` in `156ms` / `1/1` in `62ms`; the combined RATIONAL/LONG target
+passed `4/4` in `109ms`; raw `open_tiff` passed `227/227` in `844ms`; facade
+`getexif` passed `220/220` in `3250ms`; full passed `2547/2547` in `28766ms`.
+Registrations are `1255/1292`; Release x64 built with zero warnings/errors;
+source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`0A1D444C12E8F4F1868C727ADDD8659E712CEEFCEA93F5EE246FADDAC6A15497`.
+`META-002CQ` adds bounded TIFF/DNG `DefaultCropSize` 50720 SHORT/count-2
+metadata readback and completes the exact RATIONAL/LONG/SHORT matrix. The
+136-byte strip-decoded 2x1 L fixture stores inline `(320,240)`, preserves
+pixels `[17,34]`, returns an integer tuple from `getexif()` and `tag_v2`,
+reports raw compression plus `(1,1)` DPI/resolution, and emits no warnings.
+Raw RED received `[]`; facade RED missed 50720. Raw/facade GREEN passed `1/1`
+in `125ms` / `1/1` in `62ms`; raw `open_tiff` passed `226/226` in `796ms`;
+facade `getexif` passed `219/219` in `3469ms`; full passed `2545/2545` in
+`27766ms`. Registrations are `1254/1291`; Release x64 built with zero warnings/
+errors; source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`A90061B241C951A9EB5347A663BCF783F03D330950BF055E1C646009FF4648D5`.
+`META-002CP` adds bounded TIFF/DNG `DefaultCropSize` 50720 LONG/count-2
+metadata readback. The 144-byte strip-decoded 2x1 L fixture stores `(640,480)`,
+preserves pixels `[17,34]`, returns an integer tuple from `getexif()` and
+`tag_v2`, reports raw compression plus `(1,1)` DPI/resolution, and emits no
+warnings. Raw RED received `[]`; facade RED missed 50720. The first native
+attempt revealed that the untyped 50720 RATIONAL `else-if` consumed the LONG
+entry before the uint-array route; explicit type-5/type-4 dispatch fixed the
+root cause. Exact raw/facade GREEN filters passed `2/2` in `125ms` / `2/2` in
+`93ms`; raw `open_tiff` passed `225/225` in `781ms`; facade `getexif` passed
+`218/218` in `3266ms`; full passed `2543/2543` in `28063ms`. Registrations are
+`1253/1290`; Release x64 built with zero warnings/errors; source/DLL exports
+remain `443/443`, zero difference; SHA-256 is
+`D7F6F25EF289740291878406F9B2F71FB51045EA8D86508556FB6EAD0F559F2A`.
+`META-002CO` adds bounded TIFF/DNG `DefaultCropSize` 50720 RATIONAL/count-2
+metadata readback. Pillow 11.3.0 names 50720 in `TiffTags.TAGS` but leaves it
+absent from `TAGS_V2`. The 152-byte strip-decoded 2x1 L fixture preserves
+pixels `[17,34]`; `getexif()` and `tag_v2` return two exact `IFDRational`
+values `(11/2,13/4)`, info reports raw compression plus `(1,1)` DPI/
+resolution, and no warnings are emitted. Raw RED received `[]`; facade RED
+missed 50720. Exact raw/facade GREEN filters passed `2/2` in `125ms` / `2/2`
+in `94ms`, including the existing `OriginalDefaultCropSize` regression; raw
+`open_tiff` passed `224/224` in `703ms`; facade `getexif` passed `217/217` in
+`3188ms`; full passed `2541/2541` in `28203ms`. Registrations are `1252/1289`;
+Release x64 built with zero warnings/errors; source/DLL exports remain
+`443/443`, zero difference; SHA-256 is
+`6246F478156903A9A8A5AFA2E67682D6D6062608AC3F7DA985B9F451BDD4AA3A`.
+`META-002CL` adds bounded TIFF/DNG `WhiteLevel` 50717 SHORT/count-1 metadata
+readback. Pillow 11.3.0 names 50717 in `TiffTags.TAGS` but leaves it absent
+from `TAGS_V2`. The 136-byte strip-decoded 2x1 L fixture preserves pixels
+`[17,34]`; `getexif()` and `tag_v2` return integer `1023`, info reports raw
+compression plus `(1,1)` DPI/resolution, and no warnings are emitted. Raw RED
+received `-1`; facade RED missed 50717. Raw/facade GREEN passed `1/1` in
+`109ms` / `1/1` in `63ms`; raw `open_tiff` passed `221/221` in `703ms`;
+facade `getexif` passed `214/214` in `3219ms`; full passed `2535/2535` in
+`27937ms`. Registrations are `1249/1286`; Release x64 built with zero
+warnings/errors; source/DLL exports remain `443/443`, zero difference;
+SHA-256 is
+`D0B6E765558584F92F6E1640B777B639E42CF5D7232649CB9EA3A49CD5897E21`.
+`META-002CM` adds bounded TIFF/DNG `DefaultScale` 50718 RATIONAL/count-2
+metadata readback. Pillow 11.3.0 names 50718 in `TiffTags.TAGS` but leaves it
+absent from `TAGS_V2`. The 152-byte strip-decoded 2x1 L fixture preserves
+pixels `[17,34]`; `getexif()` and `tag_v2` return two exact `IFDRational`
+values `(1/2,3/4)`, info reports raw compression plus `(1,1)` DPI/resolution,
+and no warnings are emitted. Raw RED received `[]`; facade RED missed 50718.
+Raw/facade GREEN passed `1/1` in `172ms` / `1/1` in `78ms`; raw `open_tiff`
+passed `222/222` in `766ms`; facade `getexif` passed `215/215` in `3172ms`;
+full passed `2537/2537` in `27781ms`. Registrations are `1250/1287`; Release
+x64 built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`1506BDB1A43C07E006A498F8159D0A146E2847107F6107296DB5222E9F9FD082`.
+`META-002CN` adds bounded TIFF/DNG `DefaultCropOrigin` 50719 RATIONAL/count-2
+metadata readback. Pillow 11.3.0 names 50719 in `TiffTags.TAGS` but leaves it
+absent from `TAGS_V2`. The 152-byte strip-decoded 2x1 L fixture preserves
+pixels `[17,34]`; `getexif()` and `tag_v2` return two exact `IFDRational`
+values `(5/2,7/4)`, info reports raw compression plus `(1,1)` DPI/resolution,
+and no warnings are emitted. Raw RED received `[]`; facade RED missed 50719.
+Raw/facade GREEN passed `1/1` in `172ms` / `1/1` in `63ms`; raw `open_tiff`
+passed `223/223` in `671ms`; facade `getexif` passed `216/216` in `3187ms`;
+full passed `2539/2539` in `27672ms`. Registrations are `1251/1288`; Release
+x64 built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`83CCF587C943CF623C7128AB7AB902C02CA326390C5AE5A8167B2EAB66572364`.
+`META-002CK` adds bounded TIFF/DNG `BlackLevelDeltaV` 50716 SRATIONAL/count-1
+metadata readback. Pillow 11.3.0 names 50716 in `TiffTags.TAGS` but leaves it
+absent from `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture preserves
+pixels `[17,34]`; `getexif()` and `tag_v2` return one exact `IFDRational`
+value `-1/3`, info reports raw compression plus `(1,1)` DPI/resolution, and no
+warnings are emitted. Raw RED received `[]`; facade RED missed 50716. Raw/
+facade GREEN passed `1/1` in `125ms` / `1/1` in `62ms`; raw `open_tiff`
+passed `220/220` in `750ms`; facade `getexif` passed `213/213` in `3172ms`;
+full passed `2533/2533` in `27375ms`. Registrations are `1248/1285`; Release
+x64 built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`6EE08274AC0FCE33DC47A5FCA7FC2133C6C328A930A2FDC286919D5C7DB4E60D`.
+`META-002CJ` adds bounded TIFF/DNG `BlackLevelDeltaH` 50715 SRATIONAL/count-2
+metadata readback. Pillow 11.3.0 names 50715 in `TiffTags.TAGS` but leaves it
+absent from `TAGS_V2`. The 152-byte strip-decoded 2x1 L fixture preserves
+pixels `[17,34]`; `getexif()` and `tag_v2` return two exact `IFDRational`
+values `(-1/2,3/4)`, info reports raw compression plus `(1,1)` DPI/resolution,
+and no warnings are emitted. Raw RED received `[]`; facade RED missed 50715.
+Raw/facade GREEN passed `1/1` in `141ms` / `1/1` in `78ms`; raw `open_tiff`
+passed `219/219` in `766ms`; facade `getexif` passed `212/212` in `3110ms`;
+full passed `2531/2531` in `27359ms`. Registrations are `1247/1284`; Release
+x64 built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`C361674E869131CC09CD70DCAC21B786CFF9E7FF496C72C06AB2874D672AF726`.
+`META-002CI` adds bounded TIFF/DNG `BlackLevel` 50714 RATIONAL/count-4 metadata
+readback. Pillow 11.3.0 names 50714 in `TiffTags.TAGS` but leaves it absent
+from `TAGS_V2`. The 168-byte strip-decoded 2x1 L fixture preserves pixels
+`[17,34]`; `getexif()` and `tag_v2` return four exact `IFDRational` values
+`(1/2,3/4,5/6,7/8)`, info reports raw compression plus `(1,1)` DPI/resolution,
+and no warnings are emitted. Raw RED received `[]`; facade RED missed 50714.
+Raw/facade GREEN passed `1/1` in `125ms` / `1/1` in `63ms`; raw `open_tiff`
+passed `218/218` in `813ms`; facade `getexif` passed `211/211` in `3110ms`;
+full passed `2529/2529` in `27703ms`. Registrations are `1246/1283`; Release
+x64 built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`CDADE4E2A3019A6766D8930BA72D907B9067C798B16E411DD84A6DA285E94974`.
+`META-002CH` adds bounded TIFF/DNG `BlackLevelRepeatDim` 50713 SHORT/count-2
+metadata readback. Pillow 11.3.0 names 50713 in `TiffTags.TAGS` but leaves it
+absent from `TAGS_V2`. The 136-byte strip-decoded 2x1 L fixture preserves
+pixels `[17,34]`; `getexif()` and `tag_v2` return exact tuple `(2,2)`, info
+reports raw compression plus `(1,1)` DPI/resolution, and no warnings are
+emitted. Raw RED received `[]`; facade RED missed 50713. Raw/facade GREEN
+passed `1/1` in `141ms` / `1/1` in `62ms`; raw `open_tiff` passed `217/217`
+in `813ms`; facade `getexif` passed `210/210` in `3109ms`; full passed
+`2527/2527` in `27813ms`. Registrations are `1245/1282`; Release x64 built
+with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`695E064262A52A218368A3DA7CD5FE10B113CC7949F99B58AC7DFB3EF891BE4B`.
+`META-002CG` adds bounded TIFF/DNG `LinearizationTable` 50712 SHORT/count-4
+metadata readback. Pillow 11.3.0 names 50712 in `TiffTags.TAGS` but leaves it
+absent from `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture preserves
+pixels `[17,34]`; `getexif()` and `tag_v2` return exact tuple `(0,1,2,3)`, info
+reports raw compression plus `(1,1)` DPI/resolution, and no warnings are
+emitted. Raw RED received `[]`; facade RED missed 50712. Raw/facade GREEN
+passed `1/1` in `109ms` / `1/1` in `109ms`; raw `open_tiff` passed `216/216`
+in `781ms`; facade `getexif` passed `209/209` in `3110ms`; full passed
+`2525/2525` in `27938ms`. Registrations are `1244/1281`; Release x64 built
+with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`B1967A33E132A7EC74EA633A2829453FFB113CD07691C700A009260325265D2D`.
+`META-002CF` adds bounded TIFF/DNG `RowInterleaveFactor` 50975 LONG/count-1
+metadata readback. Pillow 11.3.0 leaves 50975 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 136-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return integer `3`, info
+reports raw compression plus `(1,1)` DPI/resolution, and no warnings are
+emitted. Raw RED received `-1`; facade RED missed 50975. Raw/facade GREEN
+passed `1/1` in `125ms` / `1/1` in `63ms`; raw `open_tiff` passed `215/215`
+in `688ms`; facade `getexif` passed `208/208` in `2985ms`; full passed
+`2523/2523` in `27562ms`. Registrations are `1243/1280`; Release x64 built
+with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`7A6F5FF56DF7FC8559F8CAE389614445D9F664284DA0646CBA21787EF07F12C0`.
+`META-002CE` adds bounded TIFF/DNG `SubTileBlockSize` 50974 LONG/count-1
+metadata readback. Pillow 11.3.0 leaves 50974 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 136-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return integer `4`, info
+reports raw compression plus `(1,1)` DPI/resolution, and no warnings are
+emitted. Raw RED received `-1`; facade RED missed 50974. Raw/facade GREEN
+passed `1/1` in `125ms` / `1/1` in `62ms`; raw `open_tiff` passed `214/214`
+in `750ms`; facade `getexif` passed `207/207` in `3140ms`; full passed
+`2521/2521` in `27734ms`. Registrations are `1242/1279`; Release x64 built
+with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`875143AD68ABCFB903F1CB06483E69387598A8C8734A0577EBA95612745C39E7`.
+`META-002CD` adds bounded TIFF/DNG `RawDataUniqueID` 50781 BYTE/count-16
+metadata readback. Pillow 11.3.0 leaves 50781 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 152-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact bytes
+`01..10`, info reports raw compression plus `(1,1)` DPI/resolution, and no
+warnings are emitted. Raw RED received `[]`; facade RED missed 50781. Raw/
+facade GREEN passed `1/1` in `125ms` / `1/1` in `63ms`; raw `open_tiff`
+passed `213/213` in `703ms`; facade `getexif` passed `206/206` in `2938ms`;
+full passed `2519/2519` in `27250ms`. Registrations are `1241/1278`; Release
+x64 built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`5FBD24C732E2B73E0A1B2FBD28E818457CA3F59F38E086859AB807636911E304`.
+`META-002CC` adds bounded TIFF/DNG `OriginalRawFileDigest` 50973 BYTE/count-16
+metadata readback. Pillow 11.3.0 leaves 50973 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 152-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact bytes
+`01..10`, info reports raw compression plus `(1,1)` DPI/resolution, and no
+warnings are emitted. Raw RED received `[]`; facade RED missed 50973. Raw/
+facade GREEN passed `1/1` in `125ms` / `1/1` in `63ms`; raw `open_tiff`
+passed `212/212` in `688ms`; facade `getexif` passed `205/205` in `3000ms`;
+full passed `2517/2517` in `27344ms`. Registrations are `1240/1277`; Release
+x64 built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`DE7D42A30F17CB0FA9A748D701D69BF026DBF84B311B9836016D4377287475D2`.
+`META-002CB` adds bounded TIFF/DNG `RawImageDigest` 50972 BYTE/count-16
+metadata readback. Pillow 11.3.0 leaves 50972 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 152-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact bytes
+`01..10`, info reports raw compression plus `(1,1)` DPI/resolution, and no
+warnings are emitted. Raw RED received `[]`; facade RED missed 50972. Raw/
+facade GREEN filters passed `2/2` in `140ms` / `2/2` in `78ms`, including the
+51111 digest regression; raw `open_tiff` passed `211/211` in `656ms`; facade
+`getexif` passed `204/204` in `3000ms`; full passed `2515/2515` in `28188ms`.
+Registrations are `1239/1276`; Release x64 built with zero warnings/errors;
+source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`792BFCFB09823D981366D875ADD2128C650A38842E069A8EEE6D1E18F582A577`.
+`META-002CA` adds bounded TIFF/DNG `PreviewSettingsDigest` 50969 UNDEFINED/
+count-16 metadata readback. Pillow 11.3.0 leaves 50969 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 152-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact bytes
+`01..10`, info reports raw compression plus `(1,1)` DPI/resolution, and no
+warnings are emitted. Raw RED received `[]`; facade RED missed 50969. Raw/
+facade GREEN passed `1/1` in `125ms` / `62ms`; raw `open_tiff` passed
+`210/210` in `672ms`; facade `getexif` passed `203/203` in `2969ms`; full
+passed `2513/2513` in `27156ms`. Registrations are `1238/1275`; Release x64
+built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`F06D8C96A6F6EF9FBA0D11E50DC17B83E807CB403C194FB9476A9BECBDEA937D`.
+`META-002BZ` adds bounded TIFF/DNG `OpcodeList3` 51022 UNDEFINED/count-8
+metadata readback. Pillow 11.3.0 leaves 51022 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact bytes
+`01 02 03 04 05 06 07 08`, info reports raw compression plus `(1,1)` DPI/
+resolution, and no warnings are emitted. Raw RED received `[]`; facade RED
+missed 51022. Raw/facade GREEN passed `1/1` in `125ms` / `63ms`; raw
+`open_tiff` passed `209/209` in `687ms`; facade `getexif` passed `202/202` in
+`2969ms`; full passed `2511/2511` in `27812ms`. Registrations are `1237/1274`;
+Release x64 built with zero warnings/errors; source/DLL exports remain
+`443/443`, zero difference; SHA-256 is
+`D600F073D8DEC391194B3785B81071A14484317E809BF01F33973BA866C9A174`.
+`META-002BY` adds bounded TIFF/DNG `OpcodeList2` 51009 UNDEFINED/count-8
+metadata readback. Pillow 11.3.0 leaves 51009 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact bytes
+`01 02 03 04 05 06 07 08`, info reports raw compression plus `(1,1)` DPI/
+resolution, and no warnings are emitted. Raw RED received `[]`; facade RED
+missed 51009. Raw/facade GREEN passed `1/1` in `141ms` / `63ms`; raw
+`open_tiff` passed `208/208` in `797ms`; facade `getexif` passed `201/201` in
+`2922ms`; full passed `2509/2509` in `27593ms`. Registrations are `1236/1273`;
+Release x64 built with zero warnings/errors; source/DLL exports remain
+`443/443`, zero difference; SHA-256 is
+`C543E5341058B6EDACF063C0F58C71A758F2341CBDE9713073E00E2B4582E954`.
+`META-002BX` adds bounded TIFF/DNG `OpcodeList1` 51008 UNDEFINED/count-8
+metadata readback. Pillow 11.3.0 leaves 51008 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact bytes
+`01 02 03 04 05 06 07 08`, info reports raw compression plus `(1,1)` DPI/
+resolution, and no warnings are emitted. Raw RED received `[]`; facade RED
+missed 51008. Raw/facade GREEN passed `1/1` in `125ms` / `62ms`; raw
+`open_tiff` passed `207/207` in `734ms`; facade `getexif` passed `200/200` in
+`2891ms`; full passed `2507/2507` in `27734ms`. Registrations are `1235/1272`;
+Release x64 built with zero warnings/errors; source/DLL exports remain
+`443/443`, zero difference; SHA-256 is
+`64D75DA69A5557066AD3B071BBD7C51821EC7F0487C72E7A1E42FA62ECDDED85`.
+`META-002BW` adds bounded TIFF/DNG `OriginalRawFileData` 50828 UNDEFINED/
+count-8 metadata readback. Pillow 11.3.0 leaves 50828 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact bytes
+`01 02 03 04 05 06 07 08`, info reports raw compression plus `(1,1)` DPI/
+resolution, and no warnings are emitted. Raw RED received `[]`; facade RED
+missed 50828. Raw/facade GREEN passed `1/1` in `140ms` / `62ms`; raw
+`open_tiff` passed `206/206` in `687ms`; facade `getexif` passed `199/199` in
+`2782ms`; full passed `2505/2505` in `27625ms`. Registrations are `1234/1271`;
+Release x64 built with zero warnings/errors; source/DLL exports remain
+`443/443`, zero difference; SHA-256 is
+`995D76AB0C77C005DE40DB5EB6E36540C62DD618C170B58D12986B415EE8E00A`.
+`META-002BV` adds bounded TIFF/DNG `ColorimetricReference` 50879 SHORT/count-1
+metadata readback. Pillow 11.3.0 leaves 50879 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 136-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return integer `1`, info
+reports raw compression plus `(1,1)` DPI/resolution, and no warnings are
+emitted. Raw RED received `-1`; facade RED missed 50879. Raw/facade GREEN
+passed `1/1` in `125ms` / `63ms`; raw `open_tiff` passed `205/205` in `625ms`;
+facade `getexif` passed `198/198` in `2797ms`; full passed `2503/2503` in
+`26406ms`. Registrations are `1233/1270`; Release x64 built with zero warnings/
+errors; source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`7E4ACDC7F08C285ABAB29879A0D766D6C882FB32781A5A1506571D8B634D106A`.
+`META-002BU` adds bounded TIFF/DNG `CurrentPreProfileMatrix` 50834 SRATIONAL/
+count-9 metadata readback. Pillow 11.3.0 leaves 50834 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 208-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return nine exact
+`IFDRational` pairs
+`[(1,1),(-1,2),(0,1),(0,1),(1,1),(0,1),(0,1),(0,1),(1,1)]`, info reports
+raw compression plus `(1,1)` DPI/resolution, and no warnings are emitted. Raw
+RED received `[]`; facade RED missed 50834. Raw/facade GREEN passed `1/1` in
+`125ms` / `63ms`; raw `open_tiff` passed `204/204` in `719ms`; facade
+`getexif` passed `197/197` in `2719ms`; full passed `2501/2501` in `27171ms`.
+Registrations are `1232/1269`; Release x64 built with zero warnings/errors;
+source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`FD655F6E558AAAF25A3C353618CCC047FE9CCAB0966B251D02BF5973C4DBA5DB`.
+`META-002BT` adds bounded TIFF/DNG `CurrentICCProfile` 50833 BYTE/count-8
+metadata readback. Pillow 11.3.0 leaves 50833 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact bytes
+`01 02 03 04 05 06 07 08`, info reports raw compression plus `(1,1)` DPI/
+resolution without `icc_profile`, and no warnings are emitted. Raw RED
+received `[]`; facade RED missed 50833. Raw/facade GREEN passed `1/1` in
+`94ms` / `62ms`; raw `open_tiff` passed `203/203` in `719ms`; facade
+`getexif` passed `196/196` in `2750ms`; full passed `2499/2499` in `26781ms`.
+Registrations are `1231/1268`; Release x64 built with zero warnings/errors;
+source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`5EF8D42F9C0A749D37A1596D4BA4A242BD5BE5CE41A8665F5902028C938C5DD5`.
+`META-002BS` adds bounded TIFF/DNG `AsShotPreProfileMatrix` 50832 SRATIONAL/
+count-9 metadata readback. Pillow 11.3.0 leaves 50832 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 208-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return nine exact
+`IFDRational` pairs
+`[(1,1),(-1,2),(0,1),(0,1),(1,1),(0,1),(0,1),(0,1),(1,1)]`, info reports
+raw compression plus `(1,1)` DPI/resolution, and no warnings are emitted. Raw
+RED received `[]`; facade RED missed 50832. Raw/facade GREEN passed `1/1` in
+`141ms` / `62ms`; raw `open_tiff` passed `202/202` in `688ms`; facade
+`getexif` passed `195/195` in `2734ms`; full passed `2497/2497` in `27250ms`.
+Registrations are `1230/1267`; Release x64 built with zero warnings/errors;
+source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`FBD112B12870F0C106C5184FAD26FE23C2C24F5063C0015CFC6E764BABCC44E4`.
+`META-002BR` adds bounded TIFF/DNG `AsShotICCProfile` 50831 BYTE/count-8
+metadata readback. Pillow 11.3.0 leaves 50831 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact bytes
+`01 02 03 04 05 06 07 08`, info reports raw compression plus `(1,1)` DPI/
+resolution without `icc_profile`, and no warnings are emitted. Raw RED
+received `[]`; facade RED missed 50831. Raw/facade GREEN passed `1/1` in
+`312ms` / `63ms`; raw `open_tiff` passed `201/201` in `718ms`; facade
+`getexif` passed `194/194` in `2579ms`; full passed `2495/2495` in `26234ms`.
+Registrations are `1229/1266`; Release x64 built with zero warnings/errors;
+source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`E801D2E72A4683B59DE718F204E83B9D62B6A0A585C13A41463AC00F1D3A7578`.
+`META-002BQ` extends bounded TIFF/DNG `MaskedAreas` 50830 LONG-array metadata
+readback to count 8 (two rectangles). Pillow 11.3.0 leaves 50830 unnamed/
+unregistered in `TiffTags.TAGS` and `TAGS_V2`. The 168-byte strip-decoded 2x1
+L fixture preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact
+integer tuple `(0,0,1,1,0,1,1,2)`, info reports raw compression plus `(1,1)`
+DPI/resolution, and no warnings are emitted. Raw RED received `[]`; facade RED
+missed 50830. Raw/facade GREEN passed `1/1` in `157ms` / `79ms`; raw
+`open_tiff` passed `200/200` in `734ms`; facade `getexif` passed `193/193` in
+`2578ms`; full passed `2493/2493` in `26594ms`. Registrations are `1228/1265`;
+Release x64 built with zero warnings/errors; source/DLL exports remain
+`443/443`, zero difference; SHA-256 is
+`12AFB52CA0375E5A926330DED25490E2AFA436C9CCB9D122C3EFCDBC85116B47`.
+`META-002BP` adds bounded TIFF/DNG `MaskedAreas` 50830 LONG/count-4 one-
+rectangle metadata readback. Pillow 11.3.0 leaves 50830 unnamed/unregistered
+in `TiffTags.TAGS` and `TAGS_V2`. The 152-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact integer tuple
+`(0,0,1,2)`, info reports raw compression plus `(1,1)` DPI/resolution, and no
+warnings are emitted. Raw RED received `[]`; facade RED missed 50830. Raw/
+facade GREEN passed `1/1` in `110ms` / `47ms`; raw `open_tiff` passed
+`199/199` in `609ms`; facade `getexif` passed `192/192` in `2563ms`; full
+passed `2491/2491` in `26109ms`. Registrations are `1227/1264`; Release x64
+built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`935BEAF26BAD20D9D19435BE70EC2C2C925FE8A567ADCC2B05F9A68CC42185F0`.
+`META-002BO` adds bounded alternate-type TIFF/DNG `ActiveArea` 50829 SHORT/
+count-4 metadata readback. Pillow 11.3.0 leaves 50829 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact integer tuple
+`(0,0,1,2)`, info reports raw compression plus `(1,1)` DPI/resolution, and no
+warnings are emitted. Raw RED received `[]`; facade RED missed 50829. Native
+dispatch now selects the SHORT or LONG array route only for TIFF type 3 or 4.
+Fresh raw/facade GREEN passed `1/1` in `62ms` / `62ms`; raw `open_tiff` passed
+`198/198` in `641ms`; facade `getexif` passed `191/191` in `2640ms`; full
+passed `2489/2489` in `26547ms`. Registrations are `1226/1263`; Release x64
+built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`4F358ECF4C0672369E7157E1CB0E1943D2B64C4585998C56ED1FBD1F4FAEF283`.
+`META-002BN` adds bounded TIFF/DNG `ActiveArea` 50829 LONG/count-4 metadata
+readback. Pillow 11.3.0 leaves 50829 unnamed/unregistered in `TiffTags.TAGS`
+and `TAGS_V2`. The 152-byte strip-decoded 2x1 L fixture preserves pixels
+`[17,34]`; `getexif()` and `tag_v2` return exact integer tuple `(0,0,1,2)`,
+info reports raw compression plus `(1,1)` DPI/resolution, and no warnings are
+emitted. Raw RED received `[]`; facade RED missed 50829. Raw/facade GREEN
+passed `1/1` in `141ms` / `31ms`; raw `open_tiff` passed `197/197` in `671ms`;
+facade `getexif` passed `190/190` in `2594ms`; full passed `2487/2487` in
+`26937ms`. Registrations are `1225/1262`; Release x64 built with zero warnings/
+errors; source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`BF3B4D8B718C02AC3B9BD9747AF1ADC103EC20D691702E838541BCE04494D4C5`.
+`META-002BM` adds bounded TIFF/DNG `CameraLabel` 51092 ASCII/count-9 metadata
+readback. Pillow 11.3.0 leaves 51092 unnamed/unregistered in `TiffTags.TAGS`
+and `TAGS_V2`. The 145-byte strip-decoded 2x1 L fixture preserves pixels
+`[17,34]`; `getexif()` and `tag_v2` return exact string `Camera A`, info
+reports raw compression plus `(1,1)` DPI/resolution, and no warnings are
+emitted. Raw RED received an empty string; facade RED missed 51092. Raw/facade
+GREEN passed `1/1` in `62ms` / `31ms`; raw `open_tiff` passed `196/196` in
+`718ms`; facade `getexif` passed `189/189` in `2813ms`; full passed
+`2485/2485` in `26407ms`. Registrations are `1224/1261`; Release x64 built
+with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`6359CFB3DFD63B0C9D47DF7DE814F4F212DCF1198ECCDCF5F258113B7B3DEF55`.
+`META-002BL` adds bounded alternate-type TIFF/DNG
+`OriginalDefaultCropSize` 51091 LONG/count-2 metadata readback. Pillow 11.3.0
+leaves 51091 unnamed/unregistered in `TiffTags.TAGS` and `TAGS_V2`. The
+144-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`; `getexif()`
+and `tag_v2` return exact integer tuple `(4000,3000)`, info reports raw
+compression plus `(1,1)` DPI/resolution, and no warnings are emitted. Raw RED
+received `[]`; facade RED missed 51091. Native TIFF metadata dispatch now
+selects tag 51091's RATIONAL or LONG array route from entry type 5 or 4. Raw/
+facade GREEN passed `1/1` in `125ms` / `31ms`; RATIONAL raw/facade regression
+passed `1/1` in `16ms` / `32ms`; raw `open_tiff` passed `195/195` in `656ms`;
+facade `getexif` passed `188/188` in `2484ms`; full passed `2483/2483` in
+`26750ms`. Registrations are `1223/1260`; Release x64 built with zero warnings/
+errors; source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`4F8415CF5F80FDA284A0011F591255AECE49737D5BF68FA674425B355436F7DC`.
+`META-002BK` adds bounded TIFF/DNG `OriginalDefaultCropSize` 51091 RATIONAL/
+count-2 metadata readback. Pillow 11.3.0 leaves 51091 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 152-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact
+`IFDRational` values `8001/2` and `6001/2`, info reports raw compression plus
+`(1,1)` DPI/resolution, and no warnings are emitted. Raw RED received `[]`;
+facade RED missed 51091. Raw/facade GREEN passed `1/1` in `125ms` / `31ms`;
+raw `open_tiff` passed `194/194` in `734ms`; facade `getexif` passed `187/187`
+in `2563ms`; full passed `2481/2481` in `26422ms`. Registrations are
+`1222/1259`; Release x64 built with zero warnings/errors; source/DLL exports
+remain `443/443`, zero difference; SHA-256 is
+`46C943988AD2C5448E4459DA4A258B5040E570ADA1058950833D8C4517097F61`.
+`META-002BJ` adds bounded TIFF/DNG `OriginalBestQualityFinalSize` 51090 LONG/
+count-2 metadata readback. Pillow 11.3.0 leaves 51090 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact tuple
+`(6000,4000)`, info reports raw compression plus `(1,1)` DPI/resolution, and
+no warnings are emitted. Raw RED received `[]`; facade RED missed 51090.
+Raw/facade GREEN passed `1/1` in `141ms` / `63ms`; raw `open_tiff` passed
+`193/193` in `687ms`; facade `getexif` passed `186/186` in `2672ms`; full
+passed `2479/2479` in `26579ms`. Registrations are `1221/1258`; Release x64
+built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`5F392D7940A11C6D802E91CBED8BF32BB5369E0E31140B0A3862DDE44127CC8D`.
+`META-002BI` adds bounded TIFF/DNG `OriginalDefaultFinalSize` 51089 LONG/
+count-2 metadata readback. Pillow 11.3.0 leaves 51089 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact tuple
+`(4000,3000)`, info reports raw compression plus `(1,1)` DPI/resolution, and
+no warnings are emitted. Raw RED received `[]`; facade RED missed 51089.
+Raw/facade GREEN passed `1/1` in `109ms` / `62ms`; raw `open_tiff` passed
+`192/192` in `640ms`; facade `getexif` passed `185/185` in `2547ms`; full
+passed `2477/2477` in `26687ms`. Registrations are `1220/1257`; Release x64
+built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`7FB1A351E254E8592592DAC374B2D07F40AED028FABA548273B09E2AF85B71CB`.
+`META-002BH` adds bounded TIFF/DNG `ReelName` 51081 ASCII/count-10 metadata
+readback. Pillow 11.3.0 leaves 51081 unnamed/unregistered in `TiffTags.TAGS`
+and `TAGS_V2`. The 146-byte strip-decoded 2x1 L fixture preserves pixels
+`[17,34]`; `getexif()` and `tag_v2` return exact string `A001_C001` after
+removing the trailing NUL, info reports raw compression plus `(1,1)` DPI/
+resolution, and no warnings are emitted. Raw RED received an empty string;
+facade RED missed 51081. Raw/facade GREEN passed `1/1` in `171ms` / `63ms`;
+raw `open_tiff` passed `191/191` in `609ms`; facade `getexif` passed `184/184`
+in `2672ms`; full passed `2475/2475` in `27375ms`. Registrations are
+`1219/1256`; Release x64 built with zero warnings/errors; source/DLL exports
+remain `443/443`, zero difference; SHA-256 is
+`EE6220F222AC8D0CD59D6A6C6C25411231FC9F80400B7E16F2547B4F6EE9736E`.
+`META-002BG` adds bounded TIFF/DNG `TStop` 51058 RATIONAL/count-1 metadata
+readback. Pillow 11.3.0 leaves 51058 unnamed/unregistered in `TiffTags.TAGS`
+and `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture preserves pixels
+`[17,34]`; `getexif()` and `tag_v2` return exact `IFDRational(28,10)` with
+float value `2.8`, info reports raw compression plus `(1,1)` DPI/resolution,
+and no warnings are emitted. Raw RED received `[]`; facade RED missed 51058.
+Raw/facade GREEN passed `1/1` in `78ms` / `63ms`; raw `open_tiff` passed
+`190/190` in `656ms`; facade `getexif` passed `183/183` in `2484ms`; full
+passed `2473/2473` in `27422ms`. Registrations are `1218/1255`; Release x64
+built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`387990225767EA05C7C319AFBBA98D10B4776FD16D595FC1FEBD5A1FBBE3CD04`.
+`META-002BF` adds bounded TIFF/DNG `FrameRate` 51044 SRATIONAL/count-1
+metadata readback. Pillow 11.3.0 leaves 51044 unnamed/unregistered in
+`TiffTags.TAGS` and `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact
+`IFDRational(30000,1001)` with float value `29.97002997002997`, info reports
+raw compression plus `(1,1)` DPI/resolution, and no warnings are emitted. Raw
+RED received `[]`; facade RED missed 51044. Raw/facade GREEN passed `1/1` in
+`141ms` / `62ms`; raw `open_tiff` passed `189/189` in `640ms`; facade
+`getexif` passed `182/182` in `2828ms`; full passed `2471/2471` in `26406ms`.
+Registrations are `1217/1254`; Release x64 built with zero warnings/errors;
+source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`6B07E5B4A172C4E5D680AFAC0814F738D1E649C02ED572657A39F66540872B16`.
+`META-002BE` adds bounded TIFF/DNG `TimeCodes` 51043 BYTE/count-8 metadata
+readback. Pillow 11.3.0 leaves 51043 unnamed/unregistered in `TiffTags.TAGS`
+and `TAGS_V2`. The 144-byte strip-decoded 2x1 L fixture preserves pixels
+`[17,34]`; `getexif()` and `tag_v2` return exact bytes
+`01 02 03 04 05 06 07 08`, info reports raw compression plus `(1,1)` DPI/
+resolution, and no warnings are emitted. Raw RED received `[]`; facade RED
+missed 51043. Raw/facade GREEN passed `1/1` in `78ms` / `63ms`; raw
+`open_tiff` passed `188/188` in `625ms`; facade `getexif` passed `181/181` in
+`2531ms`; full passed `2469/2469` in `27610ms`. Registrations are
+`1216/1253`; Release x64 built with zero warnings/errors; source/DLL exports
+remain `443/443`, zero difference; SHA-256 is
+`D9ABA496C6A31656C34B942FE9609470ABA377EB27FE8B7CD5AAFE55F844D216`.
+2026-08-05: the user requested a fresh comprehensive evaluation that ignores
+the previous scoring system. The complete-runtime capability matrix scores
+native core/ownership/hot loops `17/20`, facade/core object semantics `13/20`,
+mode cross-product `7/12`, formats/codecs `11/20`, metadata/CMS/multiframe
+`7/12`, fonts/quantize/constructors/interop `3/8`, and engineering/performance/
+release `4/8`. Total: `62/100`, reported as `62%` with an uncertainty band of
+about four points. Tests, exports, and source size are closure evidence, not
+points. Main deductions remain the wider 48-format registry including WebP/
+APNG/AVIF/JPEG2000, bounded rather than full facade semantics, FreeType/
+Unicode/RAQM, complete EXIF/IPTC/CMS lifecycles, broad quantize, array/Arrow/
+Qt, benchmarks, fuzz/leak/stress, stable public versioned ABI, CI, packaging,
+and release automation.
+`META-002BD` extends bounded TIFF `NoiseProfile` 51041 DOUBLE-array metadata
+readback to count 4, completing counts 2/4/6/8. Pillow 11.3.0 leaves 51041
+unnamed/unregistered in `TiffTags.TAGS` and `TAGS_V2`. The 168-byte strip-
+decoded 2x1 L fixture preserves pixels `[17,34]`; `getexif()` and `tag_v2`
+return exact tuple `(0.125,0.25,0.5,1.0)`, info reports raw compression plus
+`(1,1)` DPI/resolution, and no warnings are emitted. Raw/facade REDs received
+`[]`. Raw/facade GREEN passed `1/1` in `109ms` / `32ms`; raw `open_tiff`
+passed `187/187` in `703ms`; facade `getexif` passed `180/180` in `2719ms`;
+full passed `2467/2467` in `28110ms`. Registrations are `1215/1252`; Release
+x64 built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`09C6C3CD5E5864F903A1D1ECA6A8094E87562EB03B1605252D3FAADE322B7048`.
+`META-002BC` extends bounded TIFF `NoiseProfile` 51041 DOUBLE-array metadata
+readback from count 6 to count 2 and count 8. Pillow 11.3.0 leaves 51041
+unnamed/unregistered in `TiffTags.TAGS` and `TAGS_V2`. The 152-byte count-2
+and 200-byte count-8 strip-decoded 2x1 L fixtures preserve pixels `[17,34]`;
+`getexif()` and `tag_v2` return exact tuples `(0.125,0.75)` and
+`(0.125,0.25,0.5,1.0,2.0,4.0,8.0,16.0)`, info reports raw compression plus
+`(1,1)` DPI/resolution, and no warnings are emitted. Raw/facade REDs received
+`[[],[]]`. Raw/facade GREEN passed `1/1` in `109ms` / `47ms`; raw `open_tiff`
+passed `186/186` in `703ms`; facade `getexif` passed `179/179` in `2437ms`;
+full passed `2465/2465` in `27781ms`. Registrations are `1214/1251`; Release
+x64 built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`177426C6BEACB6971D7E7111008E1B0075F0B5AA4360678D92AE56671E89261C`.
+`META-002BB` adds bounded TIFF DOUBLE-array metadata readback for
+`NoiseProfile` 51041 with exact count 6. Pillow 11.3.0 leaves 51041 unnamed and
+unregistered in `TiffTags.TAGS` and `TAGS_V2`. The 184-byte strip-decoded 2x1
+L fixture preserves pixels `[17,34]`; `getexif()` and `tag_v2` return exact
+tuple `(0.25,0.5,1.0,2.0,4.0,8.0)`, info reports raw compression plus `(1,1)`
+DPI/resolution, and no warnings are emitted. Raw RED received `[]`; facade RED
+missed 51041. Raw/facade GREEN passed `1/1` in `109ms` / `32ms`; raw
+`open_tiff` passed `185/185` in `422ms`; facade `getexif` passed `178/178` in
+`2453ms`; full passed `2463/2463` in `28000ms`. Registrations are `1213/1250`;
+Release x64 built with zero warnings/errors; source/DLL exports remain
+`443/443`, zero difference; SHA-256 is
+`6D54586EE0C0FD10E6FFA0803E831A1CFC3F8BC7C9E8223D64C47F9559E2A980`.
+`META-002BA` extends the established TIFF FLOAT-array metadata route for
+`ProfileToneCurve` 50940 from exact count 6 to bounded count 18. Pillow 11.3.0
+leaves 50940 unnamed and unregistered in `TiffTags.TAGS` and `TAGS_V2`. The
+208-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`; `getexif()`
+and `tag_v2` return nine exact `(x,x^2)` control points for `x=0.0,0.125,...,
+1.0`, info reports raw compression plus `(1,1)` DPI/resolution, and no warnings
+are emitted. Raw RED received `[]`; facade RED missed 50940. Raw/facade GREEN
+passed `1/1` in `94ms` / `31ms`; raw `open_tiff` passed `184/184` in `391ms`;
+facade `getexif` passed `177/177` in `1485ms`; full passed `2461/2461` in
+`19094ms`. Registrations are `1212/1249`; Release x64 built with zero warnings/
+errors; source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`E05427246016849891808FA38AF4E53E8EC5713B228A3896E617A3CEAF17DD92`.
+`META-002AZ` extends the bounded TIFF FLOAT-array metadata route for
+`ProfileHueSatMapData1` 50938 and `ProfileHueSatMapData2` 50939 to exact count
+54 while composing both with the already-covered `ProfileHueSatMapDims` 50937
+LONG/count-3 route. Pillow 11.3.0 leaves all three tags unnamed and
+unregistered in `TiffTags.TAGS` and `TAGS_V2`. The 604-byte strip-decoded 2x1
+L fixture preserves pixels `[17,34]`; `getexif()` and `tag_v2` return dims
+`(6,3,1)`, 50938 values from `-3.375` through `3.25` in `0.125` steps, and
+50939 values from `0.0` through `3.3125` in `0.0625` steps. Info reports raw
+compression plus `(1,1)` DPI/resolution and no warnings. Raw RED received `[]`
+for 50938 after 50937 succeeded; facade RED missed 50938. Raw/facade GREEN
+passed `1/1` in `125ms` / `46ms`; raw `open_tiff` passed `183/183` in
+`656ms`; facade `getexif` passed `176/176` in `2422ms`; full passed
+`2459/2459` in `26687ms`. Registrations are `1211/1248`; Release x64 built
+with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`C9C8F0BF21CA3F6B99DE40AEBCDDDF633C3F88D83C30E2C78395028FE269181A`.
+`META-002AY` extends the bounded TIFF FLOAT-array metadata route for
+`ProfileLookTableData` 50982 to exact count 54 while composing it with the
+already-covered `ProfileLookTableDims` 50981 LONG/count-3 route. Pillow 11.3.0
+leaves both tags unnamed and unregistered in `TiffTags.TAGS` and `TAGS_V2`.
+The 376-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`;
+`getexif()` and `tag_v2` return dims `(6,3,1)` and the exact 54-value tuple
+from `0.0` through `6.625` in `0.125` steps, info reports raw compression plus
+`(1,1)` DPI/resolution, and no warnings are emitted. Raw RED received `[]` for
+50982 after 50981 succeeded; facade RED missed 50982. Raw/facade GREEN passed
+`1/1` in `94ms` / `32ms`; raw `open_tiff` passed `182/182` in `656ms`;
+facade `getexif` passed `175/175` in `2281ms`; full passed `2457/2457` in
+`27828ms`. Registrations are `1210/1247`; Release x64 built with zero
+warnings/errors; source/DLL exports remain `443/443`, zero difference;
+SHA-256 is
+`474370B7068E785B4C90B3D4FC7EB08F65ACA65429533A89B2155C320770F5AB`.
+`META-002AX` extends the established TIFF FLOAT-array metadata route for
+`ProfileLookTableData` 50982 from count 6 to bounded count 18. Pillow 11.3.0
+leaves 50982 unnamed and unregistered in both `TiffTags.TAGS` and `TAGS_V2`.
+The 208-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`;
+`getexif()` and `tag_v2` return the exact tuple from `0.0` through `4.25` in
+`0.25` steps, info reports raw compression plus `(1,1)` DPI/resolution, and no
+warnings are emitted. Raw RED received `[]`; facade RED missed 50982.
+Raw/facade GREEN passed `1/1` in `94ms` / `47ms`; raw `open_tiff` passed
+`181/181` in `735ms`; facade `getexif` passed `174/174` in `2328ms`; full
+passed `2455/2455` in `26984ms`. Registrations are `1209/1246`; Release x64
+built with zero warnings/errors; source/DLL exports remain `443/443`, zero
+difference; SHA-256 is
+`4DDD2E0207F2A4C92FA542B58D0660A6A84C093CA1A21E5E1E1104DC0C26F1E6`.
+`META-002AW` extends the established TIFF FLOAT-array metadata route to one
+bounded `ProfileLookTableData` 50982 type-11/count-6 tuple. Pillow 11.3.0
+leaves 50982 unnamed and unregistered in both `TiffTags.TAGS` and `TAGS_V2`.
+The 160-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`;
+`getexif()` and `tag_v2` return exact tuple
+`(0.0,1.0,1.0,0.5,0.75,1.25)`, info reports raw compression plus `(1,1)`
+DPI/resolution, and no warnings are emitted. Raw RED received `[]`; facade RED
+missed 50982. Raw/facade GREEN passed `1/1` in `79ms` / `47ms`; raw
+`open_tiff` passed `180/180` in `609ms`; facade `getexif` passed `173/173` in
+`2265ms`; full passed `2453/2453` in `27360ms`. Registrations are `1208/1245`;
+Release x64 built with zero warnings/errors; source/DLL exports remain
+`443/443`, zero difference; SHA-256 is
+`A196C4BE9A353E5A104EAE2A528B31DA0BA053056D4C2D5969BE0766D4E9B03B`.
+`META-002AV` extends the established TIFF LONG-array metadata route to one
+bounded `ProfileLookTableDims` 50981 type-4/count-3 tuple. Pillow 11.3.0 leaves
+50981 unnamed and unregistered in both `TiffTags.TAGS` and `TAGS_V2`. The
+148-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`; `getexif()`
+and `tag_v2` return exact tuple `(6,3,1)`, info reports raw compression plus
+`(1,1)` DPI/resolution, and no warnings are emitted. Raw RED received `[]`;
+facade RED missed 50981. Raw/facade GREEN passed `1/1` in `78ms` / `47ms`;
+raw `open_tiff` passed `179/179` in `657ms`; facade `getexif` passed `172/172`
+in `2360ms`; full passed `2451/2451` in `27063ms`. Registrations are
+`1207/1244`; Release x64 built with zero warnings/errors; source/DLL exports
+remain `443/443`, zero difference; SHA-256 is
+`D3C5327D0027B9292427B7187AB8016A58BF9B7470DBD204FC623ECFA13F2BD5`.
+`META-002AU` extends the established TIFF scalar-RATIONAL metadata route to
+bounded `NoiseReductionApplied` 50935 type-5/count-1. Pillow 11.3.0 leaves
+50935 unnamed and unregistered in both `TiffTags.TAGS` and `TAGS_V2`. The
+144-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`; `getexif()`
+and `tag_v2` return exact `IFDRational(3,4)`, info reports raw compression plus
+`(1,1)` DPI/resolution, and no warnings are emitted. Raw RED received `[]`;
+facade RED missed 50935. Raw/facade GREEN passed `1/1` in `78ms` / `32ms`;
+raw `open_tiff` passed `178/178` in `641ms`; facade `getexif` passed `171/171`
+in `2281ms`; full passed `2449/2449` in `27594ms`. Registrations are
+`1206/1243`; Release x64 built with zero warnings/errors; source/DLL exports
+remain `443/443`, zero difference; SHA-256 is
+`8BCFDA444FC3DD98B21D5A01AF6C63ADA3BDA22858D0A7B60AE3DAD91E82AD77`.
+`META-002AT` extends the established TIFF FLOAT-array metadata route to one
+bounded `ProfileToneCurve` 50940 type-11/count-6 three-control-point curve.
+Pillow 11.3.0 leaves 50940 unnamed and unregistered in both `TiffTags.TAGS`
+and `TAGS_V2`. The 160-byte strip-decoded 2x1 L fixture preserves pixels
+`[17,34]`; `getexif()` and `tag_v2` return exact tuple
+`(0.0,0.0,0.5,0.25,1.0,1.0)`, info reports raw compression plus `(1,1)` DPI/
+resolution, and no warnings are emitted. Raw RED received `[]`; facade RED
+missed 50940. Raw/facade GREEN passed `1/1` in `94ms` / `15ms`; raw
+`open_tiff` passed `177/177` in `641ms`; facade `getexif` passed `170/170` in
+`2281ms`; full passed `2447/2447` in `41344ms`. Registrations are `1205/1242`;
+Release x64 built with zero warnings/errors; source/DLL exports remain
+`443/443`, zero difference; SHA-256 is
+`EDF2043BBEC611FEBA4261687FBE0A4907DCECC07FCC5639A641BAC91E941373`.
+`META-002AS` extends the established TIFF FLOAT-array metadata route to
+`ProfileHueSatMapData2` 50939 type-11/count-6. Pillow 11.3.0 leaves 50939
+unnamed and unregistered in both `TiffTags.TAGS` and `TAGS_V2`. The 160-byte
+strip-decoded 2x1 L fixture preserves pixels `[17,34]`; `getexif()` and
+`tag_v2` return exact float32-quantized tuple
+`(0.0,-0.125,0.20000000298023224,1.75,-2.5,3.125)`, info reports raw
+compression plus `(1,1)` DPI/resolution, and no warnings are emitted. Raw RED
+received `[]`; facade RED missed 50939. Raw/facade GREEN passed `1/1` in
+`94ms` / `31ms`; raw `open_tiff` passed `176/176` in `625ms`; facade
+`getexif` passed `169/169` in `2312ms`; full passed `2445/2445` in `26453ms`.
+Registrations are `1204/1241`; Release x64 built with zero warnings/errors;
+source/DLL exports remain `443/443`, zero difference; SHA-256 is
+`0DF7F6FB0637D9151F336EA21A60F3891960D25A88DD56FCB00C00B57BBCFB5E`.
+`META-002AR` adds the first bounded TIFF FLOAT-array metadata route for
+`ProfileHueSatMapData1` 50938 type-11/count-6. Pillow 11.3.0 leaves 50938
+unnamed and unregistered in both `TiffTags.TAGS` and `TAGS_V2`. The 160-byte
+strip-decoded 2x1 L fixture preserves pixels `[17,34]`; `getexif()` and
+`tag_v2` return exact float32-quantized tuple
+`(0.0,0.10000000149011612,-0.25,1.5,2.25,-3.75)`, info reports raw compression
+plus `(1,1)` DPI/resolution, and no warnings are emitted. Raw RED failed on
+the missing `pillow_c_exif_float_array_tag` export; facade RED missed 50938.
+Raw/facade GREEN passed `1/1` in `16ms` / `47ms`; raw `open_tiff` passed
+`175/175` in `922ms`; facade `getexif` passed `168/168` in `2406ms`; full
+passed `2443/2443` in `27375ms`. Registrations are `1203/1240`; Release x64
+built with zero warnings/errors; source/DLL exports are `443/443`, zero
+difference; SHA-256 is
+`885E91AA9C7A2665A2064DF55499F65C0B97D00841440D91797FEED45186729C`.
+`META-002AQ` adds bounded TIFF `ProfileHueSatMapDims` 50937 LONG/count-3
+readback through the established uint-array route. Pillow 11.3.0 leaves 50937
+unnamed and unregistered in both `TiffTags.TAGS` and `TAGS_V2`. The 148-byte
+strip-decoded 2x1 L fixture preserves pixels `[17,34]`; `getexif()` and
+`tag_v2` return exact tuple `(6,3,1)`, info reports raw compression plus
+`(1,1)` DPI/resolution, and no warnings are emitted. Raw RED received `[]`;
+facade RED missed 50937. Raw/facade GREEN passed `1/1` in `63ms` / `47ms`;
+raw `open_tiff` passed `174/174` in `359ms`; facade `getexif` passed `167/167`
+in `1438ms`; full passed `2441/2441` in `15750ms`. Registrations are
+`1202/1239`; Release x64 built with zero warnings/errors; source/DLL exports
+remain `442/442`, zero difference; SHA-256 is
+`269AE21A0052C16CE1C34EC9CDAFE1FA5A31732B47421D2BE34F0F9028020ABA`.
+`META-002AP` adds bounded TIFF `RPCCoefficientTag` 50844 DOUBLE/count-92
+readback. Pillow 11.3.0 leaves 50844 unnamed and unregistered in both
+`TiffTags.TAGS` and `TAGS_V2`. The 872-byte strip-decoded 2x1 L fixture
+preserves pixels `[17,34]`; `getexif()` and `tag_v2` return the exact tuple
+defined by `values[index] = (index - 46) / 8.0` for index 0..91, from `-5.75`
+through `5.625`. Info reports raw compression plus `(1,1)` DPI/resolution and
+no warnings. Raw RED received `[]`; facade RED missed 50844. Raw/facade GREEN
+passed `1/1` in `109ms` / `63ms`; raw `open_tiff` passed `173/173` in `766ms`;
+facade `getexif` passed `166/166` in `2562ms`; full passed `2439/2439` in
+`28187ms`. Registrations are `1201/1238`; Release x64 built with zero warnings/
+errors; source/DLL exports remain `442/442`, zero difference; SHA-256 is
+`F59E6E398D92A50D6815A3932531392A3994DBB4AFC117E7AA31D45C3C8E92D4`.
+`META-002AO` adds bounded same-route TIFF `GDAL_METADATA` 42112 and
+`GDAL_NODATA` 42113 ASCII readback. Pillow 11.3.0 names both only in legacy
+`TiffTags.TAGS`; `TAGS_V2` has no registered type or length. The 211-byte
+strip-decoded 2x1 L fixture preserves pixels `[17,34]`; type-2/count-57 tag
+42112 returns exact string `<GDALMetadata><Item name="scale">2</Item></GDALMetadata>`
+and count-6 tag 42113 returns `-9999` from both `getexif()` and `tag_v2`, with
+only NUL terminators removed. Info reports raw compression plus `(1,1)` DPI/
+resolution and no warnings. Raw RED received `""`; facade RED missed 42112.
+Raw/facade GREEN passed `1/1` in `141ms` / `31ms`; raw `open_tiff` passed
+`172/172` in `640ms`; facade `getexif` passed `165/165` in `2093ms`; full
+passed `2437/2437` in `25547ms`. Registrations are `1200/1237`; Release x64
+built with zero warnings/errors; source/DLL exports remain `442/442`, zero
+difference; SHA-256 is
+`D5DBA342EB4F5AFE5AF7ABA04F1A55A22DEFC412F9CF0996D55FF8772AB1195B`.
+`META-002AN` adds bounded TIFF `GeoKeyDirectoryTag` tag 34735 SHORT/count-8
+readback through the established native SHORT-array route. Pillow 11.3.0 names
+34735 only in legacy `TiffTags.TAGS`; `TAGS_V2` has no registered type or
+length. The 152-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`,
+returns exact tuple `(1,1,0,1,1024,0,1,1)` from `getexif()` and `tag_v2`,
+reports raw compression plus `(1,1)` DPI/resolution, and emits no warnings.
+Raw RED received `[]`; facade RED missed 34735. Raw/facade GREEN passed `1/1`
+in `125ms` / `31ms`; raw `open_tiff` passed `171/171` in `593ms`; facade
+`getexif` passed `164/164` in `2015ms`; full passed `2435/2435` in `26922ms`.
+Registrations are `1199/1236`; Release x64 built with zero warnings/errors;
+source/DLL exports remain `442/442`, zero difference; SHA-256 is
+`DE431941CBB09198CB17730D4256E9CCEB75E3B9663E196468E9E4F6FE6BF771`.
+`META-002AM` adds bounded TIFF `GeoAsciiParamsTag` tag 34737 ASCII/count-15
+readback through the established native ASCII route. Pillow 11.3.0 names
+34737 only in legacy `TiffTags.TAGS`; `TAGS_V2` has no registered type or
+length. The 151-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`,
+returns exact string `WGS 84|meters|` from `getexif()` and `tag_v2`, preserves
+the trailing `|`, omits the NUL terminator, reports raw compression plus
+`(1,1)` DPI/resolution, and emits no warnings. Raw RED received `""`; facade
+RED missed 34737. Raw/facade GREEN passed `1/1` in `94ms` / `47ms`; raw
+`open_tiff` passed `170/170` in `657ms`; facade `getexif` passed `163/163` in
+`3203ms`; full passed `2433/2433` in `26453ms`. Registrations are `1198/1235`;
+Release x64 built with zero warnings/errors; source/DLL exports remain
+`442/442`, zero difference; SHA-256 is
+`7242AEA0D0FC8A69A9BDEEB7F05E5C8E753F7FCFC415BACAEDAC1740B3BD4C91`.
+`META-002AL` adds bounded TIFF `GeoDoubleParamsTag` tag 34736 DOUBLE/count-3
+readback through the generalized floating-array route. Pillow 11.3.0 names
+34736 only in legacy `TiffTags.TAGS`; `TAGS_V2` has no registered type or
+length. The 160-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`,
+returns exact tuple `(6378137.0,298.257223563,-123.5)` from `getexif()` and
+`tag_v2`, reports raw compression plus `(1,1)` DPI/resolution, and emits no
+warnings. Raw RED received `[]`; facade RED missed 34736. Raw/facade GREEN
+passed `1/1` in `94ms` / `31ms`; raw `open_tiff` passed `169/169` in `609ms`;
+facade `getexif` passed `162/162` in `1985ms`; full passed `2431/2431` in
+`26156ms`. Registrations are `1197/1234`; Release x64 built with zero
+warnings/errors; source/DLL exports remain `442/442`, zero difference;
+SHA-256 is
+`0C38092979CDEEC528AD94E7745761910AC6D561564B57E0A7B2598F0960F73B`.
+`META-002AK` adds bounded TIFF `ModelTransformationTag` tag 34264
+DOUBLE/count-16 readback through the generalized floating-array route. Pillow
+11.3.0 names 34264 only in legacy `TiffTags.TAGS`; `TAGS_V2` has no registered
+type or length. The 264-byte strip-decoded 2x1 L fixture preserves pixels
+`[17,34]`, returns exact tuple
+`(1,0,0,100.5,0,1,0,200.25,0,0,1,300.75,0,0,0,1)` from `getexif()` and
+`tag_v2`, reports raw compression plus `(1,1)` DPI/resolution, and emits no
+warnings. Raw RED received `[]`; facade RED missed 34264. Raw/facade GREEN
+passed `1/1` in `109ms` / `62ms`; raw `open_tiff` passed `168/168` in
+`609ms`; facade `getexif` passed `161/161` in `2093ms`; full passed
+`2429/2429` in `27203ms`. Registrations are `1196/1233`; Release x64 built
+with zero warnings/errors; source/DLL exports remain `442/442`, zero
+difference; SHA-256 is
+`F1A3D3518671B4F57BF028E64660F973E890C3788FF01FD4674E2D46D161820C`.
+`META-002AJ` adds bounded TIFF `ModelTiepointTag` tag 33922 DOUBLE/count-6
+readback through the generalized floating-array route. Pillow 11.3.0 names
+33922 only in legacy `TiffTags.TAGS`; `TAGS_V2` has no registered type or
+length. The 184-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`,
+returns exact tuple `(0,0,0,10.5,20.25,30.75)` from `getexif()` and `tag_v2`,
+reports raw compression plus `(1,1)` DPI/resolution, and emits no warnings.
+Raw RED received `[]`; facade RED missed 33922. Raw/facade GREEN passed `1/1`
+in `78ms` / `31ms`; raw `open_tiff` passed `167/167` in `609ms`; facade
+`getexif` passed `160/160` in `2016ms`; full passed `2427/2427` in `26406ms`.
+Registrations are `1195/1232`; Release x64 built with zero warnings/errors;
+source/DLL exports remain `442/442`, zero difference; SHA-256 is
+`C506D9BA6465843EE44DF934E48286BC3BF1FF35A15F6EC3FDEA5260D9285D86`.
+`META-002AI` adds bounded TIFF `ModelPixelScaleTag` tag 33550 DOUBLE/count-3
+readback. Pillow 11.3.0 names 33550 only in the legacy `TiffTags.TAGS` map;
+`TAGS_V2` has no registered type or length. The 160-byte strip-decoded 2x1 L
+fixture preserves pixels `[17,34]`, returns exact tuple `(0.5,1.25,2.75)`
+from `getexif()` and `tag_v2`, reports only raw compression plus `(1,1)` DPI/
+resolution info, and emits no warnings. Raw RED failed on the missing
+`pillow_c_exif_double_array_tag` export; facade RED missed 33550. Raw/facade
+GREEN passed `1/1` in `94ms` / `31ms`; raw `open_tiff` passed `166/166` in
+`625ms`; facade `getexif` passed `159/159` in `2157ms`; full passed
+`2425/2425` in `27641ms`. Registrations are `1194/1231`; Release x64 built
+with zero warnings/errors; source/DLL exports are `442/442`, zero difference;
+SHA-256 is
+`648CB69FC634E4C33BB86698C674AF555C32072BDCEEC144707AC95B7212C8C8`.
+`META-002AH` adds bounded TIFF `PhotoshopInfo` tag 34377 BYTE/count-14
+readback. The 150-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`,
+leaves `Info["photoshop"]`, `Info["iptc"]`, and `Info["exif"]` absent, and
+Pillow 11.3.0 returns exact bytes
+`38 42 49 4D 04 04 00 00 00 00 00 02 41 42` from `getexif()` and `tag_v2`
+without warnings. Raw RED received `[]`; facade RED missed 34377. Raw/facade
+GREEN passed `1/1` in `16ms` / `32ms`; raw `open_tiff` passed `165/165` in
+`375ms`; facade `getexif` passed `158/158` in `1219ms`; full passed
+`2423/2423` in `15656ms`. Registrations are `1193/1230`; Release x64 built
+with zero warnings/errors; no ABI symbol was added, exports remain `441/441`,
+zero difference; SHA-256 is
+`0374A7AE74A4227D4041D5A08A4BB96F711B931F5C3A5505013F2E2E54720202`.
+`META-002AG` adds bounded TIFF `IptcNaaInfo` tag 33723 type-7 readback. The
+144-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`, leaves both
+`Info["iptc"]` and `Info["exif"]` absent, and Pillow 11.3.0 returns exact bytes
+`1C 02 05 00 03 41 48 4B` from `getexif()` and `tag_v2` without warnings.
+Raw RED received `[]`; facade RED missed 33723. Raw/facade GREEN passed `1/1`
+in `93ms` / `31ms`; raw `open_tiff` passed `164/164` in `375ms`; facade
+`getexif` passed `157/157` in `1204ms`; full passed `2421/2421` in `16344ms`.
+Registrations are `1192/1229`; Release x64 built with zero warnings/errors; no
+ABI symbol was added, exports remain `441/441`, zero difference; SHA-256 is
+`AF347A62BB8B3B15DDA76AB7946D50205652E20C41F1AFD72896003086183D19`.
+`META-001FD` replaces the native TIFF 324/325 count-2 recognizer/serializer
+ceiling with validated equal-count, count-greater-than-one routing. The
+172-byte strip-decoded 2x1 L fixture preserves pixels `[17,34]`, leaves
+`Info["exif"]` absent, and Pillow 11.3.0 returns exact tuples `(200,220,240)` /
+`(2,2,2)` from `getexif()` and `tag_v2` without warnings. Raw RED opened with
+status `-3`; facade RED raised `pillow_c: invalid argument`. Raw/facade GREEN
+passed `1/1` in `62ms` / `31ms`; raw `open_tiff` passed `163/163` in `375ms`;
+facade `getexif` passed `156/156` in `1234ms`; full passed `2419/2419` in
+`15953ms`. Registrations are `1191/1228`; Release x64 built with zero
+warnings/errors; no ABI symbol was added, exports remain `441/441`, zero
+difference; SHA-256 is
+`ED14677939A8C54A58A724D99EBABE5CC5C6ECF2F55F7A43A6A2EF62B585E235`.
+`META-001FC` replaces the native TIFF 273/279 count-2-through-count-5
+allowlist with data-driven count-greater-than-one routing. The 182-byte 2x6 L
+fixture preserves pixels `[17,34,51,68,85,102,119,136,153,170,187,204]`,
+leaves `Info["exif"]` absent, and Pillow 11.3.0 returns exact tuples
+`(170,172,174,176,178,180)` / `(2,2,2,2,2,2)` from `getexif()` and `tag_v2`
+without warnings. Raw RED received `[]`; facade RED missed 273. Raw/facade
+GREEN passed `1/1` in `171ms` / `62ms`; raw `open_tiff` passed `162/162` in
+`656ms`; facade `getexif` passed `155/155` in `1969ms`; full passed
+`2417/2417` in `27469ms`. Registrations are `1190/1227`; Release x64 built
+with zero warnings/errors; no ABI symbol was added, exports remain `441/441`,
+zero difference; SHA-256 is
+`1F11AE2A5BB584B73A93C9798FDA1A09D05C0CCC0076EB8F666E8E6BA4E43DF5`.
+`META-001FB` extends the native TIFF LONG-array route to valid five-strip
+`StripOffsets` 273 and `StripByteCounts` 279 at count 5. The 172-byte 2x5 L
+fixture preserves pixels `[17,34,51,68,85,102,119,136,153,170]`, leaves
+`Info["exif"]` absent, and Pillow 11.3.0 returns exact tuples
+`(162,164,166,168,170)` / `(2,2,2,2,2)` from `getexif()` and `tag_v2`
+without warnings. Raw RED received `[]`; facade RED missed 273. Raw/facade
+GREEN passed `1/1` in `125ms` / `62ms`; raw `open_tiff` passed `161/161` in
+`610ms`; facade `getexif` passed `154/154` in `1937ms`; full passed
+`2415/2415` in `27953ms`. Registrations are `1189/1226`; Release x64 built
+with zero warnings/errors; no ABI symbol was added, exports remain `441/441`,
+zero difference; SHA-256 is
+`A7BBA1529EB2D2D8D26097A631D8BD306D44CC8A3EB9A201B0DF2BE3500B1C72`.
+`META-001FA` extends the native TIFF LONG-array route to valid four-strip
+`StripOffsets` 273 and `StripByteCounts` 279 at count 4. The 162-byte 2x4 L
+fixture preserves pixels `[17,34,51,68,85,102,119,136]`, leaves
+`Info["exif"]` absent, and Pillow 11.3.0 returns exact tuples
+`(154,156,158,160)` / `(2,2,2,2)` from `getexif()` and `tag_v2` without
+warnings. Raw RED received `[]`; facade RED missed 273. Raw/facade GREEN
+passed `1/1` in `125ms` / `63ms`; raw `open_tiff` passed `160/160` in `563ms`;
+facade `getexif` passed `153/153` in `1859ms`; full passed `2413/2413` in
+`27094ms`. Registrations are `1188/1225`; Release x64 built with zero
+warnings/errors; no ABI symbol was added, exports remain `441/441`, zero
+difference; SHA-256 is
+`6DE3FE177B939B06D49233D069F21908337E5E4107667B8656B9B1D2BA7F7703`.
+`META-001EZ` extends the native TIFF LONG-array route to valid three-strip
+`StripOffsets` 273 and `StripByteCounts` 279 at count 3. The 152-byte 2x3 L
+fixture preserves pixels `[17,34,51,68,85,102]`, leaves `Info["exif"]` absent,
+and Pillow 11.3.0 returns exact tuples `(146,148,150)` / `(2,2,2)` from
+`getexif()` and `tag_v2` without warnings. Raw RED received `[]`; facade RED
+missed 273. Raw/facade GREEN passed `1/1` in `79ms` / `32ms`; raw `open_tiff`
+passed `159/159` in `343ms`; facade `getexif` passed `152/152` in `1094ms`;
+full passed `2411/2411` in `23625ms`. Registrations are `1187/1224`; Release
+x64 built with zero warnings/errors; no ABI symbol was added, exports remain
+`441/441`, zero difference; SHA-256 is
+`9B47AA8572DBF44332A56B12732EE1FBAC35F7CE546D033ED4B3C6D515EB5EC9`.
+`META-001EY` extends the native TIFF LONG-array route to valid two-strip
+`StripOffsets` 273 and `StripByteCounts` 279 at count 2. The 142-byte 2x2 L
+fixture preserves pixels `[17,34,51,68]`, leaves `Info["exif"]` absent, and
+Pillow 11.3.0 returns exact tuples `(138,140)` / `(2,2)` from `getexif()` and
+`tag_v2` without warnings. Raw RED received `[]`; facade RED missed 273.
+After the bounded allowlist change, the first facade subdomain run exposed
+count-1 273/279 being represented in both scalar and array maps; requiring an
+array length greater than one restored the existing scalar shape. Final raw/
+facade GREEN passed `1/1` in `109ms` / `63ms`; raw `open_tiff` passed
+`158/158` in `641ms`; facade `getexif` passed `151/151` in `1938ms`; full
+passed `2409/2409` in `26500ms`. Registrations are `1186/1223`; Release x64
+built with zero warnings/errors; no ABI symbol was added, exports remain
+`441/441`, zero difference; SHA-256 is
+`71C9903631C8D7A3697156CFAB4F296D6E2389DC2A013656AE7219CCE91DEDCD`.
+`META-001EX` extends the native TIFF LONG-array route to `TileOffsets` 324 and
+`TileByteCounts` 325 at count 2. The 164-byte strip-based fixture preserves
+pixels `[17,34]`, leaves `Info["exif"]` absent, and Pillow 11.3.0 returns exact
+tuples `(200,220)` / `(2,2)` from `getexif()` and `tag_v2` without warnings.
+Raw/facade RED failed with open status `-3` / `pillow_c: invalid argument`
+because WIC treated the metadata as actual tiled storage; the native L-strip
+route now recognizes the bounded pair while still reading pixels from valid
+273/279 strips. A first `open_tiff` subdomain run exposed count-1 324/325
+being intercepted by the new array branch; count-based routing restored the
+existing scalar behavior. Final raw/facade GREEN passed `1/1` in `31ms` /
+`63ms`; raw `open_tiff` passed `157/157` in `735ms`; facade `getexif` passed
+`150/150` in `1875ms`; full passed `2407/2407` in `27453ms`. Registrations are
+`1185/1222`; Release x64 built with zero warnings/errors; no ABI symbol was
+added, exports remain `441/441`, zero difference; SHA-256 is
+`B1A6B7078923BA0C3727F955B1B591797420ACA98A7E2B51D4318992F14A2C32`.
+`META-001EW` adds the generalized TIFF LONG-array route and the new
+`pillow_c_exif_uint_array_tag` required-count ABI for `MaskSubArea` 52536
+count 4. The 152-byte fixture preserves pixels `[17,34]` and leaves
+`Info["exif"]` absent. Pillow 11.3.0 returns tuple `(1,2,9,8)` from both
+`getexif()` and `tag_v2`; the facade returns the exact AHK Array. Raw RED
+failed on the missing export; facade RED missed 52536. Raw/facade GREEN passed
+`1/1` in `109ms` / `31ms`; raw `open_tiff` passed `156/156` in `547ms`;
+facade `getexif` passed `149/149` in `1828ms`; full passed `2405/2405` in
+`25157ms`. Registrations are `1184/1221`; Release x64 built with zero
+warnings/errors; exports are `441/441`, zero difference; SHA-256 is
+`57EAEE953EA7D1B3270FF60B83B2595E6A36E9EF3FFEEDA4B77592A01FF6DA4F`.
+`META-001EV` extends the native TIFF UNDEFINED route to `IlluminantData1/2/3`
+52533..52535. The 172-byte fixture covers inline and out-of-line payloads,
+preserves pixels `[17,34]`, and leaves `Info["exif"]` absent. Pillow 11.3.0
+returns exact Python `bytes` from both `getexif()` and `tag_v2`. Raw RED
+expected `[1,2,3,4]` but received `[]`; facade RED missed 52533. Raw/facade
+GREEN passed `1/1` in `109ms` / `31ms`; raw `open_tiff` passed `155/155` in
+`579ms`; facade `getexif` passed `148/148` in `1953ms`; full passed
+`2403/2403` in `27422ms`. Registrations are `1183/1220`; Release x64 built
+with zero warnings/errors; no ABI symbol was added, exports remain `440/440`,
+zero difference; SHA-256 is
+`999AC5A31CE4C771598CA143B4CF4FAA6D4EDEA495628C8EE859F3511683B322`.
+`META-001EU` extends the native TIFF SRATIONAL-array route to count-9
+`CameraCalibration3` 52530, `ColorMatrix3` 52531, and `ForwardMatrix3` 52532.
+The 376-byte fixture preserves pixels `[17,34]` and leaves `Info["exif"]`
+absent. Pillow 11.3.0 returns tuples of nine exact `IFDRational` values from
+both `getexif()` and `tag_v2`. Raw RED expected the 52530 matrix but received
+`[]`; facade RED missed 52530. Raw/facade GREEN passed `1/1` in `125ms` /
+`32ms`; raw `open_tiff` passed `154/154` in `547ms`; facade `getexif` passed
+`147/147` in `1843ms`; full passed `2401/2401` in `22594ms`. Registrations
+are `1182/1219`; Release x64 built with zero warnings/errors; no ABI symbol
+was added, exports remain `440/440`, zero difference; SHA-256 is
+`C3DE15D28FF950967039DD6AF1A3F28C4C74AF729D9AE7BF2DC9DB00F76BB070`.
+`META-001ET` extends the native TIFF scalar-integer route to
+`CalibrationIlluminant3` 52529=`23`. The 136-byte fixture preserves pixels
+`[17,34]` and leaves `Info["exif"]` absent. Pillow 11.3.0 returns Python
+`int(23)` from both `getexif()` and `tag_v2`. Raw RED failed `Expected 23, got
+-1`; facade RED missed 52529. Raw/facade GREEN passed `1/1` in `63ms` /
+`15ms`; raw `open_tiff` passed `153/153` in `407ms`; facade `getexif` passed
+`146/146` in `1078ms`; full passed `2399/2399` in `15875ms`. Registrations
+are `1181/1218`; Release x64 built with zero warnings/errors; no ABI symbol
+was added, exports remain `440/440`, zero difference; SHA-256 is
+`AC8F2763A8CB0BB0BD194AADBC47B6CAD765724650AC3BB3BFEF5B713209371D`.
+`META-001ES` extends the native TIFF ASCII route to `SemanticName`
+52526=`foreground` and `SemanticInstanceID` 52528=`instance-1`. The 170-byte
+fixture preserves pixels `[17,34]` and leaves `Info["exif"]` absent. Pillow
+11.3.0 returns exact strings from both `getexif()` and `tag_v2`. Raw RED failed
+`Expected "foreground", got ""`; facade RED missed 52526. Raw/facade GREEN
+passed `1/1` in `47ms` / `15ms`; raw `open_tiff` passed `152/152` in `359ms`;
+facade `getexif` passed `145/145` in `1047ms`; full passed `2397/2397` in
+`16625ms`. Registrations are `1180/1217`; Release x64 built with zero
+warnings/errors; no ABI symbol was added, exports remain `440/440`, zero
+difference; SHA-256 is
+`5EF9D7E038B52B2E44318943A7185D517468AF99883EF119133B3C014653BE65`.
+`META-001ER` extends the native TIFF ASCII route to `EnhanceParams`
+51182=`gain=1`. The 143-byte fixture preserves pixels `[17,34]` and leaves
+`Info["exif"]` absent. Pillow 11.3.0 returns the exact string from both
+`getexif()` and `tag_v2`. Raw RED failed `Expected "gain=1", got ""`; facade
+RED missed 51182. Raw/facade GREEN passed `1/1` in `125ms` / `31ms`; raw
+`open_tiff` passed `151/151` in `563ms`; facade `getexif` passed `144/144` in
+`1734ms`; full passed `2395/2395` in `28141ms`. Registrations are `1179/1216`;
+Release x64 built with zero warnings/errors; no ABI symbol was added, exports
+remain `440/440`, zero difference; SHA-256 is
+`0324036328D67B153503661DDB77AB0742E74E63AF7FF582C367DB9FEE13F3CE`.
+`META-001EQ` extends the native TIFF scalar-integer route to `DepthUnits`
+51180=`1` and `DepthMeasureType` 51181=`2`. The 148-byte fixture preserves
+pixels `[17,34]` and leaves `Info["exif"]` absent. Pillow 11.3.0 returns Python
+`int` values from both `getexif()` and `tag_v2`. Raw RED failed `Expected 1,
+got -1`; facade RED missed 51180. Raw/facade GREEN passed `1/1` in `78ms` /
+`32ms`; raw `open_tiff` passed `150/150` in `656ms`; facade `getexif` passed
+`143/143` in `1813ms`; full passed `2393/2393` in `26812ms`. Registrations are
+`1178/1215`; Release x64 built with zero warnings/errors; no ABI symbol was
+added, exports remain `440/440`, zero difference; SHA-256 is
+`B7D3D97DB7D2589CB4DD8D6FAE9BA27081961A1C0C1F52381229AE12D31603D7`.
+`META-001EP` extends the native TIFF scalar-RATIONAL route to `DepthNear`
+51178=`3/2` and `DepthFar` 51179=`25/2`. The 164-byte fixture preserves pixels
+`[17,34]` and leaves `Info["exif"]` absent. Pillow 11.3.0 returns exact
+`IFDRational` values from both `getexif()` and `tag_v2`. Raw RED failed
+`Expected [3, 2], got []`; facade RED missed 51178. Raw/facade GREEN passed
+`1/1` in `109ms` / `31ms`; raw `open_tiff` passed `149/149` in `578ms`;
+facade `getexif` passed `142/142` in `1796ms`; full passed `2391/2391` in
+`26687ms`. Registrations are `1177/1214`; Release x64 built with zero
+warnings/errors; no ABI symbol was added, exports remain `440/440`, zero
+difference; SHA-256 is
+`A8B6B7AEB648214EEA06DD3F8C96BD640440D31EF917679237DD2C2EF831742C`.
+`META-001EO` extends the native TIFF scalar-integer route to `DepthFormat`
+51177=`1`. The 136-byte fixture preserves pixels `[17,34]` and leaves
+`Info["exif"]` absent. Pillow 11.3.0 returns Python `int(1)` from both
+`getexif()` and `tag_v2`. Raw RED failed `Expected 1, got -1`; facade RED
+missed 51177. Raw/facade GREEN passed `1/1` in `110ms` / `31ms`; raw
+`open_tiff` passed `148/148` in `547ms`; facade `getexif` passed `141/141` in
+`1687ms`; full passed `2389/2389` in `26203ms`. Registrations are `1176/1213`;
+Release x64 built with zero warnings/errors; no ABI symbol was added, exports
+remain `440/440`, zero difference; SHA-256 is
+`31DBF42A0908ABED726E6093D75BF73E732237D911064158FD1B7E11414124D9`.
+`META-001EN` extends the native TIFF RATIONAL-array route to count-4
+`DefaultUserCrop` 51125=`[[1,10],[2,10],[9,10],[8,10]]`. The 168-byte fixture
+preserves pixels `[17,34]` and leaves `Info["exif"]` absent. Raw RED expected
+the four pairs but received `[]`; facade RED missed 51125. Raw/facade GREEN
+passed `1/1` in `109ms` / `31ms`; raw `open_tiff` passed `147/147` in `562ms`;
+facade `getexif` passed `140/140` in `1828ms`; full passed `2387/2387` in
+`26703ms`. Registrations are `1175/1212`; Release x64 built with zero
+warnings/errors; no ABI symbol was added, exports remain `440/440`, zero
+difference; SHA-256 is
+`4B32B99FDF9526E607E6C7C0F8159DCC35AF8415A5065EA4FAFA99AB1705F17D`.
+`META-001EM` extends the native TIFF scalar-RATIONAL route to
+`RawToPreviewGain` 51112=`7/4`. The 144-byte fixture preserves pixels
+`[17,34]` and leaves `Info["exif"]` absent. Raw RED failed `Expected [7, 4],
+got []`; facade RED missed 51112. Raw/facade GREEN passed `1/1` in `110ms` /
+`31ms`; raw `open_tiff` passed `146/146` in `641ms`; facade `getexif` passed
+`139/139` in `1735ms`; full passed `2385/2385` in `26609ms`. Registrations are
+`1174/1211`; Release x64 built with zero warnings/errors; no ABI symbol was
+added, exports remain `440/440`, zero difference; SHA-256 is
+`357F8B89DA7910145A0A204CA363BDB35264C9FCEB158F191716E1293D69E2DF`.
+`META-001EL` extends the native TIFF BYTE-array route to `NewRawImageDigest`
+51111=`00..0f`. The 152-byte fixture preserves pixels `[17,34]` and leaves
+`Info["exif"]` absent. Raw RED expected the 16 bytes but received `[]`; facade
+RED missed 51111. Raw/facade GREEN passed `1/1` in `125ms` / `31ms`; raw
+`open_tiff` passed `145/145` in `515ms`; facade `getexif` passed `138/138` in
+`1703ms`; full passed `2383/2383` in `26922ms`. Registrations are `1173/1210`;
+Release x64 built with zero warnings/errors; no ABI symbol was added, exports
+remain `440/440`, zero difference; SHA-256 is
+`456BBA568BBFD5326BAA0F6BE46055BA78B5093E6BBDB988CE84BE6E94959933`.
+`META-001EK` extends the native TIFF scalar-integer route to
+`DefaultBlackRender` 51110=`1`. The 136-byte fixture preserves pixels
+`[17,34]` and leaves `Info["exif"]` absent. Raw RED failed `Expected 1, got
+-1`; facade RED missed 51110. Raw/facade GREEN passed `1/1` in `125ms` /
+`32ms`; raw `open_tiff` passed `144/144` in `562ms`; facade `getexif` passed
+`137/137` in `1656ms`; full passed `2381/2381` in `27141ms`. Registrations are
+`1172/1209`; Release x64 builds with zero warnings/errors; no ABI symbol was
+added, exports remain `440/440`, zero difference; SHA-256 is
+`5801FD3430FAC67E031D3D98861D2A82AD1D42B7C27CBED3077411FF4E8BCA7B`.
+`META-001EJ` extends the native TIFF scalar-SRATIONAL route to
+`BaselineExposureOffset` 51109=`-5/6`. The 144-byte fixture preserves pixels
+`[17,34]` and leaves `Info["exif"]` absent. Raw RED failed `Expected [-5, 6],
+got []`; facade RED missed 51109. Raw/facade GREEN passed `1/1` in `110ms` /
+`46ms`; raw `open_tiff` passed `143/143` in `531ms`; facade `getexif` passed
+`136/136` in `1625ms`; full passed `2379/2379` in `27328ms`. Registrations are
+`1171/1208`; Release x64 built with zero warnings/errors; no ABI symbol was
+added, exports remain `440/440`, zero difference; SHA-256 is
+`733883A4A6BE43B9042A0F1782D73E66DBD32C090F40BAA62A207BFAD8F6F460`.
+`META-001EI` extends the native TIFF scalar-integer route to
+`ProfileHueSatMapEncoding` 51107=`1` and `ProfileLookTableEncoding` 51108=`0`.
+The 148-byte fixture preserves pixels `[17,34]` and leaves `Info["exif"]`
+absent. Raw RED failed `Expected 1, got -1`; facade RED missed 51107. Raw/
+facade GREEN passed `1/1` in `109ms` / `31ms`; raw `open_tiff` passed
+`142/142` in `531ms`; facade `getexif` passed `135/135` in `1688ms`; full
+passed `2377/2377` in `26187ms`. Registrations are `1170/1207`; Release x64
+built with zero warnings/errors; no ABI symbol was added, exports remain
+`440/440`, zero difference; SHA-256 is
+`CD59FE9346A70B4468C472514AC8278ADC98EDF8C5F1CB966D37F21A67C761B1`.
+`META-001EH` extends the native TIFF scalar-integer route to
+`ProfileEmbedPolicy` 50941=`1` and `PreviewColorSpace` 50970=`2`. The 148-byte
+fixture preserves pixels `[17,34]` and leaves `Info["exif"]` absent. Raw RED
+failed `Expected 1, got -1`; facade RED missed 50941. Raw/facade GREEN passed
+`1/1` in `109ms` / `47ms`; raw `open_tiff` passed `141/141` in `547ms`;
+facade `getexif` passed `134/134` in `1578ms`; full passed `2375/2375` in
+`26625ms`. Registrations are `1169/1206`; Release x64 built with zero
+warnings/errors; no ABI symbol was added, exports remain `440/440`, zero
+difference; SHA-256 is
+`3923CFEC64FABB5823DC6CBABDAA3A611DD97C667D84BEEBE26C8170AEE23BC5`.
+`META-001EG` extends the generalized TIFF SRATIONAL-array route to
+`ForwardMatrix1` 50964 and `ForwardMatrix2` 50965, each with nine exact signed
+pairs. The 292-byte fixture preserves pixels `[17,34]` and leaves
+`Info["exif"]` absent. Raw RED failed `Expected [[3, 2], [-1, 4], [5, 6],
+[0, 1], [7, 8], [-2, 9], [10, 11], [3, 13], [14, 15]], got []`; facade RED
+missed 50964. Raw/facade GREEN passed `1/1` in `125ms` / `63ms`; raw
+`open_tiff` passed `140/140` in `516ms`; facade `getexif` passed `133/133` in
+`1578ms`; full passed `2373/2373` in `27141ms`. Registrations are `1168/1205`;
+Release x64 built with zero warnings/errors; no ABI symbol was added, exports
+remain `440/440`, zero difference; SHA-256 is
+`0F84990C1AD7D85024D4437205D701F02820C5C32EAA329099BE2845180E302A`.
+`META-001EF` extends the generalized TIFF SRATIONAL-array route to
+`CameraCalibration1/2` 50723/50724 and `ReductionMatrix1/2` 50725/50726,
+each with nine exact signed pairs. The 460-byte fixture preserves pixels
+`[17,34]` and leaves `Info["exif"]` absent. Raw RED failed `Expected
+[[1, 2], [-1, 3], [2, 5], [0, 1], [3, 4], [-2, 7], [5, 6], [1, 8], [9,
+10]], got []`; facade RED missed 50723. Raw/facade GREEN passed `1/1` in
+`125ms` / `62ms`; raw `open_tiff` passed `139/139` in `563ms`; facade
+`getexif` passed `132/132` in `1515ms`; full passed `2371/2371` in `24797ms`.
+Registrations are `1167/1204`; Release x64 built with zero warnings/errors;
+no ABI symbol was added, exports remain `440/440`, zero difference; SHA-256
+is `4CC2EFACC00C3F718C1081E797E99D131252DF720DC9A198086023A2F2A6BC81`.
+`META-001EE` adds a generalized TIFF SRATIONAL-array route and the new
+`pillow_c_exif_signed_rational_array_tag` ABI for `ColorMatrix1` 50721 and
+`ColorMatrix2` 50722, each with nine exact signed pairs. The 292-byte fixture
+preserves pixels `[17,34]` and leaves `Info["exif"]` absent. Raw RED failed on
+the missing export; facade RED missed 50721. Raw/facade GREEN passed `1/1` in
+`109ms` / `63ms`; raw `open_tiff` passed `138/138` in `578ms`; facade
+`getexif` passed `131/131` in `1719ms`; full passed `2369/2369` in `26156ms`.
+Registrations are `1166/1203`; Release x64 built with zero warnings/errors;
+exports are `440/440`, zero difference; SHA-256 is
+`FC352ACA7327DD77B85F9CB48743248C6BC0058746E0EE018B5DE6B6647E7639`.
+`META-001ED` extends the native TIFF RATIONAL-array route to IFD0
+`AsShotWhiteXY` 50729=`[[3127,10000],[3290,10000]]` count `2` and `LensInfo`
+50736=`[[24,1],[70,1],[28,10],[4,1]]` count `4`; the facade reads both exact
+nested arrays through `GetExif()` / `getexif()` and leaves `Info["exif"]`
+absent. The 196-byte fixture preserves pixels `[17,34]`. Raw RED failed
+`Expected [[3127, 10000], [3290, 10000]], got []`; facade RED failed on
+missing tag 50729. Raw/facade GREEN passed `1/1` in `125ms` / `31ms`; raw
+`open_tiff` passed `137/137` in `313ms`; facade `getexif` passed `130/130` in
+`891ms`; full passed `2367/2367` in `16172ms`. Registrations are `1165/1202`;
+Release x64 built with zero warnings/errors; no ABI symbol was added, exports
+remain `439/439`, zero difference; SHA-256 is
+`2A57BFD683396184AA89F2E35B54DE33DBC468911CA3DB4C235D3401386D3F12`.
+`META-001EC` extends the native TIFF RATIONAL-array route to IFD0 count-3
+`AnalogBalance` 50727=`[[2,1],[1,1],[3,2]]` and `AsShotNeutral`
+50728=`[[1,2],[1,1],[2,3]]`; the facade reads both exact nested arrays through
+`GetExif()` / `getexif()` and leaves `Info["exif"]` absent. The 196-byte fixture
+preserves pixels `[17,34]`. Raw RED failed
+`Expected [[2, 1], [1, 1], [3, 2]], got []`; facade RED failed on missing tag
+50727. Raw/facade GREEN passed `1/1` in `125ms` / `78ms`; raw `open_tiff`
+passed `136/136` in `484ms`; facade `getexif` passed `129/129` in `1500ms`;
+full passed `2365/2365` in `27265ms`. Registrations are `1164/1201`; Release
+x64 built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`76A70C52BAFF46A86B849AA1A2286AE69BA07CCEC122E093B9203D2841671481`.
+`META-001EB` extends the native TIFF scalar-SRATIONAL route to IFD0
+`BaselineExposure` 50730=`-3/2` and `ShadowScale` 50739=`5/4`; the facade
+reads both exact signed pairs through `GetExif()` / `getexif()` and leaves
+`Info["exif"]` absent. The 164-byte fixture preserves pixels `[17,34]`. Raw
+RED failed `Expected [-3, 2], got []`; facade RED failed on missing tag 50730.
+Raw/facade GREEN passed `1/1` in `47ms` / `47ms`; raw `open_tiff` passed
+`135/135` in `328ms`; facade `getexif` passed `128/128` in `938ms`; full
+passed `2363/2363` in `15406ms`. Registrations are `1163/1200`; Release x64
+built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`448BDF085FCF0A3AB436FE74F5176C206E48C9AF53246AB8F5953AE1B0FDDC7B`.
+`META-001EA` extends the native TIFF scalar-RATIONAL route to IFD0
+`AntiAliasStrength` 50738=`4/5` and `BestQualityScale` 50780=`9/8`; the facade
+reads both exact rational pairs through `GetExif()` / `getexif()` and leaves
+`Info["exif"]` absent. The 164-byte fixture preserves pixels `[17,34]`. Raw
+RED failed `Expected [4, 5], got []`; facade RED failed on missing tag 50738.
+Raw/facade GREEN passed `1/1` in `46ms` / `78ms`; raw `open_tiff` passed
+`134/134` in `297ms`; facade `getexif` passed `127/127` in `922ms`; full
+passed `2361/2361` in `15843ms`. Registrations are `1162/1199`; Release x64
+built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`787511F3B8F4E4CD655FB82FF76F5A54336473AEDD670DFF047B7BBF523BDC42`.
+`META-001DZ` extends the native TIFF scalar-RATIONAL route to IFD0
+`LinearResponseLimit` 50734=`3/4` and `ChromaBlurRadius` 50737=`7/3`; the
+facade reads both exact rational pairs through `GetExif()` / `getexif()` and
+leaves `Info["exif"]` absent. The 164-byte fixture preserves pixels `[17,34]`.
+Raw RED failed `Expected [3, 4], got []`; facade RED failed on missing tag
+50734. Raw/facade GREEN passed `1/1` in `62ms` / `31ms`; raw `open_tiff`
+passed `133/133` in `297ms`; facade `getexif` passed `126/126` in `937ms`;
+full passed `2359/2359` in `15734ms`. Registrations are `1161/1198`; Release
+x64 built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`D63D9B718A5FB91E97BD37DF061FC3DA31536A2434806A026B59A9D5E6D16FBB`.
+`META-001DY` extends the native TIFF scalar-RATIONAL route to IFD0
+`BaselineNoise` 50731=`3/2` and `BaselineSharpness` 50732=`5/4`; the facade
+reads both exact rational pairs through `GetExif()` / `getexif()` and leaves
+`Info["exif"]` absent. The 164-byte fixture preserves pixels `[17,34]`. Raw
+RED failed `Expected [3, 2], got []`; facade RED failed on missing tag 50731.
+Raw/facade GREEN passed `1/1` in `62ms` / `31ms`; raw `open_tiff` passed
+`132/132` in `422ms`; facade `getexif` passed `125/125` in `907ms`; full
+passed `2357/2357` in `15282ms`. Registrations are `1160/1197`; Release x64
+built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`9B8F454E583ABE7912E5215BD5712457AD94D3526705B62176961A5C6692980B`.
+`META-001DX` extends the native TIFF scalar-integer route to IFD0
+`CalibrationIlluminant1` 50778=`17` and `CalibrationIlluminant2` 50779=`21`;
+the facade reads both exact integers through `GetExif()` / `getexif()` and
+leaves `Info["exif"]` absent. The 148-byte fixture preserves pixels `[17,34]`.
+Raw RED failed `Expected 17, got -1`; facade RED failed on missing tag 50778.
+Raw/facade GREEN passed `1/1` in `140ms` / `47ms`; raw `open_tiff` passed
+`131/131` in `328ms`; facade `getexif` passed `124/124` in `953ms`; full
+passed `2355/2355` in `15547ms`. Registrations are `1159/1196`; Release x64
+built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`AD1AB30FD1A6855ECD9868EB75724A017CE644553F39E3437C96559917BFF808`.
+`META-001DW` extends the native TIFF scalar-integer route to IFD0 `CFALayout`
+50711=`2` and `MakerNoteSafety` 50741=`1`; the facade reads both exact integers
+through `GetExif()` / `getexif()` and leaves `Info["exif"]` absent. The
+148-byte fixture preserves pixels `[17,34]`. Raw RED failed `Expected 2, got
+-1`; facade RED failed on missing tag 50711. Raw/facade GREEN passed `1/1` in
+`125ms` / `31ms`; raw `open_tiff` passed `130/130` in `328ms`; facade
+`getexif` passed `123/123` in `765ms`; full passed `2353/2353` in `15703ms`.
+Registrations are `1158/1195`; Release x64 built with zero warnings/errors; no
+ABI symbol was added, exports remain `439/439`, zero difference; SHA-256 is
+`FDF150A2D011F812CA29AE1EA3B31BA18E7CB00F875FE517EA3CD2C103303466`.
+`META-001DV` extends the native TIFF ASCII route to IFD0 `CameraSerialNumber`
+50735=`SN1` and `ProfileCopyright` 50942=`copyright`; the facade reads both
+exact strings through `GetExif()` / `getexif()` and leaves `Info["exif"]`
+absent. The 158-byte fixture covers inline and out-of-line storage while
+preserving pixels `[17,34]`. Raw RED failed `Expected "SN1", got ""`; facade
+RED failed on missing tag 50735. Raw/facade GREEN passed `1/1` in `63ms` /
+`31ms`; raw `open_tiff` passed `129/129` in `250ms`; facade `getexif` passed
+`122/122` in `718ms`; full passed `2351/2351` in `14296ms`. Registrations are
+`1157/1194`; Release x64 built with zero warnings/errors; no ABI symbol was
+added, exports remain `439/439`, zero difference; SHA-256 is
+`FE32ACE5FC6C4719E0B3CAE88C57A44C0672E5665AF816AA45683F144B51B286`.
+`META-001DU` extends the native TIFF ASCII route to IFD0 `PreviewSettingsName`
+50968=`SET` and `PreviewDateTime` 50971=`2026:08:05 12:34:56`; the facade reads
+both exact strings through `GetExif()` / `getexif()` and leaves `Info["exif"]`
+absent. The 168-byte fixture covers inline and out-of-line storage while
+preserving pixels `[17,34]`. Raw RED failed `Expected "SET", got ""`; facade
+RED failed on missing tag 50968. Raw/facade GREEN passed `1/1` in `94ms` /
+`47ms`; raw `open_tiff` passed `128/128` in `329ms`; facade `getexif` passed
+`121/121` in `875ms`; full passed `2349/2349` in `15688ms`. Registrations are
+`1156/1193`; Release x64 built with zero warnings/errors; no ABI symbol was
+added, exports remain `439/439`, zero difference; SHA-256 is
+`14FF2E76A893DD74CBAA4CEA82802BC3DF79CCC7807AA8F8D432773C49ECD448`.
+`META-001DT` extends the native TIFF ASCII route to IFD0
+`PreviewApplicationName` 50966=`APP` and `PreviewApplicationVersion`
+50967=`1.2.3`; the facade reads both exact strings through `GetExif()` /
+`getexif()` and leaves `Info["exif"]` absent. The 154-byte fixture covers
+inline and out-of-line storage while preserving pixels `[17,34]`. Raw RED
+failed `Expected "APP", got ""`; facade RED failed on missing tag 50966.
+Raw/facade GREEN passed `1/1` in `93ms` / `31ms`; raw `open_tiff` passed
+`127/127` in `328ms`; facade `getexif` passed `120/120` in `891ms`; full
+passed `2347/2347` in `15406ms`. Registrations are `1155/1192`; Release x64
+built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`8EF7C717F11C6A560E79E0226A6BE08ABEAFE1FDE24E4A0B28E0B781EF325CFB`.
+`META-001DS` extends the native TIFF ASCII route to IFD0 `AsShotProfileName`
+50934=`ASP` and `ProfileName` 50936=`profile`; the facade reads both exact
+strings through `GetExif()` / `getexif()` and leaves `Info["exif"]` absent.
+The 156-byte fixture covers inline and out-of-line storage while preserving
+pixels `[17,34]`. Raw RED failed `Expected "ASP", got ""`; facade RED failed
+on missing tag 50934. Raw/facade GREEN passed `1/1` in `46ms` / `32ms`; raw
+`open_tiff` passed `126/126` in `313ms`; facade `getexif` passed `119/119` in
+`797ms`; full passed `2345/2345` in `15125ms`. Registrations are `1154/1191`;
+Release x64 built with zero warnings/errors; no ABI symbol was added, exports
+remain `439/439`, zero difference; SHA-256 is
+`DC1F10F9AF4885B77BCC96747594B1306AB31F59C0741BC1404BEE3683412F4D`.
+`META-001DR` extends the native TIFF ASCII route to IFD0
+`CameraCalibrationSignature` 50931=`CAL` and `ProfileCalibrationSignature`
+50932=`profile`; the facade reads both exact strings through `GetExif()` /
+`getexif()` and leaves `Info["exif"]` absent. The 156-byte fixture covers
+inline and out-of-line storage while preserving pixels `[17,34]`. Raw RED
+failed `Expected "CAL", got ""`; facade RED failed on missing tag 50931.
+Raw/facade GREEN passed `1/1` in `79ms` / `47ms`; raw `open_tiff` passed
+`125/125` in `266ms`; facade `getexif` passed `118/118` in `812ms`; full
+passed `2343/2343` in `15454ms`. Registrations are `1153/1190`; Release x64
+built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`AB900BB1D9AD154313C68FCAF557F194E7EBA0200543D56D997DD0DAB6090CE9`.
+`META-001DQ` extends the native TIFF ASCII route to IFD0 `UniqueCameraModel`
+50708=`CAM` and `OriginalRawFileName` 50827=`raw.dng`; the facade reads both
+exact strings through `GetExif()` / `getexif()` and leaves `Info["exif"]`
+absent. The 156-byte fixture covers inline and out-of-line storage while
+preserving pixels `[17,34]`. Raw RED failed `Expected "CAM", got ""`; facade
+RED failed on missing tag 50708. Raw/facade GREEN passed `1/1` in `140ms` /
+`47ms`; raw `open_tiff` passed `124/124` in `469ms`; facade `getexif` passed
+`117/117` in `1172ms`; full passed `2341/2341` in `24719ms`. Registrations are
+`1152/1189`; Release x64 built with zero warnings/errors; no ABI symbol was
+added, exports remain `439/439`, zero difference; SHA-256 is
+`A3623563D62A1AC7B6A647CCA6D075AC95191928396EF86B9793B28A577F6FF3`.
+`META-001DP` extends the native TIFF BYTE-array route to IFD0
+`LocalizedCameraModel` 50709=`[67,65,77,0,255]` and `CFAPlaneColor`
+50710=`[0,1,2]`; the facade reads both exact Buffers through `GetExif()` /
+`getexif()` and leaves `Info["exif"]` absent. The 154-byte fixture covers
+out-of-line and inline storage while preserving pixels `[17,34]`. Raw RED
+failed `Expected [67, 65, 77, 0, 255], got []`; facade RED failed on missing
+tag 50709. Raw/facade GREEN passed `1/1` in `63ms` / `32ms`; raw `open_tiff`
+passed `123/123` in `343ms`; facade `getexif` passed `116/116` in `781ms`;
+full passed `2339/2339` in `15469ms`. Registrations are `1151/1188`; Release
+x64 built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`654C1AEADF64FF64526EF041B980D0108BEB9855CC9543A727AE56BFBA34E39A`.
+`META-001DO` extends the native TIFF BYTE-array route to IFD0 `DNGVersion`
+50706=`[1,6,0,0]` and `DNGBackwardVersion` 50707=`[1,4,0,0]`; the facade reads
+both exact Buffers through `GetExif()` / `getexif()` and leaves
+`Info["exif"]` absent. The 148-byte fixture preserves pixels `[17,34]`. Raw
+RED failed `Expected [1, 6, 0, 0], got []`; facade RED failed on missing tag
+50706. Raw/facade GREEN passed `1/1` in `62ms` / `47ms`; raw `open_tiff`
+passed `122/122` in `312ms`; facade `getexif` passed `115/115` in `782ms`;
+full passed `2337/2337` in `15672ms`. Registrations are `1150/1187`; Release
+x64 built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`2F3228B64ABA7AF1E861F7830CDE98B704B78A9B0050B8F878D2DF09741DA468`.
+`META-001DN` extends the native TIFF type-7 UNDEFINED route to IFD0
+`UserComment` 37510=`[65,66,0,255]` and `ImageSourceData`
+37724=`[73,83,68,0,255]`; the facade reads both exact Buffers through
+`GetExif()` / `getexif()` while preserving the separate type-1 UserComment
+save lifecycle and leaving `Info["exif"]` absent. The 154-byte fixture covers
+inline and out-of-line payloads while preserving pixels `[17,34]`. Raw RED
+failed `Expected [65, 66, 0, 255], got []`; facade RED failed on missing tag
+37510. Raw/facade GREEN passed `1/1` in `63ms` / `31ms`; raw `open_tiff`
+passed `121/121` in `265ms`; facade `getexif` passed `114/114` in `797ms`;
+full passed `2335/2335` in `15281ms`. Registrations are `1149/1186`; Release
+x64 built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`13231A1195E4B5EEDB3E0690EC3853FB08D6303A50DFF7D57EDE3ED835E1FD76`.
+`META-001DM` extends the native TIFF UNDEFINED route to IFD0 `CFAPattern`
+41730=`[2,2,0,1]` and `DeviceSettingDescription`
+41995=`[68,69,86,0,255]`; the facade reads both exact Buffers through
+`GetExif()` / `getexif()` and leaves `Info["exif"]` absent. The 154-byte
+fixture covers inline and out-of-line payloads while preserving pixels
+`[17,34]`. Raw RED failed `Expected [2, 2, 0, 1], got []`; facade RED failed
+on missing tag 41730. Raw/facade GREEN passed `1/1` in `125ms` / `62ms`; raw
+`open_tiff` passed `120/120` in `485ms`; facade `getexif` passed `113/113` in
+`1094ms`; full passed `2333/2333` in `26422ms`. Registrations are
+`1148/1185`; Release x64 built with zero warnings/errors; no ABI symbol was
+added, exports remain `439/439`, zero difference; SHA-256 is
+`83F36D5C7E535214A7D6C08D3A121C6CCE461FB05E24222B56CE9490B8297FB2`.
+`META-001DL` extends the native TIFF UNDEFINED route to IFD0
+`ComponentsConfiguration` 37121=`[1,2,3,0]` and `MakerNote`
+37500=`[77,75,0,255,1,2]`; the facade reads both exact Buffers through
+`GetExif()` / `getexif()` and leaves `Info["exif"]` absent. The 154-byte
+fixture covers inline and out-of-line payloads while preserving pixels
+`[17,34]`. Raw RED failed `Expected [1, 2, 3, 0], got []`; facade RED failed
+on missing tag 37121. Raw/facade GREEN passed `1/1` in `109ms` / `47ms`; raw
+`open_tiff` passed `119/119` in `469ms`; facade `getexif` passed `112/112` in
+`1093ms`; full passed `2331/2331` in `26563ms`. Registrations are `1147/1184`;
+Release x64 built with zero warnings/errors; no ABI symbol was added, exports
+remain `439/439`, zero difference; SHA-256 is
+`076456D7BE3BCC45989C6B1536C7E774A0A41048DE2335BAE8C63480564E15E5`.
+`META-001DK` extends the native TIFF UNDEFINED route to IFD0 `OECF`
+34856=`[1,0,2,255,3]` and `SpatialFrequencyResponse` 41484=`[9,0,8]`; the
+facade reads both exact Buffers through `GetExif()` / `getexif()` and leaves
+`Info["exif"]` absent. The 154-byte fixture covers out-of-line and inline
+payloads while preserving pixels `[17,34]`. Raw RED failed
+`Expected [1, 0, 2, 255, 3], got []`; facade RED failed on missing tag 34856.
+Raw/facade GREEN passed `1/1` in `141ms` / `63ms`; raw `open_tiff` passed
+`118/118` in `563ms`; facade `getexif` passed `111/111` in `1078ms`; full
+passed `2329/2329` in `25859ms`. Registrations are `1146/1183`; Release x64
+built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`EC0733C628CD70DBE9F0CAEB4E184B0A212687E5FE74870DB24CD6CCB2D13D17`.
+`META-001DJ` extends the native TIFF scalar-integer route to IFD0
+`StandardOutputSensitivity` 34865=`100001`, `RecommendedExposureIndex`
+34866=`200002`, `ISOSpeed` 34867=`300003`, `ISOSpeedLatitudeyyy`
+34868=`400004`, and `ISOSpeedLatitudezzz` 34869=`500005`; the facade reads all
+five exact integers through `GetExif()` / `getexif()` and leaves
+`Info["exif"]` absent. The 184-byte fixture preserves pixels `[17,34]`. Raw
+RED failed `Expected 100001, got -1`; facade RED failed on missing tag 34865.
+Raw/facade GREEN passed `1/1` in `78ms` / `63ms`; raw `open_tiff` passed
+`117/117` in `422ms`; facade `getexif` passed `110/110` in `1016ms`; full
+passed `2327/2327` in `25250ms`. Registrations are `1145/1182`; Release x64
+built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`F3915887A3CC9C8E8E273FE0FF90A7BF7ED26B905221A6898183DF6FCA3B5926`.
+`META-001DI` extends the native TIFF scalar-integer route to IFD0
+`ISOSpeedRatings` / `PhotographicSensitivity` 34855=`400` and
+`SensitivityType` 34864=`3`; the facade reads both exact integers through
+`GetExif()` / `getexif()` and leaves `Info["exif"]` absent. The 148-byte
+fixture preserves pixels `[17,34]`. Raw RED failed `Expected 400, got -1`;
+facade RED failed on missing tag 34855. Raw/facade GREEN passed `1/1` in
+`78ms` / `47ms`; raw `open_tiff` passed `116/116` in `406ms`; facade
+`getexif` passed `109/109` in `1125ms`; full passed `2325/2325` in `26219ms`.
+Registrations are `1144/1181`; Release x64 built with zero warnings/errors;
+no ABI symbol was added, exports remain `439/439`, zero difference; SHA-256 is
+`51122D7BA4D7729761A67DA01661C902E201A7A8201B4364B95017B0A30DBF0A`.
+`META-001DH` extends the native TIFF `SubjectArea` 37396 SHORT-array route to
+the remaining standard count-2 `[7,9]` and count-3 `[7,9,11]` shapes; the
+facade reads both exact sequences through `GetExif()` / `getexif()` and leaves
+`Info["exif"]` absent. The 136/142-byte fixtures preserve pixels `[17,34]`.
+Raw RED failed `Expected [7, 9], got []`; raw GREEN passed `1/1` in `78ms`;
+the existing facade enumeration passed the new public test directly `1/1` in
+`47ms`. Raw `open_tiff` passed `115/115` in `250ms`; facade `getexif` passed
+`108/108` in `672ms`; full passed `2323/2323` in `15047ms`. Registrations are
+`1143/1180`; Release x64 built with zero warnings/errors; no ABI symbol was
+added, exports remain `439/439`, zero difference; SHA-256 is
+`92B809C293235D145C7A4661FE9F522F7114D27BA9F0931399689871D9547FD1`.
+`META-001DG` extends the native TIFF SHORT-array route to IFD0 `SubjectArea`
+37396=`[7,9,11,13]`; the facade reads the exact sequence through `GetExif()` /
+`getexif()` and leaves `Info["exif"]` absent. The 144-byte fixture preserves
+pixels `[17,34]`. Raw RED failed `Expected [7, 9, 11, 13], got []`; facade RED
+failed on missing tag 37396. Raw/facade GREEN passed `1/1` in `125ms` /
+`31ms`; raw `open_tiff` passed `114/114` in `297ms`; facade `getexif` passed
+`107/107` in `579ms`; full passed `2321/2321` in `15500ms`. Registrations are
+`1142/1179`; Release x64 built with zero warnings/errors; no ABI symbol was
+added, exports remain `439/439`, zero difference; SHA-256 is
+`AE4857AB6077BD0A497A38BF610992EFF6F55C73D9704907CC3DDE7841A040CA`.
+`META-001DF` extends the native TIFF ASCII route to IFD0
+`SecurityClassification` 37394=`secret` and `ImageHistory` 37395=`edited`;
+the facade reads both exact strings through `GetExif()` / `getexif()` and
+leaves `Info["exif"]` absent. The 162-byte fixture preserves pixels `[17,34]`.
+Raw RED failed `Expected "secret", got ""`; facade RED failed on missing tag
+37394. Raw/facade GREEN passed `1/1` in `78ms` / `31ms`; raw `open_tiff`
+passed `113/113` in `281ms`; facade `getexif` passed `106/106` in `547ms`;
+full passed `2319/2319` in `15266ms`. Registrations are `1141/1178`; Release
+x64 built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`E4F413F6B281C89446867AD175106DAA10E943BECE955A594BD67727EEB7E6F0`.
+`META-001DE` extends the native TIFF ASCII route to IFD0
+`SpectralSensitivity` 34852=`spec42`; the facade reads the exact string through
+`GetExif()` / `getexif()` and leaves `Info["exif"]` absent. The 143-byte
+fixture preserves pixels `[17,34]`. Raw RED failed
+`Expected "spec42", got ""`; facade RED failed on missing tag 34852.
+Raw/facade GREEN passed `1/1` in `47ms` / `47ms`; raw `open_tiff` passed
+`112/112` in `282ms`; facade `getexif` passed `105/105` in `578ms`; full
+passed `2317/2317` in `14969ms`. Registrations are `1140/1177`; Release x64
+built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`26FAE27A742E16D04A222082183F1BDC82A94122F6D6D6875F2127827426E75B`.
+`META-001DD` extends the native TIFF SHORT-array route to IFD0
+`SubjectLocation` 41492=`[7,9]`; the facade reads the exact sequence through
+`GetExif()` / `getexif()` and leaves `Info["exif"]` absent. The 136-byte
+fixture preserves pixels `[17,34]`. Raw RED failed `Expected [7, 9], got []`;
+facade RED failed on missing tag 41492. Raw/facade GREEN passed `1/1` in
+`47ms` / `31ms`; raw `open_tiff` passed `111/111` in `265ms`; facade
+`getexif` passed `104/104` in `641ms`; full passed `2315/2315` in `15187ms`.
+Registrations are `1139/1176`; Release x64 built with zero warnings/errors;
+no ABI symbol was added, exports remain `439/439`, zero difference; SHA-256 is
+`8BF87B038AD9BD815697DBA1D0D982FA7A438A23B662E74C527ABDE17247F52F`.
+`META-001DC` extends the native TIFF scalar-RATIONAL route to IFD0
+`CompressedBitsPerPixel` 37122=`24/10` and `ExposureIndex` 41493=`200/1`;
+the facade reads both through `GetExif()` / `getexif()` and leaves
+`Info["exif"]` absent. The 164-byte fixture preserves pixels `[17,34]`. Raw
+RED failed `Expected [24, 10], got []`; facade RED failed on missing tag
+37122. Raw/facade GREEN passed `1/1` in `94ms` / `47ms`; raw `open_tiff`
+passed `110/110` in `312ms`; facade `getexif` passed `103/103` in `578ms`;
+full passed `2313/2313` in `15188ms`. Registrations are `1138/1175`; Release
+x64 built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`D8CBED6CF819880BD5026DEDD189764108E6C66063236E6F83E76695CEC6626B`.
+`META-001DB` extends the native TIFF scalar-SRATIONAL route to IFD0
+`ExposureBiasValue` 37380=`-1/2`; the facade reads it through `GetExif()` /
+`getexif()` and leaves `Info["exif"]` absent. The 144-byte fixture preserves
+pixels `[17,34]`. Raw RED failed `Expected [-1, 2], got []`; raw GREEN passed
+`1/1` in `62ms`, and the existing facade enumeration passed the new public
+test directly `1/1` in `31ms`. Raw `open_tiff` passed `109/109` in `250ms`;
+facade `getexif` passed `102/102` in `594ms`; full passed `2311/2311` in
+`15078ms`. Registrations are `1137/1174`; Release x64 built with zero
+warnings/errors; no ABI symbol was added, exports remain `439/439`, zero
+difference; SHA-256 is
+`E5FB99F2E3763ABCEF004D9D20629763A9CB78411DD322DD396657CA9C2834BD`.
+`META-001DA` extends the native TIFF EXIF route to IFD0 scalar-SRATIONAL
+`ShutterSpeedValue` 37377=`-3/2` and `BrightnessValue` 37379=`7/4`; the facade
+reads both through `GetExif()` / `getexif()` and leaves `Info["exif"]` absent.
+Raw RED failed `Expected [-3, 2], got []`; facade RED failed on missing tag
+37377. Final raw/facade passed `1/1` in `31ms` / `32ms`; raw `open_tiff`
+passed `108/108` in `282ms`; facade `getexif` passed `101/101` in `547ms`;
+final full passed `2309/2309` in `15250ms`. Registrations are `1136/1173`; Release
+x64 built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`EA91ABC0F5E4B96ACBC63661307B51C17EAD240785E12EAB390F912DB77D676A`.
+`META-001CZ` extends the native TIFF scalar-RATIONAL EXIF route to IFD0
+`SubjectDistance` 37382=`125/10` and `FocalLength` 37386=`50/1`; the facade
+reads both through `GetExif()` / `getexif()` and leaves `Info["exif"]` absent.
+Raw RED failed `Expected [125, 10], got []`; facade RED failed on missing tag
+37382. Raw/facade GREEN passed `1/1` in `79ms` / `47ms`; raw `open_tiff`
+passed `107/107` in `312ms`; facade `getexif` passed `100/100` in `594ms`;
+full passed `2307/2307` in `15203ms`. Registrations are `1135/1172`; Release
+x64 built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`7478F8E56D39FF187E6FE1F916AD87DD45360E0BC60F440C90BA769907C59D21`.
+`META-001CY` extends the same native TIFF scalar-RATIONAL EXIF route to IFD0
+`ApertureValue` 37378=`28/10` and `MaxApertureValue` 37381=`4/1`; the facade
+reads both through `GetExif()` / `getexif()` and leaves `Info["exif"]` absent.
+Raw RED failed `Expected [28, 10], got []`; facade RED failed on missing tag
+37378. Raw/facade GREEN passed `1/1` in `62ms` / `31ms`; raw `open_tiff`
+passed `106/106` in `250ms`; facade `getexif` passed `99/99` in `547ms`; full
+passed `2305/2305` in `14813ms`. Registrations are `1134/1171`; Release x64
+built with zero warnings/errors; no ABI symbol was added, exports remain
+`439/439`, zero difference; SHA-256 is
+`D59D2A116DDAAA21B90B24468BC0EA94D23D1D922959420BE5DC09A44D0CF34B`.
+`META-001CX` extends the existing native TIFF scalar-RATIONAL EXIF route to
+IFD0 `ExposureTime` 33434=`1/125` and `FNumber` 33437=`14/5`; the facade reads
+both through `GetExif()` / `getexif()` and leaves `Info["exif"]` absent. Raw
+RED failed `Expected [1, 125], got []`; facade RED failed on missing tag 33434.
+Raw/facade GREEN passed `1/1` in `62ms` / `31ms`; raw `open_tiff` passed
+`105/105` in `250ms`; facade `getexif` passed `98/98` in `484ms`; full passed
+`2303/2303` in `14703ms`. Registrations are `1133/1170`; Release x64 built
+with zero warnings/errors; no ABI symbol was added, exports remain `439/439`,
+zero difference; SHA-256 is
+`59C182E4C7353D41113CECF25755DB07399431B1B5CEEF56ACC6FE2EACAB9B1F`.
+`META-003EL` adds native `pillow_c_cms_profile_colorant_tables` plus cached
+low-level `colorant_table` and `colorant_table_out`. Both bounded sRGB shapes
+return None with independent zero presence/count/required slots. Raw/facade
+GREEN passed `1/1` in `63ms` / `31ms`; ImageCms passed `283/283` in `5750ms`;
+full passed `2297/2297` in `15484ms`. Registrations were `1130/1167`; Release
+x64 built with zero warnings/errors; exports were `437/437`, zero difference;
+SHA-256 was
+`3B44D76135E56D3E6C0A6B01809BD7C742A0C1B62168FF6A72D5B7B665DF6DDF`.
+`META-003EM` adds native `pillow_c_cms_profile_clut` plus cached low-level
+`clut`. Built-in and serialized/reopened sRGB return keys 0..3 with exact
+input/output/proof tuples `(False, False, True)`. Raw/facade GREEN passed
+`1/1` in `93ms` / `16ms`; ImageCms passed `285/285` in `5625ms`; full passed
+`2299/2299` in `15422ms`. Registrations are `1131/1168`; Release x64 built
+with zero warnings/errors; exports are `438/438`, zero difference; SHA-256 is
+`4973418EFF0114EBF9C9E820472B4F80377FF3885622558EDC32E09E4806D42C`.
+`META-003EN` adds native `pillow_c_cms_profile_intent_support` plus low-level
+`intent_supported` and `is_intent_supported`. Built-in and serialized/
+reopened sRGB return keys 0..3 with exact input/output/proof tuples
+`(True, True, True)`; every bounded method query returns integer `1`. Raw/
+facade GREEN passed `1/1` in `46ms` / `15ms`; ImageCms passed `287/287` in
+`5640ms`; full passed `2301/2301` in `15516ms`. Registrations are `1132/1169`;
+Release x64 built with zero warnings/errors; exports are `439/439`, zero
+difference; SHA-256 is
+`A9FB9E89C4E684B6E3532D6863621961F0C7A5B95C2003F0C849B76AA459FDED`.
+`META-003DN` adds native-backed `ImageCms.getProfileInfo` for existing in-
+memory sRGB profiles. Built-in and memory-opened profiles return exact
+`sRGB built-in\r\n\r\nNo copyright, use freely\r\n\r\n` after source-memory
+release. Raw/facade GREEN passed `1/1` in `78ms` / `16ms`; ImageCms passed
+`238/238` in `5625ms`; full passed `2252/2252` in `15281ms`. Registrations
+were `1110/1142`; Release x64 built with zero warnings/errors; exports were
+`417/417` with zero set difference; SHA-256 was
+`570E2737B412E5351A6BAB7E7EBA3400EB60912BCABE3BD0DB5A556BDD964BA9`.
+`META-003DO` adds native-backed `ImageCms.getProfileCopyright` for the same
+sRGB profile shapes. Both return exact `No copyright, use freely\n` after
+source-memory release. Raw RED exposed the missing export and facade RED the
+missing method; GREEN passed `1/1` in `109ms` / `32ms`; ImageCms passed
+`240/240` in `5687ms`; full passed `2254/2254` in `15062ms`. Registrations are
+`1111/1143`; Release x64 built with zero warnings/errors; exports are
+`418/418` with zero set difference; SHA-256 is
+`F76BF5219E05A577EE696DF4EBEBD8A0353314208BA0ED41CEB5606C96D7A69F`.
+`META-003DP` adds native-backed `ImageCms.getProfileManufacturer` for the same
+sRGB profile shapes. Pillow source confirms `(manufacturer or "") + "\n"`;
+the built-in and memory-opened profiles return exact `\n` after source-memory
+release even though LittleCMS reports the optional tag absent. Raw RED exposed
+the missing export and the first GREEN exposed incorrect missing-tag handling;
+the root fix then passed raw/facade `1/1` in `47ms` / `15ms`, ImageCms
+`242/242` in `5765ms`, and full `2256/2256` in `14937ms`. Registrations are
+`1112/1144`; Release x64 built with zero warnings/errors; exports are
+`419/419` with zero set difference; SHA-256 is
+`773C252013B3DA54A342CBF84C70597072AD0341DA72335C4460B802092E48D7`.
+`META-003DQ` adds native-backed `ImageCms.getProfileModel` for the same sRGB
+profile shapes. Pillow returns exact `\n` for built-in and memory-opened
+profiles after source-memory release; the DLL handles the legal absent model
+tag using Pillow's explicit `(model or "") + "\n"` semantics. Raw/facade REDs
+exposed the missing export/method; GREEN passed `1/1` in `62ms` / `15ms`,
+ImageCms `244/244` in `5750ms`, and full `2258/2258` in `14938ms`.
+Registrations are `1113/1145`; Release x64 built with zero warnings/errors;
+exports are `420/420` with zero set difference; SHA-256 is
+`36828F30514995CD98435BDD8C25DF67FEB7A94164377C7562C773ED56C14DEA`.
+`META-003DR` adds the distinct public `ImageCms.getProfileDescription` facade
+method for the same profile shapes by routing to the existing native
+`pillow_c_cms_profile_name` description query. Built-in and memory-opened
+profiles return exact `sRGB built-in\n` after serialized source-memory release.
+The existing raw lifetime baseline passed `1/1` in `15ms`; facade RED exposed
+the missing method and GREEN passed `1/1` in `32ms`; ImageCms passed `245/245`
+in `5750ms`; full passed `2259/2259` in `15640ms`. Registrations are
+`1113/1146`; no native code or ABI changed, so exports remain `420/420` and the
+DLL SHA-256 remains
+`36828F30514995CD98435BDD8C25DF67FEB7A94164377C7562C773ED56C14DEA`.
+`META-003DS` adds native `pillow_c_cms_profile_open_file` plus the public
+String route for one absolute ASCII sRGB ICC path. LittleCMS owns file open,
+profile lifetime, and the Windows lock until `pillow_c_cms_profile_free`; the
+facade preserves Pillow's `filename`. Raw/facade REDs exposed the missing
+export/String route; GREEN passed `1/1` in `47ms` / `16ms`; ImageCms passed
+`247/247` in `5625ms`; full passed `2261/2261` in `14922ms`. Registrations are
+`1114/1147`; Release x64 built with zero warnings/errors; exports are `421/421`
+with zero set difference; SHA-256 is
+`CC4249651999235AD3D666341A32CAAAD6DD7010A504CCD6F8B1B220EAF0EF27`.
+`META-003DT` adds `pillow_c_cms_profile_open_file_wide` for Pillow's distinct
+non-ASCII Windows path branch. The DLL reads UTF-16 file bytes and opens an
+independent LittleCMS memory profile; the facade leaves `filename` as None.
+Raw/facade REDs exposed the missing export and incorrect ANSI-path routing;
+GREEN passed `1/1` in `78ms` / `31ms`; the ASCII/non-ASCII path matrix passed
+`4/4` in `47ms`; ImageCms passed `249/249` in `5594ms`; full passed
+`2263/2263` in `15188ms`. Registrations are `1115/1148`; Release x64 built
+with zero warnings/errors; exports are `422/422` with zero set difference;
+SHA-256 is
+`C152B20A2FEA82ADE6FC0C107B0F1853EA55C9419E74C871103D61CE1B076298`.
+`META-003DU` adds the bounded AHK File-like public branch for the same serialized
+sRGB ICC. The facade bulk-reads the stream's remaining bytes once, advances it
+to EOF without closing it, and reuses native memory-open ownership with
+`filename` None. Facade RED exposed the rejected type and GREEN passed `1/1`
+in `31ms`; ImageCms passed `250/250` in `5766ms`; full passed `2264/2264` in
+`15187ms`. Registrations are `1115/1149`; no native code or ABI changed, so
+exports remain `422/422` and SHA-256 remains
+`C152B20A2FEA82ADE6FC0C107B0F1853EA55C9419E74C871103D61CE1B076298`.
+`META-003DV` adds native atomic profile retain/release and the existing
+`CmsProfile` public input branch. `ImageCmsProfile.profile` is the exact source
+object and both wrappers share one native pointer; closing either first leaves
+the other usable. Raw RED exposed the missing retain export and GREEN passed
+`1/1` in `109ms`; facade RED exposed the rejected input and GREEN passed `1/1`
+in `31ms`; reverse close-order passed `1/1` in `16ms`; ImageCms passed
+`253/253` in `5766ms`; full passed `2267/2267` in `15093ms`. Registrations are
+`1116/1151`; Release x64 built with zero warnings/errors; exports are `423/423`
+with zero set difference; SHA-256 is
+`9BE524D2B9F1BF769310D8579557C0984DCE8794D13BD107225C03E854608ED1`.
+`META-003DW` adds Pillow's public `ImageCmsProfile.tobytes()` name while
+deliberately leaving the low-level `CmsProfile` without that method. Facade RED
+reported the missing method; GREEN passed `1/1` in `15ms`, ImageCms passed
+`254/254` in `5672ms`, and fresh full passed `2268/2268` in `15328ms`.
+Registrations are `1116/1152`; no native code or ABI changed, so exports remain
+`423/423` and SHA-256 remains
+`9BE524D2B9F1BF769310D8579557C0984DCE8794D13BD107225C03E854608ED1`.
+`META-003DX` adds low-level sRGB `CmsProfile` properties
+`profile_description`, `copyright`, `manufacturer`, `model`, and
+`rendering_intent` through existing native metadata/default-intent queries.
+Facade RED reported missing `profile_description`; GREEN passed `1/1` in
+`31ms`, related raw queries passed `6/6` in `32ms`, combined ImageCms passed
+`255/255` in `5625ms`, and full passed `2269/2269` in `14797ms`. Registrations
+are `1116/1153`; no native code or ABI changed, so exports remain `423/423` and
+SHA-256 remains
+`9BE524D2B9F1BF769310D8579557C0984DCE8794D13BD107225C03E854608ED1`.
+`META-003DY` adds native `pillow_c_cms_profile_header`, returning device class,
+color space, connection space, encoded/floating ICC versions, and matrix-shaper
+state in one call. Facade RED first found missing `connection_space`; the first
+implementation run then exposed truncated one-character AHK signature assembly,
+which was corrected at the root. Final raw/facade passed `1/1` in `79ms` /
+`31ms`, ImageCms passed `257/257` in `5828ms`, and full passed `2271/2271` in
+`15078ms`. Registrations are `1117/1154`; Release x64 built with zero warnings/
+errors; exports are `424/424` with zero difference; SHA-256 is
+`8E9219B6B39517D365F62C620BC1EE0382D33A0AF391DFD5C7BA4F97036DFA4B`.
+`META-003DZ` adds native `pillow_c_cms_profile_media_white_point` plus the
+low-level facade property. The first raw GREEN exposed that Pillow distinguishes
+nominal built-in D50 from serialized ICC s15Fixed16 values; native profile
+provenance now preserves both exact XYZ/xyY pairs. Final raw/facade passed `1/1`
+in `78ms` / `31ms`, ImageCms passed `259/259` in `5750ms`, and full passed
+`2273/2273` in `15203ms`. Registrations are `1118/1155`; Release x64 built with
+zero warnings/errors; exports are `425/425`, zero difference; SHA-256 is
+`62C3DB2C5B6180784F31AC57735E36B6F5D7F07DC63ADC960D7B5F2C4DADC99D`.
+`META-003EA` adds native
+`pillow_c_cms_profile_media_white_point_temperature` plus the low-level facade
+property. The shared provenance-aware media-white-point route feeds LittleCMS
+XYZ-to-xyY and temperature conversion, preserving exact built-in
+`5000.726053819035` and reopened `5000.722328847392` values after source-memory
+release. Raw/facade REDs exposed the missing export/property; GREEN passed
+`1/1` in `78ms` / `16ms`, ImageCms passed `261/261` in `5828ms`, and full passed
+`2275/2275` in `15219ms`. Registrations are `1119/1156`; Release x64 built with
+zero warnings/errors; exports are `426/426`, zero difference; SHA-256 is
+`8578C4AB19C614E11359F6295928FC1F1E217BA70EEA174F30E5B2384EB9363D`.
+`META-003EB` adds native `pillow_c_cms_profile_rgb_colorants` plus low-level
+`red_colorant`, `green_colorant`, and `blue_colorant`. One DLL call reads all
+three LittleCMS tags and returns exact built-in floating-point or serialized
+s15Fixed16 XYZ/xyY values after source-memory release; the facade caches all
+three results together. Raw/facade REDs exposed the missing export/property;
+GREEN passed `1/1` in `94ms` / `15ms`, ImageCms passed `263/263` in `5625ms`,
+and full passed `2277/2277` in `15250ms`. Registrations are `1120/1157`;
+Release x64 built with zero warnings/errors; exports are `427/427`, zero
+difference; SHA-256 is
+`B9588372B3558E2AF7CAE9EBF259979914F15BDBCE6F9AA6876B5F951B26AE1A`.
+`META-003EC` adds native `pillow_c_cms_profile_chromatic_adaptation` plus the
+low-level facade property. The DLL reads the nine-value ICC `chad` tag and
+derives xyY for each XYZ row, preserving exact built-in floating-point and
+serialized s15Fixed16 matrices after source-memory release. Raw/facade REDs
+exposed the missing export/property; GREEN passed `1/1` in `47ms` / `16ms`,
+ImageCms passed `265/265` in `5547ms`, and full passed `2279/2279` in `14969ms`.
+Registrations are `1121/1158`; Release x64 built with zero warnings/errors;
+exports are `428/428`, zero difference; SHA-256 is
+`145125212DD172068C201D93F0BA0D83F49A84CBC0A74D4005E2D6BFC1920AC7`.
+`META-003ED` adds native `pillow_c_cms_profile_rgb_primaries` plus low-level
+`red_primary`, `green_primary`, and `blue_primary`. Matching Pillow 11.3.0
+source, the DLL transforms three RGB double unit vectors to XYZ double with
+relative intent and `NOCACHE|NOOPTIMIZE`, then derives xyY in one batch. Raw/
+facade REDs exposed the missing export/property; GREEN passed `1/1` in `63ms` /
+`16ms`, ImageCms passed `267/267` in `5735ms`, and full passed `2281/2281` in
+`15015ms`. Registrations are `1122/1159`; Release x64 built with zero warnings/
+errors; exports are `429/429`, zero difference; SHA-256 is
+`652D5D7587D39E13CBEBC8BFDEEDA70E9D79BC3884E16C61AAA788AEBA95C07B`.
+`META-003EE` adds native `pillow_c_cms_profile_optional_xyz_tags` plus
+low-level `media_black_point` and `luminance`. Pillow 11.3.0 returns None for
+both optional tags on built-in and serialized/reopened sRGB profiles. One DLL
+call preserves independent presence and zeroes absent values without
+synthesizing defaults; the facade caches both properties together. Raw/facade
+REDs exposed the missing export/property; GREEN passed `1/1` in `78ms` /
+`15ms`, ImageCms passed `269/269` in `5625ms`, and full passed `2283/2283` in
+`15313ms`. Registrations are `1123/1160`; Release x64 built with zero warnings/
+errors; exports are `430/430`, zero difference; SHA-256 is
+`7022AA1168CF0D8EB2113A2C02EE43CAAE460DD2D22008AE22D1E29B5F3A5807`.
+`META-003EF` adds native `pillow_c_cms_profile_chromaticity` plus the low-level
+facade property. The DLL reads the ICC chromaticity tag directly and returns
+red/green/blue xyY triples, preserving exact built-in floating-point and
+serialized/reopened s15Fixed16 values after source-memory release. Raw/facade
+REDs exposed the missing export/property; GREEN passed `1/1` in `94ms` /
+`15ms`, ImageCms passed `271/271` in `5797ms`, and full passed `2285/2285` in
+`15156ms`. Registrations are `1124/1161`; Release x64 built with zero warnings/
+errors; exports are `431/431`, zero difference; SHA-256 is
+`BB429CE6CFC1C951945B792081A8AB161A0346A4F2CBA3F65543CAF3DACA7023`.
+`META-003EG` adds native `pillow_c_cms_profile_header_identity` plus low-level
+`creation_date`, `header_flags`, `header_manufacturer`, `header_model`, and
+`profile_id`. A fixed modified serialized-sRGB header proves exact date,
+flags/signatures, all 16 ID bytes, and Pillow's direct zero-based `tm_mon`
+exposure after source release. Raw/facade REDs exposed the missing export/
+property; final GREEN passed `1/1` in `16ms` / `15ms`, ImageCms passed
+`273/273` in `5703ms`, and full passed `2287/2287` in `15484ms`. Registrations
+are `1125/1162`; Release x64 built with zero warnings/errors; exports are
+`432/432`, zero difference; SHA-256 is
+`7E06A77903BEC6A45B229400A9612CB44A09C67CA6E2FEEB142606AE5B5FBB8A`.
+`META-003EH` adds native `pillow_c_cms_profile_optional_signatures` plus
+low-level `perceptual_rendering_intent_gamut`,
+`saturation_rendering_intent_gamut`, and `technology`. Pillow 11.3.0 returns
+None for all three on built-in and serialized/reopened sRGB profiles. One DLL
+call preserves independent presence/value slots without defaults; the facade
+caches all three together. Raw/facade REDs exposed the missing export/property;
+GREEN passed `1/1` in `46ms` / `16ms`, ImageCms passed `275/275` in `5656ms`,
+and full passed `2289/2289` in `15031ms`. Registrations are `1126/1163`;
+Release x64 built with zero warnings/errors; exports are `433/433`, zero
+difference; SHA-256 is
+`87CA443DEC300C00391534CAA95F53F1A65FE786747995BDADC329B79827D9D2`.
+`META-003EI` adds native `pillow_c_cms_profile_optional_text_tags` plus low-
+level `screening_description` and `target`. Pillow 11.3.0 returns None for both
+on built-in and serialized/reopened sRGB. One native UTF-8 query/copy route
+preserves independent presence and required-size slots; absent tags remain
+zero without synthesized text, and the facade caches both properties together.
+Raw/facade REDs exposed the missing export/property; GREEN passed `1/1` in
+`78ms` / `16ms`, ImageCms passed `277/277` in `5750ms`, and full passed
+`2291/2291` in `14984ms`. Registrations are `1127/1164`; Release x64 built with
+zero warnings/errors; exports are `434/434`, zero difference; SHA-256 is
+`170B5D9A6147745601AB83E26F20E9F3822DDE3903E260BA8643F81CCA19D8DC`.
+`META-003EJ` adds native `pillow_c_cms_profile_condition_tags` plus low-level
+`icc_measurement_condition`, `icc_viewing_condition`, and `viewing_condition`.
+Pillow 11.3.0 returns None for all three on built-in and serialized/reopened
+sRGB. One native batch owns LittleCMS struct/tag reading, full numeric/code
+slots, and optional UTF-8 description; the facade caches all three and contains
+no ICC parsing. Raw/facade REDs exposed the missing export/property; GREEN
+passed `1/1` in `93ms` / `31ms`, ImageCms passed `279/279` in `5688ms`, and
+full passed `2293/2293` in `15188ms`. Registrations are `1128/1165`; Release
+x64 built with zero warnings/errors; exports are `435/435`, zero difference;
+SHA-256 is
+`DA35205BCAD86A9433557014EA99CAF0C1302DB700C35D21DA3B06CC0BB9F69C`.
+`META-003EK` adds native
+`pillow_c_cms_profile_attributes_and_colorimetric_intent` plus low-level
+`attributes` and `colorimetric_intent`. Pillow 11.3.0 returns integer `0` and
+None respectively for built-in and serialized/reopened sRGB. One native call
+reads the 64-bit header field and optional four-byte `ciis` tag; the facade
+caches both without defaults. Raw/facade REDs exposed the missing export/
+property; GREEN passed `1/1` in `62ms` / `16ms`, ImageCms passed `281/281` in
+`6015ms`, and full passed `2295/2295` in `15438ms`. Registrations are
+`1129/1166`; Release x64 built with zero warnings/errors; exports are
+`436/436`, zero difference; SHA-256 is
+`8F89C79B39791134190F5C86279E3D3C3FCC26970F4C568156E9D4D86AD30654`.
+`META-003CN` through `META-003CQ` complete the saturation proof-transform mode
+matrix across RGB/RGB, RGB/LAB, LAB/RGB, and D50-to-6500K LAB/LAB with an
+sRGB proof profile and settings 2/3/16384. Pillow 11.3.0 fixes exact repeat-
+apply 3x2/1x1 bytes, unchanged sources/Info, distinct 572-byte LAB or 588-byte
+RGB `acsp` ICC objects, and profile-memory-independent reuse. Raw/facade REDs
+failed at the intended `-3` / `cannot build proof transform` boundary. CN
+GREEN passed `1/1` in `187ms` / `93ms`; CO `109ms` / `31ms`; CP `63ms` /
+`31ms`; CQ `63ms` / `31ms`. Final ImageCms is `192/192` in `1391ms`; full is
+`2206/2206` in `11047ms`; registrations are `1087/1119`. Release x64 built
+with zero warnings/errors; exports remain `414/414`; SHA-256
+`20D07E683F8645A4290405AF68EFE11A66E2100D628A6F17F9F1941030DDFB64`.
+`META-003CR` opens absolute-intent RGB/RGB soft proofing with Pillow-exact
+identity 3x2/1x1 pixels, unchanged sources/Info, distinct 588-byte `acsp` ICC
+objects, and profile-memory-independent reuse. Raw/facade REDs failed at `-3`
+/ `cannot build proof transform`; GREEN passed `1/1` in `78ms` / `47ms`,
+ImageCms `194/194` in `1359ms`, and full `2208/2208` in `11000ms`.
+Registrations are `1088/1120`; Release x64 built with zero warnings/errors;
+exports remain `414/414`; SHA-256
+`3322780DFEDB6FCD50BC3C3C15C79D84F3355D77920B07D5412C717826FD6BA7`.
+`META-003CS` extends absolute-intent soft proofing to RGB/LAB with exact Pillow
+3x2/1x1 LAB pixels, unchanged sources/Info, distinct 572-byte `acsp` ICC
+objects, and profile-memory-independent reuse. Raw/facade REDs failed at `-3`
+/ `cannot build proof transform`; GREEN passed `1/1` in `78ms` / `15ms`,
+ImageCms `196/196` in `1531ms`, and full `2210/2210` in `10938ms`.
+Registrations are `1089/1121`; Release x64 built with zero warnings/errors;
+exports remain `414/414`; SHA-256
+`CB366AA17FD9DC6385661F0455EFA489767DAD239F8CC78BABA42E5EDBCBB593`.
+`META-003CT` extends absolute-intent soft proofing to LAB/RGB with exact Pillow
+3x2/1x1 RGB pixels, unchanged sources/Info, distinct 588-byte `acsp` ICC
+objects, and profile-memory-independent reuse. Raw/facade REDs failed at `-3`
+/ `cannot build proof transform`; GREEN passed `1/1` in `78ms` / `16ms`,
+ImageCms `198/198` in `1406ms`, and full `2212/2212` in `11125ms`.
+Registrations are `1090/1122`; Release x64 built with zero warnings/errors;
+exports remain `414/414`; SHA-256
+`7887B4EC37AA5E41B10925EB2A2E051308FA7D578568CE9ACDD9EF09F93040D4`.
+`META-003CU` completes absolute-intent soft proofing with D50-to-6500K LAB/LAB,
+exact identity 3x2/1x1 pixels, unchanged sources/Info, distinct 572-byte `acsp`
+ICC objects, and profile-memory-independent reuse. Raw/facade REDs failed at
+`-3` / `cannot build proof transform`; GREEN passed `1/1` in `46ms` / `15ms`,
+ImageCms `200/200` in `1484ms`, and full `2214/2214` in `11328ms`.
+Registrations are `1091/1123`; Release x64 built with zero warnings/errors;
+exports remain `414/414`; SHA-256
+`6586FA42C426B355D16F1C4B9E979699D50F54797AD257C1A873C4498F907DF8`.
+`META-003CV` opens bounded gamut-check soft proofing with D50-to-6500K LAB/LAB
+at settings 0/3/20480. Pillow fixes exact 3x2 output bytes
+`[0,0,0,255,0,0,127,255,255,127,255,255,75,68,144,32,254,239]`, unchanged
+1x1 `[32,254,239]`, unchanged sources/Info, distinct 572-byte `acsp` ICC
+objects, and profile-memory-independent reuse. Raw/facade REDs failed at `-3`
+/ `cannot build proof transform`; GREEN passed `1/1` in `203ms` / `157ms`,
+ImageCms `202/202` in `1671ms`, and full `2216/2216` in `11328ms`.
+Registrations are `1092/1124`; Release x64 built with zero warnings/errors;
+exports remain `414/414`; SHA-256
+`CE7DC2A13AEC9F369E902A5E15C7D0099ADDD1155840467DB0639F8FF18444DA`.
+`META-003CW` extends bounded gamut-check soft proofing to LAB/LAB-to-RGB/sRGB
+at settings 0/3/20480. Pillow fixes exact 3x2 RGB bytes
+`[1,0,1,254,255,254,127,127,127,127,127,127,22,7,252,15,34,56]`, 1x1
+`[15,34,56]`, unchanged LAB sources/Info, distinct 588-byte `acsp` ICC
+objects, and profile-memory-independent reuse. Raw/facade REDs failed at `-3`
+/ `cannot build proof transform`; GREEN passed `1/1` in `188ms` / `109ms`,
+ImageCms `204/204` in `1891ms`, and full `2218/2218` in `11125ms`.
+Registrations are `1093/1125`; Release x64 built with zero warnings/errors;
+exports remain `414/414`; SHA-256
+`45E74FB5FBF11D8C05212FA14F904CDE01E730D2A531264F7FEAFE46D426BA8C`.
+`META-003CX` adds relative-colorimetric render intent `1` to that LAB/LAB-to-
+RGB/sRGB gamut-check route. Pillow fixes the same exact 3x2 RGB bytes and 1x1
+`[15,34,56]`, unchanged LAB sources/Info, distinct 588-byte `acsp` ICC
+objects, and profile-memory-independent reuse. Raw/facade REDs failed at `-3`
+/ `cannot build proof transform`; GREEN passed `1/1` in `141ms` / `93ms`,
+ImageCms `206/206` in `2250ms`, and full `2220/2220` in `11390ms`.
+Registrations are `1094/1126`; Release x64 built with zero warnings/errors;
+exports remain `414/414`; SHA-256
+`41A9469CDFEA84B830B39D8E7443A345EBF2F9BEF6518C2B157F748AA4C7B58E`.
+`META-003CY` adds saturation render intent `2` to that LAB/LAB-to-RGB/sRGB
+gamut-check route. Pillow fixes the same exact 3x2 RGB bytes and 1x1
+`[15,34,56]`, unchanged LAB sources/Info, distinct 588-byte `acsp` ICC
+objects, and profile-memory-independent reuse. Raw/facade REDs failed at `-3`
+/ `cannot build proof transform`; GREEN passed `1/1` in `140ms` / `109ms`,
+ImageCms `208/208` in `2297ms`, and full `2222/2222` in `11891ms`.
+Registrations are `1095/1127`; Release x64 built with zero warnings/errors;
+exports remain `414/414`; SHA-256
+`391CFC8C6EC50CC4F7DB0331D1A0E3D9E268F9B21A8FA699E8E35D8BD1B63848`.
+`META-003CZ` adds absolute-colorimetric render intent `3` to that LAB/LAB-to-
+RGB/sRGB gamut-check route, completing intents `0..3` for this pair. Pillow
+fixes the same exact 3x2 RGB bytes and 1x1 `[15,34,56]`, unchanged LAB sources/
+Info, distinct 588-byte `acsp` ICC objects, and profile-memory-independent
+reuse. Raw/facade REDs failed at `-3` / `cannot build proof transform`; GREEN
+passed `1/1` in `157ms` / `109ms`, ImageCms `210/210` in `2594ms`, and full
+`2224/2224` in `11828ms`. Registrations are `1096/1128`; Release x64 built
+with zero warnings/errors; exports remain `414/414` with zero set difference;
+SHA-256
+`94CA5DF10ADC9826825EF13E44642553E3C6C675146774A095188C4FCEB0AD7B`.
+`META-003DA` adds relative-colorimetric render intent `1` to D50-to-6500K LAB/
+LAB gamut-check proofing. Pillow fixes exact 3x2 LAB bytes
+`[0,0,0,255,0,0,127,255,255,127,255,255,75,68,144,32,254,239]`, unchanged
+1x1 `[32,254,239]`, unchanged LAB sources/Info, distinct 572-byte `acsp` ICC
+objects, and profile-memory-independent reuse. Raw/facade REDs failed at `-3`
+/ `cannot build proof transform`; GREEN passed `1/1` in `187ms` / `109ms`,
+ImageCms `212/212` in `2719ms`, and full `2226/2226` in `11937ms`.
+Registrations are `1097/1129`; Release x64 built with zero warnings/errors;
+exports remain `414/414` with zero set difference; SHA-256
+`DB35967AC2A04168B45685753BABA8146B45F82AE8A0372339AD7E07F9C57E6C`.
+`META-003DB` adds saturation render intent `2` to that D50-to-6500K LAB/LAB
+gamut-check route. Pillow fixes the same exact 3x2 LAB bytes and unchanged 1x1
+`[32,254,239]`, unchanged LAB sources/Info, distinct 572-byte `acsp` ICC
+objects, and profile-memory-independent reuse. Raw/facade REDs failed at `-3`
+/ `cannot build proof transform`; GREEN passed `1/1` in `156ms` / `109ms`,
+ImageCms `214/214` in `2906ms`, and full `2228/2228` in `12141ms`.
+Registrations are `1098/1130`; Release x64 built with zero warnings/errors;
+exports remain `414/414` with zero set difference; SHA-256
+`5FA6EC3BFE4C6E4DD59BAA65AEF1BF8E43C1E1B152595179E4C18B7554DA7F82`.
+`META-003DC` adds absolute-colorimetric render intent `3`, completing intents
+`0..3` for D50-to-6500K LAB/LAB gamut checking and both established LAB-input
+mode pairs. Pillow fixes the same exact 3x2 LAB bytes and unchanged 1x1
+`[32,254,239]`, unchanged LAB sources/Info, distinct 572-byte `acsp` ICC
+objects, and profile-memory-independent reuse. Raw/facade REDs failed at `-3`
+/ `cannot build proof transform`; GREEN passed `1/1` in `171ms` / `140ms`,
+ImageCms `216/216` in `3203ms`, and full `2230/2230` in `12688ms`.
+Registrations are `1099/1131`; Release x64 built with zero warnings/errors;
+exports remain `414/414` with zero set difference; SHA-256
+`19BCE546A1986595033EE82F4A883E47FD7C4C2B5F3F8184E5ABCAFEA3A397E9`.
+`META-003DD` opens RGB-input gamut checking with RGB/sRGB-to-RGB/sRGB at
+perceptual render intent `0`. Pillow fixes exact identity 3x2/1x1 RGB bytes,
+unchanged RGB sources/Info, distinct 588-byte `acsp` ICC objects, and profile-
+memory-independent reuse. Raw/facade REDs failed at `-3` / `cannot build proof
+transform`; GREEN passed `1/1` in `234ms` / `172ms`, ImageCms `218/218` in
+`3546ms`, and full `2232/2232` in `13156ms`. Registrations are `1100/1132`;
+Release x64 built with zero warnings/errors; exports remain `414/414` with
+zero set difference; SHA-256
+`9BFDDFEF8A8360E82619452DB3532D97B17DB1F8679DB845DE617EA06B117530`.
+`META-003DE` adds relative-colorimetric render intent `1` to that RGB/RGB
+gamut-check route. Pillow fixes the same exact identity 3x2/1x1 RGB bytes,
+unchanged sources/Info, distinct 588-byte `acsp` ICC objects, and profile-
+memory-independent reuse. Raw/facade REDs failed at `-3` / `cannot build proof
+transform`; GREEN passed `1/1` in `219ms` / `157ms`, ImageCms `220/220` in
+`4016ms`, and full `2234/2234` in `12922ms`. Registrations are `1101/1133`;
+Release x64 built with zero warnings/errors; exports remain `414/414` with
+zero set difference; SHA-256
+`96A878B9B180D44BD5F0FEC273AC28C34AE0CE1DCE39665CD71964F9F65F6D51`.
+`META-003DF` adds saturation render intent `2` to the same RGB/RGB gamut-check
+route. Pillow fixes exact identity 3x2/1x1 RGB bytes, unchanged sources/Info,
+distinct 588-byte `acsp` ICC objects, and profile-memory-independent reuse.
+Raw/facade REDs failed at `-3` / `cannot build proof transform`; GREEN passed
+`1/1` in `188ms` / `187ms`, ImageCms `222/222` in `4328ms`, and full
+`2236/2236` in `13843ms`. Registrations are `1102/1134`; Release x64 built
+with zero warnings/errors; exports remain `414/414` with zero set difference;
+SHA-256
+`B35D3CE8A4B91A621CC9D4F8B1DA2A10FFA753C082A8B41208A4A10F69F5DEC0`.
+`META-003DG` adds absolute-colorimetric render intent `3` to the same RGB/RGB
+gamut-check route and completes intents `0..3` for this pair. Pillow fixes
+exact identity 3x2/1x1 RGB bytes, unchanged sources/Info, distinct 588-byte
+`acsp` ICC objects, and profile-memory-independent reuse. Raw/facade REDs
+failed at `-3` / `cannot build proof transform`; GREEN passed `1/1` in `203ms`
+/ `172ms`, ImageCms `224/224` in `4578ms`, and full `2238/2238` in `14062ms`.
+Registrations are `1103/1135`; Release x64 built with zero warnings/errors;
+exports remain `414/414` with zero set difference; SHA-256
+`756A717649DE278C54C4B52D94052ED6797C37A0C9746BDF2F91038A281EED2D`.
+`META-003DH` opens RGB/sRGB-to-LAB/LAB gamut checking at perceptual render
+intent `0`. Pillow fixes exact 3x2 LAB bytes
+`[0,0,0,255,0,0,138,81,70,224,177,81,75,68,144,32,254,239]`, 1x1
+`[32,254,239]`, unchanged RGB sources/Info, distinct 572-byte `acsp` ICC
+objects, and profile-memory-independent reuse. Raw/facade REDs failed at `-3`
+/ `cannot build proof transform`; GREEN passed `1/1` in `188ms` / `156ms`,
+ImageCms `226/226` in `5016ms`, and full `2240/2240` in `14250ms`.
+Registrations are `1104/1136`; Release x64 built with zero warnings/errors;
+exports remain `414/414` with zero set difference; SHA-256
+`25105F88F8CF5A7C652E7634F58382A60B434520F7D54D9569CD6CDFC2CFB352`.
+`META-003DI` adds relative-colorimetric render intent `1` to the RGB/LAB
+gamut-check route. Pillow fixes the same exact 3x2/1x1 LAB bytes as DH,
+unchanged RGB sources/Info, distinct 572-byte `acsp` ICC objects, and profile-
+memory-independent reuse. Raw/facade REDs failed at `-3` / `cannot build proof
+transform`; GREEN passed `1/1` in `203ms` / `125ms`, ImageCms `228/228` in
+`5047ms`, and full `2242/2242` in `15015ms`. Registrations are `1105/1137`;
+Release x64 built with zero warnings/errors; exports remain `414/414` with
+zero set difference; SHA-256
+`1D0A1D39AEE132C08C7394D66B7AE0F3C4582A3CCBA34F07A1C50A403DD56B55`.
+`META-003DJ` adds saturation render intent `2` to the RGB/LAB gamut-check
+route. Pillow fixes the same exact 3x2/1x1 LAB bytes as DH/DI, unchanged RGB
+sources/Info, distinct 572-byte `acsp` ICC objects, and profile-memory-
+independent reuse. Raw/facade REDs failed at `-3` / `cannot build proof
+transform`; GREEN passed `1/1` in `203ms` / `156ms`, ImageCms `230/230` in
+`5360ms`, and full `2244/2244` in `14625ms`. Registrations are `1106/1138`;
+Release x64 built with zero warnings/errors; exports remain `414/414` with
+zero set difference; SHA-256
+`20435AF3C33EADB46C32EE3E6AA5E9FB34CBDC49D3E492E29BA770D1B491DD64`.
+`META-003DK` adds absolute-colorimetric render intent `3` to the RGB/LAB
+gamut-check route and completes render intents `0..3` for all four established
+RGB/LAB proof mode pairs. Pillow fixes the same exact 3x2/1x1 LAB bytes as
+DH-DJ, unchanged RGB sources/Info, distinct 572-byte `acsp` ICC objects, and
+profile-memory-independent reuse. Raw/facade REDs failed at `-3` / `cannot
+build proof transform`; GREEN passed `1/1` in `203ms` / `172ms`, ImageCms
+`232/232` in `5797ms`, and full `2246/2246` in `15250ms`. Registrations are
+`1107/1139`; Release x64 built with zero warnings/errors; exports remain
+`414/414` with zero set difference; SHA-256
+`E0F0FBB92CA7F5DCDB102923E40391AC26D3A21A6808B1A4AD31F43787359FAC`.
+`META-003DL` adds native-backed `ImageCms.getDefaultIntent` for existing in-
+memory sRGB profile objects. Pillow fixes exact intent `0` for built-in and
+memory-opened profiles after serialized profile memory is released. Raw RED
+failed on the missing export; facade RED failed on the missing method. GREEN
+passed `1/1` in `78ms` / `15ms`, ImageCms `234/234` in `5546ms`, and full
+`2248/2248` in `15343ms`. Registrations are `1108/1140`; Release x64 built
+with zero warnings/errors; exports are `415/415` with zero set difference;
+SHA-256
+`E9EB12B3B9AD7418CA5F3381AD522850FAEE95B552AA8E2DC6E190F006969EA2`.
+`META-003DM` adds native-backed `ImageCms.isIntentSupported` for existing in-
+memory sRGB profiles. Pillow fixes exact support value `1` across intents
+`0..3` and input/output/proof directions for both built-in and memory-opened
+profiles after source-memory release. Raw RED failed on the missing export;
+facade RED failed on the missing method. GREEN passed `1/1` in `78ms` /
+`16ms`, ImageCms `236/236` in `5531ms`, and full `2250/2250` in `15093ms`.
+Registrations are `1109/1141`; Release x64 built with zero warnings/errors;
+exports are `416/416` with zero set difference; SHA-256
+`D8CC164C7F1672B36DB0CB87DF80EB449E3C76576901119D40514D5CA7C12E06`.
+`META-003CJ` through `META-003CM` complete the relative-colorimetric proof-
+transform mode matrix across RGB/RGB, RGB/LAB, LAB/RGB, and D50-to-6500K
+LAB/LAB with an sRGB proof profile and settings 1/3/16384. Pillow 11.3.0 fixes
+exact repeat-apply 3x2/1x1 bytes, unchanged sources/Info, distinct 572-byte LAB
+or 588-byte RGB `acsp` ICC objects, and profile-memory-independent reuse. Each
+raw/facade RED failed at the intended `-3` / `cannot build proof transform`
+boundary. CJ GREEN passed `1/1` in `141ms` / `110ms`; CK `125ms` / `46ms`;
+CL `93ms` / `47ms`; CM `94ms` / `47ms`. Final ImageCms is `184/184` in
+`2079ms`; full is `2198/2198` in `17110ms`; registrations are `1083/1115`.
+Release x64 built with zero warnings/errors; exports remain `414/414`; SHA-256
+`0978F263221D2F70523AFA3DED47144779E777D11B65FFAAA81E845699E0CB14`.
+`META-003CN` has a bounded Pillow oracle for exact identity RGB pixels,
+unchanged source Info, distinct 588-byte ICC objects, and independent profile
+lifetime at saturation intent `2`; a raw ABI boundary probe confirms the
+current DLL still returns `-3`.
+`META-003CI` completes the default proof-transform mode matrix with D50-to-
+6500K LAB/LAB and an sRGB proof profile. Pillow 11.3.0 fixes exact identity
+3x2/1x1 LAB bytes, unchanged sources/Info, distinct 572-byte `acsp` ICC
+objects, and profile-memory-independent reuse. Raw/facade RED returned `-3` /
+`cannot build proof transform`; GREEN pass `1/1` in `78ms` each; ImageCms
+`176/176` in `1719ms`; full `2190/2190` in `16718ms`; registrations
+`1079/1111`. AHK implicit DLL auto-unload caused a reproducible raw opaque-
+handle access violation; pinning the module in `PillowCDllPath()` fixed the
+root cause, after which 10 fresh AHK processes and 200 native driver process/
+loop cases remained stable. Release x64 built with zero warnings/errors;
+exports remain `414/414`; SHA-256
+`A4281086CCFD2529A449356CA17DCB90AE6C6EACE428ECF86E2E656C950067AE`.
+`META-003CH` adds LAB/LAB-to-RGB/sRGB default soft-proofing. Pillow fixes exact
+3x2 RGB bytes `[1,0,1,254,255,254,251,5,4,13,254,14,22,7,252,15,34,56]`
+and 1x1 `[15,34,56]`, distinct 588-byte ICC objects, unchanged sources/Info,
+and profile-memory-independent reuse. Raw/facade GREEN pass `1/1` in `266ms`
+/ `47ms`; ImageCms `174/174` in `1594ms`; full `2188/2188` in `16797ms`;
+registrations `1078/1110`; exports remain `414/414`.
+`META-003CG` adds RGB/sRGB-to-LAB/LAB default soft-proofing. Pillow fixes exact
+3x2 LAB bytes `[0,0,0,255,0,0,138,81,70,224,177,81,75,68,144,32,254,239]`
+and 1x1 `[32,254,239]`, distinct 572-byte ICC objects, unchanged sources/Info,
+and profile-memory-independent reuse. Raw/facade GREEN pass `1/1` in `360ms`
+/ `63ms`; ImageCms `172/172` in `1609ms`; full `2186/2186` in `17843ms`;
+registrations `1077/1109`; exports remain `414/414`; SHA-256
+`324797996B5BD871DD787796CA118308E2D13832E2BC1A218DB8DBDF234DB456`.
+`META-003CF` opens the first bounded reusable RGB soft-proof transform route.
+A local Pillow 11.3.0 probe fixed default render intent `0`, proof intent `3`,
+`SOFTPROOFING=16384`, exact repeat-apply 3x2/1x1 RGB bytes, unchanged sources
+and caller Info, distinct 588-byte `acsp` result ICC objects, and transform
+lifetime independent of all three profiles and serialized profile memory. The
+DLL exports a real LittleCMS proof-transform builder and reuses existing native
+apply/output-profile/free paths; the facade adds one coarse constructor call.
+Raw RED reported a nonexistent export; facade RED reported a missing method.
+Raw/facade GREEN pass `1/1` in `265ms` / `109ms`; ImageCms `170/170` in
+`1610ms`; full `2184/2184` in `19266ms`; registrations `1076/1108`; Release x64
+built with zero warnings/errors; exports `414/414` with zero set difference;
+SHA-256
+`994C4E68A62F2D4D1585ED8A2D0BC616A105848329839032F2FE4F2C232D0822`.
+`META-003CE` completes in-place absolute/BPC admission across both established
+same-mode pairs by adding D50-to-6500K LAB/LAB at intent `3` and flag `8192`
+(`0x2000`). A bounded local Pillow 11.3.0 probe fixed `None` return, exact
+identity 3x2 LAB bytes, retained caller sentinel, a fresh 572-byte `acsp`
+output ICC blob, and profile-independent image lifetime. The DLL owns
+temporary transform creation and every same-storage LAB row; the facade only
+admits the exact route, attaches one serialized ICC Buffer, and maps `None` to
+`""`. Raw RED returned `-3`; facade RED raised `cannot build transform`.
+Raw/facade GREEN pass `1/1` in `141ms` / `31ms`; ImageCms `168/168` in
+`984ms`; full `2182/2182` in `16875ms`; registrations `1075/1107`; Release x64
+built with zero warnings/errors; exports `413/413` with zero set difference;
+SHA-256
+`A6FC4F9CDD52D3683A8B84CAE1C0BD7B00CAE900E1AEAB40F81758A9DC4CA428`.
+`META-003CD` opens in-place absolute/BPC admission with RGB/sRGB-to-RGB/
+memory-opened-sRGB at intent `3` and flag `8192` (`0x2000`). A bounded local
+Pillow 11.3.0 probe fixed `None` return, exact identity 3x2 RGB bytes, retained
+caller sentinel, a fresh 588-byte `acsp` output ICC blob, and profile-memory/
+profile-independent image lifetime. The DLL owns temporary transform creation
+and every same-storage RGB row; the facade only admits the exact route,
+attaches one serialized ICC Buffer, and maps `None` to `""`. Raw RED returned
+`-3`; facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1`
+in `172ms` / `47ms`; ImageCms `166/166` in `1625ms`; full `2180/2180` in
+`10672ms`; registrations `1074/1106`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`1942EE638692A297ECD0B7DDDC0EFFEEF51E5421AEC81BFB46E49F78833AA75D`.
+`META-003CC` completes in-place saturation/BPC admission across both
+established same-mode pairs by adding D50-to-6500K LAB/LAB at intent `2` and
+flag `8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed `None`
+return, exact identity 3x2 LAB bytes, retained caller sentinel, a fresh 572-
+byte `acsp` output ICC blob, and profile-independent image lifetime. The DLL
+owns temporary transform creation and every same-storage LAB row; the facade
+only admits the exact route, attaches one serialized ICC Buffer, and maps
+`None` to `""`. Raw RED returned `-3`; facade RED raised `cannot build
+transform`. Raw/facade GREEN pass `1/1` in `141ms` / `31ms`; ImageCms
+`164/164` in `1406ms`; full `2178/2178` in `17859ms`; registrations
+`1073/1105`; Release x64 built with zero warnings/errors; exports `413/413`
+with zero set difference; SHA-256
+`DA44080F6FA2F1B407B251F2474D411222F7B170A58C5D4C8B7D95C8305E6402`.
+`META-003CB` opens in-place saturation/BPC admission with RGB/sRGB-to-RGB/
+memory-opened-sRGB at intent `2` and flag `8192` (`0x2000`). A bounded local
+Pillow 11.3.0 probe fixed `None` return, exact identity 3x2 RGB bytes, retained
+caller sentinel, a fresh 588-byte `acsp` output ICC blob, and profile-memory/
+profile-independent image lifetime. The DLL owns temporary transform creation
+and every same-storage RGB row; the facade only admits the exact route,
+attaches one serialized ICC Buffer, and maps `None` to `""`. Raw RED returned
+`-3`; facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1`
+in `141ms` / `16ms`; ImageCms `162/162` in `1328ms`; full `2176/2176` in
+`17156ms`; registrations `1072/1104`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`024A970B5AB947E6B0143ECD1FA6ADC270D864B0ED7E711F69F6348E020BE359`.
+`META-003CA` completes in-place relative/BPC admission across both established
+same-mode pairs by adding D50-to-6500K LAB/LAB at intent `1` and flag `8192`
+(`0x2000`). A bounded local Pillow 11.3.0 probe fixed `None` return, exact
+identity 3x2 LAB bytes, retained caller sentinel, a fresh 572-byte `acsp`
+output ICC blob, and profile-independent image lifetime. The DLL owns temporary
+transform creation and every same-storage LAB row; the facade only admits the
+exact route, attaches one serialized ICC Buffer, and maps `None` to `""`. Raw
+RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade GREEN
+pass `1/1` in `157ms` / `31ms`; ImageCms `160/160` in `1421ms`; full
+`2174/2174` in `23609ms`; registrations `1071/1103`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`4D419E74375E79C5BF7BCA98BFCC2F4280B088037CD48A10FF77AEB1023B9216`.
+`META-003BZ` opens in-place relative/BPC admission with RGB/sRGB-to-RGB/
+memory-opened-sRGB at intent `1` and flag `8192` (`0x2000`). A bounded local
+Pillow 11.3.0 probe fixed `None` return, exact identity 3x2 RGB bytes, retained
+caller sentinel, a fresh 588-byte `acsp` output ICC blob, and profile-memory/
+profile-independent image lifetime. The DLL owns temporary transform creation
+and every same-storage RGB row; the facade only admits the exact route,
+attaches one serialized ICC Buffer, and maps `None` to `""`. Raw RED returned
+`-3`; facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1`
+in `218ms` / `31ms`; ImageCms `158/158` in `1531ms`; full `2172/2172` in
+`18750ms`; registrations `1070/1102`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`A3B84337DADD346ED2FB3EA60186F831D2D86F190304F52CA79AA713DB5E8E0F`.
+`META-003BY` completes in-place perceptual/BPC admission across both
+established same-mode pairs by adding D50-to-6500K LAB/LAB with flag `8192`
+(`0x2000`). A bounded local Pillow 11.3.0 probe fixed `None` return, exact
+identity 3x2 LAB bytes, retained caller sentinel, a fresh 572-byte `acsp`
+output ICC blob, and profile-independent image lifetime. The DLL owns
+temporary transform creation and every same-storage LAB row; the facade only
+admits the exact route, attaches one serialized ICC Buffer, and maps `None` to
+`""`. Raw RED returned `-3`; facade RED raised `cannot build transform`.
+Raw/facade GREEN pass `1/1` in `188ms` / `15ms`; ImageCms `156/156` in
+`1328ms`; full `2170/2170` in `19250ms`; registrations `1069/1101`; Release x64
+built with zero warnings/errors; exports `413/413` with zero set difference;
+SHA-256
+`1B89C158A8347B2365CBEA2995D15D6AFC39EDB54F8D610034C5811D28815728`.
+`META-003BX` opens in-place BPC admission with RGB/sRGB-to-RGB/memory-opened-
+sRGB at perceptual intent `0` and flag `8192` (`0x2000`). A bounded local
+Pillow 11.3.0 probe fixed `None` return, exact identity 3x2 RGB bytes, retained
+caller sentinel, a fresh 588-byte `acsp` output ICC blob, and profile-memory/
+profile-independent image lifetime. The DLL owns temporary transform creation
+and every same-storage row; the facade only admits the exact route, attaches
+one serialized ICC Buffer, and maps `None` to `""`. Raw RED returned `-3`;
+facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in
+`219ms` / `15ms`; ImageCms `154/154` in `891ms`; full `2168/2168` in
+`12750ms`; registrations `1068/1100`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`039166C0E006A238013FB551F1A9E226F6EF7B8C403FBF2395AEC31AA434C595`.
+`META-003BW` completes allocating one-shot absolute-colorimetric/BPC admission
+across all four established pairs by adding D50-to-6500K LAB/LAB with Pillow's
+bounded black-point-compensation flag `8192` (`0x2000`). A bounded local Pillow
+11.3.0 probe fixed exact identity 3x2 LAB bytes, unchanged LAB source pixels and
+caller Info, a fresh 572-byte `acsp` output ICC blob, and profile-independent
+result lifetime. Result allocation and every transform row remain DLL-owned;
+the facade only admits the final exact non-in-place pair/intent/flag, routes one
+coarse native call, and attaches one serialized ICC Buffer. Raw RED returned
+`-3`; facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1`
+in `141ms` / `16ms`; ImageCms `152/152` in `781ms`; full `2166/2166` in
+`11265ms`; registrations `1067/1099`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`E3E9C988F5A82E80339E7716C502DC97B932CFFEEB15337B0D2DE59C09FD7722`.
+`META-003BV` extends allocating one-shot absolute-colorimetric/BPC admission to
+RGB/sRGB-to-RGB/memory-opened-sRGB with Pillow's bounded black-point-
+compensation flag `8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed
+exact identity 3x2 RGB bytes, unchanged RGB source pixels and caller Info, a
+fresh 588-byte `acsp` output ICC blob, and profile-memory/profile-independent
+result lifetime. Result allocation and every transform row remain DLL-owned;
+the facade only admits the exact non-in-place pair/intent/flag, routes one
+coarse native call, and attaches one serialized ICC Buffer. Raw RED returned
+`-3`; facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1`
+in `141ms` / `47ms`; ImageCms `150/150` in `1343ms`; full `2164/2164` in
+`16594ms`; registrations `1066/1098`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`6F254FC54336DF10867E6E18BD6EB363A73A0D905272C088547070B0C9AAC034`.
+`META-003BU` extends allocating one-shot absolute-colorimetric/BPC admission to
+LAB/LAB-to-RGB/sRGB with Pillow's bounded black-point-compensation flag `8192`
+(`0x2000`), completing both mode-changing pairs. A bounded local Pillow 11.3.0
+probe fixed exact 3x2 RGB bytes, unchanged LAB source pixels and caller Info, a
+fresh 588-byte `acsp` output ICC blob, and profile-independent result lifetime.
+Result allocation and every transform row remain DLL-owned; the facade only
+admits the exact non-in-place pair/intent/flag, routes one coarse native call,
+and attaches one serialized ICC Buffer. Raw RED returned `-3`; facade RED
+raised `cannot build transform`. Raw/facade GREEN pass `1/1` in `141ms` /
+`47ms`; ImageCms `148/148` in `703ms`; full `2162/2162` in `9938ms`;
+registrations `1065/1097`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`B78A0BAF25C4E555EC6148CBCEC816EB684910F4AB1CAB923B9F73503B0EBDD4`.
+`META-003BT` opens allocating one-shot absolute-colorimetric/BPC admission with
+RGB/sRGB-to-LAB/LAB and Pillow's bounded black-point-compensation flag `8192`
+(`0x2000`). A bounded local Pillow 11.3.0 probe fixed exact 3x2 LAB bytes,
+unchanged RGB source pixels and caller Info, a fresh 572-byte `acsp` output ICC
+blob, and profile-independent result lifetime. Result allocation and every
+transform row remain DLL-owned; the facade only admits the exact non-in-place
+pair/intent/flag, routes one coarse native call, and attaches one serialized
+ICC Buffer. Raw RED returned `-3`; facade RED raised `cannot build transform`.
+Raw/facade GREEN pass `1/1` in `94ms` / `32ms`; ImageCms `146/146` in `703ms`;
+full `2160/2160` in `10156ms`; registrations `1064/1096`; Release x64 built
+with zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`13713869393CEE107FD9597B9BFCB55159CA17461C6A0CD62E64976523278A6A`.
+`META-003BS` completes allocating one-shot saturation/BPC admission across all
+four established pairs by adding D50-to-6500K LAB/LAB with Pillow's bounded
+black-point-compensation flag `8192` (`0x2000`). A bounded local Pillow 11.3.0
+probe fixed exact identity 3x2 LAB bytes, unchanged LAB source pixels and caller
+Info, a fresh 572-byte `acsp` output ICC blob, and profile-independent result
+lifetime. Result allocation and every transform row remain DLL-owned; the
+facade only admits the final exact non-in-place pair/intent/flag, routes one
+coarse native call, and attaches one serialized ICC Buffer. Raw RED returned
+`-3`; facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1`
+in `141ms` / `31ms`; ImageCms `144/144` in `1266ms`; full `2158/2158` in
+`17313ms`; registrations `1063/1095`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`FF747CF87374210D6F5AA110C1BC51F519E601C43BD836A8B393A32D350CF6C1`.
+`META-003BR` extends allocating one-shot saturation/BPC admission to RGB/sRGB-
+to-RGB/memory-opened-sRGB with Pillow's bounded black-point-compensation flag
+`8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed exact identity 3x2
+RGB bytes, unchanged RGB source pixels and caller Info, a fresh 588-byte `acsp`
+output ICC blob, and profile-memory/profile-independent result lifetime. Result
+allocation and every transform row remain DLL-owned; the facade only admits
+the exact non-in-place pair/intent/flag, routes one coarse native call, and
+attaches one serialized ICC Buffer. Raw RED returned `-3`; facade RED raised
+`cannot build transform`. Raw/facade GREEN pass `1/1` in `187ms` / `31ms`;
+ImageCms `142/142` in `1328ms`; full `2156/2156` in `17328ms`; registrations
+`1062/1094`; Release x64 built with zero warnings/errors; exports `413/413`
+with zero set difference; SHA-256
+`D4C124C26CD858E1C9E9E77A26C39E096EF8E9F5025833DC36D8AD9891E5EE43`.
+`META-003BQ` extends allocating one-shot saturation/BPC admission to both mode-
+changing pairs by adding LAB/LAB-to-RGB/sRGB with Pillow's bounded black-point-
+compensation flag `8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed
+exact 3x2 RGB bytes, unchanged LAB source pixels and caller Info, a fresh 588-
+byte `acsp` output ICC blob, and profile-independent result lifetime. Result
+allocation and every transform row remain DLL-owned; the facade only admits
+the exact non-in-place pair/intent/flag, routes one coarse native call, and
+attaches one serialized ICC Buffer. Raw RED returned `-3`; facade RED raised
+`cannot build transform`. Raw/facade GREEN pass `1/1` in `171ms` / `63ms`;
+ImageCms `140/140` in `1156ms`; full `2154/2154` in `17187ms`; registrations
+`1061/1093`; Release x64 built with zero warnings/errors; exports `413/413`
+with zero set difference; SHA-256
+`0FF2388CF03A0AC036F7990FA428AAF1063E69DA0AA31282EDCFADD23344635F`.
+`META-003BP` opens allocating one-shot saturation/BPC admission with RGB/sRGB-
+to-LAB/LAB and Pillow's bounded black-point-compensation flag `8192` (`0x2000`).
+A bounded local Pillow 11.3.0 probe fixed exact 3x2 LAB bytes, unchanged RGB
+source pixels and caller Info, a fresh 572-byte `acsp` output ICC blob, and
+profile-independent result lifetime. Result allocation and every transform row
+remain DLL-owned; the facade only admits the exact non-in-place pair/intent/
+flag, routes one coarse native call, and attaches one serialized ICC Buffer.
+Raw RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade
+GREEN pass `1/1` in `157ms` / `47ms`; ImageCms `138/138` in `1156ms`; full
+`2152/2152` in `16687ms`; registrations `1060/1092`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`955894B342D929BBE706D1494344D781061EFF8DDB942E5763AE491DD5E7F221`.
+`META-003BO` completes allocating one-shot relative/BPC admission across all
+four established pairs by adding D50-to-6500K LAB/LAB with Pillow's bounded
+black-point-compensation flag `8192` (`0x2000`). A bounded local Pillow 11.3.0
+probe fixed exact identity 3x2 LAB bytes, unchanged LAB source pixels and caller
+Info, a fresh 572-byte `acsp` output ICC blob, and profile-independent result
+lifetime. Result allocation and every transform row remain DLL-owned; the
+facade only admits the final exact non-in-place pair/intent/flag, routes one
+coarse native call, and attaches one serialized ICC Buffer. Raw RED returned
+`-3`; facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1`
+in `141ms` / `47ms`; ImageCms `136/136` in `1125ms`; full `2150/2150` in
+`16328ms`; registrations `1059/1091`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`BC78D6575B41E9EE0D647E83422152D7946E00B0D0D7D7C7AB7B11C62E132281`.
+`META-003BN` extends allocating one-shot relative/BPC admission to RGB/sRGB-to-
+RGB/memory-opened-sRGB with Pillow's bounded black-point-compensation flag
+`8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed exact identity 3x2
+RGB bytes, unchanged RGB source pixels and caller Info, a fresh 588-byte `acsp`
+output ICC blob, and profile-memory/profile-independent result lifetime. Result
+allocation and every transform row remain DLL-owned; the facade only admits
+the exact non-in-place pair/intent/flag, routes one coarse native call, and
+attaches one serialized ICC Buffer. Raw RED returned `-3`; facade RED raised
+`cannot build transform`. Raw/facade GREEN pass `1/1` in `156ms` / `47ms`;
+ImageCms `134/134` in `1078ms`; full `2148/2148` in `17093ms`; registrations
+`1058/1090`; Release x64 built with zero warnings/errors; exports `413/413`
+with zero set difference; SHA-256
+`787BB7513BAEE4F3E5139BBE07C73CB8F204F014686E77A656A9FC55353B8647`.
+`META-003BM` extends allocating one-shot relative/BPC admission to LAB/LAB-to-
+RGB/sRGB, completing both mode-changing pairs for Pillow's bounded black-point-
+compensation flag `8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed
+exact 3x2 RGB bytes, unchanged LAB source pixels and caller Info, a fresh 588-
+byte `acsp` output ICC blob, and profile-independent result lifetime. Result
+allocation and every transform row remain DLL-owned; the facade only admits
+the exact non-in-place pair/intent/flag, routes one coarse native call, and
+attaches one serialized ICC Buffer. Raw RED returned `-3`; facade RED raised
+`cannot build transform`. Raw/facade GREEN pass `1/1` in `156ms` / `47ms`;
+ImageCms `132/132` in `1094ms`; full `2146/2146` in `16328ms`; registrations
+`1057/1089`; Release x64 built with zero warnings/errors; exports `413/413`
+with zero set difference; SHA-256
+`B1C4292B6D129155E899719347248B0FA0656A5548E1139502FC6D9AE12984BD`.
+`META-003BL` opens allocating one-shot relative/BPC admission with RGB/sRGB-to-
+LAB/LAB and Pillow's bounded black-point-compensation flag `8192` (`0x2000`). A
+bounded local Pillow 11.3.0 probe fixed exact 3x2 LAB bytes, unchanged RGB
+source pixels and caller Info, a fresh 572-byte `acsp` output ICC blob, and
+profile-independent result lifetime. Result allocation and every transform row
+remain DLL-owned; the facade only admits the exact non-in-place pair/intent/
+flag, routes one coarse native call, and attaches one serialized ICC Buffer.
+Raw RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade
+GREEN pass `1/1` in `156ms` / `31ms`; ImageCms `130/130` in `1047ms`; full
+`2144/2144` in `16000ms`; registrations `1056/1088`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`57A1024D9C8C8D5EFBF0F2A21651D35AD387F279E01E6162F76BB425AF799DD0`.
+`META-003BK` completes allocating one-shot perceptual/BPC admission across all
+four established pairs by adding D50-to-6500K LAB/LAB with Pillow's bounded
+black-point-compensation flag `8192` (`0x2000`). A bounded local Pillow 11.3.0
+probe fixed exact identity 3x2 LAB bytes, unchanged LAB source pixels and caller
+Info, a fresh 572-byte `acsp` output ICC blob, and profile-independent result
+lifetime. Result allocation and every transform row remain DLL-owned; the
+facade only admits the final exact non-in-place pair/intent/flag, routes one
+coarse native call, and attaches one serialized ICC Buffer. Raw RED returned
+`-3`; facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1`
+in `141ms` / `31ms`; ImageCms `128/128` in `1016ms`; full `2142/2142` in
+`17297ms`; registrations `1055/1087`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`042C0DD7D51EAE67082178EF48EB663F8DA729BE4AA2E7BF752E39378A7C8BA1`.
+`META-003BJ` extends allocating one-shot perceptual/BPC admission to RGB/sRGB-
+to-RGB/memory-opened-sRGB with Pillow's bounded black-point-compensation flag
+`8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed exact identity
+3x2 RGB bytes, unchanged RGB source pixels and caller Info, a fresh 588-byte
+`acsp` output ICC blob, and profile-memory/profile-independent result lifetime.
+Result allocation and every transform row remain DLL-owned; the facade only
+admits the exact non-in-place pair/intent/flag, routes one coarse native call,
+and attaches one serialized ICC Buffer. Raw RED returned `-3`; facade RED
+raised `cannot build transform`. Raw/facade GREEN pass `1/1` in `219ms` /
+`63ms`; ImageCms `126/126` in `1047ms`; full `2140/2140` in `16328ms`;
+registrations `1054/1086`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`88B83F8AE354FB6F1771DB84ECAADFECECE584925528DD074F47328DACC0CC0F`.
+`META-003BI` extends allocating one-shot perceptual/BPC admission to LAB/LAB-
+to-RGB/sRGB with Pillow's bounded black-point-compensation flag `8192`
+(`0x2000`), completing both mode-changing pairs for this exact one-shot
+intent/flag. A bounded local Pillow 11.3.0 probe fixed exact 3x2 RGB bytes,
+unchanged LAB source pixels and caller Info, a fresh 588-byte `acsp` output ICC
+blob, and profile-independent result lifetime. Result allocation and every
+transform row remain DLL-owned; the facade only admits the exact non-in-place
+pair/intent/flag, routes one coarse native call, and attaches one serialized
+ICC Buffer. Raw RED returned `-3`; facade RED raised `cannot build transform`.
+Raw/facade GREEN pass `1/1` in `203ms` / `46ms`; ImageCms `124/124` in
+`984ms`; full `2138/2138` in `17266ms`; registrations `1053/1085`; Release
+x64 built with zero warnings/errors; exports `413/413` with zero set
+difference; SHA-256
+`133A9875DC0706C1E3D3A3EE69E9C761BD6DBC01AF2FD89C60AB6C8F5599746B`.
+`META-003BH` opens allocating one-shot RGB/sRGB-to-LAB/LAB perceptual/BPC
+admission with Pillow's bounded black-point-compensation flag `8192` (`0x2000`).
+A bounded local Pillow 11.3.0 probe fixed exact 3x2 LAB bytes, unchanged RGB
+source pixels and caller Info, a fresh 572-byte `acsp` output ICC blob, and
+profile-independent result lifetime. Result allocation and every transform row
+remain DLL-owned; the facade only admits the exact non-in-place pair/intent/
+flag, routes one coarse native call, and attaches one serialized ICC Buffer.
+Raw RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade
+GREEN pass `1/1` in `156ms` / `47ms`; ImageCms `122/122` in `985ms`; full
+`2136/2136` in `16313ms`; registrations `1052/1084`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`D3055F3760C03796E8215BDF1AE8791CEE61746C61B2EF38EE1D5D348A602EA7`.
+`META-003BG` completes reusable absolute-colorimetric/BPC admission across all
+four established pairs with D50-to-6500K LAB/LAB and Pillow's bounded black-
+point-compensation flag `8192` (`0x2000`). A bounded local Pillow 11.3.0 probe
+fixed exact repeat 3x2/1x1 identity LAB bytes, unchanged LAB sources and caller
+Info, two fresh distinct 572-byte `acsp` output ICC blobs, and profile-
+independent transform lifetime. Retained LittleCMS state, result allocation,
+every row, output-profile bytes, and deletion remain DLL-owned; the facade only
+admits the exact pair/intent/flag and routes coarse build/apply/lifetime calls.
+Raw RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade
+GREEN pass `1/1` in `172ms` / `16ms`; ImageCms `120/120` in `656ms`; full
+`2134/2134` in `11000ms`; registrations `1051/1083`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`A80DA2A1C8CB266858A18B1799F9EE61F70B321E849995B0F5D15F737EEB7147`.
+`META-003BF` extends reusable absolute-colorimetric/BPC admission to RGB/sRGB-
+to-RGB/memory-opened-sRGB with Pillow's bounded black-point-compensation flag
+`8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed exact repeat
+3x2/1x1 identity RGB bytes, unchanged RGB sources and caller Info, two fresh
+distinct 588-byte `acsp` output ICC blobs, and profile-memory/profile-
+independent transform lifetime. Retained LittleCMS state, result allocation,
+every row, output-profile bytes, and deletion remain DLL-owned; the facade only
+admits the exact pair/intent/flag and routes coarse build/apply/lifetime calls.
+Raw RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade
+GREEN pass `1/1` in `172ms` / `16ms`; ImageCms `118/118` in `640ms`; full
+`2132/2132` in `10969ms`; registrations `1050/1082`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`F9B52490F8557074EA72068D2351E8F271AEB1F1184DCF742B282502ADCA968B`.
+`META-003BE` extends reusable absolute-colorimetric/BPC admission to LAB/LAB-
+to-RGB/sRGB, completing both mode-changing pairs for Pillow's bounded black-
+point-compensation flag `8192` (`0x2000`). A bounded local Pillow 11.3.0 probe
+fixed exact repeat 3x2/1x1 reverse RGB bytes, unchanged LAB sources and caller
+Info, two fresh distinct 588-byte `acsp` output ICC blobs, and profile-
+independent transform lifetime. Retained LittleCMS state, result allocation,
+every row, output-profile bytes, and deletion remain DLL-owned; the facade only
+admits the exact pair/intent/flag and routes coarse build/apply/lifetime calls.
+Raw RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade
+GREEN pass `1/1` in `172ms` / `47ms`; ImageCms `116/116` in `593ms`; full
+`2130/2130` in `10688ms`; registrations `1049/1081`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`E118088CC55492410774BCDA44FCA0A8360B52914F6987E24258743B99EA6624`.
+`META-003BD` opens reusable absolute-colorimetric/BPC admission for RGB/sRGB-
+to-LAB/LAB with Pillow's bounded black-point-compensation flag `8192`
+(`0x2000`). A bounded local Pillow 11.3.0 probe fixed exact repeat 3x2/1x1 LAB
+bytes, unchanged RGB sources and caller Info, two fresh distinct 572-byte
+`acsp` output ICC blobs, and profile-independent transform lifetime. Retained
+LittleCMS state, result allocation, every row, output-profile bytes, and
+deletion remain DLL-owned; the facade only admits the exact pair/intent/flag
+and routes coarse build/apply/lifetime calls. Raw RED returned `-3`; facade RED
+raised `cannot build transform`. Raw/facade GREEN pass `1/1` in `188ms` /
+`31ms`; ImageCms `114/114` in `532ms`; full `2128/2128` in `15047ms`;
+registrations `1048/1080`; Release x64 built with zero warnings/errors;
+exports `413/413` with zero set difference; SHA-256
+`43E9F4E3A46131DEB57540F7C692CCF58A55296AA40ECAA7FB16BBBBCC977603`.
+`META-003BC` extends reusable D50-to-6500K LAB/LAB transform build/apply to
+saturation intent `2` with Pillow's bounded black-point-compensation flag
+`8192` (`0x2000`), completing that route across all four established reusable
+pairs. A bounded local Pillow 11.3.0 probe fixed exact repeat 3x2/1x1 identity
+LAB bytes, unchanged LAB sources and caller Info, two fresh distinct 572-byte
+`acsp` output ICC blobs, and profile-independent transform lifetime. Retained
+LittleCMS state, result allocation, every row, output-profile bytes, and
+deletion remain DLL-owned; the facade only admits the exact pair/intent/flag
+and routes coarse build/apply/lifetime calls. Raw RED returned `-3`; facade RED
+raised `cannot build transform`. Raw/facade GREEN pass `1/1` in `140ms` /
+`16ms`; ImageCms `112/112` in `578ms`; full `2126/2126` in `10735ms`;
+registrations `1047/1079`; Release x64 built with zero warnings/errors;
+exports `413/413` with zero set difference; SHA-256
+`5BC61E57225926A3528E28FD9B685723AE01A4D9525831B7FFEE9A2EB76B2D9C`.
+`META-003BB` extends reusable saturation/BPC admission to RGB/sRGB-to-RGB/
+memory-opened-sRGB with Pillow's bounded black-point-compensation flag `8192`
+(`0x2000`). A bounded local Pillow 11.3.0 probe fixed exact repeat 3x2/1x1
+identity RGB bytes, unchanged RGB sources and caller Info, two fresh distinct
+588-byte `acsp` output ICC blobs, and profile-memory/profile-independent
+transform lifetime. Retained LittleCMS state, result allocation, every row,
+output-profile bytes, and deletion remain DLL-owned; the facade only admits
+the exact pair/intent/flag and routes coarse build/apply/lifetime calls. Raw
+RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade
+GREEN pass `1/1` in `110ms` / `16ms`; ImageCms `110/110` in `563ms`; full
+`2124/2124` in `11391ms`; registrations `1046/1078`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`A40D84E96D877509CFE00F5954EC4294232D154E63700A061812E1264CA6DCD4`.
+`META-003BA` extends reusable saturation/BPC admission to LAB/LAB-to-RGB/sRGB,
+completing both mode-changing pairs for Pillow's bounded black-point-
+compensation flag `8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed
+exact repeat 3x2/1x1 reverse RGB bytes, unchanged LAB sources and caller Info,
+two fresh distinct 588-byte `acsp` output ICC blobs, and profile-independent
+transform lifetime. Retained LittleCMS state, result allocation, every row,
+output-profile bytes, and deletion remain DLL-owned; the facade only admits
+the exact pair/intent/flag and routes coarse build/apply/lifetime calls. Raw
+RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade
+GREEN pass `1/1` in `140ms` / `16ms`; ImageCms `108/108` in `609ms`; full
+`2122/2122` in `11125ms`; registrations `1045/1077`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`EADC87096D89902FD73DAE04F97596A3FBE97F89863628BAC930F92D5A2C313B`.
+`META-003AZ` opens reusable saturation/BPC admission for RGB/sRGB-to-LAB/LAB
+with Pillow's bounded black-point-compensation flag `8192` (`0x2000`). A
+bounded local Pillow 11.3.0 probe fixed exact repeat 3x2/1x1 LAB bytes,
+unchanged RGB sources and caller Info, two fresh distinct 572-byte `acsp`
+output ICC blobs, and profile-independent transform lifetime. Retained
+LittleCMS state, result allocation, every row, output-profile bytes, and
+deletion remain DLL-owned; the facade only admits the exact pair/intent/flag
+and routes coarse build/apply/lifetime calls. Raw RED returned `-3`; facade
+RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in `157ms` /
+`15ms`; ImageCms `106/106` in `593ms`; full `2120/2120` in `11609ms`;
+registrations `1044/1076`; Release x64 built with zero warnings/errors;
+exports `413/413` with zero set difference; SHA-256
+`A180FD81089BFCABF9F375F8325A25A624A79F80986159BB4BB5DDC4DDC9505F`.
+`META-003AY` extends reusable D50-to-6500K LAB/LAB transform build/apply to
+relative-colorimetric intent `1` with Pillow's bounded black-point-compensation
+flag `8192` (`0x2000`), completing that route across all four established
+reusable pairs. A bounded local Pillow 11.3.0 probe fixed exact repeat 3x2/1x1
+identity LAB bytes, unchanged LAB sources and caller Info, two fresh distinct
+572-byte `acsp` output ICC blobs, and profile-independent transform lifetime.
+Retained LittleCMS state, result allocation, every row, output-profile bytes,
+and deletion remain DLL-owned; the facade only admits the exact pair/intent/
+flag and routes coarse build/apply/lifetime calls. Raw RED returned `-3`;
+facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in
+`125ms` / `16ms`; ImageCms `104/104` in `531ms`; full `2118/2118` in
+`11719ms`; registrations `1043/1075`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`855712FE0FF147089DA4F57DDC1F89814C2E2D17B2266D4AE82069939511FEF5`.
+`META-003AX` extends reusable RGB/sRGB-to-RGB/memory-opened-sRGB transform
+build/apply to relative-colorimetric intent `1` with Pillow's bounded black-
+point-compensation flag `8192` (`0x2000`). A bounded local Pillow 11.3.0 probe
+fixed exact repeat 3x2/1x1 identity RGB bytes, unchanged RGB sources and caller
+Info, two fresh distinct 588-byte `acsp` output ICC blobs, and profile-memory/
+profile-independent transform lifetime. Retained LittleCMS state, result
+allocation, every row, output-profile bytes, and deletion remain DLL-owned;
+the facade only admits the exact pair/intent/flag and routes coarse build/
+apply/lifetime calls. Raw RED returned `-3`; facade RED raised `cannot build
+transform`. Raw/facade GREEN pass `1/1` in `203ms` / `16ms`; ImageCms
+`102/102` in `610ms`; full `2116/2116` in `11875ms`; registrations
+`1042/1074`; Release x64 built with zero warnings/errors; exports `413/413`
+with zero set difference; SHA-256
+`131BB72367D5296BF4A75A2D444D1B0255A424D666F60B919D6D103728605D3A`.
+`META-003AW` extends reusable LAB/LAB-to-RGB/sRGB transform build/apply to
+relative-colorimetric intent `1` with Pillow's bounded black-point-compensation
+flag `8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed exact repeat
+3x2/1x1 reverse RGB bytes, unchanged LAB sources and caller Info, two fresh
+distinct 588-byte `acsp` output ICC blobs, and profile-independent transform
+lifetime. Retained LittleCMS state, result allocation, every row, output-
+profile bytes, and deletion remain DLL-owned; the facade only admits the exact
+pair/intent/flag and routes coarse build/apply/lifetime calls. Raw RED returned
+`-3`; facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1`
+in `172ms` / `16ms`; ImageCms `100/100` in `563ms`; full `2114/2114` in
+`13141ms`; registrations `1041/1073`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`7803C98276EE73B524B55BBEA8F040C17A8FB08F02D1D2EDF3D4CDE72C0BE225`.
+`META-003AV` extends reusable RGB/sRGB-to-LAB/LAB transform build/apply to
+relative-colorimetric intent `1` with Pillow's bounded black-point-compensation
+flag `8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed exact repeat
+3x2/1x1 LAB bytes, unchanged RGB sources and caller Info, two fresh distinct
+572-byte `acsp` output ICC blobs, and profile-independent transform lifetime.
+Retained LittleCMS state, result allocation, every row, output-profile bytes,
+and deletion remain DLL-owned; the facade only admits the exact pair/intent/
+flag and routes coarse build/apply/lifetime calls. Raw RED returned `-3`;
+facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in
+`187ms` / `15ms`; ImageCms `98/98` in `516ms`; full `2112/2112` in `13265ms`;
+registrations `1040/1072`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`0524291D2A58709EF2A0463D98EAB4E0D2FDE06A15F59768FF83B1C97401A76E`.
+`META-003AU` extends reusable D50-to-6500K LAB/LAB transform build/apply to
+perceptual intent `0` with Pillow's bounded black-point-compensation flag
+`8192` (`0x2000`), completing that flag route across all four established
+reusable pairs. A bounded local Pillow 11.3.0 probe fixed exact repeat 3x2/1x1
+identity LAB bytes, unchanged LAB sources and caller Info, two fresh distinct
+572-byte `acsp` output ICC blobs, and profile-independent transform lifetime.
+Retained LittleCMS state, result allocation, every row, output-profile bytes,
+and deletion remain DLL-owned; the facade only admits the exact pair/intent/
+flag and routes coarse build/apply/lifetime calls. Raw RED returned `-3`;
+facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in
+`171ms` / `16ms`; ImageCms `96/96` in `547ms`; full `2110/2110` in `12922ms`;
+registrations `1039/1071`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`BA4E8CAC692E7AFF483551D6BBE2D1E1906DD661CF5FA45580BCA4E53A78F852`.
+`META-003AT` extends reusable RGB/sRGB-to-RGB/memory-opened-sRGB transform
+build/apply to perceptual intent `0` with Pillow's bounded black-point-
+compensation flag `8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed
+exact repeat 3x2/1x1 identity RGB bytes, unchanged RGB sources and caller Info,
+two fresh distinct 588-byte `acsp` output ICC blobs, and profile-memory/profile-
+independent transform lifetime. Retained LittleCMS state, result allocation,
+every row, output-profile bytes, and deletion remain DLL-owned; the facade only
+admits the exact pair/intent/flag and routes coarse build/apply/lifetime calls.
+Raw RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade
+GREEN pass `1/1` in `187ms` / `16ms`; ImageCms `94/94` in `515ms`; full
+`2108/2108` in `12844ms`; registrations `1038/1070`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`26FB915D689B5A5C9BFFFD786408BA7CD4FC609843FCB0EB7E874E74451164F5`.
+`META-003AS` extends reusable LAB/LAB-to-RGB/sRGB transform build/apply to
+perceptual intent `0` with Pillow's bounded black-point-compensation flag
+`8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed exact repeat
+3x2/1x1 RGB bytes, unchanged LAB sources and caller Info, two fresh distinct
+588-byte `acsp` output ICC blobs, and profile-independent transform lifetime.
+Retained LittleCMS state, result allocation, every row, output-profile bytes,
+and deletion remain DLL-owned; the facade only admits the exact pair/intent/
+flag and routes coarse build/apply/lifetime calls. Raw RED returned `-3`;
+facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in
+`171ms` / `16ms`; ImageCms `92/92` in `578ms`; full `2106/2106` in `14016ms`;
+registrations `1037/1069`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`C301A54FB0CF19DAA9850C4DB3F0AE7B370F3EA28BBBDDDDAC89AE2956096120`.
+`META-003AR` extends reusable RGB/sRGB-to-LAB/LAB transform build/apply to
+perceptual intent `0` with Pillow's bounded black-point-compensation flag
+`8192` (`0x2000`). A bounded local Pillow 11.3.0 probe fixed exact repeat
+3x2/1x1 LAB bytes, unchanged RGB sources and caller Info, two fresh distinct
+572-byte `acsp` output ICC blobs, and profile-independent transform lifetime.
+Retained LittleCMS state, result allocation, every row, output-profile bytes,
+and deletion remain DLL-owned; the facade only admits the exact pair/intent/
+flag and routes coarse build/apply/lifetime calls. Raw RED returned `-3`;
+facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in
+`172ms` / `15ms`; ImageCms `90/90` in `453ms`; full `2104/2104` in `12953ms`;
+registrations `1036/1068`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`5022FA192187DC881048D4D6982203D07084F91315F9C2EC782AA2A86FC5A5ED`.
+`META-003AQ` extends reusable D50-to-6500K LAB/LAB transform build/apply to
+absolute-colorimetric intent `3` with flags `0`, completing intents `0..3`
+across all four established reusable pairs. A bounded local Pillow 11.3.0 probe
+fixed exact repeat 3x2/1x1 identity LAB bytes, unchanged sources, two fresh
+distinct 572-byte `acsp` output ICC blobs, and profile-independent transform
+lifetime. Retained LittleCMS state, result allocation, every row, output-
+profile bytes, and deletion remain DLL-owned; the facade only admits the exact
+pair and routes coarse build/apply/lifetime calls. Raw RED returned `-3`;
+facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in
+`172ms` / `15ms`; ImageCms `88/88` in `860ms`; full `2102/2102` in `20500ms`;
+registrations `1035/1067`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`5958951C963A441633262D5A69E7C0845B277983E6AB2B9B2E5091763FB1C468`.
+`META-003AP` extends reusable D50-to-6500K LAB/LAB transform build/apply to
+saturation intent `2` with flags `0`. A bounded local Pillow 11.3.0 probe fixed
+exact repeat 3x2/1x1 identity LAB bytes, unchanged sources, two fresh distinct
+572-byte `acsp` output ICC blobs, and profile-independent transform lifetime.
+Retained LittleCMS state, result allocation, every row, output-profile bytes,
+and deletion remain DLL-owned; the facade only admits the exact pair and routes
+coarse build/apply/lifetime calls. Raw RED returned `-3`; facade RED raised
+`cannot build transform`. Raw/facade GREEN pass `1/1` in `156ms` / `31ms`;
+ImageCms `86/86` in `375ms`; full `2100/2100` in `9954ms`; registrations
+`1034/1066`; Release x64 built with zero warnings/errors; exports `413/413`
+with zero set difference; SHA-256
+`A212108E787C112C4B8A4A79CD07866E86888BB586D9C2D09E20C86DD99DA417`.
+`META-003AO` extends reusable RGB/sRGB-to-RGB/memory-opened-sRGB transform
+build/apply to absolute-colorimetric intent `3` with flags `0`, completing
+intents `0..3` for reusable RGB/RGB. A bounded local Pillow 11.3.0 probe fixed
+exact repeat 3x2/1x1 identity RGB bytes, unchanged sources, two fresh 588-byte
+`acsp` output ICC blobs, and profile-memory-independent transform lifetime.
+Retained LittleCMS state, result allocation, every row, output-profile bytes,
+and deletion remain DLL-owned; the facade only admits the exact pair and routes
+coarse build/apply/lifetime calls. Raw RED returned `-3`; facade RED raised
+`cannot build transform`. Raw/facade GREEN pass `1/1` in `234ms` / `16ms`;
+ImageCms `84/84` in `375ms`; full `2098/2098` in `10016ms`; registrations
+`1033/1065`; Release x64 built with zero warnings/errors; exports `413/413`
+with zero set difference; SHA-256
+`2555122CE65CC6EFB330FB5886E1C1D08646B42F4AD1F03800014D39677A1674`.
+`META-003AN` extends reusable RGB/sRGB-to-RGB/memory-opened-sRGB transform
+build/apply to saturation intent `2` with flags `0`. A bounded local Pillow
+11.3.0 probe fixed exact repeat 3x2/1x1 identity RGB bytes, unchanged sources,
+two fresh 588-byte `acsp` output ICC blobs, and profile-memory-independent
+transform lifetime. Retained LittleCMS state, result allocation, every row,
+output-profile bytes, and deletion remain DLL-owned; the facade only admits the
+exact pair and routes coarse build/apply/lifetime calls. Raw RED returned `-3`;
+facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in
+`218ms` / `63ms`; ImageCms `82/82` in `687ms`; full `2096/2096` in `17781ms`;
+registrations `1032/1064`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`E757CFF604A83E7F9DB5E62748DA0866A015E4030D1DFFD52ECC0396049FB5C6`.
+`META-003AM` extends reusable LAB/LAB-profile-to-RGB/sRGB transform build/apply
+to absolute-colorimetric intent `3` with flags `0`, completing intents `0..3`
+across both mode-changing reusable pairs. A bounded local Pillow 11.3.0 probe
+fixed exact repeat 3x2/1x1 reverse RGB bytes, unchanged LAB sources, two fresh
+588-byte `acsp` output ICC blobs, and profile-independent transform lifetime.
+Retained LittleCMS state, result allocation, every row, output-profile bytes,
+and deletion remain DLL-owned; the facade only admits the exact pair and routes
+coarse build/apply/lifetime calls. Raw RED returned `-3`; facade RED raised
+`cannot build transform`. Raw/facade GREEN pass `1/1` in `203ms` / `47ms`;
+ImageCms `80/80` in `875ms`; full `2094/2094` in `20125ms`; registrations
+`1031/1063`; Release x64 built with zero warnings/errors; exports `413/413`
+with zero set difference; SHA-256
+`68DD191A38DDC994D54C92063F3F6BD3EEA26EB9227BD32CDE069FB936766A3F`.
+`META-003AL` extends reusable LAB/LAB-profile-to-RGB/sRGB transform build/apply
+to saturation intent `2` with flags `0`. A bounded local Pillow 11.3.0 probe
+fixed exact repeat 3x2/1x1 reverse RGB bytes, unchanged LAB sources, two fresh
+588-byte `acsp` output ICC blobs, and profile-independent transform lifetime.
+Retained LittleCMS state, result allocation, every row, output-profile bytes,
+and deletion remain DLL-owned; the facade only admits the exact pair and routes
+coarse build/apply/lifetime calls. Raw RED returned `-3`; facade RED raised
+`cannot build transform`. Raw/facade GREEN pass `1/1` in `218ms` / `47ms`;
+ImageCms `78/78` in `703ms`; full `2092/2092` in `18828ms`; registrations
+`1030/1062`; Release x64 built with zero warnings/errors; exports `413/413`
+with zero set difference; SHA-256
+`7DC94CEE64953E580B4FF528EF1FE4F883A7782C8FD252312F1F6E46E2895BF5`.
+`META-003AK` extends one-shot D50-to-6500K LAB/LAB in-place
+`profileToProfile` to absolute-colorimetric intent `3` with flags `0`,
+completing intents `0..3` across both legal one-shot in-place pairs. A bounded
+local Pillow 11.3.0 probe fixed the Python `None` return, exact identity LAB
+bytes, preserved caller Info plus a distinct 572-byte `acsp` output ICC, and
+profile-independent lifetime. Temporary LittleCMS state, same-storage row
+traversal, and deletion remain DLL-owned; the facade only admits the exact in-
+place pair and attaches the serialized ICC. Raw RED returned `-3`; facade RED
+raised `cannot build transform`. Raw/facade GREEN pass `1/1` in `78ms` /
+`16ms`; ImageCms `76/76` in `344ms`; full `2090/2090` in `10672ms`;
+registrations `1029/1061`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`9EAA6510AB9D48C0E3CC81A2F095FF8ECF83294D3131DEA83BCC9607E79268B6`.
+`META-003AJ` extends one-shot D50-to-6500K LAB/LAB in-place
+`profileToProfile` to saturation intent `2` with flags `0`. A bounded local
+Pillow 11.3.0 probe fixed the Python `None` return, exact identity LAB bytes,
+preserved caller Info plus a distinct 572-byte `acsp` output ICC, and profile-
+independent lifetime. Temporary LittleCMS state, same-storage row traversal,
+and deletion remain DLL-owned; the facade only admits the exact in-place pair
+and attaches the serialized ICC. Raw RED returned `-3`; facade RED raised
+`cannot build transform`. Raw/facade GREEN pass `1/1` in `141ms` / `32ms`;
+ImageCms `74/74` in `312ms`; full `2088/2088` in `10109ms`; registrations
+`1028/1060`; Release x64 built with zero warnings/errors; exports `413/413`
+with zero set difference; SHA-256
+`67DB2646A0BF9D0F224A5A9E034DD885200765F1300E2171D8B154383F3AD0AD`.
+`META-003AI` extends one-shot RGB/sRGB-to-RGB/memory-opened-sRGB in-place
+`profileToProfile` to absolute-colorimetric intent `3` with flags `0`,
+completing intents `0..3` for that in-place pair. A bounded local Pillow 11.3.0
+probe fixed the Python `None` return, exact identity RGB bytes, preserved caller
+Info plus a 588-byte `acsp` output ICC, and profile-memory-independent lifetime.
+Temporary LittleCMS state, same-storage row traversal, and deletion remain DLL-
+owned; the facade only admits the exact in-place pair and attaches the
+serialized ICC. Raw RED returned `-3`; facade RED raised `cannot build
+transform`. Raw/facade GREEN pass `1/1` in `156ms` / `31ms`; ImageCms `72/72`
+in `1141ms`; full `2086/2086` in `27437ms`; registrations `1027/1059`;
+Release x64 built with zero warnings/errors; exports `413/413` with zero set
+difference; SHA-256
+`984CCCB8B0F98E1C0BA4C56F2E524E351DABD7B473ABE824CE65A32FF8E82E0D`.
+`META-003AH` extends one-shot RGB/sRGB-to-RGB/memory-opened-sRGB in-place
+`profileToProfile` to saturation intent `2` with flags `0`. A bounded local
+Pillow 11.3.0 probe fixed the Python `None` return, exact identity RGB bytes,
+preserved caller Info plus a 588-byte `acsp` output ICC, and profile-memory-
+independent lifetime. Temporary LittleCMS state, same-storage row traversal,
+and deletion remain DLL-owned; the facade only admits the exact in-place pair
+and attaches the serialized ICC. Raw RED returned `-3`; facade RED raised
+`cannot build transform`. Raw/facade GREEN pass `1/1` in `250ms` / `47ms`;
+ImageCms `70/70` in `1000ms`; full `2084/2084` in `28047ms`; registrations
+`1026/1058`; Release x64 built with zero warnings/errors; exports `413/413`
+with zero set difference; SHA-256
+`C9EE1E7AC81CD5167851643A72838DB819ED0C351C27622EEC056EDB8E8E414E`.
+`META-003AG` extends allocating one-shot D50-to-6500K LAB/LAB
+`profileToProfile` to absolute-colorimetric intent `3` with flags `0`,
+completing intents `0..3` across all four allocating pairs. A bounded local
+Pillow 11.3.0 probe fixed exact LAB identity bytes, the distinct 572-byte
+`acsp` ICC contract, and source/profile-independent lifetime. Temporary
+LittleCMS state, allocation, every row, and deletion remain DLL-owned; the
+facade only admits the non-in-place pair and attaches the serialized ICC. Raw
+RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade GREEN
+pass `1/1` in `266ms` / `15ms`; ImageCms `68/68` in `1062ms`; full
+`2082/2082` in `31766ms`; registrations `1025/1057`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`B3B4C87F9DE2E1D248B2589582E82E3D50F6348F4D9041ECC11FED709DC418F5`.
+`META-003AF` extends allocating one-shot D50-to-6500K LAB/LAB
+`profileToProfile` to saturation intent `2` with flags `0`. A bounded local
+Pillow 11.3.0 probe fixed exact LAB identity bytes, the distinct 572-byte
+`acsp` ICC contract, and source/profile-independent lifetime. Temporary
+LittleCMS state, allocation, every row, and deletion remain DLL-owned; the
+facade only admits the non-in-place same-mode pair and attaches the serialized
+ICC. Raw RED returned `-3`; facade RED raised `cannot build transform`. Raw/
+facade GREEN pass `1/1` in `234ms` / `47ms`; ImageCms `66/66` in `907ms`;
+full `2080/2080` in `29265ms`; registrations `1024/1056`; Release x64 built
+with zero warnings/errors; exports `413/413` with zero set difference;
+SHA-256 `BDEC3B6A5E806D0C27A13EC831275277958750F0FC0197AFAD168864978037CA`.
+`META-003AE` extends allocating one-shot RGB/sRGB-to-RGB/memory-opened-sRGB
+`profileToProfile` to absolute-colorimetric intent `3` with flags `0`,
+completing intents `0..3` for that allocating same-mode pair. A bounded local
+Pillow 11.3.0 probe fixed exact identity RGB bytes, the 588-byte `acsp` ICC
+contract, and source/profile-memory-independent lifetime. Temporary LittleCMS
+state, allocation, every row, and transform deletion remain DLL-owned; the
+facade only admits the non-in-place pair and attaches the serialized ICC. Raw
+RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade GREEN
+pass `1/1` in `265ms` / `16ms`; ImageCms `64/64` in `906ms`; full `2078/2078`
+in `27703ms`; registrations `1023/1055`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`119D575872616F90F27A69BD5D66BEE20BB99B2DFA0EC80160A7B6BD796C6A15`.
+`META-003AD` extends allocating one-shot RGB/sRGB-to-RGB/memory-opened-sRGB
+`profileToProfile` to saturation intent `2` with flags `0`. A bounded local
+Pillow 11.3.0 probe fixed exact identity RGB bytes, the 588-byte `acsp` ICC
+contract, and source/profile-memory-independent lifetime. Temporary LittleCMS
+state, output allocation, every row, and transform deletion remain DLL-owned;
+the facade only admits the exact non-in-place same-mode pair and attaches the
+serialized ICC. Raw RED returned `-3`; facade RED raised `cannot build
+transform`. Raw/facade GREEN pass `1/1` in `359ms` / `16ms`; ImageCms `62/62`
+in `938ms`; full `2076/2076` in `26735ms`; registrations `1022/1054`; Release
+x64 built with zero warnings/errors; exports `413/413` with zero set
+difference; SHA-256
+`320E5DFA1A75D541663FA1E203EF9A029F693B66A55D84F27B8C951BBFD363FA`.
+`META-003AC` extends allocating one-shot LAB/LAB-to-RGB/sRGB
+`profileToProfile` to absolute-colorimetric intent `3` with flags `0`,
+completing intents `0..3` across both allocating mode-changing pairs. A bounded
+local Pillow 11.3.0 probe fixed the exact reverse RGB bytes and 588-byte `acsp`
+ICC contract. Temporary LittleCMS state, output allocation, every row, and
+transform deletion remain DLL-owned; the facade only admits the non-in-place
+reverse pair and attaches the serialized ICC. Profiles close before result/
+source inspection and caller source Info remains unchanged. Raw RED returned
+`-3`; facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1`
+in `141ms` / `47ms`; ImageCms `60/60` in `922ms`; full `2074/2074` in
+`27953ms`; registrations `1021/1053`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`7ED4248BD3567D1DCD9DAEDBEFA409F494DB836EEF23C6881C554FB6EA71508A`.
+`META-003AB` extends allocating one-shot LAB/LAB-to-RGB/sRGB
+`profileToProfile` to saturation intent `2` with flags `0`. A bounded local
+Pillow 11.3.0 probe fixed the exact reverse RGB bytes and 588-byte `acsp` ICC
+contract. Temporary LittleCMS state, output allocation, every row, and
+transform deletion remain DLL-owned; the facade only admits the exact non-in-
+place reverse pair and attaches the serialized ICC. Profiles close before
+result/source inspection and caller source Info remains unchanged. Raw RED
+returned `-3`; facade RED raised `cannot build transform`. Raw/facade GREEN
+pass `1/1` in `203ms` / `32ms`; ImageCms `58/58` in `281ms`; full
+`2072/2072` in `9985ms`; registrations `1020/1052`; Release x64 built with zero
+warnings/errors; exports `413/413` with zero set difference; SHA-256
+`FF6A23B754663EC415B516163824064DEBD29766CAD83CE74155BA59C5B3CB33`.
+`META-003AA` extends allocating one-shot RGB/sRGB-to-LAB/LAB
+`profileToProfile` to absolute-colorimetric intent `3` with flags `0`,
+completing intents `0..3` for that allocating pair. Temporary LittleCMS state,
+output allocation, every row, and transform deletion remain DLL-owned; the
+facade only admits the exact non-in-place pair and attaches the serialized
+572-byte `acsp` ICC. Profiles close before result/source inspection, exact
+Pillow LAB bytes match, and caller source Info remains unchanged. Raw RED
+returned `-3`; facade RED raised `cannot build transform`. Raw/facade GREEN
+pass `1/1` in `156ms` / `47ms`; ImageCms `56/56` in `313ms`; full
+`2070/2070` in `15093ms`; registrations `1019/1051`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`BF16B7CA7182BD19D24961B84DC278475F65D6A8FBF92E17214C730B82929685`.
+`META-003Z` extends allocating one-shot RGB/sRGB-to-LAB/LAB
+`profileToProfile` to saturation intent `2` with flags `0`. The DLL owns the
+temporary LittleCMS transform, output allocation, complete row traversal, and
+transform deletion; the facade only admits the exact non-in-place pair, routes
+handles, and attaches the serialized 572-byte `acsp` output ICC. Profiles close
+before exact result/source inspection, caller source Info remains unchanged,
+and the result matches Pillow's 3x2 LAB bytes. Raw RED returned `-3`; facade
+RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in `157ms` /
+`46ms`; ImageCms `54/54` in `437ms`; full `2068/2068` in `18031ms`;
+registrations `1018/1050`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`93DF64E845F43421F8F45151F5A0665EE8C1C5173B6D4AC0A2BFB49E35605C65`.
+`META-003Y` extends reusable RGB/sRGB-to-LAB/LAB transform build/apply to
+absolute-colorimetric intent `3` with flags `0`, completing intents `0..3` for
+that reusable pair. Profiles close before repeat 3x2/1x1 apply; exact Pillow
+LAB bytes and fresh 572-byte `acsp` ICC Info match while sources/Info remain
+unchanged. Other reusable pairs remain intent `0`/`1`. Raw RED returned `-3`;
+facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in
+`188ms` / `31ms`; ImageCms `52/52` in `453ms`; full `2066/2066` in `13657ms`;
+registrations `1017/1049`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`95105B01C1B252AEDB6BAC8D9AD974F2E2F28ADBC61C74E8D03DD3726D22BB49`.
+`META-003X` extends reusable RGB/sRGB-to-LAB/LAB transform build/apply to
+saturation intent `2` with flags `0`. Profiles close before repeat 3x2/1x1
+apply; exact Pillow LAB bytes and fresh 572-byte `acsp` ICC Info match while
+sources/Info remain unchanged. Native/facade admission is restricted to this
+pair, retaining intent `0`/`1` elsewhere. Raw RED returned `-3`; facade RED
+raised `cannot build transform`. Raw/facade GREEN pass `1/1` in `203ms` /
+`47ms`; ImageCms `50/50` in `437ms`; full `2064/2064` in `19734ms`;
+registrations `1016/1048`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`4458CEFD629534307A29EDAC34F0D60C548BF188C864032C8DFCB1C2DCAD6C45`.
+`META-003W` extends one-shot D50-to-6500K LAB/LAB in-place
+`profileToProfile` to relative-colorimetric intent `1` with flags `0`. The DLL
+owns temporary transform lifetime and identical-pointer LAB row traversal; the
+facade retains the same image/exact bytes, returns the Python `None` analogue,
+preserves caller Info, and installs the distinct 572-byte output ICC. This
+closes intent `0`/`1` across both legal one-shot in-place pairs. Raw RED
+returned `-3`; facade RED raised `cannot build transform`. Raw/facade GREEN
+pass `1/1` in `125ms` / `31ms`; ImageCms `48/48` in `359ms`; full `2062/2062`
+in `15015ms`; registrations `1015/1047`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`2BF08CFD0D4FF7ADAE7BE52E9A2990AAFFF02C6253ED5C3B6055333ACEC8076A`.
+`META-003V` extends one-shot RGB/sRGB-to-RGB/memory-opened-sRGB in-place
+`profileToProfile` to relative-colorimetric intent `1` with flags `0`. The DLL
+creates/deletes temporary LittleCMS state and executes same-storage rows; the
+facade retains the image handle, returns the Python `None` analogue, preserves
+caller Info, and installs the 588-byte `acsp` output ICC without pixel loops.
+Profile bytes and handles release before exact image inspection. Raw RED
+returned `-3`; facade RED raised `cannot build transform`. Raw/facade GREEN
+pass `1/1` in `172ms` / `47ms`; ImageCms `46/46` in `344ms`; full `2060/2060`
+in `18297ms`; registrations `1014/1046`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`694A49B193366C86E26B60A83EEF6181EC7392EECDDF7681579AF0C359F973DC`.
+`META-003U` completes relative-colorimetric intent `1` across the fourth
+established allocating one-shot pair: D50-to-6500K LAB/LAB. Pillow and native
+preserve exact public LAB bytes while the result receives only the distinct
+572-byte `acsp` output ICC; source bytes/Info and profile-independent lifetime
+remain exact. Raw RED returned `-3`; facade RED raised `cannot build transform`.
+Raw/facade GREEN pass `1/1` in `140ms` / `31ms`; ImageCms `44/44` in `328ms`;
+full `2058/2058` in `17734ms`; registrations `1013/1045`; Release x64 built
+with zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`1CECC50202ACA44A144614F6CCB64E5EE387EEC0712FDA15DC0F529C3127C1CB`.
+`META-003T` extends allocating one-shot RGB/sRGB-to-RGB/memory-opened-sRGB
+`profileToProfile` to relative-colorimetric intent `1` while retaining flags
+`0`. Pillow and native produce exact identity RGB bytes and only the 588-byte
+output ICC; source Buffer/profile storage and both profile handles release
+without affecting the result. The facade performs admission, handle routing,
+and bulk ICC attachment only. Raw RED returned `-3`; facade RED raised `cannot
+build transform`. Raw/facade GREEN pass `1/1` in `157ms` / `47ms`; ImageCms
+`42/42` in `359ms`; full `2056/2056` in `18312ms`; registrations `1012/1044`;
+Release x64 built with zero warnings/errors; exports `413/413` with zero set
+difference; SHA-256
+`42A4AD167F1F5F1522EA6FD9748A455F37A1A2E053DB0F30A4EA9DB8AB698EC5`.
+`META-003S` extends allocating one-shot LAB/LAB-to-RGB/sRGB
+`profileToProfile` to relative-colorimetric intent `1` while retaining flags
+`0`. The bounded Pillow oracle confirms exact reverse RGB bytes
+`[1,0,1,254,255,254,251,5,4,13,254,14,22,7,252,15,34,56]`, only a 588-byte
+`acsp` output ICC, unchanged source bytes/Info, and profile-independent result
+lifetime. Native and facade admission remain restricted to the non-in-place
+LAB-to-RGB pair. Raw RED returned `-3`; facade RED raised `cannot build
+transform`. Raw/facade GREEN pass `1/1` in `172ms` / `47ms`; ImageCms `40/40`
+in `391ms`; full `2054/2054` in `17797ms`; registrations `1011/1043`; Release
+x64 built with zero warnings/errors; exports `413/413` with zero set
+difference; SHA-256
+`F485C52DA03EC7E5C12366F0261A8A734CE5EDDAEE369B0ED326709B0564CD68`.
+`META-003R` extends allocating one-shot RGB/sRGB-to-LAB/LAB
+`profileToProfile` to relative-colorimetric intent `1` while retaining flags
+`0`. The DLL creates/deletes LittleCMS state and owns allocation plus all row
+traversal; the facade only admits the exact non-in-place pair, routes handles,
+and installs the 572-byte `acsp` output ICC. Profiles close before result/source
+inspection; exact Pillow pixels and caller source Info remain unchanged. Raw
+RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade GREEN
+pass `1/1` in `188ms` / `47ms`; ImageCms `38/38` in `328ms`; full `2052/2052`
+in `18156ms`; registrations `1010/1042`; Release x64 built with zero warnings/
+errors; exports `413/413` with zero set difference; SHA-256
+`95C5C6849BAEA28D26CA37E40EF7E49D3FEFE163D32248B1C234E64D1348A5E3`.
+`META-003Q` extends reusable native transform build to relative-colorimetric
+intent `1` for the established RGB/sRGB-to-LAB/LAB pair while retaining flags
+`0`. Profiles close before repeat 3x2/1x1 apply; exact Pillow public bytes are
+`[0,0,0,255,0,0,138,81,70,224,177,81,75,68,144,32,254,239]`, sources remain
+unchanged, and each result receives the 572-byte `acsp` output ICC. Native
+one-shot APIs were still intent-`0`-only at Q closure; R above separately opens
+allocating RGB-to-LAB intent `1`. The facade accepts numeric reusable intent
+`0` or `1` and still rejects nonzero flags. Raw RED returned `-3`;
+facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in
+`219ms` / `47ms`; ImageCms `36/36` in `250ms`; full `2050/2050` in `17734ms`;
+registrations `1009/1041`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`7A31411CD5CBA65AC69018274FF0F438BB00115E42AFFD00242258860A67D4E2`.
+`META-003P` generalizes `pillow_c_cms_profile_to_profile_image_in_place` to
+LAB/LAB D50-to-6500K profiles and selects `TYPE_Lab_8` for identical input/
+output storage. The facade retains the same LAB object and exact public bytes,
+preserves caller Info, installs the 572-byte output ICC, and returns the Python
+`None` analogue. Raw RED returned `-3`; facade RED raised `cannot build
+transform`. Raw/facade GREEN pass `1/1` in `140ms` / `31ms`; ImageCms `34/34`
+in `218ms`; full `2048/2048` in `17719ms`; registrations `1008/1040`; Release
+x64 built with zero warnings/errors; exports `413/413` with zero set
+difference; SHA-256
+`21FB8FCB5790DE8AEFDE7A80A03585055154B3DE199BF15726F2F5E8752A4818`.
+`META-003O` generalizes `pillow_c_cms_transform_apply_in_place` to established
+LAB/LAB transforms. It detaches/refreshes image storage and runs every row with
+identical input/output pointers; profiles close before repeat apply. The facade
+keeps the same handle and exact public bytes, preserves caller Info, installs a
+fresh 572-byte output ICC, and returns the Python `None` analogue. Raw RED
+returned `-3`; existing facade routing passed without production changes.
+Raw/facade GREEN pass `1/1` in `157ms` / `31ms`; ImageCms `32/32` in `235ms`;
+full `2046/2046` in `18687ms`; registrations `1007/1039`; Release x64 built
+with zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`346A02F825C6D84995D0B61E48DCA0BFE903CF6EDCFACD8C48F9F01C5F0435AD`.
+`META-003N` generalizes the existing one-shot native profile-to-profile ABI to
+LAB/LAB profiles and `TYPE_Lab_8 -> TYPE_Lab_8`. D50-to-6500K returns a new
+LAB image with exact Pillow identity bytes while preserving source pixels/Info;
+the facade result contains only the distinct 572-byte output ICC. Raw RED
+returned `-3`; facade RED raised `cannot build transform`. Raw/facade GREEN
+pass `1/1` in `172ms` / `31ms`; ImageCms `30/30` in `250ms`; full
+`2044/2044` in `18796ms`; registrations `1006/1038`; Release x64 built with
+zero warnings/errors; exports `413/413` with zero set difference; SHA-256
+`05D52211CC02AD3211E4BC530F67F4CFB5A48FE737636EAA346CD1B3D4212FBA`.
+`META-003M` generalizes reusable transform build/apply to LAB/LAB profiles and
+`TYPE_Lab_8 -> TYPE_Lab_8`. The local Pillow probe corrected the initial
+assumption: D50-to-6500K public LAB bytes remain exactly identical, while each
+result receives the distinct 572-byte output ICC. Both profiles close before
+repeat 3x2/1x1 apply; sources and Info remain unchanged. Raw RED returned `-3`;
+facade RED raised `cannot build transform`. Raw/facade GREEN pass `1/1` in
+`110ms` / `31ms`; ImageCms `28/28` in `250ms`; full `2042/2042` in `17250ms`;
+registrations `1005/1037`; Release x64 built with zero warnings/errors; exports
+`413/413` with zero set difference; SHA-256
+`DB72B63D489E28B8E97BBFEDD22BF6F389407903AC052C83D7F8E3F96833F551`.
+`META-003L` adds `pillow_c_cms_profile_to_profile_image_in_place`, a coarse
+one-shot RGB/RGB route that creates transform state, detaches/refreshes source
+storage, executes rows with identical input/output pointers, and frees the
+transform before return. The facade retains the same handle, preserves caller
+Info, installs the 588-byte output ICC, and returns the Python `None` analogue.
+Raw RED was the missing export; facade RED raised `cannot build transform`.
+Raw/facade GREEN pass `1/1` in `188ms` / `31ms`; ImageCms `26/26` in `125ms`;
+full `2040/2040` in `20110ms`; registrations `1004/1036`; Release x64 built
+with zero warnings/errors; exports `413/413` with zero set difference;
+SHA-256 `E000DE6664FA98AE1293BC6C2713EB2971A9C70279B70474706F618870CA5C8C`.
+`META-003K` generalizes the existing one-shot native profile-to-profile ABI to
+RGB/RGB profiles and `TYPE_RGB_8 -> TYPE_RGB_8`. A built-in sRGB input and
+memory-reopened 588-byte sRGB output produce a new exact RGB image while
+preserving source pixels/Info; the facade result contains only the output ICC.
+Raw RED returned `-3`; facade RED raised `cannot build transform`. Raw/facade
+GREEN pass `1/1` in `79ms` / `31ms`; ImageCms `24/24` in `109ms`; full
+`2038/2038` in `10844ms`; registrations `1003/1035`; Release x64 built with
+zero warnings/errors; exports `412/412` with zero set difference; SHA-256
+`435763AE8D4B0A7EEDA62A9073B7A983E8155624E44022F70012B8F86B33BF99`.
+`META-003J` adds `pillow_c_cms_transform_apply_in_place` for established
+RGB/RGB transforms. It detaches/refreshes readonly Buffer views once, then
+runs every row through LittleCMS with identical input/output storage and no
+allocation. The facade returns the Python `None` analogue, keeps the same image
+handle and existing Info, and installs a fresh 588-byte output ICC Buffer on
+each call. Raw RED was the missing export; facade RED was `mode mismatch`.
+Raw/facade GREEN pass `1/1` in `78ms` / `16ms`; ImageCms `22/22` in `94ms`;
+full `2036/2036` in `10218ms`; registrations `1002/1034`; Release x64 built
+with zero warnings/errors; exports `412/412` with zero set difference;
+SHA-256 `75898676451C19C6DFC8F4D57AE94F2211F2DA0F8DFDBE132D80F43A9BE67613`.
+`META-003I` generalizes the reusable native LittleCMS transform to RGB/RGB
+profiles and `TYPE_RGB_8 -> TYPE_RGB_8`. The bounded fixture uses a built-in
+sRGB input and a 588-byte memory-reopened sRGB output; both profiles and the
+input Buffer release before repeat apply. Exact 3x2 and 1x1 bytes persist,
+sources remain unchanged, and results contain only fresh 588-byte `acsp` ICC
+Info. Raw RED returned `-3`; facade RED raised `cannot build transform`.
+Raw/facade GREEN pass `1/1` in `110ms` / `15ms`; ImageCms `20/20` in
+`109ms`; full `2034/2034` in `10078ms`; registrations `1001/1033`; Release
+x64 built with zero warnings/errors; exports `411/411` with zero set
+difference; SHA-256
+`588BE122B6341DE05A58AA2C298104D002C77C78DDA70311DBBE7DD7D6DDDD2E`.
+`META-003H` generalizes the reusable native LittleCMS transform to the exact
+LAB/LAB-to-RGB/sRGB reverse pair. Profiles close immediately after build; one
+transform applies repeatedly with Pillow's exact 3x2 and 1x1 RGB bytes, leaves
+source bytes/Info unchanged, and returns a fresh 588-byte sRGB ICC Info Buffer
+per result. Raw RED returned `-3`; facade RED raised `cannot build transform`.
+Raw/facade GREEN pass `1/1` in `109ms` / `16ms`; ImageCms `18/18` in
+`93ms`; full `2032/2032` in `9610ms`; registrations `1000/1032`; Release x64
+built cleanly; exports `411/411` with zero set difference; SHA-256
+`4F7A0035D4DB9E55206BB050AF8455754E923938456834A11C0B9EFD0FE36E29`.
+`META-003G` adds an opaque DLL-owned reusable LittleCMS transform with
+build/apply/output-profile/free ABIs. Built-in profiles can close immediately
+after build; one transform applies to multiple image sizes with exact public
+LAB bytes and fresh 572-byte ICC Info per result. The facade exposes
+`ImageCmsTransform`, camel/snake mode properties, repeat apply, idempotent
+close, and explicit post-close error without pixel loops. ImageCms `16/16`
+in `94ms`; full `2030/2030` in `9625ms`; registrations `999/1031`;
+exports `411/411`; SHA-256
+`F44BC7520328F2636BB6BFB0B7FBD00A2C42FE16983822DAE0CA53CD969DB9AD`.
+`META-003F` opens a valid ICC Buffer through
+`cmsOpenProfileFromMem` into the existing opaque ownership wrapper. The
+LittleCMS read handler copies source memory, so raw/facade tests release the
+input Buffer before querying exact `sRGB built-in\n`; the facade returns the
+public `ImageCmsProfile` subtype and reserializes 588 bytes. ImageCms
+`14/14` in `63ms`; full `2028/2028` in `9656ms`; registrations
+`998/1030`; exports `407/407`; SHA-256
+`3EB41071735EAF2910A72F8654F3D27D57C3127A452339D19057D37D483479F1`.
+`META-003E` deepens the same native transform ABI with LAB/LAB-to-RGB/sRGB.
+Pillow's exact reverse bytes are
+`[1,0,1,254,255,254,251,5,4,13,254,14,22,7,252,15,34,56]`; output Info
+contains only a 588-byte sRGB ICC profile, and source bytes/Info remain
+unchanged. ImageCms `12/12` in `78ms`; full `2026/2026` in `9797ms`;
+registrations `997/1029`; exports `406/406`; SHA-256
+`55EB6CACE37F53BE334667529E4492FA23F64A50CE288D9CD853C7B82A802E6A`.
+`META-003D` adds native RGB/sRGB-to-LAB/LAB profile-to-profile conversion
+with default intent/flags. The DLL owns the LittleCMS transform and complete
+row traversal, preserves the established internal LAB representation, and
+serializes the output profile through a two-pass native ABI; the facade only
+routes handles and installs one ICC Buffer. Exact 3x2 Pillow bytes and source
+preservation pass. ImageCms `10/10` in `47ms`; full `2024/2024` in
+`10016ms`; registrations `996/1028`; exports `406/406`; SHA-256
+`E483B8741FE459F83950BE8C453B226953AB526796540A13EBE6D21A34E03085`.
+`META-003C` adds native XYZ profile creation through the shared opaque
+ownership/name ABI. Pillow's exact name is `XYZ identity built-in\n`, and
+the facade ignores color temperature for XYZ as Pillow does. Raw/facade pass
+`1/1` in `47ms`/`16ms`; ImageCms `7/7` in `32ms`; full
+`2021/2021` in `10093ms`; registrations `994/1027`; exports `404/404`;
+SHA-256
+`ECF493E6F7974F0130DB00CBE4215DFD4A0EC0A02C83BE022C98089218C4D0CD`.
+`META-003B` adds native LAB profile creation for default D50 and one explicit
+6500K request, both exposing exact `Lab identity built-in\n` through the
+shared profile API. Facade profile creation now enforces Pillow's case-
+sensitive `LAB`/`sRGB` names and normalizes numeric color temperature. Raw
+RED was a missing export; facade RED rejected LAB; the wrong-case test then
+proved AHK's ordinary equality was too permissive. ImageCms filters pass
+`5/5` in `125ms`; full `2019/2019` in `10282ms`; registrations
+`993/1026`; exports `403/403`; SHA-256
+`64B5497BC1A23DD9C062B15587A14E44F7C85D91703CFC8055BDA9C8621826FB`.
+`META-003A` establishes the first public ImageCms surface. Native owns an
+opaque LittleCMS sRGB profile, returns exact `sRGB built-in\n` through a
+two-pass UTF-8 query, and explicitly frees profile lifetime; the facade owns
+that handle through `Pillow.ImageCms.CmsProfile`. Raw RED was a missing export;
+raw/facade pass `1/1` in `62ms`/`31ms`, combined `2/2` in `32ms`, and full
+`2016/2016` in `10000ms`. Registrations are `992/1024`; exports are `402/402`;
+SHA-256 `05F61A2793F56B7673D6EDD4FD944D48D84CE2DFAAD06AF50CFC1A85421BC1E0`.
+`FMT-TIFF-001AX` completes full-binary+single-ASCII `270`/`315` parity. Pillow
+writes 550 bytes with Artist inline, DPI `194/202`, XMP `210`, ICC `534`, strip
+`542`. Raw/facade `1/1` in `141ms`/`31ms`; TIFF `344/344`, save_all `67/67`,
+full `2014/2014` in `10046ms`; registrations `991/1023`; exports `399/399`;
+SHA-256 `053B555079CFFEDB4E0E75C350CF683BF821A082DCAE825C6CEB1879D4673E59`.
+`FMT-TIFF-001AW` composes DPI+ICC+XMP+ImageDescription on one uncompressed
+single-frame `I;16B`; Pillow writes 556 bytes with Description `194`, DPI
+`200/208`, XMP `216`, ICC `540`, strip `548`. Raw/facade `1/1` in `156ms`/
+`31ms`; TIFF `342/342`, save_all `67/67`, full `2012/2012` in `10421ms`.
+Registrations `990/1022`; exports `399/399`; SHA-256
+`4B06A3C27570CF35284C1AC1916A2B42EA13ECCB28CFDFF1BC8D999BF3F7773C`.
+`FMT-TIFF-001AV` composes DPI+XMP+ImageDescription+Artist on one uncompressed
+single-frame `I;16B` image. Pillow writes a 548-byte big-endian TIFF with 15
+sorted IFD entries, Description offset `194`, inline `Ada\0`, DPI offsets
+`200/208`, XMP offset `216`, raw strip offset `540`, and reopened mode
+`I;16B`. Native completes the validated XMP+one/two-ASCII family; existing
+facade routing passes. Raw/facade passed `1/1` in `125ms` and `1/1` in `47ms`;
+TIFF `340/340` in `1625ms`, save_all `67/67` in `578ms`, and full `2010/2010`
+in `9938ms`. Registrations `989/1021`; Release x64 built cleanly; exports/DLL
+remain `399/399` and
+`B4EF7519F3E16437EEB4A90224281A888D556DD3C54FF12D30334141C6919B28`.
+`FMT-TIFF-001AU` composes DPI+XMP+Artist on one uncompressed single-frame
+`I;16B` image. Pillow writes a 530-byte big-endian TIFF with 14 sorted IFD
+entries, inline `Ada\0`, DPI offsets `182/190`, XMP offset `198`, raw strip
+offset `522`, and reopened mode `I;16B`. Native completes the validated
+XMP+one-ASCII family; existing facade routing passes. Raw/facade passed `1/1`
+in `140ms` and `1/1` in `32ms`; TIFF `338/338` in `1657ms`, save_all `67/67`
+in `563ms`, and full `2008/2008` in `10093ms`. Registrations `988/1020`;
+Release x64 built cleanly; exports/DLL remain `399/399` and
+`71B3A33D96CCBE4000477572ACCCA274542E2A65837C04B1C40048426A4AEB5E`.
+`FMT-TIFF-001AT` composes DPI+XMP+ImageDescription on one uncompressed single-
+frame `I;16B` image. Pillow writes a 536-byte big-endian TIFF with 14 sorted
+IFD entries, Description offset `182`, DPI offsets `188/196`, XMP offset
+`204`, raw strip offset `528`, and reopened mode `I;16B`. Native admits only
+the strict XMP+tag-270 configuration; existing facade routing passes. Raw/
+facade passed `1/1` in `109ms` and `1/1` in `31ms`; TIFF `336/336` in
+`1547ms`, save_all `67/67` in `531ms`, and full `2006/2006` in `10234ms`.
+Registrations `987/1019`; Release x64 built cleanly; exports/DLL remain
+`399/399` and
+`E643014A8FF90F7DF552D598E052E359625FAEE16A0FA48DE12D6741DB6D32F0`.
+`FMT-TIFF-001AS` composes DPI+ICC+ImageDescription+Artist on one uncompressed
+single-frame `I;16B` image. Pillow writes a 232-byte big-endian TIFF with 15
+sorted IFD entries, Description offset `194`, inline `Ada\0`, DPI offsets
+`200/208`, ICC offset `216`, raw strip offset `224`, and reopened mode `I;16B`.
+Native completes the validated ICC+one/two-ASCII family; existing facade
+routing passes. Raw/facade passed `1/1` in `140ms` and `1/1` in `31ms`; TIFF
+`334/334` in `1703ms`, save_all `67/67` in `578ms`, and full `2004/2004` in
+`9703ms`. Registrations `986/1018`; Release x64 built cleanly; exports/DLL
+remain `399/399` and
+`B5A93E491DDEA00D8EC4C8DC34C39EE9434BBAFA0740071DEBFE9BDECC1E0377`.
+`FMT-TIFF-001AR` composes DPI+ICC+Artist on one uncompressed single-frame
+`I;16B` image. Pillow writes a 214-byte big-endian TIFF with 14 sorted IFD
+entries, inline `Ada\0`, DPI offsets `182/190`, ICC offset `198`, raw strip
+offset `206`, and reopened mode `I;16B`. Native deepens the exact partial-
+metadata guard to validated single ASCII tags `270`/`315`; existing facade
+routing passes. Raw/facade passed `1/1` in `94ms` and `1/1` in `16ms`; TIFF
+`332/332` in `1828ms`, save_all `67/67` in `563ms`, and full `2002/2002` in
+`9766ms`. Registrations `985/1017`; Release x64 built cleanly; exports/DLL
+remain `399/399` and
+`815E6936CD5D7DC3F22268E35B3E7C144B31498654CB95D75C2DBEECF4940F43`.
+`FMT-TIFF-001AQ` composes DPI+ICC+ImageDescription on one uncompressed
+single-frame `I;16B` image. Pillow writes a 220-byte big-endian TIFF with 14
+sorted IFD entries, Description offset `182`, DPI offsets `188/196`, ICC
+offset `204`, raw strip offset `212`, and reopened mode `I;16B`. Native admits
+only this exact uncompressed partial metadata subset; existing facade routing
+passes. Raw/facade passed `1/1` in `157ms` and `1/1` in `47ms`; TIFF `330/330`
+in `1703ms`, save_all `67/67` in `594ms`, and full `2000/2000` in `9500ms`.
+Registrations `984/1016`; Release x64 built cleanly; exports/DLL remain
+`399/399` and
+`E556B39212C51BF8C5096DFD25CE04F2070863FD7FD1E58289554CB298B7850E`.
+`FMT-TIFF-001AP` composes DPI+ICC+XMP on one uncompressed single-frame
+`I;16B` image. Pillow writes a 538-byte big-endian TIFF with 14 sorted IFD
+entries, DPI offsets `182/190`, XMP offset `198`, ICC offset `522`, raw strip
+offset `530`, and reopened mode `I;16B`. Native now admits the binary pair;
+existing facade routing passes. Raw/facade passed `1/1` in `125ms` and `1/1`
+in `47ms`; TIFF `328/328` in `1766ms`, save_all `67/67` in `546ms`, and full
+`1998/1998` in `9484ms`. Registrations `983/1015`; Release x64 built cleanly;
+exports/DLL remain `399/399` and
+`44F8A1B59900DD92247DF2A31E56B1B2263D9FC2D4CCE45837A3145840202683`.
+`FMT-TIFF-001AO` composes DPI+ImageDescription+Artist on one uncompressed
+single-frame `I;16B` image. Pillow writes a 212-byte big-endian TIFF with 14
+sorted IFD entries, Description offset `182`, inline `Ada\0`, DPI offsets
+`188/196`, raw strip offset `204`, and reopened mode `I;16B`. Native now admits
+DPI+exact tag set `{270,315}`; existing facade routing passes. Raw/facade
+passed `1/1` in `109ms` and `1/1` in `15ms`; TIFF `326/326` in `1625ms`,
+save_all `67/67` in `609ms`, and full `1996/1996` in `9859ms`. Registrations
+`982/1014`; Release x64 built cleanly; exports/DLL remain `399/399` and
+`03D69209EF9EB07964A9B483FC0018B4DFA966A1DF130EA6CCF9C650BB8391B7`.
+`FMT-TIFF-001AN` adds DPI+Artist to one uncompressed single-frame `I;16B`
+image. Pillow writes a 194-byte big-endian TIFF with 13 sorted IFD entries,
+inline `Ada\0`, DPI offsets `170/178`, raw strip offset `186`, and reopened
+mode `I;16B`. Native now admits DPI+tag-315; facade routes DPI+
+`TiffInfo[315]` through the metadata-ASCII ABI. Raw/facade passed `1/1` in
+`93ms` and `1/1` in `15ms`; TIFF `324/324` in `1562ms`, save_all `67/67` in
+`562ms`, and full `1994/1994` in `9922ms`. Registrations `981/1013`; Release
+x64 built cleanly; exports/DLL remain `399/399` and
+`4D501BCA2D12C97AA656339A8AE2BC60066303C2DECCAAB9BB2AFB2AD89C9011`.
+`FMT-TIFF-001AM` adds DPI+ImageDescription to one uncompressed single-frame
+`I;16B` image. Pillow writes a 200-byte big-endian TIFF with 13 sorted IFD
+entries, Description offset `170`, DPI offsets `176/184`, raw strip offset
+`192`, and reopened mode `I;16B`. Native now admits DPI+tag-270; facade routes
+DPI+`TiffInfo[270]` through the metadata-ASCII ABI. Raw/facade passed `1/1` in
+`94ms` and `1/1` in `31ms`; TIFF `322/322` in `1500ms`, save_all `67/67` in
+`562ms`, and full `1992/1992` in `9547ms`. Registrations `980/1012`; Release
+x64 built cleanly; exports/DLL remain `399/399` and
+`94ED2CE0CA2151A47DA4C2BFDE0ED922D717908E4BE4FD384E7F7A812C46F6DD`.
+`FMT-TIFF-001AL` adds DPI+XMP to one uncompressed single-frame `I;16B`
+image. Pillow writes a 518-byte big-endian TIFF with 13 sorted IFD entries,
+DPI offsets `170/178`, XMP offset `186`, raw strip offset `510`, and reopened
+mode `I;16B`. Native now admits DPI+XMP; facade routes DPI+`TiffInfo[700]`
+through the metadata ABI. Raw/facade passed `1/1` in `78ms` and `1/1` in
+`16ms`; TIFF `320/320` in `1563ms`, save_all `67/67` in `578ms`, and full
+`1990/1990` in `9532ms`. Registrations `979/1011`; Release x64 built cleanly;
+exports/DLL remain `399/399` and
+`6E523F767A679733489B27668FBF5AEB4278A5E57C02C63655F47FF154AD4AE8`.
+`FMT-TIFF-001AK` adds DPI+ICC to one uncompressed single-frame `I;16B`
+image. Pillow writes a 202-byte big-endian TIFF with 13 sorted IFD entries,
+DPI offsets `170/178`, ICC offset `186`, raw strip offset `194`, and reopened
+mode `I;16B`. Native now admits DPI+ICC; facade routes ICC+DPI through the
+metadata ABI. Raw/facade passed `1/1` in `109ms` and `1/1` in `15ms`; TIFF
+`318/318` in `1579ms`, save_all `67/67` in `578ms`, and full `1988/1988` in
+`9422ms`. Registrations `978/1010`; Release x64 built cleanly; exports/DLL
+remain `399/399` and
+`E2759F99E0F9B50F1ADCFCAF0B2BB85D2DF7D06A0EBE29BED43BE27EDF097BB3`.
+`FMT-TIFF-001AJ` adds DPI-only to one uncompressed single-frame `I;16B`
+image. Pillow writes a 182-byte big-endian TIFF with 12 sorted IFD entries,
+RATIONAL offsets `158/166`, raw strip offset `174`, and reopened mode `I;16B`.
+Native now admits DPI-only through the AI big-endian writer. Raw/facade passed
+`1/1` in `78ms` and `1/1` in `16ms`; TIFF `316/316` in `1469ms`, save_all
+`67/67` in `515ms`, and full `1986/1986` in `9391ms`. Registrations `977/1009`;
+Release x64 built cleanly; exports/DLL remain `399/399` and
+`62A84B20D6EC34EFFB944B0A7E73303496FC8A1AD395511F7CA5B98321977598`.
+`FMT-TIFF-001AI` composes one uncompressed single-frame `I;16B` image with
+DPI, ICC, XMP, ImageDescription, and Artist. Pillow writes a 568-byte big-
+endian TIFF with 16 sorted IFD entries, exact external offsets and raw strip,
+and reopened mode `I;16B`. Native extends the dedicated big-endian writer;
+facade now routes the exact single-frame full metadata case through the
+generalized ABI. Raw/facade passed `1/1` in `94ms` and `1/1` in `15ms`; TIFF
+`314/314` in `1469ms`, save_all `67/67` in `609ms`, and full `1984/1984` in
+`9313ms`. Registrations `976/1008`; Release x64 built cleanly; exports/DLL
+remain `399/399` and
+`8D23C9F10BCA13E3AA63C9D703C53D70127E2F8D9AE1E128474D01845D7E6CA9`.
+`FMT-TIFF-001AH` composes homogeneous two-frame `I;16B` LZW plus DPI, ICC,
+XMP, ImageDescription, and Artist. Pillow writes exact type/count/payload
+layouts for tags `270`, `315`, `700`, and `34675` to both IFDs, normalizes
+saved frames to little-endian `I;16`, and preserves sources. Native now admits
+the exact full composition through temporary normalization. Raw/facade passed
+`1/1` in `157ms` and `1/1` in `16ms`; TIFF `312/312` in `1532ms`, save_all
+`67/67` in `547ms`, and full `1982/1982` in `9641ms`. Registrations `975/1007`;
+Release x64 built cleanly; exports/DLL remain `399/399` and
+`CA98C6A7BA635438C202FBC89EE7F341204E4995313FA2A2424BE437693D2063`.
+`FMT-TIFF-001AG` composes homogeneous two-frame `I;16B` LZW plus DPI,
+ImageDescription, and Artist. Pillow writes out-of-line type `2`, count `6`,
+exact `Hello\0` and inline type `2`, count `4`, exact `Ada\0` to both IFDs,
+normalizes saved frames to little-endian `I;16`, and preserves sources. Native
+now admits the exact tag set `{270,315}` through temporary normalization. Raw/
+facade passed `1/1` in `157ms` and `1/1` in `32ms`; TIFF `310/310` in `1547ms`,
+save_all `66/66` in `562ms`, and full `1980/1980` in `9938ms`. Registrations
+`974/1006`; Release x64 built cleanly; exports/DLL remain `399/399` and
+`703A00252FCEDF2C6244E6AEBFC18E9C0891A0A394C895EC046BFE0DB3F77067`.
+`FMT-TIFF-001AF` composes homogeneous two-frame `I;16B` LZW plus DPI and
+Artist. Pillow writes inline ASCII type `2`, count `4`, exact `Ada\0` to both
+IFDs, normalizes saved frames to little-endian `I;16`, and preserves sources.
+Native now admits either one tag `270` or `315` through temporary
+normalization. Raw/facade passed `1/1` in `125ms` and `1/1` in `31ms`; TIFF
+`308/308` in `1485ms`, save_all `65/65` in `515ms`, and full `1978/1978` in
+`9829ms`. Registrations `973/1005`; Release x64 built cleanly; exports/DLL
+remain `399/399` and
+`36F2542CA039D955BFA5B47D1BD41A3C31380092BE9DDEFD65E02AE3A7514F30`.
+`FMT-TIFF-001AE` composes homogeneous two-frame `I;16B` LZW plus DPI and
+ImageDescription. Pillow writes ASCII type `2`, count `6`, exact `Hello\0` to
+both IFDs, normalizes saved frames to little-endian `I;16`, and preserves
+sources. Native now carries tag-270 arrays through temporary normalization and
+explicitly rejects uncompressed metadata instead of dropping it. Raw/facade
+passed `1/1` in `125ms` and `1/1` in `31ms`; TIFF `306/306` in `1468ms`,
+save_all `64/64` in `562ms`, and full `1976/1976` in `9750ms`. Registrations
+`972/1004`; Release x64 built cleanly; exports/DLL remain `399/399` and
+`A80222381976DA923E3EE4EFDF3FD8D1DB1E30FD61B002C4C0E472B800372FB0`.
+`FMT-TIFF-001AD` composes homogeneous two-frame `I;16B` LZW plus DPI, ICC,
+and XMP. Pillow writes exact UNDEFINED tag `34675` and BYTE tag `700` to both
+IFDs, normalizes both saved frames to little-endian `I;16`, and preserves
+source modes/bytes. Raw RED found the explicit combined guard; native now
+passes both payloads through temporary normalization. Raw/facade passed `1/1`
+in `109ms` and `1/1` in `32ms`; TIFF `304/304` in `1500ms`, save_all `63/63`
+in `500ms`, and full `1974/1974` in `9688ms`. Registrations `971/1003`;
+Release x64 built cleanly; exports/DLL remain `399/399` and
+`629DD662C6ACDCA4A8805493FF0ED866274533D370279DBF05C9D06CD84D3AEA`.
+`FMT-TIFF-001AC` composes homogeneous two-frame `I;16B` LZW plus DPI and XMP.
+Pillow writes exact BYTE tag `700` count `324` to both IFDs, normalizes both
+saved frames to little-endian `I;16`, and preserves source modes/bytes. Raw RED
+found the native XMP guard; native now passes XMP-only through temporary
+normalization; AD later composes ICC+XMP. Raw/facade passed `1/1` in
+`172ms` and `1/1` in `47ms`; TIFF `302/302` in `1500ms`, save_all `62/62` in
+`500ms`, and full `1972/1972` in `9656ms`. Registrations `970/1002`; Release
+x64 built cleanly; exports/DLL remain `399/399` and
+`29770E7CAC1A59C4D6455405A9A7A39F54A8DFD517E4D5D6A607F9D9C4C7365A`.
+`FMT-TIFF-001AB` composes homogeneous two-frame `I;16B` LZW plus DPI and ICC.
+Pillow writes exact UNDEFINED tag `34675` to both IFDs, normalizes both saved
+frames to little-endian `I;16`, and preserves source modes/bytes. Raw RED found
+the native metadata guard; native now passes validated ICC through temporary
+normalization into the shared writer. Raw/facade passed `1/1` in `94ms` and
+`1/1` in `31ms`; TIFF `300/300` in `1563ms`, save_all `61/61` in `484ms`, and
+full `1970/1970` in `9422ms`. Registrations `969/1001`; Release x64 built
+cleanly; exports/DLL remain `399/399` and
+`58D1896D7F7C6B99AB68D2F1BB1D8D027512F011BA7DEC793E9C90D92990E30F`.
+`FMT-TIFF-001AA` composes both mixed `I;16`/`I;16B` frame orders with
+PackBits/LZW/Adobe Deflate plus DPI. Pillow preserves source modes/bytes and
+normalizes every saved frame independently to little-endian `I;16`. Raw RED
+found Z's homogeneous-only guard; native now recognizes the complete 16-bit
+endian family and swaps only big-endian members. Raw/facade passed `1/1` in
+`250ms` and `1/1` in `63ms`; TIFF `298/298` in `1500ms`, save_all `60/60` in
+`469ms`, and full `1968/1968` in `9312ms`. Registrations `968/1000`; Release
+x64 built cleanly; exports/DLL remain `399/399` and
+`3C90BAEA740D3DA52D91891777F6E39E3994A57B1752584C362D5EBF8B4ECF2F`.
+`FMT-TIFF-001Z` composes homogeneous two-frame `I;16B` PackBits/LZW/Adobe
+Deflate plus DPI. Pillow leaves source modes/bytes unchanged but writes every
+frame as little-endian `I;16`. Raw RED found the native single-frame/no-DPI
+restriction; native now makes temporary per-frame `I;16` copies and reuses the
+shared writer. PackBits/LZW strips match Pillow exactly; native Deflate uses
+valid 19-byte stored blocks versus Pillow's 16-byte streams. Raw/facade passed
+`1/1` in `156ms` and `1/1` in `47ms`; TIFF `296/296` in `1422ms`, save_all
+`59/59` in `437ms`, and full `1966/1966` in `9516ms`. Registrations `967/999`;
+Release x64 built cleanly; exports/DLL remain `399/399` and
+`395E0D5D1CE3394556031B6C25C5A77FA380361927D26DC4A3064568278072CB`.
+`FMT-TIFF-001Y` composes two-frame mode `I` and `F` PackBits/LZW/Adobe
+Deflate plus DPI. Raw RED found a PackBits byte-parity defect for a two-zero
+run; the native writer now follows libtiff's Literal/Run/LiteralRun strategy.
+PackBits/LZW bounded strips now match Pillow exactly; native Deflate uses valid
+27-byte stored blocks, with exact samples, no Predictor, and matching DPI/
+GetExif. Raw/facade passed `1/1` in `219ms` and `1/1` in `62ms`; TIFF
+`294/294` in `1375ms`, save_all `58/58` in `438ms`, and full `1964/1964` in
+`9625ms`. Registrations `966/998`; Release x64 built cleanly; exports/DLL
+remain `399/399` and
+`F877A0057B8D54ACD2DD11A32622BDCE37BD22D185E222862E9B5AB00E2E7CBB`.
+`FMT-TIFF-001X` composes two-frame little-endian `I;16` LZW/Adobe Deflate plus
+DPI. LZW matches Pillow's exact 12-byte strips; native Deflate uses valid
+19-byte stored blocks versus Pillow's 16-byte streams, with exact samples and
+matching initial/selected DPI/GetExif. Existing raw/facade passed `1/1` in
+`109ms` and `1/1` in `47ms`; TIFF `292/292` in `1219ms`, save_all `57/57` in
+`375ms`, and full `1962/1962` in `9468ms`. Registrations `965/997`; no
+production change or rebuild; exports/DLL remain `399/399` and
+`A61C6E56CA121828C29F19222157E950924D9BC2290BFAC2737E756409E003F5`.
+`FMT-TIFF-001W` composes two-frame little-endian `I;16` PackBits plus DPI.
+Pillow/native write Compression `32773`, RowsPerStrip `2`, exact ten-byte row
+strips, exact samples, and matching initial/selected DPI/GetExif. Existing
+raw/facade routes passed `1/1` in `62ms` and `1/1` in `31ms`; TIFF `290/290`
+in `1125ms`, save_all `56/56` in `359ms`, and full `1960/1960` in `9422ms`.
+Registrations `964/996`; no production change or rebuild; exports/DLL remain
+`399/399` and
+`A61C6E56CA121828C29F19222157E950924D9BC2290BFAC2737E756409E003F5`.
+`FMT-TIFF-001V` closes IFD0 DPI on bounded mode `I` and mode `F` two-frame
+TIFFs before any seek. Batched raw RED found exact initial bytes but
+`HasDpi == 0` because the shared early frame-0 numeric return omitted
+resolution parsing. Final raw/facade passed `1/1` in `157ms` and `1/1` in
+`31ms`; TIFF `288/288` in `1172ms`, save_all `55/55` in `359ms`, and full
+`1958/1958` in `9641ms`. Registrations `963/995`; Release x64 built cleanly;
+exports/DLL remain `399/399` and
+`A61C6E56CA121828C29F19222157E950924D9BC2290BFAC2737E756409E003F5`.
+`FMT-TIFF-001U` closes IFD0 DPI on the bounded little-endian `I;16` two-frame
+TIFF before any seek. Raw RED found exact initial bytes but `HasDpi == 0`
+because the early frame-0 `I;16` return omitted resolution parsing. Final
+raw/facade passed `1/1` in `79ms` and `1/1` in `16ms`; TIFF `286/286` in
+`1188ms`, save_all `54/54` in `359ms`, and full `1956/1956` in `9109ms`.
+Registrations `962/994`; Release x64 built cleanly; exports/DLL remain
+`399/399` and
+`0C23441D2E57C4300FEB6025D3A3DDF9F7C21786618928D30705246EBF5581FE`.
+`FMT-TIFF-001T` batches mode `I` and mode `F` selected-frame DPI on two-frame
+TIFFs. Pillow/native preserve exact signed-int32/float32 bytes and both IFDs
+carry `300/1`, `150/1`, and unit `2`; facade `Seek(1)` exposes matching
+Info/GetExif. Raw RED found selected-frame `HasDpi == 0` because the shared
+early numeric return omitted resolution parsing. Final raw/facade passed
+`1/1` in `156ms` and `1/1` in `31ms`; TIFF `284/284` in `1046ms`, save_all
+`53/53` in `297ms`, and full `1954/1954` in `8938ms`. Registrations `961/993`;
+Release x64 built cleanly; exports/DLL remain `399/399` and
+`2AA796C0723CB49838E4D899D42BF9725F00F4A1F603659C0595A9EFF32040D4`.
+`FMT-TIFF-001S` closes DPI metadata on a same-size little-endian `I;16`
+two-frame TIFF. Pillow/native preserve exact samples and both IFDs carry
+`300/1`, `150/1`, and unit `2`; facade `Seek(1)` exposes matching Info/GetExif.
+Raw RED found selected-frame `HasDpi == 0` because the early `I;16` return
+omitted selected-IFD resolution parsing. Final raw/facade passed `1/1` in
+`63ms` and `1/1` in `32ms`; TIFF `282/282` in `1469ms`, save_all `52/52` in
+`297ms`, and full `1952/1952` in `9078ms`. Registrations `960/992`; Release
+x64 built cleanly; exports/DLL remain `399/399` and
+`906397FBD41F7BA0CB19A2B6A08BCF3582CF419C80E1041A47C366D6C447DA20`.
+`FMT-TIFF-001R` composes RGB two-frame LZW, DPI `(300,150)`, ICC, XMP, and
+ASCII tags `270`/`315` in both IFDs/seek states with exact pixels. Raw RED
+found selected frame DPI absent because native resolution parsing was gated to
+IFD0; selected-IFD parsing fixed it. Final raw/facade passed `1/1` in `125ms`
+and `1/1` in `15ms`; TIFF `280/280` in `1187ms`, save_all `51/51` in `328ms`,
+and full `1950/1950` in `8938ms`. Registrations `959/991`; Release x64 built
+cleanly; exports/DLL remain `399/399` and
+`6E658A0051D5E8BF7346691872B39A176B1C13F7DB1F0B2F8CF2498B2DFF7997`.
+`FMT-TIFF-001Q` generalizes ASCII save_all to one two-entry Map. Both RGB IFDs
+carry type-`2` tag `270`, count `6`, out-of-line `Hello\0` plus type-`2` tag
+`315`, count `4`, inline `Ada\0`; both GetExif values and decoded bytes remain
+exact. Raw/facade REDs found a missing entry-array export and singular facade
+restriction; final raw/facade passed `1/1` in `141ms` and `1/1` in `16ms`;
+TIFF `278/278` in `1219ms`, save_all `50/50` in `360ms`, and full `1948/1948`
+in `9250ms`. Registrations `958/990`; Release x64 built cleanly; exports/DLL
+are `399/399` and
+`DB5C38C111E322C1BDBB66B9643C2E85CF54C1A3BC991BA5D1AFDF98CBA4291A`.
+`FMT-TIFF-001P` adds explicit Artist to both RGB save_all IFDs via
+`tiffinfo={315: "Ada"}`. Pillow/native preserve TIFF ASCII type `2`, count
+`4`, exact inline bytes `41 64 61 00`, exact decoded bytes, and facade GetExif
+after both seeks. Raw/facade REDs found native/facade tag rejection; final
+raw/facade passed `1/1` in `172ms` and `1/1` in `16ms`; TIFF `276/276` in
+`1078ms`, save_all `49/49` in `343ms`, and full `1946/1946` in `9250ms`.
+Registrations `957/989`; Release x64 built cleanly; exports/DLL remain
+`398/398` and `D0B49F66FA232749D7E22AAB39D2CEED838D7B48AF01D4E890A1F1F4A2401B0F`.
+`FMT-TIFF-001O` adds explicit ImageDescription to both RGB save_all IFDs via
+`tiffinfo={270: "Hello"}`. Pillow/native preserve TIFF ASCII type `2`, count
+`6`, exact `Hello\0`, exact decoded bytes, and facade GetExif after both seeks.
+Raw/facade REDs found the missing ASCII export and tag rejection; final
+raw/facade passed `1/1` in `140ms` and `1/1` in `16ms`; TIFF `274/274` in
+`1250ms`, save_all `48/48` in `265ms`, and full `1944/1944` in `9453ms`.
+Registrations `956/988`; Release x64 built cleanly; exports/DLL are `398/398`
+and `95E388362A7930CDC95CA49B03C7F4867DB0AE983D32803D322D9601005E9C85`.
+`FMT-TIFF-001N` proves explicit ICC and tiffinfo XMP compose in both RGB
+save_all IFDs and seek states. Pillow/native preserve ICC UNDEFINED `34675`,
+XMP BYTE `700`, embedded NUL, exact packets, and exact decoded bytes. Existing
+raw/facade routes passed directly `1/1` in `94ms` and `1/1` in `47ms`; TIFF
+`272/272` in `1109ms`, save_all `47/47` in `282ms`, and full `1942/1942` in
+`8765ms`. Registrations `955/987`; no rebuild; exports/DLL remain `397/397`
+and `D2F771BCFDD56D6EB70993FCC503DD60E77350CCFC1EC61A998D80CD6DF50EBB`.
+`FMT-TIFF-001M` adds explicit two-frame XMP through Pillow's actual TIFF
+surface `tiffinfo={700: packet}`; direct TIFF `xmp=` is confirmed ignored by
+Pillow 11.3.0. Native writes the exact 324-byte packet as BYTE tag `700` in
+both IFDs and exposes Info/GetExif after both seeks. Raw/facade REDs found a
+missing extended metadata export and ignored tiffinfo. Final raw/facade passed
+`1/1` in `156ms` and `1/1` in `47ms`; TIFF `270/270` in `1172ms`, save_all
+`46/46` in `266ms`, and full `1940/1940` in `9468ms`. Registrations `954/986`;
+Release x64 built cleanly; exports/DLL are `397/397` and
+`D2F771BCFDD56D6EB70993FCC503DD60E77350CCFC1EC61A998D80CD6DF50EBB`.
+`FMT-TIFF-001L` adds native explicit ICC save_all metadata. Pillow writes the
+exact 8-byte payload, including NUL, as UNDEFINED tag `34675` in both IFDs and
+exposes it through Info/GetExif after both seeks. Raw/facade REDs found the
+missing metadata export and ignored public option. The new coarse native ABI
+owns payload validation/layout/lifetime; facade only normalizes bytes and
+options. Final raw/facade passed `1/1` in `141ms` and `1/1` in `47ms`; TIFF
+`268/268` in `1140ms`, save_all `45/45` in `281ms`, and full `1938/1938` in
+`9078ms`. Registrations `953/985`; Release x64 built cleanly; exports/DLL are
+`396/396` and
+`684BF0C50053C043CD3127C22C0772F907C94F440589C429D6A7BAE14DC25D0C`.
+`FMT-TIFF-001K` proves the generalized multiframe options route composes both
+LZW and Adobe Deflate with DPI. Pillow/native LZW use 14-byte strips; Pillow
+Deflate uses 20 bytes while native retains its documented 23-byte stored-block
+representation with `78 9C`. Both compression tags, all DPI tags/Info, and
+decoded bytes match. Existing raw/facade passed `1/1` in `78ms` and `1/1` in
+`63ms`; TIFF `266/266` in `953ms`, save_all `44/44` in `218ms`, and full
+`1936/1936` in `8734ms`. Registrations `952/984`; no rebuild; exports/DLL
+remain `395/395` and
+`F347533B35A6E6AE3243247AEF5639F7C24CDBB8CDF5062987ABB61A96C7832F`.
+`FMT-TIFF-001J` proves the generalized multiframe options route composes
+PackBits with DPI. Both IFDs carry Compression `32773`, 14-byte strips,
+XResolution `300/1`, YResolution `150/1`, ResolutionUnit `2`, exact decoded
+bytes, and facade DPI/GetExif state. Existing production passed directly:
+raw/facade `1/1` in `78ms` and `1/1` in `31ms`; TIFF `264/264` in `1204ms`,
+save_all `43/43` in `250ms`, and full `1934/1934` in `9140ms`. Registrations
+`951/983`; no rebuild; exports/DLL remain `395/395` and
+`F347533B35A6E6AE3243247AEF5639F7C24CDBB8CDF5062987ABB61A96C7832F`.
+`FMT-TIFF-001I` closes uncompressed two-frame RGB DPI save_all composition.
+Pillow and native write XResolution `300/1`, YResolution `150/1`, and
+ResolutionUnit `2` on both IFDs while preserving exact decoded bytes and
+facade `Info["dpi"]`/GetExif after both seeks. Raw RED found a missing export;
+facade RED proved DPI was ignored. The generalized native options ABI plus
+facade routing closed both. Raw/facade passed `1/1` in `156ms` and `1/1` in
+`47ms`; TIFF `262/262` in `1093ms`, save_all `42/42` in `219ms`, and full
+`1932/1932` in `9156ms`. Registrations `950/982`; Release x64 builds with zero
+warnings/errors; exports/DLL are `395/395` and
+`F347533B35A6E6AE3243247AEF5639F7C24CDBB8CDF5062987ABB61A96C7832F`.
+`FMT-TIFF-001H` batches two-frame LZW and Adobe Deflate through the existing
+multiframe compression ABI. LZW uses Compression `5` and 14-byte strips;
+Deflate uses Compression `8` and `78 9C`. Native's valid stored blocks are 23
+bytes versus Pillow's 20-byte compressed strips, while decoded bytes match.
+Raw/facade passed `1/1` in `94ms` and `1/1` in `31ms`; TIFF `260/260` in
+`1125ms`, save_all `41/41` in `281ms`, and full `1930/1930` in `9094ms`.
+Registrations `949/981`; no rebuild; exports/DLL remain `394/394` and
+`2C5F6E6929FB0900F8E70D2FF5F2E6095A6D242ACCAE395B6318F7D5A1FFF29F`.
+`FMT-TIFF-001G` closes RGB two-frame PackBits save_all composition. Pillow
+writes Compression `32773`, RowsPerStrip `2`, StripByteCounts `14`, and exact
+decoded bytes. Raw RED found the missing export; facade RED wrote Compression
+`1`. A new native multiframe compression export reuses existing encoding;
+facade routes normalization. Final raw/facade passed `1/1` in `93ms` and
+`1/1` in `31ms`; TIFF `258/258` in `921ms`, save_all `40/40` in `187ms`, and
+full `1928/1928` in `8938ms`. Registrations `948/980`; Release x64 rebuilt
+cleanly; exports/DLL are `394/394` and
+`2C5F6E6929FB0900F8E70D2FF5F2E6095A6D242ACCAE395B6318F7D5A1FFF29F`.
+`FMT-TIFF-001F` closes one same-size RGB three-frame save_all boundary.
+Pillow preserves all three exact byte arrays; the IFD chain has two nonzero
+links and a final zero terminator. Existing native/facade routes passed
+without production changes: combined `2/2` in `47ms`, TIFF `256/256` in
+`1062ms`, save_all `39/39` in `188ms`, and full `1926/1926` in `9250ms`.
+Registrations `947/979`; no native rebuild; exports/DLL remain `393/393` and
+`2189246D2C8C390C236DD4595A909BF72084DF8448C430A1216FC095A2D3A06A`.
+`FMT-TIFF-001E` closes one RGB mixed-size two-frame save_all boundary. Pillow
+preserves `2x1` then `1x2` sizes and exact bytes; the second IFD writes Width
+`1`, Height/RowsPerStrip `2`, and a six-byte strip. Existing native/facade
+routes passed without production changes: combined `2/2` in `31ms`, TIFF
+`254/254` in `1078ms`, save_all `38/38` in `188ms`, and full `1924/1924` in
+`8907ms`. Registrations `946/978`; no native rebuild; exports/DLL remain
+`393/393` and
+`2189246D2C8C390C236DD4595A909BF72084DF8448C430A1216FC095A2D3A06A`.
+`FMT-TIFF-001D` closes one same-size mixed L/RGB two-frame save_all boundary.
+Pillow preserves L then RGB modes and exact bytes; the L IFD omits
+SamplesPerPixel and writes PlanarConfiguration `1`, while RGB keeps its own
+three-sample IFD. Raw RED failed on native L tag `277`; native layout counting
+and emission now omit it and add tag `284`. Final raw/facade passed `1/1`
+each; combined `2/2` in `62ms`, TIFF `252/252` in `1000ms`, save_all `37/37`
+in `172ms`, and full `1922/1922` in `8891ms`. Registrations `945/977`;
+Release x64 rebuilt with zero warnings/errors; exports/DLL remain `393/393`
+and `2189246D2C8C390C236DD4595A909BF72084DF8448C430A1216FC095A2D3A06A`.
+`FMT-TIFF-001C` closes same-size RGBA two-frame TIFF save_all breadth. Pillow
+11.3.0 emits linked little-endian uncompressed RGBA IFDs with `(8,8,8,8)`
+bits, photometric `2`, four samples, contiguous planar layout, ExtraSamples
+`2`, one eight-byte strip, and exact interleaved bytes per frame. Existing
+native/facade routes passed without production changes: combined `2/2` in
+`46ms`, TIFF `250/250` in `1079ms`, save_all `36/36` in `188ms`, and full
+`1920/1920` in `8953ms`. Registrations `944/976`; no native rebuild;
+exports/DLL remain `393/393` and
+`BE715A737810DC3D43799A6775D4E629D3B0AB1582F7F6E06A22CF18C3B20EE3`.
+`FMT-TIFF-001B` closes same-size RGB two-frame TIFF save_all breadth. Pillow
+11.3.0 emits linked little-endian uncompressed RGB IFDs with `(8,8,8)` bits,
+photometric `2`, three samples, contiguous planar layout, one six-byte strip,
+and exact interleaved bytes per frame. Existing native/facade routes passed
+without production changes: combined `2/2` in `32ms`, TIFF `248/248` in
+`1047ms`, save_all `35/35` in `172ms`, and full `1918/1918` in `9188ms`.
+Registrations `943/975`; no native rebuild; exports/DLL remain `393/393` and
+`BE715A737810DC3D43799A6775D4E629D3B0AB1582F7F6E06A22CF18C3B20EE3`.
+`FMT-JPEG-003AZ` closes duplicate ordinary Photoshop resource-code precedence.
+Pillow 11.3.0 exposes one `1028: b"CD"` entry for ordered duplicate values
+`AB`, `CD`, then omits APP13 from both keep saves while preserving DQT/RGB/
+size. Raw RED failed `0/1` in `47ms` with `Expected 1, got 2`; native parser
+state now preserves first key position and replaces bytes with the last value.
+Final raw/facade passed `1/1` in `93ms` and `1/1` in `46ms`. Duplicate-
+Photoshop/Photoshop/APP13/open_jpeg/quality-keep/qtables-keep/JPEG passed
+`2/2`, `10/10`, `6/6`, `29/29`, `57/57`, `76/76`, `399/399`; full
+`1916/1916` in `8578ms`. Registrations `942/974`; Release x64 rebuilt with
+zero warnings/errors; exports/DLL remain `393/393` and
+`BE715A737810DC3D43799A6775D4E629D3B0AB1582F7F6E06A22CF18C3B20EE3`.
+`FMT-JPEG-003AY` closes merge semantics across separately recognized Photoshop
+APP13 markers. Pillow 11.3.0 merges ordinary `1028: b"AB"` from the first and
+structured ResolutionInfo `1005: {...}` from the second into one map, then
+omits all APP13 markers from both keep saves while preserving DQT/RGB/size.
+Existing raw/facade routes passed directly `1/1` in `46ms` and `1/1` in
+`31ms`; Photoshop/APP13/open_jpeg/quality-keep/qtables-keep/JPEG passed `8/8`,
+`6/6`, `28/28`, `56/56`, `75/75`, `397/397`; full `1914/1914` in `8844ms`.
+Registrations `941/973`; no production change or rebuild; exports/DLL remain
+`393/393` and
+`114E2F544DA1848E35D828EEC5246075C11753945B440A57ADC26360D76510B6`.
+`FMT-JPEG-003AX` closes mixed ordinary-plus-ResolutionInfo resource
+composition inside one Photoshop APP13. Pillow 11.3.0 exposes ordinary
+`1028: b"AB"` and structured `1005: {...}` in the same map, then omits APP13
+from both keep saves while preserving DQT/RGB/size. Existing native/facade
+routes passed directly `1/1` in `62ms` and `1/1` in `47ms`; ResolutionInfo/
+Photoshop/open_jpeg/quality-keep/qtables-keep/JPEG passed `4/4`, `6/6`,
+`27/27`, `55/55`, `74/74`, `395/395`; full `1912/1912` in `8765ms`.
+Registrations `940/972`; no production change or rebuild; exports/DLL remain
+`393/393` and
+`114E2F544DA1848E35D828EEC5246075C11753945B440A57ADC26360D76510B6`.
+`FMT-JPEG-003AW` closes structured Photoshop ResolutionInfo resource `0x03ED`.
+Pillow 11.3.0 exposes float resolutions `300.5` / `150.25` and integer
+displayed units `1` / `3` in a nested dictionary, then omits APP13 from both
+keep saves while preserving DQT/RGB/size. Native now owns 16.16 decoding,
+typed image state, metadata-copy lifetime, and one structured scalar export;
+the facade only composes the nested Map. Raw/facade REDs failed `0/1` in
+`47ms` and `0/1` in `32ms`; final raw/facade passed `1/1` in `94ms` and
+`1/1` in `31ms`. ResolutionInfo/Photoshop/APP13/open_jpeg/quality-keep/
+qtables-keep/JPEG passed `2/2`, `4/4`, `4/4`, `26/26`, `54/54`, `73/73`,
+`393/393`; full `1910/1910` in `9078ms`. Registrations `939/971`; Release x64
+rebuilt with zero warnings/errors; exports/DLL are `393/393` and
+`114E2F544DA1848E35D828EEC5246075C11753945B440A57ADC26360D76510B6`.
+`FMT-JPEG-003AV` closes one ordinary Photoshop APP13 `8BIM` resource. Pillow
+11.3.0 exposes `info["photoshop"] == {1028: b"AB"}` and both keep saves omit
+APP13 while preserving DQT/RGB/size. Native now owns header/signature,
+Pascal-name/data alignment, resource ID/byte storage and copy lifetime through
+two enumerable exports; the facade materializes an integer-keyed Buffer Map.
+Raw/facade REDs failed `0/1` in `31ms` and `0/1` in `31ms`; final raw/facade
+passed `1/1` in `93ms` and `1/1` in `31ms`. Photoshop/APP13/open_jpeg/quality-
+keep/qtables-keep/JPEG passed `2/2`, `4/4`, `25/25`, `53/53`, `72/72`,
+`391/391`; full `1908/1908` in `8531ms`. Registrations `938/970`; Release x64
+rebuilt with zero warnings/errors; exports/DLL are `392/392` and
+`1C0EB831B28942B7A9579B655DA77AAD258AF5CFE694CDBBE65D426A991F19FD`.
+`FMT-JPEG-003AU` closes unknown pre-DQT APP13 keep-save disposition. Pillow
+11.3.0 exposes payload `PILLOW_C_APP13` in source `applist`, then omits the
+marker from both `quality="keep"` and `qtables="keep"` output while preserving
+DQT, RGB mode, and `16x8` size. Existing native/facade routes match.
+Raw/facade passed `1/1` in `62ms` and `1/1` in `31ms`; no production change or
+rebuild. APP13/quality-keep/qtables-keep/JPEG passed `2/2`, `52/52`, `71/71`,
+`389/389`; full `1906/1906` in `9063ms`. Registrations `937/969`; exports/DLL
+remain `390/390` and
+`5E8064F81E95ED78E80E47318CD99B0BFC066ABBA65F79E8B485AB3CC1BFB61B`.
+`META-002AE` closes the JPEG ICC multi-marker count-mismatch None matrix.
+Pillow 11.3.0 opens bounded RGB `2x1` fixtures carrying
+`1/0:A + 2/0:B` and `1/255:A + 2/255:B`, keeps the public ICC key, and assigns
+`None`. Existing native finalization returns state `2` with no byte blob; the
+facade maps both to `""`. Raw/facade passed `1/1` in `63ms` and `1/1` in
+`32ms`; no production change or rebuild. ICC/open_jpeg/JPEG passed `91/91`,
+`23/23`, `387/387`; full `1904/1904` in `9250ms`. Registrations `936/968`;
+exports/DLL remain `390/390` and
+`5E8064F81E95ED78E80E47318CD99B0BFC066ABBA65F79E8B485AB3CC1BFB61B`.
+`META-002AD` closes the JPEG ICC singleton count-mismatch None matrix. Pillow
+11.3.0 opens bounded RGB `2x1` fixtures `1/0:A` and `1/255:B`, keeps the public
+ICC key, and assigns `None`. Existing native finalization returns state `2`
+with no byte blob; the facade maps both to `""`. Raw/facade passed `1/1` in
+`62ms` and `1/1` in `32ms`; no production change or rebuild. ICC/open_jpeg/
+JPEG passed `89/89`, `22/22`, `385/385`; full `1902/1902` in `8578ms`.
+Registrations `935/967`; exports/DLL remain `390/390` and
+`5E8064F81E95ED78E80E47318CD99B0BFC066ABBA65F79E8B485AB3CC1BFB61B`.
+`META-002AC` closes the JPEG ICC high out-of-range sequence matrix. Pillow
+11.3.0 opens bounded RGB `2x1` singleton fixtures `2/1:A` and `255/1:B` and
+exposes exact bytes `A` / `B`. Existing native count-based finalization returns
+state `1` with `[65]` / `[66]`; the facade exposes matching Buffers. Raw/facade
+passed `1/1` in `62ms` and `1/1` in `31ms`; no production change or rebuild.
+ICC/open_jpeg/JPEG passed `87/87`, `21/21`, `383/383`; full `1900/1900` in
+`8437ms`. Registrations `934/966`; exports/DLL remain `390/390` and
+`5E8064F81E95ED78E80E47318CD99B0BFC066ABBA65F79E8B485AB3CC1BFB61B`.
+`META-002AB` closes JPEG ICC zero-sequence permissive collation. Pillow 11.3.0
+opens the bounded RGB `2x1` fixture carrying singleton `0/1:A` and exposes
+exact `icc_profile=b"A"` despite the out-of-range sequence. Existing native
+sorting/count finalization returns state `1` and byte `[65]`; the facade
+materializes the same Buffer without marker parsing. Raw/facade passed `1/1`
+in `47ms` and `1/1` in `32ms`; no production change or rebuild. ICC/
+open_jpeg/JPEG passed `85/85`, `20/20`, `381/381`; full `1898/1898` in
+`9062ms`. Registrations `933/965`; exports/DLL remain `390/390` and
+`5E8064F81E95ED78E80E47318CD99B0BFC066ABBA65F79E8B485AB3CC1BFB61B`.
+`META-002AA` closes JPEG ICC missing-middle fragment None-state parity.
+Pillow 11.3.0 opens the bounded RGB `2x1` fixture carrying `1/3:A` and `3/3:B`,
+keeps `info["icc_profile"]` present, and assigns Python `None`. Native JPEG
+metadata now preserves tri-state `0=no key`, `1=bytes`, `2=None` through new
+`pillow_c_image_metadata_jpeg_icc_profile_state`; the facade maps state `2` to
+its established `""` analogue. Raw/facade REDs were `0/1` in `78ms` and `0/1`
+in `16ms`; final raw/facade passed `1/1` in `31ms` and `1/1` in `31ms`.
+ICC/open_jpeg/JPEG passed `83/83`, `19/19`, `379/379`; full `1896/1896` in
+`8828ms`. Release x64 rebuilt with zero warnings/errors. Registrations
+`932/964`; exports/DLL are `390/390` and
+`5E8064F81E95ED78E80E47318CD99B0BFC066ABBA65F79E8B485AB3CC1BFB61B`.
+`META-002Z` closes JPEG ICC middle-zero fragment collation. Pillow 11.3.0
+opens the bounded RGB `2x1` fixture carrying `1/3:A`, `2/3:empty`, `3/3:B`
+and exposes exact public ICC bytes `AB`; the existing DLL-owned deferred
+finalizer and facade metadata route already match. Raw/facade passed `1/1` in
+`62ms` and `1/1` in `63ms`; no production change or rebuild. ICC/open_jpeg/
+JPEG passed `81/81`, `18/18`, `377/377`; full `1894/1894` in `15640ms`.
+Registrations `931/963`; exports/DLL remain `389/389` and
+`E1221A50F809492D95507EEC57D02E4ACB6A931FC7986467D4D5131D87819108`.
+`MODE-NUM-001CG` closes numeric `ImageDraw.Floodfill` border-unset above-
+neighbor-distance fill-all traversal. Threshold `8.0` remains below initial
+distances I `16` / F `8.75` but above zero-neighbor distances I `7.0` / F
+`7.25`, so the seed mutates, the zero neighbor is admitted, and DLL traversal
+fills all three samples. Raw/facade passed `1/1` in `1453ms` and `1/1` in
+`79ms`; no production change or rebuild. Threshold-precedence/Floodfill/
+ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`;
+full `1892/1892` in `15375ms`. Registrations `930/962`; exports/DLL remain
+`389/389` and
+`E1221A50F809492D95507EEC57D02E4ACB6A931FC7986467D4D5131D87819108`.
+`MODE-NUM-001CF` closes numeric `ImageDraw.Floodfill` border-unset below-
+neighbor-distance seed-only traversal. Initial distances I `16` / F `8.75`
+exceed thresholds `6.0` / `6.25`, so the seed mutates; the zero neighbor's
+distance I `7.0` / F `7.25` exceeds the threshold and is rejected, leaving the
+final sample unreachable. Raw/facade passed `1/1` in `703ms` and `1/1` in
+`47ms`; no production change or rebuild. Threshold-precedence/Floodfill/
+ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`;
+full `1892/1892` in `8578ms`. Registrations `930/962`; exports/DLL remain
+`389/389` and
+`E1221A50F809492D95507EEC57D02E4ACB6A931FC7986467D4D5131D87819108`.
+`MODE-NUM-001CE` closes numeric `ImageDraw.Floodfill` border-unset neighbor-
+distance equality traversal. Initial distances I `16` / F `8.75` exceed
+thresholds `7.0` / `7.25`, so the seed mutates; the zero neighbor's scalar
+distance equals the threshold, native `<=` admission reaches it, and DLL-owned
+traversal fills all three samples. Raw/facade passed `1/1` in `656ms` and
+`1/1` in `46ms`; no production change or rebuild. Threshold-precedence/
+Floodfill/ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`, `75/75`,
+`96/96`; full `1892/1892` in `9015ms`. Registrations `930/962`; exports/DLL
+remain `389/389` and
+`E1221A50F809492D95507EEC57D02E4ACB6A931FC7986467D4D5131D87819108`.
+`MODE-NUM-001CD` closes numeric `ImageDraw.Floodfill` nonmatching scalar-border
+plus above-initial-distance no-op precedence. Corrected native scalar distances
+I `16` / F `8.75` are below thresholds `17.0` / `9.75`, so the existing DLL
+returns before mutation or supplied-border traversal. Raw/facade passed `1/1`
+in `766ms` and `1/1` in `47ms`; no additional production change or rebuild.
+Threshold-precedence/Floodfill/ImageDraw/color/numeric passed `2/2`, `14/14`,
+`60/60`, `75/75`, `96/96`; full `1892/1892` in `9062ms`. Registrations
+`930/962`; exports/DLL remain `389/389` and
+`E1221A50F809492D95507EEC57D02E4ACB6A931FC7986467D4D5131D87819108`.
+`MODE-NUM-001CC` closes numeric `ImageDraw.Floodfill` nonmatching scalar-border
+plus threshold-equals-initial-distance no-op precedence. Local Pillow 11.3.0
+leaves I/F source bytes unchanged at exact thresholds `16.0` / `8.75`. The raw
+proof first failed because native I/F distance summed four storage-byte
+differences; a new DLL-owned mode-aware scalar distance now serves initial and
+border-unset neighbor comparisons. Release x64 rebuilt with zero warnings or
+errors. Final raw/facade passed `1/1` in `578ms` and `1/1` in `47ms`;
+threshold-precedence/Floodfill/ImageDraw/color/numeric passed `2/2`, `14/14`,
+`60/60`, `75/75`, `96/96`; full `1892/1892` in `9125ms`. Registrations
+`930/962`; exports `389/389`; DLL SHA-256
+`E1221A50F809492D95507EEC57D02E4ACB6A931FC7986467D4D5131D87819108`.
+`MODE-NUM-001CB` closes numeric `ImageDraw.Floodfill` nonmatching scalar-border
+plus finite positive-below-distance threshold traversal. Pillow 11.3.0 and the
+existing packed-scalar native route fill all three I/F samples because initial
+distances `16` / `8.75` exceed `1.0` and no source sample equals border `300`
+/ `2.5`, preserving image/data-pointer identity, mode, size, and exact storage.
+Raw/facade passed `1/1` in `547ms` and `1/1` in `47ms`; no production change
+or rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric passed
+`2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `9047ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001CA` closes numeric `ImageDraw.Floodfill` nonmatching scalar-border
+plus zero-threshold fill-all traversal. Pillow 11.3.0 and the existing packed-
+scalar native route fill all three I/F samples because initial distances `16`
+/ `8.75` exceed `0.0` and no source sample equals border `300` / `2.5`,
+preserving image/data-pointer identity, mode, size, and exact storage. Raw/
+facade passed `1/1` in `547ms` and `1/1` in `47ms`; no production change or
+rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric passed `2/2`,
+`14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `8672ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BZ` closes numeric `ImageDraw.Floodfill` nonmatching scalar-border
+plus finite negative-threshold fill-all traversal. Pillow 11.3.0 and the
+existing packed-scalar native route fill all three I/F samples because the
+initial finite distance is not at most `-1.0` and no source sample equals
+border `300` / `2.5`, preserving image/data-pointer identity, mode, size, and
+exact storage. Raw/facade passed `1/1` in `578ms` and `1/1` in `47ms`; no
+production change or rebuild. Threshold-precedence/Floodfill/ImageDraw/color/
+numeric passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892`
+in `8516ms`. Registrations `930/962`; exports `389/389`; DLL unchanged at
+SHA-256 `8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BY` closes numeric `ImageDraw.Floodfill` nonmatching scalar-border
+plus positive-infinity no-op precedence. Pillow 11.3.0 and the existing native
+route return before seed mutation because every finite initial distance is at
+most positive infinity, so supplied-border traversal is not reached. Image/
+data-pointer identity, mode, size, and exact source storage remain unchanged.
+Raw/facade passed `1/1` in `485ms` and `1/1` in `31ms`; no production change
+or rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric passed
+`2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `8657ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BX` closes numeric `ImageDraw.Floodfill` nonmatching scalar-border
+plus quiet-NaN fill-all traversal. Pillow 11.3.0 and the existing packed-
+scalar native route fill all three I/F samples because the initial ordered
+comparison against NaN is false and no source sample equals border `300` /
+`2.5`, preserving image/data-pointer identity, mode, size, and exact storage.
+Raw/facade passed `1/1` in `438ms` and `1/1` in `31ms`; no production change
+or rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric passed
+`2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `9187ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BW` closes numeric `ImageDraw.Floodfill` nonmatching scalar-border
+plus negative-infinity fill-all traversal. Pillow 11.3.0 and the existing
+packed-scalar native route fill all three I/F samples because the initial
+ordered comparison is false and no source sample equals border `300` / `2.5`,
+preserving image/data-pointer identity, mode, size, and exact storage. Raw/
+facade passed `1/1` in `515ms` and `1/1` in `47ms`; no production change or
+rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric passed `2/2`,
+`14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `8656ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BV` closes numeric `ImageDraw.Floodfill` empty Array-border plus
+negative-infinity traversal and completes the multi/one/empty Array matrix.
+Pillow 11.3.0 empty tuple/list borders and the shared native sentinel fill all
+three I/F samples while preserving image/data-pointer identity and exact
+storage. The reused raw proof and extended facade proof passed `1/1` in
+`344ms` and `1/1` in `31ms`; no production change or rebuild. Threshold-
+precedence/Floodfill/ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`,
+`75/75`, `96/96`; full `1892/1892` in `8516ms`. Registrations `930/962`;
+exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BU` closes numeric `ImageDraw.Floodfill` one-element Array-border
+plus negative-infinity traversal. Pillow 11.3.0 one-element tuple/list borders
+and the shared native sentinel fill all three I/F samples because the initial
+ordered comparison is false and scalar samples remain unequal to the supplied
+non-scalar border, preserving identity and exact storage. The reused raw proof
+and extended facade proof passed `1/1` in `484ms` and `1/1` in `46ms`; no
+production change or rebuild. Threshold-precedence/Floodfill/ImageDraw/color/
+numeric passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892`
+in `8672ms`. Registrations `930/962`; exports `389/389`; DLL unchanged at
+SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BT` closes numeric `ImageDraw.Floodfill` multi-element Array-
+border plus negative-infinity traversal. Pillow 11.3.0 tuple/list borders and
+the shared native supplied-incomparable-border sentinel fill all three I/F
+samples after the initial ordered comparison is false, preserving allocation
+and exact storage. Raw/facade passed immediately `1/1` in `375ms` and `1/1` in
+`31ms`; no production change or rebuild. Threshold-precedence/Floodfill/
+ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`;
+full `1892/1892` in `8546ms`. Registrations `930/962`; exports `389/389`; DLL
+unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BS` closes numeric `ImageDraw.Floodfill` matching scalar-border
+plus negative-infinity seed-only precedence. Pillow 11.3.0 and the native route
+write the I/F seed because the initial comparison is false, then the matching
+zero border stops traversal, preserving allocation and exact remaining bytes.
+Raw/facade passed `1/1` in `437ms` and `1/1` in `31ms`; no production change
+or rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric passed
+`2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `8718ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BR` closes numeric `ImageDraw.Floodfill` empty Array-border plus
+positive-infinity no-op precedence, completing the empty/one/multi-element
+Array shape matrix over the same native sentinel. Pillow 11.3.0 tuple/list
+borders and the shared route return before mutation or traversal, preserving
+allocation and exact storage. The reused raw proof passed `1/1` in `391ms`;
+the extended facade proof passed `1/1` in `31ms`; no production change or
+rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric passed `2/2`,
+`14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `8781ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BQ` closes numeric `ImageDraw.Floodfill` one-element Array-border
+plus positive-infinity no-op precedence. Pillow 11.3.0 tuple/list borders and
+the shared native sentinel return before seed mutation or sentinel traversal,
+preserving allocation and exact I/F storage. The reused raw proof passed `1/1`
+in `359ms`; the extended facade proof passed `1/1` in `32ms`; no production
+change or rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric
+passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in
+`8922ms`. Registrations `930/962`; exports `389/389`; DLL unchanged at
+SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BP` closes numeric `ImageDraw.Floodfill` multi-element Array-
+border plus positive-infinity no-op precedence. Pillow 11.3.0 tuple/list
+borders, the shared native sentinel, and the existing DLL route return before
+seed mutation or supplied-incomparable-border traversal, preserving allocation
+and exact I/F storage. Raw/facade passed immediately `1/1` in `313ms` and
+`1/1` in `32ms`; no production change or rebuild. Threshold-precedence/
+Floodfill/ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`, `75/75`,
+`96/96`; full `1892/1892` in `8609ms`. Registrations `930/962`; exports
+`389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BO` closes numeric `ImageDraw.Floodfill` matching scalar-border
+plus positive-infinity no-op precedence. Pillow 11.3.0 and the existing native
+route return before seed mutation or supplied-border traversal because the
+finite value/background distance is at most positive infinity, preserving
+allocation and exact I/F storage. Raw/facade passed immediately `1/1` in
+`313ms` and `1/1` in `31ms`; no production change or rebuild. Threshold-
+precedence/Floodfill/ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`,
+`75/75`, `96/96`; full `1892/1892` in `9078ms`. Registrations `930/962`;
+exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BN` closes numeric `ImageDraw.Floodfill` empty Array-border plus
+quiet-NaN traversal, completing the empty/one/multi-element Array shape matrix
+over the same native sentinel. Pillow 11.3.0 tuple/list borders and the shared
+native route fill all three I/F samples while preserving allocation and exact
+storage. The reused raw proof passed `1/1` in `281ms`; the extended facade
+proof passed `1/1` in `31ms`; no production change or rebuild. Threshold-
+precedence/Floodfill/ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`,
+`75/75`, `96/96`; full `1892/1892` in `9000ms`. Registrations `930/962`;
+exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BM` closes numeric `ImageDraw.Floodfill` one-element Array-border
+plus quiet-NaN traversal. Pillow 11.3.0 tuple/list borders and the shared native
+sentinel fill all three I/F samples because the initial ordered comparison is
+false and scalar samples remain unequal to the non-scalar border, preserving
+allocation and exact storage. The reused raw proof passed `1/1` in `281ms`;
+the extended facade proof passed `1/1` in `31ms`; no production change or
+rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric passed `2/2`,
+`14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `8735ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BL` closes numeric `ImageDraw.Floodfill` multi-element Array-
+border plus quiet-NaN traversal. Pillow 11.3.0 tuple/list borders and the
+native DLL fill all three I/F samples because the initial ordered comparison
+against NaN is false and scalar samples remain unequal to the non-scalar/
+sentinel border during supplied-border traversal, preserving allocation and
+exact storage. Raw/facade passed immediately `1/1` in `250ms` and `1/1` in
+`31ms`; no production change or rebuild. Threshold-precedence/Floodfill/
+ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`;
+full `1892/1892` in `8594ms`. Registrations `930/962`; exports `389/389`; DLL
+unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BK` closes numeric `ImageDraw.Floodfill` matching scalar-border
+plus quiet-NaN threshold precedence. Pillow 11.3.0 and the native DLL write
+only the I/F seed because the initial ordered comparison against NaN is false
+and the matching signed-int32/float32 zero border then stops traversal,
+preserving allocation and exact remaining storage. Raw/facade passed
+immediately `1/1` in `265ms` and `1/1` in `32ms`; no production change or
+rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric passed `2/2`,
+`14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `8594ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BJ` closes numeric `ImageDraw.Floodfill` border-unset quiet-NaN
+threshold seed-only semantics. Pillow 11.3.0 and the native DLL write only the
+I/F seed because ordered initial and neighbor comparisons against NaN are
+false, preserving allocation and exact remaining storage. Raw/facade passed
+immediately `1/1` in `203ms` and `1/1` in `16ms`; no production change or
+rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric passed `2/2`,
+`14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `8875ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BI` closes numeric `ImageDraw.Floodfill` border-unset negative-
+infinity threshold seed-only semantics. Pillow 11.3.0 and the native DLL write
+only the I/F seed because no finite initial or neighbor distance is at most
+negative infinity, preserving allocation and exact remaining storage. Raw/
+facade passed immediately `1/1` in `203ms` and `1/1` in `32ms`; no production
+change or rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric
+passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in
+`8688ms`. Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BH` closes numeric `ImageDraw.Floodfill` border-unset positive-
+infinity threshold no-op semantics. Pillow 11.3.0 and the native DLL return
+before seed mutation because every finite initial distance is at most positive
+infinity, preserving allocation and exact storage. Raw/facade passed
+immediately `1/1` in `312ms` and `1/1` in `31ms`; no production change or
+rebuild. Threshold-precedence/Floodfill/ImageDraw/color/numeric passed `2/2`,
+`14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `8437ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BG` closes numeric `ImageDraw.Floodfill` empty Array-border
+composition at threshold `-1.0`, completing the empty/one/multi-element Array
+matrix. Pillow 11.3.0 fills all three I/F samples because empty tuple/list
+borders remain incomparable to scalar samples, preserving allocation and exact
+storage. The reused raw proof passed `1/1` in `250ms`; the extended facade
+proof passed `1/1` in `63ms`; no production change or rebuild. Negative-
+threshold/Floodfill/ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`,
+`75/75`, `96/96`; full `1892/1892` in `15875ms`. Registrations `930/962`;
+exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BF` closes numeric `ImageDraw.Floodfill` one-element Array-border
+composition at threshold `-1.0`. Pillow 11.3.0 fills all three I/F samples
+because `(0,)` / `(0.0,)` remain incomparable to scalar samples, preserving
+allocation and exact storage. The reused raw proof passed `1/1` in `234ms`;
+the extended facade proof passed `1/1` in `31ms`; no production change or
+rebuild. Negative-threshold/Floodfill/ImageDraw/color/numeric passed `2/2`,
+`14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `15656ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BE` closes numeric `ImageDraw.Floodfill` nonempty multi-element
+Array-border composition at threshold `-1.0`. Pillow 11.3.0 and the native DLL
+fill all three I/F samples because the supplied incomparable border selects
+border-only neighbor admission, preserving allocation and exact storage.
+Raw/facade passed immediately `1/1` in `125ms` and `1/1` in `16ms`; no
+production change or rebuild. Negative-threshold/Floodfill/ImageDraw/color/
+numeric passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892`
+in `8484ms`. Registrations `930/962`; exports `389/389`; DLL unchanged at
+SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BD` closes numeric `ImageDraw.Floodfill` scalar-border
+composition at threshold `-1.0`. Pillow 11.3.0 and the native DLL write only
+the I/F seed because the supplied matching zero border stops traversal,
+preserving allocation and exact remaining storage. Raw/facade passed
+immediately `1/1` in `110ms` and `1/1` in `16ms`; no production change or
+rebuild. Negative-threshold/Floodfill/ImageDraw/color/numeric passed `2/2`,
+`14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `8922ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BC` closes numeric `ImageDraw.Floodfill` border-unset threshold
+`-1.0` seed-only semantics. Pillow 11.3.0 and the native DLL write I/F seed
+values while no neighbor can meet a negative one-norm threshold, preserving
+allocation and exact remaining storage. Raw/facade passed immediately `1/1`
+in `79ms` and `1/1` in `16ms`; no production change or rebuild. Negative-
+threshold/Floodfill/ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`,
+`75/75`, `96/96`; full `1892/1892` in `8484ms`. Registrations `930/962`;
+exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BB` closes numeric `ImageDraw.Floodfill` empty value-sequence
+precedence over invalid string threshold `"bad"`. Pillow 11.3.0 reaches the
+caught empty-tuple `IndexError` before threshold comparison; empty lists retain
+subtraction errors. Raw passed `1/1` in `94ms`; facade RED failed `0/1` in
+`15ms` on eager threshold validation, then GREEN passed `1/1` in `32ms` after
+empty numeric values were detected first and dispatched with native threshold
+`0.0`. No native change or rebuild. Empty-value/Floodfill/ImageDraw/color/
+numeric passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892`
+in `9266ms`. Registrations `930/962`; exports `389/389`; DLL unchanged at
+SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001BA` closes numeric `ImageDraw.Floodfill` empty value-sequence
+precedence over invalid string border `"bad"`. Pillow 11.3.0 ignores the border
+after the empty tuple reaches its caught `IndexError`; empty lists retain
+subtraction errors. Raw passed `1/1` in `109ms`; facade RED failed `0/1` in
+`15ms` on eager color parsing, then GREEN passed `1/1` in `31ms` after border
+normalization was skipped only for empty numeric values. No native change or
+rebuild. Empty-value/Floodfill/ImageDraw/color/numeric passed `2/2`, `14/14`,
+`60/60`, `75/75`, `96/96`; full `1892/1892` in `9140ms`. Registrations
+`930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001AZ` closes numeric `ImageDraw.Floodfill` empty value-sequence
+precedence with empty tuple/list or AHK Array borders. Pillow 11.3.0 keeps empty
+mode `I`/`F` tuples as successful allocation-preserving no-ops while empty
+lists retain subtraction errors. The reused raw dual-sentinel proof and
+extended facade route passed `1/1` in `94ms` and `1/1` in `31ms` without
+production changes or rebuild. Empty-value/Floodfill/ImageDraw/color/numeric
+passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in
+`8532ms`. Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001AY` closes numeric `ImageDraw.Floodfill` empty value-sequence
+precedence with one-element tuple/list or AHK Array borders. Pillow 11.3.0
+keeps empty mode `I`/`F` tuples as successful allocation-preserving no-ops
+while empty lists retain subtraction errors. The reused raw dual-sentinel proof
+and extended facade route passed `1/1` in `94ms` and `1/1` in `16ms` without
+production changes or rebuild. Empty-value/Floodfill/ImageDraw/color/numeric
+passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in
+`8594ms`. Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001AX` closes numeric `ImageDraw.Floodfill` empty value-sequence
+precedence with nonempty multi-element tuple/list or AHK Array borders. Pillow
+11.3.0 keeps empty mode `I`/`F` tuples as successful allocation-preserving
+no-ops while empty lists retain subtraction errors. The existing native empty-
+value plus incomparable-border sentinel composition and facade lifetime route
+passed raw/facade `1/1` in `187ms` and `1/1` in `31ms` without production
+changes or rebuild. Empty-value/Floodfill/ImageDraw/color/numeric passed `2/2`,
+`14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in `10344ms`.
+Registrations `930/962`; exports `389/389`; DLL unchanged at SHA-256
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001AW` extends numeric `ImageDraw.Floodfill` empty value-sequence
+no-op semantics across scalar borders `0` / `0.0` at threshold zero. Pillow
+11.3.0 keeps empty mode `I`/`F` tuples as successful allocation-preserving
+no-ops while empty lists retain subtraction errors. Local source shows
+`_color_diff(value, background)` executes before border handling and its empty-
+tuple `IndexError` is caught. Extending AU/AV's tests produced raw/facade RED
+`0/1` in `62ms` and `0/1` in `31ms`; removing only the border-unset native/
+facade conditions made GREEN pass `1/1` in `328ms` and `1/1` in `31ms` after
+a zero-warning/error rebuild. Empty-value/Floodfill/ImageDraw/color/numeric
+passed `2/2`, `14/14`, `60/60`, `75/75`, `96/96`; full `1892/1892` in
+`15719ms`. Registrations `930/962`; exports `389/389`; DLL SHA-256 is
+`8C0986528F58B76E44E104FA43077DF2C7CBDE618079E385A68990F39A595B97`.
+`MODE-NUM-001AV` extends numeric `ImageDraw.Floodfill` empty value-sequence
+no-op semantics to threshold `1.0` with border unset. Pillow 11.3.0 keeps empty
+mode `I`/`F` tuples as successful allocation-preserving no-ops while empty
+lists retain subtraction errors. Local source shows `_color_diff` raises
+`IndexError` and Floodfill catches it before threshold use. Extending AU's
+tests produced raw/facade RED `0/1` in `109ms` and `0/1` in `32ms`; removing
+only the threshold-zero sentinel/routing conditions made GREEN pass `1/1` in
+`265ms` and `1/1` in `31ms` after a zero-warning/error rebuild. Combined/
+Floodfill/ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`, `75/75`,
+`96/96`; full `1892/1892` in `24563ms`. Registrations `930/962`; exports
+`389/389`; DLL SHA-256 is
+`EABD8291824F88BCAAAD0D92C277500DD6F488C8DFD55DBA62CB1AE57623C9E3`.
+`MODE-NUM-001AU` closes numeric `ImageDraw.Floodfill` empty value-sequence
+semantics with border unset and threshold zero. Pillow 11.3.0 accepts empty
+mode `I`/`F` tuples as successful no-ops that preserve core identity and exact
+bytes; empty lists raise list-minus-int/float errors. AHK `Array` maps to tuple.
+Raw RED failed `0/1` in `62ms` with `-2`; facade RED failed `0/1` in `32ms`
+with the tuple-color error. The explicit non-null/zero-size native value
+sentinel plus facade routing made raw/facade GREEN pass `1/1` in `79ms` and
+`1/1` in `31ms` after a zero-warning/error Release rebuild. Combined/
+Floodfill/ImageDraw/color/numeric passed `2/2`, `14/14`, `60/60`, `75/75`,
+`96/96`; full `1892/1892` in `20906ms`. Registrations `930/962`; exports
+`389/389`; DLL SHA-256 is
+`AE26A1E30AB59D5A28D498C17A1D55F0E36FB428C5C32CF7AC710E485BFC2F45`.
+`MODE-NUM-001AT` closes numeric `ImageDraw.Floodfill` one-element value-
+sequence packing with border unset and threshold zero. Pillow 11.3.0 accepts
+mode `I`/`F` tuples `(9,)` / `(1.5,)` as scalar values, returns `None`,
+preserves core identity, and emits exact `[9,0,-7]` / `[1.5,0,-7.25]`
+storage; one-element lists raise list-minus-int/float errors before mutation.
+AHK `Array` maps to tuple. The existing route passed facade `1/1` in `31ms`
+and reused raw packed-value `1/1` in `78ms`; no production change or rebuild.
+Floodfill/ImageDraw/color/numeric passed `12/12`, `59/59`, `75/75`, `94/94`;
+full `1890/1890` in `15078ms`. Registrations `929/961`; exports `389/389`;
+DLL unchanged.
+`MODE-NUM-001AS` closes numeric `ImageDraw.Floodfill` empty border-sequence
+incomparability with a valid scalar value and threshold zero. Pillow 11.3.0
+keeps empty tuple/list borders as incomparable objects, fills through scalar
+zero, returns `None`, preserves core identity, and emits exact I/F bytes. The
+reused raw sentinel proof passed `1/1` in `93ms`; the existing all-Array facade
+route passed its empty-Array proof `1/1` in `31ms`. No production change or
+rebuild. Numeric-border/Floodfill/ImageDraw/color/numeric passed `6/6`,
+`11/11`, `58/58`, `75/75`, `93/93`; full `1889/1889` in `16656ms`.
+Registrations `929/960`; exports `389/389`; DLL unchanged.
+`MODE-NUM-001AR` closes numeric `ImageDraw.Floodfill` scalar-border packing
+and traversal with threshold zero. Pillow 11.3.0 and both runtime surfaces
+pack mode `I` border zero as signed int32 and mode `F` zero as float32, stop at
+the matching middle sample, preserve allocation, and emit exact bytes. Raw and
+facade passed immediately `1/1` in `94ms` and `1/1` in `32ms`; no production
+change or rebuild. Combined/Floodfill/ImageDraw/color/numeric passed `2/2`,
+`10/10`, `57/57`, `75/75`, `92/92`; full `1888/1888` in `15547ms`.
+Registrations `929/959`; exports `389/389`; DLL unchanged.
+`MODE-NUM-001AQ` closes numeric `ImageDraw.Floodfill` one-element border-
+sequence incomparability with a valid scalar value and threshold zero. Pillow
+11.3.0 keeps `(0,)` / `[0]` and `(0.0,)` / `[0.0]` as incomparable objects,
+fills through scalar zero, returns `None`, and preserves core identity with
+exact I/F bytes. AHK `Array` maps to tuple. Facade red failed `0/1` in `32ms`
+because the sole item became a real border; routing every numeric border Array
+to AP's sentinel made facade green pass `1/1` in `31ms`. The reused raw ABI
+proof passed `1/1` in `78ms`. Combined/Floodfill/ImageDraw/color/numeric passed
+`3/3`, `8/8`, `56/56`, `75/75`, `90/90`; full `1886/1886` in `16672ms`.
+Registrations `928/958`; exports `389/389`; DLL unchanged.
+`MODE-NUM-001AP` closes numeric `ImageDraw.Floodfill` multi-element border
+incomparability with a valid scalar value and threshold zero. Pillow 11.3.0
+accepts mode `I`/`F` tuple/list borders but never compares them equal to scalar
+samples, so both bounded fixtures fill through zero while preserving core
+identity. AHK `Array` maps to tuple. Raw red failed `0/1` in `47ms` at the zero
+sample; a zero-warning/error Release x64 rebuild made non-null border plus size
+zero an explicit incomparable ABI state, and raw green passed `1/1` in `110ms`.
+Facade red errored `0/1` in `31ms`, then green passed `1/1` in `32ms` after
+sentinel routing. Combined/Floodfill/ImageDraw/color/numeric passed `2/2`,
+`7/7`, `55/55`, `75/75`, `89/89`; full `1885/1885` in `15687ms`.
+Registrations `928/957`; exports `389/389`; rebuilt DLL SHA-256 is
+`B9DE93EE8F1E8E1986014BF2651F3B525D0A4E65DB27ADB66568CDB2E1675301`.
+`MODE-NUM-001AO` closes numeric `ImageDraw.Floodfill` value multi-element
+color-sequence rejection with border unset and threshold zero. Pillow 11.3.0
+reports mode `I` tuples as `color must be int or single-element tuple` and
+mode `F` tuples as `must be real number, not tuple`; Python lists instead
+reach floodfill's distance calculation and report subtraction type errors.
+All oracle failures preserve identity/bytes, and AHK `Array` maps to tuple.
+Facade red failed `0/1` in `31ms`; existing raw Floodfill invalid-argument
+coverage passed `1/1` in `94ms`, then facade green passed `1/1` in `31ms`
+after value-local validation. Floodfill/ImageDraw/color/numeric passed `3/3`
+in `31ms`, `54/54` in `140ms`, `75/75` in `297ms`, and `87/87` in `469ms`;
+full `1883/1883` in `15141ms`. Registrations `927/956`; exports `389/389`;
+DLL unchanged.
+`MODE-NUM-001AN` closes numeric `ImageDraw.Bitmap` fill multi-element color-
+sequence rejection with a valid mode `1` mask. Pillow 11.3.0 reports mode `I`
+tuple/list pairs as `color must be int or single-element tuple`; mode `F`
+reports `must be real number, not tuple` for tuple and the corresponding list
+message. All oracle failures preserve target/mask identity and bytes; AHK
+`Array` maps to tuple. Facade red failed `0/1` in `32ms`; existing raw Bitmap
+invalid-argument coverage passed `1/1` in `78ms`, then facade green passed
+`1/1` in `31ms` after Bitmap-local fill validation. Bitmap/ImageDraw/color/
+numeric passed `3/3` in `32ms`, `53/53` in `125ms`, `75/75` in `297ms`, and
+`86/86` in `453ms`; full `1882/1882` in `15610ms`. Registrations `927/955`;
+exports `389/389`; DLL unchanged.
+`MODE-NUM-001AM` closes numeric `ImageDraw.RoundedRectangle` outline multi-
+element color-sequence rejection with fill unset. Pillow 11.3.0 reports mode
+`I` tuple/list pairs as `color must be int or single-element tuple`; mode `F`
+reports `must be real number, not tuple` for tuple and the corresponding list
+message. All oracle failures preserve identity/bytes and AHK `Array` maps to
+tuple. Facade red failed `0/1` in `32ms`; existing raw RoundedRectangle invalid-
+argument coverage passed `1/1` in `78ms`, then facade green passed `1/1` in
+`31ms` after outline-local validation. RoundedRectangle/ImageDraw/color/
+numeric passed `5/5` in `47ms`, `52/52` in `125ms`, `74/74` in `328ms`, and
+`85/85` in `516ms`; full `1881/1881` in `16594ms`. Registrations `927/954`;
+exports `389/389`; DLL unchanged.
+`MODE-NUM-001AL` closes numeric `ImageDraw.RoundedRectangle` fill multi-element
+color-sequence rejection with outline unset. Pillow 11.3.0 reports mode `I`
+tuple/list pairs as `color must be int or single-element tuple`; mode `F`
+reports `must be real number, not tuple` for tuple and the corresponding list
+message. All oracle failures preserve identity/bytes and AHK `Array` maps to
+tuple. Facade red failed `0/1` in `31ms`; existing raw RoundedRectangle invalid-
+argument coverage passed `1/1` in `94ms`, then facade green passed `1/1` in
+`31ms` after fill-local validation. RoundedRectangle/ImageDraw/color/numeric
+passed `4/4` in `31ms`, `51/51` in `125ms`, `73/73` in `359ms`, and `84/84`
+in `532ms`; full `1880/1880` in `15328ms`. Registrations `927/953`; exports
+`389/389`; DLL unchanged.
+`MODE-NUM-001AK` closes numeric `ImageDraw.Pieslice` outline multi-element
+color-sequence rejection with fill unset. Pillow 11.3.0 reports mode `I`
+tuple/list pairs as `color must be int or single-element tuple`; mode `F`
+reports `must be real number, not tuple` for tuple and the corresponding list
+message. All oracle failures preserve identity/bytes and AHK `Array` maps to
+tuple. Facade red failed `0/1` in `31ms`; existing raw Pieslice invalid-
+argument coverage passed `1/1` in `78ms`, then facade green passed `1/1` in
+`31ms` after outline-local validation. Pieslice/ImageDraw/color/numeric passed
+`4/4` in `31ms`, `50/50` in `157ms`, `72/72` in `266ms`, and `83/83` in
+`453ms`; full `1879/1879` in `15344ms`. Registrations `927/952`; exports
+`389/389`; DLL unchanged.
+`MODE-NUM-001AJ` closes numeric `ImageDraw.Pieslice` fill multi-element color-
+sequence rejection with outline unset. Pillow 11.3.0 reports mode `I`
+tuple/list pairs as `color must be int or single-element tuple`; mode `F`
+reports `must be real number, not tuple` for tuple and the corresponding list
+message. All oracle failures preserve identity/bytes and AHK `Array` maps to
+tuple. Facade red failed `0/1` in `31ms`; existing raw Pieslice invalid-
+argument coverage passed `1/1` in `78ms`, then facade green passed `1/1` in
+`31ms` after fill-local validation. Pieslice/ImageDraw/color/numeric passed
+`3/3` in `32ms`, `49/49` in `157ms`, `71/71` in `281ms`, and `82/82` in
+`454ms`; full `1878/1878` in `16328ms`. Registrations `927/951`; exports
+`389/389`; DLL unchanged.
+`MODE-NUM-001AI` closes numeric `ImageDraw.Chord` outline multi-element color-
+sequence rejection with fill unset. Pillow 11.3.0 reports mode `I` tuple/list
+pairs as `color must be int or single-element tuple`; mode `F` reports
+`must be real number, not tuple` for tuple and the corresponding list message.
+All oracle failures preserve identity/bytes and AHK `Array` maps to tuple.
+Facade red failed `0/1` in `31ms`; existing raw Chord invalid-argument
+coverage passed `1/1` in `62ms`, then facade green passed `1/1` in `31ms`
+after outline-local validation. Chord/ImageDraw/color/numeric passed `4/4` in
+`32ms`, `48/48` in `140ms`, `70/70` in `312ms`, and `81/81` in `484ms`;
+full `1877/1877` in `15657ms`. Registrations `927/950`; exports `389/389`;
+DLL unchanged.
+`MODE-NUM-001AH` closes numeric `ImageDraw.Chord` fill multi-element color-
+sequence rejection with outline unset. Pillow 11.3.0 reports mode `I`
+tuple/list pairs as `color must be int or single-element tuple`; mode `F`
+reports `must be real number, not tuple` for tuple and the corresponding list
+message. All oracle failures preserve identity/bytes and AHK `Array` maps to
+tuple. Facade red failed `0/1` in `31ms`; existing raw Chord invalid-argument
+coverage passed `1/1` in `78ms`, then facade green passed `1/1` in `32ms`
+after fill-local validation. Chord/ImageDraw/color/numeric passed `3/3` in
+`31ms`, `47/47` in `140ms`, `69/69` in `281ms`, and `80/80` in `500ms`;
+full `1876/1876` in `16922ms`. Registrations `927/949`; exports `389/389`;
+DLL unchanged.
+`MODE-NUM-001AG` closes numeric `ImageDraw.Arc` fill multi-element color-
+sequence rejection. Pillow 11.3.0 reports mode `I` tuple/list pairs as
+`color must be int or single-element tuple`; mode `F` reports
+`must be real number, not tuple` for tuple and the corresponding list message.
+All oracle failures preserve identity/bytes and AHK `Array` maps to tuple.
+Facade red failed `0/1` in `31ms`; existing raw Arc invalid-argument coverage
+passed `1/1` in `79ms`, then facade green passed `1/1` in `31ms` after
+Arc-local validation. Arc/ImageDraw/color/numeric passed `3/3` in `32ms`,
+`46/46` in `156ms`, `68/68` in `312ms`, and `79/79` in `516ms`; full
+`1875/1875` in `17110ms`. Registrations `927/948`; exports `389/389`; DLL
+unchanged.
+`MODE-NUM-001AF` closes numeric `ImageDraw.Ellipse` outline multi-element
+color-sequence rejection with fill unset. Pillow 11.3.0 reports mode `I`
+tuple/list pairs as `color must be int or single-element tuple`; mode `F`
+reports `must be real number, not tuple` for tuple and the corresponding list
+message. All oracle failures preserve identity/bytes and AHK `Array` maps to
+tuple. Facade red failed `0/1` in `31ms`; existing raw Ellipse invalid-
+argument coverage passed `1/1` in `94ms`, then facade green passed `1/1` in
+`32ms` after outline-local validation. Ellipse/ImageDraw/color/numeric passed
+`4/4` in `32ms`, `45/45` in `140ms`, `67/67` in `328ms`, and `78/78` in
+`562ms`; full `1874/1874` in `16796ms`. Registrations `927/947`; exports
+`389/389`; DLL unchanged.
+`MODE-NUM-001AE` closes numeric `ImageDraw.Ellipse` fill multi-element color-
+sequence rejection with outline unset. Pillow 11.3.0 reports mode `I`
+tuple/list pairs as `color must be int or single-element tuple`; mode `F`
+reports `must be real number, not tuple` for tuple and the corresponding list
+message. All oracle failures preserve identity/bytes and AHK `Array` maps to
+tuple. Facade red failed `0/1` in `16ms`; existing raw Ellipse invalid-
+argument coverage passed `1/1` in `78ms`, then facade green passed `1/1` in
+`16ms` after fill-local validation. Ellipse/ImageDraw/color/numeric passed
+`3/3` in `47ms`, `44/44` in `140ms`, `66/66` in `266ms`, and `77/77` in
+`500ms`; full `1873/1873` in `14875ms`. Registrations `927/946`; exports
+`389/389`; DLL unchanged.
+`MODE-NUM-001AD` closes numeric `ImageDraw.Rectangle` outline multi-element
+color-sequence rejection with fill unset. Pillow 11.3.0 reports mode `I`
+tuple/list pairs as `color must be int or single-element tuple`; mode `F`
+reports `must be real number, not tuple` for tuple and the corresponding list
+message. All oracle failures preserve identity/bytes and AHK `Array` maps to
+tuple. Facade red failed `0/1` in `47ms`; existing raw Rectangle coverage
+passed `1/1` in `63ms`, then facade green passed `1/1` in `31ms` after
+outline-local validation. Rectangle/ImageDraw/color/numeric passed `4/4` in
+`47ms`, `43/43` in `125ms`, `65/65` in `250ms`, and `76/76` in `484ms`; full
+`1872/1872` in `15469ms`. Registrations `927/945`; exports `389/389`; DLL
+unchanged.
+`MODE-NUM-001AC` closes numeric `ImageDraw.Rectangle` fill multi-element color-
+sequence rejection with outline unset. Pillow 11.3.0 reports mode `I`
+tuple/list pairs as `color must be int or single-element tuple`; mode `F`
+reports `must be real number, not tuple` for tuple and the corresponding list
+message. All oracle failures preserve identity/bytes and AHK `Array` maps to
+tuple. Facade red failed `0/1` in `47ms`; existing raw Rectangle invalid-
+argument coverage passed `1/1` in `62ms`, then facade green passed `1/1` in
+`31ms` after fill-local validation. Rectangle/ImageDraw/color/numeric passed
+`3/3` in `31ms`, `42/42` in `140ms`, `64/64` in `266ms`, and `75/75` in
+`531ms`; full `1871/1871` in `15250ms`. Registrations `927/944`; exports
+`389/389`; DLL unchanged.
+`MODE-NUM-001AB` closes numeric `ImageDraw.Line` multi-element color-sequence
+rejection semantics. Pillow 11.3.0 again reports mode `I` tuple/list pairs as
+`color must be int or single-element tuple`, while mode `F` reports
+`must be real number, not tuple` for tuple and the corresponding Python-list
+message; all oracle failures preserve identity and bytes, and AHK `Array` maps
+to tuple. Facade red failed `0/1` in `31ms`; existing raw draw-line invalid-
+argument coverage passed `1/1` in `93ms`, then facade green passed `1/1` in
+`31ms` after Line-local validation. Line/ImageDraw/color/numeric passed `6/6`
+in `47ms`, `41/41` in `141ms`, `63/63` in `297ms`, and `74/74` in `453ms`;
+full `1870/1870` in `15344ms`. Registrations `927/943`; exports `389/389`; DLL
+unchanged.
+`MODE-NUM-001AA` closes numeric `ImageDraw.Point` multi-element color-sequence
+rejection semantics. Pillow 11.3.0 uses the same bounded errors as Paste: mode
+`I` tuple/list pairs report `color must be int or single-element tuple`; mode
+`F` reports `must be real number, not tuple` for the tuple and the corresponding
+Python-list message. All oracle cases preserve identity and bytes; AHK `Array`
+maps to tuple. Facade red failed `0/1` in `31ms` on the generic length error;
+the existing raw draw-points invalid-fill test passed `1/1` in `63ms`, then the
+renamed facade green passed `1/1` in `32ms` after Point-local validation.
+Point/ImageDraw/color/numeric passed `3/3` in `47ms`, `40/40` in `125ms`,
+`62/62` in `250ms`, and `73/73` in `610ms`; full `1869/1869` in `15563ms`.
+Registrations `927/942`; exports `389/389`; DLL unchanged.
+`MODE-NUM-001Z` closes numeric multi-element color-sequence Image.Paste
+rejection semantics. Pillow 11.3.0 rejects mode `I` tuple/list pairs with
+`color must be int or single-element tuple`; mode `F` reports
+`must be real number, not tuple` for the tuple and the corresponding `list`
+message for a Python list. AHK `Array` follows the established tuple analogue.
+All oracle cases preserve identity and raw bytes. Facade red failed `0/1` in
+`16ms` on the generic channel-length error; the existing raw ABI proof passed
+`1/1` in `109ms`, then facade green passed `1/1` in `31ms` after Paste-local
+validation emitted the two tuple errors before the DLL call. Paste-color/Paste/
+color/numeric passed `6/6` in `31ms`, `29/29` in `93ms`, `61/61` in `281ms`,
+and `72/72` in `438ms`; full `1868/1868` in `15594ms`. Registrations `927/941`;
+exports `389/389`; DLL unchanged.
+`MODE-NUM-001Y` closes numeric one-element color-sequence Image.Paste
+semantics. Pillow 11.3.0 accepts tuples `(300,)` / `(1.5,)` and fills mode `I`
+with signed-int32 `2c010000` / mode `F` with float32 `0000c03f`; Python lists
+are rejected, while AHK `Array` is the facade's established tuple analogue.
+The existing raw DLL fill passed `1/1` in `109ms`; facade red failed `0/1` in
+`15ms` because `[300]` produced `2c000000`, then facade/combined passed `1/1`
+in `31ms` and `2/2` in `62ms` after all numeric colors reused `ColorBuffer`.
+Paste/color/numeric passed `28/28` in `63ms`, `60/60` in `281ms`, and `71/71`
+in `422ms`; full `1867/1867` in `16672ms`. Registrations `927/940`; exports
+`389/389`; DLL unchanged.
+`MODE-NUM-001X` closes numeric scalar-color Image.Paste semantics. Pillow
+11.3.0 requires signed-int32 packing for mode `I` scalar `300` and float32
+packing for mode `F` scalar `1.5`; raw DLL fill was already exact, while the
+facade previously truncated each color to one byte. Raw targeted passed `1/1`
+in `93ms`; facade red failed `0/1` in `15ms` with `2c000000` instead of
+`2c010000`, then facade/combined passed `1/1` in `31ms` and `2/2` in `62ms`
+after `PasteColorBuffer` reused numeric `ColorBuffer`. Paste/color/numeric
+passed `27/27`, `59/59`, `70/70`; full `1866/1866` in `16563ms`.
+Registrations `927/939`; exports `389/389`; DLL unchanged.
+`MODE-NUM-001W` closes numeric Image.Paste masked semantics. Pillow 11.3.0 and
+both runtime surfaces mutate the existing `I`/`F` target allocation with exact
+four-byte storage results under a partial mode-L mask while leaving source and
+mask bytes unchanged. Raw/facade/combined passed `1/1` in `188ms`, `1/1` in
+`31ms`, `2/2` in `47ms`; no production or DLL change. Paste/masked/numeric
+passed `25/25`, `8/8`, `68/68`; full `1864/1864` in `15672ms`.
+Registrations `926/938`; exports `389/389`; DLL unchanged.
+`MODE-NUM-001V` closes numeric Image.Composite mask semantics. Pillow 11.3.0
+and both runtime surfaces preserve mode/size while blending each of the four
+stored `I`/`F` bytes independently under partial mode-L mask values; the DLL's
+existing byte loop and rounding are exact. Raw/facade/combined passed `1/1` in
+`140ms`, `1/1` in `32ms`, `2/2` in `62ms`; no production or DLL change.
+Composite/ImageChops/numeric passed `29/29`, `59/59`, `66/66`; full
+`1862/1862` in `16734ms`. Registrations `925/937`; exports `389/389`; DLL
+unchanged.
+`MODE-NUM-001U` closes numeric ImageChops.Duplicate copy semantics. Pillow
+11.3.0 and both runtime surfaces preserve mode, dimensions, and exact
+four-byte `I`/`F` sample bytes in independent storage that remains valid after
+source mutation or destruction. Raw/facade/combined passed `1/1` in `156ms`,
+`1/1` in `32ms`, `2/2` in `63ms`; no production or DLL change. Duplicate/
+ImageChops/numeric passed `11/11`, `58/58`, `64/64`; full `1860/1860` in
+`15297ms`. Registrations `924/936`; exports `389/389`; DLL unchanged.
+`MODE-NUM-001T` closes numeric-source ImageChops.Constant semantics. Pillow
+11.3.0 and both runtime surfaces use `I`/`F` sources only for dimensions,
+return same-size mode `L`, and clip/fill entirely in the DLL. Raw/facade/
+combined passed `1/1` in `109ms`, `1/1` in `15ms`, `2/2` in `47ms`; no
+production or DLL change. Constant/ImageChops/numeric passed `12/12`, `56/56`,
+`62/62`; full `1858/1858` in `16625ms`. Registrations `923/935`; exports
+`389/389`; DLL unchanged.
+`MODE-NUM-001S` closes numeric ImageChops.Offset semantics. Pillow 11.3.0 and
+both runtime surfaces wrap complete four-byte `I`/`F` samples for positive and
+negative two-dimensional offsets; the existing DLL copies `channels=4` bytes
+per pixel, so no sample shearing occurs. Raw/facade/combined passed `1/1` in
+`109ms`, `1/1` in `31ms`, `2/2` in `63ms`; no production or DLL change.
+Offset/ImageChops/numeric passed `21/21`, `54/54`, `60/60`; full `1856/1856`
+in `16203ms`. Registrations `922/934`; exports `389/389`; DLL unchanged.
+`MODE-NUM-001R` closes numeric ImageChops.Invert semantics. Pillow 11.3.0 and
+both runtime surfaces bitwise-complement each 32-bit `I`/`F` sample exactly;
+the existing DLL byte loop is bitwise equivalent and the facade already
+preserves numeric mode, size, and bytes. Raw/facade/combined passed `1/1` in
+`109ms`, `1/1` in `31ms`, `2/2` in `63ms`; no production or DLL change.
+Invert/ImageChops/numeric passed `8/8`, `52/52`, `58/58`; full `1854/1854`
+in `16281ms`. Registrations `921/933`; exports `389/389`; DLL unchanged.
+`MODE-NUM-001Q` closes numeric ImageChops logical-operation rejection. The
+native logical exports already reject matching `I` and `F` handles with `-3`
+before their mode-1 loops; the facade now reuses numeric-aware ImageChops
+status normalization and raises exact `image has wrong mode`. Raw/facade/
+combined passed `1/1` in `94ms`, `1/1` in `32ms`, `2/2` in `47ms`; no native
+or DLL change. Logical/ImageChops/numeric passed `13/13`, `50/50`, `56/56`;
+full `1852/1852` in `16234ms`. Registrations `920/932`; exports `389/389`;
+DLL unchanged.
+`MODE-NUM-001P` closes nonempty numeric ImageStat semantics. DLL-owned numeric
+histograms and the facade statistics object match Pillow's 256-bin-derived
+extrema/count/sum/sum2/mean/median/rms/var/stddev values for bounded `I` and
+`F` fixtures. Raw/facade/combined passed `1/1` in `62ms`, `1/1` in `31ms`,
+`2/2` in `47ms`; no production/DLL change. ImageStat/histogram/numeric passed
+`5/5`, `26/26`, `54/54`; full `1850/1850` in `14469ms`. Registrations
+`919/931`; exports `389/389`; DLL unchanged.
+`META-002Y` closes zero-length-final JPEG ICC fragment-mixture parity. A
+nonempty `1/2:AB` fragment followed by a zero-length `2/2` fragment opens as
+public ICC bytes `AB` through raw/facade routes. Raw/facade/combined passed
+`1/1` in `78ms`, `1/1` in `62ms`, `2/2` in `125ms`; no production/DLL change.
+ICC/open_jpeg/JPEG passed `79/79`, `17/17`, `375/375`; full `1848/1848` in
+`16297ms`. Registrations `918/930`; exports `389/389`; DLL unchanged.
+`META-002X` closes zero-length-first JPEG ICC fragment-mixture parity. A
+zero-length `1/2` fragment followed by `2/2:AB` opens as public ICC bytes `AB`
+through raw/facade routes. Raw/facade/combined passed `1/1` in `62ms`, `1/1`
+in `94ms`, `2/2` in `62ms`; no production/DLL change. ICC/open_jpeg/JPEG
+passed `77/77`, `16/16`, `373/373`; full `1846/1846` in `17391ms`.
+Registrations `917/929`; exports `389/389`; DLL unchanged.
+`META-002W` closes explicit empty JPEG ICC save omission parity. Raw metadata
+save with zero ICC bytes and facade save with an empty Buffer emit no
+`ICC_PROFILE\0` APP2 marker and reopen without public ICC metadata.
+Raw/facade/combined passed `1/1` in `62ms`, `1/1` in `31ms`, `2/2` in `109ms`;
+no production/DLL change. ICC/JPEG passed `75/75`, `371/371`; full
+`1844/1844` in `16234ms`. Registrations `916/928`; exports `389/389`; DLL
+unchanged.
+`META-002V` closes Pillow-compatible permissive duplicate-sequence JPEG ICC
+collation. Two pre-SOF `ICC_PROFILE\0,1,2` APP2 markers carrying `A` and `B`
+open as public ICC bytes `AB` through raw/facade routes. Raw/facade/combined
+passed `1/1` in `93ms`, `1/1` in `47ms`, `2/2` in `78ms`; no production/DLL
+change. ICC/open_jpeg/JPEG passed `73/73`, `15/15`, `369/369`; full
+`1842/1842` in `17578ms`. Registrations `915/927`; exports `389/389`; DLL
+unchanged.
+`FMT-JPEG-002B2CS` closes CR's complete 1505-byte marker stream/whole file
+with SHA-256 `3af51c969694046b53a4fb0a4b73caee13617ffb286cbf5119b7be62458b5565`.
+Raw/facade/combined passed `1/1` in `78ms`, `1/1` in `32ms`, `2/2` in `78ms`;
+no production/DLL change. Whole-file/default-4:2:0/progressive/optimize/
+restart/JPEG passed `60/60`, `8/8`, `125/125`, `156/156`, `169/169`,
+`367/367`; full `1840/1840` in `16391ms`. Registrations `914/926`; exports
+`389/389`; DLL unchanged.
+`FMT-JPEG-002B2CR` closes default-4:2:0 rows-6 over-scan/no-RST codec parity.
+Pillow's 1505-byte target SHA-256 is
+`3af51c969694046b53a4fb0a4b73caee13617ffb286cbf5119b7be62458b5565`;
+DRI is `[18,36,18,36,18,36]`, all ten RST arrays are empty, DHT hash is
+`bd3287442c5432c45db3c7fe4d7155e5eb9e612f2b9360ce454b2df05687d450`,
+and entropy is 736/`391f5340980788ea1581f0183af5cc13b42de51705bd74c93c09323cc888a73e`.
+Raw/facade/combined passed `1/1` in `47ms`, `1/1` in `31ms`, `2/2` in `79ms`;
+no production/DLL change. Filters `6/6`, `161/161`, `123/123`, `154/154`,
+`167/167`, `43/43`, `365/365`; full `1838/1838` in `17109ms`. Registrations
+`913/925`; exports `389/389`; DLL unchanged.
+`FMT-JPEG-002B2CQ` closes CP's complete 1757-byte marker stream/whole file
+with SHA-256 `a51da5feec5f2a113a166e7df82fca3ca696713ff5b4cdf573cda267e73fa74f`.
+Raw/facade/combined passed `1/1` in `46ms`, `1/1` in `15ms`, `2/2` in `47ms`;
+no production/DLL change. Whole-file/source-4:2:2/progressive/optimize/restart/
+JPEG passed `58/58`, `8/8`, `121/121`, `152/152`, `165/165`, `363/363`;
+full `1836/1836` in `8579ms`. Registrations `912/924`; exports `389/389`;
+DLL unchanged.
+`FMT-JPEG-002B2CP` closes source-4:2:2 rows-6 over-scan/no-RST parity.
+Pillow's 1757-byte target SHA-256 is
+`a51da5feec5f2a113a166e7df82fca3ca696713ff5b4cdf573cda267e73fa74f`;
+DRI is `[18,36,18,36,18,36]`, all ten RST arrays are empty, DHT hash is
+`747a8196f6e9ff1cc69b6d6bdb3c7f694bbbea4108b5553ae0a98028ea64ece7`,
+and entropy is 973/`c92ff657b0890dd2ef50a5d88a9436651d649bb06caede28280eabdec217d2b3`.
+Raw/facade/combined passed `1/1` in `31ms`, `1/1` in `16ms`, `2/2` in `47ms`;
+no production/DLL change. Filters `6/6`, `161/161`, `119/119`, `150/150`,
+`163/163`, `43/43`, `361/361`; full `1834/1834` in `8547ms`. Registrations
+`911/923`; exports `389/389`; DLL unchanged.
+`FMT-JPEG-002B2CO` closes CN's complete 1505-byte marker stream/whole file
+with SHA-256 `ea0ef9d385d373b2fcd529b13a4a480b63a73b9f27f4cdafc8bdb2665a31751a`.
+Raw/facade/combined passed `1/1` in `78ms`, `1/1` in `94ms`, `2/2` in `109ms`;
+no production/DLL change. Whole-file/default-4:2:0/progressive/optimize/
+restart/JPEG passed `56/56`, `4/4`, `117/117`, `148/148`, `161/161`,
+`359/359`; full `1832/1832` in `17063ms`. Registrations `910/922`; exports
+`389/389`; DLL unchanged.
+`FMT-JPEG-002B2CN` closes default-4:2:0 rows-5 over-scan/no-RST codec parity.
+Pillow's 1505-byte target has SHA-256
+`ea0ef9d385d373b2fcd529b13a4a480b63a73b9f27f4cdafc8bdb2665a31751a`,
+DRI `[15,30,15,30,15,30]`, ten empty RST arrays, DHT hash
+`bd3287442c5432c45db3c7fe4d7155e5eb9e612f2b9360ce454b2df05687d450`,
+and 736 entropy bytes hashing to
+`391f5340980788ea1581f0183af5cc13b42de51705bd74c93c09323cc888a73e`.
+Raw/facade/combined passed `1/1` in `47ms`, `1/1` in `32ms`, `2/2` in `47ms`;
+no production/DLL change. Default-4:2:0/qtables/progressive/optimize/restart/
+DHT/JPEG passed `2/2`, `161/161`, `115/115`, `146/146`, `159/159`, `43/43`,
+`357/357`; full `1830/1830` in `18062ms`. Registrations `909/921`; exports
+`389/389`; DLL unchanged.
+`FMT-JPEG-002B2CM` closes CL's complete 1757-byte marker stream/whole file
+with SHA-256 `42e70b70931dec6d4d22425876055128f4d872c63b6ec067128f48aae0b650d8`.
+Raw/facade/combined passed `1/1` in `79ms`, `1/1` in `63ms`, `2/2` in `109ms`;
+no production/DLL change. Whole-file/source-4:2:2/qtables/progressive/optimize/
+restart/DHT/JPEG passed `54/54`, `4/4`, `161/161`, `113/113`, `144/144`,
+`157/157`, `43/43`, `355/355`; full `1828/1828` in `19593ms`. Registrations
+`908/920`; exports `389/389`; DLL unchanged.
+`FMT-JPEG-002B2CL` closes source-4:2:2 rows-5 over-scan/no-RST codec parity.
+Pillow's 1757-byte target has SHA-256
+`42e70b70931dec6d4d22425876055128f4d872c63b6ec067128f48aae0b650d8`,
+DRI `[15,30,15,30,15,30]`, ten empty RST arrays, DHT hash
+`747a8196f6e9ff1cc69b6d6bdb3c7f694bbbea4108b5553ae0a98028ea64ece7`,
+and 973 entropy bytes hashing to
+`c92ff657b0890dd2ef50a5d88a9436651d649bb06caede28280eabdec217d2b3`.
+Raw/facade/combined passed `1/1` in `78ms`, `1/1` in `63ms`, `2/2` in `79ms`;
+no production/DLL change. Source-4:2:2/qtables/progressive/optimize/restart/
+DHT/JPEG passed `2/2`, `161/161`, `111/111`, `142/142`, `155/155`, `43/43`,
+`353/353`; full `1826/1826` in `18063ms`. Registrations are `907` raw / `919`
+facade; exports `389/389`; DLL hash remains `7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2CK` closes complete marker-stream/whole-file parity for CJ's
+default-4:2:0 rows-4 route. Raw/facade/combined immediately match Pillow's
+1505-byte file and SHA-256
+`1bbb855feed950de122ed61036d4647dbe55169f2d5421b2f9908cea9e3fb722` in
+`1/1` (`31ms`), `1/1` (`15ms`), and `2/2` (`47ms`) without production, ABI,
+export, or DLL changes. Whole-file/default-subsampling/qtables-keep/
+progressive/optimize/restart/qtables/DHT/JPEG passed `52/52`, `22/22`,
+`70/70`, `109/109`, `140/140`, `153/153`, `161/161`, `42/42`, and `351/351`;
+full `1824/1824` passed in `8484ms`. Registrations are `906` raw / `918`
+facade; exports remain `389/389`; DLL SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2CJ` closes exact progressive codec-stream parity on the fixed
+opened RGB omitted/default-4:2:0 rows-4 branch. Pillow `11.3.0`
+deterministically writes 1505 bytes with SHA-256
+`1bbb855feed950de122ed61036d4647dbe55169f2d5421b2f9908cea9e3fb722`,
+ten DHT lengths `22/22/26/38/35/47/36/28/31/30`, and DRI changes
+`[12,24,12,24,12,24]`. Ordered DHT payload SHA-256 is
+`bd3287442c5432c45db3c7fe4d7155e5eb9e612f2b9360ce454b2df05687d450`;
+all ten restart arrays are empty and the 736 entropy bytes hash to
+`391f5340980788ea1581f0183af5cc13b42de51705bd74c93c09323cc888a73e`.
+Raw/facade/combined immediately passed `1/1` in `47ms`, `1/1` in `15ms`, and
+`2/2` in `62ms`; the existing native route already handles the default-4:2:0
+rows-4 scan geometry, so no production, ABI, export, or DLL change was made
+and no rebuild was required. Default-subsampling/qtables-keep/progressive/
+optimize/restart/qtables/Huffman/DHT/JPEG passed `20/20`, `68/68`, `107/107`,
+`138/138`, `151/151`, `159/159`, `8/8`, `42/42`, and `349/349`; full
+`1822/1822` passed in `8531ms`. The tree registers `905` raw DLL / `917`
+facade / `1822` total tests; source/Release exports remain `389/389`. DLL
+SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2CI` closes complete marker-stream and whole-file parity for CH's
+opened RGB source-4:2:2 optimized-progressive rows-4 route. Raw and public
+facade both immediately write Pillow 11.3.0's complete 1757-byte file with
+SHA-256
+`ea3a041a14fae80939d499cebf1c2f11eaa2d5089ab1618a392f65a0e1ac4e10`.
+This pins APP0/EXIF/ICC/COM/DQT/SOF2, all ten DHT/SOS scans, six DRI changes,
+all entropy bytes, empty restart state, and EOI in one existing DLL call.
+Raw/facade/combined passed `1/1` in `31ms`, `1/1` in `31ms`, and `2/2` in
+`47ms`. No production, ABI, export, or DLL change was made and no rebuild was
+required. Whole-file/subsampling-keep/qtables-keep/progressive/optimize/
+restart/qtables/DHT/JPEG passed `50/50`, `28/28`, `66/66`, `105/105`,
+`136/136`, `149/149`, `157/157`, `40/40`, and `347/347`; full `1820/1820`
+passed in `8297ms`. The tree registers `904` raw DLL / `916` facade / `1820`
+total tests; source/Release exports remain `389/389`. DLL SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2CH` closes exact progressive codec-stream parity on the fixed
+opened RGB source-4:2:2 rows-4 branch where each restart interval equals the
+complete scan and no terminal RST is emitted. Pillow `11.3.0` deterministically
+writes 1757 bytes with SHA-256
+`ea3a041a14fae80939d499cebf1c2f11eaa2d5089ab1618a392f65a0e1ac4e10`,
+ten DHT lengths `23/23/26/44/43/47/36/27/31/30`, and DRI changes
+`[12,24,12,24,12,24]`. Ordered DHT payload SHA-256 is
+`747a8196f6e9ff1cc69b6d6bdb3c7f694bbbea4108b5553ae0a98028ea64ece7`;
+all ten restart arrays are empty and the 973 entropy bytes hash to
+`c92ff657b0890dd2ef50a5d88a9436651d649bb06caede28280eabdec217d2b3`.
+Raw/facade/combined immediately passed `1/1` in `78ms`, `1/1` in `63ms`, and
+`2/2` in `93ms`; the existing native route already handles the whole-scan
+interval boundary, so no production, ABI, export, or DLL change was made and
+no rebuild was required. Subsampling-keep/qtables-keep/progressive/optimize/
+restart/qtables/Huffman/DHT/JPEG passed `26/26`, `64/64`, `103/103`, `134/134`,
+`147/147`, `155/155`, `8/8`, `40/40`, and `345/345`; full `1818/1818` passed
+in `15422ms`. The tree registers `903` raw DLL / `915` facade / `1818` total
+tests; source/Release exports remain `389/389`. DLL SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2CG` closes complete marker-stream and whole-file parity for CF's
+opened RGB omitted/default-4:2:0 optimized-progressive rows-3 route. Raw and
+public facade both immediately write Pillow 11.3.0's complete 1517-byte file
+with SHA-256
+`41f426c0d538d08799d332013ce9003d5df4a7ed095beb9fcde5108c4ff73282`.
+This pins APP0/EXIF/ICC/COM/DQT/SOF2, all ten DHT/SOS scans, six DRI changes,
+all entropy/RST bytes, and EOI in one existing DLL call. Raw/facade/combined
+passed `1/1` in `94ms`, `1/1` in `47ms`, and `2/2` in `78ms`. No production,
+ABI, export, or DLL change was made and no rebuild was required. Whole-file/
+default-subsampling/qtables-keep/progressive/optimize/restart/qtables/DHT/JPEG
+passed `48/48`, `18/18`, `62/62`, `101/101`, `132/132`, `145/145`, `153/153`,
+`38/38`, and `343/343`; full `1816/1816` passed in `15579ms`. The tree
+registers `902` raw DLL / `914` facade / `1816` total tests; source/Release
+exports remain `389/389`. DLL SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2CF` closes exact progressive codec-stream parity on the fixed
+opened RGB omitted/default-4:2:0 rows-3 branch. Pillow `11.3.0`
+deterministically writes 1517 bytes with SHA-256
+`41f426c0d538d08799d332013ce9003d5df4a7ed095beb9fcde5108c4ff73282`,
+ten DHT lengths `22/22/26/38/35/47/36/28/31/30`, and DRI changes
+`[9,18,9,18,9,18]`. Scans 2/5/6/10 contain RST0 and the others none. Ordered
+DHT payload SHA-256 is
+`bd3287442c5432c45db3c7fe4d7155e5eb9e612f2b9360ce454b2df05687d450`;
+the 748 entropy bytes hash to
+`dad4a1ef841aae8a33eff7a0a11ca54b78d95563ede9313f5c3e1ea02c390d5c`.
+Raw/facade/combined immediately passed `1/1` in `31ms`, `1/1` in `31ms`, and
+`2/2` in `47ms`; existing h2v2 and progressive restart paths already compose,
+so no production or DLL change was made. Default-subsampling/qtables-keep/
+progressive/optimize/restart/qtables/Huffman/DHT/JPEG passed `16/16`, `60/60`,
+`99/99`, `130/130`, `143/143`, `151/151`, `8/8`, `38/38`, and `341/341`;
+full `1814/1814` passed in `8516ms`. The tree registers `901` raw DLL / `913`
+facade / `1814` total tests; source/Release exports remain `389/389`. DLL
+SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2CE` closes complete marker-stream and whole-file parity for CD's
+opened RGB source-4:2:2 optimized-progressive rows-3 route. Raw and public
+facade both immediately write Pillow 11.3.0's complete 1785-byte file with
+SHA-256
+`77c26748760271b0edda207cd00054cbec155b38686c41abe4a25f5fc797128c`.
+This pins APP0/EXIF/ICC/COM/DQT/SOF2, all ten DHT/SOS scans, six DRI changes,
+all entropy/RST bytes, and EOI in one existing DLL call. Raw/facade/combined
+passed `1/1`, `1/1`, and `2/2` in `31ms` each. No production, ABI, export, or
+DLL change was made and no rebuild was required. Whole-file/subsampling-keep/
+qtables-keep/progressive/optimize/restart/qtables/DHT/JPEG passed `46/46`,
+`24/24`, `58/58`, `97/97`, `128/128`, `141/141`, `149/149`, `36/36`, and
+`339/339`; full `1812/1812` passed in `10172ms`. The tree registers `900` raw
+DLL / `912` facade / `1812` total tests; source/Release exports remain
+`389/389`. DLL SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2CD` closes exact progressive codec-stream parity on the fixed
+opened RGB source-4:2:2 rows-3 branch. Pillow `11.3.0` deterministically writes
+1785 bytes with SHA-256
+`77c26748760271b0edda207cd00054cbec155b38686c41abe4a25f5fc797128c`,
+ten DHT lengths `23/23/26/44/43/47/36/27/31/30`, DRI changes
+`[9,18,9,18,9,18]`, and only RST0 in every scan. Ordered DHT payload SHA-256
+is `747a8196f6e9ff1cc69b6d6bdb3c7f694bbbea4108b5553ae0a98028ea64ece7`;
+the 1001 entropy bytes hash to
+`5f18007d794359b18c456b682eda4bc6b45c4dc1346e51b88ee5e443e3690768`.
+Raw/facade/combined immediately passed `1/1` in `47ms`, `1/1` in `31ms`, and
+`2/2` in `31ms`; the existing encoder handles the three-row interval and short
+tail exactly, so no production or DLL change was made. Subsampling-keep/
+qtables-keep/progressive/optimize/restart/qtables/Huffman/DHT/JPEG passed
+`22/22`, `56/56`, `95/95`, `126/126`, `139/139`, `147/147`, `8/8`, `36/36`,
+and `337/337`; full `1810/1810` passed in `8375ms`. The tree registers `899`
+raw DLL / `911` facade / `1810` total tests; source/Release exports remain
+`389/389`. DLL SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2CC` closes complete marker-stream and whole-file parity for CB's
+opened RGB omitted/default-4:2:0 optimized-progressive rows-2 route. Raw and
+public facade both immediately write Pillow 11.3.0's complete 1518-byte file
+with SHA-256
+`5b280a28b104db2c0112d3070f9fb942674d7d4ed49c8bdcfe013931f0b19c8a`.
+This pins APP0/EXIF/ICC/COM/DQT/SOF2, all ten DHT/SOS scans, six DRI changes,
+all entropy/RST bytes, and EOI in one existing DLL call. Raw/facade/combined
+passed `1/1` in `78ms`, `1/1` in `47ms`, and `2/2` in `78ms`. No production,
+ABI, export, or DLL change was made and no rebuild was required. Whole-file/
+default-subsampling/qtables-keep/progressive/optimize/restart/qtables/DHT/JPEG
+passed `44/44`, `14/14`, `54/54`, `93/93`, `124/124`, `137/137`, `145/145`,
+`34/34`, and `335/335`; full `1808/1808` passed in `15281ms`. The tree
+registers `898` raw DLL / `910` facade / `1808` total tests; source/Release
+exports remain `389/389`. DLL SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2CB` closes exact progressive codec-stream parity on the fixed
+opened RGB omitted/default-4:2:0 rows-2 branch. Pillow `11.3.0`
+deterministically writes 1518 bytes with SHA-256
+`5b280a28b104db2c0112d3070f9fb942674d7d4ed49c8bdcfe013931f0b19c8a`,
+ten DHT lengths `22/22/26/38/35/47/36/28/31/30`, and DRI changes
+`[6,12,6,12,6,12]`. Scans 2/5/6/10 contain RST0 and the others contain no
+restart marker. Ordered DHT payload SHA-256 is
+`bd3287442c5432c45db3c7fe4d7155e5eb9e612f2b9360ce454b2df05687d450`;
+the 749 entropy bytes hash to
+`d335a7b3ce5694b65a337d1ecbbbf8bf6df9ffb836380b735dcdb944976a3306`.
+Raw/facade/combined immediately passed `1/1` in `93ms`, `1/1` in `62ms`, and
+`2/2` in `78ms`; existing h2v2 coefficients and component-local tables already
+compose with rows-2 restart state, so no production or DLL change was made.
+Default-subsampling/qtables-keep/progressive/optimize/restart/qtables/Huffman/
+DHT/JPEG passed `12/12`, `52/52`, `91/91`, `122/122`, `135/135`, `143/143`,
+`8/8`, `34/34`, and `333/333`; full `1806/1806` passed in `15344ms`. The tree
+registers `897` raw DLL / `909` facade / `1806` total tests; source/Release
+exports remain `389/389`. DLL SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2CA` closes complete marker-stream and whole-file parity for BZ's
+opened RGB source-4:2:2 optimized-progressive rows-2 route. Raw and public
+facade both immediately write Pillow 11.3.0's complete 1786-byte file with
+SHA-256
+`84ca571e80c61740233af5d1ee999d62fd5138357b893d22ad3a30a5139853cb`.
+This pins APP0/EXIF/ICC/COM/DQT/SOF2, all ten DHT/SOS scans, six DRI changes,
+all entropy/RST bytes, and EOI in one existing DLL call. Raw/facade/combined
+passed `1/1` in `78ms`, `1/1` in `47ms`, and `2/2` in `78ms`. No production,
+ABI, export, or DLL change was made and no rebuild was required. Whole-file/
+subsampling-keep/qtables-keep/progressive/optimize/restart/qtables/DHT/JPEG
+passed `42/42`, `20/20`, `50/50`, `89/89`, `120/120`, `133/133`, `141/141`,
+`32/32`, and `331/331`; full `1804/1804` passed in `15109ms`. The tree
+registers `896` raw DLL / `908` facade / `1804` total tests; source/Release
+exports remain `389/389`. DLL SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2BZ` closes exact progressive codec-stream parity on the fixed
+opened RGB source-4:2:2 rows-2 branch. Pillow `11.3.0` deterministically writes
+1786 bytes with SHA-256
+`84ca571e80c61740233af5d1ee999d62fd5138357b893d22ad3a30a5139853cb`,
+ten DHT lengths `23/23/26/44/43/47/36/27/31/30`, DRI changes
+`[6,12,6,12,6,12]`, and only RST0 in each scan. Ordered DHT payload SHA-256 is
+`4656910542265b7fbdcf0b2f0bcbb83d7f6333845a36d4ae47d772a991b5b03e`;
+the 1002 entropy bytes hash to
+`2a5d04293421e5ee8ab47a4ecddd790550d48312ef0e8ef182857da321d17f4c`.
+Raw/facade/combined immediately passed `1/1` in `78ms`, `1/1` in `47ms`, and
+`2/2` in `78ms`; BV's component-local tables already compose with rows-2
+restart state, so no production or DLL change was made. Subsampling-keep/
+qtables-keep/progressive/optimize/restart/qtables/Huffman/DHT/JPEG passed
+`18/18`, `48/48`, `87/87`, `118/118`, `131/131`, `139/139`, `8/8`, `32/32`,
+and `329/329`; full `1802/1802` passed in `15453ms`. The tree registers `895`
+raw DLL / `907` facade / `1802` total tests; source/Release exports remain
+`389/389`. DLL SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2BY` closes complete marker-stream and whole-file parity for BX's
+opened RGB omitted/default-4:2:0 optimized-progressive rows-1 route. Raw and
+public facade both immediately write Pillow 11.3.0's complete 1552-byte file
+with SHA-256
+`92552ebc5330f3e0616553bb7b0a3ce0f996181c156d9a50fd62e23bc47c4ef1`.
+This pins APP0/EXIF/ICC/COM/DQT/SOF2, all ten DHT/SOS scans, six DRI changes,
+all entropy/RST bytes, and EOI in one existing DLL call. Raw/facade/combined
+passed `1/1` in `78ms`, `1/1` in `46ms`, and `2/2` in `78ms`. No production,
+ABI, export, or DLL change was made and no rebuild was required. Whole-file/
+default-subsampling/qtables-keep/progressive/optimize/restart/qtables/DHT/JPEG
+passed `40/40`, `10/10`, `46/46`, `85/85`, `116/116`, `129/129`, `137/137`,
+`30/30`, and `327/327`; full `1800/1800` passed in `15203ms`. The tree
+registers `894` raw DLL / `906` facade / `1800` total tests; source/Release
+exports remain `389/389`. DLL SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2BX` closes exact progressive codec-stream parity on
+`FMT-JPEG-003AR`'s opened RGB omitted/default-4:2:0 rows-1 branch. Pillow
+`11.3.0` deterministically writes 1552 bytes with SHA-256
+`92552ebc5330f3e0616553bb7b0a3ce0f996181c156d9a50fd62e23bc47c4ef1`,
+ten DHT lengths `22/22/26/38/35/47/36/28/31/30`, ten scans, DRI changes
+`[3,6,3,6,3,6]`, and sampling-local one-or-three RST sequences. Ordered DHT
+payload SHA-256 is
+`c558e3d49f0c6c28a555b4e950a8514f89272889c9b70f3c214cb78a423a2003`;
+the 783 entropy bytes hash to
+`b1a8f4999608c0955fb10c5fd19a1c1d8faf88a6f856f1dacbae557a77721df6`.
+Raw/facade/combined immediately passed `1/1` in `93ms`, `1/1` in `62ms`, and
+`2/2` in `78ms`; BV's component-local tables and BS's h2v2 rounding already
+compose exactly, so no production or DLL change was made. Default-subsampling/
+qtables-keep/progressive/optimize/restart/qtables/Huffman/DHT/JPEG passed
+`8/8`, `44/44`, `83/83`, `114/114`, `127/127`, `135/135`, `8/8`, `30/30`,
+and `325/325`; full `1798/1798` passed in `15172ms`. The tree registers `893`
+raw DLL / `905` facade / `1798` total tests; source/Release exports remain
+`389/389`. DLL SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2BW` closes complete marker-stream and whole-file parity for BV's
+opened RGB source-4:2:2 optimized-progressive rows-1 route. Raw and public
+facade both immediately write Pillow 11.3.0's complete 1836-byte file with
+SHA-256
+`7c07b262b27d3e71cd82fc132f1546b0291c6b56aef3e4537e48b7888cedd659`.
+This pins all 65 markers, including APP0/EXIF/ICC/COM/DQT/SOF2, ten DHT/SOS
+scans, six DRI changes, thirty RST markers, all entropy bytes, and EOI in one
+existing DLL call. Raw/facade/combined passed `1/1` in `94ms`, `1/1` in
+`47ms`, and `2/2` in `79ms`. No production, ABI, export, or DLL change was
+made and no rebuild was required. Whole-file/qtables-keep/subsampling-keep/
+progressive/optimize/restart/qtables/DHT/JPEG passed `38/38`, `42/42`, `16/16`,
+`81/81`, `112/112`, `125/125`, `133/133`, `28/28`, and `323/323`; full
+`1796/1796` passed in `15297ms`. The tree registers `892` raw DLL / `904`
+facade / `1796` total tests; source/Release exports remain `389/389`. DLL
+SHA-256 remains
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2BV` closes exact progressive codec-stream parity on
+`FMT-JPEG-003AR`'s opened RGB source-4:2:2 rows-1 branch. Pillow `11.3.0`
+deterministically writes 1836 bytes with SHA-256
+`7c07b262b27d3e71cd82fc132f1546b0291c6b56aef3e4537e48b7888cedd659`,
+ten DHT payloads of lengths `23/23/26/44/43/47/36/27/31/30`, ten SOS scans,
+DRI changes `[3,6,3,6,3,6]`, and RST0/RST1/RST2 in every scan. Raw and facade
+RED matched the first three DHT payloads before native's combined chroma table
+diverged. The sampled RGB progressive encoder now collects and emits separate
+Cr/Cb AC-first and final-refine Huffman tables, redefining table id 1 before
+each component scan. All DHT/SOS/entropy bytes now match; concatenated DHT and
+entropy SHA-256 values are
+`2f5e34c5cf83de1e7f55a3962615502f04ba1b1688dceeb1f57bb84579969e74`
+and `4645e59badcdbdbfd936e0f4df7676db4ae24e09aecf7e7ff88a4f9b3c4aca4f`.
+Raw/facade/combined passed `1/1` in `172ms`, `1/1` in `47ms`, and `2/2` in
+`78ms`; Release x64 rebuilt with zero warnings/errors. QTables-keep/
+subsampling-keep/progressive/optimize/restart/qtables/Huffman/DHT/JPEG passed
+`40/40`, `14/14`, `79/79`, `110/110`, `123/123`, `131/131`, `8/8`, `28/28`,
+and `321/321`; full `1794/1794` passed in `15265ms`. The tree registers `891`
+raw DLL / `903` facade / `1794` total tests; source/Release exports remain
+`389/389`. Rebuilt DLL SHA-256 is
+`7C4E4AE1DAFAC682CA4E5DB328F548C8D68927421264A499224EA4256BE87C8A`.
+`FMT-JPEG-002B2BU` closes complete marker-stream and whole-file parity for BR's
+opened RGB source-4:2:2 rows-1 route. Raw and public facade both immediately
+write Pillow 11.3.0's complete 1446-byte file with SHA-256
+`7dbee7c1e161ee84bd3175f3a5b96a99d92fc5e904a6cedad2fee81f1b361b83`.
+This pins every APP0/APP1/APP2/COM/DQT/SOF0/DHT/DRI/SOS/RST0/RST1/RST2/EOI
+byte and offset in one existing DLL call. Raw/facade passed `1/1` in `78ms`
+and `1/1` in `47ms`; combined passed `2/2` in `63ms`. No production, ABI,
+export, or DLL change was made and no rebuild was required. Whole-file/
+qtables-keep/subsampling-keep/optimize/restart/qtables/DHT/JPEG passed `36/36`,
+`38/38`, `12/12`, `108/108`, `121/121`, `129/129`, `26/26`, and `319/319`;
+full `1792/1792` passed in `14891ms`. The tree registers `890` raw DLL / `902`
+facade / `1792` total tests; source/Release exports remain `389/389`. DLL
+SHA-256 remains
+`85249326EFFCFCEE05F8A00FBAAB0172FB3CD959B8A4FD29FA8F8B09E655C038`.
+`FMT-JPEG-002B2BT` closes complete marker-stream and whole-file parity for BS's
+opened RGB default-4:2:0 rows-1 route. Raw and public facade both immediately
+write Pillow 11.3.0's complete 1190-byte file with SHA-256
+`8ce6c8b4f72e89d2e7493fde5e7f3f2a6312574a126c9f69ad710b736200a2ce`.
+This pins every APP0/APP1/APP2/COM/DQT/SOF0/DHT/DRI/SOS/RST0/EOI byte and
+offset in one existing DLL call. Raw/facade passed `1/1` in `79ms` and `1/1`
+in `47ms`; combined passed `2/2` in `62ms`. No production, ABI, export, or DLL
+change was made and no rebuild was required. Whole-file/qtables-keep/default-
+subsampling/optimize/restart/qtables/DHT/JPEG passed `34/34`, `36/36`, `6/6`,
+`106/106`, `119/119`, `127/127`, `26/26`, and `317/317`; full `1790/1790`
+passed in `14985ms`. The tree registers `889` raw DLL / `901` facade / `1790`
+total tests; source/Release exports remain `389/389`. DLL SHA-256 remains
+`85249326EFFCFCEE05F8A00FBAAB0172FB3CD959B8A4FD29FA8F8B09E655C038`.
+`FMT-JPEG-002B2BS` closes exact optimized-DHT and entropy parity on
+`FMT-JPEG-003AR`'s opened RGB default-4:2:0 rows-1 branch. Local Pillow 11.3.0
+deterministically writes a 1190-byte target with SHA-256
+`8ce6c8b4f72e89d2e7493fde5e7f3f2a6312574a126c9f69ad710b736200a2ce`,
+DHT lengths `22/45/22/44`, DRI `3`, and only RST0. Raw and facade RED both
+matched the first three DHT payloads and differed only on chroma AC. Native RGB
+h2v2 downsampling used constant bias `2`; it now alternates libjpeg-turbo's
+`1,2,1,2...` bias by chroma column. All four DHT payloads and the complete
+751-byte entropy stream now match Pillow; entropy SHA-256 is
+`1824fdfa1c1b02cb63dc5ed094df3b1729f24c7be1687c1d47548da77604a49a`.
+Raw/facade passed `1/1` in `157ms` and `1/1` in `78ms`; combined passed `2/2`
+in `78ms`. Release x64 rebuilt with zero warnings/errors. QTables-keep/
+subsampling-keep/default-subsampling/subsampling/optimize/restart/qtables/
+progressive/Huffman/DHT/JPEG passed `34/34`, `10/10`, `4/4`, `71/71`,
+`104/104`, `117/117`, `125/125`, `77/77`, `8/8`, `26/26`, and `315/315`;
+full `1788/1788` passed in `15781ms`. The tree registers `888` raw DLL / `900`
+facade / `1788` total tests; source/Release exports remain `389/389`. Rebuilt
+DLL SHA-256 is
+`85249326EFFCFCEE05F8A00FBAAB0172FB3CD959B8A4FD29FA8F8B09E655C038`.
+`FMT-JPEG-002B2BR` closes exact optimized-DHT and entropy parity on
+`FMT-JPEG-003AR`'s opened RGB source-4:2:2 keep-sampling rows-1 branch. The
+fixed 1806-byte source has SHA-256
+`bc199d543e5867c8cc948824f3ef89773a57b9cedf159f557d2c289151dfe486`;
+Pillow `11.3.0` writes a 1446-byte target with SHA-256
+`7dbee7c1e161ee84bd3175f3a5b96a99d92fc5e904a6cedad2fee81f1b361b83`.
+Raw and facade RED both isolated differing chroma DHT payloads while native
+and Pillow decoded source RGB bytes were identical. Native RGB h2v1
+downsampling now alternates the libjpeg-turbo bias `0,1,0,1...` by chroma
+column instead of always adding one. All four DHT payloads and the complete
+1001-byte entropy stream now match Pillow; its SHA-256 is
+`82d41f37e99ebaf1125ffd0f47d44233ead49dc1be707a2a91638d8da0d06e8e`.
+Raw/facade passed `1/1` in `156ms` and `1/1` in `46ms`; combined passed `2/2`
+in `78ms`. Release x64 rebuilt with zero warnings/errors. QTables-keep/
+subsampling-keep/subsampling/optimize/restart/qtables/progressive/Huffman/DHT/
+JPEG filters passed `32/32`, `10/10`, `69/69`, `102/102`, `115/115`,
+`123/123`, `77/77`, `8/8`, `24/24`, and `313/313`; full `1786/1786` passed
+in `14922ms`. The tree registers `887` raw DLL / `899` facade / `1786` total
+tests; source/Release exports remain `389/389`. Rebuilt DLL SHA-256 is
+`7A00F5EA1255AF5C64B2C0C86DDD377C55E130D81D5698AF2C8982D56D769C93`.
+`FMT-JPEG-002B2BQ` closes exact DPI/JFIF composition on BP's opened real-YCCK
+quality-keep progressive rows-2 XMP/core-metadata route. Pillow `11.3.0`
+writes 10972 bytes with SHA-256
+`a533204d5714f5166be1e591fd2ea2f755c678706c41f2bb62e86a777fc39e98`.
+Marker prefix is `SOI/APP0/APP14/APP1/APP1/APP2/COM/DQT/DQT/SOF2`; JFIF/
+APP14/EXIF APP1/XMP APP1/ICC APP2/COM/DQT begin at offsets
+`2/20/36/72/429/463/479`. The 14-byte unit-1 JFIF payload is
+`4a46494600010101012c00960000`; it adds exactly 18 bytes while BQ offset 20
+through EOI equals BP offset 2 through EOI. The file has 155 markers, 47
+non-RST markers, 108 RST markers, and 18 SOS markers. Reopen reports CMYK
+`100x100`, JFIF 1.1/unit 1/density 300x150, DPI `(300,150)`, exact metadata,
+orientation `6`, title `Hello`, and progressive/progression info. Native raw/
+public facade output match the complete file byte-for-byte. Raw/facade passed
+immediately `1/1` in `78ms` and `1/1` in `47ms`; combined passed `2/2` in
+`125ms`. No native, facade, ABI, or DLL change was made and no rebuild was
+required. DPI/XMP/metadata/progressive/optimize/restart/qtables/CMYK/YCCK/
+Huffman/DHT/JPEG passed `60/60`, `48/48`, `317/317`, `77/77`, `100/100`,
+`113/113`, `121/121`, `195/195`, `67/67`, `8/8`, `22/22`, and `311/311`;
+full `1784/1784` passed in `14906ms`. The tree registers `886` raw DLL / `898`
+facade / `1784` total tests; source/Release exports remain `389/389`. DLL
+SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BP` closes exact XMP composition on BO's opened real-YCCK
+quality-keep progressive rows-2 route. Pillow `11.3.0` writes 10954 bytes with
+SHA-256
+`566ae8f27df9e985b45a6ff9fbaa48ea3ef06b754623d819c1fec9b9db6861dc`.
+Marker prefix is `SOI/APP14/APP1/APP1/APP2/COM/DQT/DQT/SOF2`; APP14/EXIF APP1/
+XMP APP1/ICC APP2/COM/DQT begin at offsets `2/18/54/411/445/461`. The
+324-byte XMP packet is wrapped in a 353-byte APP1 payload and adds exactly 357
+bytes while BP offset 461 through EOI equals BO offset 104 through EOI. The
+file has 154 markers, 46 non-RST markers, 108 RST markers, and 18 SOS markers.
+Reopen reports CMYK `100x100`, exact core metadata/XMP, orientation `6`, title
+`Hello`, Pillow DPI `(72,72)`, progressive/progression info, and no JFIF.
+Native raw/public facade output match the complete file byte-for-byte. Raw/
+facade passed immediately `1/1` in `78ms` and `1/1` in `47ms`; combined passed
+`2/2` in `109ms`. No native, facade, ABI, or DLL change was made and no rebuild
+was required. XMP/metadata/progressive/optimize/restart/qtables/CMYK/YCCK/
+Huffman/DHT/JPEG passed `46/46`, `315/315`, `75/75`, `100/100`, `111/111`,
+`121/121`, `193/193`, `65/65`, `8/8`, `22/22`, and `309/309`; full
+`1782/1782` passed in `15094ms`. The tree registers `885` raw DLL / `897`
+facade / `1782` total tests; source/Release exports remain `389/389`. DLL
+SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BO` closes exact core-metadata composition on BN's opened
+real-YCCK quality-keep progressive rows-2 route. Pillow `11.3.0` writes 10597
+bytes with SHA-256
+`170575141e6a0608bd493e1620dd8600da736d662dfcce6c45b6ace4753077e5`.
+Marker prefix is `SOI/APP14/APP1/APP2/COM/DQT/DQT/SOF2`; APP14/EXIF APP1/ICC
+APP2/COM/DQT begin at offsets `2/18/54/88/104`. Metadata adds exactly 86
+bytes while BO offset 104 through EOI equals BN offset 18 through EOI. The
+file has 153 markers, 45 non-RST markers, 108 RST markers, and 18 SOS markers.
+Reopen reports CMYK `100x100`, exact comment/ICC/EXIF, orientation `6`, Pillow
+DPI `(72,72)`, progressive/progression info, and no JFIF or XMP. Native raw/
+public facade output match the complete file byte-for-byte. Raw/facade passed
+immediately `1/1` in `62ms` and `1/1` in `47ms`; combined passed `2/2` in
+`94ms`. No native, facade, ABI, or DLL change was made and no rebuild was
+required. Metadata/progressive/optimize/restart/qtables/CMYK/YCCK/Huffman/DHT/
+JPEG passed `313/313`, `73/73`, `100/100`, `109/109`, `121/121`, `191/191`,
+`63/63`, `8/8`, `22/22`, and `307/307`; full `1780/1780` passed in `15125ms`.
+The tree registers `884` raw DLL / `896` facade / `1780` total tests; source/
+Release exports remain `389/389`. DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BN` closes complete marker-stream and whole-file parity for AZ's
+opened real-YCCK quality-keep progressive rows-2 case. Pillow `11.3.0` writes
+10511 bytes with SHA-256
+`1b58f34f4ba33e9ea91f13c83d0ebc871678c5dafef8fae4f641d5412d49e098`.
+The file contains 150 markers: 42 non-RST markers beginning
+`SOI/APP14/DQT/DQT/SOF2/DHT/DRI/SOS` and ending `DHT/SOS/EOI`, plus 108 RST
+markers across 18 scans. APP14/DQT/DQT/SOF2/DRI/EOI begin at
+`2/18/87/156/210/10509`; the 17 DHT and 18 SOS offsets match the pinned BN
+oracle exactly. Reopen reports CMYK `100x100`, progressive/progression info,
+and no JFIF, DPI, or explicit metadata. Native raw/public facade output match
+the complete file byte-for-byte. Raw/facade passed immediately `1/1` in `78ms`
+and `1/1` in `63ms`; combined passed `2/2` in `94ms`. No native, facade, ABI,
+or DLL change was made and no rebuild was required. Progressive/optimize/
+restart/qtables/CMYK/YCCK/Huffman/DHT/JPEG passed `71/71`, `100/100`,
+`107/107`, `121/121`, `189/189`, `61/61`, `8/8`, `22/22`, and `305/305`;
+full `1778/1778` passed in `14969ms`. The tree registers `883` raw DLL / `895`
+facade / `1778` total tests; source/Release exports remain `389/389`. DLL
+SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BM` closes exact DPI/JFIF composition on BL's opened real-YCCK
+web-low progressive rows-2 route. Pillow `11.3.0` writes 3081 bytes with
+SHA-256
+`425c1d53d71b5ae5f92be44f18dadd4d46d7c90e9a81d67bd8cf353246871512`.
+Marker prefix is `SOI/APP0/APP14/APP1/APP1/APP2/COM/DQT/DQT/SOF2`; JFIF/
+APP14/EXIF APP1/XMP APP1/ICC APP2/COM/DQT begin at offsets
+`2/20/36/72/429/463/479`. The 14-byte unit-1 JFIF payload is
+`4a46494600010101012c00960000`; it adds exactly 18 bytes while BM offset 20
+through EOI equals BL offset 2 through EOI. The file has 121 markers, 66 RST
+markers, and 18 SOS markers. Reopen reports CMYK `100x100`, JFIF 1.1/unit 1/
+density 300x150, DPI `(300,150)`, exact metadata, orientation `6`, title
+`Hello`, and progressive info. Native raw/public facade output match the
+complete file. Raw/facade passed immediately `1/1` in `63ms` and `1/1` in
+`47ms`; combined passed `2/2` in `79ms`. No native, facade, ABI, or DLL change
+was made and no rebuild was required. DPI/XMP/metadata/progressive/optimize/
+restart/qtables/CMYK/YCCK/Huffman/DHT/JPEG passed `58/58`, `44/44`, `311/311`,
+`69/69`, `100/100`, `105/105`, `121/121`, `187/187`, `59/59`, `8/8`,
+`22/22`, and `303/303`; full `1776/1776` passed in `15031ms`. The tree
+registers `882` raw DLL / `894` facade / `1776` total tests; source/Release
+exports remain `389/389`. DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BL` closes exact XMP composition on BK's opened real-YCCK
+web-low progressive rows-2 route. Pillow `11.3.0` writes 3063 bytes with
+SHA-256
+`7e7a9cfe6a082ec17e2313df4a4ef4dab11b378339994bd97b084267c4203912`.
+Marker prefix is `SOI/APP14/APP1/APP1/APP2/COM/DQT/DQT/SOF2`; APP14/EXIF
+APP1/XMP APP1/ICC APP2/COM/DQT begin at offsets `2/18/54/411/445/461`.
+The 324-byte XMP packet is wrapped in a 353-byte APP1 payload and adds exactly
+357 bytes while BL offset 461 through EOI equals BK offset 104 through EOI.
+The file has 120 markers, 66 RST markers, and 18 SOS markers. Reopen reports
+CMYK `100x100`, exact metadata, orientation `6`, title `Hello`, Pillow DPI
+`(72,72)`, progressive info, and no JFIF. Native raw/public facade output match
+the complete file. Raw/facade passed immediately `1/1` in `62ms` and `1/1` in
+`63ms`; combined passed `2/2` in `93ms`. No native, facade, ABI, or DLL change
+was made and no rebuild was required. XMP/metadata/progressive/optimize/restart/
+qtables/CMYK/YCCK/Huffman/DHT/JPEG passed `42/42`, `309/309`, `67/67`,
+`100/100`, `103/103`, `121/121`, `185/185`, `57/57`, `8/8`, `22/22`, and
+`301/301`; full `1774/1774` passed in `14844ms`. The tree registers `881` raw
+DLL / `893` facade / `1774` total tests; source/Release exports remain
+`389/389`. DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BK` closes exact comment/ICC/EXIF composition on BJ's opened
+real-YCCK web-low progressive rows-2 route. Pillow `11.3.0` writes 2706 bytes
+with SHA-256
+`78052658f630fb4b06715997271d47a345d6dd20fa150c9ecccd2ad8187a8b25`.
+Marker prefix is `SOI/APP14/APP1/APP2/COM/DQT/DQT/SOF2`; EXIF APP1, ICC APP2,
+and COM begin at offsets `18/54/88`, DQT begins at `104`, and the file retains
+66 RST markers across 18 scans. Metadata adds exactly 86 bytes while BK offset
+104 through EOI equals BJ offset 18 through EOI. Reopen reports CMYK `100x100`,
+exact metadata, orientation `6`, Pillow DPI `(72,72)`, progressive info, no
+JFIF, and no XMP. Native raw/public facade output match the complete file.
+Raw/facade passed immediately `1/1` in `63ms` and `1/1` in `47ms`; combined
+passed `2/2` in `78ms`. No native, facade, ABI, or DLL change was made and no
+rebuild was required. Metadata/progressive/optimize/restart/qtables/CMYK/YCCK/
+Huffman/DHT/JPEG passed `307/307`, `65/65`, `100/100`, `101/101`, `121/121`,
+`183/183`, `55/55`, `8/8`, `22/22`, and `299/299`; full `1772/1772` passed
+in `14875ms`. The tree registers `880` raw DLL / `892` facade / `1772` total
+tests; source/Release exports remain `389/389`. DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BJ` closes complete marker-stream and whole-file parity for
+AY's opened real-YCCK web-low progressive rows-2 case. Pillow `11.3.0` writes
+2620 bytes with SHA-256
+`5b989fdbfc8551b15366762c7022b70d315584de61711107f94531c69629c611`.
+The file contains 116 markers: 50 non-RST markers beginning
+`SOI/APP14/DQT/DQT/SOF2/DHT/DRI/SOS` and ending `DHT/SOS/EOI`, plus 66 RST
+markers across 18 scans. Non-RST offsets are
+`0/2/18/87/156/178/205/211/364/402/408/565/588/594/614/637/657/691/744/789/795/955/978/984/1004/1027/1047/1082/1126/1167/1173/1475/1503/1509/1535/1561/1585/1621/1706/1778/1818/1824/2261/2295/2301/2354/2385/2427/2465/2618`.
+Scan restart counts are `[3,6,3,3,3,6,3,3,3,6,3,3,3,3,6,3,3,3]`, each
+starting at RST0, exactly matching AY. Reopen reports CMYK `100x100`,
+progressive/progression info, and no JFIF or explicit metadata. Native raw and
+public facade output match the complete file byte-for-byte. Raw/facade passed
+immediately `1/1` in `62ms` and `1/1` in `46ms`; combined passed `2/2` in
+`78ms`. No native, facade, ABI, or DLL change was made and no rebuild was
+required. Progressive/optimize/restart/qtables/CMYK/YCCK/Huffman/DHT/JPEG
+passed `63/63`, `100/100`, `99/99`, `121/121`, `181/181`, `53/53`, `8/8`,
+`22/22`, and `297/297`; full `1770/1770` passed in `14766ms`. The tree
+registers `879` raw DLL / `891` facade / `1770` total tests; source/Release
+exports remain `389/389`. The current DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BI` closes exact DPI/JFIF plus XMP/core-metadata marker-stream
+and whole-file parity for BH's opened real-YCCK web-low optimized rows-2 case.
+Pillow `11.3.0` writes 2320 bytes with SHA-256
+`659d1cb624236da009b5cb0b79364a9ccaeb7e6e416af0f258e3ec2177331c8c`
+and marker order
+`SOI/APP0/APP14/APP1/APP1/APP2/COM/DQT/DQT/SOF0/DHT/DHT/DRI/SOS/RST0/RST1/RST2/EOI`.
+Marker offsets are
+`0/2/20/36/72/429/463/479/548/617/639/667/734/740/1122/2232/2287/2318`.
+The 14-byte JFIF payload is `4a46494600010101012c00960000` with SHA-256
+`1a8d1fec5907d6d81f2acf80918616cfd8e5315f22e09e7789f4273c06de1134`.
+JFIF adds exactly 18 bytes after SOI while BI offset 20 through EOI equals BH
+offset 2 through EOI. Reopen reports CMYK `100x100`, JFIF 1.1/unit 1/density
+300x150, DPI 300x150, exact metadata, orientation `6`, and title `Hello`.
+Native raw/public facade output match the complete file byte-for-byte. Both
+tests passed immediately `1/1` in `47ms`; combined passed `2/2` in `94ms`.
+No native, facade, ABI, or DLL change was made and no rebuild was required.
+DPI/XMP/metadata/optimize/restart/qtables/CMYK/YCCK/Huffman/DHT/JPEG passed
+`56/56`, `40/40`, `305/305`, `100/100`, `97/97`, `121/121`, `179/179`,
+`51/51`, `8/8`, `22/22`, and `295/295`; full `1768/1768` passed in
+`15031ms`. The tree registers `878` raw DLL / `890` facade / `1768` total
+tests; source/Release exports remain `389/389`. The current DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BH` closes exact XMP-plus-core-metadata marker-stream and
+whole-file parity for BG's opened real-YCCK web-low optimized rows-2 case.
+Pillow `11.3.0` writes 2302 bytes with SHA-256
+`f66203a245291c86186251b7b1c42c5c6c328e827ad3822eb23dbfe506c91ddc`
+and marker order
+`SOI/APP14/APP1/APP1/APP2/COM/DQT/DQT/SOF0/DHT/DHT/DRI/SOS/RST0/RST1/RST2/EOI`.
+Marker offsets are
+`0/2/18/54/411/445/461/530/599/621/649/716/722/1104/2214/2269/2300`;
+the XMP APP1 payload is 353 bytes with SHA-256
+`f3b032ba27d174c87685f11ca2fa27b6c14abcf85089c26444ffaac525c52748`.
+XMP adds exactly 357 bytes after EXIF APP1 while BG's complete ICC-through-EOI
+suffix remains byte-identical. Reopen reports CMYK `100x100`, exact metadata,
+orientation `6`, parsed title `Hello`, and no JFIF marker. Native raw/public
+facade output match the complete file byte-for-byte. Raw/facade passed
+immediately `1/1` in `62ms` and `1/1` in `46ms`; combined passed `2/2` in
+`78ms`. No native, facade, ABI, or DLL change was made and no rebuild was
+required. XMP/metadata/optimize/restart/qtables/CMYK/YCCK/Huffman/DHT/JPEG
+passed `38/38`, `303/303`, `98/98`, `95/95`, `121/121`, `177/177`, `49/49`,
+`8/8`, `22/22`, and `293/293`; full `1766/1766` passed in `14641ms`. The tree
+registers `877` raw DLL / `889` facade / `1766` total tests; source/Release
+exports remain `389/389`. The current DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BG` closes exact explicit comment/ICC/EXIF marker-stream and
+whole-file parity for BF's opened real-YCCK web-low optimized rows-2 case.
+Pillow `11.3.0` writes 1945 bytes with SHA-256
+`c0c8e3013e01187954fa9e1b34c3d1e4b9b4cb7c8e10f69a48ceeb0b1ae0530a`
+and marker order
+`SOI/APP14/APP1/APP2/COM/DQT/DQT/SOF0/DHT/DHT/DRI/SOS/RST0/RST1/RST2/EOI`.
+Marker offsets are
+`0/2/18/54/88/104/173/242/264/292/359/365/747/1857/1912/1943`;
+APP14/EXIF APP1/ICC APP2/COM payload lengths/hashes remain BC's exact
+`12/32/30/12` values. Metadata adds exactly 86 bytes after APP14 while BF's
+complete DQT-through-EOI codec suffix remains byte-identical. Reopen reports
+CMYK `100x100`, exact comment/ICC/EXIF bytes, orientation `6`, and no JFIF
+marker. Native raw/public facade output match the complete file byte-for-byte.
+Raw/facade passed immediately `1/1` in `62ms` and `1/1` in `47ms`; combined
+passed `2/2` in `78ms`. No native, facade, ABI, or DLL change was made and no
+rebuild was required. Metadata/optimize/restart/qtables/CMYK/YCCK/Huffman/DHT/
+JPEG passed `301/301`, `96/96`, `93/93`, `121/121`, `175/175`, `47/47`,
+`8/8`, `22/22`, and `291/291`; full `1764/1764` passed in `14469ms`. The tree
+registers `876` raw DLL / `888` facade / `1764` total tests; source/Release
+exports remain `389/389`. The current DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BF` closes complete marker-stream and whole-file parity for AX's
+opened real-YCCK web-low optimized rows-2 case. Pillow `11.3.0` writes 1859
+bytes with SHA-256
+`557bf3d8032ca005c910ab0536426720f1869620f9edb960f87b6dc2b952b6d2`
+and marker order
+`SOI/APP14/DQT/DQT/SOF0/DHT/DHT/DRI/SOS/RST0/RST1/RST2/EOI`.
+Marker offsets are `0/2/18/87/156/178/206/273/279/661/1771/1826/1857`;
+APP14/DQT/DQT/SOF0/DHT/DHT/DRI/SOS payload lengths are
+`12/65/65/18/24/63/2/12`. Reopen reports CMYK `100x100` with no comment,
+ICC, EXIF, JFIF, or DPI. The BF oracle is byte-identical to AX's codec oracle,
+and native raw/public facade output match the complete file byte-for-byte.
+Raw/facade passed immediately `1/1` in `110ms` and `1/1` in `47ms`; combined
+passed `2/2` in `94ms`. No native, facade, ABI, or DLL change was made and no
+rebuild was required. Optimize/restart/qtables/CMYK/YCCK/Huffman/DHT/JPEG
+passed `94/94`, `91/91`, `121/121`, `173/173`, `45/45`, `8/8`, `22/22`, and
+`289/289`; full `1762/1762` passed in `14844ms`. The tree registers `875`
+raw DLL / `887` facade / `1762` total tests; source/Release exports remain
+`389/389`. The current DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BE` closes exact DPI/JFIF plus XMP/core-metadata marker-stream
+and whole-file parity for BD's opened real-YCCK quality-keep optimized rows-2
+case. Pillow `11.3.0` writes 10676 bytes with SHA-256
+`5bfd8153d5f80be7936e07c950fb98008f6ae61e521a9c72954dbb1506641b7f`
+and marker order
+`SOI/APP0/APP14/APP1/APP1/APP2/COM/DQT/DQT/SOF0/DHT/DHT/DRI/SOS/RST0..RST5/EOI`.
+JFIF APP0 begins at offset `2`; its 14-byte payload has SHA-256
+`1a8d1fec5907d6d81f2acf80918616cfd8e5315f22e09e7789f4273c06de1134`
+and exact bytes `4a46494600010101012c00960000`. APP14/EXIF APP1/XMP APP1/
+ICC APP2/COM begin at offsets `20/36/72/429/463`, DQT begins at `479`,
+restart markers are at `1155/3035/6997/10487/10560/10633`, and EOI is at
+`10674`. Reopen reports CMYK `100x100`, orientation `6`, exact metadata,
+unit-1 JFIF density `[300,150]`, and DPI `[300,150]`. Native raw and public
+facade output match the complete file byte-for-byte. Raw/facade passed
+immediately `1/1` in `78ms` and `1/1` in `47ms`; combined passed `2/2` in
+`94ms`. No native, facade, ABI, or DLL change was made and no rebuild was
+required. DPI/XMP/metadata/optimize/restart/qtables/CMYK/YCCK/Huffman/DHT/
+JPEG passed `54/54`, `36/36`, `299/299`, `92/92`, `89/89`, `121/121`,
+`171/171`, `43/43`, `8/8`, `22/22`, and `287/287`; full `1760/1760` passed
+in `14391ms`. The tree registers `874` raw DLL / `886` facade / `1760` total
+tests; source/Release exports remain `389/389`. The current DLL SHA-256
+remains `9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BD` closes exact XMP-plus-core-metadata marker-stream and
+whole-file parity for BC's opened real-YCCK quality-keep optimized rows-2 case.
+Pillow `11.3.0` writes 10658 bytes with SHA-256
+`fca9c47e5a1305ebdeb02293997ee702d8317d38d9f81d28bdf1e22a55fabf8d`
+and marker order
+`SOI/APP14/APP1/APP1/APP2/COM/DQT/DQT/SOF0/DHT/DHT/DRI/SOS/RST0..RST5/EOI`.
+APP14/EXIF APP1/XMP APP1/ICC APP2/COM begin at offsets `2/18/54/411/445`;
+the XMP APP1 payload is 353 bytes with SHA-256
+`f3b032ba27d174c87685f11ca2fa27b6c14abcf85089c26444ffaac525c52748`,
+DQT begins at `461`, restart markers are at
+`1137/3017/6979/10469/10542/10615`, and EOI is at `10656`. Native raw and
+public facade output match the complete file byte-for-byte. Raw/facade passed
+immediately `1/1` in `94ms` and `1/1` in `47ms`; combined passed `2/2` in
+`94ms`. No native, facade, ABI, or DLL change was made and no rebuild was
+required. XMP/metadata/optimize/restart/qtables/CMYK/YCCK/Huffman/DHT/JPEG
+passed `34/34`, `297/297`, `90/90`, `87/87`, `119/119`, `169/169`, `41/41`,
+`8/8`, `22/22`, and `285/285`; full `1758/1758` passed in `15093ms`. The tree
+registers `873` raw DLL / `885` facade / `1758` total tests; source/Release
+exports remain `389/389`. The current DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BC` closes exact explicit core-metadata marker-stream and
+whole-file parity for BB's opened real-YCCK quality-keep optimized rows-2 case.
+Pillow `11.3.0` writes 10301 bytes with SHA-256
+`b333a57d144684cd7c88852bc18e09665f731925b631b085c3681b5fef4fbd8c`
+and marker order
+`SOI/APP14/APP1/APP2/COM/DQT/DQT/SOF0/DHT/DHT/DRI/SOS/RST0..RST5/EOI`.
+APP14/EXIF APP1/ICC APP2/COM begin at offsets `2/18/54/88`; DQT begins at
+`104`, restart markers remain at `780/2660/6622/10112/10185/10258`, and EOI
+is at `10299`. Native raw and public facade output match the complete file
+byte-for-byte. Raw/facade passed immediately `1/1` in `78ms` and `1/1` in
+`63ms`; combined passed `2/2` in `78ms`. No native, facade, ABI, or DLL change
+was made and no rebuild was required. Metadata/optimize/restart/qtables/CMYK/
+YCCK/Huffman/DHT/JPEG passed `295/295`, `88/88`, `85/85`, `117/117`,
+`167/167`, `39/39`, `8/8`, `22/22`, and `283/283`; full `1756/1756` passed
+in `15188ms`. The tree registers `872` raw DLL / `884` facade / `1756` total
+tests; source/Release exports remain `389/389`. The current DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2BB` closes complete marker-stream and whole-file parity for BA's
+opened real-YCCK quality-keep optimized rows-2 case. Pillow `11.3.0` writes
+10215 bytes with SHA-256
+`b184bd798ee1946c26d54590c06499d12aab607e29adaa928dad4fea7dd66b75`
+and marker order `SOI/APP14/DQT/DQT/SOF0/DHT/DHT/DRI/SOS/RST0..RST5/EOI`.
+Native raw and public facade output match the complete file byte-for-byte,
+which covers APP14, DQT segmentation, SOF0, DHT, DRI, SOS, entropy/restart
+placement, and EOI. Raw/facade passed immediately `1/1` in `63ms` and `1/1`
+in `63ms`; combined passed `2/2` in `94ms`. No native, facade, ABI, or DLL
+change was made and no rebuild was required. Optimize/restart/qtables/CMYK/
+YCCK/Huffman/DHT/JPEG passed `86/86`, `83/83`, `115/115`, `165/165`,
+`37/37`, `8/8`, `22/22`, and `281/281`; full `1754/1754` passed in
+`14406ms`. The tree registers `871` raw DLL / `883` facade / `1754` total
+tests; source/Release exports remain
+`389/389`. The current DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2AX` closes exact optimized baseline DHT and entropy parity for
+AW's opened real-YCCK web-low case with `restart_marker_rows=2`. Pillow
+`11.3.0` retains AW's two DHT payloads with lengths `[24,63]`, totaling 87
+bytes with SHA-256
+`48f5721c8573a5afeea606130fd04f23abd7c4bf3f1492f08836f47b62ad879c`.
+It writes DRI `14`, SOS `0443004d0059004b00003f00`, three `RST0..RST2`
+markers, and 1562 entropy bytes with SHA-256
+`bcf983601fbdc6f472b5e7a573faf16a14c3563cb9f40d96327be9ca34b4a5eb`.
+The raw/facade tests passed immediately `1/1` in `62ms` and `1/1` in `47ms`;
+combined passed `2/2` in `78ms`. Existing optimized-Huffman frequency
+collection, DC predictor resets, and restart entropy already match Pillow, so
+no native, facade, ABI, or DLL change was made and no rebuild was required.
+Optimize/restart/qtables/CMYK/YCCK/Huffman/DHT/JPEG passed `82/82`, `75/75`,
+`111/111`, `157/157`, `29/29`, `8/8`, `16/16`, and `273/273`; full
+`1746/1746` passed in `14187ms`. The tree registers `867` raw DLL / `879`
+facade / `1746` total tests; source/Release exports remain `389/389`. The
+current DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2AW` closes exact optimized baseline DHT and entropy parity for
+AL's opened real-YCCK `quality="web_low"` case with conflicting custom qtables,
+`subsampling="4:2:2"`, `optimize=True`, and rows-1. Pillow `11.3.0` resolves
+preset DQT plus CMYK 4:2:0 and writes DHT payload lengths `[24,63]`, totaling
+87 bytes with SHA-256
+`48f5721c8573a5afeea606130fd04f23abd7c4bf3f1492f08836f47b62ad879c`.
+It writes DRI `7`, SOS `0443004d0059004b00003f00`, six `RST0..RST5`
+markers, and 1578 entropy bytes with SHA-256
+`56dd23d5b7ab697c753ba267e7c026d841530adc62ab1896011118d7d9a41fa5`.
+The new raw/facade tests passed immediately `1/1` in `63ms` and `1/1` in
+`47ms`; combined passed `2/2` in `79ms`. This proves AV's h2v2 correction and
+AS's integer FDCT/optimized-Huffman path already compose for AW, so no native,
+facade, ABI, or DLL change was made and no rebuild was required.
+Optimize/restart/qtables/CMYK/YCCK/Huffman/DHT/JPEG passed `80/80`, `73/73`,
+`111/111`, `155/155`, `27/27`, `8/8`, `14/14`, and `271/271`; full
+`1744/1744` passed in `14484ms`. The tree registers `866` raw DLL / `878`
+facade / `1744` total tests; source/Release exports remain `389/389`. The
+current DLL SHA-256 remains
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2AV` closes exact progressive DHT and all-scan entropy parity for
+AL's opened real-YCCK `quality="web_low"` case with conflicting custom qtables,
+`subsampling="4:2:2"`, `progressive=True`, `optimize=True`, and rows-1. Pillow
+`11.3.0` resolves preset DQT plus CMYK 4:2:0 and writes 17 DHT payloads with
+lengths `[23,33,18,18,29,40,18,18,30,36,23,22,31,35,29,26,33]`; they total
+462 bytes with SHA-256
+`a3303dc74eb6f20293a45e580afb5c17dc3da258c54ca96447019baac2b69b49`.
+Its 18 entropy lengths are
+`[153,160,19,19,50,162,19,19,40,307,24,21,81,68,448,51,41,149]`, totaling
+1831 bytes with concatenated SHA-256
+`c798b5b5ae59884ad5d7ee89d419bbdf1f52c7619bfbe5b5730f2dcafc8d8dcc`.
+DRI segments are `[7,13,7,13,7,13,7,13,7]`; per-scan DRI is
+`[7,13,7,7,7,13,7,7,7,13,7,7,7,7,13,7,7,7]`, with RST counts
+`[6,12,6,6,6,12,6,6,6,12,6,6,6,6,12,6,6,6]`. Raw/facade RED failed
+`0/1` in `62ms` and `47ms`; only low-refine scans for downsampled M/Y/K
+components differed. Native h2v2 downsampling used unbiased `sum / 4`, while
+libjpeg alternates rounding bias `1,2,1,2...` across output samples. The shared
+CMYK M/Y/K h2v2 path now applies that bias before division; no facade or ABI
+change was needed. One Release x64 rebuild completed with zero warnings/errors.
+Raw/facade/combined GREEN passed `1/1` in `156ms`, `1/1` in `47ms`, and `2/2`
+in `94ms`. Progressive/optimize/restart/qtables/CMYK/YCCK/Huffman/DHT/JPEG
+passed `57/57`, `78/78`, `71/71`, `111/111`, `153/153`, `25/25`, `8/8`,
+`12/12`, and `269/269`; full `1742/1742` passed in `14422ms`. The tree
+registers `865` raw DLL / `877` facade / `1742` total tests; source/Release
+exports remain `389/389`. The rebuilt DLL SHA-256 is
+`9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+`FMT-JPEG-002B2AU` closes exact progressive DHT and all-scan entropy parity for
+AL's opened real-YCCK `quality="keep"` case with conflicting custom qtables,
+`subsampling="web_low"`, `progressive=True`, `optimize=True`, and rows-1.
+Pillow `11.3.0` writes 17 DHT payloads with lengths
+`[28,36,32,33,36,59,55,51,63,33,36,37,33,29,34,31,31]`; they total 657
+bytes with SHA-256
+`319771eac880d557b1ffc40ee4f6bbadf62f7eb18836bd84b81641498fcc2ab8`.
+Its 18 entropy lengths are
+`[452,305,206,194,304,1954,438,367,1518,455,437,412,510,115,463,571,582,473]`,
+totaling 9756 bytes with concatenated SHA-256
+`a587c434f5b076907f3345e41f2d1a026640239ac2070b71ba858302f16b0539`;
+every scan carries DRI `13` and `RST0..RST7,RST0..RST3`. Native AC-first
+statistics/output emitted a per-block `0x00` instead of cross-block EOBRUN.
+After that shared fix made every DHT and scans 2-18 exact, scan 1 remained 449
+versus 452 bytes because negative DC successive approximation truncated toward
+zero instead of using libjpeg's signed arithmetic shift. AC-first now flushes
+EOBRUN before new nonzeros, at restart/end, or at `0x7fff`, with scan-local
+restart intervals in the frequency pass; DC-first now uses signed shift.
+Raw/facade RED failed `0/1` in `93ms` and `62ms`; intermediate raw remained
+`0/1` in `141ms` only on scan 1. After two zero-warning/error Release builds,
+raw/facade/combined GREEN passed `1/1` in `157ms`, `1/1` in `63ms`, and `2/2`
+in `125ms`. Progressive/optimize/restart/qtables/CMYK/YCCK/Huffman/DHT/JPEG
+passed `55/55`, `78/78`, `69/69`, `111/111`, `151/151`, `23/23`, `8/8`,
+`10/10`, and `267/267`; full `1740/1740` passed in `14203ms`. The tree
+registers `864` raw DLL / `876` facade / `1740` total tests; source/Release
+exports remain `389/389`. The rebuilt DLL SHA-256 is
+`E7594BCEFA4B4DAF473E548587AF3C0DDA99BC87BB9999B781927463883F4E63`.
+`FMT-JPEG-002B2AT` closes exact progressive DHT and scan-entropy parity for the
+existing `48x32` RGB custom-qtables `keep_rgb=True`, `progressive=True`,
+`optimize=True`, `restart_marker_rows=1` fixture. Pillow `11.3.0` writes 13
+DHT payload lengths `[24,27,28,26,34,39,37,28,31,24,27,24,25]`; the payloads
+total 374 bytes with SHA-256
+`9bdb778412e6cd8c4048f94d5ccec018e6a5e62326913959bfe19d72f1375ab5`.
+Its 14 entropy lengths are `[89,88,95,78,383,601,332,139,206,120,18,123,168,126]`,
+totaling 2566 bytes with concatenated SHA-256
+`5ca7ccdfc2dbbaf98d5d58f8a56d071017c8c2525ae6518475ea80205e1bc874`;
+every scan carries DRI `6` and `RST0..RST2`. Native already matched the first
+eleven scans and final B-refine scan exactly; final R/G-refine differed because
+the statistics and entropy passes emitted EOB/correction state per block.
+Both shared passes now retain libjpeg-compatible cross-block EOBRUN and
+correction bits, flushing before new symbols, at restart/end boundaries, at
+run `0x7fff`, or before the 1000-bit correction buffer limit. Raw/facade RED
+failed `0/1` in `172ms` and `62ms`; after a zero-warning/error Release x64
+build, raw/facade/combined GREEN passed `1/1` in `141ms`, `1/1` in `62ms`, and
+`2/2` in `93ms`. Progressive/optimize/restart/qtables/RGB/Huffman/DHT/JPEG
+passed `53/53`, `78/78`, `67/67`, `111/111`, `278/278`, `8/8`, `8/8`, and
+`265/265`; full `1738/1738` passed in `14219ms`. The tree registers `863` raw
+DLL / `875` facade / `1738` total tests; source/Release exports remain
+`389/389`. The rebuilt DLL SHA-256 is
+`A0BFD6BDB9BB029658D9DFCD0B2D8AE7E143D467192A8AF23006C195C39335C7`.
+`FMT-JPEG-002B2AS` closes exact optimized DHT and scan-entropy parity for AL's
+single opened real-YCCK `quality="keep"` case with conflicting
+`qtables="web_low"` / `subsampling="web_low"`, `optimize=True`, and
+`restart_marker_rows=1`. Pillow `11.3.0` writes DHT payload lengths `[29,88]`,
+DRI `13`, SOS `0443004d0059004b00003f00`, twelve RST markers, and 9944 entropy
+bytes with SHA-256
+`b377c4c2751df94add98dc971268c11e917f455bcd15c83d961ea491b8dc5145`.
+Native initially wrote `[29,90]` and 9921 entropy bytes; decoding found 373
+different quantized coefficients across 168 blocks. A libjpeg-turbo ISLOW
+probe matched all 676 Pillow blocks and every coefficient. The DLL now uses
+the same two-pass integer ISLOW transform with `qtable * 8` division and
+libjpeg's 257-symbol optimized-Huffman procedure, including pseudo-symbol 256,
+high-symbol ties, 16-bit length redistribution, and original code-size symbol
+ordering. Raw/facade RED each failed on the exact DHT payload (`0/1` in
+`140ms` and `125ms`); after two zero-warning/error Release x64 builds,
+raw/facade/combined GREEN passed `1/1` in `187ms`, `1/1` in `62ms`, and `2/2`
+in `125ms`. Optimize/Huffman/DHT/progressive-diagnostic/restart/qtables/CMYK/
+RGB/YCCK/JPEG passed `76/76`, `8/8`, `6/6`, `51/51`, `65/65`, `109/109`,
+`149/149`, `276/276`, `21/21`, and `263/263`; full `1736/1736` passed in
+`14156ms`. The tree registers `862` raw DLL / `874` facade / `1736` total
+tests; source/Release exports remain `389/389`. The rebuilt DLL SHA-256 is
+`F125A45607C6541EBE0984DF07898656EF0D96F99F6A4A144F60365B5ABF91F9`.
+The shared builder changed the existing keep-RGB progressive native tail from
+`[24,23,25]` to `[26,23,25]`; Pillow's `[27,24,25]` boundary was subsequently
+closed by `FMT-JPEG-002B2AT`, rather than claimed by AS.
+`FMT-JPEG-002B2AR` composes AP's complete opened real-YCCK baseline block-
+restart DPI/XMP/core-metadata surface with simultaneous quality, qtables, and
+subsampling options. Pillow `11.3.0` proves quality keep/`web_low` override
+keep/preset/custom callers and even skip validation of shadowed invalid
+qtables/subsampling strings; every conflicting output is byte-identical to its
+pure-quality baseline. Keep retains source DQT, default CMYK 1x1, DRI `3`, 56
+RST markers, and first bytes `[0,242,230,0]`; `web_low` retains preset DQT,
+4:2:0, DRI `3`, 16 RST markers, and `[2,240,234,5]`. Both preserve unit-1
+JFIF 300x150 plus exact XMP/comment/ICC/EXIF. The raw companion passed `1/1`
+in `375ms`; facade RED errored `0/1` in `422ms` because it validated the
+shadowed subsampling first. Facade normalization now skips lower-precedence
+qtables/subsampling parsing whenever quality keep/preset is active, then
+reuses the existing additive DLL export. No native source, project input, ABI,
+export, or DLL changed. Facade GREEN and final combined passed `1/1` in
+`766ms` and `2/2` in `860ms`. Qtables/CMYK/DPI/XMP/metadata/restart/YCCK/JPEG
+passed `107/107`, `147/147`, `52/52`, `32/32`, `293/293`, `63/63`,
+`19/19`, and `261/261`; full `1734/1734` passed in `17454ms`. The tree
+registers `861` raw DLL / `873` facade / `1734` total tests; exports remain
+`389/389`. The unchanged Release x64 DLL SHA-256 is
+`82227795573AD9EF3D95C90316F99D48C5461887B1C9A7782DBDF0BE97A4C817`.
+`FMT-JPEG-002B2AQ` extends AP's project-owned real-YCCK baseline block-
+restart DPI/XMP/core-metadata surface to qtables-only sentinels. Pillow's
+`qtables="keep"` preserves source DQT; `qtables="web_low"` uses preset DQT;
+both retain default CMYK 1x1, DRI `3`, 56 RST markers, and JFIF/metadata.
+The preset first bytes are `[2,248,232,0]`. Raw RED instead reopened
+`[2,241,232,0]`: the shared floating JPEG FDCT computed a mathematical
+`-27/54=-0.5` M coefficient as `-0.4999999999999997`, so `std::round`
+wrote `0` instead of libjpeg's `-1`. Native quantization now snaps values
+within a scaled 64-ULP half-integer tolerance before half-away-from-zero
+rounding. Release x64 rebuilt with zero warnings/errors and raw GREEN passed
+`1/1` in `484ms`. Facade RED then errored `0/1` in `78ms`; the bounded
+baseline metadata sentinel route now also accepts qtables keep/preset. Facade
+GREEN and combined passed `1/1` in `282ms` and `2/2` in `531ms`.
+Qtables/CMYK/RGB/DPI/XMP/metadata/restart/YCCK/JPEG passed `105/105`,
+`145/145`, `276/276`, `50/50`, `30/30`, `291/291`, `61/61`,
+`17/17`, and `259/259`; full `1732/1732` passed in `8657ms`. The tree
+registers `860` raw DLL / `872` facade / `1732` total tests; exports remain
+`389/389`. The rebuilt Release x64 DLL SHA-256 is
+`82227795573AD9EF3D95C90316F99D48C5461887B1C9A7782DBDF0BE97A4C817`.
+`FMT-JPEG-002B2AP` adds `dpi=(300,150)` to AO's project-owned real-YCCK
+quality keep/`web_low` baseline block-restart XMP+core-metadata pair. Pillow
+and native write JFIF unit 1 density 300x150 before APP14-transform-0, then
+EXIF/XMP/ICC/COM/DQT; reopened `dpi` and `jfif_density` are `[300,150]`.
+AO's exact metadata, DRI `3`, 56/16 RST markers, and bounded pixels remain
+stable. The raw companion passed `1/1` in `375ms`; facade RED errored
+`0/1` in `94ms` at AO's no-DPI condition. Removing only that term routes
+DPI through the existing additive qtables metadata/DPI restart export. No
+native source, project input, ABI, export, or DLL changed. Facade GREEN and
+combined passed `1/1` in `266ms` and `2/2` in `453ms`; DPI/XMP/
+metadata/restart/YCCK/JPEG passed `48/48`, `28/28`, `289/289`,
+`59/59`, `15/15`, and `257/257`; full `1730/1730` passed in
+`16828ms`. The tree registers `859` raw DLL / `871` facade / `1730`
+total tests; source/Release x64 exports remain `389/389`.
+`FMT-JPEG-002B2AO` extends AN's project-owned real-YCCK baseline
+`restart_marker_blocks=3` quality keep/`web_low` pair with explicit XMP in
+addition to comment/ICC/EXIF. Pillow and native write APP14-transform-0, EXIF
+APP1, XMP APP1, ICC APP2, COM, then DQT; exact XMP bytes reopen and public
+`getxmp()` exposes title `Hello`. Keep retains DRI `3`, 56 RST markers,
+default CMYK 1x1, and first bytes `[0,242,230,0]`; `web_low` retains DRI
+`3`, 16 RST markers, 4:2:0, and `[2,240,234,5]`. The raw companion passed
+`1/1` in `391ms`; facade RED errored `0/1` in `78ms` at AN's explicit
+XMP exclusion. Removing only that exclusion routes XMP plus core metadata,
+still without DPI, through the existing additive DLL export. No native source,
+project input, ABI, export, or DLL changed. Facade GREEN and combined passed
+`1/1` in `250ms` and `2/2` in `453ms`; XMP/metadata/restart/YCCK/JPEG
+passed `26/26`, `287/287`, `57/57`, `13/13`, and `255/255`; full
+`1728/1728` passed in `15625ms`. The tree registers `858` raw DLL /
+`870` facade / `1728` total tests; source/Release x64 exports remain
+`389/389`.
+`FMT-JPEG-002B2AN` composes the project-owned real APP14-transform-2 YCCK
+fixture with baseline `restart_marker_blocks=3`, explicit comment/ICC/EXIF,
+and either `quality="keep"` or `quality="web_low"`. Pillow writes
+APP14-transform-0, EXIF APP1, ICC APP2, COM, then two DQT segments. Keep uses
+the two source DQT tables, default CMYK 1x1, DRI `3`, 56 sequential RST
+markers, and reopened first bytes `[0,242,230,0]` repeated; `web_low` uses
+the preset DQT tables, CMYK 4:2:0, DRI `3`, 16 sequential RST markers, and
+`[2,240,234,5]` repeated. Both reopen exact comment/ICC/EXIF and orientation
+6. The raw companion passed `1/1` in `250ms`, proving the existing additive
+qtables metadata/DPI restart export owns the operation. Facade RED errored
+`0/1` in `31ms` at the bounded CMYK baseline metadata guard; the facade now
+admits resolved quality keep/preset qtables with core metadata and no XMP/DPI
+to that export. No native source, project input, ABI, export, or DLL changed.
+Facade GREEN and combined passed `1/1` in `141ms` and `2/2` in `234ms`;
+metadata/restart/qtables/CMYK/YCCK/JPEG passed `285/285`, `55/55`,
+`103/103`, `145/145`, `11/11`, and `253/253`; full `1726/1726`
+passed in `8047ms`. The tree registers `857` raw DLL / `869` facade /
+`1726` total tests; source/Release x64 exports remain `389/389`.
+`FMT-JPEG-002B2AM` corrects sampled progressive RGB component scans at non-
+MCU-aligned dimensions. On the deterministic `100x100` quality-75 default-
+4:2:0 progressive rows-1 fixture, Pillow writes SOF2, two DQT tables, ten
+scans, DRI changes `[7,13,7,13,7,13]`, and per-scan RST counts
+`[6,12,6,6,12,12,6,6,6,12]`; native previously used Y-only DRI `14` because
+it encoded the internal 14x14 MCU-padded Y vector as a single-component scan.
+The progressive RGB encoder now keeps padded Y order for interleaved DC scans
+and extracts a true 13x13 raster Y view for all Y-only AC frequency/entropy
+scans. Public facade routing already entered that DLL path and required no
+production change. BV later upgrades this shared path to ten component-local
+DHT segments; exact default-4:2:0 entropy parity remains separate. Raw/facade RED each
+failed `0/1` in `62ms`; Release x64 rebuilt with `0 Warning(s), 0 Error(s)`;
+raw/facade/combined GREEN passed `1/1` in `110ms`, `1/1` in `63ms`, and `2/2`
+in `125ms`. Progressive/restart/RGB/JPEG passed `51/51`, `53/53`, `276/276`,
+and `251/251`; full `1724/1724` passed in `7922ms` with the known four non-
+failing libjpeg warnings. The tree registers `856` raw DLL / `868` facade /
+`1724` total tests; source/Release x64 exports remain `389/389`.
+`FMT-JPEG-002B2AL` composes the project-owned real APP14-transform-2 YCCK
+fixture with restart markers and simultaneous quality/qtables/subsampling
+sentinels. Three `quality="keep"` cases override qtables keep/preset/custom and
+sampling keep/preset aliases with source DQT plus default CMYK 1x1; three
+`quality="web_low"` cases override the same caller shapes with exact preset
+DQT plus 4:2:0. Baseline, optimized, and progressive outputs write APP14
+transform `0`, omit implicit APP1/APP2/COM, preserve the selected DQT/SOF, and
+reopen first as repeated `[0,242,230,0]` or `[2,240,234,5]`. The raw RED found
+that the `100x100` 4:2:0 progressive C-only scans used the internal 14x14 MCU-
+padded order and DRI `28` instead of Pillow's true 13x13 raster order and DRI
+`13`; native progressive CMYK now uses a separate true-size C AC scan view and
+writes Pillow's per-scan RST geometry. Facade RED hit the old simultaneous
+quality-keep/qtables restart guard; quality keep now always replaces caller
+qtables and sampling state before routing. Exact optimized DHT payload-length/
+entropy parity remains separate; baseline DHT and optimized/progressive DHT
+segment counts are covered. Release x64 rebuilt with `0 Warning(s), 0
+Error(s)`. Raw/facade/combined passed `1/1` in `453ms`, `1/1` in `328ms`, and
+`2/2` in `578ms`; restart/qtables/CMYK/YCCK/JPEG passed `51/51`, `103/103`,
+`145/145`, `9/9`, and `249/249`; full `1722/1722` passed in `7875ms` with the
+known four non-failing libjpeg warnings. The tree registers `855` raw DLL /
+`867` facade / `1722` total tests; source/Release x64 exports remain `389/389`.
+`FMT-JPEG-002B2AK` composes an opened real-4:2:2 CMYK JPEG with restart
+markers and quality/qtables/subsampling keep or preset strings through the
+existing additive DLL ABI. The six-case `64x32` matrix covers three keep and
+three `web_low` preset routes across baseline, optimized, and progressive
+output. Pillow normalizes CMYK quality/qtables/subsampling keep to default
+1x1 unless an explicit sampling alias is supplied: quality+subsampling keep
+baseline blocks `3` writes DRI `3` plus ten RST markers; qtables keep plus
+`4:2:2` optimized rows `1` writes DHT `[21,22]`, DRI `4`, and `RST0..RST2`;
+qtables+subsampling keep progressive rows `1` writes 18 default-1x1 scans with
+DRI `8` and `RST0..RST2` per scan. Quality `web_low` baseline writes 4:2:0,
+DRI `3`, and `RST0,RST1`; qtables plus subsampling `web_low` optimized writes
+4:2:0, DHT `[21,18]`, DRI `4`, and `RST0`; qtables `web_low` progressive uses
+default 1x1 with 18 scans, DRI `8`, and `RST0..RST2` per scan. All write
+APP14, implicit opened COM, and two source-or-preset DQT tables in order. Keep
+outputs reopen first as `[0,42,79,148,11,42,79,148]`; preset outputs first as
+`[4,43,80,148,4,43,80,148]` within one byte. The raw companion passed `1/1`
+in `453ms` before implementation; facade RED errored in `63ms` at the CMYK
+keep restart guard. The facade now parses qtables preset strings, normalizes
+omitted CMYK quality-keep sampling to `-1`, admits only bounded CMYK keep/
+preset restart qtables, and carries implicit opened COM for presets. No native
+source, project input, ABI, or DLL changed, so no rebuild was required. Facade
+GREEN and combined passed `1/1` in `218ms` and `2/2` in `360ms`; restart/
+qtables/CMYK/JPEG passed `49/49`, `101/101`, `143/143`, and `247/247`; full
+`1720/1720` passed in `13250ms` with the known four non-failing libjpeg
+warnings. The tree registers `854` raw DLL / `866` facade / `1720` total
+tests; source/Release x64 exports remain `389/389`.
+`FMT-JPEG-002B2AJ` composes CMYK custom qtables, restart markers, real
+`subsampling=1/2`, and XMP through the existing additive DLL ABI. The six-case
+`64x32`, quality-75 matrix batches no-DPI XMP-only and DPI/JFIF plus
+comment/ICC/EXIF/XMP across baseline, optimized, and progressive output.
+XMP-only files write APP14, XMP, then two custom DQT segments; DPI+all files
+write JFIF, APP14, EXIF, XMP, ICC, COM, then two custom DQT segments. 4:2:2
+baseline blocks `3` writes DRI `3` and `RST0..RST4`; 4:2:0 optimized rows `1`
+writes DRI `4` and `RST0`; and 4:2:2 progressive rows `1` writes 18 scans,
+DRI changes `[4,8,4,8,4,8,4,8,4]`, and `RST0..RST2` in every scan. The
+reopened first pair is `[0,42,79,148,10,42,79,148]`; XMP and all requested
+core metadata/DPI reopen exactly. The raw companion passed `1/1` in `593ms`
+before implementation, proving the native ABI already owned the matrix;
+facade RED errored in `31ms` at the explicit XMP strategy exclusion. The
+facade removes only `!xmpOption.Set` from the bounded strategy condition while
+retaining CMYK, metadata, custom restart qtables, explicit non-keep integer
+subsampling `1/2`, and the surrounding keep/preset exclusions. No native
+source, project input, ABI, or DLL changed, so no rebuild was required. Exact
+facade GREEN and combined passed `1/1` in `234ms` and `2/2` in `438ms`;
+restart/qtables/CMYK/JPEG passed `47/47`, `101/101`, `141/141`, and `245/245`;
+full `1718/1718` passed in `12937ms` with the known four non-failing libjpeg
+warnings. The tree registers `853` raw DLL / `865` facade / `1718` total
+tests; source/Release x64 exports remain `389/389`.
+`FMT-JPEG-002B2AI` composes CMYK custom qtables, restart markers, real
+`subsampling=1/2`, explicit DPI/JFIF, and comment/ICC/EXIF metadata through the
+existing additive DLL ABI. On the covered `64x32`, quality-75 repeating-pair
+fixture, all three outputs write JFIF before APP14, then EXIF, ICC, COM, and two
+custom DQT segments. 4:2:2 baseline blocks `3` at `300x150` DPI writes SOF0,
+DHT `[29,179]`, DRI `3`, and `RST0..RST4`; 4:2:0 optimized rows `1` at
+`144x72` writes SOF0, DRI `4`, and `RST0`; and 4:2:2 progressive rows `1` at
+`72x144` writes SOF2 with 18 scans, DRI changes `[4,8,4,8,4,8,4,8,4]`, and
+`RST0..RST2` in every scan. All reopen as CMYK within one byte of Pillow's
+subsampled target and preserve requested DPI/JFIF, comment, ICC, and EXIF
+orientation `6`. The raw companion passed `1/1` before implementation,
+proving the native ABI already owned the combination; facade RED hit AH's
+no-DPI baseline metadata condition. The facade removes only that DPI exclusion
+while retaining custom qtables, integer subsampling `1/2`, no XMP, and no
+keep/preset sentinel. No native source, project input, ABI, or DLL changed, so
+no rebuild was required. Exact raw/facade/combined passed `1/1`, `1/1`, and
+`2/2`; restart/qtables/CMYK/JPEG passed `45/45`, `99/99`, `139/139`, and
+`243/243`; full `1716/1716` passed in `13359ms` with the known four non-failing
+libjpeg warnings. The tree registers `852` raw DLL / `864` facade / `1716`
+total tests; source/Release x64 exports remain `389/389`.
+`FMT-JPEG-002B2AH` composes CMYK custom qtables, restart markers, real
+`subsampling=1/2`, and explicit comment/ICC/EXIF metadata without DPI through
+the existing additive DLL ABI. On the covered `64x32`, quality-75 repeating-
+pair fixture, all three outputs omit JFIF and write APP14, EXIF, ICC, COM, and
+two custom DQT segments in that order. 4:2:2 baseline blocks `3` writes SOF0,
+DHT `[29,179]`, DRI `3`, and `RST0..RST4`; 4:2:0 optimized rows `1` writes
+SOF0, DRI `4`, and `RST0`; and 4:2:2 progressive rows `1` writes SOF2 with 18
+scans, DRI changes `[4,8,4,8,4,8,4,8,4]`, and `RST0..RST2` in every scan.
+All reopen as CMYK within one byte of Pillow's subsampled target and preserve
+comment, ICC, and EXIF orientation `6`. The raw companion passed `1/1` before
+implementation, proving the native ABI already owned the combination; facade
+RED hit the baseline metadata strategy guard. The facade now admits only
+baseline CMYK custom-qtables metadata with explicit integer subsampling `1/2`,
+no DPI, no XMP, and no keep/preset sentinel, while existing optimized and
+progressive routes remain unchanged. No native source, project input, ABI, or
+DLL changed, so no rebuild was required. Exact raw/facade/combined passed
+`1/1`, `1/1`, and `2/2`; restart/qtables/CMYK/JPEG passed `43/43`, `97/97`,
+`137/137`, and `241/241`; full `1714/1714` passed in `12515ms` with the known
+four non-failing libjpeg warnings. The tree registers `851` raw DLL / `863`
+facade / `1714` total tests; source/Release x64 exports remain `389/389`.
+`FMT-JPEG-002B2AG` composes CMYK custom qtables, restart markers, real
+`subsampling=1/2`, and explicit DPI/JFIF through the existing additive DLL
+ABI. On the covered `64x32`, quality-75 repeating-pair fixture, 4:2:2 baseline
+blocks `3` at `300x150` DPI writes APP0/JFIF before APP14, SOF0 C sampling
+`2x1`, DHT `[29,179]`, DRI `3`, and `RST0..RST4`; 4:2:0 optimized rows `1`
+at `144x72` writes C sampling `2x2`, DRI `4`, and `RST0`; and 4:2:2
+progressive rows `1` at `72x144` writes SOF2 with 18 scans, DRI changes
+`[4,8,4,8,4,8,4,8,4]`, and `RST0..RST2` in every scan. All preserve two
+custom DQT tables, requested unit-1 JFIF density, and CMYK reopen bytes within
+one byte of Pillow's subsampled target. The raw companion passed `1/1` before
+implementation, proving the native ABI already owned the combination; facade
+RED hit the DPI+subsampling strategy guard. The facade removes only that
+bounded rejection and continues to route the full operation to the DLL with no
+AHK JPEG-byte or pixel loop. No native source, project input, exported ABI, or
+DLL changed, so no rebuild was required. Exact raw/facade/combined passed
+`1/1`, `1/1`, and `2/2`; restart/qtables/CMYK/JPEG passed `41/41`, `95/95`,
+`135/135`, and `239/239`; full `1712/1712` passed in `12438ms` with the known
+four non-failing libjpeg warnings. The tree registers `850` raw DLL / `862`
+facade / `1712` total tests; source/Release x64 exports remain `389/389`.
+`FMT-JPEG-002B2AF` composes CMYK custom qtables and restart markers with real
+`subsampling=1/2` through the existing DLL ABI. On the covered `64x32`,
+quality-75 repeating-pair fixture, 4:2:2 baseline blocks `3` writes SOF0 C
+sampling `2x1`, DHT `[29,179]`, DRI `3`, and `RST0..RST4`; 4:2:0 optimized
+rows `1` writes SOF0 C sampling `2x2`, two compact DHT segments, DRI `4`, and
+`RST0`; and 4:2:2 progressive rows `1` writes SOF2 with 18 scans, DRI changes
+`[4,8,4,8,4,8,4,8,4]`, and `RST0..RST2` in every scan. All preserve two
+custom DQT tables and reopen as CMYK within one byte of Pillow's subsampled
+target. Native row intervals now use sampled 16-pixel MCU width, while
+progressive C-only scans switch to their doubled block interval. The facade
+opens only bounded custom-qtables real-subsampling restart calls without DPI;
+no AHK JPEG-byte or pixel loop is added. Raw RED returned invalid argument;
+facade RED hit the default-sampling strategy guard. A direct-call regression
+that initially emitted DRI zero for existing default-1x1 progressive output
+was corrected by propagating the C-only interval and passed `2/2`. Release x64
+rebuilt with `0 Warning(s), 0 Error(s)`. Exact raw/facade/combined passed
+`1/1`, `1/1`, and `2/2`; restart/qtables/CMYK/JPEG passed `39/39`, `93/93`,
+`133/133`, and `237/237`; full `1710/1710` passed in `12297ms` with the known
+four non-failing libjpeg warnings. The tree registers `849` raw DLL / `861`
+facade / `1710` total tests. No export was added; source/Release x64 exports
+remain `389/389`.
+`FMT-JPEG-002B2AE` composes default-1x1 CMYK custom qtables and restart markers
+with explicit DPI/JFIF through one DLL-owned route. The covered `32x16`,
+quality-75 block-constant fixtures all write APP0/JFIF before APP14, two DQT
+tables, exact CMYK reopen bytes, and requested unit-1 density. Baseline blocks
+`3` at `300x150` DPI writes DHT `[29,179]`, DRI `3`, and `RST0,RST1`;
+optimized rows `1` at `144x72` writes DHT `[20,18]`, DRI `4`, and `RST0`;
+progressive blocks `3` at `72x144` writes 18 scans with DHT `[21,18x16]` and
+`RST0,RST1` per scan. The additive
+`pillow_c_image_save_jpeg_qtables_metadata_dpi_restart_marker_encode_options`
+export forwards DPI and existing qtables/metadata/restart options to the shared
+native encoder; the legacy export remains unchanged. The facade opens only the
+CMYK custom-qtables restart+DPI strategy and uses the additive export for all
+custom-qtables restart calls. Raw RED lacked the export; facade RED hit the
+restart+DPI strategy guard. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`.
+Exact raw/facade and combined filters passed `1/1`, `1/1`, and `2/2`; restart
+passed `37/37`, qtables `91/91`, CMYK `131/131`, JPEG `235/235`, and full
+`1708/1708` passed in `6484ms` with the known four non-failing libjpeg warnings.
+The tree registers `848` raw DLL / `860` facade / `1708` total tests. Source
+and Release x64 exports are `389/389`.
+`MODE-COLOR-001BR` establishes LAB scalar noninteger-kmeans precedence with
+supplied palettes omitted. Across all `4 * 4 * 5 = 80` bounded
+size/colors/kmeans combinations, negative Float `-0.5` raises `kmeans must not
+be negative`; nonnegative Floats `0.0`/`1.5` raise `'float' object cannot be
+interpreted as an integer`; and Strings `"0"`/`"ignored"` raise `'<` not
+supported between instances of 'str' and 'int'`. All precede colors, mode, and
+empty-image handling. The facade adds explicit LAB/palette-omitted Float and
+String gates without coercion; non-scalar objects remain separate. No native
+operation, AHK pixel loop, or synthetic result is introduced. RED expected the
+negative-kmeans error but got `bad number of colors`. Exact facade GREEN passed
+`1/1`; LAB and quantize filters passed `32/32` and `37/37`; full `1706/1706`
+passed in `6422ms` with the known four non-failing libjpeg warnings. The tree
+registers `847` raw DLL / `859` facade / `1706` total tests. No native source,
+signature, ABI, export, or DLL changed; source/DLL exports remain `388/388`,
+and no rebuild was required.
+`MODE-COLOR-001BQ` establishes that dither is ignored by LAB `Image.Quantize`
+when palette is omitted. Across all `4 * 4 * 3 * 4 = 192` bounded
+size/colors/kmeans/dither combinations, NONE, FLOYDSTEINBERG, integer `99`, and
+string `"ignored"` all retain the covered LAB ordering: negative kmeans first;
+nonempty invalid colors before wrong mode; and successful DLL-allocated empty P
+results for legal empty shapes with nonnegative kmeans. The facade now allows
+explicit dither through the existing LAB native-empty route while retaining
+the supplied-palette exclusion. No dither pixel operation, AHK pixel loop, or
+synthetic result is introduced. RED expected `image has wrong mode` but got
+`Pillow.Image.Quantize currently supports exact RGB/L images`. Exact facade
+GREEN passed `1/1`; LAB and quantize filters passed `31/31` and `36/36`; full
+`1705/1705` passed in `6250ms` with the known four non-failing libjpeg warnings.
+The tree registers `847` raw DLL / `858` facade / `1705` total tests. No native
+source, signature, ABI, export, or DLL changed; source/DLL exports remain
+`388/388`, and no rebuild was required.
+`MODE-COLOR-001BP` establishes that an Image palette precedes colors, integer
+kmeans, source mode, and empty-image handling for LAB `Image.Quantize`. Across
+all `4 * 4 * 3 * 2 = 96` bounded size/colors/kmeans/palette combinations, a P
+palette raises `only RGB or L mode images can be quantized to a palette`, while
+an L palette raises `bad mode for palette image`. The facade now applies its
+LAB negative-kmeans gate only when palette is omitted, allowing the existing
+generic palette validation branch to own supplied Image palettes. No palette
+mapping operation, AHK pixel loop, or synthetic result is introduced. RED
+expected the source-mode palette error but got `kmeans must not be negative`.
+Exact facade GREEN passed `1/1`; LAB and quantize filters passed `30/30` and
+`35/35`; full `1704/1704` passed in `6015ms` with the known four non-failing
+libjpeg warnings. The tree registers `847` raw DLL / `857` facade / `1704`
+total tests. No native source, signature, ABI, export, or DLL changed;
+source/DLL exports remain `388/388`, and no rebuild was required.
+`MODE-COLOR-001BO` establishes LAB kmeans precedence. For integer `kmeans=-1`,
+Pillow raises `kmeans must not be negative` before colors, mode, and empty-image
+handling for every bounded size/colors combination. For `kmeans=0` or `1`,
+nonempty colors `0`/`257` raise `bad number of colors`, `1`/`256` raise `image
+has wrong mode`, and legal `(0,1)`, `(1,0)`, and `(0,0)` images succeed for
+all four colors values with empty P bytes, empty RGB palettes, preserved shape,
+and copied info. The facade now applies a LAB negative-integer kmeans gate and
+allows nonnegative integer kmeans through the existing native quantize route;
+no AHK pixel loop or nonempty algorithm is added. RED expected the kmeans error
+but got `bad number of colors`. Exact facade GREEN passed `1/1`; LAB and
+quantize filters passed `29/29` and `34/34`; full `1703/1703` passed in
+`5938ms` with the known four non-failing libjpeg warnings. The tree registers
+`847` raw DLL / `856` facade / `1703` total tests. No native source, signature,
+ABI, export, or DLL changed; source/DLL exports remain `388/388`, and no
+rebuild was required.
+`MODE-COLOR-001BN` establishes that LAB mode/colors/empty-image validation
+precedes libimagequant availability. Local Pillow 11.3.0 reports
+`features.check_feature("libimagequant") = False`, yet explicit
+`Quantize.LIBIMAGEQUANT` still gives nonempty colors `0`/`257` -> `bad number
+of colors`, `1`/`256` -> `image has wrong mode`, and legal `(0,1)`, `(1,0)`,
+and `(0,0)` images succeed for all four colors values with empty P bytes,
+empty RGB palettes, preserved shape, and copied info. The bounded LAB route
+now accepts resolved LIBIMAGEQUANT and reuses the existing native quantize ABI;
+it does not claim nonempty algorithm support or add an AHK pixel loop. RED got
+`quantization error`. Exact facade GREEN passed `1/1`; LAB and quantize
+filters passed `28/28` and `33/33`; full `1702/1702` passed in `6234ms` with
+the known four non-failing libjpeg warnings. The tree registers `847` raw DLL
+/ `855` facade / `1702` total tests. No native source, signature, ABI, export,
+or DLL changed; source/DLL exports remain `388/388`, and no rebuild was
+required.
+`MODE-COLOR-001BM` establishes that explicit `Quantize.FASTOCTREE` follows the
+same LAB `Image.Quantize` validation and empty-image path as the other covered
+methods. Nonempty colors `0`/`257` raise `bad number of colors`, while
+`1`/`256` raise `image has wrong mode`; legal `(0,1)`, `(1,0)`, and `(0,0)`
+LAB images succeed for all four values with empty P bytes, empty RGB palettes,
+preserved shape, and copied facade info. The bounded LAB route now accepts
+resolved FASTOCTREE and reuses the existing native quantize ABI without an AHK
+pixel loop. RED expected `image has wrong mode` but got `quantization error`.
+Exact facade GREEN passed `1/1`; LAB and quantize filters passed `27/27` and
+`32/32`; full `1701/1701` passed in `6484ms` with the known four non-failing
+libjpeg warnings. The tree registers `847` raw DLL / `854` facade / `1701`
+total tests. No native source, signature, ABI, export, or DLL changed;
+source/DLL exports remain `388/388`, and no rebuild was required.
+`MODE-COLOR-001BL` establishes that explicit `Quantize.MAXCOVERAGE` follows
+the same LAB `Image.Quantize` validation and empty-image path as omitted method
+and explicit MEDIANCUT. Nonempty colors `0`/`257` raise `bad number of colors`,
+while `1`/`256` raise `image has wrong mode`; legal `(0,1)`, `(1,0)`, and
+`(0,0)` LAB images succeed for all four values with empty P bytes, empty RGB
+palettes, preserved shape, and copied facade info. The bounded LAB route now
+accepts resolved MAXCOVERAGE and reuses the same native quantize ABI without
+an AHK pixel loop. RED expected `image has wrong mode` but got `quantization
+error`. Exact facade GREEN passed `1/1`; LAB and quantize filters passed
+`26/26` and `31/31`; full `1700/1700` passed in `6140ms` with the known four
+non-failing libjpeg warnings. The tree registers `847` raw DLL / `853` facade
+/ `1700` total tests. No native source, signature, ABI, export, or DLL changed;
+source/DLL exports remain `388/388`, and no rebuild was required.
+`MODE-COLOR-001BK` establishes that explicit `Quantize.MEDIANCUT` is exactly
+equivalent to the omitted-method LAB `Image.Quantize` route covered by
+`MODE-COLOR-001BI`. Nonempty colors `0`/`257` raise `bad number of colors`,
+while `1`/`256` raise `image has wrong mode`; legal `(0,1)`, `(1,0)`, and
+`(0,0)` LAB images succeed for all four colors values with empty P bytes,
+empty RGB palettes, preserved shape, and copied facade info. The existing LAB
+route now keys on resolved MEDIANCUT instead of method omission and reuses the
+same native quantize allocation/validation path without an AHK pixel loop.
+RED expected `image has wrong mode` but got `Pillow.Image.Quantize currently
+supports exact RGB/L images`. Exact facade GREEN passed `1/1`; LAB and
+quantize filters passed `25/25` and `30/30`; full `1699/1699` passed in
+`7406ms` with the known four non-failing libjpeg warnings. The tree registers
+`847` raw DLL / `852` facade / `1699` total tests. No native source, signature,
+ABI, export, or DLL changed; source/DLL exports remain `388/388`, and no
+rebuild was required.
+`MODE-COLOR-001BJ` establishes that Pillow 11.3.0 ignores dither, palette, and
+colors for LAB -> PA and always raises `conversion from LAB to RGB not
+supported`, including nonempty plus legal `(0,1)`, `(1,0)`, and `(0,0)`
+images. A bounded oracle covered all `4 * 48 = 192` size/option combinations.
+The facade now places PA in the early LAB mode-pair gate before generic dither
+validation; it does not enter the P ADAPTIVE quantize route, compose through
+RGB, or traverse pixels in AHK. The existing raw LAB -> PA rejection proof
+remains authoritative, so no native source, signature, ABI, or DLL changed.
+RED expected the LAB conversion error but got `Pillow.Image.Convert dither is
+currently supported only for mode 1`. Exact facade GREEN passed `1/1`; LAB,
+P-and-PA, and convert filters passed `24/24`, `8/8`, and `139/139`. Full
+`1698/1698` passed in `6250ms` with the known four non-failing libjpeg
+warnings. The tree registers `847` raw DLL / `851` facade / `1698` total
+tests; source/DLL exports remain `388/388`, and no rebuild was required.
+`MODE-COLOR-001BI` exposes the already-proven native empty-LAB quantize route
+through public default-argument `Image.Quantize`. Nonempty LAB validates
+colors first: `0`/`257` raise `bad number of colors`, while `1`/`256` raise
+`image has wrong mode`. Legal `(0,1)`, `(1,0)`, and `(0,0)` LAB images bypass
+both checks inside the existing native quantize ABI for all four colors values
+and return empty P images with empty RGB palettes; `WrapDerivedHandle` copies
+source info. The bounded branch applies only when method is omitted, kmeans is
+zero, and palette/dither are omitted. Facade RED was `Pillow.Image.Quantize
+currently supports exact RGB/L images`; exact facade GREEN passed `1/1`, LAB
+and quantize filters passed `23/23` and `29/29`, and full `1697/1697` passed
+in `6172ms` with the known four non-failing libjpeg warnings. The tree now
+registers `847` raw DLL / `850` facade / `1697` total tests. No native source,
+signature, or export changed, so no DLL rebuild was required; source/DLL
+exports remain `388/388`.
+`MODE-COLOR-001BH` extends public `Image.Convert` with Pillow-style
+`dither`/`palette`/`colors` slots plus `Pillow.Palette.WEB=0` and
+`ADAPTIVE=1`, while preserving the existing mode-1 second-argument dither
+shape. For LAB -> P, default/WEB, unknown palette values, and arbitrary
+dither/colors still raise `conversion from LAB to RGB not supported` before
+option validation. ADAPTIVE instead enters native quantize: nonempty LAB with
+colors `0`/`257` raises `bad number of colors`, valid `1`/`256` raises `image
+has wrong mode`, and dither is ignored. Legal empty LAB images produce empty P
+images with empty RGB palettes for all four colors values, including `0` and
+`257`, while copying facade info. The native quantize helper now validates the
+P target shape, then clears palette metadata and succeeds for zero pixels
+before colors/source-mode checks; nonempty validation is unchanged. Raw RED
+was `Expected 0, got -3`; facade RED got `Too many parameters passed to
+function.` Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact
+raw/facade passed `1/1` each; LAB, convert-P, quantize, and convert filters
+passed `22/22`, `2/2`, `28/28`, and `138/138`. Full `1696/1696` passed in
+`6094ms` with the known four non-failing libjpeg warnings. No export was added;
+source/DLL exports remain `388/388`.
+`MODE-COLOR-001BG` establishes that Pillow 11.3.0 rejects direct default
+LAB -> P and LAB -> PA with `conversion from LAB to RGB not supported` for
+nonempty, `(0,1)`, `(1,0)`, and `(0,0)` images. Explicit LAB -> RGB -> target
+composition remains valid and separate; raw LAB `[138,81,70]` composes to
+P index `[15]` and PA bytes `[15,255]` with an RGB palette. Native nonempty
+calls already returned `-3`, but empty plain allocating and `_into` calls
+incorrectly succeeded. The DLL now includes P and PA in the LAB mode-pair
+gate before the empty fast path, while the facade normalizes the exact Pillow
+public error on the plain route without a pixel loop. Raw RED was `Expected
+-3, got 0`; facade RED got `pillow_c: invalid argument`. Release x64 rebuilt
+with `0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each; LAB,
+P-and-PA, and convert filters passed `20/20`, `8/8`, and `136/136`. Full
+`1694/1694` passed in `6141ms` with the known four non-failing libjpeg
+warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001BF` establishes that Pillow 11.3.0 rejects direct LAB -> mode
+`1`, `I`, and `F` with `conversion from LAB to RGB not supported`, including
+mode-1 default, NONE, and Floyd-Steinberg routing and nonempty, `(0,1)`,
+`(1,0)`, and `(0,0)` images. Explicit LAB -> RGB -> target composition remains
+valid and separate; for raw LAB `[138,81,70]` it yields packed mode-1 `[0]`,
+I value `78`, and F value `78.44000244140625`. Native nonempty calls already
+returned `-3`, but every empty plain/dither allocating and `_into` call
+incorrectly succeeded. The DLL now rejects all three mode pairs before the
+empty fast path, and the dither route delegates LAB sources to that same
+validation after validating the dither value. The facade normalizes the exact
+Pillow public error before mode-1 dither dispatch and on plain I/F conversion,
+without a pixel loop. Raw RED was `Expected -3, got 0`; facade RED got
+`pillow_c: invalid argument`. Release x64 rebuilt with `0 Warning(s),
+0 Error(s)`; exact raw/facade passed `1/1` each; LAB, mode-1, I-and-F, dither,
+and convert filters passed `18/18`, `54/54`, `51/51`, `7/7`, and `136/136`.
+Full `1692/1692` passed in `6016ms` with the known four non-failing libjpeg
+warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001BE` establishes that Pillow 11.3.0 rejects direct LAB ->
+CMYK/YCbCr/HSV rather than composing through its valid LAB -> RGB route.
+`Image.convert` enters ImageCms only for RGB/RGBA/RGBX targets; all three color
+targets fall through core conversion and raise `conversion from LAB to RGB not
+supported` for nonempty, `(0,1)`, `(1,0)`, and `(0,0)` images. Explicit
+LAB -> RGB -> target composition remains valid and separate. Native nonempty
+conversion already returned `-3`, but empty allocating and `_into` calls
+incorrectly succeeded before mode-pair validation. The DLL now rejects all
+three pairs before that fast path, while the facade reuses the exact Pillow
+public error without a pixel loop. Raw RED was `Expected -3, got 0`; facade RED
+got `pillow_c: invalid argument`. Release x64 rebuilt with `0 Warning(s),
+0 Error(s)`; exact raw/facade passed `1/1` each; LAB, CMYK, YCbCr, HSV, and
+convert filters passed `16/16`, `129/129`, `40/40`, `30/30`, and `136/136`.
+Full `1690/1690` passed in `5937ms` with the known four non-failing libjpeg
+warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001BA` adds DLL-owned mode 1/L/LA -> LAB through the existing
+convert-mode ABI and the exact grayscale L* table introduced by `001AZ`.
+Mode 1 promotes logical samples to 0/255, L indexes directly, and LA ignores
+alpha; all routes write internal `[L*,128,128]` / signed raw `[L*,0,0]` and
+exactly match composition through both L and grayscale RGB. Allocating and
+`_into` routes share one native traversal, legal `(0,1)`, `(1,0)`, and `(0,0)`
+images preserve shape, and the facade adds no AHK pixel loop. Raw returned
+`-3` and facade raised native invalid argument in RED. Release x64 rebuilt
+with `0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined
+mode-1, L-and-LA, LAB, and convert filters passed `52/52`, `19/19`, `8/8`,
+and `132/132`, and full `1682/1682` passed in `11516ms` with the known four
+non-failing libjpeg warnings. No export was added; source/DLL exports remain
+`388/388`.
+`MODE-COLOR-001AZ` adds DLL-owned I/F -> LAB through the existing convert-mode
+ABI. Pillow first applies I/F-to-L truncation and clipping, then maps the byte
+through its exact 256-entry grayscale-to-LAB L* table and writes internal
+`[L*,128,128]`, exposed as signed raw `[L*,0,0]`. Direct output exactly matches
+composition through both L and grayscale RGB; a standard floating formula
+differs at 11 input bytes, so the native lookup preserves exact Pillow
+rounding. NaN/-Inf map to L*=0 and +Inf maps to L*=255. Allocating and `_into`
+routes share one native traversal, legal `(0,1)`, `(1,0)`, and `(0,0)` images
+preserve shape, and the facade adds no AHK pixel loop. Raw returned `-3` and
+facade raised native invalid argument in RED. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined
+I-and-F, LAB, and convert filters passed `49/49`, `6/6`, and `130/130`, and
+full `1680/1680` passed in `11563ms` with the known four non-failing libjpeg
+warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AY` adds DLL-owned I/F -> HSV through the existing convert-mode
+ABI. Pillow first applies I/F-to-L truncation and clipping, then writes
+`[0,0,L]`; direct output exactly matches composition through both L and RGB,
+with H/S always zero. NaN/-Inf map to V=0 and +Inf maps to V=255. Allocating
+and `_into` routes share one native traversal, legal `(0,1)`, `(1,0)`, and
+`(0,0)` images preserve shape, and the facade adds no AHK pixel loop. Raw
+returned `-3` and facade raised native invalid argument in RED. Release x64
+rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each,
+combined I-and-F, HSV, and convert filters passed `47/47`, `28/28`, and
+`128/128`, and full `1678/1678` passed in `11078ms` with the known four
+non-failing libjpeg warnings. No export was added; source/DLL exports remain
+`388/388`.
+`MODE-COLOR-001AX` adds DLL-owned I/F -> YCbCr through the existing convert-mode
+ABI. Pillow first applies I/F-to-L truncation and clipping, then writes
+`[L,128,128]`; direct output exactly matches composition through L and differs
+from RGB composition at 22 exhaustive I values, including lookup-sensitive
+value `11`. NaN/-Inf map to Y=0 and +Inf maps to Y=255. Allocating and `_into`
+routes share one native traversal, legal `(0,1)`, `(1,0)`, and `(0,0)` images
+preserve shape, and the facade adds no AHK pixel loop. Raw returned `-3` and
+facade raised native invalid argument in RED. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined
+I-and-F, YCbCr, and convert filters passed `45/45`, `38/38`, and `126/126`,
+and full `1676/1676` passed in `11594ms` with the known four non-failing
+libjpeg warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AW` adds DLL-owned I/F -> CMYK through the existing convert-mode
+ABI. Pillow's direct numeric route first applies I/F-to-L truncation and
+clipping, then writes `[0,0,0,255-L]`; it matches composition through L and
+deliberately differs from composition through RGB, which writes C/M/Y instead
+of K. NaN/-Inf map to K=255 and +Inf maps to K=0. Allocating and `_into` routes
+share one native traversal, legal `(0,1)`, `(1,0)`, and `(0,0)` images preserve
+shape, and the facade adds no AHK pixel loop. Raw returned `-3` and facade
+raised native invalid argument in RED. Release x64 rebuilt with `0 Warning(s),
+0 Error(s)`; exact raw/facade passed `1/1` each, combined I-and-F, CMYK, and
+convert filters passed `43/43`, `127/127`, and `124/124`, and full `1674/1674`
+passed in `11563ms` with the known four non-failing libjpeg warnings. No export
+was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AV` adds DLL-owned I/F -> mode 1 through the existing dither
+ABI. Both NONE and Floyd-Steinberg first apply Pillow-compatible I/F-to-L
+truncation and clipping without allocating an intermediate image. NONE uses
+the clipped byte threshold `>=128`; Floyd feeds the same byte into the existing
+native error-diffusion state machine, and facade default remains Floyd. Direct
+conversion matches composition through L, including NaN/-Inf=0, +Inf=255,
+packed public bytes, and legal `(0,1)`, `(1,0)`, and `(0,0)` images. Raw
+returned `-3` and facade raised native invalid argument in RED. Release x64
+rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each,
+combined I-and-F, mode-1, dither, and convert filters passed `41/41`, `50/50`,
+`7/7`, and `122/122`, and full `1672/1672` passed in `11547ms` with the known
+four non-failing libjpeg warnings. No export was added; source/DLL exports
+remain `388/388`.
+`MODE-COLOR-001AU` adds DLL-owned I/F -> LA through the existing convert-mode
+ABI. The shared numeric-source color traversal reuses Pillow-compatible
+I/F-to-L truncation and clipping, writes the resulting byte as L, and appends
+alpha=255. Direct conversion matches composition through L; NaN/-Inf map to 0
+and +Inf maps to 255. Allocating and `_into` routes share the loop, and legal
+`(0,1)`, `(1,0)`, and `(0,0)` images preserve shape. The facade's existing
+Image.Convert route required no change and adds no AHK pixel loop. Raw returned
+`-3` and facade raised native invalid argument in RED. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined
+I-and-F, L-and-LA, and convert filters passed `39/39`, `17/17`, and `120/120`,
+and full `1670/1670` passed in `11297ms` with the known four non-failing
+libjpeg warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AT` adds DLL-owned I/F -> RGB/RGBA through the existing
+convert-mode ABI. The shared numeric-source color traversal reuses
+Pillow-compatible I/F-to-L truncation and clipping, replicates the resulting
+byte into RGB, and writes RGBA alpha=255. Direct conversion matches composition
+through L; NaN/-Inf map to 0 and +Inf maps to 255. Allocating and `_into` routes
+share the loop, and legal `(0,1)`, `(1,0)`, and `(0,0)` images preserve shape.
+The facade's existing Image.Convert route required no change and adds no AHK
+pixel loop. Raw returned `-3` and facade raised native invalid argument in RED.
+Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed
+`1/1` each, combined I-and-F, RGB-and-RGBA, RGBX, and convert filters passed
+`37/37`, `23/23`, `29/29`, and `118/118`, and full `1668/1668` passed in
+`11297ms` with the known four non-failing libjpeg warnings. No export was
+added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AS` adds DLL-owned I/F -> RGBX through the existing
+convert-mode ABI. One numeric traversal reuses Pillow-compatible I/F-to-L
+truncation and clipping, replicates the resulting byte into RGB, and writes
+X=255. Negative values, overflow, fractional F values, NaN, and infinities
+match Pillow: NaN/-Inf map to 0 and +Inf maps to 255. Allocating and `_into`
+routes share the loop, and legal `(0,1)`, `(1,0)`, and `(0,0)` images preserve
+shape. The facade's existing Image.Convert route required no change and adds no
+AHK pixel loop. Raw returned `-3` and facade raised native invalid argument in
+RED. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade
+passed `1/1` each, combined I-and-F, RGBX, and convert filters passed `35/35`,
+`29/29`, and `116/116`, and full `1666/1666` passed in `11265ms` with the
+known four non-failing libjpeg warnings. No export was added; source/DLL
+exports remain `388/388`.
+`MODE-COLOR-001AR` adds DLL-owned RGB/RGBA -> RGBX through the existing
+convert-mode ABI. One RGB-like traversal copies R/G/B directly and writes
+X=255; RGBA alpha is ignored. Varied-alpha duplicate RGB pixels prove direct
+RGBA conversion matches RGBA -> RGB -> RGBX, while direct RGB likewise matches
+composition. Legal `(0,1)`, `(1,0)`, and `(0,0)` images preserve shape. The
+facade's existing Image.Convert route required no change and adds no AHK pixel
+loop. Raw returned `-3` and facade raised native invalid argument in RED.
+Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed
+`1/1` each, combined RGB-and-RGBA, RGBX, and convert filters passed `21/21`,
+`27/27`, and `114/114`, and full `1664/1664` passed in `11250ms` with the
+known four non-failing libjpeg warnings. No export was added; source/DLL
+exports remain `388/388`.
+`MODE-COLOR-001AQ` adds DLL-owned mode 1 -> RGBX through the existing
+convert-mode ABI. The shared grayscale four-channel traversal promotes each
+logical sample to 0/255 and writes `[value,value,value,255]`. A packed
+`0xA5,0x5A` fixture exactly matches direct Pillow bytes and Pillow's composed
+mode 1 -> RGB -> RGBX result. Legal `(0,1)`, `(1,0)`, and `(0,0)` images
+preserve shape. The facade's existing Image.Convert route required no change
+and adds no AHK pixel loop. Raw returned `-3` and facade raised native invalid
+argument in RED. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact
+raw/facade passed `1/1` each, combined mode-1, RGBX, and convert filters passed
+`48/48`, `25/25`, and `112/112`, and full `1662/1662` passed in `11125ms`
+with the known four non-failing libjpeg warnings. No export was added;
+source/DLL exports remain `388/388`.
+`MODE-COLOR-001AP` adds DLL-owned L/LA -> RGBX through the existing
+convert-mode ABI. L writes `[L,L,L,255]`; LA writes `[L,L,L,A]`, preserving
+the source alpha as Pillow's public X byte. Direct L conversion matches
+L -> RGB -> RGBX, while direct LA conversion deliberately differs from
+LA -> RGB -> RGBX because the composed route writes X=255. Legal `(0,1)`,
+`(1,0)`, and `(0,0)` images preserve shape. The facade's existing
+Image.Convert route required no change and adds no AHK pixel loop. Raw returned
+`-3` and facade raised native invalid argument in RED. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined L-and-LA,
+RGBX, and convert filters passed `17/17`, `23/23`, and `110/110`, and full
+`1660/1660` passed in `11281ms` with the known four non-failing libjpeg
+warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AO` adds DLL-owned mode 1 -> YCbCr through the existing
+convert-mode ABI. The direct grayscale traversal promotes each logical bit to
+0/255 and writes `[value,128,128]`; the bounded 16-pixel packed fixture exactly
+matches both direct Pillow and composed mode 1 -> RGB -> YCbCr bytes. Legal
+`(0,1)`, `(1,0)`, and `(0,0)` images preserve shape. The facade's existing
+Image.Convert route required no change and adds no AHK pixel loop. Raw returned
+`-3` and facade raised native invalid argument in RED. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined mode-1,
+YCbCr, and convert filters passed `46/46`, `36/36`, and `108/108`, and full
+`1658/1658` passed in `11157ms` with the known four non-failing libjpeg
+warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AN` adds DLL-owned L/LA -> YCbCr through the existing
+convert-mode ABI. One native traversal reads L directly, ignores LA alpha,
+and writes `[L,128,128]`. Pillow's direct grayscale route is deliberately not
+RGB-composed: exhaustive L values `0..255` match the identity Y channel and
+differ from L -> RGB -> YCbCr at lookup-sensitive values. Legal `(0,1)`,
+`(1,0)`, and `(0,0)` images preserve shape. The facade's existing
+Image.Convert route required no change and adds no AHK pixel loop. Raw returned
+`-3` and facade raised native invalid argument in RED. Release x64 rebuilt
+with `0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined
+L-and-LA, YCbCr, and convert filters passed `15/15`, `34/34`, and `106/106`,
+and full `1656/1656` passed in `11157ms` with the known four non-failing
+libjpeg warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AM` adds DLL-owned RGBA -> YCbCr through the existing
+convert-mode ABI. The existing RGB/RGBX traversal now also strides RGBA
+storage, reads only R/G/B, and applies the exact RGB-to-YCbCr lookup helper;
+alpha is ignored. Direct Pillow conversion exactly matches composed RGBA ->
+RGB -> YCbCr bytes, including duplicate RGB values with different alpha.
+Legal `(0,1)`, `(1,0)`, and `(0,0)` images preserve shape. The facade's
+existing Image.Convert route required no change and adds no AHK pixel loop.
+Raw returned `-3` and facade raised native invalid argument in RED. Release
+x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1`
+each, combined RGBA, YCbCr, and convert filters passed `74/74`, `32/32`, and
+`104/104`, and full `1654/1654` passed in `11516ms` with the known four
+non-failing libjpeg warnings. No export was added; source/DLL exports remain
+`388/388`.
+`MODE-COLOR-001AL` adds DLL-owned CMYK -> YCbCr through the existing
+convert-mode ABI. The native CMYK traversal uses the established
+black-channel-scaled CMYK-to-RGB helper, including 255-denominator rounding,
+then applies the exact RGB-to-YCbCr lookup helper, matching direct Pillow
+conversion and composed CMYK -> RGB -> YCbCr bytes. Legal `(0,1)`, `(1,0)`,
+and `(0,0)` images preserve shape. The facade's existing Image.Convert route
+required no change and adds no AHK pixel loop. Raw returned `-3` and facade
+raised native invalid argument in RED. Release x64 rebuilt with `0 Warning(s),
+0 Error(s)`; exact raw/facade passed `1/1` each, combined CMYK, YCbCr, and
+convert filters passed `125/125`, `30/30`, and `102/102`, and full `1652/1652`
+passed in `11078ms` with the known four non-failing libjpeg warnings. No export
+was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AK` adds DLL-owned CMYK -> RGBX through the existing
+convert-mode ABI. The native CMYK traversal uses the established
+black-channel-scaled CMYK-to-RGB helper, including 255-denominator rounding,
+then appends X=255, matching direct Pillow conversion and composed CMYK -> RGB
+-> RGBX bytes. Legal `(0,1)`, `(1,0)`, and `(0,0)` images preserve shape. The
+facade's existing Image.Convert route required no change and adds no AHK pixel
+loop. Raw returned `-3` and facade raised native invalid argument in RED.
+Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed
+`1/1` each, combined CMYK, RGBX, and convert filters passed `123/123`, `21/21`,
+and `100/100`, and full `1650/1650` passed in `6031ms` with the known four
+non-failing libjpeg warnings. No export was added; source/DLL exports remain
+`388/388`.
+`MODE-COLOR-001AJ` adds DLL-owned HSV -> YCbCr through the existing
+convert-mode ABI. One native traversal expands each pixel with the established
+hue-sector-sensitive HSV-to-RGB helper, then applies the exact RGB-to-YCbCr
+lookup helper, matching direct Pillow conversion and composed HSV -> RGB ->
+YCbCr bytes. Legal `(0,1)`, `(1,0)`, and `(0,0)` images preserve shape. The
+facade's existing Image.Convert route required no change and adds no AHK pixel
+loop. Raw returned `-3` and facade raised native invalid argument in RED.
+Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed
+`1/1` each, combined HSV, YCbCr, and convert filters passed `26/26`, `28/28`,
+and `98/98`, and full `1648/1648` passed in `6000ms` with the known four
+non-failing libjpeg warnings. No export was added; source/DLL exports remain
+`388/388`.
+`MODE-COLOR-001AI` adds DLL-owned YCbCr -> HSV through the existing
+convert-mode ABI. One native traversal expands each pixel with the established
+clipped YCbCr-to-RGB lookup kernel, then applies the exact RGB-to-HSV rounding
+helper, matching direct Pillow conversion and composed YCbCr -> RGB -> HSV
+bytes. Legal `(0,1)`, `(1,0)`, and `(0,0)` images preserve shape. The facade's
+existing Image.Convert route required no change and adds no AHK pixel loop. Raw
+returned `-3` and facade raised native invalid argument in RED. Release x64
+rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each,
+combined YCbCr, HSV, and convert filters passed `26/26`, `24/24`, and `96/96`,
+and full `1646/1646` passed in `10922ms` with the known four non-failing
+libjpeg warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AH` adds DLL-owned HSV -> CMYK through the existing
+convert-mode ABI. The native CMYK traversal expands each pixel with the
+established hue-sector-sensitive HSV-to-RGB helper, writes `255-R/G/B`, and
+sets K=0, matching direct Pillow conversion and composed HSV -> RGB -> CMYK
+bytes. Legal `(0,1)`, `(1,0)`, and `(0,0)` images preserve shape. The facade's
+existing Image.Convert route required no change and adds no AHK pixel loop. Raw
+returned `-3` and facade raised native invalid argument in RED. Release x64
+rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each,
+combined CMYK, HSV, and convert filters passed `121/121`, `22/22`, and `94/94`,
+and full `1644/1644` passed in `11469ms` with the known four non-failing
+libjpeg warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AG` adds DLL-owned YCbCr -> CMYK through the existing
+convert-mode ABI. The native CMYK traversal expands each pixel with the
+established clipped YCbCr-to-RGB lookup kernel, writes `255-R/G/B`, and sets
+K=0, matching direct Pillow conversion and composed YCbCr -> RGB -> CMYK bytes.
+Legal `(0,1)`, `(1,0)`, and `(0,0)` images preserve shape. The facade's
+existing Image.Convert route required no change and adds no AHK pixel loop. Raw
+returned `-3` and facade raised native invalid argument in RED. Release x64
+rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each,
+combined CMYK, YCbCr, and convert filters passed `119/119`, `24/24`, and
+`92/92`, and full `1642/1642` passed in `11437ms` with the known four
+non-failing libjpeg warnings. No export was added; source/DLL exports remain
+`388/388`.
+`MODE-COLOR-001AF` adds DLL-owned HSV -> RGBX through the existing
+convert-mode ABI. The existing four-channel HSV traversal now accepts both
+RGBA and RGBX targets: each pixel uses the established hue-sector-sensitive
+HSV-to-RGB helper and appends X=255, matching direct Pillow conversion and
+composed HSV -> RGB -> RGBX bytes. Legal `(0,1)`, `(1,0)`, and `(0,0)` images
+preserve shape. The facade's existing Image.Convert route required no change
+and adds no AHK pixel loop. Raw returned `-3` and facade raised native invalid
+argument in RED. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact
+raw/facade passed `1/1` each, combined RGBX, HSV, and convert filters passed
+`19/19`, `20/20`, and `90/90`, and full `1640/1640` passed in `10734ms` with
+the known four non-failing libjpeg warnings. No export was added; source/DLL
+exports remain `388/388`.
+`MODE-COLOR-001AE` adds DLL-owned YCbCr -> RGBX through the existing
+convert-mode ABI. The existing four-channel YCbCr traversal now accepts both
+RGBA and RGBX targets: each pixel uses the established clipped YCbCr-to-RGB
+lookup kernel and appends X=255, matching direct Pillow conversion and composed
+YCbCr -> RGB -> RGBX bytes. Legal `(0,1)`, `(1,0)`, and `(0,0)` images preserve
+shape. The facade's existing Image.Convert route required no change and adds no
+AHK pixel loop. Raw returned `-3` and facade raised native invalid argument in
+RED. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade
+passed `1/1` each, combined RGBX, YCbCr, and convert filters passed `17/17`,
+`22/22`, and `88/88`, and full `1638/1638` passed in `10641ms` with the known
+four non-failing libjpeg warnings. No export was added; source/DLL exports
+remain `388/388`.
+`MODE-COLOR-001AD` adds DLL-owned HSV -> RGBA through the existing
+convert-mode ABI. One native traversal expands each pixel with the established
+hue-sector-sensitive HSV-to-RGB helper and appends opaque alpha 255, matching
+direct Pillow conversion and composed HSV -> RGB -> RGBA bytes. Legal `(0,1)`,
+`(1,0)`, and `(0,0)` images preserve shape. The facade's existing Image.Convert
+route required no change and adds no AHK pixel loop. Raw returned `-3` and
+facade raised native invalid argument in RED. Release x64 rebuilt with `0
+Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined RGBA,
+HSV, and convert filters passed `72/72`, `18/18`, and `86/86`, and full
+`1636/1636` passed in `11344ms` with the known four non-failing libjpeg
+warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AC` adds DLL-owned YCbCr -> RGBA through the existing
+convert-mode ABI. One native traversal expands each pixel with the established
+clipped YCbCr-to-RGB lookup kernel and appends opaque alpha 255, matching direct
+Pillow conversion and composed YCbCr -> RGB -> RGBA bytes. Legal `(0,1)`,
+`(1,0)`, and `(0,0)` images preserve shape. The facade's existing Image.Convert
+route required no change and adds no AHK pixel loop. Raw returned `-3` and
+facade raised native invalid argument in RED. Release x64 rebuilt with `0
+Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined RGBA,
+YCbCr, and convert filters passed `70/70`, `20/20`, and `84/84`, and full
+`1634/1634` passed in `5906ms` with the known four non-failing libjpeg warnings.
+No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AB` adds DLL-owned YCbCr -> mode 1 through the existing dither
+ABI. NONE first expands YCbCr with the clipped RGB lookup helper and then
+applies the exact weighted RGB threshold at `128000`. Floyd-Steinberg and the
+facade default perform that clipped RGB luma composition inside the existing
+native error-diffusion traversal; they do not use Y directly. Legal `(0,1)`,
+`(1,0)`, and `(0,0)` images preserve shape. The facade's existing Image.Convert
+route required no change and adds no AHK pixel loop. Raw returned `-3` and
+facade raised native invalid argument in RED. Release x64 rebuilt with `0
+Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined mode-1,
+YCbCr, and convert filters passed `44/44`, `18/18`, and `82/82`, and full
+`1632/1632` passed in `11250ms` with the known four non-failing libjpeg
+warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001AA` adds DLL-owned HSV -> mode 1 through the existing dither
+ABI. NONE first expands HSV with the hue-sector-sensitive RGB helper and then
+applies the exact weighted RGB threshold at `128000`. Floyd-Steinberg and the
+facade default perform that HSV/RGB luma composition inside the existing native
+error-diffusion traversal; they do not promote through rounded mode L. Legal
+`(0,1)`, `(1,0)`, and `(0,0)` images preserve shape. The facade's existing
+Image.Convert route required no change and adds no AHK pixel loop. Raw returned
+`-3` and facade raised native invalid argument in RED. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined mode-1,
+HSV, and convert filters passed `42/42`, `16/16`, and `80/80`, and full
+`1630/1630` passed in `5953ms` with the known four non-failing libjpeg warnings.
+No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001Z` adds DLL-owned HSV -> L and LA through the existing
+convert-mode ABI. Pillow first applies its hue-sector-sensitive HSV-to-RGB
+conversion, then both targets use rounded fixed-point RGB luma; LA pairs that
+luma with opaque alpha 255. Legal `(0,1)`, `(1,0)`, and `(0,0)` images produce
+empty targets with preserved shapes. The facade's existing Image.Convert route
+required no change and adds no AHK pixel loop. Raw returned `-3` and facade
+raised native invalid argument in RED. Release x64 rebuilt with `0 Warning(s),
+0 Error(s)`; exact raw/facade passed `1/1` each, combined HSV, L-and-LA, and
+convert filters passed `14/14`, `13/13`, and `78/78`, and full `1628/1628`
+passed in `5937ms` with the known four non-failing libjpeg warnings. No export
+was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001Y` adds DLL-owned HSV -> I and F through the existing
+convert-mode ABI. Pillow first applies its hue-sector-sensitive HSV-to-RGB
+conversion, then I writes rounded fixed-point RGB luma as little-endian int32
+while F writes unrounded weighted RGB luma as little-endian float32. Legal
+empty images produce empty targets. The facade's existing Image.Convert route
+required no change and adds no AHK pixel loop. Raw returned `-3` and facade
+raised native invalid argument in RED. Release x64 rebuilt with `0 Warning(s),
+0 Error(s)`; exact raw/facade passed `1/1` each, combined I/F, HSV, and convert
+filters passed `33/33`, `12/12`, and `76/76`, and full `1626/1626` passed in
+`5984ms` with the known four non-failing libjpeg warnings. No export was added;
+source/DLL exports remain `388/388`.
+`MODE-COLOR-001X` adds DLL-owned CMYK -> I and F through the existing
+convert-mode ABI. Pillow first applies its black-channel-scaled CMYK-to-RGB
+conversion, including 255-denominator rounding, then I writes rounded
+fixed-point RGB luma as little-endian int32 while F writes unrounded weighted
+RGB luma as little-endian float32. Legal empty images produce empty targets.
+The facade's existing Image.Convert route required no change and adds no AHK
+pixel loop. Raw returned `-3` and facade raised native invalid argument in RED.
+Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed
+`1/1` each, combined I/F, CMYK, and convert filters passed `31/31`, `117/117`,
+and `74/74`, and full `1624/1624` passed in `11235ms` with the known four
+non-failing libjpeg warnings. No export was added; source/DLL exports remain
+`388/388`.
+`MODE-COLOR-001W` adds DLL-owned YCbCr -> I and F through the existing
+convert-mode ABI. Pillow's direct numeric route is composed, not direct-Y: each
+pixel first uses the existing clipped YCbCr-to-RGB lookup kernel, then I writes
+rounded fixed-point RGB luma as little-endian int32 while F writes unrounded
+weighted RGB luma as little-endian float32. Legal empty images produce empty
+targets. The facade's existing Image.Convert route required no change and adds
+no AHK pixel loop. Raw returned `-3` and facade raised native invalid argument
+in RED. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade
+passed `1/1` each, combined I/F, YCbCr, and convert filters passed `29/29`,
+`16/16`, and `72/72`, and full `1622/1622` passed in `6297ms` with the known
+four non-failing libjpeg warnings. No export was added; source/DLL exports
+remain `388/388`.
+`MODE-COLOR-001V` adds DLL-owned mode 1/L/LA -> I and F through the existing
+convert-mode ABI. Mode 1 promotes logical pixels to 0/255; L promotes its byte
+directly; LA uses only L and ignores alpha. I writes little-endian int32 and F
+writes the corresponding little-endian float32. Legal empty images produce
+empty targets. The facade's existing Image.Convert route required no change
+and adds no AHK pixel loop. Raw returned `-3` and facade raised native invalid
+argument in RED. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact
+raw/facade passed `1/1` each, combined I/F, mode-1, and convert filters passed
+`27/27`, `40/40`, and `70/70`, and full `1620/1620` passed in `11250ms` with
+the known four non-failing libjpeg warnings. No export was added; source/DLL
+exports remain `388/388`.
+`MODE-COLOR-001U` adds DLL-owned RGB/RGBA -> I and F through the existing
+convert-mode ABI. Both source modes share the 001S numeric luma kernel; RGBA
+alpha is ignored. I writes rounded fixed-point RGB luma as little-endian int32,
+while F writes unrounded weighted luma as little-endian float32. Legal empty
+RGB/RGBA images produce empty targets. The facade's existing Image.Convert
+route required no change and adds no AHK pixel loop. Raw returned `-3` and
+facade raised native invalid argument in RED. Release x64 rebuilt with `0
+Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined I/F,
+convert, and RGBA filters passed `25/25`, `68/68`, and `68/68`, and full
+`1618/1618` passed in `11375ms` with the known four non-failing libjpeg
+warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001T` adds DLL-owned RGBX -> mode 1 through the existing dither
+ABI. Both NONE and Floyd-Steinberg ignore X. NONE reuses the exact weighted
+RGB threshold at `128000`; Floyd and the facade default reuse the existing
+error-diffusion loop. The pinned packed bytes are `[0x00,0xA0]` for NONE and
+`[0x50,0xA0]` for Floyd/default; legal empty RGBX images produce empty targets.
+The facade's existing Image.Convert route required no change and adds no AHK
+pixel loop. Raw returned `-3` and facade raised native invalid argument in RED.
+Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed
+`1/1` each, combined RGBX, mode-1, and convert filters passed `15/15`, `38/38`,
+and `66/66`, and full `1616/1616` passed in `11266ms` with the known four
+non-failing libjpeg warnings. No export was added; source/DLL exports remain
+`388/388`.
+`MODE-COLOR-001S` adds DLL-owned RGBX -> I and F through the existing
+convert-mode ABI. Both routes ignore X. I writes rounded fixed-point RGB luma
+as little-endian int32; F writes unrounded `0.299R + 0.587G + 0.114B` as
+little-endian float32. Legal empty RGBX images produce empty targets. The
+facade's existing Image.Convert route required no change and adds no AHK pixel
+loop. Raw returned `-3` and facade raised native invalid argument in RED.
+Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed
+`1/1` each, combined RGBX, I/F, and convert filters passed `13/13`, `23/23`,
+and `64/64`, and full `1614/1614` passed in `11219ms` with the known four
+non-failing libjpeg warnings. No export was added; source/DLL exports remain
+`388/388`.
+`MODE-COLOR-001R` adds DLL-owned RGBX -> CMYK and YCbCr through the existing
+convert-mode ABI. Both routes ignore X. CMYK subtracts each RGB byte from 255
+and writes K=0; YCbCr reuses the exact Pillow-compatible 6-bit lookup-table
+kernel. Legal empty RGBX images produce empty targets. The facade's existing
+Image.Convert route required no change and adds no AHK pixel loop. Raw returned
+`-3` and facade raised native invalid argument in RED. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, combined RGBX,
+YCbCr, and CMYK filters passed `11/11`, `14/14`, and `115/115`, and full
+`1612/1612` passed in `11156ms` with the known four non-failing libjpeg
+warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001Q` adds DLL-owned RGBX -> RGB, RGBA, L, and LA through the
+existing convert-mode ABI. All routes ignore X. RGB drops it, RGBA writes alpha
+255, L uses the shared fixed-point RGB luma, and LA pairs that luma with 255;
+legal empty RGBX images produce empty targets. The facade's existing
+Image.Convert route required no change and adds no AHK pixel loop. Raw returned
+`-3` and facade raised native invalid argument in RED. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, raw/facade
+RGBX filters passed `4/4` and `5/5`, raw/facade convert filters passed `9/9`
+and `13/13`, and full `1610/1610` passed in `11312ms` with the known four
+non-failing libjpeg warnings. No export was added; source/DLL exports remain
+`388/388`.
+`MODE-COLOR-001P` adds DLL-owned P/PA -> RGBX through the existing convert-mode
+ABI. P uses RGBA palette alpha as the fourth RGBX byte, or 255 for RGB/empty
+palettes; PA uses only pixel A. Both resolve RGB from the palette, so an empty
+palette yields black without mutating source palette state. Empty P/PA images
+produce empty RGBX targets. The facade's existing Image.Convert route required
+no change and adds no AHK pixel loop. Raw returned `-3` and facade raised native
+invalid argument in RED. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`;
+exact raw/facade passed `1/1` each, raw/facade RGBX filters passed `3/3` and
+`4/4`, raw/facade palette filters passed `25/25` and `28/28`, and full
+`1608/1608` passed in `11297ms` with the known four non-failing libjpeg
+warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001O` bounded no-palette RGB/RGBA audit found no missing behavior:
+Pillow 11.3.0 keeps an empty RGB palette, maps every index to black, uses 255
+for P -> RGBA alpha and PA pixel A for PA -> RGBA, preserves the empty source
+palette, and accepts empty images. Existing native black lookup and alpha
+selection already match, so no production change or artificial RED was added.
+`MODE-COLOR-001N` adds DLL-owned P/PA -> mode 1 through the existing dither
+ABI. Pillow's direct palette converter ignores both NONE/Floyd-Steinberg and
+alpha: it resolves palette RGB, writes white exactly when
+`299R + 587G + 114B >= 128000`, and never enters the error-diffusion kernel.
+RGB/RGBA palettes and varied PA pixel A values produce identical output;
+legal empty P/PA sources produce empty mode 1 targets. Raw and facade pin
+packed bytes `[0x65,0xA6]`; the facade's existing Image.Convert route required
+no change and adds no AHK pixel loop. Raw returned `-3` and facade raised
+native invalid argument in RED. Release x64 rebuilt with `0 Warning(s), 0
+Error(s)`; exact raw/facade passed `1/1` each, raw/facade mode 1 filters passed
+`17/17` and `19/19`, raw/facade palette filters passed `25/25` and `28/28`,
+and full `1606/1606` passed in `6375ms` with the known four non-failing
+libjpeg warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001M` adds DLL-owned P/PA -> I and P/PA -> F through the existing
+convert-mode ABI. I writes Pillow's rounded fixed-point palette luma into
+little-endian int32 slots; F writes unrounded `0.299R + 0.587G + 0.114B` into
+little-endian float32 slots. RGB/RGBA palettes produce identical results,
+palette alpha and PA pixel A are ignored, and legal empty P/PA images produce
+empty numeric targets. The facade's existing Image.Convert route required no
+change and adds no AHK pixel loop. Raw returned `-3` and facade raised native
+invalid argument in RED. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`;
+exact raw/facade passed `1/1` each, raw/facade convert filters passed `9/9` and
+`13/13`, raw/facade palette filters passed `24/24` and `28/28`, and full
+`1604/1604` passed in `11516ms` with the known four non-failing libjpeg
+warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001L` adds DLL-owned P -> LA and P -> YCbCr through the existing
+convert-mode ABI. LA uses Pillow-compatible fixed-point palette luma plus the
+RGBA palette entry's alpha, or 255 for RGB palettes. YCbCr ignores palette
+alpha and reuses the exact 6-bit lookup-table kernel; legal empty P images
+produce empty targets. The facade's existing Image.Convert route required no
+change and adds no AHK pixel loop. Raw returned `-3` and facade raised native
+invalid argument in RED. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`;
+exact raw/facade passed `1/1` each, YCbCr passed `12/12`, P-to-LA passed `2/2`,
+raw/facade palette filters passed `24/24` and `28/28`, and full `1602/1602`
+passed in `11140ms` with the known four non-failing libjpeg warnings. No export
+was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001K` adds DLL-owned PA -> CMYK, PA -> YCbCr, and PA -> HSV
+through the existing convert-mode ABI. All three resolve palette RGB and
+ignore both palette and per-pixel alpha. CMYK uses subtractive channels with
+K=0, YCbCr reuses the Pillow-compatible 6-bit lookup kernel, and HSV reuses
+the exact float/fmod/round kernel; legal empty PA images produce empty target
+buffers. The facade's existing Image.Convert route required no change and
+adds no AHK pixel loop. Raw returned `-3` and facade raised native invalid
+argument in RED. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact
+raw/facade passed `1/1` each, HSV and YCbCr filters passed `10/10` each, CMYK
+passed `113/113`, and full `1600/1600` passed in `11266ms` with the known four
+non-failing libjpeg warnings. No export was added; source/DLL exports remain
+`388/388`.
+`MODE-COLOR-001J` adds DLL-owned PA -> RGB, PA -> L, and PA -> LA loops
+through the existing convert-mode ABI. RGB and L resolve palette color while
+ignoring both palette and per-pixel alpha; LA uses the same Pillow-compatible
+16-bit fixed-point luma and copies only the PA pixel's A byte. RGB and RGBA
+palettes produce identical color/luma output, and legal empty PA images
+convert to empty RGB/L/LA buffers. The facade's existing Image.Convert route
+required no change and adds no AHK pixel loop. Raw returned `-3` and facade
+raised native invalid argument in RED. Release x64 rebuilt with `0 Warning(s),
+0 Error(s)`; exact raw/facade passed `1/1` each, raw/facade palette filters
+passed `24/24` and `28/28`, and full `1598/1598` passed in `11203ms` with the
+known four non-failing libjpeg warnings. No export was added; source/DLL
+exports remain `388/388`.
+`MODE-COLOR-001I` adds DLL-owned P -> PA, PA -> P, and PA -> RGBA loops
+through the existing convert-mode ABI. P -> PA copies palette indexes and
+uses RGBA palette alpha as per-pixel A, or 255 for RGB palettes. PA -> P drops
+per-pixel A while preserving RGB/RGBA palette bytes. PA -> RGBA resolves RGB
+from the palette and uses only the PA pixel's A byte, ignoring palette alpha;
+legal empty P/PA conversions retain palettes where Pillow does. The facade's
+existing Image.Convert route required no change and adds no AHK pixel loop.
+Raw returned `-3` and facade raised native invalid argument in RED. Release
+x64 rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1`
+each, raw/facade palette filters passed `24/24` and `28/28`, facade
+Image.Convert passed `13/13`, and full `1596/1596` passed in `11563ms` with
+the known four non-failing libjpeg warnings. No export was added; source/DLL
+exports remain `388/388`.
+`MODE-COLOR-001H` adds first-class native mode `PA` as mode ID `16` with
+direct interleaved P/A bytes, exact raw import/export, fill/getpixel tuples,
+P/A bands, legal empty images, and explicit RGB/RGBA palette ownership. The
+existing palette exports now accept PA handles without changing their mode or
+pixel bytes; L.putpalette still normalizes only L to P. The facade's existing
+PA ModeInfo and widened PutPalette/GetPalette gates route through those native
+paths without AHK image loops. Raw mode mapping returned `-3` and facade
+construction raised native invalid argument in RED. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each, palette
+coverage `52/52`, raw bytes `13/13`, FromBytes `6/6`, mode helpers `1/1`, and
+full `1594/1594` in `6188ms` with the known four non-failing libjpeg warnings.
+No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001G` adds first-class native mode `LAB` as mode ID `15` with
+three public L/A/B storage bytes, exact raw `LAB` import/export, fill/getpixel
+tuples, band names, and legal empty images. The DLL raw codec mirrors Pillow's
+signed-channel packing by xoring A/B with `0x80` only at raw boundaries; the
+facade routes default LAB `ToBytes()` through that native encoder without AHK
+pixel loops. Pillow source proves RGB/LAB conversion is an ImageCms/LittleCMS
+route, so it remains a separate dependency-gated child. Raw mode mapping
+returned `-3` and facade construction raised native invalid argument in RED;
+a second facade RED exposed the missing default raw-encode route. Release x64
+rebuilt with `0 Warning(s), 0 Error(s)`; exact raw/facade passed `1/1` each,
+raw bytes `13/13`, FromBytes `6/6`, mode helpers `1/1`, and full `1592/1592`
+in `6375ms` with the known four non-failing libjpeg warnings. No export was
+added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001F` extends the native HSV target to mode `P` sources with an
+explicit RGB or RGBA palette. One DLL-owned loop resolves each palette index
+to RGB and reuses the exact RGB-to-HSV helper; RGBA palette alpha is ignored,
+and empty images preserve shape. Raw returned `-3` and facade raised native
+invalid argument in RED. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`;
+the exact raw/facade regressions passed `1/1` each, raw HSV passed `4/4`,
+convert_mode passed `9/9`, facade Image.Convert passed `13/13`, palette
+coverage passed `50/50`, and full `1590/1590` passed in `5860ms` with the known
+four non-failing libjpeg warnings. No export was added; source/DLL exports
+remain `388/388`.
+`MODE-COLOR-001E` extends the native HSV target to byte grayscale sources
+`1`, `L`, and `LA`. One DLL-owned loop maps mode `1` nonzero values to V=255,
+reads L/LA's first channel, ignores LA alpha, and writes `[0,0,V]`; empty
+images preserve shape. Raw returned `-3` and facade raised native invalid
+argument in RED. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; HSV
+passed `6/6` in `31ms`, convert_mode `9/9` in `657ms`, facade Image.Convert
+`13/13` in `15ms`, and full `1588/1588` in `6062ms` with the known four
+non-failing libjpeg warnings. No export was added; source/DLL exports remain
+`388/388`.
+`MODE-COLOR-001D` extends the native HSV target to RGBA, RGBX, and CMYK
+sources. RGBA/RGBX stride four bytes and ignore alpha/X while reusing the exact
+RGB HSV helper; CMYK composes the existing Pillow-compatible CMYK-to-RGB helper
+with that HSV core. Empty images preserve shape, and three deterministic
+20,000-pixel differentials matched Pillow byte-for-byte. Raw returned `-3` and
+facade raised native invalid argument in RED. Release x64 rebuilt with `0
+Warning(s), 0 Error(s)`; HSV passed `4/4` in `16ms`, convert_mode `9/9` in
+`625ms`, facade Image.Convert `13/13` in `16ms`, and full `1586/1586` in
+`6172ms` with the known four non-failing libjpeg warnings. No export was added;
+source/DLL exports remain `388/388`.
+`MODE-COLOR-001C` completes Pillow's direct YCbCr target matrix by adding
+DLL-owned `YCbCr -> L` and `YCbCr -> LA` loops to the existing convert helper.
+The L route copies Y directly; LA writes `[Y,255]`, including empty images.
+Existing allocating and `_into` exports share the implementation, and the
+facade routes through them without AHK pixel loops. Raw returned `-3` and facade
+raised native invalid argument in RED. Release x64 rebuilt with `0 Warning(s),
+0 Error(s)`; YCbCr passed `8/8` in `47ms`, convert_mode `9/9` in `687ms`,
+facade Image.Convert `13/13` in `15ms`, and full `1584/1584` in `6282ms` with
+the known four non-failing libjpeg warnings. No export was added; source/DLL
+exports remain `388/388`.
+`MODE-COLOR-001B` adds first-class native `HSV` mode storage and RGB
+bidirectional conversion. Existing mode-name/create/raw-byte/convert exports
+now recognize mode ID `14` with three `H/S/V` bytes, exact tuple fill and
+frombytes/tobytes storage, legal empty images, and DLL-owned hot loops matching
+Pillow 11.3.0 `Convert.c` float/fmod/floor/round semantics. A 20,000-pixel
+random differential matched Pillow byte-for-byte in both directions. The
+facade's existing HSV ModeInfo routes constructors, bands, bytes, and
+conversion through those native paths without AHK pixel loops. Raw mode mapping
+returned `-3` and facade construction raised invalid argument in RED; a second
+RED caught double-before-float hue-sector narrowing at `(227,239,219)`. Release
+x64 rebuilt with `0 Warning(s), 0 Error(s)`; HSV passed `2/2` in `31ms`,
+convert_mode `9/9` in `500ms`, facade Image.Convert `13/13` in `31ms`, raw
+bytes `12/12` in `375ms`, FromBytes `6/6` in `15ms`, mode helpers `1/1` in
+`15ms`, and full `1582/1582` in `5890ms` with the known four non-failing
+libjpeg warnings. No export was added; source/DLL exports remain `388/388`.
+`MODE-COLOR-001A` adds first-class native `YCbCr` mode storage and RGB
+bidirectional conversion. Existing mode-name/create/raw-byte/convert exports
+now recognize mode ID `13` with three `Y/Cb/Cr` bytes, exact tuple fill and
+frombytes/tobytes storage, legal empty images, and DLL-owned hot loops using
+Pillow 11.3.0's `ConvertYCbCr.c` 6-bit lookup-table generation and clipping.
+The facade's existing YCbCr ModeInfo now routes constructors, bands, bytes, and
+conversion through those native paths without AHK pixel loops. Raw mode mapping
+returned `-3` and facade construction raised invalid argument in RED. Release
+x64 rebuilt with `0 Warning(s), 0 Error(s)`; YCbCr passed `6/6` in `125ms`,
+convert_mode `9/9` in `1219ms`, facade Image.Convert `13/13` in `63ms`, raw
+bytes `11/11` in `593ms`, FromBytes `6/6` in `47ms`, mode helpers `1/1` in
+`31ms`, and full `1580/1580` in `11015ms` with the known four non-failing
+libjpeg warnings. No export was added; source/DLL exports remain `388/388`.
+`META-002U` preserves legal empty JPEG ICC profile presence across the native
+metadata ABI. A pre-SOF `ICC_PROFILE\0,1,1` APP2 with zero profile bytes now
+makes raw metadata report `Has=1` and required size `0`, while the facade keeps
+`Info["icc_profile"]` as an empty `Buffer`. Native parser metadata and image
+handles carry an explicit ICC-presence bit through open and metadata copy; only
+the existing JPEG ICC export uses it independently from vector length. Implicit
+`quality="keep"` and `qtables="keep"` saves remain APP2-free and preserve DQT.
+Raw and facade RED both exposed absent metadata. Release x64 rebuilt with `0
+Warning(s), 0 Error(s)`; targeted passed `2/2` in `62ms`, ICC `71/71` in
+`578ms`, quality keep `21/21` in `328ms`, qtables keep `28/28` in `422ms`, raw
+open_jpeg `14/14` in `406ms`, JPEG `233/233` in `2750ms`, and full `1578/1578`
+in `6281ms` with the known four non-failing libjpeg warnings. Facade routing
+and ABI signatures are unchanged; exports remain `388` / `388`.
+`META-002T` removes silent degradation for malformed short JPEG ICC APP2.
+A pre-SOF payload containing the complete `ICC_PROFILE\0` header plus sequence
+byte `1` but no count byte now makes raw JPEG open return invalid argument and
+facade explicit-JPEG open raise, matching Pillow 11.3.0's rejection. Unrelated
+APP2 remains ignored, and late APP2 remains outside public metadata under
+`META-002S`. Native ICC collection now propagates a parse-status failure for
+recognized pre-SOF payloads shorter than 14 bytes; no AHK parsing path was
+added. Raw returned success and facade opened in RED. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; targeted passed `2/2` in `93ms`, malformed `2/2`
+in `47ms`, ICC `69/69` in `625ms`, raw open_jpeg `13/13` in `407ms`, JPEG
+`231/231` in `2750ms`, and full `1576/1576` in `6235ms` with the known four
+non-failing libjpeg warnings. Facade routing and ABI signatures are unchanged;
+exports remain `388` / `388`.
+`META-002S` aligns JPEG ICC finalization timing with Pillow 11.3.0. A standard
+`1/1` ICC APP2 immediately after baseline SOF0 is now ignored by native open
+and omitted from facade `Info`, while implicit `quality="keep"` and
+`qtables="keep"` saves remain ICC-free and preserve DQT. Explicit
+`icc_profile=Explicit` still writes one normal APP2 before SOF0 and reopens
+with those bytes. Native parsing finalizes and clears pending ICC fragments at
+the first SOF, and ignores later APP2 for public metadata; no AHK metadata loop
+was added. Raw and facade reds both exposed the late `Late` payload. Release
+x64 rebuilt with `0 Warning(s), 0 Error(s)`; targeted passed `2/2` in `157ms`,
+ICC `67/67` in `1125ms`, quality keep `20/20` in `671ms`, qtables keep `27/27`
+in `828ms`, raw open_jpeg `12/12` in `875ms`, JPEG `229/229` in `5093ms`, and
+full `1574/1574` in `10985ms` with the known four non-failing libjpeg warnings.
+Facade routing and ABI signatures are unchanged; exports remain `388` / `388`.
+`META-002R` aligns JPEG ICC APP2 fragment collation with Pillow 11.3.0. For
+file-order fragments `2/3:B, 1/2:A`, native open and facade
+`Info["icc_profile"]` now expose `AB`: the DLL collects complete APP2 payloads,
+sorts them lexicographically at the first SOF, checks only the sorted
+first fragment's count against the collected marker count, and concatenates
+bytes after each 14-byte ICC header. Implicit `quality="keep"` and
+`qtables="keep"` saves remain ICC-free and preserve DQT; explicit
+`icc_profile=AB` writes one standard `1/1` APP2 and reopens with `AB`. Raw and
+facade reds both reported missing ICC metadata. Release x64 rebuilt with `0
+Warning(s), 0 Error(s)`; targeted passed `2/2` in `156ms`, ICC `65/65` in
+`547ms`, quality keep `19/19` in `328ms`, qtables keep `26/26` in `453ms`, raw
+open_jpeg `11/11` in `375ms`, JPEG `227/227` in `2766ms`, and full `1572/1572`
+in `5796ms` with the known four non-failing libjpeg warnings. Facade routing
+and ABI signatures are unchanged; exports remain `388` / `388`.
+`META-001CW` aligns segmented JPEG EXIF APP1 handling with Pillow 11.3.0.
+For ordered orientation-3 then orientation-6 payloads, native open and facade
+`Info["exif"]` now expose the first full payload plus the second payload after
+its repeated `Exif\0\0` header, while native orientation and
+`getexif()[274]` remain `3` from the first TIFF. Implicit `quality="keep"` and
+`qtables="keep"` saves remain EXIF-free; explicit combined EXIF writes exactly
+one APP1 and reopens with orientation `3`. Native `apply_jpeg_exif_metadata`
+now appends subsequent EXIF payload tails to the DLL-owned blob while retaining
+the existing first-nonzero orientation parser; facade routing and ABI
+signatures are unchanged. Raw and facade reds both returned only the first
+32-byte payload instead of the 58-byte combined blob. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; targeted passed `2/2` in `109ms`, EXIF `263/263`
+in `2016ms`, getexif `97/97` in `1235ms`, quality keep `18/18` in `593ms`,
+qtables keep `25/25` in `796ms`, raw open_jpeg `10/10` in `671ms`, JPEG
+`225/225` in `5015ms`, and full `1570/1570` in `10688ms` with the known four
+non-failing libjpeg warnings. Exports remain `388` / `388`.
+`META-002Q` aligns duplicate standard JPEG XMP APP1 precedence with Pillow
+11.3.0. For ordered `First` then `Second` packets, native open and facade
+`Info["xmp"]` now expose `Second`, while `getxmp()` parses title `Second`.
+Implicit `quality="keep"` and `qtables="keep"` saves remain XMP-free and
+preserve DQT; explicit `xmp=Explicit` writes exactly one overriding packet and
+reopens with parsed title `Explicit`. Native `apply_jpeg_xmp_metadata` now
+overwrites the cached DLL-owned XMP value for each standard packet instead of
+locking the first; facade routing and ABI signatures are unchanged. Raw and
+facade reds both returned the `First` packet. Release x64 rebuilt with `0
+Warning(s), 0 Error(s)`; targeted passed `2/2` in `94ms`, XMP `22/22` in
+`344ms`, getxmp `3/3` in `110ms`, quality keep `17/17` in `594ms`, qtables keep
+`24/24` in `766ms`, raw open_jpeg `9/9` in `515ms`, JPEG `223/223` in `5047ms`,
+and full `1568/1568` in `10812ms` with the known four non-failing libjpeg
+warnings. Exports remain `388` / `388`.
+`FMT-JPEG-003AT` aligns multiple JPEG COM marker precedence with Pillow 11.3.0.
+For a bounded RGB JPEG containing ordered `first-comment` then
+`second-comment` COM segments, native open and facade `Info["comment"]` now
+expose the last payload. Implicit `quality="keep"` and `qtables="keep"` saves
+each write exactly one COM carrying `second-comment`, preserve source DQT, and
+reopen with the same public comment. Native metadata parsing now overwrites its
+cached comment for every encountered COM instead of locking the first one;
+facade routing and ABI signatures are unchanged. Raw and facade reds both
+returned `first-comment`. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`;
+targeted passed `2/2` in `171ms`, comment `24/24` in `297ms`, quality keep
+`16/16` in `531ms`, qtables keep `23/23` in `703ms`, raw open_jpeg `8/8` in
+`469ms`, JPEG `221/221` in `4922ms`, and full `1566/1566` in `10531ms` with
+the known four non-failing libjpeg warnings. Exports remain `388` / `388`.
+`FMT-JPEG-003AS` composes opened RGB JPEG `qtables="keep"` with explicit
+integer `subsampling=0/1/2` and `restart_marker_rows=1` in one batched route:
+baseline 4:4:4, optimized 4:2:2, and progressive+optimize 4:2:0. All three
+outputs preserve source DQT, implicit opened COM, and explicit ICC/EXIF.
+Their SOF markers are SOF0/SOF0/SOF2; DRI sequences are `[6]`, `[3]`, and
+`[3,6,3,6,3,6]`, with sampling-local RST geometry. Baseline uses the four
+standard DHT segments, optimized output uses four compact segments, and native
+progressive output now writes ten component-local DHT segments across ten
+scans after BV. The raw test passed first; facade red then hit the stale explicit-
+subsampling strategy guard. Removing only that predicate opened the existing
+native ABI route. Targeted passed `2/2` in `187ms`, qtables keep `21/21` in
+`672ms`, subsampling `53/53` in `1296ms`, optimize `74/74` in `1468ms`,
+progressive `49/49` in `1250ms`, restart `35/35` in `1234ms`, JPEG `219/219`
+in `4875ms`, and full `1564/1564` in `10922ms` with the known four non-failing
+libjpeg warnings. No native source or ABI changed; exports remain `388` / `388`.
+`FMT-JPEG-003AR` composes opened RGB JPEG `qtables="keep"` with optimized
+baseline or progressive+optimize row restarts across explicit source 4:2:2
+sampling keep and omitted default 4:2:0 sampling. All four covered outputs
+preserve source DQT, implicit opened COM, and explicit ICC/EXIF. Optimized
+outputs write SOF0, four compact DHT segments, DRI `3`, and sampling-local RST
+counts. Progressive outputs write SOF2, ten scans, DRI sequence
+`[3,6,3,6,3,6]`, and scan-local RST geometry; Pillow output is byte-identical
+for progressive optimize false/true. BV later replaces shared Cr/Cb AC tables
+with ten Pillow-compatible component-local DHT segments and closes exact
+source-4:2:2 per-scan DHT/SOS/entropy parity; default 4:2:0 exact entropy
+remains separate. Raw passed before facade red hit the old strategy guard. Targeted
+passed `2/2` in `235ms`, qtables keep `19/19` in `593ms`, optimize `72/72` in
+`1203ms`, progressive `47/47` in `1078ms`, quality keep `15/15` in `546ms`,
+subsampling keep `8/8` in `328ms`, restart `33/33` in `1078ms`, JPEG `217/217`
+in `4656ms`, and full `1562/1562` in `10469ms` with the known four non-failing
+libjpeg warnings. No native source or ABI changed; exports remain `388` / `388`.
+`FMT-JPEG-002B2AD` composes default-1x1 CMYK custom qtables with restart
+markers through the existing qtables metadata restart ABI. The covered
+`32x16`, quality-75 fixtures write two DQT tables and exact CMYK reopen bytes.
+Baseline blocks `3` writes DHT `[29,179]`, DRI `3`, and `RST0,RST1`;
+optimized rows `1` plus metadata writes DHT `[20,18]`, DRI `4`, one `RST0`,
+and preserves metadata before DQT; progressive blocks `3` writes 18 scans with
+DHT `[21,18×16]` and `RST0,RST1` per scan. Native qtables routing now
+normalizes CMYK block/row intervals and reuses the baseline/optimized/
+progressive encoders; facade routing stays DLL-only. Red evidence: raw
+returned `-3` and facade rejected CMYK custom qtables. Release x64 rebuilt
+with `0 Warning(s), 0 Error(s)`; targeted passed `2/2` in `94ms`, restart
+`24/24` in `422ms`, qtables `73/73` in `984ms`, progressive `45/45` in `515ms`,
+CMYK `109/109` in `1031ms`, JPEG `208/208` in `2703ms`, and full `1553/1553`
+in `6078ms` with the known four non-failing libjpeg warnings. Source and
+Release x64 exports remain `388` / `388`.
+`FMT-JPEG-002B2AC` extends the existing progressive restart metadata ABI to
+default-1x1 CMYK. The covered `32x16`, quality-95 block-constant fixture writes
+18 SOS scans with one stable DRI and exact CMYK reopen bytes. Blocks interval
+`3` emits `RST0,RST1` in every scan; row interval `1` with explicit
+EXIF/XMP/ICC/COM emits one `RST0` in every scan and preserves metadata before
+DQT. Native interleaved DC-first/DC-refine scans now emit restarts, DC-first
+resets C/M/Y/K predictors together, and shared AC scans receive the same
+interval. Red evidence: raw returned `-3` and facade rejected CMYK progressive
+restart output. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; targeted
+passed `2/2` in `203ms`, restart `22/22` in `859ms`, progressive `43/43` in
+`875ms`, CMYK `107/107` in `2047ms`, JPEG `206/206` in `4750ms`, and the full
+suite `1551/1551` in `7297ms` with the known four non-failing libjpeg warnings.
+Source and Release x64 exports remain `388` / `388`.
+`FMT-JPEG-002B2AB` extends default-1x1 CMYK baseline restart output to
+optimized Huffman coding through the existing metadata restart encode ABI.
+For the covered `32x16`, quality-95 block-constant fixture, Pillow 11.3.0 and
+native output use APP14 transform `0`, C/M/Y/K `1x1` qtable-0 SOF0, DRI before
+SOS, and exact CMYK reopen bytes. Blocks interval `3` writes optimized DHT
+payload lengths `[22,18]`, DRI `3`, and `RST0,RST1`; row interval `1` with
+explicit EXIF/XMP/ICC/COM writes metadata before DQT, DHT `[21,18]`, DRI `4`,
+and `RST0`. Native optimized frequency collection now resets all four DC
+predictors at the same restart boundaries as entropy encoding. The facade
+routes only optimized default-sampling CMYK restart output with optional
+metadata; plain CMYK metadata, qtables, DPI, progressive, keep-rgb, real
+subsampling, broader matrices, and YCCK remain separate. Red evidence: raw
+metadata restart encode returned `-3` and the facade rejected CMYK optimize.
+Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; targeted coverage passed
+`2/2` in `78ms`, restart coverage passed `21/21` in `344ms`, CMYK coverage
+passed `105/105` in `984ms`, JPEG coverage passed `204/204` in `2360ms`, and
+the full AHK directory suite passed `1549/1549` in `5781ms` with the known four
+non-failing libjpeg stderr warnings. Source and Release x64 DLL export counts
+remain `388` / `388`.
+`FMT-JPEG-002B2AA` extends the existing plain block/row restart-marker ABI to
+bounded default-1x1 mode `CMYK` baseline saves. The covered `32x16`, quality
+`95` block-constant fixture matches Pillow 11.3.0 marker structure: APP14
+transform `0`, DQT table `0`, C/M/Y/K `1x1` qtable-0 SOF0 components,
+standard DHT payload lengths `[29,179]`, and DRI before SOS.
+`restart_marker_blocks=3` writes DRI `3` plus `RST0,RST1`; row interval `1`
+derives four 8x8 CMYK MCUs per row, writes DRI `4`, and emits `RST0`. Native
+entropy flushes at boundaries, cycles RST markers, resets all four DC
+predictors, and both outputs reopen with exact covered CMYK bytes. The facade
+routes only this integer-quality baseline surface; metadata, qtables, DPI,
+optimize, progressive, keep-rgb, real subsampling, broader matrices, and YCCK
+remain separate. The plain metadata-restart export remains explicitly L/RGB;
+`FMT-JPEG-002B2AB` later opens only the optimized metadata encode route.
+Red evidence: raw plain restart returned `-3`, the facade rejected CMYK, and a
+shared-core regression probe initially showed the metadata route returning `0`
+before its mode boundary was restored. Release x64 rebuilt with `0 Warning(s),
+0 Error(s)`; targeted coverage passed `3/3` in `125ms`, restart coverage passed
+`19/19` in `594ms`, CMYK coverage passed `103/103` in `1890ms`, JPEG coverage
+passed `202/202` in `4953ms`, and the full AHK directory suite passed
+`1547/1547` in `11578ms` with the known four non-failing libjpeg stderr
+warnings. Source and Release x64 DLL export counts remain `388` / `388`.
+`FMT-JPEG-002B2Z` composes bounded mode `RGB` `keep_rgb=True` output with
+restart markers through one native RGB-component route. The covered `32x16`
+baseline fixture writes APP14 transform `0`, R/G/B `1x1` qtable-0 SOF0,
+standard DHTs, DRI `3`, and `RST0,RST1`. The covered `48x16` optimized row
+fixture writes explicit EXIF/XMP/ICC/COM before DQT, optimized DHT lengths
+`[23,46]`, DRI `6`, and one `RST0`. The covered `48x32` custom-qtables
+progressive row fixture writes APP14 transform `0`, DQT `0/1`, R/G/B SOF2,
+one stable DRI `6`, and `RST0,RST1,RST2` in each of fourteen scans. Pillow
+11.3.0's progressive DHT lengths end in `[27,24,25]`; deterministic native
+output ends in `[24,23,25]`, while preserving valid entropy, bounded pixel
+error, and all restart boundaries. Exact libjpeg DHT/entropy byte parity stays
+separate. The additive
+`pillow_c_image_save_jpeg_keep_rgb_restart_marker_encode_options` export uses
+`qtables=nullptr,qtable_count=0` for default tables, accepts optional custom
+qtables and metadata, derives row intervals from 8x8 RGB-component MCU
+columns, resets optimized DC collection at restart boundaries, and routes
+baseline or progressive native encoding. Progressive AC refinement now emits
+only the correction bits belonging before each 16-zero ZRL boundary; this
+removed two `bad Huffman code` warnings exposed by the larger fixture and
+reduced the covered native reopen maximum channel error from `21` to `4`.
+The facade routes the public options through the new ABI without AHK pixel or
+JPEG rewrite loops. CMYK, DPI, quality/qtables keep sentinels, broader restart
+matrices, and exact libjpeg entropy/DHT parity remain separate gaps. Red
+evidence: the raw export was missing, the facade rejected keep-RGB restart
+composition, and the progressive decode exceeded the bounded error assertion.
+Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; targeted coverage passed
+`2/2` in `78ms`, restart coverage passed `16/16` in `688ms`, existing
+`keep_rgb` coverage passed `41/41` in `500ms`, progressive coverage passed
+`41/41` in `391ms`, JPEG coverage passed `199/199` in `2328ms`, and the full
+AHK directory suite passed `1544/1544` in `5266ms` with the known four
+non-failing libjpeg stderr warnings. Source and Release x64 DLL export counts
+are now `388` / `388`.
+`FMT-JPEG-002B2Y` composes custom qtables and explicit RGB subsampling with
+restart markers through one native route. The covered `24x16` mode `L`
+baseline fixture uses custom qtable `0`, DRI `3`, and one `RST0`. The covered
+`48x16` RGB 4:4:4 optimized fixture uses custom qtables `0/1`, DRI `4`, and
+`RST0,RST1`, with restart-aware optimized DC frequency collection. The covered
+`48x32` RGB 4:2:2 progressive fixture combines custom qtables, row restarts,
+and explicit EXIF/XMP/ICC/COM; Pillow 11.3.0 and native output use DRI sequence
+`[3,6,3,6,3,6]`, and all ten scans emit `RST0,RST1,RST2`. The additive
+`pillow_c_image_save_jpeg_qtables_metadata_restart_marker_encode_options`
+export validates qtables, metadata, sampling, and mutually exclusive restart
+families, then routes the generalized qtables baseline/optimized/progressive
+encoders. The facade permits custom qtables and RGB custom subsampling through
+that ABI without AHK pixel or JPEG rewrite loops. Keep-rgb, CMYK, quality
+presets/keep sentinels, DPI, broader interval matrices, and exact libjpeg
+entropy/DHT byte parity remain separate gaps. Red evidence: the raw export was
+missing and the facade rejected qtables restart composition. Release x64
+rebuilt with `0 Warning(s), 0 Error(s)`; targeted coverage passed `2/2` in
+`141ms`, restart coverage passed `14/14` in `219ms`, qtables coverage passed
+`71/71` in `906ms`, progressive coverage passed `41/41` in `422ms`, JPEG
+coverage passed `197/197` in `2016ms`, and the full AHK directory suite passed
+`1542/1542` in `5313ms` with the known four non-failing libjpeg stderr warnings.
+Source and Release x64 DLL export counts are now `387` / `387`.
+`FMT-JPEG-002B2X` composes native progressive JPEG scans with bounded mode `L`
+restart blocks and default `4:2:0` mode `RGB` restart rows plus explicit
+comment/ICC/EXIF/XMP. The local Pillow 11.3.0 oracle writes one DRI `3` before
+the first of six L scans and one `RST0` in every scan for the covered `24x16`
+`restart_marker_blocks=3` fixture. For the covered `48x32` RGB
+`restart_marker_rows=1` fixture, Pillow changes DRI by scan geometry:
+`[3,6,3,6,3,6]`, using `3` for interleaved/chroma scans and `6` for luma-only
+scans; ten scans emit the expected row-boundary restart sequences. Explicit
+metadata remains ordered after APP0 and before DQT/SOF2. Pillow outputs are
+byte-identical with `progressive=True,optimize=False/True`. The additive
+`pillow_c_image_save_jpeg_metadata_restart_marker_progressive_options` export
+validates metadata/intervals and routes native progressive encoders. Progressive
+DC frequency collection and entropy scans reset predictors at restart
+boundaries; every scan restarts its marker sequence at `RST0`, and RGB emits a
+new DRI only when its scan interval changes. The facade routes progressive with
+either restart option and optional metadata without an AHK pixel or file
+rewrite loop. QTables/custom subsampling, keep-rgb, CMYK, broader interval
+matrices, and exact libjpeg entropy/DHT byte parity remain separate gaps. Red
+evidence: raw export resolution failed and the facade rejected progressive on
+its baseline-only restart guard. Release x64 rebuilt with `0 Warning(s), 0
+Error(s)`; targeted coverage passed `2/2` in `78ms`, the restart family passed
+`12/12` in `172ms`, progressive coverage passed `41/41` in `407ms`, JPEG
+coverage passed `195/195` in `2156ms`, and the full AHK directory suite passed
+`1540/1540` in `5063ms` with the known four non-failing libjpeg stderr warnings.
+Source and Release x64 DLL export counts are now `386` / `386`.
+`FMT-JPEG-002B2W` composes optimized-Huffman baseline JPEG output with bounded
+restart markers for mode `L` and default `4:2:0` mode `RGB`, including explicit
+comment/ICC/EXIF/XMP on the RGB row-interval route. The local Pillow 11.3.0
+oracle writes DHT payload lengths `[20,31]`, DRI `3`, and one `RST0` for the
+covered `24x16` L `restart_marker_blocks=3` fixture; the native output matches
+that structure. Pillow writes `[22,44,23,36]` for the covered `48x32` RGB
+`restart_marker_rows=1` fixture, while the deterministic native coefficient
+stream writes `[22,44,22,36]`: native restart-aware chroma DC categories do not
+use category `0`, so the encoder does not inject an unused Huffman symbol merely
+for libjpeg DHT byte-shape parity. Both native outputs preserve DRI/RST entropy
+boundaries and reopen through the DLL; RGB also preserves explicit EXIF/XMP/ICC/
+COM metadata order and values. The additive
+`pillow_c_image_save_jpeg_metadata_restart_marker_encode_options` export routes
+the shared restart core with `optimize_huffman=true`; frequency collection now
+resets DC predictors at the same block/MCU boundaries as entropy encoding. The
+facade permits `optimize=True` with either restart option and routes optional
+metadata without an AHK pixel or file rewrite loop. Progressive output,
+qtables/custom subsampling, keep-rgb, CMYK, broader interval matrices, and exact
+libjpeg entropy/DHT byte parity remain separate gaps. Red evidence: raw export
+resolution failed and the facade rejected `optimize=True` through its prior
+restart guard. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; targeted
+coverage passed `2/2` in `94ms`, the restart family passed `10/10` in `250ms`,
+JPEG coverage passed `193/193` in `3875ms`, and the full AHK directory suite
+passed `1538/1538` in `10109ms` with the known four non-failing libjpeg stderr
+warnings. Source and Release x64 DLL export counts are now `385` / `385`.
+`FMT-JPEG-002B2V` composes bounded baseline restart markers with explicit JPEG
+metadata through one DLL-owned route. The local Pillow 11.3.0 oracle writes
+`APP0,COM,DQT,SOF0,DHT,DHT,DRI,SOS` for a `24x16` L save with
+`restart_marker_blocks=3` plus comment, and writes APP0, EXIF APP1, XMP APP1,
+ICC APP2, COM, DQT, SOF0, standard DHTs, DRI, then SOS for a `48x32` default
+4:2:0 RGB save with `restart_marker_rows=1`; both use DRI interval `3`, emit
+one `RST0`, and reopen with their explicit metadata. The additive
+`pillow_c_image_save_jpeg_metadata_restart_marker_options` export validates
+all metadata before encoding, converts rows through the shared native MCU
+geometry helper, and inserts EXIF/XMP/ICC/COM once after a shared restart core,
+avoiding source-comment plus explicit-comment duplication. The facade routes
+comment/ICC/EXIF/XMP with either restart option without an AHK pixel or file
+rewrite loop. QTables/custom subsampling, optimize/progressive, keep-rgb,
+CMYK, and broader interval matrices remain separate gaps. Red evidence: raw
+export resolution failed and the facade rejected restart metadata through its
+prior guard. Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; targeted
+coverage passed `2/2` in `78ms`, the restart family passed `8/8` in `94ms`,
+JPEG coverage passed `191/191` in `1922ms`, and the full AHK directory suite
+passed `1536/1536` in `5281ms` with the known four non-failing libjpeg stderr
+warnings. Source and Release x64 DLL export counts are now `384` / `384`.
+`FMT-JPEG-002B2U` adds bounded baseline mode `L` and default `4:2:0` mode
+`RGB` JPEG `restart_marker_rows=1` output. The local Pillow 11.3.0 oracle uses
+three MCU columns for both the `24x16` L and `48x32` RGB fixtures, writes DRI
+interval `3` before SOS, emits one `RST0` between their two MCU rows, keeps
+standard DHT payload lengths `[29,179]` and `[29,179,29,179]`, respectively,
+and reopens each image at its original mode and size. The additive
+`pillow_c_image_save_jpeg_restart_marker_rows_options` export derives MCU
+columns natively from mode and width, validates the 16-bit interval, and
+reuses the existing restart-block encoder without an AHK pixel loop. The
+facade routes `RestartMarkerRows` / `restart_marker_rows` and rejects combining
+row and block options explicitly. Metadata, custom qtables/subsampling,
+optimized/progressive output, keep-rgb, CMYK, and broader interval matrices
+remain separate gaps. Red evidence: raw export resolution failed for the new
+rows symbol, and the facade output lacked DRI. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; targeted rows coverage passed `2/2` in `47ms`,
+the combined restart family passed `6/6` in `140ms`, JPEG coverage passed
+`189/189` in `3890ms`, and the full AHK directory suite passed `1534/1534` in
+`5094ms` with the known four non-failing libjpeg stderr warnings. Source and
+Release x64 DLL export counts are now `383` / `383`.
+`FMT-JPEG-002B2T` extends the existing restart-marker ABI to bounded baseline
+mode `RGB` JPEG output with integer quality, default `4:2:0` sampling, and
+`restart_marker_blocks=1`. The local Pillow 11.3.0 oracle writes standard DHT
+payload lengths `[29,179,29,179]`, stores DRI interval `1` before SOS, emits
+`RST0`, `RST1`, and `RST2` between the four interleaved MCUs of a `32x32`
+image, and reopens as mode `RGB` at the original size. Native RGB entropy
+encoding now byte-aligns at each reached interval, emits cyclic RST markers,
+and resets all Y/Cb/Cr DC predictors before the next MCU. The existing
+`pillow_c_image_save_jpeg_restart_marker_blocks_options` signature is
+unchanged, and the facade now routes bounded L or RGB saves without an AHK
+pixel loop. Metadata, custom qtables/subsampling, optimized/progressive
+output, keep-rgb, CMYK, `restart_marker_rows`, and broader interval matrices
+remain separate gaps. Red evidence: raw RGB restart save returned `-3`, and
+the facade rejected RGB as outside the prior L-only route. Release x64 rebuilt
+with `0 Warning(s), 0 Error(s)`; targeted RGB coverage passed `2/2` in `78ms`,
+combined L/RGB restart coverage passed `4/4` in `94ms`, JPEG coverage passed
+`187/187` in `3640ms`, and the full AHK directory suite passed `1532/1532` in
+`9422ms` with the known four non-failing libjpeg stderr warnings. Source and
+Release x64 DLL export counts remain `382` / `382`.
+`FMT-JPEG-002B2S` adds bounded baseline mode `L` JPEG
+`restart_marker_blocks=1` encoding. The local Pillow 11.3.0 oracle writes
+`APP0,DQT,SOF0,DHT,DHT,DRI,SOS,EOI`, stores DRI interval `1`, emits
+`RST0`, `RST1`, and `RST2` between the four MCUs of a `16x16` image, and
+reopens as mode `L` at the original size. Native entropy encoding now flushes
+to a byte boundary at each restart interval, emits cyclic RST markers, and
+resets the DC predictor before the next MCU. The additive
+`pillow_c_image_save_jpeg_restart_marker_blocks_options` export owns the
+codec path; the facade routes public `restart_marker_blocks` without an AHK
+pixel loop. Metadata, custom qtables, optimized/progressive output, RGB/CMYK,
+and `restart_marker_rows` remain separate gaps and are rejected explicitly on
+this bounded facade route. Red evidence: the raw test failed with `Expected
+pillow_c_image_save_jpeg_restart_marker_blocks_options export`, and the
+facade test failed on the missing DRI assertion. Release x64 rebuilt with
+`0 Warning(s), 0 Error(s)`; targeted coverage passed `2/2` in `141ms`, JPEG
+coverage passed `185/185` in `3468ms`, and the full AHK directory suite passed
+`1530/1530` in `9187ms` with the known four non-failing libjpeg stderr
+warnings. Source/Release x64 DLL export counts are now `382` / `382`.
+`FMT-JPEG-003AN` extends opened CMYK/YCCK JPEG keep-sentinel facade routing.
+The local Pillow 11.3.0 oracle opens the project-owned real APP14 transform
+`2` YCCK fixture as mode `CMYK`; saving with `quality="keep"` and
+`subsampling="keep"` is byte-for-byte identical to saving with only
+`quality="keep"`. Pillow treats the four-component subsampling sentinel as
+default `-1`, normalizes output to APP14 transform `0`, preserves both source
+quantization tables, writes SOF0 `C/M/Y/K` components with `1x1` sampling and
+qtable selectors `[0,1,1,1]`, writes one SOS scan, and reopens as mode `CMYK`
+with the covered bytes. It also accepts `subsampling="keep"` without
+`quality="keep"` as the same CMYK no-op sentinel while using default quality.
+The facade now maps absent RGB-style native subsampling metadata to explicit
+default `-1` for opened CMYK JPEG handles and excludes the keep sentinel from
+the guard for real CMYK subsampling values `0`/`1`/`2`; all other modes retain
+the existing missing-metadata error. Encoding stays in the existing native
+qtables route, whose raw real-YCCK keep test already proves APP14/DQT/SOF0 and
+reopen behavior. No native source or ABI symbol changed, no DLL rebuild was
+required, and source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: the facade test failed with `Expected "", got
+"Pillow.Image.Save JPEG subsampling='keep' requires opened JPEG subsampling
+metadata"`. Targeted facade coverage passed `1/1` in `94ms`; combined real
+YCCK coverage passed `4/4` in `219ms`; combined subsampling-keep coverage
+passed `4/4` in `235ms`; JPEG coverage passed `183/183` in `2796ms`; and the
+full AHK directory suite passed `1528/1528` in `4766ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001CV` extends reopened TIFF EXIF readback for the bounded
+CompositeImage tag family. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `CompositeImage` tag `42080` as
+TIFF SHORT type `3`, count `1`, inline value `3`; `CompositeImageCount` tag
+`42081` as SHORT type `3`, count `2`, inline values `[2,5]`; and
+`CompositeImageExposureTimes` tag `42082` as RATIONAL type `5`, count `2`,
+with out-of-line values `1/30` and `1/60`. It leaves `info["exif"]` absent,
+exposes top-level `getexif()` and `tag_v2` values as integer `3`, tuple
+`(2,5)`, and a tuple of two `IFDRational` values with preserved
+numerator/denominator pairs. Native TIFF open now serializes the three tags
+into the existing `pillow_c_image_metadata_tiff_exif` blob through the bounded
+scalar integer, two-value SHORT-array, and two-value RATIONAL-array routes;
+the facade's `Image.GetExif()` / `getexif()` enumeration exposes `3`,
+`[2,5]`, and `[[1,30],[1,60]]` without AHK per-pixel loops. EXIF object
+serialize/save lifecycle for these tags, arbitrary TIFF scalar/array tags,
+nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF writeback, implicit
+TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt with `0 Warning(s), 0 Error(s)`, and
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+CompositeImage TIFF EXIF failed with `Expected 3, got -1`, and facade
+CompositeImage TIFF EXIF failed with `Expected value to be true`. Targeted
+CompositeImage coverage passed `2/2` in `109ms`; facade `getexif` coverage
+passed `96/96` in `547ms`; raw `open_tiff` coverage passed `104/104` in
+`2750ms`; combined TIFF coverage passed `246/246` in `1063ms`; the full AHK
+directory suite passed `1527/1527` in `5453ms` with the known four non-failing
+libjpeg stderr warnings.
+`META-001CU` extends reopened TIFF EXIF readback for the bounded Gamma
+RATIONAL tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `Gamma` tag `42240` as TIFF
+RATIONAL type `5`, count `1`, and out-of-line value `22/10`; it leaves
+`info["exif"]` absent, exposes top-level `getexif()[42240]` as an
+`IFDRational` with numerator `22` and denominator `10`, and exposes matching
+`tag_v2[42240]` as the same rational value. Native TIFF open now serializes
+tag `42240` into the existing `pillow_c_image_metadata_tiff_exif` blob through
+the bounded scalar RATIONAL route, and the facade's `Image.GetExif()` /
+`getexif()` enumeration exposes `[22, 10]` without AHK per-pixel loops. EXIF
+object serialize/save lifecycle for tag `42240`, arbitrary TIFF RATIONAL tags,
+nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF writeback, implicit
+TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+Gamma TIFF EXIF failed with `Expected [22, 10], got []`, and facade Gamma
+TIFF EXIF failed with `Expected value to be true`. Targeted Gamma filter
+passed `6/6` in `78ms`, including the two new raw/facade TIFF Gamma RATIONAL
+EXIF tests; facade `getexif` coverage passed `95/95` in `453ms`; raw
+`open_tiff` coverage passed `103/103` in `2172ms`; combined TIFF coverage
+passed `244/244` in `829ms`; the full AHK directory suite passed `1525/1525`
+in `9593ms` with the known four non-failing libjpeg stderr warnings.
+`META-001CT` extends reopened TIFF EXIF readback for the bounded lens ASCII tag route. The local Pillow 11.3.0 oracle reopens a hand-built strip-based L-mode TIFF whose IFD0 carries `LensMake` tag `42035`, `LensModel` tag `42036`, and `LensSerialNumber` tag `42037` as TIFF ASCII type `2` with out-of-line values `make42\0`, `model42\0`, and `lens42\0`; it leaves `info["exif"]` absent, exposes top-level `getexif()[42035]` as `make42`, `getexif()[42036]` as `model42`, and `getexif()[42037]` as `lens42`, and exposes matching `tag_v2[...]` values as the same strings. Native TIFF open now serializes tags `42035`, `42036`, and `42037` into the existing `pillow_c_image_metadata_tiff_exif` blob through the bounded ASCII payload route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes the three strings without AHK per-pixel loops. EXIF object serialize/save lifecycle for tags `42035`/`42036`/`42037`, arbitrary TIFF ASCII tags, nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF writeback, implicit TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata retention remain out of scope. No native ABI symbol was added; Release x64 was rebuilt after native code changed, source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw lens ASCII TIFF EXIF failed with `Expected "make42", got ""`, and facade lens ASCII TIFF EXIF failed with `Expected value to be true`. Targeted LensMake filter passed `2/2` in `63ms`, including the two new raw/facade TIFF lens ASCII EXIF tests; raw EXIF/open-TIFF coverage passed `128/128` in `3359ms`; facade `getexif` passed `94/94` in `438ms`; raw `open_tiff` coverage passed `102/102` in `2141ms`; combined TIFF coverage passed `242/242` in `875ms`; the full AHK directory suite passed `1523/1523` in `4875ms` with the known four non-failing libjpeg stderr warnings.
+`META-001CS` extends reopened TIFF EXIF readback for the bounded
+LensSpecification RATIONAL-array tag route. The local Pillow 11.3.0 oracle
+reopens a hand-built strip-based L-mode TIFF whose IFD0 carries
+`LensSpecification` tag `42034` as TIFF RATIONAL type `5`, count `4`, and
+out-of-line values `1/2`, `3/4`, `5/6`, and `7/8`; it leaves
+`info["exif"]` absent, exposes top-level `getexif()[42034]` as a tuple of
+four `IFDRational` values with preserved numerator/denominator pairs, and
+exposes matching `tag_v2[42034]` as the same tuple. Native TIFF open now
+serializes tag `42034` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded RATIONAL-array route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes
+`[[1, 2], [3, 4], [5, 6], [7, 8]]` without AHK per-pixel loops. EXIF object
+serialize/save lifecycle for tag `42034`, arbitrary TIFF RATIONAL-array tags,
+nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF writeback,
+implicit TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+LensSpecification TIFF EXIF failed with `Expected [[1, 2], [3, 4], [5, 6],
+[7, 8]], got []`, and facade LensSpecification TIFF EXIF failed with
+`Expected value to be true`. Targeted LensSpecification filter passed `2/2` in
+`125ms`, including the two new raw/facade TIFF LensSpecification
+RATIONAL-array EXIF tests; raw EXIF metadata coverage passed `10/10` in
+`140ms`; facade `getexif` passed `93/93` in `844ms`; raw `open_tiff` coverage
+passed `101/101` in `4375ms`; combined TIFF coverage passed `240/240` in
+`1703ms`; the full AHK directory suite passed `1521/1521` in `9500ms` with
+the known four non-failing libjpeg stderr warnings.
+`META-001CR` extends reopened TIFF EXIF readback for the bounded
+BodySerialNumber ASCII tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `BodySerialNumber` tag
+`42033` as TIFF ASCII type `2`, count `7`, and out-of-line value `body42\0`;
+it leaves `info["exif"]` absent, exposes top-level `getexif()[42033]` as
+`body42`, and exposes matching `tag_v2[42033]` as the same string. Native TIFF
+open now serializes tag `42033` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded ASCII payload
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+`body42` without AHK per-pixel loops. EXIF object serialize/save lifecycle for
+tag `42033`, arbitrary TIFF ASCII tags, nested TIFF/EXIF/GPS IFDs, TIFF tag
+lifecycle, caller EXIF writeback, implicit TIFF metadata preservation,
+MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata
+retention remain out of scope. No native ABI symbol was added; Release x64 was
+rebuilt after native code changed, source/Release x64 DLL export counts remain
+`381` / `381`. Red evidence: raw BodySerialNumber TIFF EXIF failed with
+`Expected "body42", got ""`, and facade BodySerialNumber TIFF EXIF failed with
+`Expected value to be true`. Targeted BodySerialNumber filter passed `2/2` in
+`141ms`, including the two new raw/facade TIFF BodySerialNumber ASCII EXIF
+tests; raw EXIF metadata coverage passed `10/10` in `156ms`; facade
+`getexif` passed `92/92` in `890ms`; raw `open_tiff` coverage passed
+`100/100` in `4407ms`; combined TIFF coverage passed `238/238` in `1781ms`;
+the full AHK directory suite passed `1519/1519` in `9328ms` with the known
+four non-failing libjpeg stderr warnings.
+`META-001CQ` extends reopened TIFF EXIF readback for the bounded
+CameraOwnerName ASCII tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `CameraOwnerName` tag
+`42032` as TIFF ASCII type `2`, count `6`, and out-of-line value `owner\0`;
+it leaves `info["exif"]` absent, exposes top-level `getexif()[42032]` as
+`owner`, and exposes matching `tag_v2[42032]` as the same string. Native TIFF
+open now serializes tag `42032` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded ASCII payload
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+`owner` without AHK per-pixel loops. EXIF object serialize/save lifecycle for
+tag `42032`, arbitrary TIFF ASCII tags, nested TIFF/EXIF/GPS IFDs, TIFF tag
+lifecycle, caller EXIF writeback, implicit TIFF metadata preservation,
+MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata
+retention remain out of scope. No native ABI symbol was added; Release x64 was
+rebuilt after native code changed, source/Release x64 DLL export counts remain
+`381` / `381`. Red evidence: raw CameraOwnerName TIFF EXIF failed with
+`Expected "owner", got ""`, and facade CameraOwnerName TIFF EXIF failed with
+`Expected value to be true`. Targeted CameraOwnerName filter passed `2/2` in
+`109ms`, including the two new raw/facade TIFF CameraOwnerName ASCII EXIF
+tests; raw EXIF metadata coverage passed `10/10` in `140ms`; facade
+`getexif` passed `91/91` in `812ms`; raw `open_tiff` coverage passed `99/99`
+in `4328ms`; combined TIFF coverage passed `236/236` in `1656ms`; the full
+AHK directory suite passed `1517/1517` in `9532ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001CP` extends reopened TIFF EXIF readback for the bounded
+SubjectDistanceRange scalar integer tag route. The local Pillow 11.3.0 oracle
+reopens a hand-built strip-based L-mode TIFF whose IFD0 carries
+`SubjectDistanceRange` tag `41996` as TIFF SHORT type `3`, count `1`, and
+inline value `3`; it leaves `info["exif"]` absent, exposes top-level
+`getexif()[41996]` as integer `3`, and exposes matching `tag_v2[41996]` as
+integer `3`. Native TIFF open now serializes tag `41996` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded scalar integer
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+`3` without AHK per-pixel loops. EXIF object serialize/save lifecycle for tag
+`41996`, arbitrary TIFF scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF tag
+lifecycle, caller EXIF writeback, implicit TIFF metadata preservation,
+MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata retention
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain
+`381` / `381`. Red evidence: raw SubjectDistanceRange TIFF EXIF failed with
+`Expected 3, got -1`, and facade SubjectDistanceRange TIFF EXIF failed with
+`Expected value to be true`. Targeted SubjectDistanceRange filter passed `2/2`
+in `125ms`, including the two new raw/facade TIFF SubjectDistanceRange scalar
+EXIF tests; raw EXIF metadata coverage passed `10/10` in `125ms`; facade
+`getexif` passed `90/90` in `890ms`; raw `open_tiff` coverage passed `98/98`
+in `4250ms`; combined TIFF coverage passed `234/234` in `1812ms`; the full
+AHK directory suite passed `1515/1515` in `9718ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001CO` extends reopened TIFF EXIF readback for the bounded
+Sharpness scalar integer tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `Sharpness` tag `41994`
+as TIFF SHORT type `3`, count `1`, and inline value `2`; it leaves
+`info["exif"]` absent, exposes top-level `getexif()[41994]` as integer `2`,
+and exposes matching `tag_v2[41994]` as integer `2`. Native TIFF open now
+serializes tag `41994` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded scalar integer route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes `2` without AHK per-pixel
+loops. EXIF object serialize/save lifecycle for tag `41994`, arbitrary TIFF
+scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF
+writeback, implicit TIFF metadata preservation, MakerNote, IPTC, XMP,
+ImageCms, and transformed-orientation metadata retention remain out of scope.
+No native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw Sharpness TIFF EXIF failed with `Expected 2, got -1`, and
+facade Sharpness TIFF EXIF failed with `Expected value to be true`. Targeted
+Sharpness filter passed `3/3` in `219ms`, including the two new raw/facade
+TIFF Sharpness scalar EXIF tests; raw EXIF metadata coverage passed `10/10`
+in `125ms`; facade `getexif` passed `89/89` in `797ms`; raw `open_tiff`
+coverage passed `97/97` in `4156ms`; combined TIFF coverage passed `232/232`
+in `1672ms`; the full AHK directory suite passed `1513/1513` in `9844ms` with
+the known four non-failing libjpeg stderr warnings.
+
+`META-001CN` extends reopened TIFF EXIF readback for the bounded
+Saturation scalar integer tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `Saturation` tag `41993`
+as TIFF SHORT type `3`, count `1`, and inline value `2`; it leaves
+`info["exif"]` absent, exposes top-level `getexif()[41993]` as integer `2`,
+and exposes matching `tag_v2[41993]` as integer `2`. Native TIFF open now
+serializes tag `41993` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded scalar integer route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes `2` without AHK per-pixel
+loops. EXIF object serialize/save lifecycle for tag `41993`, arbitrary TIFF
+scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF
+writeback, implicit TIFF metadata preservation, MakerNote, IPTC, XMP,
+ImageCms, and transformed-orientation metadata retention remain out of scope.
+No native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw Saturation TIFF EXIF failed with `Expected 2, got -1`, and
+facade Saturation TIFF EXIF failed with `Expected value to be true`. Targeted
+combined raw/facade Saturation filter passed `2/2` in `62ms`; raw EXIF
+metadata coverage passed `10/10` in `125ms`; facade `getexif` passed `88/88`
+in `968ms`; raw `open_tiff` coverage passed `96/96` in `4266ms`; combined
+TIFF coverage passed `230/230` in `1796ms`; the full AHK directory suite
+passed `1511/1511` in `9765ms` with the known four non-failing libjpeg stderr
+warnings.`META-001CM` extends reopened TIFF EXIF readback for the bounded
+Contrast scalar integer tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `Contrast` tag `41992`
+as TIFF SHORT type `3`, count `1`, and inline value `1`; it leaves
+`info["exif"]` absent, exposes top-level `getexif()[41992]` as integer `1`,
+and exposes matching `tag_v2[41992]` as integer `1`. Native TIFF open now
+serializes tag `41992` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded scalar integer route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes `1` without AHK per-pixel
+loops. EXIF object serialize/save lifecycle for tag `41992`, arbitrary TIFF
+scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF
+writeback, implicit TIFF metadata preservation, MakerNote, IPTC, XMP,
+ImageCms, and transformed-orientation metadata retention remain out of scope.
+No native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw Contrast TIFF EXIF failed with `Expected 1, got -1`, and facade
+Contrast TIFF EXIF failed with `Expected value to be true`. Targeted combined
+raw/facade Contrast filter passed `16/16` in `172ms`; raw EXIF metadata
+coverage passed `10/10` in `125ms`; facade `getexif` passed `87/87` in
+`750ms`; raw `open_tiff` coverage passed `95/95` in `4109ms`; combined TIFF
+coverage passed `228/228` in `1594ms`; the full AHK directory suite passed
+`1509/1509` in `9547ms` with the known four non-failing libjpeg stderr
+warnings.
+`META-001CL` extends reopened TIFF EXIF readback for the bounded
+GainControl scalar integer tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `GainControl` tag
+`41991` as TIFF SHORT type `3`, count `1`, and inline value `2`; it leaves
+`info["exif"]` absent, exposes top-level `getexif()[41991]` as integer `2`,
+and exposes matching `tag_v2[41991]` as integer `2`. Native TIFF open now
+serializes tag `41991` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded scalar integer route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes `2` without AHK per-pixel
+loops. EXIF object serialize/save lifecycle for tag `41991`, arbitrary TIFF
+scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF
+writeback, implicit TIFF metadata preservation, MakerNote, IPTC, XMP,
+ImageCms, and transformed-orientation metadata retention remain out of scope.
+No native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw GainControl TIFF EXIF failed with `Expected 2, got -1`, and
+facade GainControl TIFF EXIF failed with `Expected value to be true`. Targeted
+combined raw/facade GainControl filter passed `2/2` in `156ms`; raw EXIF
+metadata coverage passed `10/10` in `125ms`; facade `getexif` passed `86/86`
+in `843ms`; raw `open_tiff` coverage passed `94/94` in `3766ms`; combined
+TIFF coverage passed `226/226` in `1609ms`; the full AHK directory suite
+passed `1507/1507` in `9297ms` with the known four non-failing libjpeg stderr
+warnings.
+`META-001CK` extends reopened TIFF EXIF readback for the bounded
+SceneCaptureType scalar integer tag route. The local Pillow 11.3.0 oracle
+reopens a hand-built strip-based L-mode TIFF whose IFD0 carries
+`SceneCaptureType` tag `41990` as TIFF SHORT type `3`, count `1`, and inline
+value `3`; it leaves `info["exif"]` absent, exposes top-level
+`getexif()[41990]` as integer `3`, and exposes matching `tag_v2[41990]` as
+integer `3`. Native TIFF open now serializes tag `41990` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded scalar integer
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+`3` without AHK per-pixel loops. EXIF object serialize/save lifecycle for tag
+`41990`, arbitrary TIFF scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF tag
+lifecycle, caller EXIF writeback, implicit TIFF metadata preservation,
+MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata retention
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain
+`381` / `381`. Red evidence: raw SceneCaptureType TIFF EXIF failed with
+`Expected 3, got -1`, and facade SceneCaptureType TIFF EXIF failed with
+`Expected value to be true`. Targeted combined raw/facade SceneCaptureType
+filter passed `2/2` in `125ms`; raw EXIF metadata coverage passed `10/10` in
+`109ms`; facade `getexif` passed `85/85` in `797ms`; raw `open_tiff` coverage
+passed `93/93` in `3938ms`; combined TIFF coverage passed `224/224` in
+`1625ms`; the full AHK directory suite passed `1505/1505` in `9453ms` with the
+known four non-failing libjpeg stderr warnings.
+`META-001CJ` extends reopened TIFF EXIF readback for the bounded
+FocalLengthIn35mmFilm scalar integer tag route. The local Pillow 11.3.0 oracle
+reopens a hand-built strip-based L-mode TIFF whose IFD0 carries
+`FocalLengthIn35mmFilm` tag `41989` as TIFF SHORT type `3`, count `1`, and
+inline value `35`; it leaves `info["exif"]` absent, exposes top-level
+`getexif()[41989]` as integer `35`, and exposes matching `tag_v2[41989]` as
+integer `35`. Native TIFF open now serializes tag `41989` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded scalar integer
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+`35` without AHK per-pixel loops. EXIF object serialize/save lifecycle for tag
+`41989`, arbitrary TIFF scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF tag
+lifecycle, caller EXIF writeback, implicit TIFF metadata preservation,
+MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata retention
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain
+`381` / `381`. Red evidence: raw FocalLengthIn35mmFilm TIFF EXIF failed with
+`Expected 35, got -1`, and facade FocalLengthIn35mmFilm TIFF EXIF failed with
+`Expected value to be true`. Targeted combined raw/facade FocalLengthIn35mmFilm
+filter passed `2/2` in `140ms`; raw EXIF metadata coverage passed `10/10` in
+`188ms`; facade `getexif` passed `84/84` in `844ms`; raw `open_tiff` coverage
+passed `92/92` in `4109ms`; combined TIFF coverage passed `222/222` in
+`1625ms`; the full AHK directory suite passed `1503/1503` in `9343ms` with the
+known four non-failing libjpeg stderr warnings.
+`META-001CI` extends reopened TIFF EXIF readback for the bounded
+DigitalZoomRatio scalar RATIONAL tag route. The local Pillow 11.3.0 oracle
+reopens a hand-built strip-based L-mode TIFF whose IFD0 carries
+`DigitalZoomRatio` tag `41988` as TIFF RATIONAL type `5`, count `1`, and
+out-of-line numerator/denominator `3/2`; it leaves `info["exif"]` absent,
+exposes top-level `getexif()[41988]` as an `IFDRational` value `1.5` with
+numerator `3` and denominator `2`, and exposes matching `tag_v2[41988]` as the
+same rational. Native TIFF open now serializes tag `41988` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded scalar RATIONAL
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+`[3, 2]` without AHK per-pixel loops. EXIF object serialize/save lifecycle for
+tag `41988`, arbitrary TIFF rational tags, nested TIFF/EXIF/GPS IFDs, TIFF tag
+lifecycle, caller EXIF writeback, implicit TIFF metadata preservation,
+MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata retention
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain
+`381` / `381`. Red evidence: raw DigitalZoomRatio TIFF EXIF failed with
+`Expected [3, 2], got []`, and facade DigitalZoomRatio TIFF EXIF failed with
+`Expected value to be true`. Targeted combined raw/facade DigitalZoomRatio
+filter passed `2/2` in `79ms`; raw EXIF metadata coverage passed `10/10` in
+`125ms`; facade `getexif` passed `83/83` in `797ms`; raw `open_tiff` coverage
+passed `91/91` in `4109ms`; combined TIFF coverage passed `220/220` in
+`1703ms`; the full AHK directory suite passed `1501/1501` in `9390ms` with the
+known four non-failing libjpeg stderr warnings.
+`META-001CH` extends reopened TIFF EXIF readback for the bounded
+WhiteBalance scalar integer tag route. The local Pillow 11.3.0 oracle reopens
+a hand-built strip-based L-mode TIFF whose IFD0 carries `WhiteBalance` tag
+`41987` as TIFF SHORT type `3`, count `1`, and inline value `1`; it leaves
+`info["exif"]` absent, exposes top-level `getexif()[41987]` as integer `1`,
+and exposes matching `tag_v2[41987]` as integer `1`. Native TIFF open now
+serializes tag `41987` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded scalar integer route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes `1` without AHK per-pixel
+loops. EXIF object serialize/save lifecycle for tag `41987`, arbitrary TIFF
+scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF
+writeback, implicit TIFF metadata preservation, MakerNote, IPTC, XMP,
+ImageCms, and transformed-orientation metadata retention remain out of scope.
+No native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw WhiteBalance TIFF EXIF failed with `Expected 1, got -1`, and
+facade WhiteBalance TIFF EXIF failed with `Expected value to be true`.
+Targeted combined raw/facade WhiteBalance filter passed `2/2` in `125ms`; raw
+EXIF metadata coverage passed `10/10` in `125ms`; facade `getexif` passed
+`82/82` in `766ms`; raw `open_tiff` coverage passed `90/90` in `3594ms`;
+combined TIFF coverage passed `218/218` in `1563ms`; the full AHK directory
+suite passed `1499/1499` in `9485ms` with the known four non-failing libjpeg
+stderr warnings.
+`META-001CG` extends reopened TIFF EXIF readback for the bounded
+ExposureMode scalar integer tag route. The local Pillow 11.3.0 oracle reopens
+a hand-built strip-based L-mode TIFF whose IFD0 carries `ExposureMode` tag
+`41986` as TIFF SHORT type `3`, count `1`, and inline value `2`; it leaves
+`info["exif"]` absent, exposes top-level `getexif()[41986]` as integer `2`,
+and exposes matching `tag_v2[41986]` as integer `2`. Native TIFF open now
+serializes tag `41986` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded scalar integer route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes `2` without AHK per-pixel
+loops. EXIF object serialize/save lifecycle for tag `41986`, arbitrary TIFF
+scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF
+writeback, implicit TIFF metadata preservation, MakerNote, IPTC, XMP,
+ImageCms, and transformed-orientation metadata retention remain out of scope.
+No native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw ExposureMode TIFF EXIF failed with `Expected 2, got -1`, and
+facade ExposureMode TIFF EXIF failed with `Expected value to be true`.
+Targeted combined raw/facade ExposureMode filter passed `2/2` in `62ms`; raw
+EXIF metadata coverage passed `10/10` in `125ms`; facade `getexif` passed
+`81/81` in `796ms`; raw `open_tiff` coverage passed `89/89` in `3984ms`;
+facade TIFF coverage passed `216/216` in `1469ms`; the full AHK directory
+suite passed `1497/1497` in `9781ms` with the known four non-failing libjpeg
+stderr warnings.
+`META-001CF` extends reopened TIFF EXIF readback for the bounded
+CustomRendered scalar integer tag route. The local Pillow 11.3.0 oracle
+reopens a hand-built strip-based L-mode TIFF whose IFD0 carries
+`CustomRendered` tag `41985` as TIFF SHORT type `3`, count `1`, and inline
+value `1`; it leaves `info["exif"]` absent, exposes top-level
+`getexif()[41985]` as integer `1`, and exposes matching `tag_v2[41985]` as
+integer `1`. Native TIFF open now serializes tag `41985` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded scalar integer
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+`1` without AHK per-pixel loops. EXIF object serialize/save lifecycle for tag
+`41985`, arbitrary TIFF scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF tag
+lifecycle, caller EXIF writeback, implicit TIFF metadata preservation,
+MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata retention
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain
+`381` / `381`. Red evidence: raw CustomRendered TIFF EXIF failed with
+`Expected 1, got -1`, and facade CustomRendered TIFF EXIF failed with
+`Expected value to be true`. Targeted combined raw/facade CustomRendered
+filter passed `2/2` in `125ms`; raw EXIF metadata coverage passed `10/10` in
+`141ms`; facade `getexif` passed `80/80` in `750ms`; raw `open_tiff`
+coverage passed `88/88` in `3875ms`; facade TIFF coverage passed `106/106` in
+`953ms`; the full AHK directory suite passed `1495/1495` in `9141ms` with the
+known four non-failing libjpeg stderr warnings.
+`META-001CE` extends reopened TIFF EXIF readback for the bounded SceneType
+UNDEFINED tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `SceneType` tag `41729` as TIFF
+UNDEFINED type `7`, count `1`, and inline byte `[1]`; it leaves
+`info["exif"]` absent, exposes top-level `getexif()[41729]` as bytes `[1]`,
+and exposes matching `tag_v2[41729]` as the same bytes. Native TIFF open now
+serializes tag `41729` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded UNDEFINED route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes a copied Buffer without
+AHK per-pixel loops. EXIF object serialize/save lifecycle for tag `41729`,
+arbitrary TIFF UNDEFINED tags, nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle,
+caller EXIF writeback, implicit TIFF metadata preservation, MakerNote, IPTC,
+XMP, ImageCms, and transformed-orientation metadata retention remain out of
+scope. No native ABI symbol was added; Release x64 was rebuilt after native
+code changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw SceneType TIFF EXIF failed with `Expected [1], got []`, and
+facade SceneType TIFF EXIF failed with `Expected value to be true`. Targeted
+combined raw/facade SceneType filter passed `2/2` in `94ms` (raw `16ms`, facade `31ms`);
+raw EXIF metadata coverage passed `113/113` in `7656ms`; facade `getexif`
+passed `79/79` in `766ms`; facade TIFF coverage passed `105/105` in `1218ms`;
+the full AHK directory suite passed `1493/1493` in `10672ms` with the known
+four non-failing libjpeg stderr warnings.
+`META-001CD` extends reopened TIFF EXIF readback for the bounded FileSource
+UNDEFINED tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `FileSource` tag `41728` as TIFF
+UNDEFINED type `7`, count `1`, and inline byte `[3]`; it leaves
+`info["exif"]` absent, exposes top-level `getexif()[41728]` as bytes `[3]`,
+and exposes matching `tag_v2[41728]` as the same bytes. Native TIFF open now
+serializes tag `41728` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded UNDEFINED route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes a copied Buffer without
+AHK per-pixel loops. EXIF object serialize/save lifecycle for tag `41728`,
+arbitrary TIFF UNDEFINED tags, nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle,
+caller EXIF writeback, implicit TIFF metadata preservation, MakerNote, IPTC,
+XMP, ImageCms, and transformed-orientation metadata retention remain out of
+scope. No native ABI symbol was added; Release x64 was rebuilt after native
+code changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw FileSource TIFF EXIF failed with `Expected [3], got []`, and
+facade FileSource TIFF EXIF failed with `Expected value to be true`. Targeted
+raw/facade FileSource filters passed `1/1` in `156ms` and `1/1` in `47ms`;
+raw EXIF metadata coverage passed `112/112` in `7578ms`; facade `getexif`
+passed `78/78` in `406ms`; facade TIFF coverage passed `104/104` in `703ms`;
+the full AHK directory suite passed `1491/1491` in `8297ms` with the known
+four non-failing libjpeg stderr warnings.
+`META-001CC` extends reopened TIFF EXIF readback for the bounded
+SensingMethod scalar integer tag route. The local Pillow 11.3.0 oracle reopens
+a hand-built strip-based L-mode TIFF whose IFD0 carries `SensingMethod` tag
+`41495` as TIFF SHORT type `3`, count `1`, and inline value `2`; it leaves
+`info["exif"]` absent, exposes top-level `getexif()[41495]` as integer `2`,
+and exposes matching `tag_v2[41495]` as integer `2`. Native TIFF open now
+serializes tag `41495` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded scalar integer route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes `2` without AHK per-pixel
+loops. EXIF object serialize/save lifecycle for tag `41495`, arbitrary TIFF
+scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF
+writeback, implicit TIFF metadata preservation, MakerNote, IPTC, XMP,
+ImageCms, and transformed-orientation metadata retention remain out of scope.
+No native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw SensingMethod TIFF EXIF failed with `Expected 2, got -1`, and
+facade SensingMethod TIFF EXIF failed with `Expected value to be true`.
+Targeted raw/facade SensingMethod filters passed `1/1` in `94ms` and `1/1`
+in `47ms`; raw EXIF metadata coverage passed `111/111` in `7719ms`; facade
+`getexif` passed `77/77` in `782ms`; facade TIFF coverage passed `103/103`
+in `1156ms`; the full AHK directory suite passed `1489/1489` in `10593ms` with
+the known four non-failing libjpeg stderr warnings.
+`META-001CB` extends reopened TIFF EXIF readback for the bounded
+FocalPlaneResolutionUnit scalar integer tag route. The local Pillow 11.3.0
+oracle reopens a hand-built strip-based L-mode TIFF whose IFD0 carries
+`FocalPlaneResolutionUnit` tag `41488` as TIFF SHORT type `3`, count `1`, and
+inline value `3`; it leaves `info["exif"]` absent, exposes top-level
+`getexif()[41488]` as integer `3`, and exposes matching `tag_v2[41488]` as
+integer `3`. Native TIFF open now serializes tag `41488` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded scalar integer
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+`3` without AHK per-pixel loops. EXIF object serialize/save lifecycle for tag
+`41488`, arbitrary TIFF scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF tag
+lifecycle, caller EXIF writeback, implicit TIFF metadata preservation,
+MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata retention
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain
+`381` / `381`. Red evidence: raw FocalPlaneResolutionUnit TIFF EXIF failed
+with `Expected 3, got -1`, and facade FocalPlaneResolutionUnit TIFF EXIF
+failed with `Expected value to be true`. Targeted raw/facade
+FocalPlaneResolutionUnit filters passed `1/1` in `140ms` and `1/1` in
+`47ms`; raw EXIF metadata coverage passed `110/110` in `5578ms`; facade
+`getexif` passed `76/76` in `610ms`; facade TIFF coverage passed `102/102`
+in `516ms`; the full AHK directory suite passed `1487/1487` in `8672ms` with
+the known four non-failing libjpeg stderr warnings.
+`META-001CA` extends reopened TIFF EXIF readback for the bounded
+FocalPlaneXResolution/FocalPlaneYResolution scalar RATIONAL tag route. The
+local Pillow 11.3.0 oracle reopens a hand-built strip-based L-mode TIFF whose
+IFD0 carries `FocalPlaneXResolution` tag `41486` as TIFF RATIONAL type `5`,
+count `1`, and out-of-line numerator/denominator `300/7`, plus
+`FocalPlaneYResolution` tag `41487` as TIFF RATIONAL type `5`, count `1`, and
+out-of-line numerator/denominator `600/11`; it leaves `info["exif"]` absent,
+exposes top-level `getexif()[41486]` and `getexif()[41487]` as `IFDRational`
+values with preserved numerators/denominators, and exposes matching `tag_v2`
+values as the same rationals. Native TIFF open now serializes tags `41486` and
+`41487` into the existing `pillow_c_image_metadata_tiff_exif` blob through the
+bounded scalar RATIONAL route, and the facade's `Image.GetExif()` /
+`getexif()` enumeration exposes `[300, 7]` and `[600, 11]` without AHK
+per-pixel loops. EXIF object serialize/save lifecycle for tags `41486` and
+`41487`, arbitrary TIFF rational tags, nested TIFF/EXIF/GPS IFDs, TIFF tag
+lifecycle, caller EXIF writeback, implicit TIFF metadata preservation,
+MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata retention
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain
+`381` / `381`. Red evidence: raw FocalPlaneResolution TIFF EXIF failed with
+`Expected [300, 7], got []`, and facade FocalPlaneResolution TIFF EXIF failed
+with `Expected value to be true`. Targeted raw/facade FocalPlaneResolution
+filters passed `1/1` in `79ms` and `1/1` in `47ms`; raw EXIF metadata
+coverage passed `109/109` in `3140ms`; facade `getexif` passed `75/75` in
+`406ms`; facade TIFF coverage passed `101/101` in `453ms`; the full AHK
+directory suite passed `1485/1485` in `5078ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001BZ` extends reopened TIFF EXIF readback for the bounded FlashEnergy
+scalar RATIONAL tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `FlashEnergy` tag `41483` as TIFF
+RATIONAL type `5`, count `1`, and out-of-line numerator/denominator `9/2`;
+it leaves `info["exif"]` absent, exposes top-level `getexif()[41483]` as an
+`IFDRational` value `4.5` with numerator `9` and denominator `2`, and exposes
+matching `tag_v2[41483]` as the same rational. Native TIFF open now serializes
+tag `41483` into the existing `pillow_c_image_metadata_tiff_exif` blob through
+the bounded scalar RATIONAL route, and the facade's `Image.GetExif()` /
+`getexif()` enumeration exposes `[9, 2]` without AHK per-pixel loops. EXIF
+object serialize/save lifecycle for tag `41483`, arbitrary TIFF rational tags,
+nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF writeback, implicit
+TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+FlashEnergy TIFF EXIF failed with `Expected [9, 2], got []`, and facade
+FlashEnergy TIFF EXIF failed with `Expected value to be true`. Targeted
+raw/facade FlashEnergy filters passed `1/1` in `0ms` and `1/1` in `47ms`;
+raw EXIF metadata coverage passed `108/108` in `3328ms`; facade `getexif`
+passed `74/74` in `344ms`; facade TIFF coverage passed `100/100` in `468ms`;
+the full AHK directory suite passed `1483/1483` in `5079ms` with the known
+four non-failing libjpeg stderr warnings.
+`META-001BY` extends reopened TIFF EXIF readback for the bounded
+RelatedSoundFile ASCII tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `RelatedSoundFile` tag
+`40964` as TIFF ASCII type `2`, count `13`, and out-of-line value
+`SOUND000.WAV\0`; it leaves `info["exif"]` absent, exposes top-level
+`getexif()[40964]` as `SOUND000.WAV`, and exposes matching `tag_v2[40964]`
+as the same string. Native TIFF open now serializes tag `40964` into the
+existing `pillow_c_image_metadata_tiff_exif` blob through the bounded ASCII
+payload route, and the facade's `Image.GetExif()` / `getexif()` enumeration
+exposes the string without AHK per-pixel loops. EXIF object serialize/save
+lifecycle for tag `40964`, arbitrary TIFF ASCII tags, nested TIFF/EXIF/GPS
+IFDs, TIFF tag lifecycle, caller EXIF writeback, implicit TIFF metadata
+preservation, MakerNote, IPTC, XMP, ImageCms, and transformed-orientation
+metadata retention remain out of scope. No native ABI symbol was added;
+Release x64 was rebuilt after native code changed, source/Release x64 DLL
+export counts remain `381` / `381`. Red evidence: raw RelatedSoundFile TIFF
+EXIF failed with `Expected "SOUND000.WAV", got ""`, and facade
+RelatedSoundFile TIFF EXIF failed with `Expected value to be true`. Targeted
+raw/facade RelatedSoundFile filters passed `1/1` in `62ms` and `1/1` in
+`32ms`; raw EXIF metadata coverage passed `107/107` in `3203ms`; facade
+`getexif` passed `73/73` in `422ms`; facade TIFF coverage passed `99/99` in
+`438ms`; the full AHK directory suite passed `1481/1481` in `4812ms` with
+the known four non-failing libjpeg stderr warnings.
+`META-001BX` extends reopened TIFF EXIF readback for the bounded
+PixelYDimension scalar integer tag route. The local Pillow 11.3.0 oracle
+reopens a hand-built strip-based L-mode TIFF whose IFD0 carries
+`PixelYDimension` tag `40963` as TIFF LONG type `4`, count `1`, and scalar
+value `1`; it leaves `info["exif"]` absent, exposes top-level
+`getexif()[40963]` as integer `1`, and exposes matching `tag_v2[40963]` as
+integer `1`. Native TIFF open now serializes tag `40963` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded scalar integer
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+the integer without AHK per-pixel loops. EXIF object serialize/save lifecycle
+for tag `40963`, arbitrary TIFF scalar tags, nested TIFF/EXIF/GPS IFDs, TIFF
+tag lifecycle, caller EXIF writeback, implicit TIFF metadata preservation,
+MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata retention
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain
+`381` / `381`. Red evidence: raw PixelYDimension TIFF EXIF failed with
+`Expected 1, got -1`, and facade PixelYDimension TIFF EXIF failed with
+`Expected value to be true`. Targeted raw/facade PixelYDimension filters
+passed `1/1` in `63ms` and `1/1` in `31ms`; raw EXIF metadata coverage passed
+`106/106` in `3078ms`; facade `getexif` passed `72/72` in `312ms`; facade
+TIFF coverage passed `98/98` in `485ms`; the full AHK directory suite passed
+`1479/1479` in `5094ms` with the known four non-failing libjpeg stderr
+warnings.
+`META-001BW` extends reopened TIFF EXIF readback for the bounded
+PixelXDimension scalar integer tag route. The local Pillow 11.3.0 oracle
+reopens a hand-built strip-based L-mode TIFF whose IFD0 carries
+`PixelXDimension` tag `40962` as TIFF LONG type `4`, count `1`, and scalar
+value `2`; it leaves `info["exif"]` absent, exposes top-level
+`getexif()[40962]` as integer `2`, and exposes matching `tag_v2[40962]` as
+integer `2`. Native TIFF open now serializes tag `40962` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded scalar integer
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+the integer without AHK per-pixel loops. EXIF object serialize/save lifecycle
+for tag `40962`, arbitrary TIFF scalar
+tags, nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF writeback,
+implicit TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+PixelXDimension TIFF EXIF failed with `Expected 2, got -1`, and facade
+PixelXDimension TIFF EXIF failed with `Expected value to be true`. Targeted
+raw/facade PixelXDimension filters passed `1/1` in `125ms` and `1/1` in
+`31ms`; raw EXIF metadata coverage passed `105/105` in `3109ms`; facade
+`getexif` passed `71/71` in `406ms`; facade TIFF coverage passed `97/97` in
+`547ms`; the full AHK directory suite passed `1477/1477` in `4735ms` with the
+known four non-failing libjpeg stderr warnings.
+`META-001BV` extends reopened TIFF EXIF readback for the bounded ColorSpace
+scalar integer tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `ColorSpace` tag `40961` as TIFF
+SHORT type `3`, count `1`, and scalar value `1`; it leaves `info["exif"]`
+absent, exposes top-level `getexif()[40961]` as integer `1`, and exposes
+matching `tag_v2[40961]` as integer `1`. Native TIFF open now serializes tag
+`40961` into the existing `pillow_c_image_metadata_tiff_exif` blob through the
+bounded scalar integer route, and the facade's `Image.GetExif()` /
+`getexif()` enumeration exposes the integer without AHK per-pixel loops. EXIF
+object serialize/save lifecycle for tag `40961`, arbitrary TIFF scalar tags,
+nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF writeback, implicit
+TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+ColorSpace TIFF EXIF failed with `Expected 1, got -1`, and facade ColorSpace
+TIFF EXIF failed with `Expected value to be true`. Targeted raw/facade
+ColorSpace filters passed `1/1` in `62ms` and `1/1` in `47ms`; raw EXIF
+metadata coverage passed `104/104` in `2985ms`; facade `getexif` passed
+`70/70` in `344ms`; facade TIFF coverage passed `96/96` in `484ms`; the full
+AHK directory suite passed `1475/1475` in `4750ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001BU` extends reopened TIFF EXIF readback for the bounded
+FlashPixVersion UNDEFINED tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `FlashPixVersion` tag
+`40960` as TIFF UNDEFINED type `7`, count `4`, and inline bytes `0100`
+(`[48,49,48,48]`); it leaves `info["exif"]` absent, exposes top-level
+`getexif()[40960]` as the exact bytes, and exposes matching `tag_v2[40960]`
+as the same bytes. Native TIFF open now serializes tag `40960` into the
+existing `pillow_c_image_metadata_tiff_exif` blob through the bounded
+UNDEFINED route, and the facade's `Image.GetExif()` / `getexif()`
+enumeration exposes the copied Buffer without AHK per-pixel loops. EXIF object
+serialize/save lifecycle for tag `40960`, arbitrary TIFF UNDEFINED tags,
+nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle, caller EXIF writeback,
+implicit TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+FlashPixVersion TIFF EXIF failed with `Expected [48, 49, 48, 48], got []`,
+and facade FlashPixVersion TIFF EXIF failed with `Expected value to be true`.
+Targeted raw/facade FlashPixVersion filters passed `1/1` in `125ms` and
+`1/1` in `15ms`; raw EXIF metadata coverage passed `103/103` in `3266ms`;
+facade `getexif` passed `69/69` in `297ms`; facade TIFF coverage passed
+`95/95` in `484ms`; the full AHK directory suite passed `1473/1473` in
+`4719ms` with the known four non-failing libjpeg stderr warnings.
+`META-001BT` extends reopened TIFF EXIF readback for the bounded XPSubject
+BYTE-array tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `XPSubject` tag `40095` as TIFF
+BYTE type `1`, count `6`, and out-of-line bytes `[115,0,117,0,0,0]`; it
+leaves `info["exif"]` absent, exposes top-level `getexif()[40095]` as the
+exact bytes, and exposes matching `tag_v2[40095]` as the same bytes. Native
+TIFF open now serializes tag `40095` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded BYTE-array route,
+and the facade's `Image.GetExif()` / `getexif()` enumeration exposes the
+copied Buffer without AHK per-pixel loops. Other XP* tags, non-BYTE tag
+coercions, TIFF tag lifecycle, caller EXIF writeback, arbitrary BYTE tags,
+implicit TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+XPSubject TIFF EXIF failed with `Expected [115, 0, 117, 0, 0, 0], got []`,
+and facade XPSubject TIFF EXIF failed with `Expected value to be true`.
+Targeted raw/facade XPSubject filters passed `1/1` in `63ms` and `1/1` in
+`16ms`; raw EXIF metadata coverage passed `102/102` in `2813ms`; facade
+`getexif` passed `68/68` in `281ms`; facade TIFF coverage passed `94/94` in
+`437ms`; the full AHK directory suite passed `1471/1471` in `4735ms` with
+the known four non-failing libjpeg stderr warnings.
+`META-001BS` extends reopened TIFF EXIF readback for the bounded XPKeywords
+BYTE-array tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `XPKeywords` tag `40094` as TIFF
+BYTE type `1`, count `6`, and out-of-line bytes `[107,0,119,0,0,0]`; it
+leaves `info["exif"]` absent, exposes top-level `getexif()[40094]` as the
+exact bytes, and exposes matching `tag_v2[40094]` as the same bytes. Native
+TIFF open now serializes tag `40094` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded BYTE-array route,
+and the facade's `Image.GetExif()` / `getexif()` enumeration exposes the
+copied Buffer without AHK per-pixel loops. Other XP* tags, non-BYTE tag
+coercions, TIFF tag lifecycle, caller EXIF writeback, arbitrary BYTE tags,
+implicit TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+XPKeywords TIFF EXIF failed with `Expected [107, 0, 119, 0, 0, 0], got []`,
+and facade XPKeywords TIFF EXIF failed with `Expected value to be true`.
+Targeted raw/facade XPKeywords filters passed `1/1` in `63ms` and `1/1` in
+`32ms`; raw EXIF metadata coverage passed `101/101` in `3140ms`; facade
+`getexif` passed `67/67` in `328ms`; facade TIFF coverage passed `93/93` in
+`500ms`; the full AHK directory suite passed `1469/1469` in `4765ms` with
+the known four non-failing libjpeg stderr warnings.
+`META-001BR` extends reopened TIFF EXIF readback for the bounded XPAuthor
+BYTE-array tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `XPAuthor` tag `40093` as TIFF
+BYTE type `1`, count `6`, and out-of-line bytes `[65,0,100,0,0,0]`; it
+leaves `info["exif"]` absent, exposes top-level `getexif()[40093]` as the
+exact bytes, and exposes matching `tag_v2[40093]` as the same bytes. Native
+TIFF open now serializes tag `40093` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded BYTE-array route,
+and the facade's `Image.GetExif()` / `getexif()` enumeration exposes the
+copied Buffer without AHK per-pixel loops. Other XP* tags, non-BYTE tag
+coercions, TIFF tag lifecycle, caller EXIF writeback, arbitrary BYTE tags,
+implicit TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+XPAuthor TIFF EXIF failed with `Expected [65, 0, 100, 0, 0, 0], got []`,
+and facade XPAuthor TIFF EXIF failed with `Expected value to be true`.
+Targeted raw/facade XPAuthor filters passed `1/1` in `62ms` and `1/1` in
+`16ms`; raw TIFF EXIF metadata prefix passed `61/61` in `1203ms`; facade
+`getexif` passed `66/66` in `266ms`; facade TIFF open/save filters passed
+`16/16` in `141ms`, `17/17` in `110ms`, and `2/2` in `32ms`; the full AHK
+directory suite passed `1467/1467` in `4985ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001BQ` extends reopened TIFF EXIF readback for the bounded XPComment
+BYTE-array tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `XPComment` tag `40092` as TIFF
+BYTE type `1`, count `6`, and out-of-line bytes `[72,0,105,0,0,0]`; it
+leaves `info["exif"]` absent, exposes top-level `getexif()[40092]` as the
+exact bytes, and exposes matching `tag_v2[40092]` as the same bytes. Native
+TIFF open now serializes tag `40092` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded BYTE-array route,
+and the facade's `Image.GetExif()` / `getexif()` enumeration exposes the
+copied Buffer without AHK per-pixel loops. Other XP* tags, non-BYTE tag
+coercions, TIFF tag lifecycle, caller EXIF writeback, arbitrary BYTE tags,
+implicit TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+XPComment TIFF EXIF failed with `Expected [72, 0, 105, 0, 0, 0], got []`,
+and facade XPComment TIFF EXIF failed with `Expected value to be true`.
+Targeted raw/facade XPComment filters passed `1/1` in `47ms` and `1/1` in
+`31ms`; raw TIFF EXIF metadata prefix passed `60/60` in `1234ms`; facade `getexif` passed `65/65` in `329ms`; facade TIFF open/save filters passed
+`16/16` in `140ms`, `17/17` in `125ms`, and `2/2` in `32ms`; the full AHK
+directory suite passed `1465/1465` in `4437ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001BP` extends reopened TIFF EXIF readback for the bounded ImageUniqueID
+ASCII tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `ImageUniqueID` tag `42016` as TIFF
+ASCII type `2`, count `33`, and out-of-line value
+`0123456789abcdefghijklmnopqrstuv\0`; it leaves `info["exif"]` absent,
+exposes top-level `getexif()[42016]` as `0123456789abcdefghijklmnopqrstuv`,
+and exposes matching `tag_v2[42016]` as the same string. Native TIFF open now
+serializes tag `42016` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded ASCII payload route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes the string without AHK
+per-pixel loops. Nested EXIF/GPS/Interop IFD traversal, sub-IFD tag
+materialization, TIFF tag lifecycle, caller EXIF writeback, arbitrary ASCII
+tag coverage, implicit TIFF metadata preservation, MakerNote, IPTC, XMP,
+ImageCms, and transformed-orientation metadata retention remain out of scope.
+No native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw ImageUniqueID TIFF EXIF failed with
+`Expected "0123456789abcdefghijklmnopqrstuv", got ""`, and facade
+ImageUniqueID TIFF EXIF failed with `Expected value to be true`. Targeted
+raw/facade ImageUniqueID filters passed `1/1` in `47ms` and `1/1` in `31ms`;
+raw `open_tiff` passed `72/72` in `1797ms`; facade `getexif` passed `64/64`
+in `313ms`; facade TIFF open/save filters passed `16/16` in `266ms`, `17/17`
+in `235ms`, and `2/2` in `63ms`; the full AHK directory suite passed
+`1463/1463` in `10094ms` with the known four non-failing libjpeg stderr
+warnings.
+`META-001BO` extends reopened TIFF EXIF readback for the bounded GPSInfo
+pointer tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `GPSInfo` tag `34853` as TIFF LONG
+type `4`, count `1`, and value `134`, pointing to a nested GPS IFD whose
+`GPSLatitudeRef` tag `1` is ASCII `N\0`; it leaves `info["exif"]` absent,
+exposes top-level `getexif()[34853]` as `134`, leaves top-level
+`getexif().get(1)` absent, and exposes `getexif().get_ifd(34853)[1]` as `N`.
+Native TIFF open now serializes top-level tag `34853` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded scalar integer
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+the integer without AHK per-pixel loops. Nested GPS IFD traversal, sub-IFD tag
+materialization, Exif/Interop IFDs, TIFF tag lifecycle, caller EXIF writeback,
+implicit TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+GPSInfo pointer TIFF EXIF failed with `Expected 134, got -1`, and facade
+GPSInfo pointer TIFF EXIF failed with `Expected value to be true`. Targeted
+raw/facade GPSInfo pointer filters passed `1/1` in `109ms` and `1/1` in
+`47ms`; raw `open_tiff` passed `71/71` in `3141ms`, facade TIFF passed
+`89/89` in `797ms`, and facade `getexif` passed `63/63` in `578ms`; the full
+AHK directory suite passed `1461/1461` in `8797ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001BN` extends reopened TIFF EXIF readback for the bounded ExifIFD
+pointer tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `ExifIFD` tag `34665` as TIFF LONG
+type `4`, count `1`, and value `134`, pointing to a nested EXIF IFD whose
+`DateTimeOriginal` tag `36867` is ASCII `2026:07:06 01:02:03\0`; it leaves
+`info["exif"]` absent, exposes top-level `getexif()[34665]` as `134`, leaves
+top-level `getexif().get(36867)` absent, and exposes
+`getexif().get_ifd(34665)[36867]` as `2026:07:06 01:02:03`. Native TIFF open
+now serializes top-level tag `34665` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded scalar integer
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+the integer without AHK per-pixel loops. Nested EXIF IFD traversal, sub-IFD tag
+materialization, GPS/Interop IFDs, TIFF tag lifecycle, caller EXIF writeback,
+implicit TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+ExifIFD pointer TIFF EXIF failed with `Expected 134, got -1`, and facade
+ExifIFD pointer TIFF EXIF failed with `Expected value to be true`. Targeted
+raw/facade ExifIFD pointer filters passed `1/1` in `78ms` and `1/1` in
+`32ms`; raw `open_tiff` passed `70/70` in `1703ms`, facade TIFF passed
+`88/88` in `500ms`, and facade `getexif` passed `62/62` in `313ms`; the full
+AHK directory suite passed `1459/1459` in `4859ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001BM` extends reopened TIFF EXIF readback for the bounded
+OffsetTimeDigitized ASCII tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `OffsetTimeDigitized`
+tag `36882` as TIFF ASCII type `2`, count `7`, and out-of-line value
+`+10:45\0` as mode `L`, size `(2,1)`, and bytes `[17,34]`; it leaves
+`info["exif"]` absent and exposes `getexif()[36882]` as `+10:45`, with
+matching `tag_v2` string. Native TIFF open now serializes tag `36882` into
+the existing `pillow_c_image_metadata_tiff_exif` blob through the bounded
+ASCII payload route, and the facade's `Image.GetExif()` / `getexif()`
+enumeration exposes the string without AHK per-pixel loops. Nested EXIF IFD
+OffsetTimeDigitized handling, OffsetTime/OffsetTimeOriginal sibling lifecycle,
+TIFF tag lifecycle, caller EXIF writeback, arbitrary ASCII tags, implicit TIFF
+metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+OffsetTimeDigitized TIFF EXIF failed with `Expected "+10:45", got ""`, and
+facade OffsetTimeDigitized TIFF EXIF failed with `Expected value to be true`.
+Targeted raw/facade OffsetTimeDigitized filters passed `1/1` in `62ms` and
+`1/1` in `32ms`; raw `open_tiff` passed `69/69` in `1625ms`, facade TIFF
+passed `87/87` in `453ms`, and facade `getexif` passed `61/61` in `328ms`;
+the full AHK directory suite passed `1457/1457` in `4953ms` with the known
+four non-failing libjpeg stderr warnings.
+`META-001BL` extends reopened TIFF EXIF readback for the bounded
+OffsetTimeOriginal ASCII tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `OffsetTimeOriginal`
+tag `36881` as TIFF ASCII type `2`, count `7`, and out-of-line value
+`+09:30\0` as mode `L`, size `(2,1)`, and bytes `[17,34]`; it leaves
+`info["exif"]` absent and exposes `getexif()[36881]` as `+09:30`, with
+matching `tag_v2` string. Native TIFF open now serializes tag `36881` into
+the existing `pillow_c_image_metadata_tiff_exif` blob through the bounded
+ASCII payload route, and the facade's `Image.GetExif()` / `getexif()`
+enumeration exposes the string without AHK per-pixel loops. Nested EXIF IFD
+OffsetTimeOriginal handling, OffsetTime/OffsetTimeDigitized sibling lifecycle,
+TIFF tag lifecycle, caller EXIF writeback, arbitrary ASCII tags, implicit TIFF
+metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence: raw
+OffsetTimeOriginal TIFF EXIF failed with `Expected "+09:30", got ""`, and
+facade OffsetTimeOriginal TIFF EXIF failed with `Expected value to be true`.
+Targeted raw/facade OffsetTimeOriginal filters passed `1/1` in `78ms` and
+`1/1` in `31ms`; raw `open_tiff` passed `68/68` in `1609ms`, facade TIFF
+passed `86/86` in `469ms`, and facade `getexif` passed `60/60` in `281ms`;
+the full AHK directory suite passed `1455/1455` in `5063ms` with the known
+four non-failing libjpeg stderr warnings.
+`META-001BK` extends reopened TIFF EXIF readback for the bounded OffsetTime
+ASCII tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `OffsetTime` tag `36880` as TIFF
+ASCII type `2`, count `7`, and out-of-line value `+08:00\0` as mode `L`,
+size `(2,1)`, and bytes `[17,34]`; it leaves `info["exif"]` absent and
+exposes `getexif()[36880]` as `+08:00`, with matching `tag_v2` string.
+Native TIFF open now serializes tag `36880` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded ASCII payload
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+the string without AHK per-pixel loops. Nested EXIF IFD OffsetTime handling,
+OffsetTimeOriginal/OffsetTimeDigitized sibling lifecycle, TIFF tag lifecycle,
+caller EXIF writeback, arbitrary ASCII tags, implicit TIFF metadata
+preservation, MakerNote, IPTC, XMP, ImageCms, and transformed-orientation
+metadata retention remain out of scope. No native ABI symbol was added;
+Release x64 was rebuilt after native code changed, source/Release x64 DLL
+export counts remain `381` / `381`. Red evidence: raw OffsetTime TIFF EXIF
+failed with `Expected "+08:00", got ""`, and facade OffsetTime TIFF EXIF
+failed with `Expected value to be true`. Targeted raw/facade OffsetTime
+filters passed `1/1` in `47ms` and `1/1` in `32ms`; raw `open_tiff` passed
+`67/67` in `1562ms`, facade TIFF passed `85/85` in `469ms`, and facade
+`getexif` passed `59/59` in `265ms`; the full AHK directory suite passed
+`1453/1453` in `5265ms` with the known four non-failing libjpeg stderr
+warnings.
+`META-001BJ` extends reopened TIFF EXIF readback for the bounded
+SubSecTimeDigitized ASCII tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `SubSecTimeDigitized`
+tag `37522` as TIFF ASCII type `2`, count `4`, and inline value `789\0` as
+mode `L`, size `(2,1)`, and bytes `[17,34]`; it leaves `info["exif"]`
+absent and exposes `getexif()[37522]` as `789`, with matching `tag_v2`
+string. Native TIFF open now serializes tag `37522` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded ASCII payload
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+the string without AHK per-pixel loops. Nested EXIF IFD SubSecTimeDigitized
+handling, SubSecTime/SubSecTimeOriginal sibling lifecycle, TIFF tag lifecycle,
+caller EXIF writeback, arbitrary ASCII tags, implicit TIFF metadata
+preservation, MakerNote, IPTC, XMP, ImageCms, and transformed-orientation
+metadata retention remain out of scope. No native ABI symbol was added;
+Release x64 was rebuilt after native code changed, source/Release x64 DLL
+export counts remain `381` / `381`. Red evidence: raw SubSecTimeDigitized TIFF
+EXIF failed with `Expected "789", got ""`, and facade SubSecTimeDigitized TIFF
+EXIF failed with `Expected value to be true`. Targeted raw/facade
+SubSecTimeDigitized filters passed `1/1` in `62ms` and `1/1` in `16ms`; raw
+`open_tiff` passed `66/66` in `1469ms`, facade TIFF passed `84/84` in
+`422ms`, and facade `getexif` passed `58/58` in `297ms`; the full AHK
+directory suite passed `1451/1451` in `4922ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001BI` extends reopened TIFF EXIF readback for the bounded
+SubSecTimeOriginal ASCII tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `SubSecTimeOriginal` tag
+`37521` as TIFF ASCII type `2`, count `4`, and inline value `456\0` as mode
+`L`, size `(2,1)`, and bytes `[17,34]`; it leaves `info["exif"]` absent and
+exposes `getexif()[37521]` as `456`, with matching `tag_v2` string. Native
+TIFF open now serializes tag `37521` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded ASCII payload
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+the string without AHK per-pixel loops. Nested EXIF IFD SubSecTimeOriginal
+handling, SubSecTime/SubSecTimeDigitized sibling lifecycle, TIFF tag lifecycle,
+caller EXIF writeback, arbitrary ASCII tags, implicit TIFF metadata
+preservation, MakerNote, IPTC, XMP, ImageCms, and transformed-orientation
+metadata retention remain out of scope. No native ABI symbol was added;
+Release x64 was rebuilt after native code changed, source/Release x64 DLL
+export counts remain `381` / `381`. Red evidence: raw SubSecTimeOriginal TIFF
+EXIF failed with `Expected "456", got ""`, and facade SubSecTimeOriginal TIFF
+EXIF failed with `Expected value to be true`. Targeted raw/facade
+SubSecTimeOriginal filters passed `1/1` in `63ms` and `1/1` in `15ms`; raw
+`open_tiff` passed `65/65` in `1547ms`, facade TIFF passed `83/83` in
+`485ms`, and facade `getexif` passed `57/57` in `250ms`; the full AHK
+directory suite passed `1449/1449` in `4610ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001BH` extends reopened TIFF EXIF readback for the bounded SubSecTime
+ASCII tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `SubSecTime` tag `37520` as TIFF
+ASCII type `2`, count `4`, and inline value `123\0` as mode `L`, size
+`(2,1)`, and bytes `[17,34]`; it leaves `info["exif"]` absent and exposes
+`getexif()[37520]` as `123`, with matching `tag_v2` string. Native TIFF open
+now serializes tag `37520` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded ASCII payload
+route, and the facade's `Image.GetExif()` / `getexif()` enumeration exposes
+the string without AHK per-pixel loops. Nested EXIF IFD SubSecTime handling,
+SubSecTimeOriginal/SubSecTimeDigitized siblings, TIFF tag lifecycle, caller
+EXIF writeback, arbitrary ASCII tags, implicit TIFF metadata preservation,
+MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata retention
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain `381` /
+`381`. Red evidence: raw SubSecTime TIFF EXIF failed with
+`Expected "123", got ""`, and facade SubSecTime TIFF EXIF failed with
+`Expected value to be true`. Targeted raw/facade SubSecTime filters passed
+`1/1` in `109ms` and `1/1` in `47ms`; raw `open_tiff` passed `64/64` in
+`3265ms`, facade TIFF passed `82/82` in `875ms`, and facade `getexif` passed
+`56/56` in `688ms`; the full AHK directory suite passed `1447/1447` in
+`9032ms` with the known four non-failing libjpeg stderr warnings.
+`META-001BG` extends reopened TIFF EXIF readback for the bounded
+DateTimeDigitized ASCII tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `DateTimeDigitized` tag
+`36868` as TIFF ASCII type `2`, count `20`, and the value
+`2026:07:04 12:34:56\0` as mode `L`, size `(2,1)`, and bytes `[17,34]`; it
+leaves `info["exif"]` absent and exposes `getexif()[36868]` as
+`2026:07:04 12:34:56`, with matching `tag_v2` string. Native TIFF open now
+serializes tag `36868` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded ASCII payload route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes the string without AHK
+per-pixel loops. Nested EXIF IFD DateTimeDigitized handling, TIFF tag
+lifecycle, caller EXIF writeback, arbitrary ASCII tags, implicit TIFF metadata
+preservation, MakerNote, IPTC, XMP, ImageCms, and transformed-orientation
+metadata retention remain out of scope. No native ABI symbol was added;
+Release x64 was rebuilt after native code changed, source/Release x64 DLL
+export counts remain `381` / `381`. Red evidence: raw DateTimeDigitized TIFF
+EXIF failed with `Expected "2026:07:04 12:34:56", got ""`, and facade
+DateTimeDigitized TIFF EXIF failed with `Expected value to be true`. Targeted
+raw/facade DateTimeDigitized filters passed `1/1` in `63ms` and `1/1` in
+`47ms`; raw `open_tiff` passed `63/63` in `2812ms`, facade TIFF passed
+`81/81` in `875ms`, and facade `getexif` passed `55/55` in `453ms`; the full
+AHK directory suite passed `1445/1445` in `9047ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001BF` extends reopened TIFF EXIF readback for the bounded
+DateTimeOriginal ASCII tag route. The local Pillow 11.3.0 oracle reopens a
+hand-built strip-based L-mode TIFF whose IFD0 carries `DateTimeOriginal` tag
+`36867` as TIFF ASCII type `2`, count `20`, and the value
+`2026:07:04 12:34:56\0` as mode `L`, size `(2,1)`, and bytes `[17,34]`; it
+leaves `info["exif"]` absent and exposes `getexif()[36867]` as
+`2026:07:04 12:34:56`, with matching `tag_v2` string. Native TIFF open now
+serializes tag `36867` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded ASCII payload route, and the facade's
+`Image.GetExif()` / `getexif()` enumeration exposes the string without AHK
+per-pixel loops. Nested EXIF IFD DateTimeOriginal handling, TIFF tag
+lifecycle, caller EXIF writeback, arbitrary ASCII tags, implicit TIFF metadata
+preservation, MakerNote, IPTC, XMP, ImageCms, and transformed-orientation
+metadata retention remain out of scope. No native ABI symbol was added;
+Release x64 was rebuilt after native code changed, source/Release x64 DLL
+export counts remain `381` / `381`. Red evidence: raw DateTimeOriginal TIFF
+EXIF failed with `Expected "2026:07:04 12:34:56", got ""`, and facade
+DateTimeOriginal TIFF EXIF failed with `Expected value to be true`. Targeted
+raw/facade DateTimeOriginal filters passed `1/1` in `63ms` and `1/1` in
+`31ms`; raw `open_tiff` passed `62/62` in `1516ms`, facade TIFF passed
+`80/80` in `485ms`, and facade `getexif` passed `54/54` in `281ms`; the full
+AHK directory suite passed `1443/1443` in `9047ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001BE` extends reopened TIFF EXIF readback for the bounded ExifVersion
+UNDEFINED tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `ExifVersion` tag `36864` as TIFF
+UNDEFINED type `7`, count `4`, and inline bytes `[48,50,51,48]` as mode `L`,
+size `(2,1)`, and bytes `[17,34]`; it leaves `info["exif"]` absent and
+exposes `getexif()[36864]` as those exact bytes, with matching `tag_v2` bytes.
+Native TIFF open now serializes tag `36864` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded UNDEFINED payload
+route, and the facade's existing `Image.GetExif()` / `getexif()` enumeration
+exposes the copied Buffer without AHK per-pixel loops. The EXIF object
+serialize/save lifecycle for tag `36864` remains covered by `META-001J`;
+arbitrary TIFF UNDEFINED tags, nested TIFF/EXIF/GPS IFDs, TIFF tag lifecycle,
+caller EXIF writeback, implicit TIFF metadata preservation, MakerNote, IPTC,
+XMP, ImageCms, and transformed-orientation metadata retention remain out of
+scope. No native ABI symbol was added; Release x64 was rebuilt after native
+code changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw ExifVersion TIFF EXIF failed with
+`Expected [48, 50, 51, 48], got []`, and facade ExifVersion TIFF EXIF failed
+with `Expected value to be true`. Targeted raw/facade ExifVersion filters
+passed `1/1` in `94ms` and `1/1` in `15ms`; raw `open_tiff` passed `61/61`
+in `1406ms`, facade TIFF passed `79/79` in `391ms`, and facade `getexif`
+passed `53/53` in `281ms`; the full AHK directory suite passed `1441/1441`
+in `5000ms` with the known four non-failing libjpeg stderr warnings.
+`META-001BD` extends reopened TIFF EXIF readback for the bounded JPEGTables
+BYTE tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `JPEGTables` tag `347` as TIFF
+BYTE type `1`, count `8`, and bytes `[255,216,255,219,0,4,255,217]` as mode
+`L`, size `(2,1)`, and bytes `[17,34]`; it leaves `info["exif"]` absent and
+exposes `getexif()[347]` as those exact bytes, with matching `tag_v2` bytes.
+Native TIFF open now serializes tag `347` into the existing
+`pillow_c_image_metadata_tiff_exif` blob through the bounded BYTE-or-UNDEFINED
+payload route, and the facade's existing `Image.GetExif()` / `getexif()`
+enumeration exposes the copied Buffer without AHK per-pixel loops. The
+UNDEFINED type `7` route remains covered by `META-001BC`; JPEGTables-driven
+JPEG-in-TIFF decoding, malformed table validation, actual TIFF JPEG
+compression, non-IFD0 frame metadata, TIFF tag lifecycle, caller EXIF
+writeback, arbitrary BYTE/UNDEFINED tags, nested TIFF/EXIF/GPS IFDs, implicit
+TIFF metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence:
+raw BYTE JPEGTables TIFF EXIF failed with
+`Expected [255, 216, 255, 219, 0, 4, 255, 217], got []`, and facade BYTE
+JPEGTables TIFF EXIF failed with `Expected value to be true`. Targeted
+raw/facade JPEGTables filters passed `2/2` in `94ms` and `2/2` in `46ms`;
+raw `open_tiff` passed `60/60` in `1468ms`, facade TIFF passed `78/78` in
+`453ms`, and facade `getexif` passed `52/52` in `250ms`; the full AHK
+directory suite passed `1439/1439` in `4875ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001BC` extends reopened TIFF EXIF readback for the bounded JPEGTables
+UNDEFINED tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `JPEGTables` tag `347` as TIFF
+UNDEFINED type `7`, count `8`, and bytes
+`[255,216,255,219,0,4,255,217]` as mode `L`, size `(2,1)`, and bytes
+`[17,34]`; it leaves `info["exif"]` absent and exposes `getexif()[347]` as
+those exact bytes, with matching `tag_v2` bytes. Native TIFF open now
+serializes tag `347` into the existing `pillow_c_image_metadata_tiff_exif`
+blob through the bounded UNDEFINED payload route, and the facade enumerates it
+through `Image.GetExif()` / `getexif()` without AHK per-pixel loops. The local
+oracle also accepts a TIFF BYTE type `1` spelling for tag `347`, but this
+slice covers only the UNDEFINED type `7` route. JPEGTables-driven
+JPEG-in-TIFF decoding, malformed table validation, actual TIFF JPEG
+compression, non-IFD0 frame metadata, TIFF tag lifecycle, caller EXIF
+writeback, arbitrary UNDEFINED tags, nested TIFF/EXIF/GPS IFDs, implicit TIFF
+metadata preservation, MakerNote, IPTC, XMP, ImageCms, and
+transformed-orientation metadata retention remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence:
+raw JPEGTables TIFF EXIF failed with
+`Expected [255, 216, 255, 219, 0, 4, 255, 217], got []`, and facade
+JPEGTables TIFF EXIF failed with `Expected value to be true`. Targeted
+raw/facade JPEGTables filters passed `1/1` in `156ms` and `1/1` in `31ms`;
+raw `open_tiff` passed `59/59` in `1407ms`, facade TIFF passed `77/77` in
+`407ms`, and facade `getexif` passed `51/51` in `266ms`; the full AHK
+directory suite passed `1437/1437` in `5032ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001BB` extends reopened TIFF EXIF readback for the bounded tile byte
+range scalar tag route. The local Pillow 11.3.0 oracle reopens a hand-built
+strip-based L-mode TIFF whose IFD0 carries `TileOffsets` tag `324=146` and
+`TileByteCounts` tag `325=2` as mode `L`, size `(2,1)`, and bytes `[17,34]`;
+it leaves `info["exif"]` absent and exposes `getexif()[324] == 146`,
+`getexif()[325] == 2`, with matching `tag_v2` scalar tuples. Native TIFF open
+now serializes tags `324` and `325` into the existing
+`pillow_c_image_metadata_tiff_exif` blob, and the facade enumerates them
+through `Image.GetExif()` / `getexif()` without AHK per-pixel loops. Actual
+tiled TIFF storage/decoding semantics, non-scalar tile byte-range tag shapes,
+TIFF tag lifecycle, caller EXIF writeback, arbitrary scalar tags, nested
+TIFF/EXIF/GPS IFDs, implicit TIFF metadata preservation, MakerNote, IPTC, XMP,
+ImageCms, and transformed-orientation metadata retention remain out of scope.
+No native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw tile byte range TIFF EXIF failed with `Expected 146, got -1`,
+and facade tile byte range TIFF EXIF failed with `Expected value to be true`.
+Targeted raw/facade tile byte range filters passed `1/1` in `141ms` and
+`1/1` in `47ms`; raw `open_tiff` passed `58/58` in `2547ms`, facade TIFF
+passed `76/76` in `843ms`, and facade `getexif` passed `50/50` in `656ms`;
+the full AHK directory suite passed `1435/1435` in `4953ms` with the known
+four non-failing libjpeg stderr warnings.
+`META-001BA` extends reopened TIFF EXIF readback for the bounded tile shape
+scalar tag route. The local Pillow 11.3.0 oracle reopens a hand-built L-mode
+TIFF whose IFD0 carries `TileWidth` tag `322=16` and `TileLength` tag
+`323=32` as mode `L`, size `(2,1)`, and bytes `[17,34]`; it leaves
+`info["exif"]` absent and exposes `getexif()[322] == 16`,
+`getexif()[323] == 32`, with matching `tag_v2` scalar tuples. Native TIFF
+open now recognizes this bounded uncompressed single-strip L TIFF shape before
+the WIC decoder path that rejects the tile-shape tags, preserves the pixels in
+DLL-owned storage, and serializes tags `322` and `323` into the existing
+`pillow_c_image_metadata_tiff_exif` blob; the facade enumerates them through
+`Image.GetExif()` / `getexif()` without AHK per-pixel loops. Actual tiled TIFF
+storage/decoding semantics, `TileOffsets` / `TileByteCounts`, non-scalar tile
+tag shapes, TIFF tag lifecycle, caller EXIF writeback, arbitrary scalar tags,
+nested TIFF/EXIF/GPS IFDs, implicit TIFF metadata preservation, MakerNote,
+IPTC, XMP, ImageCms, and transformed-orientation metadata retention remain out
+of scope. No native ABI symbol was added; Release x64 was rebuilt after native
+code changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw tile-shape TIFF open failed with `Expected 0, got -3`, and the
+facade tile-shape test errored with `pillow_c: invalid argument`. Targeted
+raw/facade tile-shape filters passed `1/1` in `78ms` and `1/1` in `32ms`;
+raw `open_tiff` passed `57/57` in `2813ms`, facade TIFF passed `75/75` in
+`750ms`, facade `getexif` passed `49/49` in `453ms`; the full AHK directory
+suite passed `1433/1433` in `9844ms` with the known four non-failing libjpeg
+stderr warnings.
+`META-001AZ` extends reopened TIFF EXIF readback for the bounded free block
+scalar tag route. The local Pillow 11.3.0 oracle reopens a hand-built L-mode
+TIFF whose IFD0 carries `FreeOffsets` tag `288=12` and `FreeByteCounts` tag
+`289=34` as mode `L`, size `(2,1)`, and bytes `[17,34]`; it leaves
+`info["exif"]` absent and exposes `getexif()[288] == 12`,
+`getexif()[289] == 34`, with matching `tag_v2` scalar tuples. Native TIFF
+open now admits tags `288` and `289` through the existing bounded scalar
+integer parser and serializes them into the DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob; the facade enumerates them through
+`Image.GetExif()` / `getexif()` without AHK per-pixel loops. Broader free
+block lifecycle semantics, non-scalar free block tag shapes, free-list
+validation, TIFF tag lifecycle, caller EXIF writeback, arbitrary scalar tags,
+nested TIFF/EXIF/GPS IFDs, implicit TIFF metadata preservation, MakerNote,
+IPTC, XMP, ImageCms, and transformed-orientation metadata retention remain out
+of scope. No native ABI symbol was added; Release x64 was rebuilt after native
+code changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw free block TIFF EXIF failed with `Expected 12, got -1`, and
+facade free block TIFF EXIF failed with `Expected value to be true`.
+Targeted raw/facade free block filters passed `1/1` in `125ms` and `1/1` in
+`78ms`; raw `open_tiff` passed `56/56` in `2578ms`, facade TIFF passed
+`74/74` in `844ms`, facade `getexif` passed `48/48` in `422ms`; the full AHK
+directory suite passed `1431/1431` in `9406ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001AY` extends reopened TIFF EXIF readback for the bounded fax option
+scalar tag route. The local Pillow 11.3.0 oracle reopens a hand-built L-mode
+TIFF whose IFD0 carries `Group3Options` tag `292=4` and `Group4Options` tag
+`293=8` as mode `L`, size `(2,1)`, and bytes `[17,34]`; it leaves
+`info["exif"]` absent and exposes `getexif()[292] == 4`,
+`getexif()[293] == 8`, with matching `tag_v2` scalar tuples. Native TIFF open
+now admits tags `292` and `293` through the existing bounded scalar integer
+parser and serializes them into the DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob; the facade enumerates them through
+`Image.GetExif()` / `getexif()` without AHK per-pixel loops. Broader
+Group3/Group4 fax decoding/semantics, non-scalar option tag shapes,
+compression behavior, TIFF tag lifecycle, caller EXIF writeback, arbitrary
+scalar tags, nested TIFF/EXIF/GPS IFDs, implicit TIFF metadata preservation,
+MakerNote, IPTC, XMP, ImageCms, and transformed-orientation metadata retention
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain `381`
+/ `381`. Red evidence: raw fax option TIFF EXIF failed with
+`Expected 4, got -1`, and facade fax option TIFF EXIF failed with
+`Expected value to be true`.
+Targeted raw/facade fax option filters passed `1/1` in `172ms` and `1/1` in
+`62ms`; raw `open_tiff` passed `55/55` in `2656ms`, facade TIFF passed
+`73/73` in `797ms`, facade `getexif` passed `47/47` in `406ms`; the full AHK
+directory suite passed `1429/1429` in `9000ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-001AX` extends reopened TIFF EXIF readback for the bounded fax scalar
+tag route. The local Pillow 11.3.0 oracle reopens a hand-built L-mode TIFF
+whose IFD0 carries `BadFaxLines` tag `326=7`, `CleanFaxData` tag `327=1`,
+and `ConsecutiveBadFaxLines` tag `328=2` as mode `L`, size `(2,1)`, and
+bytes `[17,34]`; it leaves `info["exif"]` absent and exposes
+`getexif()[326] == 7`, `getexif()[327] == 1`, `getexif()[328] == 2`, with
+matching `tag_v2` scalar tuples. Native TIFF open now admits tags `326`,
+`327`, and `328` through the existing bounded scalar integer parser and
+serializes them into the DLL-owned `pillow_c_image_metadata_tiff_exif` blob;
+the facade enumerates them through `Image.GetExif()` / `getexif()` without
+AHK per-pixel loops. Broader fax decoding/semantics, non-scalar fax tag
+shapes, TIFF tag lifecycle, caller EXIF writeback, arbitrary scalar tags,
+nested TIFF/EXIF/GPS IFDs, implicit TIFF metadata preservation, MakerNote,
+IPTC, XMP, ImageCms, and transformed-orientation metadata retention remain
+out of scope. No native ABI symbol was added; Release x64 was rebuilt after
+native code changed, source/Release x64 DLL export counts remain `381` /
+`381`. Red evidence: raw fax scalar TIFF EXIF failed with
+`Expected 7, got -1`, and facade fax scalar TIFF EXIF failed with
+`Expected value to be true`.
+Targeted raw/facade fax scalar filters passed `1/1` in `62ms` and `1/1` in
+`15ms`; raw `open_tiff` passed `54/54` in `1235ms`, facade TIFF passed
+`72/72` in `375ms`, facade `getexif` passed `46/46` in `219ms`; the full AHK
+directory suite passed `1427/1427` in `4812ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-002P` extends bounded TIFF XMP open metadata to IFD0 XMP tag `700`
+stored as TIFF UNDEFINED type `7`. The local Pillow 11.3.0 oracle reopens a
+hand-built RGB TIFF whose IFD0 carries tag `700` as type `7` and the bounded
+XMP packet bytes as mode `RGB`, size `(2,1)`, and pixels
+`[10,20,30,40,50,60]`; it exposes `info["xmp"]` as the exact packet bytes,
+leaves `info["exif"]` absent, exposes `getexif()[700]` as bytes equal to the
+packet, reports `tag_v2[700]`, and parses `getxmp()` to title `Hello` /
+`x-default`. Native TIFF XMP parsing now accepts bounded tag `700` payloads
+stored as TIFF BYTE type `1` or UNDEFINED type `7`, attaches the bytes to
+existing DLL-owned XMP metadata, and serializes tag `700` through the existing
+TIFF EXIF blob; the facade maps `Info["xmp"]`, `GetExif()[700]`, and
+`getxmp()` without AHK per-pixel loops. TIFF XMP save/writeback, implicit XMP
+preservation, SHORT/LONG/ASCII tag `700` coercions, numeric/high-bit or
+selected-frame UNDEFINED XMP fixtures, malformed packet handling, broader XMP
+schemas, IPTC, ICC color management, and arbitrary TIFF BYTE/UNDEFINED tags
+beyond tag `700` remain out of scope. No native ABI symbol was added; Release
+x64 was rebuilt after native code changed, source/Release x64 DLL export
+counts remain `381` / `381`. Red evidence: raw UNDEFINED TIFF XMP failed with
+`Expected 1, got 0`, and facade UNDEFINED TIFF XMP failed because
+`Info["xmp"]` was absent. Targeted raw/facade UNDEFINED TIFF XMP filters
+passed `1/1` in `94ms` and `1/1` in `62ms`; raw `open_tiff` passed `53/53`
+in `2406ms`, facade TIFF passed `71/71` in `781ms`, facade `getxmp` passed
+`2/2` in `62ms`, facade `getexif` passed `45/45` in `391ms`; the full AHK
+directory suite passed `1425/1425` in `9359ms` with the known four
+non-failing libjpeg stderr warnings.
+`META-002O` extends bounded TIFF XMP open metadata to selected nonzero native
+numeric and high-bit TIFF frames. The local Pillow 11.3.0 oracle reopens
+two-frame little-endian `I;16`, `I`, and `F` TIFFs whose second IFD carries
+tag `700` as TIFF BYTE type `1` and the bounded XMP packet bytes; after
+`seek(1)`, mode `I;16` preserves bytes `[184,11,160,15]`, mode `I` preserves
+bytes `[112,17,1,0,192,29,254,255]`, and mode `F` preserves bytes
+`[0,0,0,64,0,0,64,192]`, each exposes `info["xmp"]` as the selected packet
+bytes, leaves `info["exif"]` absent, exposes the same bytes through
+`getexif()[700]` / `tag_v2[700]`, and parses `getxmp()` to title `Hello` /
+`x-default`. Native `open_tiff_frame_image` now attaches bounded selected-IFD
+tag `700` bytes to existing DLL-owned XMP metadata before returning from the
+nonzero numeric and `I;16` frame parsers, while reusing the existing TIFF EXIF
+blob serialization for tag `700`; the facade refreshes `Info["xmp"]`,
+`GetExif()[700]`, and `getxmp()` after `Seek(1)` without AHK per-pixel loops.
+TIFF XMP save/writeback, implicit XMP preservation, non-BYTE tag `700`
+coercions, selected `I;16B` XMP metadata, malformed packet handling, broader
+XMP schemas, IPTC, ICC color management, and arbitrary BYTE/UNDEFINED tags
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain `381`
+/ `381`. Red evidence: raw selected numeric/high-bit frame XMP failed with
+`Expected 1, got 0`, and facade selected frame XMP failed because
+`Info["xmp"]` was absent after `Seek(1)`. Targeted raw/facade selected-frame
+XMP filters passed `1/1` in `203ms` and `1/1` in `94ms`; raw `open_tiff`
+passed `52/52` in `2922ms`, facade TIFF passed `70/70` in `829ms`, facade
+`getxmp` passed `2/2` in `78ms`, facade `getexif` passed `45/45` in
+`453ms`; the full AHK directory suite passed `1423/1423` in `10282ms` with
+the known four non-failing libjpeg stderr warnings.
+`META-002N` extends bounded TIFF XMP open metadata to the native numeric and
+high-bit TIFF early-open paths. The local Pillow 11.3.0 oracle reopens
+hand-built `I;16`, `I`, and `F` TIFFs whose IFD0 carries tag `700` as TIFF
+BYTE type `1` and the bounded XMP packet bytes with preserved modes, size
+`(2,1)`, and exact pixel bytes `[1,0,255,0]`,
+`[1,0,0,0,254,255,255,255]`, and
+`[0,0,192,63,0,0,16,192]`; each exposes `info["xmp"]` as the packet bytes,
+leaves `info["exif"]` absent, exposes the same bytes through
+`getexif()[700]` / `tag_v2[700]`, and parses `getxmp()` to title `Hello` /
+`x-default`. Native numeric and `I;16` TIFF early returns now attach bounded
+tag `700` bytes to existing DLL-owned XMP metadata while reusing the existing
+TIFF EXIF blob serialization for tag `700`; the facade maps `Info["xmp"]`,
+`GetExif()[700]`, and `getxmp()` without AHK per-pixel loops. TIFF XMP
+save/writeback, implicit XMP preservation, non-BYTE tag `700` coercions,
+selected-frame XMP metadata, malformed packet handling, broader XMP schemas,
+IPTC, ICC color management, and arbitrary BYTE/UNDEFINED tags remain out of
+scope. No native ABI symbol was added; Release x64 was rebuilt after native
+code changed, source/Release x64 DLL export counts remain `381` / `381`. Red
+evidence: raw numeric TIFF XMP failed with `Expected 1, got 0`, and facade
+numeric TIFF XMP failed because `Info["xmp"]` was absent. Targeted raw/facade
+numeric TIFF XMP filters passed `1/1` in `516ms` and `1/1` in `156ms`; raw
+`open_tiff` passed `51/51` in `4594ms`, facade TIFF passed `69/69` in
+`1422ms`, facade `getxmp` passed `2/2` in `172ms`, facade `getexif` passed
+`45/45` in `1125ms`; the full AHK directory suite passed `1421/1421` in
+`19453ms` with the known four non-failing libjpeg stderr warnings.
+`META-002M` adds bounded TIFF XMP open metadata. The local Pillow 11.3.0
+oracle reopens a hand-built RGB TIFF whose IFD0 carries tag `700` as TIFF BYTE
+type `1`, count `301`, and the bounded XMP packet bytes as mode `RGB`, size
+`(2,1)`, and pixels `[10,20,30,40,50,60]`, exposes `info["xmp"]` as those
+exact bytes, leaves `info["exif"]` absent, exposes the same bytes through
+`getexif()[700]` / `tag_v2[700]`, and parses `getxmp()` to the expected
+nested map with title `Hello` / `x-default`. Native TIFF open now copies
+bounded IFD0 tag `700` BYTE payloads into existing DLL-owned XMP metadata and
+serializes tag `700` into the existing TIFF EXIF blob as an UNDEFINED tag; the
+facade maps `Info["xmp"]`, `GetExif()[700]`, and `getxmp()` without AHK
+per-pixel loops. TIFF XMP save/writeback, implicit XMP preservation, non-BYTE
+tag `700` coercions, frame/numeric TIFF XMP metadata, malformed packet
+handling, broader XMP schemas, IPTC, ICC color management, and arbitrary
+BYTE/UNDEFINED tags remain out of scope. No native ABI symbol was added;
+Release x64 was rebuilt after native code changed, source/Release x64 DLL
+export counts remain `381` / `381`. Red evidence: raw TIFF XMP failed with
+`Expected 1, got 0`, and facade TIFF XMP failed because `Info["xmp"]` was
+absent. Targeted raw/facade TIFF XMP filters passed `1/1` in `94ms` and
+`1/1` in `47ms`; raw `open_tiff` passed `50/50` in `2328ms`, facade TIFF
+passed `68/68` in `703ms`, facade `getxmp` passed `2/2` in `63ms`, facade
+`getexif` passed `45/45` in `750ms`; the full AHK directory suite passed
+`1419/1419` in `9718ms` with the known four non-failing libjpeg stderr
+warnings.
+`META-002L` extends bounded TIFF ICC profile open metadata to RGB TIFF IFD0
+`ICCProfile` tag `34675` entries stored as TIFF BYTE type `1`. The local
+Pillow 11.3.0 oracle reopens a hand-built RGB TIFF with type `1`, count `6`,
+and payload bytes `[1,2,3,4,5,6]` as mode `RGB`, size `(2,1)`, and pixels
+`[10,20,30,40,50,60]`, exposes `info["icc_profile"]` as those exact bytes,
+leaves `info["exif"]` absent, and exposes the same bytes through
+`getexif()[34675]` / `tag_v2[34675]`. Native TIFF ICC parsing now accepts only
+the bounded BYTE/UNDEFINED tag shapes for `34675`, attaches DLL-owned ICC
+metadata, and serializes the same bytes into the existing TIFF EXIF blob; the
+facade maps `Info["icc_profile"]` and `GetExif()[34675]` without AHK
+per-pixel loops. TIFF ICC save/writeback, ICC color management, ASCII/SHORT/
+LONG ICC coercions, malformed BYTE count handling, frame/numeric BYTE ICC
+variants, and arbitrary BYTE/UNDEFINED tags remain out of scope. No native ABI
+symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `381` / `381`. Red evidence:
+raw BYTE ICC failed with `Expected 1, got 0`, and facade BYTE ICC failed
+because `Info["icc_profile"]` was absent. Targeted raw/facade BYTE ICC filters
+passed `1/1` in `78ms` and `1/1` in `16ms`; raw `open_tiff` passed `49/49`
+in `953ms`, facade TIFF passed `67/67` in `328ms`, and facade EXIF passed
+`76/76` in `422ms`; the full AHK directory suite passed `1417/1417` in
+`4765ms`.
+`META-002K` extends bounded TIFF ICC profile open metadata to selected
+nonzero numeric `I` and `F` TIFF frames. The local Pillow 11.3.0 oracle
+reopens two-frame little-endian numeric TIFF fixtures whose second IFD carries
+tag `34675` with TIFF type `7`, count `6`, and payload bytes
+`[9,8,7,6,5,4]`: after `seek(1)`, mode `I` preserves bytes
+`[112,17,1,0,192,29,254,255]`, mode `F` preserves bytes
+`[0,0,0,64,0,0,64,192]`, both expose `info["icc_profile"]` as the selected
+payload, leave `info["exif"]` absent, and expose the same bytes through
+`getexif()[34675]` / `tag_v2[34675]`. Native `open_tiff_frame_image` now
+routes selected nonzero numeric frames through an IFD-indexed numeric TIFF
+parser before WIC fallback, attaches the selected frame's bounded ICC
+metadata, and builds the bounded TIFF EXIF blob for that same IFD; the facade
+refreshes mode, bytes, `Info["icc_profile"]`, and tag `34675` after `Seek(1)`
+without AHK per-pixel loops. TIFF ICC save/writeback, ICC color management,
+malformed/non-type-7 ICC tag shapes, nonzero-frame `I;16B` ICC policy,
+compressed numeric frame ICC fixtures, broader multipage preservation, and
+arbitrary TIFF UNDEFINED tags remain out of scope. No native ABI symbol was
+added; Release x64 was rebuilt after native code changed, source/Release x64
+DLL export counts remain `381` / `381`. Targeted raw/facade filters passed
+`1/1` in `94ms` and `1/1` in `31ms`; raw `open_tiff` passed `48/48` in
+`953ms`, facade TIFF passed `66/66` in `329ms`, and facade EXIF passed
+`75/75` in `360ms`; the full AHK directory suite passed `1415/1415` in
+`4593ms`.
+`META-002J` extends bounded TIFF ICC profile open metadata to nonzero
+little-endian `I;16` TIFF frames. The local Pillow 11.3.0 oracle reopens a
+two-frame `I;16` TIFF whose second IFD carries tag `34675` with TIFF type `7`,
+count `6`, and payload bytes `[9,8,7,6,5,4]`, then after `seek(1)` keeps mode
+`I;16`, preserves pixel bytes `[184,11,160,15]`, exposes
+`info["icc_profile"]` as those exact bytes, leaves `info["exif"]` absent, and
+exposes the same bytes through `getexif()[34675]` / `tag_v2[34675]`. Native
+`open_tiff_frame_image` now routes nonzero `I;16` frames through an
+IFD-indexed TIFF parser before WIC fallback, attaches the selected frame's
+bounded ICC metadata, and builds the bounded TIFF EXIF blob for that same IFD;
+the facade refreshes mode, bytes, `Info["icc_profile"]`, and tag `34675` after
+`Seek(1)` without AHK per-pixel loops. TIFF ICC save/writeback, ICC color
+management, malformed/non-type-7 ICC tag shapes, nonzero-frame `I;16B` ICC
+policy, broader multipage preservation, and arbitrary TIFF
+UNDEFINED tags remain out of scope. No native ABI symbol was added; Release
+x64 was rebuilt after native code changed, source/Release x64 DLL export
+counts remain `381` / `381`. Targeted raw/facade filters passed `1/1` in
+`93ms` and `1/1` in `16ms`; raw `open_tiff` passed `47/47` in `1015ms`,
+facade TIFF passed `65/65` in `343ms`, and facade EXIF passed `74/74` in
+`359ms`; the full AHK directory suite passed `1413/1413` in `4750ms`.
+`META-002I` extends bounded TIFF ICC profile open metadata to frame-specific
+RGB TIFF opens. The local Pillow 11.3.0 oracle reopens a two-frame RGB TIFF
+whose second IFD carries tag `34675` with TIFF type `7`, count `6`, and payload
+bytes `[9,8,7,6,5,4]`, then after `seek(1)` exposes
+`info["icc_profile"]` as those exact bytes, leaves `info["exif"]` absent, and
+exposes the same bytes through `getexif()[34675]` / `tag_v2[34675]` while
+preserving the second frame's RGB pixels. Native `open_tiff_frame_image` now
+reads the source TIFF bytes after decode, locates the selected IFD, attaches
+that frame's bounded ICC metadata, and builds the bounded TIFF EXIF blob for
+that same IFD; the facade refreshes `Info["icc_profile"]` after `Seek(1)` and
+enumerates tag `34675` without AHK per-pixel loops. TIFF ICC save/writeback,
+ICC color management, malformed/non-type-7 ICC tag shapes, numeric/high-bit
+nonzero-frame ICC policy, broader multipage preservation, and arbitrary TIFF
+UNDEFINED tags remain out of scope. No native ABI symbol was added; Release
+x64 was rebuilt after native code changed, source/Release x64 DLL export
+counts remain `381` / `381`, and the full AHK directory suite now passes
+`1411/1411` in `4688ms`.
+`META-002H` extends bounded TIFF ICC profile open metadata to the native
+numeric and high-bit TIFF early-open paths. The local Pillow 11.3.0 oracle
+reopens `I;16`, `I`, and `F` TIFFs carrying IFD0 tag `34675` with TIFF type
+`7`, count `6`, and payload bytes `[9,8,7,6,5,4]` with preserved mode, size
+`(2,1)`, and exact pixel bytes, exposes `info["icc_profile"]` as the payload
+bytes, leaves `info["exif"]` absent, and exposes the same bytes through
+`getexif()[34675]` / `tag_v2[34675]`. Native numeric TIFF open now copies the
+bounded type-7 tag `34675` into DLL-owned `tiff_icc_profile` metadata before
+its early return, and native `I;16` open now builds the bounded TIFF EXIF blob
+and ICC metadata before its early return. The facade maps reopened TIFF ICC
+bytes to `Info["icc_profile"]` and enumerates tag `34675` through
+`Image.GetExif()` / `getexif()` without AHK per-pixel loops. TIFF ICC
+save/writeback, ICC color management, malformed/non-type-7 ICC tag shapes,
+`I;16B` ICC metadata, multipage/frame ICC policy, and arbitrary TIFF
+UNDEFINED tags remain out of scope. No native ABI symbol was added; Release
+x64 was rebuilt after native code changed, source/Release x64 DLL export
+counts remain `381` / `381`, and the full AHK directory suite now passes
+`1409/1409` in `4703ms`.
+`META-002G` adds bounded TIFF ICC profile open metadata. The local Pillow
+11.3.0 oracle reopens an RGB TIFF carrying IFD0 tag `34675` with TIFF type
+`7`, count `8`, and payload bytes `[1,2,3,4,5,6,7,8]` as mode `RGB`, size
+`(2,1)`, bytes `[10,20,30,40,50,60]`, `info["icc_profile"]` equal to the
+payload bytes, no `info["exif"]`, and `getexif()[34675]` / `tag_v2[34675]`
+as the same bytes. Native TIFF open now copies bounded type-7 tag `34675`
+into DLL-owned `tiff_icc_profile` metadata, exposes it through the new
+`pillow_c_image_metadata_tiff_icc_profile` export, and also serializes it into
+the existing `pillow_c_image_metadata_tiff_exif` blob as an UNDEFINED tag. The
+facade maps reopened TIFF ICC bytes to `Info["icc_profile"]` and enumerates
+tag `34675` through `Image.GetExif()` / `getexif()` without AHK per-pixel
+loops. TIFF ICC save/writeback, ICC color management, malformed/non-type-7 ICC
+tag shapes, numeric/I;16 TIFF ICC metadata, multipage/frame ICC policy, and
+arbitrary TIFF UNDEFINED tags remain out of scope. Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts are now
+`381` / `381`, and the full AHK directory suite now passes `1407/1407` in
+`4797ms`.
+`META-001AW` extends reopened TIFF EXIF readback for the bounded
+`SMinSampleValue` / `SMaxSampleValue` scalar tag route. The local Pillow
+11.3.0 oracle reopens an L-mode TIFF carrying IFD0 tags `340=0` and `341=255`
+with `getexif()[340] == 0`, `getexif()[341] == 255`, matching `tag_v2` scalar
+tuples `(0,)` and `(255,)`, preserved bytes `[17,34]`, no `info["exif"]`, and
+TIFF entry type `3`, count `1` payloads `[0,0,0,0]` and `[255,0,0,0]`. Native
+TIFF open now admits tags `340` and `341` through the existing bounded scalar
+integer parser and serializes them into the DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob; the facade enumerates both through
+`Image.GetExif()` / `getexif()` without AHK per-pixel loops. Broader signed
+sample range interpretation, non-SHORT sample-value shapes, TIFF tag
+lifecycle, caller EXIF writeback, and arbitrary scalar tags remain out of
+scope. No native ABI symbol was added; Release x64 was rebuilt after native
+code changed, source/Release x64 DLL export counts remain `380` / `380`, and
+the full AHK directory suite now passes `1405/1405` in `4437ms`.
+`META-001AV` extends reopened TIFF EXIF readback for the bounded
+`TransferRange` SHORT-array tag route. The local Pillow 11.3.0 oracle reopens
+an L-mode TIFF carrying IFD0 tag `342=(0,255,1,254,2,253)` with
+`getexif()[342] == (0, 255, 1, 254, 2, 253)`, matching `tag_v2`, preserved
+bytes `[17,34]`, no `info["exif"]`, and a TIFF entry type `3`, count `6`,
+payload bytes `[0,0,255,0,1,0,254,0,2,0,253,0]`. Native TIFF open now admits
+tag `342` only as a six-value SHORT array and serializes it into the
+DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the existing
+`pillow_c_exif_ushort_array_tag` export exposes the parsed values, and the
+facade enumerates `342` through `Image.GetExif()` / `getexif()` as
+`[0, 255, 1, 254, 2, 253]` without AHK per-pixel loops. Broader transfer-range
+interpretation, TIFF tag lifecycle, caller EXIF writeback, and arbitrary SHORT
+arrays remain out of scope. No native ABI symbol was added; Release x64 was
+rebuilt after native code changed, source/Release x64 DLL export counts remain
+`380` / `380`, and the full AHK directory suite now passes `1403/1403` in
+`4391ms`.
+`META-001AU` extends reopened TIFF EXIF readback for the bounded
+`ReferenceBlackWhite` RATIONAL-array tag route. The local Pillow 11.3.0 oracle
+reopens an L-mode TIFF carrying IFD0 tag
+`532=(0/1,255/1,1/2,3/4,5/6,7/8)` with
+`getexif()[532] == (0.0, 255.0, 0.5, 0.75, 0.8333333333333334, 0.875)`,
+matching `tag_v2`, preserved bytes `[17,34]`, no `info["exif"]`, and a TIFF
+entry type `5`, count `6`, payload bytes
+`[0,0,0,0,1,0,0,0,255,0,0,0,1,0,0,0,1,0,0,0,2,0,0,0,3,0,0,0,4,0,0,0,5,0,0,0,6,0,0,0,7,0,0,0,8,0,0,0]`.
+Native TIFF open now admits tag `532` only as a six-value RATIONAL array and
+serializes it into the DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the
+existing `pillow_c_exif_rational_array_tag` export exposes the parsed
+numerator / denominator pairs, and the facade enumerates `532` through
+`Image.GetExif()` / `getexif()` as `[[0, 1], [255, 1], [1, 2], [3, 4], [5,
+6], [7, 8]]` without AHK per-pixel loops. Broader reference black/white color
+interpretation, TIFF tag lifecycle, caller EXIF writeback, and arbitrary
+RATIONAL arrays remain out of scope. No native ABI symbol was added; Release
+x64 was rebuilt after native code changed, source/Release x64 DLL export
+counts remain `380` / `380`, and the full AHK directory suite now passes
+`1401/1401` in `4735ms`.
+`META-001AT` extends reopened TIFF EXIF readback for the bounded
+`YCbCrCoefficients` RATIONAL-array tag route. The local Pillow 11.3.0 oracle
+reopens an L-mode TIFF carrying IFD0 tag `529=(1/2,3/4,5/6)` with
+`getexif()[529] == (0.5, 0.75, 0.8333333333333334)`, matching `tag_v2`,
+preserved bytes `[17,34]`, no `info["exif"]`, and a TIFF entry type `5`,
+count `3`, payload bytes
+`[1,0,0,0,2,0,0,0,3,0,0,0,4,0,0,0,5,0,0,0,6,0,0,0]`.
+Native TIFF open now admits tag `529` only as a three-value RATIONAL array and
+serializes it into the DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the
+existing `pillow_c_exif_rational_array_tag` export exposes the parsed
+numerator / denominator pairs, and the facade enumerates `529` through
+`Image.GetExif()` / `getexif()` as `[[1, 2], [3, 4], [5, 6]]` without AHK
+per-pixel loops. Broader YCbCr color interpretation, TIFF tag lifecycle,
+caller EXIF writeback, and arbitrary RATIONAL arrays remain out of scope. No
+native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `380` / `380`, and the
+full AHK directory suite now passes `1399/1399` in `4531ms`.
+`META-001AS` extends reopened TIFF EXIF readback for the bounded palette
+`ColorMap` SHORT-array tag route. The local Pillow 11.3.0 oracle reopens a
+P-mode TIFF carrying IFD0 tag `320` with TIFF SHORT type `3`, count `768`,
+`getexif()[320]` and `tag_v2[320]` as 768-value tuples, `info["exif"]`
+absent, preserved index bytes, and preserved palette bytes. Native TIFF open
+now admits tag `320` only as a 768-value SHORT array and serializes it into the
+DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the existing
+`pillow_c_exif_ushort_array_tag` export exposes the parsed values, and the
+facade enumerates `320` through `Image.GetExif()` / `getexif()` without AHK
+per-pixel loops. Broader ColorMap validation, high-bit palette TIFFs,
+non-frame-0 ColorMap metadata, TIFF tag lifecycle, caller EXIF writeback, and
+arbitrary SHORT arrays remain out of scope. No native ABI symbol was added;
+Release x64 was rebuilt after native code changed, source/Release x64 DLL
+export counts remain `380` / `380`, and the full AHK directory suite now
+passes `1397/1397` in `4906ms`.
+`META-001AR` extends reopened TIFF EXIF readback for the bounded
+`PrimaryChromaticities` RATIONAL-array tag route. The local Pillow 11.3.0
+oracle reopens an L-mode TIFF carrying IFD0 tag
+`319=(1/2,3/4,5/6,7/8,9/10,11/12)` with
+`getexif()[319] == (0.5, 0.75, 0.8333333333333334, 0.875, 0.9,
+0.9166666666666666)`, matching `tag_v2`, preserved bytes `[17,34]`, no
+`info["exif"]`, and a TIFF entry type `5`, count `6`, payload bytes
+`[1,0,0,0,2,0,0,0,3,0,0,0,4,0,0,0,5,0,0,0,6,0,0,0,7,0,0,0,8,0,0,0,9,0,0,0,10,0,0,0,11,0,0,0,12,0,0,0]`.
+Native TIFF open now admits tag `319` only as a six-value RATIONAL array and
+serializes it into the DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the
+existing `pillow_c_exif_rational_array_tag` export exposes the parsed
+numerator / denominator pairs, and the facade enumerates `319` through
+`Image.GetExif()` / `getexif()` as `[[1, 2], [3, 4], [5, 6], [7, 8], [9,
+10], [11, 12]]` without AHK per-pixel loops. Broader chromaticity
+interpretation, TIFF tag lifecycle, caller EXIF writeback, and arbitrary
+RATIONAL arrays remain out of scope. No native ABI symbol was added; Release
+x64 was rebuilt after native code changed, source/Release x64 DLL export counts
+remain `380` / `380`, and the full AHK directory suite now passes `1395/1395`
+in `4890ms`.
+`META-001AQ` extends reopened TIFF EXIF readback for the bounded
+`WhitePoint` RATIONAL-array tag route. The local Pillow 11.3.0 oracle reopens
+an L-mode TIFF carrying IFD0 tag `318=(1/2,3/4)` with
+`getexif()[318] == (0.5, 0.75)`, `tag_v2[318] == (0.5, 0.75)`, preserved
+bytes `[17,34]`, no `info["exif"]`, and a TIFF entry type `5`, count `2`,
+payload bytes `[1,0,0,0,2,0,0,0,3,0,0,0,4,0,0,0]`. Native TIFF open now
+admits tag `318` only as a two-value RATIONAL array and serializes it into the
+DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the new
+`pillow_c_exif_rational_array_tag` export exposes the parsed numerator /
+denominator pairs, and the facade enumerates `318` through `Image.GetExif()` /
+`getexif()` as `[[1, 2], [3, 4]]` without AHK per-pixel loops. Broader
+rational-array tags, TIFF tag lifecycle, caller EXIF writeback, and arbitrary
+RATIONAL arrays remain out of scope. Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts are now `380` / `380`, and the
+full AHK directory suite now passes `1393/1393` in `4453ms`.
+`META-001AP` extends reopened TIFF EXIF readback for the bounded
+`GrayResponseCurve` SHORT-array tag route. The local Pillow 11.3.0 oracle
+reopens an L-mode TIFF carrying IFD0 tag `291=(0,128,255)` with
+`getexif()[291] == (0, 128, 255)`, `tag_v2[291] == (0, 128, 255)`,
+preserved bytes `[17,34]`, no `info["exif"]`, and a TIFF entry type `3`,
+count `3`, payload bytes `[0,0,128,0,255,0]`. Native TIFF open now admits tag
+`291` only as a three-value SHORT array and serializes it into the DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob; the facade enumerates that tag
+through `Image.GetExif()` / `getexif()` without AHK per-pixel loops. Broader
+gray-response curves, TIFF tag lifecycle, and arbitrary array-valued tags
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain
+`379` / `379`, and the full AHK directory suite now passes `1391/1391` in
+`4422ms`.
+`META-001AO` extends reopened TIFF EXIF readback for the bounded
+`TransferFunction` SHORT-array tag route. The local Pillow 11.3.0 oracle
+reopens an L-mode TIFF carrying IFD0 tag `301=(0,128,255)` with
+`getexif()[301] == (0, 128, 255)`, `tag_v2[301] == (0, 128, 255)`,
+preserved bytes `[17,34]`, no `info["exif"]`, and a TIFF entry type `3`,
+count `3`, payload bytes `[0,0,128,0,255,0]`. Native TIFF open now admits tag
+`301` only as a three-value SHORT array and serializes it into the DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob; the facade enumerates that tag
+through `Image.GetExif()` / `getexif()` without AHK per-pixel loops. Broader
+transfer-function curves, TIFF tag lifecycle, and arbitrary array-valued tags
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain
+`379` / `379`, and the full AHK directory suite now passes `1389/1389` in
+`4422ms`.
+`META-001AN` extends reopened TIFF EXIF readback for the bounded `InkNames`
+ASCII tag route. The local Pillow 11.3.0 oracle reopens an L-mode TIFF
+carrying IFD0 tag `333="Cyan"` with `getexif()[333] == "Cyan"`,
+`tag_v2[333] == "Cyan"`, preserved bytes `[17,34]`, no `info["exif"]`, and
+a TIFF entry type `2`, count `5`, payload `Cyan\0`. Native TIFF open now
+admits tag `333` through the existing bounded ASCII parser and serializes it
+into the DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the facade
+enumerates that tag through `Image.GetExif()` / `getexif()` without AHK
+per-pixel loops. Broader ink-name lists, TIFF tag lifecycle, and arbitrary
+ASCII tags remain out of scope. No native ABI symbol was added; Release x64
+was rebuilt after native code changed, source/Release x64 DLL export counts
+remain `379` / `379`, and the full AHK directory suite now passes
+`1387/1387` in `4328ms`.
+`META-001AM` extends reopened TIFF EXIF readback for the bounded
+`GrayResponseUnit` scalar tag route. The local Pillow 11.3.0 oracle reopens
+an L-mode TIFF carrying IFD0 tag `290=2` with `getexif()[290] == 2`,
+`tag_v2[290] == 2`, preserved bytes `[17,34]`, and no `info["exif"]`.
+Native TIFF open now admits tag `290` through the existing bounded scalar
+integer parser and serializes it into the DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob; the facade enumerates that tag
+through `Image.GetExif()` / `getexif()` without AHK per-pixel loops. Broader
+gray-response interpretation, TIFF tag lifecycle, and arbitrary scalar tags
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain `379` /
+`379`, and the full AHK directory suite now passes `1385/1385` in `4672ms`.
+`META-001AL` extends reopened TIFF EXIF readback for the bounded `DotRange`
+SHORT-array tag route. The local Pillow 11.3.0 oracle reopens an L-mode TIFF
+carrying IFD0 tag `336=(0,255)` with `getexif()[336] == (0, 255)`,
+`tag_v2[336] == (0, 255)`, preserved bytes `[17,34]`, and no
+`info["exif"]`. Native TIFF open now admits tag `336` through the existing
+bounded two-value SHORT-array parser and serializes it into the DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob; the facade enumerates that tag
+through `Image.GetExif()` / `getexif()` without AHK per-pixel loops. Broader
+dot-range interpretation, TIFF tag lifecycle, and arbitrary array-valued tags
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain `379` /
+`379`, and the full AHK directory suite now passes `1383/1383` in `4750ms`.
+`META-001AK` extends reopened TIFF EXIF readback for the bounded
+`NumberOfInks` scalar tag route. The local Pillow 11.3.0 oracle reopens an
+L-mode TIFF carrying IFD0 tag `334=4` with `getexif()[334] == 4`,
+`tag_v2[334] == 4`, preserved bytes `[17,34]`, and no `info["exif"]`.
+Native TIFF open now admits tag `334` through the existing bounded scalar
+integer parser and serializes it into the DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob; the facade enumerates that tag
+through `Image.GetExif()` / `getexif()` without AHK per-pixel loops. Broader
+number-of-inks interpretation, TIFF tag lifecycle, and arbitrary scalar tags
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain `379` /
+`379`, and the full AHK directory suite now passes `1381/1381` in `4359ms`.
+`META-001AJ` extends reopened TIFF EXIF readback for the bounded `InkSet`
+scalar tag route. The local Pillow 11.3.0 oracle reopens an L-mode TIFF
+carrying IFD0 tag `332=1` with `getexif()[332] == 1`,
+`tag_v2[332] == 1`, preserved bytes `[17,34]`, and no `info["exif"]`.
+Native TIFF open now admits tag `332` through the existing bounded scalar
+integer parser and serializes it into the DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob; the facade enumerates that tag
+through `Image.GetExif()` / `getexif()` without AHK per-pixel loops. Broader
+ink-set interpretation, TIFF tag lifecycle, and arbitrary scalar tags remain
+out of scope. No native ABI symbol was added; Release x64 was rebuilt after
+native code changed, source/Release x64 DLL export counts remain `379` /
+`379`, and the full AHK directory suite now passes `1379/1379` in `4813ms`.
+`META-001AI` extends reopened TIFF EXIF readback for the bounded
+`HalftoneHints` SHORT-array tag route. The local Pillow 11.3.0 oracle reopens
+an L-mode TIFF carrying IFD0 tag `321=(2,3)` with
+`getexif()[321] == (2, 3)`, `tag_v2[321] == (2, 3)`, preserved bytes
+`[17,34]`, and no `info["exif"]`. Native TIFF open now admits tag `321`
+through the existing bounded two-value SHORT-array parser and serializes it
+into the DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the facade
+enumerates that tag through `Image.GetExif()` / `getexif()` without AHK
+per-pixel loops. Broader halftone-hints interpretation, TIFF tag lifecycle,
+and arbitrary array-valued tags remain out of scope. No native ABI symbol was
+added; Release x64 was rebuilt after native code changed, source/Release x64
+DLL export counts remain `379` / `379`, and the full AHK directory suite now
+passes `1377/1377` in `4703ms`.
+`META-001AH` extends reopened TIFF EXIF readback for the bounded
+`TargetPrinter` ASCII tag route. The local Pillow 11.3.0 oracle reopens an
+L-mode TIFF carrying IFD0 tag `337="Printer Alpha"` with
+`getexif()[337] == "Printer Alpha"`, `tag_v2[337] == "Printer Alpha"`,
+preserved bytes `[17,34]`, and no `info["exif"]`. Native TIFF open now
+admits tag `337` through the existing bounded ASCII parser and serializes it
+into the DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the facade
+enumerates that tag through `Image.GetExif()` / `getexif()` without AHK
+per-pixel loops. Broader target-printer interpretation, TIFF tag lifecycle,
+and arbitrary ASCII tags remain out of scope. No native ABI symbol was added;
+Release x64 was rebuilt after native code changed, source/Release x64 DLL
+export counts remain `379` / `379`, and the full AHK directory suite now
+passes `1375/1375` in `4312ms`.
+`META-001AG` extends reopened TIFF EXIF readback for the bounded `Predictor`
+scalar tag route. The local Pillow 11.3.0 oracle reopens an L-mode TIFF
+carrying IFD0 tag `317=1` with `getexif()[317] == 1`, `tag_v2[317] == 1`,
+preserved bytes `[17,34]`, and no `info["exif"]`. Native TIFF open now
+admits tag `317` through the existing bounded scalar integer parser and
+serializes it into the DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the
+facade enumerates that tag through `Image.GetExif()` / `getexif()` without AHK
+per-pixel loops. Predictor decompression semantics for non-identity values,
+broader TIFF tag lifecycle, and arbitrary scalar tags remain out of scope. No
+native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `379` / `379`, and the
+full AHK directory suite now passes `1373/1373` in `4407ms`.
+`META-001AF` extends reopened TIFF EXIF readback for the bounded `PageNumber`
+SHORT-array tag route. The local Pillow 11.3.0 oracle reopens an L-mode TIFF
+carrying IFD0 tag `297=(3,7)` with `getexif()[297] == (3, 7)`,
+`tag_v2[297] == (3, 7)`, preserved bytes `[17,34]`, and no `info["exif"]`.
+Native TIFF open now admits tag `297` through the existing bounded two-value
+SHORT-array parser and serializes it into the DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob; the facade enumerates that tag
+through `Image.GetExif()` / `getexif()` without AHK per-pixel loops. Broader
+page-number interpretation, TIFF tag lifecycle, and arbitrary array-valued
+tags remain out of scope. No native ABI symbol was added; Release x64 was
+rebuilt after native code changed, source/Release x64 DLL export counts remain
+`379` / `379`, and the full AHK directory suite now passes `1371/1371` in
+`4375ms`.
+`META-001AE` extends reopened TIFF EXIF readback for the bounded
+`MinSampleValue`/`MaxSampleValue` scalar tag route. The local Pillow 11.3.0
+oracle reopens an L-mode TIFF carrying IFD0 tags `280=0` and `281=255` with
+`getexif()[280] == 0`, `getexif()[281] == 255`, matching `tag_v2` tuple
+values, preserved bytes `[17,34]`, and no `info["exif"]`. Native TIFF open now
+admits tags `280` and `281` through the existing bounded scalar integer parser
+and serializes them into the DLL-owned `pillow_c_image_metadata_tiff_exif`
+blob; the facade enumerates those tags through `Image.GetExif()` /
+`getexif()` without AHK per-pixel loops. Broader sample-value interpretation,
+TIFF tag lifecycle, and arbitrary scalar tags remain out of scope. No native
+ABI symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `379` / `379`, and the full AHK
+directory suite now passes `1369/1369` in `4250ms`.
+`META-001AD` extends reopened TIFF EXIF readback for the bounded `SubfileType`
+scalar tag route. The local Pillow 11.3.0 oracle reopens an L-mode TIFF
+carrying IFD0 tag `255=1` with `getexif()[255] == 1`, matching `tag_v2`,
+preserved bytes `[17,34]`, and no `info["exif"]`. Native TIFF open now admits
+tag `255` through the existing bounded scalar integer parser and serializes it
+into the DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the facade
+enumerates that tag through `Image.GetExif()` / `getexif()` without AHK
+per-pixel loops. Broader subfile interpretation, TIFF tag lifecycle, and
+arbitrary scalar tags remain out of scope. No native ABI symbol was added;
+Release x64 was rebuilt after native code changed, source/Release x64 DLL
+export counts remain `379` / `379`, and the full AHK directory suite now
+passes `1367/1367` in `4468ms`.
+`META-001AC` extends reopened TIFF EXIF readback for the bounded
+`CellWidth`/`CellLength` scalar tag route. The local Pillow 11.3.0 oracle
+reopens an L-mode TIFF carrying IFD0 tags `264=5` and `265=7` with
+`getexif()[264] == 5`, `getexif()[265] == 7`, matching `tag_v2`, preserved
+bytes `[17,34]`, and no `info["exif"]`. Native TIFF open now admits tags
+`264` and `265` through the existing bounded scalar integer parser and
+serializes them into the DLL-owned `pillow_c_image_metadata_tiff_exif` blob;
+the facade enumerates those tags through `Image.GetExif()` / `getexif()`
+without AHK per-pixel loops. Broader cell-size interpretation, TIFF tag
+lifecycle, and arbitrary scalar tags remain out of scope. No native ABI symbol
+was added; Release x64 was rebuilt after native code changed, source/Release
+x64 DLL export counts remain `379` / `379`, and the full AHK directory suite
+now passes `1365/1365` in `4640ms`.
+`META-001AB` extends reopened TIFF EXIF readback for the bounded
+`Thresholding` scalar tag route. The local Pillow 11.3.0 oracle reopens an
+L-mode TIFF carrying IFD0 tag `263=1` with `getexif()[263] == 1`,
+`tag_v2[263] == 1`, preserved bytes `[17,34]`, and no `info["exif"]`. Native
+TIFF open now admits tag `263` through the existing bounded scalar integer
+parser and serializes it into the DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob; the facade enumerates that tag
+through `Image.GetExif()` / `getexif()` without AHK per-pixel loops. Broader
+threshold interpretation, TIFF tag lifecycle, and arbitrary scalar tags remain
+out of scope. No native ABI symbol was added; Release x64 was rebuilt after
+native code changed, source/Release x64 DLL export counts remain `379` /
+`379`, and the full AHK directory suite now passes `1363/1363` in `4359ms`.
+`META-001AA` extends reopened TIFF EXIF readback for the bounded `FillOrder`
+scalar tag route. The local Pillow 11.3.0 oracle reopens an L-mode TIFF
+carrying IFD0 tag `266=1` with `getexif()[266] == 1`, `tag_v2[266] == 1`,
+preserved bytes `[17,34]`, and no `info["exif"]`. Native TIFF open now admits
+tag `266` through the existing bounded scalar integer parser and serializes it
+into the DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the facade
+enumerates that tag through `Image.GetExif()` / `getexif()` without AHK
+per-pixel loops. Reverse bit-order pixel semantics for `FillOrder=2`, broader
+TIFF tag lifecycle, and arbitrary scalar tags remain out of scope. No native
+ABI symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `379` / `379`, and the full AHK
+directory suite now passes `1361/1361` in `4406ms`.
+`META-001Z` extends reopened TIFF EXIF readback for the bounded
+`NewSubfileType` scalar tag route. The local Pillow 11.3.0 oracle reopens an
+L-mode TIFF carrying IFD0 tag `254=0` with `getexif()[254] == 0`,
+`tag_v2[254] == 0`, preserved bytes, and no `info["exif"]`. Native TIFF open
+now admits tag `254` through the existing bounded scalar integer parser and
+serializes it into the DLL-owned `pillow_c_image_metadata_tiff_exif` blob; the
+facade enumerates that tag through `Image.GetExif()` / `getexif()` without AHK
+per-pixel loops. Nonzero subfile-class open semantics, multipage
+NewSubfileType policy, broader TIFF tag lifecycle, and arbitrary scalar tags
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain `379` /
+`379`, and the full AHK directory suite now passes `1359/1359` in `4968ms`.
+`META-001Y` extends reopened TIFF EXIF readback for the bounded
+`XPosition`/`YPosition` rational tag route. The local Pillow 11.3.0 oracle
+reopens an L-mode TIFF carrying IFD0 tags `286=1/2` and `287=3/4` with
+`getexif()` / `tag_v2` exposing those values as `IFDRational` objects and no
+`info["exif"]`. Native TIFF open now serializes tags `286` and `287` into the
+existing DLL-owned `pillow_c_image_metadata_tiff_exif` blob through the
+bounded TIFF RATIONAL parser, and the facade enumerates those tags through
+`Image.GetExif()` / `getexif()` as `[1, 2]` and `[3, 4]` without AHK
+per-pixel loops. Broader rational tag lifecycle, TIFF writeback of caller EXIF
+objects, arbitrary rational tags, and nested IFDs remain out of scope. No
+native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `379` / `379`, and the
+full AHK directory suite now passes `1357/1357` in `4578ms`.
+`META-001X` extends reopened TIFF EXIF readback for the bounded numeric
+`SampleFormat` scalar tag route. The local Pillow 11.3.0 oracle reopens native
+mode `I` and mode `F` TIFFs with `getexif()[339] == 2` and `3`, respectively,
+`tag_v2[339] == (2,)` / `(3,)`, preserved numeric sample bytes, and no
+`info["exif"]`. Native numeric TIFF open now populates the existing DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob on its early-return path and admits
+IFD0 tag `339` through the bounded scalar integer parser; the facade enumerates
+that tag through `Image.GetExif()` / `getexif()` without AHK per-pixel loops.
+Broader numeric TIFF tag lifecycle, numeric orientation transforms, and
+arbitrary SampleFormat shapes remain out of scope. No native ABI symbol was
+added; Release x64 was rebuilt after native code changed, source/Release x64
+DLL export counts remain `379` / `379`, and the full AHK directory suite now
+passes `1355/1355` in `4266ms`.
+`META-001W` extends reopened TIFF EXIF readback for the bounded
+`YCbCrSubSampling` SHORT-array tag route. The local Pillow 11.3.0 oracle
+reopens an RGB TIFF saved with IFD0 tag `530=(2,1)` with
+`getexif()[530] == (2, 1)`, `tag_v2[530] == (2, 1)`, mode `RGB`, preserved
+bytes, and no `info["exif"]`. Native TIFF open now serializes tag `530` as a
+bounded two-value SHORT array in the existing DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob, and the facade already materializes
+that tag through `Image.GetExif()` / `getexif()` without AHK per-pixel loops.
+Broader TIFF array-valued tags and full TIFF tag lifecycle remain out of
+scope. No native ABI symbol was added; Release x64 was rebuilt after native
+code changed, source/Release x64 DLL export counts remain `379` / `379`, and
+the full AHK directory suite now passes `1353/1353` in `4094ms`.
+`META-001V` extends reopened TIFF EXIF readback for the bounded LA layout
+tag-shape route. The local Pillow 11.3.0 oracle reopens a native LA TIFF with
+`getexif()[258] == (8, 8)`, `getexif()[277] == 2`, and `getexif()[338] == 2`,
+plus scalar values `256=2`, `257=1`, `259=1`, `262=1`, `273=146`, `278=1`,
+`279=4`, and `284=1`, while `info["exif"]` remains absent. Native TIFF open
+now serializes `BitsPerSample` tag `258` as a bounded SHORT array when the
+IFD0 entry has exactly two values, keeping the previous scalar, RGB-array, and
+RGBA-array `258` paths, plus scalar `SamplesPerPixel` and `ExtraSamples`
+readback through the existing DLL-owned `pillow_c_image_metadata_tiff_exif`
+blob. The facade materializes the two-value `258` array and enumerates `277`
+and `338` through `Image.GetExif()` / `getexif()` without AHK per-pixel loops.
+CMYK, multi-extra-sample shapes, and broader array-tag lifecycle remain out of
+scope. No native ABI symbol was added; Release x64 was rebuilt after native
+code changed, source/Release x64 DLL export counts remain `379` / `379`, and
+the full AHK directory suite now passes `1351/1351` in `4829ms`.
+`META-001U` extends reopened TIFF EXIF readback for the bounded RGBA layout
+tag-shape route. The local Pillow 11.3.0 oracle reopens a native RGBA TIFF
+with `getexif()[258] == (8, 8, 8, 8)`, `getexif()[277] == 4`, and
+`getexif()[338] == 2`, plus scalar values `256=2`, `257=1`, `259=1`, `262=2`,
+`273=154`, `278=1`, `279=8`, and `284=1`, while `info["exif"]` remains
+absent. Native TIFF open now serializes `BitsPerSample` tag `258` as a bounded
+SHORT array when the IFD0 entry has exactly four values, keeps the previous
+scalar and RGB-array `258` paths, and admits scalar `ExtraSamples` tag `338`
+in the existing DLL-owned `pillow_c_image_metadata_tiff_exif` blob. The facade
+enumerates `338` through `Image.GetExif()` / `getexif()` without AHK per-pixel
+loops. LA/CMYK, multi-extra-sample shapes, and broader array-tag lifecycle
+remain out of scope. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain `379` /
+`379`, and the full AHK directory suite now passes `1349/1349` in `4625ms`.
+`META-001T` extends reopened TIFF EXIF readback for the bounded RGB layout
+tag-shape route. The local Pillow 11.3.0 oracle reopens the existing RGB TIFF
+fixture with `getexif()[258] == (8, 8, 8)` and `getexif()[277] == 3`, plus
+scalar values `256=2`, `257=1`, `259=1`, `262=2`, `273=140`, `278=1`,
+`279=6`, and `284=1`, while `info["exif"]` remains absent. Native TIFF open
+now serializes `BitsPerSample` tag `258` as a bounded SHORT array when the IFD0
+entry has exactly three values, keeps the previous scalar `258` path for
+single-sample TIFFs, and admits scalar `SamplesPerPixel` tag `277` in the
+existing DLL-owned `pillow_c_image_metadata_tiff_exif` blob. The facade parses
+multi-value `258` as an array and enumerates `277` through
+`Image.GetExif()` / `getexif()` without AHK per-pixel loops. RGBA/LA/CMYK,
+ExtraSamples tag `338`, and broader array-tag lifecycle remain out of scope.
+No native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `379` / `379`, and the
+full AHK directory suite now passes `1347/1347` in `4516ms`.
+`META-001S` extends reopened TIFF EXIF readback for the bounded remaining
+scalar IFD0 layout tag route. The local Pillow 11.3.0 oracle reopens the
+existing L-mode TIFF fixture with `getexif()` scalar values `258=8`,
+`259=1`, `262=1`, `273=134`, `278=3`, `279=6`, and `284=1`, matching the
+Pillow scalar view of `tag_v2`, while `info["exif"]` remains absent. Native
+TIFF open now admits `BitsPerSample`, `Compression`,
+`PhotometricInterpretation`, `StripOffsets`, `RowsPerStrip`,
+`StripByteCounts`, and `PlanarConfiguration` in the existing DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob when they are scalar SHORT/LONG IFD0
+entries, and the facade enumerates them through `Image.GetExif()` /
+`getexif()` without AHK per-pixel loops. Multi-value TIFF layout tags such as
+RGB `BitsPerSample` arrays and `SamplesPerPixel` remain out of scope. No
+native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `379` / `379`, and the
+full AHK directory suite now passes `1345/1345` in `4375ms`.
+`META-001R` extends reopened TIFF EXIF readback for the bounded core scalar
+integer tag route. The local Pillow 11.3.0 oracle reopens ordinary L-mode TIFFs
+with `getexif()[256] == width`, `getexif()[257] == height`, matching `tag_v2`
+values, and no `info["exif"]`; orientation fixtures keep those core tags as
+the encoded IFD dimensions even when public image dimensions are swapped. Native
+TIFF open now admits IFD0 `ImageWidth` tag `256` and `ImageLength` tag `257`
+in the existing DLL-owned `pillow_c_image_metadata_tiff_exif` blob, and the
+facade already enumerates them through `Image.GetExif()` / `getexif()` without
+AHK per-pixel loops. No native ABI symbol was added; Release x64 was rebuilt
+after native code changed, source/Release x64 DLL export counts remain `379` /
+`379`, and the full AHK directory suite now passes `1343/1343` in `4546ms`.
+`META-001Q` extends reopened TIFF EXIF readback for the bounded scalar integer
+IFD0 tag route. The local Pillow 11.3.0 oracle reopens a TIFF saved with
+`tiffinfo={531:1}` with `getexif()[531] == 1` and `tag_v2[531] == 1`, while
+`info["exif"]` remains absent. Native TIFF open now admits IFD0
+`YCbCrPositioning` tag `531` in the existing DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob, and the facade already enumerates it
+through `Image.GetExif()` / `getexif()` without AHK per-pixel loops. No native
+ABI symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `379` / `379`, and the full AHK
+directory suite now passes `1341/1341` in `4578ms`.
+`META-001P` extends reopened TIFF EXIF readback for the bounded document/page
+ASCII tag route. The local Pillow 11.3.0 oracle reopens a TIFF saved with
+`tiffinfo={269:"Document Alpha",285:"Page One",315:"Ada Lovelace"}` with
+`getexif()[269] == "Document Alpha"` and `getexif()[285] == "Page One"`, and
+`tag_v2` exposes the same values while `info["exif"]` remains absent. Native
+TIFF open now admits IFD0 `DocumentName` and `PageName` in the existing
+DLL-owned `pillow_c_image_metadata_tiff_exif` blob, and the facade enumerates
+them through `Image.GetExif()` / `getexif()` without AHK per-pixel loops. No
+native ABI symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `379` / `379`, and the full AHK
+directory suite now passes `1339/1339` in `4250ms`.
+`META-001O` extends reopened TIFF EXIF readback for the bounded common ASCII
+tag route. The local Pillow 11.3.0 oracle reopens a TIFF saved with
+`tiffinfo={315:"Ada Lovelace",316:"Machine",33432:"Copyright 2026"}` with
+`getexif()[315] == "Ada Lovelace"`, `getexif()[316] == "Machine"`, and
+`getexif()[33432] == "Copyright 2026"`, while `info["exif"]` remains absent.
+Native TIFF open now admits IFD0 `Artist`, `HostComputer`, and `Copyright` in
+the existing DLL-owned `pillow_c_image_metadata_tiff_exif` blob, and the
+facade enumerates them through `Image.GetExif()` / `getexif()` without AHK
+per-pixel loops. No native ABI symbol was added; Release x64 was rebuilt after
+native code changed, source/Release x64 DLL export counts remain `379` /
+`379`, and the full AHK directory suite now passes `1339/1339` in `4359ms`.
+`META-001N` extends reopened TIFF EXIF readback for the bounded native
+`dpi=(300,150)` save/open route. The local Pillow 11.3.0 oracle reopens such a
+TIFF with `getexif()[282] == 300/1`, `getexif()[283] == 150/1`, and
+`getexif()[296] == 2`, while `info["dpi"] == (300.0, 150.0)` and
+`info["exif"]` remains absent. Native TIFF open now adds IFD0 `XResolution`,
+`YResolution`, and `ResolutionUnit=2` to the existing DLL-owned
+`pillow_c_image_metadata_tiff_exif` blob, and the facade consumes those tags
+through the existing `Image.GetExif()` / `getexif()` parser without AHK
+per-pixel loops. No native ABI symbol was added; Release x64 was rebuilt after
+native code changed, source/Release x64 DLL export counts remain `379` /
+`379`, and the full AHK directory suite now passes `1339/1339` in `4140ms`.
+`ROBUST-002` closes the remaining audited native robustness row. The GIF
+composited-frame path now keeps `read_binary_file`, global/local color-table
+allocation, and LZW decode output growth inside the C ABI error boundary;
+allocation failure returns `PILLOW_C_ALLOCATION_FAILED`, and GIF LZW appends
+only the remaining expected pixels instead of overshooting and trimming after
+allocation. BMP open rejects `INT_MIN` top-down height before negation, JPEG
+metadata scanning requires a `0xFF` marker prefix, `patch_jpeg_jfif_density`
+stops at SOS/EOI, and `pillow_c_exif_orientation_bytes` now supports the
+normal null-output size probe by returning `PILLOW_C_OK` with the required
+size. No native ABI symbol was added; Release x64 was rebuilt after native
+code changed, source/Release x64 DLL export counts remain `379` / `379`, and
+the full AHK directory suite now passes `1339/1339` in `4406ms`.
+`ROBUST-001` caps native zlib/deflate inflation while data is being decoded
+instead of validating only after full output allocation. The local Pillow
+11.3.0 source uses `PngImagePlugin.MAX_TEXT_CHUNK == 1048576` through
+`_safe_zlib_decompress(...)` for `zTXt`, compressed `iTXt`, and `iCCP`; native
+`inflate_zlib_deflate` now takes an `expected_max` bound, rejects writes past
+that bound inside stored/fixed/dynamic blocks, and reports only the cap-hit
+case to a PNG metadata preflight so malformed compressed metadata keeps the
+existing ignore behavior. PNG open now rejects crafted oversized compressed
+`zTXt` / `iTXt` / `iCCP` metadata with `PILLOW_C_INVALID_ARGUMENT`, the facade
+surfaces `invalid argument`, and TIFF Adobe Deflate decode passes the known
+strip byte count as the same cap. No native ABI symbol was added; Release x64
+was rebuilt after native code changed, source/Release x64 DLL export counts
+remain `379` / `379`, and the full AHK directory suite now passes
+`1338/1338` in `4297ms`.
+`API-STATUS-001` removes the remaining audited facade metadata status
+suppressions. The affected calls pass real output buffers and are not
+two-call size probes, so `PILLOW_C_NULL_POINTER` must surface through
+`Pillow.CheckStatus(...)` instead of being skipped by the old
+`if status != -1` idiom. `NativeJpegQTables`, `NativeJpegSubsampling`, and the
+PNG chromaticity metadata reader now check status directly for JPEG qtable
+count, JPEG qtable reads, JPEG subsampling, and cHRM/chromaticity reads. The
+facade red test proved null handles previously surfaced a misleading
+non-JPEG/sentinel path; the fix exposes the native `null pointer` error while
+leaving valid JPEG keep and PNG cHRM metadata routes green. No native ABI
+symbol was added, no native rebuild was required, source/Release x64 DLL
+export counts remain `379` / `379`, and the full AHK directory suite now
+passes `1336/1336` in `4016ms`.
+`API-PNG-001` aligns the public `PngInfo.add(cid, data)` string chunk-ID
+boundary for private PNG chunks. The local Pillow 11.3.0 oracle accepts a
+string `cid` at `PngInfo.add(...)`, ignores public/reserved string chunk names
+such as `"eXIf"` / `"tEXt"` during save, but raises
+`TypeError: can't concat str to bytes` when a private string chunk such as
+`"vpAg"` would be emitted. The facade now stores string chunk IDs instead of
+silently returning, keeps Buffer-based chunk IDs on the native route, and
+raises the matching public error message during `Image.Save(..., "PNG",
+{pnginfo: ...})` for string private chunks without adding an AHK pixel loop.
+No native ABI symbol was added, no native rebuild was required, source/Release
+x64 DLL export counts remain `379` / `379`, and the full AHK directory suite
+now passes `1335/1335` in `3907ms`.
+`API-JPEG-001` aligns the public opened CMYK JPEG
+`Image.Save(..., "JPEG", {subsampling:"keep", icc_profile: ...})` route with
+Pillow's implicit COM/comment preservation rule. The local Pillow 11.3.0
+oracle accepts opened CMYK JPEGs saved with source subsampling `0`, `1`, or
+`2`, resolves `subsampling="keep"`, preserves the opened COM/comment when
+public `comment` is omitted, preserves explicit ICC metadata, and drops or
+replaces COM only when `comment` is explicitly supplied. Native JPEG open now
+parses bounded four-component `C/M/Y/K` SOF sampling into the existing
+`pillow_c_image_metadata_jpeg_subsampling` value, and the facade routes the
+no-qtables baseline CMYK metadata `subsampling="keep"` shape through the
+existing native metadata encode export while passing the opened comment buffer
+without AHK pixel loops. No native ABI symbol was added; Release x64 was
+rebuilt after native code changed, source/Release x64 DLL export counts remain
+`379` / `379`, and the full AHK directory suite now passes `1334/1334` in
+`4062ms`.
+`FMT-TIFF-005` fixes the TIFF palette ColorMap parser guard. The local Pillow
+11.3.0 oracle rejects a malformed palette TIFF with `PhotometricInterpretation=3`,
+invalid `SamplesPerPixel=3`, and a malformed `ColorMap` tag `320` declared as
+`SHORT[769]`; the previous native path let WIC open it as indexed mode `P`,
+then `parse_tiff_palette_rgb` failed to record that no valid `SHORT[768]`
+ColorMap was found and installed header/IFD bytes from offset `0` as a garbage
+palette. Native open now requires an explicitly found valid ColorMap tag before
+reading palette bytes, so raw `pillow_c_image_open_tiff` and public
+`Image.Open(..., ["TIFF"])` reject the malformed file like Pillow. No native
+ABI symbol was added; Release x64 was rebuilt after native code changed,
+source/Release x64 DLL export counts remain `379` / `379`, and the full AHK
+directory suite now passes `1331/1331` in `4078ms`.
+`FMT-TIFF-004` fixes TIFF LZW interop beyond internal round-trips. The local
+Pillow 11.3.0 oracle writes a mode `I;16` `256x1` LZW strip for raw bytes
+`0..255` repeated twice that crosses the 9-to-10-bit dictionary-width
+boundary; native open now decodes that Pillow/libtiff early-change stream and
+preserves all `512` sample bytes. A second bounded `I;16` `2048x1`
+dictionary-full oracle proves native save writes the same Pillow strip length
+`5585` and boundary bytes around the clear/reset point instead of the previous
+`5586`-byte late-reset stream. The facade `Image.Open` / `Image.Save` route is
+covered for the same public TIFF LZW behavior without AHK per-pixel loops. No
+native ABI symbol was added; Release x64 was rebuilt after native code
+changed, source/Release x64 DLL export counts remain `379` / `379`, and the
+full AHK directory suite now passes `1329/1329` in `4188ms`.
 `META-001M` extends reopened TIFF IFD0 common ASCII EXIF readback to tag `270`
 (`ImageDescription`). The local Pillow 11.3.0 oracle for
 `tiffinfo={270:"desc",271:"ACME",272:"MODEL1",305:"pillow-c",306:"2026:07:03 12:34:56",274:1}`
@@ -723,9 +10828,60 @@ tag/compression/high-bit/mode, readonly/detach, or EXIF/TIFF object lifecycle
 boundaries.
 Avoid PNG one-combination branches; extend the generalized PNG metadata route
 and batch same-route cases when semantics are already known.
-Current implementation WIP: no active code WIP after `META-001M`; select
-the next exact bounded behavior and add red raw/facade AHK tests before
-implementation. Current runtime stability fix: `ahk/pillow.ahk` pins the
+Latest completed increment: `META-001CW` covers segmented JPEG EXIF APP1
+concatenation and first-orientation precedence through native parsing, raw and
+facade regressions, a rebuilt Release x64 DLL, targeted filters, and the full
+AHK directory gate. Continue only with a separately proven bounded child.
+Latest completed increment: `META-002R` covers Pillow-style JPEG ICC APP2
+fragment collation for the bounded out-of-order, conflicting-count pair
+through deferred native collection/finalization, raw and facade regressions,
+a rebuilt Release x64 DLL, targeted filters, and the full AHK directory gate.
+Duplicate fragments, missing-first sets, physical APP2 preservation, and
+broader malformed matrices remain separate.
+Latest completed increment: `META-002S` covers JPEG ICC finalization timing at
+the first SOF marker through native pending-fragment finalization/clearing, raw
+and facade regressions, a rebuilt Release x64 DLL, targeted filters, and the
+full AHK directory gate. Progressive/other SOF families, APP2 after SOS, and
+late EXIF/XMP/COM placement remain separate.
+Latest completed increment: `META-002T` covers malformed short pre-SOF JPEG
+ICC APP2 rejection through native parse-status propagation, raw and facade
+regressions, a rebuilt Release x64 DLL, targeted filters, and the full AHK
+directory gate. Header-only, legal empty profiles, late malformed APP2, and
+broader malformed matrices remain separate.
+Latest completed increment: `META-002U` covers legal empty JPEG ICC profile
+presence. The DLL now distinguishes a valid empty collated profile from absent
+metadata through an explicit parser/image presence bit, preserves that bit
+through metadata copy, and reports raw `Has=1` with required size `0`; the
+facade exposes an empty `Buffer`. Implicit quality/qtables keep saves still
+drop ICC and preserve DQT. Empty ICC save emission, multi-fragment zero-length
+mixtures, and other empty metadata families remain separate.
+Latest completed increment: `MODE-COLOR-001A` adds bounded native mode
+`YCbCr`. Mode ID `13` owns three-byte storage, raw import/export, and exact
+Pillow 11.3.0 RGB bidirectional conversion through DLL lookup-table loops; the
+facade exposes tuple fill, bands, bytes, empty images, and conversion through
+existing routing. File codecs, other source/target modes, `LAB`, `HSV`, broad
+operations, and zero-copy frombuffer behavior remain separate.
+Latest completed increment: `MODE-COLOR-001B` adds bounded native mode `HSV`.
+Mode ID `14` owns three-byte storage, raw import/export, and exact Pillow 11.3.0
+RGB bidirectional conversion through DLL float/fmod/floor/round loops; the
+facade exposes tuple fill, bands, bytes, empty images, and conversion through
+existing routing. File codecs, other source/target modes, `LAB`, broad
+operations, and zero-copy frombuffer behavior remain separate.
+Latest completed increment: `MODE-COLOR-001C` adds native YCbCr luminance
+targets. Existing convert-mode exports now copy Y directly for mode `L` and
+emit `[Y,255]` for mode `LA`, while preserving legal empty shapes. This closes
+Pillow's direct YCbCr target matrix alongside the existing RGB route; broader
+color-mode conversions, operations, codecs, and frombuffer behavior remain
+separate.
+Latest completed increment: `MODE-COLOR-001D` adds RGBA/RGBX/CMYK sources to
+the native HSV target. The first two ignore their fourth byte; CMYK reuses the
+existing black-scaled RGB conversion before HSV. Grayscale, palette, numeric,
+LAB, operations, codecs, and frombuffer behavior remain separate.
+Latest completed increment: `MODE-COLOR-001E` adds mode `1`, L, and LA sources
+to the native HSV target. The DLL writes `[0,0,V]`, maps mode `1` to 0/255,
+and ignores LA alpha. Palette/numeric sources, LAB, operations, codecs, and
+frombuffer behavior remain separate.
+Current runtime stability fix: `ahk/pillow.ahk` pins the
 configured native DLL with `LoadLibraryW` for process lifetime, preventing
 path-based `DllCall` load/unload churn during facade-heavy suites. This added
 no ABI symbol and required no native rebuild.
@@ -735,25 +10891,814 @@ feature flags, registered format IDs, and current test counts. The speed rule
 is to pick only gaps that buy a reusable semantic pillar, a new native route,
 a new ABI shape, or a locally proven Pillow boundary.
 Native rebuild needed: only after touching src/pillow_c.cpp or project files.
-Test shape: parent tools runner, -TimeoutSeconds 120, no parallel AHK tests.
+Test shape: parent tools runner, -TimeoutSeconds 240, no parallel AHK tests.
 ```
 
 Known current counts:
 
-- AHK tests in tree: `1326` total: `662` raw DLL / `664` facade. Latest
-  `META-001M` red evidence: raw
+- AHK tests in tree: `1594` total: `796` raw DLL / `798` facade. Latest
+  `MODE-COLOR-001H` red evidence: raw PA mode mapping returned `-3` and facade
+  construction raised native invalid argument. Green evidence: exact
+  raw/facade passed `1/1` each; palette coverage passed `52/52`; raw bytes
+  passed `13/13`; FromBytes passed `6/6`; mode helpers passed `1/1`; and the
+  full AHK directory suite passed `1594/1594` in `6188ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 rebuilt with `0 Warning(s),
+  0 Error(s)`. Source/DLL export counts remain `388` / `388`.
+  Previous
+  `FMT-JPEG-002B2AA` red evidence: raw plain restart returned `-3`, the facade
+  rejected CMYK, and the metadata-restart boundary probe returned `0` before
+  the L/RGB guard was restored. Green evidence: Release x64 rebuilt with `0
+  Warning(s), 0 Error(s)`; targeted coverage passed `3/3` in `125ms`; combined
+  restart coverage passed `19/19` in `594ms`; CMYK coverage passed `103/103`
+  in `1890ms`; JPEG coverage passed `202/202` in `4953ms`; and the full AHK
+  directory suite passed `1547/1547` in `11578ms` with the known four
+  non-failing libjpeg stderr warnings. Source/DLL export counts remain `388` /
+  `388`. Previous `FMT-JPEG-002B2Z` red evidence: raw export resolution failed for
+  `pillow_c_image_save_jpeg_keep_rgb_restart_marker_encode_options`, the
+  facade rejected keep-RGB through its prior restart guard, and the larger
+  progressive fixture exposed `bad Huffman code` plus maximum channel error
+  `21`. Green evidence: Release x64 rebuilt with `0 Warning(s), 0 Error(s)`;
+  targeted keep-RGB restart coverage passed `2/2` in `78ms`; combined restart
+  coverage passed `16/16` in `688ms`; existing `keep_rgb` coverage passed
+  `41/41` in `500ms`; progressive coverage passed `41/41` in `391ms`; JPEG
+  coverage passed `199/199` in `2328ms`; and the full AHK directory suite
+  passed `1544/1544` in `5266ms` with the known four non-failing libjpeg stderr
+  warnings. Source/DLL export counts are now `388` / `388`. Previous
+  `FMT-JPEG-002B2X` red evidence: raw export resolution failed for
+  `pillow_c_image_save_jpeg_metadata_restart_marker_progressive_options`, and
+  the facade rejected progressive through its baseline-only restart guard.
+  Green evidence: Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; targeted
+  progressive restart coverage passed `2/2` in `78ms`; combined restart
+  coverage passed `12/12` in `172ms`; progressive coverage passed `41/41` in
+  `407ms`; JPEG coverage passed `195/195` in `2156ms`; and the full AHK
+  directory suite passed `1540/1540` in `5063ms` with the known four non-failing
+  libjpeg stderr warnings. Source/DLL export counts are now `386` / `386`.
+  Previous `FMT-JPEG-002B2W` red evidence: raw export resolution failed for
+  `pillow_c_image_save_jpeg_metadata_restart_marker_encode_options`, and the
+  facade rejected `optimize=True` through its prior restart guard. Green
+  evidence: Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; targeted
+  optimized restart coverage passed `2/2` in `94ms`; combined restart coverage
+  passed `10/10` in `250ms`; JPEG coverage passed `193/193` in `3875ms`; and the
+  full AHK directory suite passed `1538/1538` in `10109ms` with the known four
+  non-failing libjpeg stderr warnings. Source/DLL export counts are now `385`
+  / `385`. Previous `FMT-JPEG-002B2V` red evidence: raw export resolution failed for
+  `pillow_c_image_save_jpeg_metadata_restart_marker_options`, and the facade
+  rejected restart metadata through its prior baseline-only guard. Green
+  evidence: Release x64 rebuilt with `0 Warning(s), 0 Error(s)`; targeted
+  metadata restart coverage passed `2/2` in `78ms`; combined restart coverage
+  passed `8/8` in `94ms`; JPEG coverage passed `191/191` in `1922ms`; and the
+  full AHK directory suite passed `1536/1536` in `5281ms` with the known four
+  non-failing libjpeg stderr warnings. Source/DLL export counts are now `384`
+  / `384`. Previous `FMT-JPEG-002B2U` red evidence: raw export resolution
+  failed for
+  `pillow_c_image_save_jpeg_restart_marker_rows_options`, and the facade
+  output lacked DRI. Green evidence: Release x64 rebuilt with
+  `0 Warning(s), 0 Error(s)`; targeted rows coverage passed `2/2` in `47ms`;
+  combined restart coverage passed `6/6` in `140ms`; JPEG coverage passed
+  `189/189` in `3890ms`; and the full AHK directory suite passed `1534/1534`
+  in `5094ms` with the known four non-failing libjpeg stderr warnings.
+  Source/DLL export counts are now `383` / `383`. Previous
+  `FMT-JPEG-002B2T` red evidence: raw RGB restart save returned `-3`, and the
+  facade rejected RGB with `restart_marker_blocks currently supports baseline
+  mode L with integer quality`. Green evidence: Release x64 rebuilt with
+  `0 Warning(s), 0 Error(s)`; targeted RGB restart coverage passed `2/2` in
+  `78ms`; combined L/RGB restart coverage passed `4/4` in `94ms`; JPEG
+  coverage passed `187/187` in `3640ms`; and the full AHK directory suite
+  passed `1532/1532` in `9422ms` with the known four non-failing libjpeg stderr
+  warnings. Source/DLL export counts remain `382` / `382`. Previous
+  `FMT-JPEG-002B2S` red evidence: raw export resolution failed with `Expected
+  pillow_c_image_save_jpeg_restart_marker_blocks_options export`, and the
+  facade failed its DRI assertion, proving the option was ignored by the
+  facade and absent from the native ABI. Green evidence: Release x64 rebuilt
+  with `0 Warning(s), 0 Error(s)`; targeted restart coverage passed `2/2` in
+  `141ms`; JPEG coverage passed `185/185` in `3468ms`; and the full AHK
+  directory suite passed `1530/1530` in `9187ms` with the known four
+  non-failing libjpeg stderr warnings. Source/DLL export counts are now `382`
+  / `382`. Previous `FMT-JPEG-003AN` red evidence: facade
+  `Pillow Image.Save JPEG subsampling keep normalizes real YCCK fixture`
+  failed with `Expected "", got "Pillow.Image.Save JPEG subsampling='keep'
+  requires opened JPEG subsampling metadata"`, proving the keep sentinel was
+  rejected before reaching the existing native qtables route. Green evidence:
+  targeted facade coverage passed `1/1` in `94ms`; combined real YCCK coverage
+  passed `4/4` in `219ms`; combined subsampling-keep coverage passed `4/4` in
+  `235ms`; JPEG coverage passed `183/183` in `2796ms`; and full AHK directory
+  suite passed `1528/1528` in `4766ms` with the known four non-failing libjpeg
+  stderr warnings. Existing raw real-YCCK quality-keep coverage is the native
+  companion. No native rebuild was required and source/DLL export counts
+  remain `381` / `381`. Previous `META-001CV` red evidence: raw
+  `pillow_c image open_tiff exposes CompositeImage EXIF tags` failed with
+  `Expected 3, got -1` because native TIFF EXIF serialization did not include
+  bounded IFD0 tags `42080`/`42081`/`42082`, and facade
+  `Pillow Image.getexif reads TIFF CompositeImage tags` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` did not
+  enumerate the family. Green evidence: targeted CompositeImage filter passed
+  `2/2` in `109ms`; facade `getexif` filter passed `96/96` in `547ms`; raw
+  `open_tiff` filter passed `104/104` in `2750ms`; combined TIFF filter passed
+  `246/246` in `1063ms`; full AHK directory suite passed `1527/1527` in
+  `5453ms` with the known four non-failing libjpeg stderr warnings. Release
+  x64 was rebuilt and source/DLL export counts remain `381` / `381`. Previous
+  `META-001CU` red evidence: raw `pillow_c image open_tiff exposes Gamma EXIF
+  tag` failed with `Expected [22, 10], got []`, and facade
+  `Pillow Image.getexif reads TIFF Gamma tag` failed with
+  `Expected value to be true`; its full suite passed `1525/1525`. Previous
+  `META-001CP` red evidence: raw
+  `pillow_c image open_tiff exposes SubjectDistanceRange EXIF tag` failed with
+  `Expected 3, got -1` because native TIFF EXIF serialization did not include
+  bounded IFD0 scalar tag `41996`, and facade
+  `Pillow Image.getexif reads TIFF SubjectDistanceRange tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted SubjectDistanceRange filter
+  passed `2/2` in `125ms`, including the two new raw/facade TIFF
+  SubjectDistanceRange scalar EXIF tests; raw EXIF metadata coverage passed
+  `10/10` in `125ms`; facade `getexif` filter passed `90/90` in `890ms`; raw
+  `open_tiff` filter passed `98/98` in `4250ms`; combined TIFF filter passed
+  `234/234` in `1812ms`; full AHK directory suite passed `1515/1515` in
+  `9718ms` with the known four non-failing libjpeg stderr warnings. Release
+  x64 was rebuilt and source/DLL export counts remain `381` / `381`.
+  Previous `META-001CO` red evidence: raw
+  `pillow_c image open_tiff exposes Sharpness EXIF tag` failed with
+  `Expected 2, got -1` because native TIFF EXIF serialization did not include
+  bounded IFD0 scalar tag `41994`, and facade
+  `Pillow Image.getexif reads TIFF Sharpness tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted Sharpness filter passed `3/3` in
+  `219ms`, including the two new raw/facade TIFF Sharpness scalar EXIF tests;
+  raw EXIF metadata coverage passed `10/10` in `125ms`; facade `getexif`
+  filter passed `89/89` in `797ms`; raw `open_tiff` filter passed `97/97` in
+  `4156ms`; combined TIFF filter passed `232/232` in `1672ms`; full AHK
+  directory suite passed `1513/1513` in `9844ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-001CN` red evidence: raw
+  `pillow_c image open_tiff exposes Saturation EXIF tag` failed with
+  `Expected 2, got -1` because native TIFF EXIF serialization did not include
+  bounded IFD0 scalar tag `41993`, and facade
+  `Pillow Image.getexif reads TIFF Saturation tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: combined targeted Saturation readback
+  filter passed `2/2` in `62ms`; raw EXIF metadata coverage passed `10/10`
+  in `125ms`; facade `getexif` filter passed `88/88` in `968ms`; raw
+  `open_tiff` filter passed `96/96` in `4266ms`; combined TIFF filter passed
+  `230/230` in `1796ms`; full AHK directory suite passed `1511/1511` in
+  `9765ms` with the known four non-failing libjpeg stderr warnings. Release
+  x64 was rebuilt and source/DLL export counts remain `381` / `381`.
+  Previous `META-001CM` red evidence: raw
+  `pillow_c image open_tiff exposes Contrast EXIF tag` failed with
+  `Expected 1, got -1` because native TIFF EXIF serialization did not include
+  bounded IFD0 scalar tag `41992`, and facade
+  `Pillow Image.getexif reads TIFF Contrast tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: combined targeted Contrast readback filter
+  passed `16/16` in `172ms`; raw EXIF metadata coverage passed `10/10` in
+  `125ms`; facade `getexif` filter passed `87/87` in `750ms`; raw `open_tiff`
+  filter passed `95/95` in `4109ms`; combined TIFF filter passed `228/228` in
+  `1594ms`; full AHK directory suite passed `1509/1509` in `9547ms` with the
+  known four non-failing libjpeg stderr warnings. Release x64 was rebuilt and
+  source/DLL export counts remain `381` / `381`.
+  Previous `META-001CL` red evidence: raw
+  `pillow_c image open_tiff exposes GainControl EXIF tag` failed with
+  `Expected 2, got -1` because native TIFF EXIF serialization did not include
+  bounded IFD0 scalar tag `41991`, and facade
+  `Pillow Image.getexif reads TIFF GainControl tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: combined targeted GainControl readback
+  filter passed `2/2` in `156ms`; raw EXIF metadata coverage passed `10/10` in
+  `125ms`; facade `getexif` filter passed `86/86` in `843ms`; raw `open_tiff`
+  filter passed `94/94` in `3766ms`; combined TIFF filter passed `226/226` in
+  `1609ms`; full AHK directory suite passed `1507/1507` in `9297ms` with the
+  known four non-failing libjpeg stderr warnings. Release x64 was rebuilt and
+  source/DLL export counts remain `381` / `381`.
+  Previous `META-001CK` red evidence: raw
+  `pillow_c image open_tiff exposes SceneCaptureType EXIF tag` failed with
+  `Expected 3, got -1` because native TIFF EXIF serialization did not include
+  bounded IFD0 scalar tag `41990`, and facade
+  `Pillow Image.getexif reads TIFF SceneCaptureType tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: combined targeted SceneCaptureType
+  readback filter passed `2/2` in `125ms`; raw EXIF metadata coverage passed
+  `10/10` in `109ms`; facade `getexif` filter passed `85/85` in `797ms`; raw
+  `open_tiff` filter passed `93/93` in `3938ms`; combined TIFF filter passed
+  `224/224` in `1625ms`; full AHK directory suite passed `1505/1505` in
+  `9453ms` with the known four non-failing libjpeg stderr warnings. Release
+  x64 was rebuilt and source/DLL export counts remain `381` / `381`.
+  Previous `META-001CJ` red evidence: raw
+  `pillow_c image open_tiff exposes FocalLengthIn35mmFilm EXIF tag` failed
+  with `Expected 35, got -1` because native TIFF EXIF serialization did not
+  include bounded IFD0 scalar tag `41989`, and facade
+  `Pillow Image.getexif reads TIFF FocalLengthIn35mmFilm tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: combined targeted FocalLengthIn35mmFilm
+  readback filter passed `2/2` in `140ms`; raw EXIF metadata coverage passed
+  `10/10` in `188ms`; facade `getexif` filter passed `84/84` in `844ms`; raw
+  `open_tiff` filter passed `92/92` in `4109ms`; combined TIFF filter passed
+  `222/222` in `1625ms`; full AHK directory suite passed `1503/1503` in
+  `9343ms` with the known four non-failing libjpeg stderr warnings. Release
+  x64 was rebuilt and source/DLL export counts remain `381` / `381`.
+  Previous `META-001CI` red evidence: raw
+  `pillow_c image open_tiff exposes DigitalZoomRatio EXIF tag` failed with
+  `Expected [3, 2], got []` because native TIFF EXIF serialization did not
+  include bounded IFD0 RATIONAL tag `41988`, and facade
+  `Pillow Image.getexif reads TIFF DigitalZoomRatio tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: combined targeted DigitalZoomRatio readback
+  filter passed `2/2` in `79ms`; raw EXIF metadata coverage passed `10/10`
+  in `125ms`; facade `getexif` filter passed `83/83` in `797ms`; raw
+  `open_tiff` filter passed `91/91` in `4109ms`; combined TIFF filter passed
+  `220/220` in `1703ms`; full AHK directory suite passed `1501/1501` in
+  `9390ms` with the known four non-failing libjpeg stderr warnings.
+  Previous `META-001CH` red evidence: raw
+  `pillow_c image open_tiff exposes WhiteBalance EXIF tag` failed with
+  `Expected 1, got -1` because native TIFF EXIF serialization did not include
+  bounded IFD0 scalar tag `41987`, and facade
+  `Pillow Image.getexif reads TIFF WhiteBalance tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: combined targeted WhiteBalance readback
+  filter passed `2/2` in `125ms`; raw EXIF metadata coverage passed `10/10`
+  in `125ms`; facade `getexif` filter passed `82/82` in `766ms`; raw
+  `open_tiff` filter passed `90/90` in `3594ms`; combined TIFF filter passed
+  `218/218` in `1563ms`; full AHK directory suite passed `1499/1499` in
+  `9485ms` with the known four non-failing libjpeg stderr warnings.
+  Previous `META-001CG` red evidence: raw
+  `pillow_c image open_tiff exposes ExposureMode EXIF tag` failed with
+  `Expected 2, got -1` because native TIFF EXIF serialization did not include
+  bounded IFD0 scalar tag `41986`, and facade
+  `Pillow Image.getexif reads TIFF ExposureMode tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: combined targeted ExposureMode readback
+  filter passed `2/2` in `62ms`; raw EXIF metadata coverage passed `10/10`
+  in `125ms`; facade `getexif` filter passed `81/81` in `796ms`; raw
+  `open_tiff` filter passed `89/89` in `3984ms`; facade TIFF filter passed
+  `216/216` in `1469ms`; full AHK directory suite passed `1497/1497` in
+  `9781ms` with the known four non-failing libjpeg stderr warnings.
+  Previous `META-001CB` red evidence: raw
+  `pillow_c image open_tiff exposes FocalPlaneResolutionUnit EXIF tag` failed
+  with `Expected 3, got -1` because native TIFF EXIF serialization did not
+  include bounded IFD0 scalar tag `41488`, and facade
+  `Pillow Image.getexif reads TIFF FocalPlaneResolutionUnit tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade
+  FocalPlaneResolutionUnit readback filters passed `1/1` in `140ms` and
+  `1/1` in `47ms`; raw EXIF metadata coverage passed `110/110` in `5578ms`;
+  facade `getexif` filter passed `76/76` in `610ms`; facade TIFF filter
+  passed `102/102` in `516ms`; full AHK directory suite passed `1487/1487`
+  in `8672ms` with the known four non-failing libjpeg stderr warnings.
+  Release x64 was rebuilt and source/DLL export counts remain `381` / `381`.
+  Previous `META-001CA` red evidence: raw  `pillow_c image open_tiff exposes FocalPlaneResolution EXIF tags` failed
+  with `Expected [300, 7], got []` because native TIFF EXIF serialization did
+  not include bounded IFD0 RATIONAL tags `41486` and `41487`, and facade
+  `Pillow Image.getexif reads TIFF FocalPlaneResolution tags` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade FocalPlaneResolution
+  readback filters passed `1/1` in `79ms` and `1/1` in `47ms`; raw EXIF
+  metadata coverage passed `109/109` in `3140ms`; facade `getexif` filter
+  passed `75/75` in `406ms`; facade TIFF filter passed `101/101` in `453ms`;
+  full AHK directory suite passed `1485/1485` in `5078ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-001BZ` red evidence: raw
+  `pillow_c image open_tiff exposes FlashEnergy EXIF tag` failed with
+  `Expected [9, 2], got []` because native TIFF EXIF serialization did not
+  include bounded IFD0 RATIONAL tag `41483`, and facade
+  `Pillow Image.getexif reads TIFF FlashEnergy tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade FlashEnergy readback
+  filters passed `1/1` in `0ms` and `1/1` in `47ms`; raw EXIF metadata
+  coverage passed `108/108` in `3328ms`; facade `getexif` filter passed
+  `74/74` in `344ms`; facade TIFF filter passed `100/100` in `468ms`; full
+  AHK directory suite passed `1483/1483` in `5079ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-001BY` red evidence: raw
+  `pillow_c image open_tiff exposes RelatedSoundFile EXIF tag` failed with
+  `Expected "SOUND000.WAV", got ""` because native TIFF EXIF serialization
+  did not include bounded IFD0 ASCII tag `40964`, and facade
+  `Pillow Image.getexif reads TIFF RelatedSoundFile tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade RelatedSoundFile
+  readback filters passed `1/1` in `62ms` and `1/1` in `32ms`; raw EXIF
+  metadata coverage passed `107/107` in `3203ms`; facade `getexif` filter
+  passed `73/73` in `422ms`; facade TIFF filter passed `99/99` in `438ms`;
+  full AHK directory suite passed `1481/1481` in `4812ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-001BV` red evidence: raw
+  `pillow_c image open_tiff exposes ColorSpace EXIF tag` failed with
+  `Expected 1, got -1` because native TIFF EXIF serialization did not include
+  bounded IFD0 scalar tag `40961`, and facade
+  `Pillow Image.getexif reads TIFF ColorSpace tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade ColorSpace readback
+  filters passed `1/1` in `62ms` and `1/1` in `47ms`; raw EXIF metadata
+  coverage passed `104/104` in `2985ms`; facade `getexif` filter passed
+  `70/70` in `344ms`; facade TIFF filter passed `96/96` in `484ms`; full AHK
+  directory suite passed `1475/1475` in `4750ms` with the known four
+  non-failing libjpeg stderr warnings.
+  Previous `META-001BU` red evidence: raw
+  `pillow_c image open_tiff exposes FlashPixVersion EXIF tag` failed with
+  `Expected [48, 49, 48, 48], got []` because native TIFF EXIF serialization
+  did not include bounded IFD0 UNDEFINED tag `40960`, and facade
+  `Pillow Image.getexif reads TIFF FlashPixVersion tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade FlashPixVersion
+  readback filters passed `1/1` in `125ms` and `1/1` in `15ms`; raw EXIF
+  metadata coverage passed `103/103` in `3266ms`; facade `getexif` filter
+  passed `69/69` in `297ms`; facade TIFF filter passed `95/95` in `484ms`;
+  full AHK directory suite passed `1473/1473` in `4719ms` with the known four
+  non-failing libjpeg stderr warnings.
+  Previous `META-001BT` red evidence: raw
+  `pillow_c image open_tiff exposes XPSubject EXIF tag` failed with
+  `Expected [115, 0, 117, 0, 0, 0], got []` because native TIFF EXIF
+  serialization did not include bounded IFD0 BYTE-array tag `40095`, and
+  facade `Pillow Image.getexif reads TIFF XPSubject tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade XPSubject readback
+  filters passed `1/1` in `63ms` and `1/1` in `16ms`; raw EXIF metadata
+  coverage passed `102/102` in `2813ms`; facade `getexif` filter passed
+  `68/68` in `281ms`; facade TIFF filter passed `94/94` in `437ms`; full AHK
+  directory suite passed `1471/1471` in `4735ms` with the known four
+  non-failing libjpeg stderr warnings.
+  Previous `META-001BR` red evidence: raw
+  `pillow_c image open_tiff exposes XPAuthor EXIF tag` failed with
+  `Expected [65, 0, 100, 0, 0, 0], got []` because native TIFF EXIF
+  serialization did not include bounded IFD0 BYTE-array tag `40093`, and
+  facade `Pillow Image.getexif reads TIFF XPAuthor tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade XPAuthor readback
+  filters passed `1/1` in `62ms` and `1/1` in `16ms`; raw TIFF EXIF metadata
+  prefix passed `61/61` in `1203ms`; facade `getexif` filter passed `66/66`
+  in `266ms`; facade TIFF open/save filters passed `16/16` in `141ms`,
+  `17/17` in `110ms`, and `2/2` in `32ms`; full AHK directory suite passed
+  `1467/1467` in `4985ms` with the known four non-failing libjpeg stderr
+  warnings. Release x64 was rebuilt and source/DLL export counts remain
+  `381` / `381`.
+  Previous `META-001BQ` red evidence: raw
+  `pillow_c image open_tiff exposes XPComment EXIF tag` failed with
+  `Expected [72, 0, 105, 0, 0, 0], got []` because native TIFF EXIF
+  serialization did not include bounded IFD0 BYTE-array tag `40092`, and
+  facade `Pillow Image.getexif reads TIFF XPComment tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade XPComment readback
+  filters passed `1/1` in `47ms` and `1/1` in `31ms`; raw TIFF EXIF metadata
+  prefix passed `60/60` in `1234ms`; facade `getexif` filter passed `65/65`
+  in `329ms`; facade TIFF open/save filters passed `16/16` in `140ms`,
+  `17/17` in `125ms`, and `2/2` in `32ms`; full AHK directory suite passed
+  `1465/1465` in `4437ms` with the known four non-failing libjpeg stderr
+  warnings. Release x64 was rebuilt and source/DLL export counts remain
+  `381` / `381`.
+  Previous `META-001BP` red evidence: raw
+  `pillow_c image open_tiff exposes ImageUniqueID EXIF tag` failed with
+  `Expected "0123456789abcdefghijklmnopqrstuv", got ""` because native TIFF
+  EXIF serialization did not include bounded IFD0 ASCII tag `42016`, and
+  facade `Pillow Image.getexif reads TIFF ImageUniqueID tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade ImageUniqueID
+  readback filters passed `1/1` in `47ms` and `1/1` in `31ms`; raw
+  `open_tiff` filter passed `72/72` in `1797ms`; facade `getexif` filter
+  passed `64/64` in `313ms`; facade TIFF open/save filters passed `16/16` in
+  `266ms`, `17/17` in `235ms`, and `2/2` in `63ms`; full AHK directory suite
+  passed `1463/1463` in `10094ms` with the known four non-failing libjpeg
+  stderr warnings. Release x64 was rebuilt and source/DLL export counts
+  remain `381` / `381`.
+  Previous `META-001BN` red evidence: raw
+  `pillow_c image open_tiff exposes ExifIFD pointer EXIF tag` failed with
+  `Expected 134, got -1` because native TIFF EXIF serialization did not include
+  bounded IFD0 scalar integer tag `34665`, and facade
+  `Pillow Image.getexif reads TIFF ExifIFD pointer tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade ExifIFD pointer
+  readback filters passed `1/1` in `78ms` and `1/1` in `32ms`; raw
+  `open_tiff` filter passed `70/70` in `1703ms`; facade TIFF filter passed
+  `88/88` in `500ms`; facade `getexif` filter passed `62/62` in `313ms`; full
+  AHK directory suite passed `1459/1459` in `4859ms` with the known four
+  non-failing libjpeg stderr warnings.
+  Previous `META-001BM` red evidence: raw
+  `pillow_c image open_tiff exposes OffsetTimeDigitized EXIF tag` failed with
+  `Expected "+10:45", got ""` because native TIFF EXIF serialization did not
+  include bounded IFD0 ASCII tag `36882`, and facade
+  `Pillow Image.getexif reads TIFF OffsetTimeDigitized tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade OffsetTimeDigitized
+  readback filters passed `1/1` in `62ms` and `1/1` in `32ms`; raw
+  `open_tiff` filter passed `69/69` in `1625ms`; facade TIFF filter passed
+  `87/87` in `453ms`; facade `getexif` filter passed `61/61` in `328ms`; full
+  AHK directory suite passed `1457/1457` in `4953ms` with the known four
+  non-failing libjpeg stderr warnings.
+  Previous `META-001BL` red evidence: raw
+  `pillow_c image open_tiff exposes OffsetTimeOriginal EXIF tag` failed with
+  `Expected "+09:30", got ""` because native TIFF EXIF serialization did not
+  include bounded IFD0 ASCII tag `36881`, and facade
+  `Pillow Image.getexif reads TIFF OffsetTimeOriginal tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade OffsetTimeOriginal
+  readback filters passed `1/1` in `78ms` and `1/1` in `31ms`; raw
+  `open_tiff` filter passed `68/68` in `1609ms`; facade TIFF filter passed
+  `86/86` in `469ms`; facade `getexif` filter passed `60/60` in `281ms`; full
+  AHK directory suite passed `1455/1455` in `5063ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-001BK` red evidence: raw
+  `pillow_c image open_tiff exposes OffsetTime EXIF tag` failed with
+  `Expected "+08:00", got ""` because native TIFF EXIF serialization did not
+  include bounded IFD0 ASCII tag `36880`, and facade
+  `Pillow Image.getexif reads TIFF OffsetTime tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade OffsetTime readback
+  filters passed `1/1` in `47ms` and `1/1` in `32ms`; raw `open_tiff` filter
+  passed `67/67` in `1562ms`; facade TIFF filter passed `85/85` in `469ms`;
+  facade `getexif` filter passed `59/59` in `265ms`; full AHK directory suite
+  passed `1453/1453` in `5265ms` with the known four non-failing libjpeg
+  stderr warnings. Release x64 was rebuilt and source/DLL export counts remain
+  `381` / `381`.
+  Previous `META-001BJ` red evidence: raw
+  `pillow_c image open_tiff exposes SubSecTimeDigitized EXIF tag` failed with
+  `Expected "789", got ""` because native TIFF EXIF serialization did not
+  include bounded IFD0 ASCII tag `37522`, and facade
+  `Pillow Image.getexif reads TIFF SubSecTimeDigitized tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade SubSecTimeDigitized
+  readback filters passed `1/1` in `62ms` and `1/1` in `16ms`; raw
+  `open_tiff` filter passed `66/66` in `1469ms`; facade TIFF filter passed
+  `84/84` in `422ms`; facade `getexif` filter passed `58/58` in `297ms`;
+  full AHK directory suite passed `1451/1451` in `4922ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-001BI` red evidence: raw
+  `pillow_c image open_tiff exposes SubSecTimeOriginal EXIF tag` failed with
+  `Expected "456", got ""` because native TIFF EXIF serialization did not
+  include bounded IFD0 ASCII tag `37521`, and facade
+  `Pillow Image.getexif reads TIFF SubSecTimeOriginal tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade SubSecTimeOriginal
+  readback filters passed `1/1` in `63ms` and `1/1` in `15ms`; raw
+  `open_tiff` filter passed `65/65` in `1547ms`; facade TIFF filter passed
+  `83/83` in `485ms`; facade `getexif` filter passed `57/57` in `250ms`;
+  full AHK directory suite passed `1449/1449` in `4610ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-001BH` red evidence: raw
+  `pillow_c image open_tiff exposes SubSecTime EXIF tag` failed with
+  `Expected "123", got ""` because native TIFF EXIF serialization did not
+  include bounded IFD0 ASCII tag `37520`, and facade
+  `Pillow Image.getexif reads TIFF SubSecTime tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade SubSecTime readback
+  filters passed `1/1` in `109ms` and `1/1` in `47ms`; raw `open_tiff` filter
+  passed `64/64` in `3265ms`; facade TIFF filter passed `82/82` in `875ms`;
+  facade `getexif` filter passed `56/56` in `688ms`; full AHK directory suite
+  passed `1447/1447` in `9032ms` with the known four non-failing libjpeg
+  stderr warnings. Release x64 was rebuilt and source/DLL export counts remain
+  `381` / `381`.
+  Previous `META-001BG` red evidence: raw
+  `pillow_c image open_tiff exposes DateTimeDigitized EXIF tag` failed with
+  `Expected "2026:07:04 12:34:56", got ""` because native TIFF EXIF
+  serialization did not include bounded IFD0 ASCII tag `36868`, and facade
+  `Pillow Image.getexif reads TIFF DateTimeDigitized tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` could not see
+  the TIFF payload. Green evidence: targeted raw/facade DateTimeDigitized
+  readback filters passed `1/1` in `63ms` and `1/1` in `47ms`; raw
+  `open_tiff` filter passed `63/63` in `2812ms`; facade TIFF filter passed
+  `81/81` in `875ms`; facade `getexif` filter passed `55/55` in `453ms`;
+  full AHK directory suite passed `1445/1445` in `9047ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-001BF` red evidence: raw
+  `pillow_c image open_tiff exposes DateTimeOriginal EXIF tag` failed with
+  `Expected "2026:07:04 12:34:56", got ""`, and facade
+  `Pillow Image.getexif reads TIFF DateTimeOriginal tag` failed with
+  `Expected value to be true`. Green evidence: targeted raw/facade
+  DateTimeOriginal readback filters passed `1/1` in `63ms` and `1/1` in
+  `31ms`; raw `open_tiff` filter passed `62/62` in `1516ms`; facade TIFF
+  filter passed `80/80` in `485ms`; facade `getexif` filter passed `54/54` in
+  `281ms`; full AHK directory suite passed `1443/1443` in `9047ms` with the
+  known four non-failing libjpeg stderr warnings. Release x64 was rebuilt and
+  source/DLL export counts remain `381` / `381`.  Previous `META-001BD` red evidence: raw
+  `pillow_c image open_tiff exposes BYTE JPEGTables EXIF tag` failed with
+  `Expected [255, 216, 255, 219, 0, 4, 255, 217], got []` because native TIFF
+  EXIF serialization accepted only the UNDEFINED spelling of tag `347`, and
+  facade `Pillow Image.getexif reads TIFF BYTE JPEGTables tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` did not
+  see the BYTE payload. Green evidence: targeted raw/facade JPEGTables
+  readback filters passed `2/2` in `94ms` and `2/2` in `46ms`; raw
+  `open_tiff` filter passed `60/60` in `1468ms`; facade TIFF filter passed
+  `78/78` in `453ms`; facade `getexif` filter passed `52/52` in `250ms`;
+  full AHK directory suite passed `1439/1439` in `4875ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL export counts remain
+  `381` / `381`.
+  Previous `META-001BB` red evidence: raw
+  `pillow_c image open_tiff exposes tile byte range EXIF tags` failed with
+  `Expected 146, got -1` because native TIFF EXIF serialization did not include
+  tags `324`/`325`, and facade
+  `Pillow Image.getexif reads TIFF tile byte range tags` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` did not
+  enumerate those tags. Green evidence: targeted raw/facade tile byte range
+  readback filters passed `1/1` in `141ms` and `1/1` in `47ms`; raw
+  `open_tiff` filter passed `58/58` in `2547ms`; facade TIFF filter passed
+  `76/76` in `843ms`; facade `getexif` filter passed `50/50` in `656ms`; full
+  AHK directory suite passed `1435/1435` in `4953ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-001BA` red evidence: raw
+  `pillow_c image open_tiff exposes tile shape EXIF tags` failed with
+  `Expected 0, got -3` because the native TIFF open path rejected the bounded
+  tile-shape L TIFF before metadata could be serialized, and facade
+  `Pillow Image.getexif reads TIFF tile shape tags` errored with
+  `pillow_c: invalid argument`. Green evidence: targeted raw/facade
+  tile-shape readback filters passed `1/1` in `78ms` and `1/1` in `32ms`; raw
+  `open_tiff` filter passed `57/57` in `2813ms`; facade TIFF filter passed
+  `75/75` in `750ms`; facade `getexif` filter passed `49/49` in `453ms`; full
+  AHK directory suite passed `1433/1433` in `9844ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-001AZ` red evidence: raw
+  `pillow_c image open_tiff exposes free block EXIF tags` failed with
+  `Expected 12, got -1` because native TIFF open did not serialize tags
+  `288`/`289`, and facade
+  `Pillow Image.getexif reads TIFF free block tags` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` did not
+  enumerate those tags. Green evidence: targeted raw/facade free block
+  readback filters passed `1/1` in `125ms` and `1/1` in `78ms`; raw
+  `open_tiff` filter passed `56/56` in `2578ms`; facade TIFF filter passed
+  `74/74` in `844ms`; facade `getexif` filter passed `48/48` in `422ms`; full
+  AHK directory suite passed `1431/1431` in `9406ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-001AY` red evidence: raw
+  `pillow_c image open_tiff exposes fax option EXIF tags` failed with
+  `Expected 4, got -1` because native TIFF open did not serialize tags
+  `292`/`293`, and facade
+  `Pillow Image.getexif reads TIFF fax option tags` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` did not
+  enumerate those tags. Green evidence: targeted raw/facade fax option
+  readback filters passed `1/1` in `172ms` and `1/1` in `62ms`; raw
+  `open_tiff` filter passed `55/55` in `2656ms`; facade TIFF filter passed
+  `73/73` in `797ms`; facade `getexif` filter passed `47/47` in `406ms`; full
+  AHK directory suite passed `1429/1429` in `9000ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-001AX` red evidence: raw
+  `pillow_c image open_tiff exposes fax scalar EXIF tags` failed with
+  `Expected 7, got -1` because native TIFF open did not serialize tags
+  `326`/`327`/`328`, and facade
+  `Pillow Image.getexif reads TIFF fax scalar tags` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` did not
+  enumerate those tags. Green evidence: targeted raw/facade fax scalar
+  readback filters passed `1/1` in `62ms` and `1/1` in `15ms`; raw
+  `open_tiff` filter passed `54/54` in `1235ms`; facade TIFF filter passed
+  `72/72` in `375ms`; facade `getexif` filter passed `46/46` in `219ms`; full
+  AHK directory suite passed `1427/1427` in `4812ms` with the known four
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `381` / `381`.
+  Previous `META-002P` red evidence: raw
+  `pillow_c image open_tiff exposes UNDEFINED XMP metadata and EXIF tag`
+  failed with `Expected 1, got 0` because native TIFF XMP parsing rejected
+  tag `700` stored as TIFF UNDEFINED type `7`, and facade
+  `Pillow Image.open TIFF reads UNDEFINED XMP metadata and EXIF tag` failed
+  because `Info["xmp"]` was absent. Green evidence: targeted raw/facade
+  UNDEFINED TIFF XMP filters passed `1/1` in `94ms` and `1/1` in `62ms`;
+  raw `open_tiff` filter passed `53/53` in `2406ms`; facade TIFF filter
+  passed `71/71` in `781ms`; facade `getxmp` filter passed `2/2` in `62ms`;
+  facade `getexif` filter passed `45/45` in `391ms`; full AHK directory
+  suite passed `1425/1425` in `9359ms` with the known four non-failing
+  libjpeg stderr warnings. Release x64 was rebuilt and source/DLL export
+  counts remain `381` / `381`.
+  Previous `META-001AW` red evidence: raw
+  `pillow_c image open_tiff exposes SMinSampleValue SMaxSampleValue EXIF tags`
+  failed with `Expected 0, got -1` because native TIFF open did not serialize
+  tags `340`/`341`, and facade
+  `Pillow Image.getexif reads TIFF SMinSampleValue SMaxSampleValue tags` failed
+  with `Expected value to be true` because `Image.Exif.FromImage()` did not
+  enumerate tags `340`/`341`. Green evidence: targeted raw/facade
+  SMin/SMax readback filters passed `1/1` in `63ms` and `1/1` in `31ms`; raw
+  `open_tiff` filter passed `43/43` in `859ms`; facade TIFF filter passed
+  `61/61` in `313ms`; facade EXIF filter passed `70/70` in `391ms`; and the
+  full AHK directory invocation passed `1405/1405` in `4437ms` with the known
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `380` / `380`.
+  Previous `META-001AV` red evidence: raw
+  `pillow_c image open_tiff exposes TransferRange EXIF tag` failed with
+  `Expected [0, 255, 1, 254, 2, 253], got []` because native TIFF open did not
+  serialize tag `342`, and facade
+  `Pillow Image.getexif reads TIFF TransferRange tag` failed with
+  `Expected value to be true` because `Image.Exif.FromImage()` did not
+  enumerate tag `342`. Green evidence: targeted raw/facade TransferRange
+  readback filters passed `1/1` in `47ms` and `1/1` in `16ms`; raw/facade TIFF
+  filters passed `62/62` in `1656ms` and `60/60` in `250ms`; raw/facade EXIF
+  filters passed `68/68` in `2250ms` and `69/69` in `328ms`; and the full AHK
+  directory invocation passed `1403/1403` in `4391ms` with the known
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remained `380` / `380`.
+  Previous `META-001AD` red evidence: raw
+  `pillow_c image open_tiff exposes SubfileType EXIF tag` failed with
+  `Expected 1, got -1` because native TIFF open did not serialize IFD0 scalar
+  tag `255` into the TIFF EXIF blob, and facade
+  `Pillow Image.getexif reads TIFF SubfileType tag` failed with
+  `Expected value to be true`. Green evidence: targeted raw/facade
+  SubfileType readback passed `1/1` in `62ms` and `1/1` in `15ms`;
+  raw/facade TIFF filters passed `44/44` in `1266ms` and `42/42` in `203ms`;
+  raw/facade EXIF filters passed `50/50` in `1890ms` and `51/51` in `296ms`;
+  and the full AHK directory invocation passed `1367/1367` in `4468ms` with
+  the known non-failing libjpeg stderr warnings. Release x64 was rebuilt and
+  source/DLL export counts remain `379` / `379`.
+  Previous `META-001AC` red evidence: raw
+  `pillow_c image open_tiff exposes CellWidth CellLength EXIF tags` failed
+  with `Expected 5, got -1` because native TIFF open did not serialize IFD0
+  scalar tags `264`/`265` into the TIFF EXIF blob, and facade
+  `Pillow Image.getexif reads TIFF CellWidth CellLength tags` failed with
+  `Expected value to be true`. Green evidence: targeted raw/facade
+  CellWidth/CellLength readback passed `1/1` in `62ms` and `1/1` in `15ms`;
+  raw/facade TIFF filters passed `43/43` in `1234ms` and `41/41` in `187ms`;
+  raw/facade EXIF filters passed `49/49` in `1844ms` and `50/50` in `266ms`;
+  and the full AHK directory invocation passed `1365/1365` in `4640ms` with
+  the known non-failing libjpeg stderr warnings. Release x64 was rebuilt and
+  source/DLL export counts remain `379` / `379`.
+  Previous `META-001AB` red evidence: raw
+  `pillow_c image open_tiff exposes Thresholding EXIF tag` failed with
+  `Expected 1, got -1` because native TIFF open did not serialize IFD0 scalar
+  tag `263` into the TIFF EXIF blob, and facade
+  `Pillow Image.getexif reads TIFF Thresholding tag` failed with
+  `Expected value to be true`. Green evidence: targeted raw/facade
+  Thresholding readback passed `1/1` in `78ms` and `1/1` in `16ms`;
+  raw/facade TIFF filters passed `42/42` in `1250ms` and `40/40` in `218ms`;
+  raw/facade EXIF filters passed `48/48` in `1844ms` and `49/49` in `265ms`;
+  and the full AHK directory invocation passed `1363/1363` in `4359ms` with
+  the known non-failing libjpeg stderr warnings. Release x64 was rebuilt and
+  source/DLL export counts remain `379` / `379`.
+  Previous `META-001AA` red evidence: raw
+  `pillow_c image open_tiff exposes FillOrder EXIF tag` failed with
+  `Expected 1, got -1` because native TIFF open did not serialize IFD0 scalar
+  tag `266` into the TIFF EXIF blob, and facade
+  `Pillow Image.getexif reads TIFF FillOrder tag` failed with
+  `Expected value to be true`. Green evidence: targeted raw/facade FillOrder
+  readback passed `1/1` in `47ms` and `1/1` in `16ms`; raw/facade TIFF
+  filters passed `41/41` in `1157ms` and `39/39` in `203ms`; raw/facade EXIF
+  filters passed `47/47` in `2203ms` and `48/48` in `266ms`; and the full AHK
+  directory invocation passed `1361/1361` in `4406ms` with the known
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `379` / `379`.
+  Previous `META-001Z` red evidence: raw
+  `pillow_c image open_tiff exposes NewSubfileType EXIF tag` failed with
+  `Expected 0, got -1` because native TIFF open did not serialize IFD0 scalar
+  tag `254` into the TIFF EXIF blob, and facade
+  `Pillow Image.getexif reads TIFF NewSubfileType tag` failed with
+  `Expected value to be true`. Green evidence: targeted raw/facade
+  NewSubfileType readback passed `1/1` in `63ms` and `1/1` in `16ms`;
+  raw/facade TIFF filters passed `40/40` in `1219ms` and `38/38` in `219ms`;
+  raw/facade EXIF filters passed `46/46` in `1844ms` and `47/47` in `281ms`;
+  and the full AHK directory invocation passed `1359/1359` in `4968ms` with
+  the known non-failing libjpeg stderr warnings.
+  Previous `META-001Y` red evidence: raw
+  `pillow_c image open_tiff exposes position rational EXIF tags` failed with
+  `Expected [1, 2], got []` because native TIFF open did not serialize IFD0
+  RATIONAL tags `286`/`287` into the TIFF EXIF blob, and facade
+  `Pillow Image.getexif reads TIFF position rational tags` failed with
+  `Expected value to be true`. Green evidence: targeted raw/facade position
+  rational readback passed `1/1` in `63ms` and `1/1` in `16ms`;
+  raw/facade TIFF filters passed `39/39` in `1172ms` and `37/37` in `187ms`;
+  raw/facade EXIF filters passed `45/45` in `1813ms` and `46/46` in `297ms`;
+  and the full AHK directory invocation passed `1357/1357` in `4578ms` with
+  the known non-failing libjpeg stderr warnings.
+  Previous `META-001X` red evidence: raw
+  `pillow_c image open_tiff exposes numeric SampleFormat EXIF tag` failed
+  with `Expected 1, got 0` because numeric TIFF open exposed no TIFF EXIF blob
+  on the early-return path, and facade
+  `Pillow Image.getexif reads TIFF numeric SampleFormat tag` failed with
+  `Expected value to be true`. Green evidence: targeted raw/facade numeric
+  SampleFormat readback passed `1/1` in `78ms` and `1/1` in `31ms`;
+  raw/facade TIFF filters passed `38/38` in `1188ms` and `36/36` in `188ms`;
+  raw/facade EXIF filters passed `44/44` in `1922ms` and `45/45` in `234ms`;
+  and the full AHK directory invocation passed `1355/1355` in `4266ms` with
+  the known non-failing libjpeg stderr warnings. Release x64 was rebuilt and
+  source/DLL export counts remain `379` / `379`.
+  Previous `META-001W` red evidence: raw
+  `pillow_c image open_tiff exposes YCbCrSubSampling array EXIF tag` failed
+  with `Expected [2, 1], got []`, and facade
+  `Pillow Image.getexif reads TIFF YCbCrSubSampling array tag` failed with
+  `Expected value to be true`. Green evidence: targeted raw/facade
+  YCbCrSubSampling array readback passed `1/1` in `62ms` and `1/1` in `31ms`;
+  raw/facade TIFF filters passed `37/37` in `1094ms` and `35/35` in `187ms`;
+  raw/facade EXIF filters passed `43/43` in `1844ms` and `44/44` in `235ms`;
+  and the full AHK directory invocation passed `1353/1353` in `4094ms` with
+  the known non-failing libjpeg stderr warnings. Release x64 was rebuilt and
+  source/DLL export counts remain `379` / `379`.
+  Previous `META-001V` red evidence: raw
+  `pillow_c image open_tiff exposes LA layout array EXIF tags` failed with
+  `Expected [8, 8], got []`, and facade
+  `Pillow Image.getexif reads TIFF LA layout array tags` failed with
+  `Expected value to be true`. Green evidence: targeted raw/facade LA layout
+  readback passed `1/1` in `62ms` and `1/1` in `16ms`; raw/facade TIFF filters
+  passed `36/36` in `1125ms` and `34/34` in `172ms`; raw/facade EXIF filters
+  passed `42/42` in `1703ms` and `43/43` in `281ms`; and the full AHK
+  directory invocation passed `1351/1351` in `4829ms` with the known
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `379` / `379`.
+  Previous `META-001U` red evidence: raw
+  `pillow_c image open_tiff exposes RGBA layout array EXIF tags` failed with
+  `Expected [8, 8, 8, 8], got []`, and facade
+  `Pillow Image.getexif reads TIFF RGBA layout array tags` failed with
+  `Expected value to be true`. Green evidence: targeted raw/facade RGBA layout
+  readback passed `1/1` in `78ms` and `1/1` in `31ms`; raw/facade TIFF filters
+  passed `35/35` in `1109ms` and `33/33` in `234ms`; raw/facade EXIF filters
+  passed `41/41` in `1875ms` and `42/42` in `282ms`; and the full AHK
+  directory invocation passed `1349/1349` in `4625ms` with the known
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `379` / `379`.
+  Previous `META-001T` red evidence: raw
+  `pillow_c image open_tiff exposes RGB layout array EXIF tags` failed with
+  `Expected [8, 8, 8], got []`, and facade
+  `Pillow Image.getexif reads TIFF RGB layout array tags` failed with
+  `Expected value to be true`. Green evidence: targeted raw/facade RGB layout
+  readback passed `1/1` in `78ms` and `1/1` in `16ms`; raw/facade TIFF filters
+  passed `34/34` in `1078ms` and `32/32` in `156ms`; raw/facade EXIF filters
+  passed `40/40` in `1828ms` and `41/41` in `250ms`; and the full AHK
+  directory invocation passed `1347/1347` in `4516ms` with the known
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `379` / `379`.
+  Previous `ROBUST-002` red evidence: raw
+  `pillow_c exif_orientation_bytes null output size probe succeeds` failed
+  with `Expected 0, got -1`. Green evidence: targeted EXIF size-query filter
+  passed `2/2` in `63ms`, raw GIF frame filter passed `4/4` in `141ms`, BMP
+  filter passed `8/8` in `47ms`, JPEG filter passed `178/178` in `1891ms`,
+  and the full AHK directory invocation passed `1339/1339` in `4406ms` with
+  the known non-failing libjpeg stderr warnings. Release x64 was rebuilt and
+  source/DLL export counts remain `379` / `379`.
+  Previous `ROBUST-001` red evidence: raw
+  `pillow_c image open_png rejects oversized compressed metadata` failed with
+  `Expected -3, got 0`, and facade
+  `Pillow Image.Open PNG rejects oversized compressed text metadata` failed
+  because `Image.Open(..., ["PNG"])` accepted the hostile file. Green
+  evidence: targeted oversized-compressed filter passed `2/2` in `234ms`,
+  compressed metadata filter passed `16/16` in `297ms`, iCCP filter passed
+  `2/2` in `32ms`, deflate filter passed `4/4` in `31ms`, and the full AHK
+  directory invocation passed `1338/1338` in `4297ms` with the known
+  non-failing libjpeg stderr warnings. Release x64 was rebuilt and source/DLL
+  export counts remain `379` / `379`.
+  Previous `API-STATUS-001` red evidence: facade
+  `Pillow facade metadata helpers reject null handles` failed because
+  `NativeJpegQTables(0)` surfaced the wrong non-JPEG path instead of native
+  `null pointer`. Green evidence: targeted facade passed `1/1` in `16ms`;
+  affected qtables filter passed `69/69` in `906ms`; subsampling filter
+  passed `41/41` in `454ms`; cHRM/chromaticity filter passed `33/33` in
+  `203ms`; full AHK directory invocation passed `1336/1336` in `4016ms` with
+  the known non-failing libjpeg stderr warnings. No native rebuild was
+  required and source/DLL export counts remain `379` / `379`.
+  Previous `API-PNG-001` red evidence: facade
+  `Pillow Image.Save PNG pnginfo string private chunk fails loudly` failed
+  because save completed instead of raising; green evidence: targeted facade
+  passed `1/1` in `31ms`, the PNG `pnginfo` filter passed `60/60` in
+  `296ms`, and the full AHK directory invocation passed `1335/1335` in
+  `3907ms` with the known non-failing libjpeg stderr warnings.
+  Previous `API-JPEG-001` red evidence: raw
+  `pillow_c image open_jpeg metadata_subsampling reads CMYK SOF sampling`
+  failed with `Expected 0, got -1`, and facade
+  `Pillow Image.Save JPEG CMYK subsampling keep with explicit ICC preserves opened comment`
+  failed with `subsampling='keep' requires opened RGB JPEG subsampling metadata`.
+  The local Pillow 11.3.0 oracle accepted opened CMYK JPEG sources saved with
+  subsampling `0`, `1`, or `2`, preserved opened COM/comment when `comment` was
+  omitted, preserved explicit ICC, and dropped/replaced COM only for explicit
+  `comment`. Green evidence: Release x64 rebuild succeeded with
+  `0 Warning(s), 0 Error(s)`; targeted raw CMYK subsampling metadata passed
+  `1/1` in `62ms`; targeted raw CMYK metadata encode subsampling passed `1/1`
+  in `31ms`; targeted facade passed `1/1` in `16ms`; JPEG filter passed
+  `178/178` in `1828ms`; full AHK directory invocation passed `1334/1334` in
+  `4062ms` with the known non-failing libjpeg stderr warnings.
+  Previous `FMT-TIFF-005` red evidence: with the old parser, raw
+  `pillow_c image open_tiff rejects malformed TIFF ColorMap` failed with
+  `Expected -3, got 0`, and facade
+  `Pillow Image.Open TIFF rejects malformed ColorMap` failed because
+  `Image.Open` did not raise. The local Pillow 11.3.0 oracle rejected the same
+  malformed `PhotometricInterpretation=3`, `SamplesPerPixel=3`,
+  `ColorMap SHORT[769]` fixture with `UnidentifiedImageError`. Green evidence:
+  Release x64 rebuild succeeded with `0 Warning(s), 0 Error(s)`; targeted raw
+  passed `1/1` in `32ms`; targeted facade passed `1/1` in `15ms`; raw TIFF
+  filter passed `30/30` in `968ms`; facade TIFF filter passed `28/28` in
+  `156ms`; full AHK directory invocation passed `1331/1331` in `4078ms` with
+  the known non-failing libjpeg stderr warnings. Source/DLL export counts
+  remain `379` / `379`.
+  Previous `FMT-TIFF-004` red evidence: raw
+  `pillow_c image open_tiff reads Pillow early-change LZW I16` failed with
+  native status `-3`, raw
+  `pillow_c image save_tiff_compression_options writes Pillow early-change LZW I16`
+  failed with strip byte count `5586` instead of Pillow's `5585`, and facade
+  `Pillow Image.Open and Save TIFF I16 use Pillow early-change LZW` failed
+  with `pillow_c: invalid argument`. Green evidence: Release x64 rebuild
+  succeeded with `0 Warning(s), 0 Error(s)`; targeted raw passed `2/2` in
+  `47ms`; targeted facade passed `1/1` in `32ms`; raw TIFF filter passed
+  `29/29` in `1000ms`; facade TIFF filter passed `27/27` in `156ms`; full AHK
+  directory invocation passed `1329/1329` in `4188ms` with the known
+  non-failing libjpeg stderr warnings. Source/DLL export counts remain `379`
+  / `379`.
+  Previous `META-001M` red evidence: raw
   `pillow_c image open_tiff exposes common ASCII EXIF tags` failed with
   `Expected "desc", got ""`, and facade
   `Pillow Image.getexif reads TIFF common ASCII tags` failed with
   `Expected 6, got 5`, proving TIFF tag `270` was absent from the native blob
-  and public `GetExif()` object. Green evidence: Release x64 rebuild succeeded
-  with `0 Warning(s), 0 Error(s)`; targeted raw passed `1/1` in `140ms`;
-  targeted facade passed `1/1` in `31ms`; raw TIFF filter passed `27/27` in
-  `1828ms`; facade TIFF filter passed `26/26` in `265ms`; raw EXIF filter
-  passed `35/35` in `3078ms`; facade EXIF filter passed `37/37` in `500ms`;
-  full AHK directory invocation passed `1326/1326` in `7578ms` with the known
-  non-failing libjpeg stderr warnings. Source/DLL export counts remain `379`
-  / `379`.
+  and public `GetExif()` object. Green evidence: targeted raw passed `1/1` in
+  `140ms`; targeted facade passed `1/1` in `31ms`; raw TIFF filter passed
+  `27/27` in `1828ms`; facade TIFF filter passed `26/26` in `265ms`; raw EXIF
+  filter passed `35/35` in `3078ms`; facade EXIF filter passed `37/37` in
+  `500ms`; full AHK directory invocation passed `1326/1326` in `7578ms` with
+  the known non-failing libjpeg stderr warnings. Source/DLL export counts
+  remained `379` / `379`.
   Previous `FMT-PNG-001AD` red evidence: raw
   `pillow_c image save_png_text_entries_value_sizes_options preserves embedded NUL text`
   failed with a missing `pillow_c_image_save_png_text_entries_value_sizes_options`
@@ -1347,6 +12292,146 @@ Known current counts:
   and `545/545` in `35656ms`, with the same non-failing libjpeg stderr
   warnings.
 
+## 2026-07-04 Full Repository Audit
+
+This audit was requested explicitly as a full code review plus documentation
+refresh. It verified the tree state, ran the full suite, audited the native
+DLL source, the AHK facade, and every document in `docs/`. Do not repeat this
+broad audit; continue from the gap rows it produced.
+
+Verified state (all green):
+
+- Source and DLL export sets are identical: `379` `extern "C"` declarations in
+  `src/pillow_c.cpp` and `379` names in the Release x64 PE export table, with
+  a name-by-name diff of zero.
+- Test registrations: `662` raw (`ahk/pillow_c.test.ahk`) plus `664` facade
+  (`ahk/pillow.test.ahk`) equals `1326`. The full directory invocation passed
+  `1326/1326` in `4016ms` with the known four non-failing
+  `Corrupt JPEG data: 1 extraneous bytes before marker 0xda` stderr lines.
+- The inner git repository is clean at `7c91c2d`; exactly the intended `17`
+  files are tracked, `build/x64/Release/pillow_c.dll` is tracked via the
+  `.gitignore` whitelist chain, and obj/.codex/AGENTS.md/codex-goal-plan.md
+  byproducts are correctly ignored.
+- `oracle/pillow_oracle.json` is in sync with `oracle/pillow_oracle.py`
+  (same 8 top-level keys, 15 cases, Python `3.10.11` / Pillow `11.3.0`).
+  Note: no AHK test reads the JSON; it is regeneration/reference material and
+  test expectations are pinned inline in the test files.
+- Facade `DllCall` typing was spot-checked at about 20 sites against the C
+  signatures, including the widest argument lists (28/29-arg PNG metadata
+  custom-chunks exports, 21-arg JPEG qtables keep-rgb XMP export): all
+  argument and return types match (`Ptr` handles, `UPtr` size_t, `UPtr*`
+  out-sizes, `Double`, explicit `Int` returns). Buffer lifetime (companion
+  buffer arrays kept alive beside pointer arrays) and handle free-on-throw
+  discipline (`Open`/`New`/`FromBytes`/`Seek`/ICO `Size` setter) are sound.
+
+Native code findings, ordered by severity. None is currently reachable by a
+failing test because each round-trips internally or needs allocation failure
+or a hostile file; they are recorded as ledger rows `FMT-TIFF-004`,
+`FMT-TIFF-005`, `ROBUST-001`, and `ROBUST-002`:
+
+1. TIFF LZW uses the GIF-style late-change code-width convention in both the
+   strip decoder and encoder (`src/pillow_c.cpp` around lines `3566` and
+   `19098`: `next_code == (1 << code_size)`), while TIFF 6.0, libtiff, and
+   Pillow use early change (`(1 << code_size) - 1`). Internally round-trips,
+   but real-world LZW TIFFs desync once the dictionary passes 511 entries and
+   written LZW TIFFs are only re-readable by this library. (`FMT-TIFF-004`)
+2. `parse_tiff_palette_rgb` (around line `3367`) has no `found` flag for
+   ColorMap tag `320`: when the tag is absent and the file is at least 1536
+   bytes it "succeeds" and installs 1536 bytes of header/IFD data at offset 0
+   as the palette. Bounds-checked, so no memory unsafety, but a garbage
+   palette. Sibling parsers use explicit `has_*` flags. (`FMT-TIFF-005`)
+3. Covered by `ROBUST-001`: the deflate inflater
+   (`inflate_deflate_huffman_block` / `inflate_zlib_deflate`) now caps output
+   growth during decode through an `expected_max` parameter. PNG compressed
+   `zTXt`/`iTXt`/`iCCP` metadata uses Pillow's `MAX_TEXT_CHUNK` value
+   (`1048576` bytes) and rejects cap-exceeded payloads before WIC decode,
+   while TIFF Adobe Deflate passes the expected strip byte count.
+4. Covered by `ROBUST-002`: `std::bad_alloc` can no longer escape the C ABI in
+   the GIF frame path. `open_gif_composited_frame_image` now includes
+   `read_binary_file`, global/local color-table allocation, and frame decode
+   allocations inside its `try` boundary, so allocation failure returns `-4`.
+5. Covered by `ROBUST-002`: the batched low-severity notes now have explicit
+   native guards. BMP open rejects `INT_MIN` top-down height before negation;
+   JPEG metadata scanning rejects non-`0xFF` marker prefixes and density
+   patching stops at SOS/EOI; `pillow_c_exif_orientation_bytes` returns `0` on
+   null-output size probes while setting the required size; and GIF LZW appends
+   at most the remaining expected pixels during decode.
+
+Positive native observations: allocation/ownership is uniform (`new
+PillowCImage` with vector storage, freed only by `pillow_c_image_free`; all
+sampled error paths delete before returning); size math is centralized in
+division-guarded `checked_image_size*` helpers; all ~12 PNG chunk scanners
+use the same subtraction-ordered bounds pattern; TIFF IFD entry counts and
+out-of-line values are offset/count validated; JPEG/ICO/GIF/TGA/PPM untrusted
+length fields are bound-checked before indexing; out-params are consistently
+nulled before failure paths.
+
+Facade findings, recorded as ledger rows `API-STATUS-001`, `API-JPEG-001`,
+and `API-PNG-001`:
+
+1. Covered by `API-STATUS-001`: the probe idiom `if status != -1` was removed
+   from the four audited non-probe metadata calls that pass real output
+   buffers (`NativeJpegQTables` qtable count/read, JPEG subsampling, and PNG
+   chromaticity). Those calls now surface native status failures through
+   `Pillow.CheckStatus(...)` instead of silently tolerating `NULL_POINTER`.
+2. CMYK and non-CMYK JPEG save branches disagree on implicit comment
+   preservation: the CMYK path passes `qualityKeep || qtablesKeep` where the
+   general path passes `qualityKeep || qtablesKeep || subsamplingKeep`
+   (lines `7254` vs `7558`). Currently dormant because CMYK metadata plus an
+   explicit subsampling option throws earlier, but it is real branch drift.
+   (`API-JPEG-001`)
+3. Covered by `API-PNG-001`: `PngInfo.add(cid, data)` no longer silently
+   ignores string chunk IDs. It stores string cids and raises the probed
+   Pillow-style `can't concat str to bytes` error when a private string chunk
+   would be emitted during PNG save.
+4. Audit false positive worth recording so it is not re-flagged: PNG save
+   `gamma`/`interlace` options never call
+   `pillow_c_image_save_png_gamma_options` /
+   `pillow_c_image_save_png_interlace_options` from the facade, but this is
+   Pillow parity, not a defect: `FMT-PNG-001M` and `FMT-PNG-003A` prove
+   Pillow 11.3.0 accepts and ignores save-side `gamma`/`interlace` (no
+   `gAMA` chunk, interlace byte `0`), the facade tests assert exactly that,
+   and the two no-op exports are exercised directly by raw tests.
+5. Informational, no ledger row: `Image.Channels` reports native
+   bytes-per-pixel (`4`) for modes `I`/`F` rather than Pillow's band count
+   (`1`) - `GetData`/`Histogram` already compensate via `GetModeBands`;
+   `DataPointer()` hands out a raw pixel pointer under the documented
+   explicit-lifetime ABI rule; `ImageSequence` end-of-iteration detection
+   matches on the `attempt to seek outside sequence` message substring;
+   single-frame GIF saves route only `comment`/`transparency` and silently
+   ignore other GIF options instead of throwing; `Close()` inside
+   `__Delete()` would throw unhandleably if `pillow_c_image_free` ever
+   returned an error.
+
+Documentation refreshed in this audit:
+
+- `docs/native-abi.md`: the Export Groups list now enumerates all `379`
+  exports; the 12 previously missing names were added
+  (`pillow_c_image_convert_mode_dither`, `_dither_into`,
+  `pillow_c_image_quantize`, `_into`, `pillow_c_image_quantize_palette`,
+  `_into`, `pillow_c_image_tobitmap`, `pillow_c_image_gif_comment`,
+  `pillow_c_image_save_gif_animation_background_options`,
+  `pillow_c_image_save_gif_animation_comment_background_options`,
+  `pillow_c_image_save_jpeg_metadata_xmp_encode_options`,
+  `pillow_c_image_save_jpeg_qtables_metadata_xmp_encode_options`), prose
+  contracts were added for the dither/quantize/tobitmap exports, and the
+  CMYK fixture reference was corrected to
+  `ahk\fixtures\pil_sample_cmyk_ycck.jpg`.
+- `docs/architecture.md`: "future `pillow.ahk` layer" corrected to the
+  existing facade, and the stale "dither-sensitive quantization ... remain
+  future surfaces" claims were rewritten to reflect covered
+  `Convert("1", dither)`, GIF dither-ignore, animation quantization, and
+  public `Image.Quantize` exact/palette paths.
+- `docs/pillow-direct-diff-assessment.md`: a dated preamble now records the
+  refreshed 2026-07-04 counts (`379` exports, `1326` tests, current line
+  counts) and lists the claims that have gone stale since 2026-06-20
+  (`getxmp()`, `get_child_images`, CUR open, TIFF children, TIFF EXIF
+  readback) while keeping the body as the historical route audit.
+- `docs/codex-goal-plan.md`: the fast-track priority list no longer points at
+  the covered `FMT-GIF-004E` and PNG one-combination work; it now defers to
+  this checkpoint's JPEG codec-strategy target.
+- This file: audit section added, template test-state numbers refreshed.
+
 ## 2026-06-20 Full Direct Pillow Difference Audit Refresh
 
 This recheck was requested explicitly to find a faster route by comparing
@@ -1362,12 +12447,12 @@ Verified Pillow inventory:
 | Open-capable format IDs | `45` | Core native open coverage is useful, but WebP/AVIF/JPEG2000/CUR/long-tail plugins are absent. |
 | Save-capable format IDs | `30` | PNG/JPEG/GIF have real option depth; many save plugins and TIFF tag/compression behavior remain open. |
 | Save-all format IDs | `7` | GIF animation is deep; bounded TIFF multipage save is now covered; APNG/WebP/MPO/PDF save-all are not current native surfaces. |
-| `PIL.Image.Image` non-private names | `59` | Hot method names mostly exist. `getexif()` is bounded to JPEG/PNG orientation lifecycle, TIFF Orientation=1 read metadata, and TIFF common ASCII IFD0 tag readback through `META-001L` plus TIFF `ImageDescription` tag `270` through `META-001M`; `getxmp()` is bounded to PNG/JPEG XMP open metadata in `META-002A`, explicit JPEG `xmp=` save round-trips through `META-002B`, explicit JPEG `qtables + xmp` saves through `META-002C`, explicit JPEG `keep_rgb + xmp` saves through `META-002D`, and explicit JPEG `qtables + keep_rgb + xmp` saves through `META-002E`; `frombuffer` now has bounded raw `L`, raw `L`/`RGBA` mapmode, public `RGBX` mapmode, direct `RGB` copy, direct `RGBA` stride/orientation coverage, readonly ImageDraw/Paste detach, readonly Resize/Thumbnail refresh, readonly raw byte-read refresh, readonly histogram refresh, readonly getbbox refresh, readonly getprojection refresh, readonly getcolors refresh, readonly entropy refresh, readonly getextrema refresh, readonly convert-source refresh, readonly getpixel refresh, readonly crop refresh, readonly full-image copy refresh, readonly getchannel/split band extraction refresh, readonly merge-bands refresh, readonly ImageFilter refresh behavior, readonly point/LUT refresh behavior, readonly ImageOps LUT and histogram-transform refresh behavior, readonly ImageChops unary/binary refresh behavior, readonly offset refresh behavior, readonly blend/composite refresh behavior, readonly transpose refresh behavior, and readonly PNG save refresh behavior; `I` and `F` `getextrema()`, `histogram()`, and `convert("L")` numeric semantics are covered; low-level `im/getim` and broader mode breadth remain material. |
+| `PIL.Image.Image` non-private names | `59` | Hot method names mostly exist. `getexif()` is bounded to JPEG/PNG orientation lifecycle, TIFF Orientation=1 read metadata, and TIFF common ASCII IFD0 tag readback through `META-001L` plus TIFF `ImageDescription` tag `270` through `META-001M`; `getxmp()` is bounded to PNG/JPEG XMP open metadata in `META-002A`, explicit JPEG `xmp=` save round-trips through `META-002B`, explicit JPEG `qtables + xmp` saves through `META-002C`, explicit JPEG `keep_rgb + xmp` saves through `META-002D`, explicit JPEG `qtables + keep_rgb + xmp` saves through `META-002E`, repeated RDF parsing through `META-002F`, and bounded TIFF XMP open metadata through `META-002M` through `META-002P`; `frombuffer` now has bounded raw `L`, raw `L`/`RGBA` mapmode, public `RGBX` mapmode, direct `RGB` copy, direct `RGBA` stride/orientation coverage, readonly ImageDraw/Paste detach, readonly Resize/Thumbnail refresh, readonly raw byte-read refresh, readonly histogram refresh, readonly getbbox refresh, readonly getprojection refresh, readonly getcolors refresh, readonly entropy refresh, readonly getextrema refresh, readonly convert-source refresh, readonly getpixel refresh, readonly crop refresh, readonly full-image copy refresh, readonly getchannel/split band extraction refresh, readonly merge-bands refresh, readonly ImageFilter refresh behavior, readonly point/LUT refresh behavior, readonly ImageOps LUT and histogram-transform refresh behavior, readonly ImageChops unary/binary refresh behavior, readonly offset refresh behavior, readonly blend/composite refresh behavior, readonly transpose refresh behavior, and readonly PNG save refresh behavior; `I` and `F` `getextrema()`, `histogram()`, and `convert("L")` numeric semantics are covered; low-level `im/getim` and broader mode breadth remain material. |
 | `PIL.Image.Image` names with direct facade analogue | strict `54` / `59`; about `55` / `59` if AHK `Format` is counted for Python `format` | `format_description` is exposed through `FormatDescription` / `format_description`, `has_transparency_data` is exposed through `HasTransparencyData` / `has_transparency_data`, `get_child_images()` is exposed through `GetChildImages()` / `get_child_images()`, `getxmp()` is exposed through `GetXmp()` / `getxmp()` for bounded PNG/JPEG packets, and `getbands()` shares the existing `GetBands()` route including numeric `I`/`F` names. The remaining names are mostly Python object-model or external-integration surfaces: `getim`, `im`, `show`, `toqimage`, and `toqpixmap`. `Format` exists as an AHK-style property but is not full Python object-model parity. |
 | Common module name coverage | `ImageOps` and `ImageChops` high by name; `ImageCms` and `ImagePalette` absent | The route should not chase name counts. The important missing modules are font/RAQM, ImageCms, palette factories, and dependency constructors. |
-| Current native exports | `379` source declarations / `379` DLL exports | Native surface is broad for the AHK-first path, but export count is not a Pillow parity score. |
-| Current AHK tests | `1326` total: `664` facade / `662` raw DLL | Latest `META-001M` TIFF tag `270` raw/facade `getexif()` checks passed; latest full AHK directory invocation passed `1326/1326` in `7578ms` with known non-failing libjpeg stderr warnings. |
-| Current implementation size | `43124` native lines / `9793` facade lines / `71405` AHK test lines | Work volume is high; the limiting factor remains selecting slices that collapse multiple gaps and keeping the full test gate inside the 120-second runtime budget. |
+| Current native exports | `388` source declarations / `388` DLL exports | Native surface is broad for the AHK-first path, but export count is not a Pillow parity score. |
+| Current AHK tests | `1658` total: `830` facade / `828` raw DLL | Latest `MODE-COLOR-001AO` exact raw/facade coverage passed `1/1` each; latest full AHK directory invocation passed `1658/1658` in `11157ms` with known non-failing libjpeg stderr warnings. |
+| Current implementation size | `46374` native lines / `10073` facade lines / `92950` AHK test lines | Work volume is high; the limiting factor remains selecting slices that collapse multiple gaps and keeping the full test gate inside the 240-second runtime budget. |
 
 Route conclusions:
 
@@ -4955,9 +16040,14 @@ chasing full plugin parity.
 
 Next execution target:
 
-1. Move to JPEG codec strategy work instead of continuing PNG one-combination
+1. Preserve the completed `ARCH-MOD-001` module boundaries and the now-covered
+   `FMT-TIFF-001AY` / `FMT-TIFF-001AZ` tests as the `2615/2615` regression
+   baseline. The architecture packet is complete and does not count as Pillow
+   compatibility coverage.
+2. Continue JPEG codec strategy work under `FMT-JPEG-002B2` instead of
+   continuing PNG one-combination
    tails or speculative GIF disposal/background matrices.
-2. Continue `FMT-JPEG-002B2` after `FMT-JPEG-002B2N`: bounded mode `L`
+3. Continue `FMT-JPEG-002B2` after `FMT-JPEG-002B2N`: bounded mode `L`
    `optimize=True`, RGB `optimize=True` with default/0/1/2 subsampling, mode
    `L` `progressive=True`, and RGB `progressive=True` with default/0/1/2
    subsampling now have real native JPEG encoder coverage, RGB metadata plus
@@ -4969,15 +16059,15 @@ Next execution target:
    default-Huffman, optimized, progressive, and metadata output; metadata plus
    `keep_rgb=True` is covered for baseline, optimized, and progressive RGB
    component output.
-3. Defer CMYK metadata-plus-advanced tails, CMYK qtables plus advanced
+4. Defer CMYK metadata-plus-advanced tails, CMYK qtables plus advanced
    options, and broader real YCCK fixtures until the next JPEG codec-strategy
    decision. `FMT-JPEG-003D`, `FMT-JPEG-002B2O`, `FMT-JPEG-003E`, and
    `FMT-JPEG-003G` now cover bounded baseline CMYK save, CMYK qtables, CMYK
    optimize, and CMYK progressive without relying on WIC's incompatible CMYK
    encoder; `FMT-JPEG-003K` covers bounded baseline CMYK DPI/JFIF.
-4. Add focused benchmarks only after the corresponding correctness slice is
+5. Add focused benchmarks only after the corresponding correctness slice is
    stable; performance claims must be backed by repeatable numbers.
-5. Keep each slice native-first: AHK normalizes arguments and lifetimes, while
+6. Keep each slice native-first: AHK normalizes arguments and lifetimes, while
    image allocation, bytes, transforms, codecs, and hot loops stay in the DLL.
 
 ## Current Recommended Gap
@@ -5761,8 +16851,103 @@ Current highest-value remaining areas:
    serialization/parsing, explicit JPEG/PNG save, and reopened `getexif()`
    readback, `META-001L` covers reopened TIFF IFD0 common ASCII tags `271`,
    `272`, `305`, and `306` plus Orientation `274` only when stored as identity
-   orientation `1`, and `META-001M` adds reopened TIFF `ImageDescription` tag
-   `270` readback. Continue only beyond those covered children.
+   orientation `1`, `META-001M` adds reopened TIFF `ImageDescription` tag
+   `270` readback, `META-001N` adds reopened TIFF DPI resolution tags
+   `282`, `283`, and `296` to `GetExif()`, `META-001O` adds reopened TIFF
+   extended common ASCII tags `315`, `316`, and `33432` to `GetExif()`,
+   `META-001P` adds reopened TIFF document/page ASCII tags `269` and `285` to
+   `GetExif()`, `META-001Q` adds reopened TIFF scalar integer tag `531` to
+   `GetExif()`, `META-001R` adds reopened TIFF core scalar integer tags
+   `256` and `257` to `GetExif()`, `META-001S` adds reopened TIFF layout
+   scalar integer tags `258`, `259`, `262`, `273`, `278`, `279`, and `284`,
+   `META-001T` adds reopened TIFF RGB layout array tag `258` plus scalar
+   `SamplesPerPixel` tag `277`, `META-001U` adds reopened TIFF RGBA layout
+   array tag `258` plus scalar `SamplesPerPixel` and `ExtraSamples` tags `277`
+   and `338`, `META-001V` adds reopened TIFF LA layout array tag `258` plus
+   scalar `SamplesPerPixel` and `ExtraSamples` tags `277` and `338`, and
+   `META-001W` adds reopened TIFF `YCbCrSubSampling` SHORT-array tag `530`,
+   `META-001X` adds reopened numeric TIFF `SampleFormat` tag `339`,
+   `META-001Y` adds reopened TIFF `XPosition`/`YPosition` rational tags
+   `286`/`287`, `META-001Z` adds reopened TIFF `NewSubfileType` scalar
+   tag `254`, `META-001AA` adds reopened TIFF `FillOrder` scalar tag
+   `266`, `META-001AB` adds reopened TIFF `Thresholding` scalar tag
+   `263`, `META-001AC` adds reopened TIFF `CellWidth`/`CellLength`
+   scalar tags `264`/`265`, `META-001AD` adds reopened TIFF `SubfileType`
+   scalar tag `255`, `META-001AE` adds reopened TIFF
+   `MinSampleValue`/`MaxSampleValue` scalar tags `280`/`281`,
+   `META-001AF` adds reopened TIFF `PageNumber` SHORT-array tag `297`,
+   `META-001AG` adds reopened TIFF `Predictor` scalar tag `317`,
+   `META-001AH` adds reopened TIFF `TargetPrinter` ASCII tag `337`,
+   `META-001AI` adds reopened TIFF `HalftoneHints` SHORT-array tag `321`,
+   `META-001AJ` adds reopened TIFF `InkSet` scalar tag `332`,
+   `META-001AK` adds reopened TIFF `NumberOfInks` scalar tag `334`,
+   `META-001AL` adds reopened TIFF `DotRange` SHORT-array tag `336`,
+   `META-001AM` adds reopened TIFF `GrayResponseUnit` scalar tag `290`,
+   `META-001AN` adds reopened TIFF `InkNames` ASCII tag `333`,
+   `META-001AO` adds reopened TIFF `TransferFunction` SHORT-array tag `301`,
+   `META-001AP` adds reopened TIFF `GrayResponseCurve` SHORT-array tag `291`,
+   `META-001AQ` adds reopened TIFF `WhitePoint` RATIONAL-array tag `318`,
+   `META-001AR` adds reopened TIFF `PrimaryChromaticities` RATIONAL-array tag
+   `319`, `META-001AS` adds reopened TIFF palette `ColorMap` SHORT-array
+   tag `320`, `META-001AT` adds reopened TIFF `YCbCrCoefficients`
+   RATIONAL-array tag `529`, `META-001AU` adds reopened TIFF
+   `ReferenceBlackWhite` RATIONAL-array tag `532`, `META-001AV` adds
+   reopened TIFF `TransferRange` SHORT-array tag `342`, `META-001AW` adds
+   reopened TIFF `SMinSampleValue` / `SMaxSampleValue` scalar tags
+   `340`/`341`, `META-001AX` adds reopened TIFF fax scalar tags
+   `326`/`327`/`328`, `META-001AY` adds reopened TIFF fax option scalar
+   tags `292`/`293`, `META-001AZ` adds reopened TIFF free block scalar
+   tags `288`/`289`, `META-001BA` adds reopened TIFF tile shape scalar
+   tags `322`/`323`, `META-001BB` adds reopened TIFF tile byte range scalar
+   tags `324`/`325`, `META-001BC` adds reopened TIFF JPEGTables UNDEFINED
+   tag `347`, `META-001BD` adds reopened TIFF JPEGTables BYTE tag `347`,
+   `META-001BE` adds reopened TIFF ExifVersion UNDEFINED tag `36864`,
+   `META-001BF` adds reopened TIFF DateTimeOriginal ASCII tag `36867`,
+   `META-001BG` adds reopened TIFF DateTimeDigitized ASCII tag `36868`,
+   `META-001BH` adds reopened TIFF SubSecTime ASCII tag `37520`,
+   `META-001BI` adds reopened TIFF SubSecTimeOriginal ASCII tag `37521`,
+   `META-001BJ` adds reopened TIFF SubSecTimeDigitized ASCII tag `37522`,
+    `META-001BK` adds reopened TIFF OffsetTime ASCII tag `36880`,
+    `META-001BL` adds reopened TIFF OffsetTimeOriginal ASCII tag `36881`,
+    `META-001BM` adds reopened TIFF OffsetTimeDigitized ASCII tag `36882`,
+    `META-001BN` adds reopened TIFF ExifIFD pointer tag `34665`,
+    `META-001BO` adds reopened TIFF GPSInfo pointer tag `34853`,
+    `META-001BP` adds reopened TIFF `ImageUniqueID` ASCII tag `42016`,
+    `META-001BQ` adds reopened TIFF `XPComment` BYTE-array tag `40092`,
+    `META-001BR` adds reopened TIFF `XPAuthor` BYTE-array tag `40093`,
+    `META-001BS` adds reopened TIFF `XPKeywords` BYTE-array tag `40094`,
+    `META-001BT` adds reopened TIFF `XPSubject` BYTE-array tag `40095`,
+    `META-001BU` adds reopened TIFF `FlashPixVersion` UNDEFINED tag `40960`,
+    `META-001BV` adds reopened TIFF `ColorSpace` scalar tag `40961`,
+    `META-001BW` adds reopened TIFF `PixelXDimension` scalar tag `40962`,
+    `META-001BX` adds reopened TIFF `PixelYDimension` scalar tag `40963`,
+    `META-001BY` adds reopened TIFF `RelatedSoundFile` ASCII tag `40964`,
+    `META-001BZ` adds reopened TIFF `FlashEnergy` RATIONAL tag `41483`,
+    `META-001CB` adds reopened TIFF `FocalPlaneResolutionUnit` scalar tag
+    `41488`, `META-001CC` adds reopened TIFF `SensingMethod` scalar tag
+    `41495`, `META-001CD` adds reopened TIFF `FileSource` UNDEFINED tag
+    `41728`, `META-001CE` adds reopened TIFF `SceneType` UNDEFINED tag
+    `41729`, `META-001CF` adds reopened TIFF `CustomRendered` scalar tag
+    `41985`, `META-001CG` adds reopened TIFF `ExposureMode` scalar tag
+    `41986`, `META-001CH` adds reopened TIFF `WhiteBalance` scalar tag
+    `41987`, `META-001CI` adds reopened TIFF `DigitalZoomRatio` RATIONAL tag
+    `41988`, `META-001CJ` adds reopened TIFF `FocalLengthIn35mmFilm`
+    scalar tag `41989`, `META-001CK` adds reopened TIFF
+    `SceneCaptureType` scalar tag `41990`, `META-001CL` adds reopened
+    TIFF `GainControl` scalar tag `41991`, `META-001CM` adds reopened
+    TIFF `Contrast` scalar tag `41992`, `META-001CN` adds reopened TIFF
+    `Saturation` scalar tag `41993`, `META-001CO` adds reopened TIFF
+    `Sharpness` scalar tag `41994`, `META-001CP` adds reopened TIFF
+    `SubjectDistanceRange` scalar tag `41996`, `META-001CQ` adds reopened
+    TIFF `CameraOwnerName` ASCII tag `42032`, `META-001CR` adds reopened
+    TIFF `BodySerialNumber` ASCII tag `42033`, `META-001CS` adds reopened
+    TIFF `LensSpecification` RATIONAL-array tag `42034`, `META-001CT` adds
+    reopened TIFF `LensMake` / `LensModel` / `LensSerialNumber` ASCII tags
+    `42035`/`42036`/`42037`, `META-001CU` adds reopened TIFF `Gamma`
+    RATIONAL tag `42240`, and `META-001CV` adds reopened TIFF
+    `CompositeImage` / `CompositeImageCount` /
+    `CompositeImageExposureTimes` tags `42080`/`42081`/`42082`. Continue only
+    beyond those covered children.
 2. `MODE-I-001` / `MODE-F-001` remaining children: `getextrema()`,
    `histogram()`, `I`/`F -> L` conversion, bounded mode `I`
    `ImageFilter.Kernel`, mode `F` Kernel wrong-mode rejection, bounded
@@ -5784,10 +16969,78 @@ Current highest-value remaining areas:
    non-logical `ImageChops` binary operation wrong-mode rejection for matching
    `I` and `F` inputs, and `MODE-NUM-001I` covers `Image.blend` /
    `ImageChops.Blend` wrong-mode rejection for matching `I` and `F` inputs.
-   Continue only one operation family at a time, such as broader arithmetic,
-   broader statistics, or newly proven filter semantics, after a local oracle
-   proves the exact numeric behavior.
-3. `FMT-TIFF-002` to `FMT-TIFF-003`: TIFF tag/compression behavior and broader
+   `MODE-NUM-001P` covers bounded nonempty numeric `ImageStat.Stat(...)`, and
+   `MODE-NUM-001Q` covers matching mode `I` and `F` logical ImageChops
+   rejection with exact `image has wrong mode` facade parity.
+   `MODE-NUM-001R` covers bounded numeric `ImageChops.Invert` bitwise sample
+   semantics. `MODE-NUM-001S` covers numeric `ImageChops.Offset` whole-sample
+   wrap behavior. `MODE-NUM-001T` covers numeric-source
+   `ImageChops.Constant` mode-L allocation/fill semantics. `MODE-NUM-001U`
+   covers numeric `ImageChops.Duplicate` exact-copy semantics.
+   `MODE-NUM-001V` covers bounded numeric `Image.Composite` /
+   `ImageChops.Composite` mask semantics. `MODE-NUM-001W` covers bounded
+   numeric in-place `Image.Paste` masked semantics. `MODE-NUM-001X` covers
+   numeric scalar-color `Image.Paste` packing semantics. `MODE-NUM-001Y`
+   covers one-element numeric color-sequence Paste semantics, and
+   `MODE-NUM-001Z` covers multi-element numeric color-sequence rejection,
+   `MODE-NUM-001AA` covers `ImageDraw.Point`, `MODE-NUM-001AB` covers
+   `ImageDraw.Line`, `MODE-NUM-001AC` covers Rectangle fill, and
+   `MODE-NUM-001AD` covers Rectangle outline. `MODE-NUM-001AE` covers
+   `ImageDraw.Ellipse` fill, and `MODE-NUM-001AF` covers Ellipse outline.
+   `MODE-NUM-001AG` covers `ImageDraw.Arc` fill, and `MODE-NUM-001AH` covers
+   `ImageDraw.Chord` fill. `MODE-NUM-001AI` covers Chord outline, and
+   `MODE-NUM-001AJ` covers `ImageDraw.Pieslice` fill. `MODE-NUM-001AK`
+   covers Pieslice outline. `MODE-NUM-001AL` covers
+   `ImageDraw.RoundedRectangle` fill, and `MODE-NUM-001AM` covers its outline
+   branch. `MODE-NUM-001AN` covers `ImageDraw.Bitmap` fill with a valid mode
+   `1` mask. `MODE-NUM-001AO` covers `ImageDraw.Floodfill` value with border
+   unset, and `MODE-NUM-001AP` covers Floodfill incomparable multi-element
+   border behavior with a valid scalar value, and `MODE-NUM-001AQ` covers the
+   corresponding one-element border-sequence boundary. `MODE-NUM-001AR`
+   covers numeric scalar-border packing and traversal. `MODE-NUM-001AS` covers
+   empty border-sequence incomparability, `MODE-NUM-001AT` covers one-element
+   value-sequence packing, `MODE-NUM-001AU` covers empty value-sequence no-op
+   semantics at threshold zero, `MODE-NUM-001AV` covers one positive-threshold
+   extension, `MODE-NUM-001AW` covers scalar-border precedence,
+   `MODE-NUM-001AX` covers one nonempty multi-element Array-border composition,
+   `MODE-NUM-001AY` covers the corresponding one-element Array-border
+   precedence, `MODE-NUM-001AZ` covers empty Array-border composition, and
+   `MODE-NUM-001BA` covers one invalid string-border precedence case,
+   `MODE-NUM-001BB` covers one invalid string-threshold precedence case, and
+   `MODE-NUM-001BC` covers border-unset negative-threshold seed-only semantics,
+   and `MODE-NUM-001BD` covers scalar-border composition. `MODE-NUM-001BE`
+   covers one nonempty multi-element Array-border composition,
+   `MODE-NUM-001BF` covers the corresponding one-element Array-border branch,
+   and `MODE-NUM-001BG` covers the empty Array-border branch.
+   `MODE-NUM-001BH` covers border-unset positive-infinity threshold no-op
+   semantics, `MODE-NUM-001BI` covers negative-infinity seed-only semantics,
+   `MODE-NUM-001BJ` covers border-unset NaN threshold seed-only semantics,
+   `MODE-NUM-001BK` covers scalar-border plus NaN threshold precedence,
+   `MODE-NUM-001BL` covers nonempty multi-element Array-border plus NaN
+   traversal, `MODE-NUM-001BM` covers one-element Array-border plus NaN
+   traversal, and `MODE-NUM-001BN` covers empty Array-border plus NaN traversal.
+   `MODE-NUM-001BO` covers scalar-border plus positive-infinity no-op
+   precedence, and `MODE-NUM-001BP` covers the multi-element Array-border
+   counterpart, and `MODE-NUM-001BQ` covers one-element Array-border
+   precedence, and `MODE-NUM-001BR` covers the empty Array-border counterpart,
+   completing that shape matrix. `MODE-NUM-001BS` covers scalar-border plus
+   negative-infinity seed-only precedence, `MODE-NUM-001BT` covers the multi-
+   element Array-border traversal counterpart, `MODE-NUM-001BU` covers the
+   one-element branch, and `MODE-NUM-001BV` completes the matrix with empty
+   Arrays. `MODE-NUM-001BW` covers nonmatching scalar-border plus negative-
+   infinity fill-all traversal, `MODE-NUM-001BX` covers the quiet-NaN
+   counterpart, and `MODE-NUM-001BY` covers positive-infinity no-op precedence
+   with the same nonmatching scalar border. `MODE-NUM-001BZ` covers the finite
+   negative-threshold fill-all counterpart, `MODE-NUM-001CA` covers zero-
+   threshold traversal, and `MODE-NUM-001CB` covers finite positive-below-
+   distance traversal. `MODE-NUM-001CC` covers threshold-equals-initial-
+   distance no-op precedence, and `MODE-NUM-001CD` covers above-initial-
+   distance no-op precedence. `MODE-NUM-001CE` covers border-unset neighbor-
+   distance equality traversal, `MODE-NUM-001CF` covers the below-neighbor-
+   distance seed-only counterpart, and `MODE-NUM-001CG` covers the above-
+   neighbor-distance fill-all branch, completing this bounded finite-neighbor
+   matrix. Continue only through a new explicit gap ID.
+3. `FMT-TIFF-002` to `FMT-TIFF-005`: TIFF tag/compression behavior and broader
    mode coverage after the now-covered `FMT-TIFF-001A` bounded multipage
    `save_all` child. `FMT-TIFF-002A` covers Orientation=3 open-side
    180-degree pixel reorientation, and `FMT-TIFF-002B` covers Orientation=6/8
@@ -5808,8 +17061,11 @@ Current highest-value remaining areas:
    compression. `FMT-TIFF-003H` covers bounded little-endian `I;16`
    save/open, and `FMT-TIFF-003I` covers bounded little-endian `I;16`
    PackBits/LZW/Adobe Deflate save/open. `FMT-TIFF-003J` covers bounded
-   big-endian `I;16B` save/open, and `FMT-TIFF-003K` covers compressed
-   public `I;16B` normalization to little-endian TIFF `I;16`. Do not merge
+   big-endian `I;16B` save/open, `FMT-TIFF-003K` covers compressed
+   public `I;16B` normalization to little-endian TIFF `I;16`, and
+   `FMT-TIFF-004` covers Pillow/libtiff early-change TIFF LZW open/save
+   interop for bounded `I;16` fixtures, and `FMT-TIFF-005` covers the
+   malformed ColorMap parser guard for palette TIFF opens. Do not merge
    compression, tag, and mode work into one broad TIFF patch.
 4. `BYTES-001`: direct `L`, `RGB`, `RGBA`, and `RGBX` raw/frombuffer coverage
    is now useful for the AHK-first path. Continue only for a concrete
@@ -5825,10 +17081,110 @@ Current highest-value remaining areas:
    public/standard chunk rules, APNG as a separate gap, and EXIF/ICC object
    interop through
    `META-001`/`META-002`.
-7. JPEG after `FMT-JPEG-003C`: continue only for a newly proven keep/metadata,
-   marker-preservation, or codec-strategy boundary beyond the covered rule that
-   opened COM/comment is implicit while opened ICC/EXIF require explicit
-   options.
+7. JPEG after `FMT-JPEG-003C` and `API-JPEG-001`: continue only for a newly
+   proven keep/metadata, marker-preservation, or codec-strategy boundary
+   beyond the covered rules that opened COM/comment is implicit for keep-style
+   saves, opened ICC/EXIF require explicit options, and bounded opened CMYK
+   `subsampling="keep"` preserves omitted COM/comment while carrying explicit
+   ICC through the DLL. `FMT-JPEG-003AN` additionally covers opened real-YCCK
+   `quality="keep", subsampling="keep"` normalization through the existing
+   native qtables route. `FMT-JPEG-003AO` composes opened RGB quality/
+   subsampling keep with row restart markers, preserved DQT/SOF/COM, and
+   explicit ICC/EXIF. `FMT-JPEG-003AP` composes opened RGB qtables keep with
+   explicit subsampling keep and row restart markers. `FMT-JPEG-003AQ` covers
+   the distinct omitted-subsampling rule: plain and row-restart saves use
+   default 4:2:0 while preserving source DQT/COM and explicit ICC/EXIF.
+   `FMT-JPEG-003AR` adds optimized/progressive qtables-keep row restarts across
+   both source-keep and default sampling. `FMT-JPEG-002B2BV` closes exact
+   source-4:2:2 per-scan DHT/SOS/entropy parity; default 4:2:0 remains
+   separate. `FMT-JPEG-002B2S` and `FMT-JPEG-002B2T` cover
+   baseline L/RGB `restart_marker_blocks`, `FMT-JPEG-002B2U` covers baseline
+    L/RGB `restart_marker_rows=1`, `FMT-JPEG-002B2V` composes explicit
+    comment/ICC/EXIF/XMP with baseline blocks or rows, and
+    `FMT-JPEG-002B2W` composes optimized Huffman output with L blocks or RGB
+    rows plus optional explicit metadata, `FMT-JPEG-002B2X` composes native
+    progressive L blocks or RGB rows with optional explicit metadata and
+    scan-local DRI changes, `FMT-JPEG-002B2Y` composes custom qtables plus
+    RGB custom subsampling with baseline/optimized/progressive restart output,
+    `FMT-JPEG-002B2Z` composes RGB keep-rgb with baseline/optimized/
+    progressive restart output plus optional metadata and custom qtables, and
+    `FMT-JPEG-002B2AA` covers default-1x1 baseline CMYK block/row restarts, and
+    `FMT-JPEG-002B2AB` adds optimized Huffman output plus optional metadata,
+    `FMT-JPEG-002B2AC` adds progressive block/row restarts plus optional
+    metadata, and `FMT-JPEG-002B2AD` adds custom-qtables baseline/optimized/
+    progressive restart composition. `FMT-JPEG-002B2AK` covers opened-CMYK
+    keep/preset sentinels, and `FMT-JPEG-002B2AL` covers real-YCCK precedence
+    plus its non-MCU-aligned 4:2:0 C-only scan geometry, and
+    `FMT-JPEG-002B2AM` covers the analogous RGB progressive Y-only scan edge,
+    `FMT-JPEG-002B2AN` covers a bounded real-YCCK baseline restart pair with
+    explicit comment/ICC/EXIF, and `FMT-JPEG-002B2AO` adds explicit XMP
+    composition, and `FMT-JPEG-002B2AP` adds DPI/JFIF plus all covered
+    metadata, `FMT-JPEG-002B2AQ` adds qtables keep/preset plus shared FDCT
+    half-tie parity, and `FMT-JPEG-002B2AR` covers simultaneous quality-over-
+    qtables/subsampling precedence, including shadowed validation, on the
+    complete baseline surface. `FMT-JPEG-002B2AS` covers one bounded real-YCCK
+    quality-keep optimized row-restart exact DHT/entropy case using shared
+    integer ISLOW and libjpeg optimized-Huffman generation.
+    `FMT-JPEG-002B2AT` covers the existing `48x32` RGB keep-rgb,
+    custom-qtables, optimized-progressive rows-1 fixture through exact DHT and
+    all-scan entropy parity using cross-block EOBRUN/correction-bit state.
+    `FMT-JPEG-002B2AU` covers AL's one real-YCCK quality-keep progressive
+    rows-1 exact DHT/entropy case, `FMT-JPEG-002B2AV` covers its web-low
+    progressive counterpart using libjpeg-compatible h2v2 rounding, and
+    `FMT-JPEG-002B2AW` proves the web-low optimized baseline rows-1 counterpart
+    was already exact, and `FMT-JPEG-002B2AX` proves the same optimized baseline
+    at rows-2, `FMT-JPEG-002B2AY` proves AV's web-low progressive case at
+    rows-2, `FMT-JPEG-002B2AZ` proves AU's quality-keep progressive case at
+    rows-2, and `FMT-JPEG-002B2BA` proves AS's quality-keep optimized baseline
+    case at rows-2, `FMT-JPEG-002B2BB` proves its complete marker-stream/
+    whole-file parity, `FMT-JPEG-002B2BC` proves exact explicit comment/ICC/
+    EXIF composition on that quality-keep optimized rows-2 route, and
+    `FMT-JPEG-002B2BD` adds exact XMP composition, and
+    `FMT-JPEG-002B2BE` adds exact DPI/JFIF composition, and
+    `FMT-JPEG-002B2BF` proves AX's web-low optimized rows-2 complete marker-
+    stream/whole-file parity, and `FMT-JPEG-002B2BG` adds exact explicit
+    comment/ICC/EXIF composition, `FMT-JPEG-002B2BH` adds exact explicit XMP
+    composition, `FMT-JPEG-002B2BI` adds exact DPI/JFIF composition, and
+    `FMT-JPEG-002B2BJ` proves AY's progressive rows-2 complete marker stream
+    and whole file, `FMT-JPEG-002B2BK` adds explicit comment/ICC/EXIF
+    composition, `FMT-JPEG-002B2BL` adds exact explicit XMP composition, and
+    `FMT-JPEG-002B2BM` adds exact DPI/JFIF composition, and
+    `FMT-JPEG-002B2BN` proves AZ's quality-keep progressive rows-2 complete
+    file, and `FMT-JPEG-002B2BO` adds exact explicit comment/ICC/EXIF
+    composition, `FMT-JPEG-002B2BP` adds exact XMP composition, and
+    `FMT-JPEG-002B2BQ` adds bounded DPI/JFIF composition,
+    `FMT-JPEG-002B2BR` and `FMT-JPEG-002B2BS` close source-4:2:2 and default-
+    4:2:0 optimized rows-1 exact DHT/entropy parity, and
+    `FMT-JPEG-002B2BT` / `FMT-JPEG-002B2BU` close their corresponding complete
+    files, `FMT-JPEG-002B2BV` closes the source-4:2:2 optimized-progressive
+    rows-1 exact per-scan DHT/SOS/entropy tail, and `FMT-JPEG-002B2BW` closes
+    its complete file, and `FMT-JPEG-002B2BX` closes the default-4:2:0
+    optimized-progressive rows-1 exact per-scan DHT/SOS/entropy tail, and
+    `FMT-JPEG-002B2BY` closes BX's complete marker-stream/whole-file parity.
+    `FMT-JPEG-002B2BZ` closes source-4:2:2 optimized-progressive rows-2 exact
+    per-scan DHT/SOS/entropy parity, and `FMT-JPEG-002B2CA` closes its complete
+    marker-stream/whole-file parity. `FMT-JPEG-002B2CB` is selected for the
+    default-4:2:0 rows-2 exact per-scan DHT/SOS/entropy counterpart.
+    `FMT-JPEG-002B2CC` closes CB's complete marker-stream/whole-file parity.
+    `FMT-JPEG-002B2CD` closes source-4:2:2 optimized-progressive rows-3 exact
+    per-scan DHT/SOS/entropy parity, and `FMT-JPEG-002B2CE` closes its complete
+    marker-stream/whole-file parity. `FMT-JPEG-002B2CF` closes the default-
+    4:2:0 rows-3 exact per-scan counterpart, and `FMT-JPEG-002B2CG` closes its
+    complete marker-stream/whole-file parity. `FMT-JPEG-002B2CH` closes source-
+    4:2:2 rows-4 exact per-scan whole-interval/no-terminal-RST parity, and
+    `FMT-JPEG-002B2CI` closes its complete marker-stream/whole-file parity.
+    `FMT-JPEG-002B2CJ` closes the default-4:2:0 rows-4 exact per-scan
+    counterpart, and `FMT-JPEG-002B2CK` closes its complete marker-stream/
+    whole-file parity. `FMT-JPEG-002B2CL` closes source-4:2:2 rows-5 over-scan/
+    no-RST parity, and `FMT-JPEG-002B2CM` closes its complete file.
+    `FMT-JPEG-002B2CN` closes default-4:2:0 rows-5 parity, and
+    `FMT-JPEG-002B2CO` closes its complete file. `FMT-JPEG-002B2CP` closes
+    source-4:2:2 rows-6 over-scan/no-RST parity, and `FMT-JPEG-002B2CQ` closes
+    its complete file. `FMT-JPEG-002B2CR` closes default-4:2:0 rows-6
+    over-scan/no-RST parity, and `FMT-JPEG-002B2CS` closes its complete file.
+    Other intervals/
+    fixtures, explicit YCCK encoding, and broader
+    matrices remain separate.
 8. New save-all format families such as APNG/WebP/MPO/PDF only after an
    explicit dependency and scope decision.
 9. `QUANT-001`: broader quantize/public algorithm parity beyond bounded GIF
@@ -5841,8 +17197,35 @@ Current highest-value remaining areas:
     `META-002C` covers bounded explicit JPEG `qtables + xmp` save routing,
     `META-002D` covers bounded explicit JPEG no-qtables `keep_rgb + xmp`
     save routing, `META-002E` covers bounded explicit JPEG
-    `qtables + keep_rgb + xmp` save routing, and `META-002F` covers repeated
-    RDF sequence list materialization for bounded XMP `getxmp()` packets.
+    `qtables + keep_rgb + xmp` save routing, `META-002F` covers repeated
+    RDF sequence list materialization for bounded XMP `getxmp()` packets,
+    `META-002G` covers bounded TIFF ICC profile open metadata plus EXIF tag
+    `34675` readback, `META-002H` extends that open-side ICC readback to
+    bounded `I;16`, `I`, and `F` TIFFs, and `META-002I` extends the same
+    open-side ICC readback to selected RGB TIFF frames after `seek(1)`;
+    `META-002J` extends it to selected `I;16` TIFF frames, `META-002K`
+    extends it to selected numeric `I`/`F` TIFF frames, `META-002L`
+    extends it to IFD0 `ICCProfile` tag `34675` stored as TIFF BYTE type `1`,
+    `META-002M` adds bounded TIFF IFD0 XMP tag `700` open metadata, and
+    `META-002N` extends the same IFD0 XMP route to native `I;16`, `I`, and
+    `F` TIFF early-open handles, and `META-002O` extends selected-IFD XMP
+    readback to nonzero native `I;16`, `I`, and `F` TIFF frames; `META-002P`
+    accepts bounded IFD0 XMP tag `700` stored as TIFF UNDEFINED type `7`,
+    `META-002Q` covers multiple JPEG XMP APP1 last-wins precedence, and
+    `META-002R` covers out-of-order conflicting-count JPEG ICC fragment
+    collation, `META-002S` covers first-SOF ICC finalization that excludes
+    late APP2 metadata, `META-002T` rejects recognized short pre-SOF ICC APP2
+    payloads instead of silently ignoring them, and `META-002U` preserves
+    legal empty JPEG ICC profile presence across the native ABI, and
+    `META-002V` covers permissive duplicate-sequence pre-SOF ICC collation,
+    and `META-002W` covers explicit empty JPEG ICC save omission.
+    `META-002X` and `META-002Y` cover zero-length-first/final ICC fragment
+    mixtures, `META-002Z` covers the middle-zero three-fragment counterpart,
+    `META-002AA` covers an omitted middle sequence as public `None`,
+    `META-002AB` covers an out-of-range zero sequence with matching count,
+    `META-002AC` batches high out-of-range singleton sequences,
+    `META-002AD` covers singleton count-zero/count-255 None state, and
+    `META-002AE` covers the corresponding homogeneous two-marker count matrix.
     Remaining `META-002`, `ImageCms`, FreeType/RAQM, array interop,
     benchmarks, and packaging work stays behind explicit bounded children and
     should not be mixed into the next hot-format correctness slice.
@@ -5857,16 +17240,46 @@ Current highest-value remaining areas:
 Use this exact shape before implementation work:
 
 ```text
-- Estimate: AHK-first high-performance Pillow-compatible runtime about 52-55%; full Pillow replacement 26-31%.
-- Latest covered gap: META-001M bounded TIFF ImageDescription tag 270 getexif readback.
-- Selected next gap: continue only a bounded GIF/JPEG/PNG/META/TIFF/BYTES/API/ICO/MODE behavior with a locally proven Pillow boundary; avoid broad re-audits and same-route option branches.
-- Known tests: current tree registers 1326 tests: 662 raw DLL / 664 facade.
-  Latest targeted `META-001M` raw TIFF tag `270` test passed `1/1` in
-  `140ms`; facade TIFF `getexif()` tag `270` test passed `1/1` in `31ms`;
-  raw/facade TIFF filters passed `27/27` and `26/26`; raw/facade EXIF filters
-  passed `35/35` and `37/37`; latest full AHK directory invocation passed
-  `1326/1326` in `7578ms` with known non-failing libjpeg stderr warnings.
-- Native rebuild: required only if src/pillow_c.cpp or project files change.
+- Estimate: AHK-first Pillow-runtime overall completion 62% (about ±4%).
+- Latest covered gap: `FMT-TIFF-003AF` II/MM BigTIFF raw/PackBits/LZW/
+  Deflate tiled byte, planar, numeric, CMYK, and two-frame matrix.
+- Selected next gap: bounded `FMT-TIFF-003AG` Pillow-valid little-endian
+  BigTIFF IFD0 `ICCProfile`/XMP metadata attachment on the tiled route.
+- Known tests: 2700 total: 1338 raw / 1362 facade; full `2700/2700` in
+  `19625ms`.
+- Raw/facade 003AF single-frame targets pass `2/2` and `2/2`; two-frame
+  targets pass `1/1` and `1/1`; TIFF filters pass `325/325` and `323/323`.
+- Native rebuild: required when any native source, internal header, or project
+  file changes; the current Release DLL is kept beside the source tree.
+- Native ABI: source/Release x64 DLL export counts are now `453` / `453`;
+  rebuilt DLL SHA-256 is
+  `AE3EC777D5CAD0DCB6B242BBFA8F9DFD38BDD8062D94908E1B8BB635F1191EF1`.
+
+2026-08-06: `ARCH-MOD-004` Draw/Font native modularization is GREEN. The
+complete draw/font implementation and exports moved into
+`src/pillow_c_draw.cpp`, including all raster hot loops and the default-font
+glyph table. Raw draw tests pass `35/35`, raw default-font tests `6/6`, facade
+ImageDraw tests `57/57`, facade ImageFont tests `4/4`, and the structural
+ownership test passes `1/1`. The current Release x64 build has `0 Warning(s),
+0 Error(s)`; source/DLL exports are `445/445` with zero difference; the full
+suite passes `2621/2621` in `27734ms`; and the rebuilt DLL SHA-256 is
+`5FE477FD9D8F45473010D908D87B6903D9A2C931807AD4578A7F818454D364AF`.
+This architecture packet does not change the `59% ±4%` compatibility estimate.
+
+2026-08-06: `ARCH-MOD-005` legacy codec native modularization is GREEN. The
+complete BMP/PPM/QOI/TGA/XBM/ICO implementation and all corresponding exports
+moved into `src/pillow_c_codec_legacy.cpp`; the main unit retains no duplicate
+legacy codec body. The structural ownership test passed `1/1`; targeted raw
+and facade filters passed BMP `8/8`, PPM `11/11`, QOI `5/5`, TGA `11/11`,
+XBM `9/9`, and ICO `24/24`. Release x64 built with `0 Warning(s), 0 Error(s)`;
+source/DLL exports remain `445/445` with zero difference; the full suite passes
+`2621/2621` in `27734ms`; and the rebuilt DLL SHA-256 is
+`5FE477FD9D8F45473010D908D87B6903D9A2C931807AD4578A7F818454D364AF`.
+This architecture packet does not change the `59% ±4%` compatibility estimate.
+- Audit note: the 2026-07-04 full audit is recorded in this file; native
+  robustness findings now have `FMT-TIFF-004`, `FMT-TIFF-005`, and
+  `ROBUST-001` / `ROBUST-002` covered. Do not re-run a broad audit to
+  rediscover them.
 ```
 
 If any line above is no longer true, update this file first, then update
