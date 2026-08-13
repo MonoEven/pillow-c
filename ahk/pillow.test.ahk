@@ -43541,7 +43541,7 @@ PillowTestImageSaveTiffExifOptionRoundTrip(*) {
             Map(),
             Map(37380, [3, 7]),
             Map(),
-            Map())
+            Map(318, [[1, 2], [3, 4]]))
         source.Save(path, "TIFF", Map("exif", exif))
         source.Close()
 
@@ -43564,6 +43564,32 @@ PillowTestImageSaveTiffExifOptionRoundTrip(*) {
         AhkTest.AssertEqual([150, 1], exif2[283])
         AhkTest.AssertTrue(exif2.Has(296))
         AhkTest.AssertEqual(2, exif2[296])
+        AhkTest.AssertTrue(exif2.Has(318))
+        AhkTest.AssertEqual([[1, 2], [3, 4]], exif2[318])
+        reopened.Close()
+
+        ; Scalar exif composes with compression like Pillow 11.3.0.
+        lzwPath := PillowTestTempTiffPath("save-tiff-exif-lzw")
+        source2 := Pillow.Image.New("L", [2, 2])
+        try {
+            Pillow.ImageDraw.Draw(source2).Point([[0, 0], [1, 0], [0, 1], [1, 1]], 9)
+            source2.Save(lzwPath, "TIFF", Map("exif", exif, "compression", "lzw"))
+            source2.Close()
+            reopened := Pillow.Image.Open(lzwPath, ["TIFF"])
+            exif3 := reopened.GetExif()
+            AhkTest.AssertEqual("L", reopened.Mode)
+            AhkTest.AssertEqual([9, 9, 9, 9], PillowTestBufferToArray(reopened.ToBytes()))
+            AhkTest.AssertTrue(reopened.Info.Has("dpi"))
+            PillowTestAssertFloatArrayClose([300.0, 150.0], reopened.Info["dpi"], 0.0001)
+            AhkTest.AssertTrue(exif3.Has(270))
+            AhkTest.AssertEqual("Description Text", exif3[270])
+            AhkTest.AssertTrue(exif3.Has(318))
+            AhkTest.AssertEqual([[1, 2], [3, 4]], exif3[318])
+        } finally {
+            if IsObject(reopened)
+                reopened.Close()
+            PillowTestDeleteFile(lzwPath)
+        }
     } finally {
         if IsObject(reopened)
             reopened.Close()

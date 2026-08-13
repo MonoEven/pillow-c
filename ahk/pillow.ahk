@@ -10558,14 +10558,12 @@ class Pillow {
             asciiCount := exif.AsciiTags.Count
             intCount := exif.IntTags.Count
             rationalCount := exif.RationalTags.Count
+            rationalArrayCount := exif.RationalArrayTags.Count
             shortArrayCount := exif.ShortArrayTags.Count
             byteArrayCount := exif.ByteArrayTags.Count
+            uintArrayCount := exif.UintArrayTags.Count
             signedRationalCount := exif.SignedRationalTags.Count
             undefinedCount := exif.UndefinedTags.Count
-            if exif.RationalArrayTags.Count
-                throw Error("Pillow.Image.Save TIFF exif rational-array serialization is not covered by this native route", -1)
-            if exif.UintArrayTags.Count
-                throw Error("Pillow.Image.Save TIFF exif LONG-array serialization is not covered by this native route", -1)
             tags := asciiCount ? Buffer(asciiCount * 4, 0) : 0
             valuePtrs := asciiCount ? Buffer(asciiCount * A_PtrSize, 0) : 0
             valueSizes := asciiCount ? Buffer(asciiCount * A_PtrSize, 0) : 0
@@ -10598,6 +10596,28 @@ class Pillow {
                 NumPut("UInt", value[1], rationalNumerators, (index - 1) * 4)
                 NumPut("UInt", value[2], rationalDenominators, (index - 1) * 4)
             }
+            rationalArrayTags := rationalArrayCount ? Buffer(rationalArrayCount * 4, 0) : 0
+            rationalArrayOffsets := rationalArrayCount ? Buffer(rationalArrayCount * A_PtrSize, 0) : 0
+            rationalArrayCounts := rationalArrayCount ? Buffer(rationalArrayCount * A_PtrSize, 0) : 0
+            flatRationalArrayNumerators := []
+            flatRationalArrayDenominators := []
+            index := 0
+            for tag, value in exif.RationalArrayTags {
+                index += 1
+                NumPut("Int", tag, rationalArrayTags, (index - 1) * 4)
+                NumPut("UPtr", flatRationalArrayNumerators.Length, rationalArrayOffsets, (index - 1) * A_PtrSize)
+                NumPut("UPtr", value.Length, rationalArrayCounts, (index - 1) * A_PtrSize)
+                for pair in value {
+                    flatRationalArrayNumerators.Push(pair[1])
+                    flatRationalArrayDenominators.Push(pair[2])
+                }
+            }
+            rationalArrayNumerators := flatRationalArrayNumerators.Length ? Buffer(flatRationalArrayNumerators.Length * 4, 0) : 0
+            rationalArrayDenominators := flatRationalArrayDenominators.Length ? Buffer(flatRationalArrayDenominators.Length * 4, 0) : 0
+            for index, value in flatRationalArrayNumerators
+                NumPut("UInt", value, rationalArrayNumerators, (index - 1) * 4)
+            for index, value in flatRationalArrayDenominators
+                NumPut("UInt", value, rationalArrayDenominators, (index - 1) * 4)
             shortArrayTags := shortArrayCount ? Buffer(shortArrayCount * 4, 0) : 0
             shortArrayOffsets := shortArrayCount ? Buffer(shortArrayCount * A_PtrSize, 0) : 0
             shortArrayCounts := shortArrayCount ? Buffer(shortArrayCount * A_PtrSize, 0) : 0
@@ -10630,6 +10650,22 @@ class Pillow {
             byteArrayValues := flatByteArrayValues.Length ? Buffer(flatByteArrayValues.Length, 0) : 0
             for index, value in flatByteArrayValues
                 NumPut("UChar", value, byteArrayValues, index - 1)
+            uintArrayTags := uintArrayCount ? Buffer(uintArrayCount * 4, 0) : 0
+            uintArrayOffsets := uintArrayCount ? Buffer(uintArrayCount * A_PtrSize, 0) : 0
+            uintArrayCounts := uintArrayCount ? Buffer(uintArrayCount * A_PtrSize, 0) : 0
+            flatUintArrayValues := []
+            index := 0
+            for tag, value in exif.UintArrayTags {
+                index += 1
+                NumPut("Int", tag, uintArrayTags, (index - 1) * 4)
+                NumPut("UPtr", flatUintArrayValues.Length, uintArrayOffsets, (index - 1) * A_PtrSize)
+                NumPut("UPtr", value.Length, uintArrayCounts, (index - 1) * A_PtrSize)
+                for item in value
+                    flatUintArrayValues.Push(item)
+            }
+            uintArrayValues := flatUintArrayValues.Length ? Buffer(flatUintArrayValues.Length * 4, 0) : 0
+            for index, value in flatUintArrayValues
+                NumPut("UInt", value, uintArrayValues, (index - 1) * 4)
             signedRationalTags := signedRationalCount ? Buffer(signedRationalCount * 4, 0) : 0
             signedRationalNumerators := signedRationalCount ? Buffer(signedRationalCount * 4, 0) : 0
             signedRationalDenominators := signedRationalCount ? Buffer(signedRationalCount * 4, 0) : 0
@@ -10671,6 +10707,13 @@ class Pillow {
                 "Ptr", rationalNumerators,
                 "Ptr", rationalDenominators,
                 "UPtr", rationalCount,
+                "Ptr", rationalArrayTags,
+                "Ptr", rationalArrayNumerators,
+                "Ptr", rationalArrayDenominators,
+                "UPtr", flatRationalArrayNumerators.Length,
+                "Ptr", rationalArrayOffsets,
+                "Ptr", rationalArrayCounts,
+                "UPtr", rationalArrayCount,
                 "Ptr", shortArrayTags,
                 "Ptr", shortArrayValues,
                 "UPtr", flatShortArrayValues.Length,
@@ -10683,6 +10726,12 @@ class Pillow {
                 "Ptr", byteArrayOffsets,
                 "Ptr", byteArrayCounts,
                 "UPtr", byteArrayCount,
+                "Ptr", uintArrayTags,
+                "Ptr", uintArrayValues,
+                "UPtr", flatUintArrayValues.Length,
+                "Ptr", uintArrayOffsets,
+                "Ptr", uintArrayCounts,
+                "UPtr", uintArrayCount,
                 "Ptr", signedRationalTags,
                 "Ptr", signedRationalNumerators,
                 "Ptr", signedRationalDenominators,

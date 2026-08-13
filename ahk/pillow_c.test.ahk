@@ -46573,6 +46573,27 @@ PillowCTestImagePatchTiffExifEntries(*) {
             NumPut("UInt", 1, rationalDenominators, (index - 1) * 4)
         }
         NumPut("UInt", 125, rationalDenominators, 8)
+        rationalArrayTags := Buffer(4, 0)
+        rationalArrayNumerators := Buffer(8, 0)
+        rationalArrayDenominators := Buffer(8, 0)
+        rationalArrayOffsets := Buffer(A_PtrSize, 0)
+        rationalArrayCounts := Buffer(A_PtrSize, 0)
+        NumPut("Int", 318, rationalArrayTags, 0)
+        NumPut("UPtr", 0, rationalArrayOffsets, 0)
+        NumPut("UPtr", 2, rationalArrayCounts, 0)
+        NumPut("UInt", 1, rationalArrayNumerators, 0)
+        NumPut("UInt", 2, rationalArrayDenominators, 0)
+        NumPut("UInt", 3, rationalArrayNumerators, 4)
+        NumPut("UInt", 4, rationalArrayDenominators, 4)
+        uintArrayTags := Buffer(4, 0)
+        uintArrayValues := Buffer(8, 0)
+        uintArrayOffsets := Buffer(A_PtrSize, 0)
+        uintArrayCounts := Buffer(A_PtrSize, 0)
+        NumPut("Int", 50719, uintArrayTags, 0)
+        NumPut("UPtr", 0, uintArrayOffsets, 0)
+        NumPut("UPtr", 2, uintArrayCounts, 0)
+        NumPut("UInt", 1, uintArrayValues, 0)
+        NumPut("UInt", 2, uintArrayValues, 4)
         signedRationalTags := Buffer(4, 0)
         signedRationalNumerators := Buffer(4, 0)
         signedRationalDenominators := Buffer(4, 0)
@@ -46595,6 +46616,13 @@ PillowCTestImagePatchTiffExifEntries(*) {
             "Ptr", rationalNumerators,
             "Ptr", rationalDenominators,
             "UPtr", 3,
+            "Ptr", rationalArrayTags,
+            "Ptr", rationalArrayNumerators,
+            "Ptr", rationalArrayDenominators,
+            "UPtr", 2,
+            "Ptr", rationalArrayOffsets,
+            "Ptr", rationalArrayCounts,
+            "UPtr", 1,
             "Ptr", 0,
             "Ptr", 0,
             "UPtr", 0,
@@ -46607,6 +46635,12 @@ PillowCTestImagePatchTiffExifEntries(*) {
             "Ptr", 0,
             "Ptr", 0,
             "UPtr", 0,
+            "Ptr", uintArrayTags,
+            "Ptr", uintArrayValues,
+            "UPtr", 2,
+            "Ptr", uintArrayOffsets,
+            "Ptr", uintArrayCounts,
+            "UPtr", 1,
             "Ptr", signedRationalTags,
             "Ptr", signedRationalNumerators,
             "Ptr", signedRationalDenominators,
@@ -46633,6 +46667,8 @@ PillowCTestImagePatchTiffExifEntries(*) {
         AhkTest.AssertEqual([300, 1], PillowCExifRationalTagValue(exif.Exif, 282))
         AhkTest.AssertEqual([150, 1], PillowCExifRationalTagValue(exif.Exif, 283))
         AhkTest.AssertEqual(2, PillowCExifUintTagValue(exif.Exif, 296, -1))
+        AhkTest.AssertEqual([[1, 2], [3, 4]], PillowCExifRationalArrayTagValue(exif.Exif, 318))
+        AhkTest.AssertEqual([1, 2], PillowCExifUintArrayTagValue(exif.Exif, 50719))
         AhkTest.AssertEqual(1, resolution.HasDpi)
         AhkTest.AssertTrue(Abs(resolution.DpiX - 300.0) < 0.0001)
         AhkTest.AssertTrue(Abs(resolution.DpiY - 150.0) < 0.0001)

@@ -21,36 +21,34 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 68% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 69% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
-Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003AV` closes the bounded
+Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003AW` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
 malformed-metadata robustness slice, one-level ExifIFD/GPSInfo sub-IFD
 traversal on both the classic and BigTIFF routes, and the classic-route
-TIFF save `exif=` option. `003AV` adds the new public export
-`pillow_c_image_patch_tiff_exif_entries` (source/DLL export parity is now
-`454/454` with zero difference), which post-patches a saved classic TIFF's
-IFD0 with the caller's EXIF tag families (ascii, uint scalars, rationals,
-signed rationals, short arrays, byte arrays, undefined), merging entries in
-ascending tag order, shifting the existing 273/strip and out-of-line
-offsets, and appending the new blobs; the facade `Image.Save` routes
-`exif=<Image.Exif>` through the existing save seams and then the patch
-export. The Pillow 11.3.0 oracle (kept in `oracle/probe_tiff_exif_save.py`)
-writes `exif=` tags directly into IFD0 for both the Exif-object and bytes
-forms, and the unit-2 282/283/296 trio drives reopened `info dpi` — the DLL
-matches both behaviors. Bounded boundaries: single-frame saves only,
-IFD0-tag collisions keep the base entry, rational-array/LONG-array exif
-families and programmatic tags outside the facade Exif setter allowlists
-remain separate. Raw/facade exif targets pass `1/1` each; the TIFF filter
-passes `676/676` in `4954ms`; the full directory suite passes `2728/2728`
-in `18453ms`; Release x64 has `0 Warning(s), 0 Error(s)`; and the current
-DLL SHA-256 is
-`43E2466126F9C0ABD1110F654784D8EEBDF5BC6AFB20E75E6CBA7B43B60DE51A`.
+TIFF save `exif=` option with its array families and compression
+composition. `003AW` extends `pillow_c_image_patch_tiff_exif_entries` with
+rational-array (type-5, count-N) and LONG-array (type-4, count-N) groups
+plus inline/out-of-line layouts, removes the two facade
+`PatchTiffExifEntries` serialization boundaries, and proves scalar
+`exif=`+`compression="lzw"` composition. The Pillow 11.3.0 oracle
+(`oracle/probe_tiff_exif_save.py` + `oracle/probe_tiff_exif_compression.py`)
+writes 318 rational arrays and 50719 LONG arrays directly into IFD0;
+scalar exif composes with every TIFF compression, while array exif plus
+compression fails upstream in libtiff with `RuntimeError: Error setting
+from dictionary` — the DLL's generic offset-shifting patch keeps working
+for that combo, recorded as a benign superset note. Raw/facade exif
+targets pass `1/1` each (extended in place); the TIFF filter passes
+`676/676` in `5015ms`; the full directory suite passes `2728/2728` in
+`18360ms`; Release x64 has `0 Warning(s), 0 Error(s)`; source/DLL exports
+remain `454/454` with zero difference; and the current DLL SHA-256 is
+`A008AA7ED59172DE327959B3DEA6103A19CDA6E122A650C7CC79D773FCFC53D9`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`FMT-TIFF-003AW` TIFF save `exif=` rational-array and LONG-array families
-plus compression composition, with BigTIFF save and wider codec boundaries
-remaining separate. Dither exact parity, libimagequant, broader quantize
+`FMT-TIFF-003AX` TIFF save `exif=` composition with `dpi=`/`icc_profile=`/
+`tiffinfo` options, with BigTIFF save and wider codec boundaries remaining
+separate. Dither exact parity, libimagequant, broader quantize
 cross-products, qtables with more than two tables, malformed marker
 streams, and exact whole-file parity remain separate.
 ```
@@ -395,9 +393,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `FMT-TIFF-003AW` TIFF save `exif=`
-  rational-array and LONG-array families plus compression composition, with
-  BigTIFF save staying separate.
+- Selected next gap: bounded `FMT-TIFF-003AX` TIFF save `exif=` composition
+  with `dpi=`/`icc_profile=`/`tiffinfo` options, with BigTIFF save staying
+  separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -471,6 +469,30 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `FMT-TIFF-003AW` is GREEN for the bounded TIFF save `exif=`
+rational-array and LONG-array families plus compression composition.
+`pillow_c_image_patch_tiff_exif_entries` gains type-5 count-N rational
+arrays and type-4 count-N LONG arrays with inline/out-of-line layouts; the
+facade `PatchTiffExifEntries` drops its two array serialization boundaries
+and serializes `RationalArrayTags`/`UintArrayTags` through the export. The
+Pillow 11.3.0 oracle (kept in `oracle/probe_tiff_exif_save.py` and
+`oracle/probe_tiff_exif_compression.py`) writes `318` rational arrays and
+`50719` LONG arrays directly into IFD0; scalar exif composes with every
+TIFF compression, while array exif plus compression fails upstream in
+libtiff with `RuntimeError: Error setting from dictionary` — the DLL's
+generic offset-shifting patch keeps working for that combo, recorded as a
+benign superset note. The raw/facade exif targets were extended in place
+(rational array 318, LONG array 50719, `compression="lzw"` composition)
+and pass `1/1` and `1/1`; the TIFF filter passes `676/676` in `5015ms`;
+and the full directory suite passes `2728/2728` in `18360ms`, with zero
+failures, errors, or skips. Release x64 Rebuild has `0 Warning(s),
+0 Error(s)`; source/DLL export parity remains `454/454` with zero
+difference; and the rebuilt DLL SHA-256 is
+`A008AA7ED59172DE327959B3DEA6103A19CDA6E122A650C7CC79D773FCFC53D9`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The estimate
+moves to `69% ±4%`. The next bounded child is `FMT-TIFF-003AX`, TIFF save
+`exif=` option composition.
 
 2026-08-13: `FMT-TIFF-003AV` is GREEN for the bounded classic-route TIFF save
 `exif=` option. The new Pillow 11.3.0 oracle (kept in

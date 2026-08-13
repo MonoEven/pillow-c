@@ -50,6 +50,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Tar
 This suite currently registers `2728` AHK tests: `1352` raw DLL tests and
 `1376` facade tests.
 
+Latest `FMT-TIFF-003AW` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_exif_save.py` and the new
+`oracle/probe_tiff_exif_compression.py`) confirms `exif=` writes `318`
+rational arrays and `50719` LONG arrays directly into IFD0; scalar exif
+composes with every TIFF compression, while array exif plus compression
+fails upstream in libtiff (`RuntimeError: Error setting from dictionary`) —
+the DLL's generic offset-shifting patch keeps working for that combo
+(benign superset note). `pillow_c_image_patch_tiff_exif_entries` gains the
+type-5 count-N rational-array and type-4 count-N LONG-array groups, and
+the facade `PatchTiffExifEntries` drops its two array serialization
+boundaries. The raw/facade exif targets were extended in place (rational
+array 318, LONG array 50719, `compression="lzw"` composition) and pass
+`1/1` and `1/1`; the TIFF filter passes `676/676` in `5015ms`; and the
+full directory suite passes `2728/2728` in `18360ms`, with zero failures,
+errors, or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity remains `454/454` with zero difference; and the
+rebuilt DLL SHA-256 is
+`A008AA7ED59172DE327959B3DEA6103A19CDA6E122A650C7CC79D773FCFC53D9`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The overall
+Pillow replacement-readiness estimate moves to `69% ±4%`.
+
 Latest `FMT-TIFF-003AV` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_tiff_exif_save.py`) confirms Pillow writes `exif=` tags
 directly into IFD0 for both the Exif-object and raw-bytes forms, and the

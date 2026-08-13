@@ -6573,6 +6573,13 @@ int patch_tiff_ifd0_exif_entries(
     const std::uint32_t* rational_numerators,
     const std::uint32_t* rational_denominators,
     std::size_t rational_count,
+    const int* rational_array_tags,
+    const std::uint32_t* rational_array_numerators,
+    const std::uint32_t* rational_array_denominators,
+    std::size_t rational_array_value_count,
+    const std::size_t* rational_array_offsets,
+    const std::size_t* rational_array_counts,
+    std::size_t rational_array_count,
     const int* short_array_tags,
     const std::uint32_t* short_array_values,
     std::size_t short_array_value_count,
@@ -6585,6 +6592,12 @@ int patch_tiff_ifd0_exif_entries(
     const std::size_t* byte_array_offsets,
     const std::size_t* byte_array_counts,
     std::size_t byte_array_count,
+    const int* uint_array_tags,
+    const std::uint32_t* uint_array_values,
+    std::size_t uint_array_value_count,
+    const std::size_t* uint_array_offsets,
+    const std::size_t* uint_array_counts,
+    std::size_t uint_array_count,
     const int* signed_rational_tags,
     const std::int32_t* signed_rational_numerators,
     const std::int32_t* signed_rational_denominators,
@@ -6608,12 +6621,21 @@ int patch_tiff_ifd0_exif_entries(
     if (rational_count > 0u && (!rational_tags || !rational_numerators || !rational_denominators)) {
         return PILLOW_C_NULL_POINTER;
     }
+    if (rational_array_count > 0u &&
+        (!rational_array_tags || !rational_array_numerators || !rational_array_denominators ||
+            !rational_array_offsets || !rational_array_counts)) {
+        return PILLOW_C_NULL_POINTER;
+    }
     if (short_array_count > 0u &&
         (!short_array_tags || !short_array_values || !short_array_offsets || !short_array_counts)) {
         return PILLOW_C_NULL_POINTER;
     }
     if (byte_array_count > 0u &&
         (!byte_array_tags || !byte_array_values || !byte_array_offsets || !byte_array_counts)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (uint_array_count > 0u &&
+        (!uint_array_tags || !uint_array_values || !uint_array_offsets || !uint_array_counts)) {
         return PILLOW_C_NULL_POINTER;
     }
     if (signed_rational_count > 0u &&
@@ -6773,6 +6795,37 @@ int patch_tiff_ifd0_exif_entries(
                 static_cast<std::uint8_t>((denominator >> 24u) & 0xFFu)};
             add_blob_entry(static_cast<std::uint16_t>(rational_tags[index]), 5u, 1u, bytes, 8u);
         }
+        for (std::size_t index = 0u; index < rational_array_count; ++index) {
+            const std::size_t offset = rational_array_offsets[index];
+            const std::size_t count = rational_array_counts[index];
+            if (offset > rational_array_value_count || count > rational_array_value_count - offset ||
+                count > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            std::vector<std::uint8_t> bytes;
+            bytes.reserve(count * 8u);
+            for (std::size_t value_index = 0u; value_index < count; ++value_index) {
+                const std::uint32_t numerator = rational_array_numerators[offset + value_index];
+                const std::uint32_t denominator = rational_array_denominators[offset + value_index];
+                if (denominator == 0u) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                bytes.push_back(static_cast<std::uint8_t>(numerator & 0xFFu));
+                bytes.push_back(static_cast<std::uint8_t>((numerator >> 8u) & 0xFFu));
+                bytes.push_back(static_cast<std::uint8_t>((numerator >> 16u) & 0xFFu));
+                bytes.push_back(static_cast<std::uint8_t>((numerator >> 24u) & 0xFFu));
+                bytes.push_back(static_cast<std::uint8_t>(denominator & 0xFFu));
+                bytes.push_back(static_cast<std::uint8_t>((denominator >> 8u) & 0xFFu));
+                bytes.push_back(static_cast<std::uint8_t>((denominator >> 16u) & 0xFFu));
+                bytes.push_back(static_cast<std::uint8_t>((denominator >> 24u) & 0xFFu));
+            }
+            add_blob_entry(
+                static_cast<std::uint16_t>(rational_array_tags[index]),
+                5u,
+                static_cast<std::uint32_t>(count),
+                bytes.data(),
+                bytes.size());
+        }
         for (std::size_t index = 0u; index < signed_rational_count; ++index) {
             const std::int32_t numerator = signed_rational_numerators[index];
             const std::int32_t denominator = signed_rational_denominators[index];
@@ -6826,6 +6879,29 @@ int patch_tiff_ifd0_exif_entries(
                 static_cast<std::uint32_t>(count),
                 byte_array_values + offset,
                 count);
+        }
+        for (std::size_t index = 0u; index < uint_array_count; ++index) {
+            const std::size_t offset = uint_array_offsets[index];
+            const std::size_t count = uint_array_counts[index];
+            if (offset > uint_array_value_count || count > uint_array_value_count - offset ||
+                count > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            std::vector<std::uint8_t> bytes;
+            bytes.reserve(count * 4u);
+            for (std::size_t value_index = 0u; value_index < count; ++value_index) {
+                const std::uint32_t value = uint_array_values[offset + value_index];
+                bytes.push_back(static_cast<std::uint8_t>(value & 0xFFu));
+                bytes.push_back(static_cast<std::uint8_t>((value >> 8u) & 0xFFu));
+                bytes.push_back(static_cast<std::uint8_t>((value >> 16u) & 0xFFu));
+                bytes.push_back(static_cast<std::uint8_t>((value >> 24u) & 0xFFu));
+            }
+            add_blob_entry(
+                static_cast<std::uint16_t>(uint_array_tags[index]),
+                4u,
+                static_cast<std::uint32_t>(count),
+                bytes.data(),
+                bytes.size());
         }
         for (std::size_t index = 0u; index < undefined_count; ++index) {
             const std::size_t offset = undefined_offsets[index];
@@ -7324,6 +7400,13 @@ extern "C" __declspec(dllexport) int pillow_c_image_patch_tiff_exif_entries(
     const std::uint32_t* rational_numerators,
     const std::uint32_t* rational_denominators,
     std::size_t rational_count,
+    const int* rational_array_tags,
+    const std::uint32_t* rational_array_numerators,
+    const std::uint32_t* rational_array_denominators,
+    std::size_t rational_array_value_count,
+    const std::size_t* rational_array_offsets,
+    const std::size_t* rational_array_counts,
+    std::size_t rational_array_count,
     const int* short_array_tags,
     const std::uint32_t* short_array_values,
     std::size_t short_array_value_count,
@@ -7336,6 +7419,12 @@ extern "C" __declspec(dllexport) int pillow_c_image_patch_tiff_exif_entries(
     const std::size_t* byte_array_offsets,
     const std::size_t* byte_array_counts,
     std::size_t byte_array_count,
+    const int* uint_array_tags,
+    const std::uint32_t* uint_array_values,
+    std::size_t uint_array_value_count,
+    const std::size_t* uint_array_offsets,
+    const std::size_t* uint_array_counts,
+    std::size_t uint_array_count,
     const int* signed_rational_tags,
     const std::int32_t* signed_rational_numerators,
     const std::int32_t* signed_rational_denominators,
@@ -7361,6 +7450,13 @@ extern "C" __declspec(dllexport) int pillow_c_image_patch_tiff_exif_entries(
         rational_numerators,
         rational_denominators,
         rational_count,
+        rational_array_tags,
+        rational_array_numerators,
+        rational_array_denominators,
+        rational_array_value_count,
+        rational_array_offsets,
+        rational_array_counts,
+        rational_array_count,
         short_array_tags,
         short_array_values,
         short_array_value_count,
@@ -7373,6 +7469,12 @@ extern "C" __declspec(dllexport) int pillow_c_image_patch_tiff_exif_entries(
         byte_array_offsets,
         byte_array_counts,
         byte_array_count,
+        uint_array_tags,
+        uint_array_values,
+        uint_array_value_count,
+        uint_array_offsets,
+        uint_array_counts,
+        uint_array_count,
         signed_rational_tags,
         signed_rational_numerators,
         signed_rational_denominators,

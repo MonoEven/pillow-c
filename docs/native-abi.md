@@ -174,11 +174,17 @@ offset and every out-of-line offset are shifted by the IFD0 growth delta,
 and the new blobs are appended before the old blob region. IFD0-tag
 collisions keep the base entry; multi-frame files return
 `PILLOW_C_INVALID_ARGUMENT`; zero denominators and malformed layouts are
-rejected. The facade `Image.Save` routes `exif=<Image.Exif>` through the
+rejected. `FMT-TIFF-003AW` extends the same export with type-5 count-N
+rational arrays and type-4 count-N LONG arrays (inline/out-of-line
+layouts, zero-denominator rejection, bounds-checked offsets) without
+changing its name or the existing parameter layout beyond appending the
+new groups. The facade `Image.Save` routes `exif=<Image.Exif>` through the
 existing save seams and then this export, matching Pillow 11.3.0's
 direct-into-IFD0 `exif=` layout and the unit-2 282/283/296 reopened
-`Info["dpi"]` behavior. Existing save exports, handle ownership, and
-synchronous path lifetime contracts remain unchanged.
+`Info["dpi"]` behavior; scalar exif composes with every TIFF compression
+like Pillow, and array exif plus compression keeps working where libtiff
+fails upstream (benign superset). Existing save exports, handle
+ownership, and synchronous path lifetime contracts remain unchanged.
 
 ## TIFF Classic ExifIFD/GPSInfo Sub-IFD ABI Behavior
 
