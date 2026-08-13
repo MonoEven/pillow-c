@@ -43942,8 +43942,8 @@ PillowTestImageSaveTiffBigTiffMetadataComposition(*) {
             PillowTestDeleteFile(lzwPath)
         }
 
-        ; big_tiff exif stays on the classic route for now (bounded): the
-        ; save still succeeds and the exif tags survive.
+        ; big_tiff exif composes on the BigTIFF route: the plain BigTIFF save
+        ; is post-patched through the BigTIFF IFD0 exif export.
         exifPath := PillowTestTempTiffPath("save-bigtiff-exif-facade")
         loaded := 0
         try {
@@ -43958,7 +43958,7 @@ PillowTestImageSaveTiffBigTiffMetadataComposition(*) {
                 Map(),
                 Map())
             image.Save(exifPath, "TIFF", { big_tiff: true, exif: exifObject })
-            AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(exifPath), 1, 4))
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(exifPath), 1, 4))
             loaded := Pillow.Image.Open(exifPath, ["TIFF"])
             exif := loaded.GetExif()
             AhkTest.AssertEqual("desc-exif", exif[270])
@@ -43976,6 +43976,105 @@ PillowTestImageSaveTiffBigTiffMetadataComposition(*) {
 }
 
 AhkTest.Test("Pillow Image.Save TIFF big_tiff composes dpi icc_profile and tiffinfo metadata", PillowTestImageSaveTiffBigTiffMetadataComposition)
+
+PillowTestImageSaveTiffBigTiffExifOption(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([7, 7, 7, 7]))
+    loaded := 0
+    try {
+        path := PillowTestTempTiffPath("save-bigtiff-exif-full-facade")
+        try {
+            exif := Pillow.Image.Exif(
+                unset,
+                false,
+                Map(270, "desc-probe", 305, "Pillow"),
+                Map(296, 2),
+                Map(282, [145, 2], 283, [300, 1]),
+                Map(530, [2, 1]),
+                Map(34377, PillowTestBuffer([1, 2, 3, 4, 5])),
+                Map(37380, [3, 7]),
+                Map(36864, PillowTestBuffer([48, 50, 51, 48])),
+                Map(318, [[1, 2], [3, 4]]))
+            image.Save(path, "TIFF", { big_tiff: true, exif: exif })
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+            loaded := Pillow.Image.Open(path, ["TIFF"])
+            AhkTest.AssertEqual("L", loaded.Mode)
+            AhkTest.AssertEqual([7, 7, 7, 7], PillowTestBufferToArray(loaded.ToBytes()))
+            reopenedExif := loaded.GetExif()
+            AhkTest.AssertEqual("desc-probe", reopenedExif[270])
+            AhkTest.AssertEqual("Pillow", reopenedExif[305])
+            AhkTest.AssertEqual(2, reopenedExif[296])
+            AhkTest.AssertEqual([145, 2], reopenedExif[282])
+            AhkTest.AssertEqual([300, 1], reopenedExif[283])
+            AhkTest.AssertEqual([[1, 2], [3, 4]], reopenedExif[318])
+            AhkTest.AssertEqual([2, 1], reopenedExif[530])
+            AhkTest.AssertEqual([3, 7], reopenedExif[37380])
+            AhkTest.AssertEqual([1, 2, 3, 4, 5], PillowTestBufferToArray(reopenedExif[34377]))
+            AhkTest.AssertEqual([48, 50, 51, 48], PillowTestBufferToArray(reopenedExif[36864]))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            PillowTestDeleteFile(path)
+        }
+
+        ; bytes form: an Exif.ToBytes() blob patches the BigTIFF IFD0 too.
+        bytesPath := PillowTestTempTiffPath("save-bigtiff-exif-bytes-facade")
+        loaded := 0
+        try {
+            exif := Pillow.Image.Exif()
+            exif[270] := "desc-bytes"
+            exif[296] := 2
+            exif[282] := [145, 2]
+            exif[283] := [300, 1]
+            exif[36864] := PillowTestBuffer([48, 50, 51, 48])
+            image.Save(bytesPath, "TIFF", { big_tiff: true, exif: exif.ToBytes() })
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(bytesPath), 1, 4))
+            loaded := Pillow.Image.Open(bytesPath, ["TIFF"])
+            reopenedExif := loaded.GetExif()
+            AhkTest.AssertEqual("desc-bytes", reopenedExif[270])
+            AhkTest.AssertEqual([145, 2], reopenedExif[282])
+            AhkTest.AssertEqual([300, 1], reopenedExif[283])
+            PillowTestAssertFloatArrayClose([72.5, 300.0], loaded.Info["dpi"], 0.0001)
+            AhkTest.AssertEqual([48, 50, 51, 48], PillowTestBufferToArray(reopenedExif[36864]))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            PillowTestDeleteFile(bytesPath)
+        }
+
+        ; exif composes with dpi and icc_profile on the uncompressed
+        ; big_tiff route (tiffinfo still drops exif like Pillow).
+        comboPath := PillowTestTempTiffPath("save-bigtiff-exif-combo-facade")
+        loaded := 0
+        try {
+            exif := Pillow.Image.Exif()
+            exif[270] := "desc-combo"
+            image.Save(comboPath, "TIFF", {
+                big_tiff: true,
+                exif: exif,
+                dpi: [300.0, 150.0],
+                icc_profile: PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
+            })
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(comboPath), 1, 4))
+            loaded := Pillow.Image.Open(comboPath, ["TIFF"])
+            PillowTestAssertFloatArrayClose([300.0, 150.0], loaded.Info["dpi"], 0.0001)
+            AhkTest.AssertEqual(
+                [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+                PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertEqual("desc-combo", loaded.GetExif()[270])
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            PillowTestDeleteFile(comboPath)
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF big_tiff exif option patches IFD0 exif families", PillowTestImageSaveTiffBigTiffExifOption)
 
 PillowTestTiffClassicTwoFramePillowBytes() {
     ; Pillow 11.3.0 save_all two-frame classic layout (see

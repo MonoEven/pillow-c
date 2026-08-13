@@ -10555,19 +10555,7 @@ class Pillow {
             ))
         }
 
-        static PatchTiffExifEntries(pathBytes, exif) {
-            if IsObject(exif) && Type(exif) = "Buffer" {
-                if exif.Size = 0
-                    throw Error("Pillow.Image.Save TIFF exif Buffer must not be empty", -1)
-                Pillow.CheckStatus(DllCall(
-                    Pillow.RequireDllPath() "\pillow_c_image_patch_tiff_exif_bytes",
-                    "Ptr", pathBytes,
-                    "Ptr", exif,
-                    "UPtr", exif.Size,
-                    "Int"
-                ))
-                return
-            }
+        static ExifFamilyBuffers(exif) {
             asciiCount := exif.AsciiTags.Count
             intCount := exif.IntTags.Count
             rationalCount := exif.RationalTags.Count
@@ -10705,56 +10693,190 @@ class Pillow {
             undefinedValues := flatUndefinedValues.Length ? Buffer(flatUndefinedValues.Length, 0) : 0
             for index, value in flatUndefinedValues
                 NumPut("UChar", value, undefinedValues, index - 1)
+            return {
+                Tags: tags,
+                ValuePtrs: valuePtrs,
+                ValueSizes: valueSizes,
+                AsciiValueBuffers: valueBuffers,
+                AsciiCount: asciiCount,
+                IntTags: intTags,
+                IntValues: intValues,
+                IntTypes: intTypes,
+                IntCount: intCount,
+                RationalTags: rationalTags,
+                RationalNumerators: rationalNumerators,
+                RationalDenominators: rationalDenominators,
+                RationalCount: rationalCount,
+                RationalArrayTags: rationalArrayTags,
+                RationalArrayNumerators: rationalArrayNumerators,
+                RationalArrayDenominators: rationalArrayDenominators,
+                RationalArrayValueCount: flatRationalArrayNumerators.Length,
+                RationalArrayOffsets: rationalArrayOffsets,
+                RationalArrayCounts: rationalArrayCounts,
+                RationalArrayCount: rationalArrayCount,
+                ShortArrayTags: shortArrayTags,
+                ShortArrayValues: shortArrayValues,
+                ShortArrayValueCount: flatShortArrayValues.Length,
+                ShortArrayOffsets: shortArrayOffsets,
+                ShortArrayCounts: shortArrayCounts,
+                ShortArrayCount: shortArrayCount,
+                ByteArrayTags: byteArrayTags,
+                ByteArrayValues: byteArrayValues,
+                ByteArrayValueCount: flatByteArrayValues.Length,
+                ByteArrayOffsets: byteArrayOffsets,
+                ByteArrayCounts: byteArrayCounts,
+                ByteArrayCount: byteArrayCount,
+                UintArrayTags: uintArrayTags,
+                UintArrayValues: uintArrayValues,
+                UintArrayValueCount: flatUintArrayValues.Length,
+                UintArrayOffsets: uintArrayOffsets,
+                UintArrayCounts: uintArrayCounts,
+                UintArrayCount: uintArrayCount,
+                SignedRationalTags: signedRationalTags,
+                SignedRationalNumerators: signedRationalNumerators,
+                SignedRationalDenominators: signedRationalDenominators,
+                SignedRationalCount: signedRationalCount,
+                UndefinedTags: undefinedTags,
+                UndefinedValues: undefinedValues,
+                UndefinedValueCount: flatUndefinedValues.Length,
+                UndefinedOffsets: undefinedOffsets,
+                UndefinedCounts: undefinedCounts,
+                UndefinedCount: undefinedCount,
+            }
+        }
+
+        static PatchTiffExifEntries(pathBytes, exif) {
+            if IsObject(exif) && Type(exif) = "Buffer" {
+                if exif.Size = 0
+                    throw Error("Pillow.Image.Save TIFF exif Buffer must not be empty", -1)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_patch_tiff_exif_bytes",
+                    "Ptr", pathBytes,
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int"
+                ))
+                return
+            }
+            families := Pillow.Image.ExifFamilyBuffers(exif)
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_patch_tiff_exif_entries",
                 "Ptr", pathBytes,
-                "Ptr", tags,
-                "Ptr", valuePtrs,
-                "Ptr", valueSizes,
-                "UPtr", asciiCount,
-                "Ptr", intTags,
-                "Ptr", intValues,
-                "Ptr", intTypes,
-                "UPtr", intCount,
-                "Ptr", rationalTags,
-                "Ptr", rationalNumerators,
-                "Ptr", rationalDenominators,
-                "UPtr", rationalCount,
-                "Ptr", rationalArrayTags,
-                "Ptr", rationalArrayNumerators,
-                "Ptr", rationalArrayDenominators,
-                "UPtr", flatRationalArrayNumerators.Length,
-                "Ptr", rationalArrayOffsets,
-                "Ptr", rationalArrayCounts,
-                "UPtr", rationalArrayCount,
-                "Ptr", shortArrayTags,
-                "Ptr", shortArrayValues,
-                "UPtr", flatShortArrayValues.Length,
-                "Ptr", shortArrayOffsets,
-                "Ptr", shortArrayCounts,
-                "UPtr", shortArrayCount,
-                "Ptr", byteArrayTags,
-                "Ptr", byteArrayValues,
-                "UPtr", flatByteArrayValues.Length,
-                "Ptr", byteArrayOffsets,
-                "Ptr", byteArrayCounts,
-                "UPtr", byteArrayCount,
-                "Ptr", uintArrayTags,
-                "Ptr", uintArrayValues,
-                "UPtr", flatUintArrayValues.Length,
-                "Ptr", uintArrayOffsets,
-                "Ptr", uintArrayCounts,
-                "UPtr", uintArrayCount,
-                "Ptr", signedRationalTags,
-                "Ptr", signedRationalNumerators,
-                "Ptr", signedRationalDenominators,
-                "UPtr", signedRationalCount,
-                "Ptr", undefinedTags,
-                "Ptr", undefinedValues,
-                "UPtr", flatUndefinedValues.Length,
-                "Ptr", undefinedOffsets,
-                "Ptr", undefinedCounts,
-                "UPtr", undefinedCount,
+                "Ptr", families.Tags,
+                "Ptr", families.ValuePtrs,
+                "Ptr", families.ValueSizes,
+                "UPtr", families.AsciiCount,
+                "Ptr", families.IntTags,
+                "Ptr", families.IntValues,
+                "Ptr", families.IntTypes,
+                "UPtr", families.IntCount,
+                "Ptr", families.RationalTags,
+                "Ptr", families.RationalNumerators,
+                "Ptr", families.RationalDenominators,
+                "UPtr", families.RationalCount,
+                "Ptr", families.RationalArrayTags,
+                "Ptr", families.RationalArrayNumerators,
+                "Ptr", families.RationalArrayDenominators,
+                "UPtr", families.RationalArrayValueCount,
+                "Ptr", families.RationalArrayOffsets,
+                "Ptr", families.RationalArrayCounts,
+                "UPtr", families.RationalArrayCount,
+                "Ptr", families.ShortArrayTags,
+                "Ptr", families.ShortArrayValues,
+                "UPtr", families.ShortArrayValueCount,
+                "Ptr", families.ShortArrayOffsets,
+                "Ptr", families.ShortArrayCounts,
+                "UPtr", families.ShortArrayCount,
+                "Ptr", families.ByteArrayTags,
+                "Ptr", families.ByteArrayValues,
+                "UPtr", families.ByteArrayValueCount,
+                "Ptr", families.ByteArrayOffsets,
+                "Ptr", families.ByteArrayCounts,
+                "UPtr", families.ByteArrayCount,
+                "Ptr", families.UintArrayTags,
+                "Ptr", families.UintArrayValues,
+                "UPtr", families.UintArrayValueCount,
+                "Ptr", families.UintArrayOffsets,
+                "Ptr", families.UintArrayCounts,
+                "UPtr", families.UintArrayCount,
+                "Ptr", families.SignedRationalTags,
+                "Ptr", families.SignedRationalNumerators,
+                "Ptr", families.SignedRationalDenominators,
+                "UPtr", families.SignedRationalCount,
+                "Ptr", families.UndefinedTags,
+                "Ptr", families.UndefinedValues,
+                "UPtr", families.UndefinedValueCount,
+                "Ptr", families.UndefinedOffsets,
+                "Ptr", families.UndefinedCounts,
+                "UPtr", families.UndefinedCount,
+                "Int"
+            ))
+        }
+
+        static PatchTiffBigTiffExifEntries(pathBytes, exif) {
+            if IsObject(exif) && Type(exif) = "Buffer" {
+                if exif.Size = 0
+                    throw Error("Pillow.Image.Save TIFF exif Buffer must not be empty", -1)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_patch_tiff_bigtiff_exif_bytes",
+                    "Ptr", pathBytes,
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int"
+                ))
+                return
+            }
+            families := Pillow.Image.ExifFamilyBuffers(exif)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_patch_tiff_bigtiff_exif_entries",
+                "Ptr", pathBytes,
+                "Ptr", families.Tags,
+                "Ptr", families.ValuePtrs,
+                "Ptr", families.ValueSizes,
+                "UPtr", families.AsciiCount,
+                "Ptr", families.IntTags,
+                "Ptr", families.IntValues,
+                "Ptr", families.IntTypes,
+                "UPtr", families.IntCount,
+                "Ptr", families.RationalTags,
+                "Ptr", families.RationalNumerators,
+                "Ptr", families.RationalDenominators,
+                "UPtr", families.RationalCount,
+                "Ptr", families.RationalArrayTags,
+                "Ptr", families.RationalArrayNumerators,
+                "Ptr", families.RationalArrayDenominators,
+                "UPtr", families.RationalArrayValueCount,
+                "Ptr", families.RationalArrayOffsets,
+                "Ptr", families.RationalArrayCounts,
+                "UPtr", families.RationalArrayCount,
+                "Ptr", families.ShortArrayTags,
+                "Ptr", families.ShortArrayValues,
+                "UPtr", families.ShortArrayValueCount,
+                "Ptr", families.ShortArrayOffsets,
+                "Ptr", families.ShortArrayCounts,
+                "UPtr", families.ShortArrayCount,
+                "Ptr", families.ByteArrayTags,
+                "Ptr", families.ByteArrayValues,
+                "UPtr", families.ByteArrayValueCount,
+                "Ptr", families.ByteArrayOffsets,
+                "Ptr", families.ByteArrayCounts,
+                "UPtr", families.ByteArrayCount,
+                "Ptr", families.UintArrayTags,
+                "Ptr", families.UintArrayValues,
+                "UPtr", families.UintArrayValueCount,
+                "Ptr", families.UintArrayOffsets,
+                "Ptr", families.UintArrayCounts,
+                "UPtr", families.UintArrayCount,
+                "Ptr", families.SignedRationalTags,
+                "Ptr", families.SignedRationalNumerators,
+                "Ptr", families.SignedRationalDenominators,
+                "UPtr", families.SignedRationalCount,
+                "Ptr", families.UndefinedTags,
+                "Ptr", families.UndefinedValues,
+                "UPtr", families.UndefinedValueCount,
+                "Ptr", families.UndefinedOffsets,
+                "Ptr", families.UndefinedCounts,
+                "UPtr", families.UndefinedCount,
                 "Int"
             ))
         }
@@ -10815,7 +10937,7 @@ class Pillow {
                         ))
                         return
                     }
-                } else if compression = 1 && !exifOption.Set {
+                } else if compression = 1 {
                     if tiffInfoOption.Set {
                         if !(tiffInfoOption.Value is Map)
                             throw Error("Pillow.Image.Save tiffinfo expects a Map", -1)
@@ -10894,12 +11016,14 @@ class Pillow {
                         "UPtr", asciiTags.Length,
                         "Int"
                     ))
+                    if exifOption.Set
+                        Pillow.Image.PatchTiffBigTiffExifEntries(pathBytes, exifOption.Value)
                     return
                 }
                 ; Pillow falls back to classic TIFF when big_tiff combines with
                 ; compression (libtiff ignores big_tiff), so numeric or
                 ; metadata saves with compression reuse the classic writer
-                ; below; big_tiff exif also stays on the classic route for now.
+                ; below.
             }
             if tiffInfoOption.Set {
                 if !(tiffInfoOption.Value is Map)

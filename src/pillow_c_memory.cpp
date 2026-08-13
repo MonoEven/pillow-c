@@ -61,6 +61,13 @@ void append_le32(std::vector<std::uint8_t>& out, std::uint32_t value)
     out.push_back(static_cast<std::uint8_t>((value >> 24) & 0xffu));
 }
 
+void append_le64(std::vector<std::uint8_t>& out, std::uint64_t value)
+{
+    for (int byte_index = 0; byte_index < 8; ++byte_index) {
+        out.push_back(static_cast<std::uint8_t>((value >> (byte_index * 8)) & 0xffu));
+    }
+}
+
 void append_be32(std::vector<std::uint8_t>& out, std::uint32_t value)
 {
     out.push_back(static_cast<std::uint8_t>((value >> 24) & 0xffu));

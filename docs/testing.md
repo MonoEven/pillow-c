@@ -47,8 +47,30 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2746` AHK tests: `1363` raw DLL tests and
-`1383` facade tests.
+This suite currently registers `2748` AHK tests: `1364` raw DLL tests and
+`1384` facade tests.
+
+Latest `FMT-TIFF-003BF` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_bigtiff_exif_save.py`) confirms exif object tags land
+directly in the BigTIFF IFD0 (inline <= 8 value fields, out-of-line
+blobs, reopened through the rational registry even when upstream
+degrades scalar rationals to inline SHORT pairs). The ctypes cross-check
+(kept in `oracle/probe_tiff_bigtiff_exif_dll_patch.py`) reopens every
+patched family through Pillow 11.3.0 with exact values (`FAILURES: 0`).
+The classic patch's classifier and blob parser are extracted into shared
+builders, and the new `pillow_c_image_patch_tiff_bigtiff_exif_entries`/
+`_bytes` exports post-patch plain BigTIFF saves; the facade routes
+big_tiff exif (object and Buffer forms) through them and composes exif
+with dpi/icc_profile uncompressed. Raw/facade targets pass `1/1` each;
+the TIFF filter passes `696/696` in `5000ms`; and the full directory
+suite passes `2748/2748` in `18906ms`, with zero failures, errors, or
+skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity moves to `461/461` (two deliberate new exports) with zero
+difference; and the rebuilt DLL SHA-256 is
+`7B8A9E95408CF59C584495C8E9B9467776A8D60A422560ABB60E1F9D9E46FD6D`.
+No facade lifetime rule, fallback, or AHK pixel loop changed beyond the
+BigTIFF exif save family. The overall Pillow
+replacement-readiness estimate moves to `78% ±4%`.
 
 Latest `FMT-TIFF-003BE` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_tiff_bigtiff_metadata_save.py`) confirms dpi/icc_profile/

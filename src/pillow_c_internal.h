@@ -119,6 +119,7 @@ void append_le16(std::vector<std::uint8_t>& out, std::uint16_t value);
 void append_be16(std::vector<std::uint8_t>& out, std::uint16_t value);
 void append_le32(std::vector<std::uint8_t>& out, std::uint32_t value);
 void append_be32(std::vector<std::uint8_t>& out, std::uint32_t value);
+void append_le64(std::vector<std::uint8_t>& out, std::uint64_t value);
 bool utf8_path_to_wide(const char* path, std::vector<wchar_t>* out);
 bool read_binary_file(const char* path, std::vector<std::uint8_t>* out);
 bool write_binary_file(const char* path, const std::vector<std::uint8_t>& data);

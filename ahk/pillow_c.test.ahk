@@ -46940,6 +46940,132 @@ PillowCTestImageSaveTiffBigTiffMetadataOptions(*) {
 
 AhkTest.Test("pillow_c image save_tiff_bigtiff metadata options writes dpi icc xmp and ascii tags", PillowCTestImageSaveTiffBigTiffMetadataOptions)
 
+PillowCTestImagePatchTiffBigTiffExifEntries(*) {
+    ; Pillow 11.3.0 writes big_tiff exif tag families directly into IFD0
+    ; (oracle/probe_tiff_bigtiff_exif_save.py); the DLL post-patches the
+    ; plain BigTIFF save through the new BigTIFF IFD0 exif export.
+    path := PillowCTempTiffPath("patch-bigtiff-exif")
+    image := PillowCCreateImageMode(2, 2, 1)
+    loaded := 0
+    try {
+        PillowCImageSetBytes(image, [7, 7, 7, 7])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_tiff_bigtiff",
+            "Ptr", image,
+            "Ptr", PillowCUtf8Buffer(path),
+            "Int"
+        )
+        PillowCAssertStatus(status)
+
+        asciiTags := Buffer(8, 0)
+        NumPut("Int", 270, asciiTags, 0)
+        NumPut("Int", 315, asciiTags, 4)
+        desc := PillowCUtf8Buffer("desc-probe")
+        artist := PillowCUtf8Buffer("artist")
+        asciiPtrs := Buffer(2 * A_PtrSize, 0)
+        NumPut("Ptr", desc.Ptr, asciiPtrs, 0)
+        NumPut("Ptr", artist.Ptr, asciiPtrs, A_PtrSize)
+        asciiSizes := Buffer(2 * A_PtrSize, 0)
+        NumPut("UPtr", desc.Size, asciiSizes, 0)
+        NumPut("UPtr", artist.Size, asciiSizes, A_PtrSize)
+
+        uintTags := Buffer(4, 0)
+        NumPut("Int", 317, uintTags, 0)
+        uintValues := Buffer(4, 0)
+        NumPut("UInt", 3, uintValues, 0)
+        uintTypes := Buffer(4, 0)
+        NumPut("Int", 3, uintTypes, 0)
+
+        rationalTags := Buffer(4, 0)
+        NumPut("Int", 33434, rationalTags, 0)
+        rationalNumerators := Buffer(4, 0)
+        NumPut("UInt", 1, rationalNumerators, 0)
+        rationalDenominators := Buffer(4, 0)
+        NumPut("UInt", 2, rationalDenominators, 0)
+
+        rationalArrayTags := Buffer(4, 0)
+        NumPut("Int", 318, rationalArrayTags, 0)
+        rationalArrayNumerators := Buffer(8, 0)
+        rationalArrayDenominators := Buffer(8, 0)
+        for index, value in [1, 3]
+            NumPut("UInt", value, rationalArrayNumerators, (index - 1) * 4)
+        for index, value in [2, 4]
+            NumPut("UInt", value, rationalArrayDenominators, (index - 1) * 4)
+        rationalArrayOffsets := Buffer(A_PtrSize, 0)
+        NumPut("UPtr", 0, rationalArrayOffsets, 0)
+        rationalArrayCounts := Buffer(A_PtrSize, 0)
+        NumPut("UPtr", 2, rationalArrayCounts, 0)
+
+        shortArrayTags := Buffer(4, 0)
+        NumPut("Int", 34735, shortArrayTags, 0)
+        shortArrayValues := Buffer(32, 0)
+        for index, value in [1, 2, 3, 4, 5, 6, 7, 8]
+            NumPut("UInt", value, shortArrayValues, (index - 1) * 4)
+        shortArrayOffsets := Buffer(A_PtrSize, 0)
+        NumPut("UPtr", 0, shortArrayOffsets, 0)
+        shortArrayCounts := Buffer(A_PtrSize, 0)
+        NumPut("UPtr", 8, shortArrayCounts, 0)
+
+        signedRationalTags := Buffer(4, 0)
+        NumPut("Int", 37380, signedRationalTags, 0)
+        signedRationalNumerators := Buffer(4, 0)
+        NumPut("Int", 3, signedRationalNumerators, 0)
+        signedRationalDenominators := Buffer(4, 0)
+        NumPut("Int", 7, signedRationalDenominators, 0)
+
+        undefinedTags := Buffer(4, 0)
+        NumPut("Int", 36864, undefinedTags, 0)
+        undefinedValues := Buffer(4, 0)
+        for index, value in [48, 50, 51, 48]
+            NumPut("UChar", value, undefinedValues, index - 1)
+        undefinedOffsets := Buffer(A_PtrSize, 0)
+        NumPut("UPtr", 0, undefinedOffsets, 0)
+        undefinedCounts := Buffer(A_PtrSize, 0)
+        NumPut("UPtr", 4, undefinedCounts, 0)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_patch_tiff_bigtiff_exif_entries",
+            "Ptr", PillowCUtf8Buffer(path),
+            "Ptr", asciiTags, "Ptr", asciiPtrs, "Ptr", asciiSizes, "UPtr", 2,
+            "Ptr", uintTags, "Ptr", uintValues, "Ptr", uintTypes, "UPtr", 1,
+            "Ptr", rationalTags, "Ptr", rationalNumerators, "Ptr", rationalDenominators, "UPtr", 1,
+            "Ptr", rationalArrayTags, "Ptr", rationalArrayNumerators, "Ptr", rationalArrayDenominators, "UPtr", 2,
+            "Ptr", rationalArrayOffsets, "Ptr", rationalArrayCounts, "UPtr", 1,
+            "Ptr", shortArrayTags, "Ptr", shortArrayValues, "UPtr", 8,
+            "Ptr", shortArrayOffsets, "Ptr", shortArrayCounts, "UPtr", 1,
+            "Ptr", 0, "Ptr", 0, "UPtr", 0, "Ptr", 0, "Ptr", 0, "UPtr", 0,
+            "Ptr", 0, "Ptr", 0, "UPtr", 0, "Ptr", 0, "Ptr", 0, "UPtr", 0,
+            "Ptr", signedRationalTags, "Ptr", signedRationalNumerators, "Ptr", signedRationalDenominators, "UPtr", 1,
+            "Ptr", undefinedTags, "Ptr", undefinedValues, "UPtr", 4,
+            "Ptr", undefinedOffsets, "Ptr", undefinedCounts, "UPtr", 1,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual([73, 73, 43, 0], PillowCArraySlice(PillowCReadFileBytes(path), 1, 4))
+        AhkTest.AssertEqual(1, PillowCImageFrameCountTiff(path))
+        loaded := PillowCImageOpenTiff(path)
+        AhkTest.AssertEqual(1, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([7, 7, 7, 7], PillowCImageToArray(loaded, 4))
+        exif := PillowCImageMetadataTiffExif(loaded)
+        AhkTest.AssertEqual("desc-probe", PillowCExifAsciiTagValue(exif.Exif, 270))
+        AhkTest.AssertEqual("artist", PillowCExifAsciiTagValue(exif.Exif, 315))
+        AhkTest.AssertEqual(3, PillowCExifUintTagValue(exif.Exif, 317))
+        AhkTest.AssertEqual([1, 2], PillowCExifRationalTagValue(exif.Exif, 33434))
+        AhkTest.AssertEqual([[1, 2], [3, 4]], PillowCExifRationalArrayTagValue(exif.Exif, 318))
+        AhkTest.AssertEqual([1, 2, 3, 4, 5, 6, 7, 8], PillowCExifUshortArrayTagValue(exif.Exif, 34735))
+        AhkTest.AssertEqual([3, 7], PillowCExifSignedRationalTagValue(exif.Exif, 37380))
+        AhkTest.AssertEqual([48, 50, 51, 48], PillowCExifUndefinedTagValue(exif.Exif, 36864))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        if image
+            PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image patch_tiff_bigtiff_exif_entries patches BigTIFF IFD0 exif families", PillowCTestImagePatchTiffBigTiffExifEntries)
+
 PillowCTestImageOpenTiffReadsPillowBigTiffStripL(*) {
     path := PillowCTempTiffPath("open-bigtiff-strip-l")
     loaded := 0

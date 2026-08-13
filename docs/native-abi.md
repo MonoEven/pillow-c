@@ -29,8 +29,33 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`459/459`; the full AHK suite is `2746/2746`; and the current DLL SHA-256 is
-`DB37A0C75CE70EFFCA5CC31CD7C880B8684257DCFC4482F8C712D0361781BDE0`.
+`461/461`; the full AHK suite is `2748/2748`; and the current DLL SHA-256 is
+`7B8A9E95408CF59C584495C8E9B9467776A8D60A422560ABB60E1F9D9E46FD6D`.
+
+## TIFF BigTIFF Save Exif ABI Behavior
+
+`FMT-TIFF-003BF` adds two public exports:
+`pillow_c_image_patch_tiff_bigtiff_exif_entries` (the same 69-argument
+family signature as the classic
+`pillow_c_image_patch_tiff_exif_entries` export) and
+`pillow_c_image_patch_tiff_bigtiff_exif_bytes`. Existing exported names,
+signatures, status codes, image-handle ownership, source-pointer
+lifetimes, and facade routes remain unchanged; the classic patch's
+family classifier and bytes-form blob parser are extracted into the
+shared private `build_tiff_patch_exif_entries` (inline limit 4/8) and
+`parse_tiff_patch_exif_blob_families` seams, and the classic routes
+delegate to them with no behavior change.
+
+The BigTIFF patch rewrites a single-frame BigTIFF save (`II 2B 00`, IFD0
+at 16, next-IFD 0) with the patched families merged in ascending tag
+order: 20-byte entries with 64-bit counts and eight-byte value fields,
+inline values <= 8 bytes, the inline `273` strip offset and out-of-line
+64-bit offsets shifted by the IFD-growth delta, and new blobs appended
+after the grown IFD before the old region. Collisions keep the base
+entry. All pointer arguments are consumed synchronously for the call.
+
+No facade lifetime rule, fallback, or AHK per-pixel loop was added
+beyond the BigTIFF exif save family above.
 
 ## TIFF BigTIFF Save Metadata ABI Behavior
 
