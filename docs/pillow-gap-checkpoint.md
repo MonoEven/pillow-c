@@ -36,34 +36,34 @@ the BigTIFF save palette (P) mode, the BigTIFF save bilevel (1) mode,
 and the mixed-size BigTIFF frames lock-in (the bounded BigTIFF save
 family is COMPLETE), plus the bounded ICO/CUR family (`FMT-ICO-001B`,
 `FMT-ICO-001C`, and `FMT-ICO-002G` CUR save with hotspot exposure —
-also COMPLETE), the facade API slice (`API-IMG-001D`/`API-IMG-001E`),
-the numeric point() slice (`MODE-I-001B` int32 and `MODE-F-001B`
-float32 linear callables through `pillow_c_image_point_transform` with
-Pillow's list/non-linear rejections), the numeric transform family
-(`MODE-NUM-001CH` AFFINE/EXTENT, `MODE-NUM-001CI` Rotate, and
-`MODE-NUM-001CJ` PERSPECTIVE/QUAD/MESH lock-in), the numeric resize
-family (`MODE-NUM-001CK`/`001CL`/`001CM`/`001CN`), `MODE-NUM-001CO`
-the I;16/I;16B transform fill packing, `MODE-NUM-001CP` the I;16
-statistics/conversion semantics, and `MODE-NUM-001CQ` the I;16
-entropy/getcolors/ImageStat boundaries (Pillow's `image has wrong
-mode` for getcolors, documented boundaries for the layout-dependent
-C entropy misreads and the histogram-derived ImageStat).
+also COMPLETE), the facade API slice (`API-IMG-001D`/`API-IMG-001E`
+plus `API-IMG-001F` — the `im` accessor now exposes the native handle
+as the ImagingCore analogue boundary, completing the named
+`PIL.Image.Image` object-model list), the numeric point() slice
+(`MODE-I-001B` int32 and `MODE-F-001B` float32 linear callables
+through `pillow_c_image_point_transform` with Pillow's list/non-linear
+rejections), the numeric transform family (`MODE-NUM-001CH`/`001CI`/
+`001CJ`), the numeric resize family (`MODE-NUM-001CK`/`001CL`/`001CM`/
+`001CN`), `MODE-NUM-001CO` the I;16/I;16B transform fill packing,
+`MODE-NUM-001CP` the I;16 statistics/conversion semantics, and
+`MODE-NUM-001CQ` the I;16 entropy/getcolors/ImageStat boundaries.
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The I;16 boundary slice passed its targeted
-filters (`5/5` documented-boundary targets in `140ms`, numeric
-`128/128` in `578ms`, entropy `48/48` in `406ms`, getcolors `8/8` in
-`47ms`) and the full directory suite passes `2793/2793` in `19219ms`;
+IFD as a writer artifact. The im-accessor target passes `1/1` in
+`47ms`, and the full directory suite passes `2794/2794` in `19266ms`;
 source/DLL exports remain `463/463` with zero difference; and the DLL
-SHA-256 is
-`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
+SHA-256 remains
+`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`
+(facade-only slice).
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is
-`API-IMG-001F`, the low-level `im` accessor boundary. Dither exact
-parity, libimagequant, broader quantize cross-products, qtables with
-more than two tables, malformed marker streams, and exact whole-file
-parity remain separate.
+`BNDRY-001`, the explicit remaining-item boundary ledger (dependency-
+gated formats, APNG/PNG compression strategy, dither exact parity,
+libimagequant, qtables beyond two tables, malformed marker streams,
+explicit YCCK encoding, META-002 tail, and the whole-file parity
+policy — each recorded as a covered item or an explicit documented
+boundary).
 ```
 
 Current work packet:
@@ -406,8 +406,11 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-IMG-001F`, the low-level `im` accessor
-  boundary, with broader facade-API and format gaps staying separate.
+- Selected next gap: `BNDRY-001`, the explicit remaining-item boundary
+  ledger (dependency-gated formats, APNG/PNG compression strategy,
+  dither exact parity, libimagequant, qtables beyond two tables,
+  malformed marker streams, explicit YCCK encoding, META-002 tail, and
+  the whole-file parity policy).
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -481,6 +484,26 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `API-IMG-001F` is GREEN for the low-level `im` accessor
+boundary, completing the named `PIL.Image.Image` object-model list
+(`getim`/`im`/`show`/`toqimage`/`toqpixmap`). Pillow 11.3.0's `im`
+attribute is the per-image `ImagingCore` C object (bands/size/
+histogram/getpixel/transform and the chop_*/rank_filter surface); the
+AHK runtime's analogue is the native image handle, and the
+`ImagingCore` method surface is covered by the `pillow_c_*` ABI
+exports behind the facade. The facade adds the `Im` property
+returning the same handle as `GetIm()` (AHK case-insensitivity makes
+`im` the same property) with the Pillow-shaped closed-image error; the
+boundary is recorded in the ledger. Facade-only change, no native
+rebuild: the im-accessor target passes `1/1` in `47ms`, and the full
+directory suite passes `2794/2794` in `19266ms`, with zero failures,
+errors, or skips. Source/DLL export parity remains `463/463` with
+zero difference, and the DLL SHA-256 remains
+`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate stays `99% ±4%`. The next bounded child is `BNDRY-001`,
+the explicit remaining-item boundary ledger.
 
 2026-08-13: `MODE-NUM-001CQ` is GREEN for the bounded I;16
 entropy/getcolors/ImageStat boundaries. The Pillow 11.3.0 oracle

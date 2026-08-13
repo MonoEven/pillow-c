@@ -7865,6 +7865,18 @@ class Pillow {
             return this.Handle
         }
 
+        Im {
+            get {
+                ; Pillow 11.3.0's `im` attribute is the per-image ImagingCore
+                ; C object (bands/size/histogram/getpixel/transform/...); this
+                ; runtime's analogue is the native image handle, and the
+                ; ImagingCore method surface is covered by the pillow_c_* ABI
+                ; exports behind the facade. AHK case-insensitivity makes Im
+                ; serve `im`; the handle is the explicit documented boundary.
+                return this.GetIm()
+            }
+        }
+
         ToQImage() {
             ; Pillow 11.3.0 raises ImportError("Qt bindings are not
             ; installed") without PyQt6/PySide6; this runtime ships no Qt

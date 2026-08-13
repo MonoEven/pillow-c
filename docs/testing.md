@@ -47,8 +47,24 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2793` AHK tests: `1386` raw DLL tests and
-`1407` facade tests.
+This suite currently registers `2794` AHK tests: `1386` raw DLL tests and
+`1408` facade tests.
+
+Latest `API-IMG-001F` verification: Pillow 11.3.0's `im` attribute is
+the per-image `ImagingCore` C object, whose AHK analogue is the native
+image handle (the `pillow_c_*` ABI covers the ImagingCore method
+surface). The facade adds the `Im` property returning the same handle
+as `GetIm()` (AHK case-insensitivity serves `im`) with the
+Pillow-shaped closed-image error; the boundary is recorded in the
+ledger, completing the named `PIL.Image.Image` object-model list.
+Facade-only change, no native rebuild: the im-accessor target passes
+`1/1` in `47ms`, and the full directory suite passes `2794/2794` in
+`19266ms`, with zero failures, errors, or skips. Source/DLL export
+parity remains `463/463` with zero difference, and the DLL SHA-256
+remains
+`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The overall Pillow replacement-readiness estimate stays `99% ±4%`.
 
 Latest `MODE-NUM-001CQ` verification: the Pillow 11.3.0 oracle (kept
 in `oracle/probe_mode_i16_stats2.py`) shows I;16/I;16B `getcolors()`

@@ -161,6 +161,11 @@ a documented fail-loud boundary for the layout-dependent entropy
 misreads), and the facade `ImageStat.Stat` inherits the histogram
 boundary through its histogram route.
 
+`API-IMG-001F` changes no ABI at all: the facade `Image.Im` property
+returns the native handle (the `ImagingCore` analogue boundary, AHK
+case-insensitivity serving `im`) with Pillow's closed-image error; the
+DLL SHA-256 is unchanged.
+
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.
 

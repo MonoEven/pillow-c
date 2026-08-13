@@ -21837,6 +21837,32 @@ PillowTestImageGetImReturnsNativeHandle(*) {
 
 AhkTest.Test("Pillow Image.getim returns the native handle and rejects closed images", PillowTestImageGetImReturnsNativeHandle)
 
+PillowTestImageImAccessorBoundary(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [2, 2], 7)
+    try {
+        ; Pillow's `im` is the per-image ImagingCore C object; the AHK
+        ; analogue is the native handle (same surface as getim), and the
+        ; ImagingCore method surface is covered by the native ABI.
+        handle := image.Im
+        AhkTest.AssertTrue(handle is Integer)
+        AhkTest.AssertTrue(handle > 0)
+        AhkTest.AssertEqual(handle, image.GetIm())
+        AhkTest.AssertEqual(handle, image.im)
+    } finally {
+        image.Close()
+    }
+    closedError := ""
+    try {
+        image.Im
+    } catch Error as err {
+        closedError := err.Message
+    }
+    AhkTest.AssertEqual("Operation on closed image", closedError)
+}
+
+AhkTest.Test("Pillow Image.im exposes the native handle as the ImagingCore analogue boundary", PillowTestImageImAccessorBoundary)
+
 PillowTestImageDisplayApiBoundaries(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [2, 2], 7)

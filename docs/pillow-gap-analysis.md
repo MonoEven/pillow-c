@@ -37,6 +37,33 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-13 API-IMG-001F Low-Level im Accessor Boundary (GREEN)
+
+`API-IMG-001F` closes the low-level `im` accessor as an explicit
+documented boundary, completing the named `PIL.Image.Image`
+object-model list (`getim`/`im`/`show`/`toqimage`/`toqpixmap`).
+
+Pillow 11.3.0's `im` attribute is the per-image `ImagingCore` C object
+(bands/size/histogram/getpixel/transform and the chop_*/rank_filter
+surface); the AHK runtime's analogue is the native image handle, and
+the `ImagingCore` method surface is covered by the `pillow_c_*` ABI
+exports behind the facade. The facade adds the `Im` property returning
+the same handle as `GetIm()` (AHK case-insensitivity makes `im` the
+same property) with the Pillow-shaped closed-image error. Facade-only
+change; no native rebuild; export parity remains `463/463` and the
+DLL SHA-256 is unchanged.
+
+Verification:
+
+- Facade im-accessor target passes `1/1` in `47ms` (handle identity
+  with GetIm, lowercase `im` alias, closed-image error).
+- Full AHK directory suite: `2794/2794` in `19266ms`; zero failures,
+  errors, or skips.
+
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate stays `99% ±4%`. The next bounded child is `BNDRY-001`,
+the explicit remaining-item boundary ledger.
+
 ## 2026-08-13 MODE-NUM-001CQ I;16 Entropy/GetColors/ImageStat Boundaries (GREEN)
 
 `MODE-NUM-001CQ` closes the bounded I;16 entropy/getcolors/ImageStat
@@ -39629,11 +39656,12 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | MODE-NUM-001CO | Modes | covered | Bounded I;16/I;16B transform/rotate fill packing (facade-only): Pillow 11.3.0 packs NEAREST fills as one uint16 sample — int scalars and single-element tuples wrap modulo 65536 (70000 -> 4464, -5 -> 65531), color names resolve through the grayscale map (`"red"` -> 76), floats and multi-element sequences reject with `color must be int or single-element tuple`, and I;16B keeps big-endian raw bytes. The facade `TransformFillBuffer` gains the I;16/I;16B branch (UShort LE for I;16, byte-swapped BE for I;16B), while the native ABI already accepted the raw 2-byte fill. Export parity remains `463/463` and the DLL SHA-256 is unchanged. | `oracle/probe_mode_i16_fill.py`, `oracle/probe_mode_i16_fill_range.py`, facade `TransformFillBuffer` I;16/I;16B branch, raw 2-byte fill pin, facade fill-matrix test. |
 | MODE-NUM-001CP | Modes | covered | Bounded I;16 statistics/conversion semantics: Pillow 11.3.0's `getextrema()` scans uint16 samples, I;16B `getextrema()` raises `image has wrong mode`, `convert("I")`/`convert("F")` copy the sample exactly, `convert("L")` applies the Convert.c high-byte rule (high byte nonzero -> 255, else the low byte), and the I;16 `histogram()` C path reads 2-byte storage through layout-dependent byte misreads (recorded as an explicit documented boundary). The native `extrema_image_numeric` gains the uint16 branch (rejecting I;16B), `convert_image_mode_into` gains the I;16/I;16B source branch for I/F/L targets, and the facade surfaces Pillow's `image has wrong mode` for I;16B GetExtrema plus a documented Histogram boundary. A ctypes cross-check matches Pillow exactly (`FAILURES: 0`). Export parity remains `463/463`. I;16 entropy/getcolors/ImageStat remain separate. | `oracle/probe_mode_i16_stats.py`, `oracle/probe_mode_i16_stats_dll_compose.py`, `extrema_image_numeric` uint16 branch, `convert_image_mode_into` I;16 branch, facade GetExtrema/Histogram boundaries, raw/facade I;16 stats tests. |
 | MODE-NUM-001CQ | Modes | covered | Bounded I;16 entropy/getcolors/ImageStat boundaries: Pillow 11.3.0 raises `image has wrong mode` for I;16/I;16B `getcolors()`, while its C entropy returns layout-dependent byte-misread values (`log2(6)` for six misread-distinct samples) and `ImageStat.Stat` derives from that same misread histogram. The native entropy and getcolors entry points return `PILLOW_C_INVALID_ARGUMENT` for I;16/I;16B, the facade surfaces Pillow's `image has wrong mode` for `GetColors`, a documented boundary error for `Entropy`, and inherits the histogram boundary through `ImageStat.Stat`. Export parity remains `463/463`. | `oracle/probe_mode_i16_stats2.py`, native entropy/getcolors I;16 rejections, facade GetColors/Entropy boundaries, ImageStat histogram inheritance, raw/facade boundary tests. |
+| API-IMG-001F | Facade API | covered | Bounded low-level `im` accessor boundary completing the named `PIL.Image.Image` object-model list: Pillow 11.3.0's `im` is the per-image `ImagingCore` C object, whose AHK analogue is the native image handle (the `pillow_c_*` ABI covers the ImagingCore method surface). The facade adds the `Im` property returning the same handle as `GetIm()` (AHK case-insensitivity serves `im`) with the Pillow-shaped closed-image error. Facade-only; export parity remains `463/463` and the DLL SHA-256 is unchanged. | Facade `Image.Im` property, facade im-accessor boundary test. |
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
 | FMT-WEBP-001 | WebP | not started | Open/save WebP and animation if a codec strategy is selected. | New format module boundary. |
 | FMT-AVIF-001 | AVIF | not started | Open/save AVIF if dependency and packaging constraints allow it. | New format module boundary. |
 | FMT-LONGTAIL-001 | Formats | not started | PDF, PSD, DDS, PCX, ICNS, SGI, SUN, EPS, MPO, FLI, DCX, XPM, and other registered families. | Add only when a real task needs one. |
-| API-IMG-001 | Facade API | partial | Direct `PIL.Image.Image` object-name parity after common methods. `API-IMG-001A` covers `format_description`, `API-IMG-001B` covers `has_transparency_data`, `API-IMG-001C` covers `get_child_images()` empty-list parity for implemented image handles, `META-002A` covers the public `getxmp()` method for bounded PNG/JPEG XMP packets, `META-002B` covers explicit JPEG `xmp=` save round-trip, `META-002C` covers explicit JPEG `qtables + xmp` save, `META-002D` covers explicit JPEG `keep_rgb + xmp` save, and `META-002E` covers explicit JPEG `qtables + keep_rgb + xmp` save through that same public route. Remaining object/API gaps include `getim`, low-level `im`, `show`, `toqimage`, and `toqpixmap`. | `ahk/pillow.ahk` facade properties/methods, direct Pillow 11.3.0 probes, facade API tests. |
+| API-IMG-001 | Facade API | covered | Direct `PIL.Image.Image` object-name parity after common methods. `API-IMG-001A` covers `format_description`, `API-IMG-001B` covers `has_transparency_data`, `API-IMG-001C` covers `get_child_images()` empty-list parity for implemented image handles, `META-002A` covers the public `getxmp()` method for bounded PNG/JPEG XMP packets, `META-002B` covers explicit JPEG `xmp=` save round-trip, `META-002C` covers explicit JPEG `qtables + xmp` save, `META-002D` covers explicit JPEG `keep_rgb + xmp` save, and `META-002E` covers explicit JPEG `qtables + keep_rgb + xmp` save through that same public route. `API-IMG-001D` covers `getim()` (the native-handle capsule analogue), `API-IMG-001E` covers `show`/`toqimage`/`toqpixmap` as explicit documented boundaries, and `API-IMG-001F` covers the low-level `im` accessor (the `Im` property returning the native handle as the ImagingCore analogue boundary), completing the named object-model list. | `ahk/pillow.ahk` facade properties/methods, direct Pillow 11.3.0 probes, facade API tests. |
 | API-IMG-001A | Facade API | covered | `Image.FormatDescription` and `Image.format_description` expose Pillow 11.3.0 format descriptions for opened native formats, with `""` as the AHK-side `None` analogue for images with no format. | `Pillow.Image.FormatDescription`, `Image.Format`, facade format-description test. |
 | API-IMG-001B | Facade API | covered | `Image.HasTransparencyData` and `Image.has_transparency_data` match Pillow 11.3.0 for implemented alpha and transparency-info surfaces: `RGBA`/`LA`/future `PA` report true, and non-alpha modes report true when `Info["transparency"]` is present. | Facade `Image.Mode`, `Image.Info`, local Pillow probe, facade has-transparency-data test. |
 | API-IMG-001C | Facade API | covered | `Image.GetChildImages()` and `Image.get_child_images()` match Pillow 11.3.0's empty-list result for currently implemented image handles such as new images and opened PNG/JPEG/GIF/ICO images. | Facade `Image.RequireHandle`, local Pillow probe, facade get_child_images test. |
@@ -43747,8 +43775,10 @@ facade has analogues for most common methods:
   `GetChildImages()` and `get_child_images()` for the currently implemented
   empty-list boundary.
 - Missing or not currently meaningful in this AHK/native design:
-  `getim`, low-level `im`, full Python-core `readonly` semantics
-  beyond the bounded buffer-view signal, `show`, `toqimage`, and `toqpixmap`.
+  full Python-core `readonly` semantics beyond the bounded buffer-view
+  signal. `getim`/`im`/`show`/`toqimage`/`toqpixmap` are now covered
+  through `API-IMG-001D`/`API-IMG-001E`/`API-IMG-001F` (native-handle
+  analogue and explicit documented boundaries).
   `Format` exists as an AHK-style
   property but is not full Python object-model parity.
 
