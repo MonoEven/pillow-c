@@ -22415,6 +22415,107 @@ PillowCTestImageTransformAffineNumericSamples(*) {
 
 AhkTest.Test("pillow_c image_transform_affine interpolates numeric mode I/F samples", PillowCTestImageTransformAffineNumericSamples)
 
+PillowCTestImageRotateNumericSamples(*) {
+    ; Pillow 11.3.0 rotates mode I/F through its affine transform path, so
+    ; the per-32-bit-sample interpolation must match the affine export.
+    i := PillowCCreateImageMode(3, 2, 8)
+    f := PillowCCreateImageMode(3, 2, 9)
+    out := 0
+    try {
+        ; 1000, -2000, 3000, 7, -8, 9
+        PillowCImageSetBytes(i, [
+            232, 3, 0, 0, 48, 248, 255, 255, 184, 11, 0, 0,
+            7, 0, 0, 0, 248, 255, 255, 255, 9, 0, 0, 0,
+        ])
+        ; 1.5, -2.5, 3.5, 0.25, -0.125, 2.0
+        PillowCImageSetBytes(f, [
+            0, 0, 192, 63, 0, 0, 32, 192, 0, 0, 96, 64,
+            0, 0, 128, 62, 0, 0, 0, 190, 0, 0, 0, 64,
+        ])
+
+        out := PillowCImageRotate(i, 45, 0)
+        AhkTest.AssertEqual(8, PillowCImageMode(out))
+        ; 0, -2000, 9, 1000, -8, 0
+        AhkTest.AssertEqual(
+            [0, 0, 0, 0, 48, 248, 255, 255, 9, 0, 0, 0,
+             232, 3, 0, 0, 248, 255, 255, 255, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageRotate(i, 45, 2)
+        ; 0, -198, 447, 854, -139, 0
+        AhkTest.AssertEqual(
+            [0, 0, 0, 0, 58, 255, 255, 255, 191, 1, 0, 0,
+             86, 3, 0, 0, 117, 255, 255, 255, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageRotate(i, 45, 3)
+        ; 0, -577, 486, 991, -250, 0
+        AhkTest.AssertEqual(
+            [0, 0, 0, 0, 191, 253, 255, 255, 230, 1, 0, 0,
+             223, 3, 0, 0, 6, 255, 255, 255, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageRotate(i, 45, 0, false, 0.0, 0.0, false, 0.0, 0.0, false, [223, 255, 255, 255])
+        ; -33, -2000, 9, 1000, -8, -33
+        AhkTest.AssertEqual(
+            [223, 255, 255, 255, 48, 248, 255, 255, 9, 0, 0, 0,
+             232, 3, 0, 0, 248, 255, 255, 255, 223, 255, 255, 255],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageRotate(f, 45, 0)
+        AhkTest.AssertEqual(9, PillowCImageMode(out))
+        ; 0.0, -2.5, 2.0, 1.5, -0.125, 0.0
+        AhkTest.AssertEqual(
+            [0, 0, 0, 0, 0, 0, 32, 192, 0, 0, 0, 64,
+             0, 0, 192, 63, 0, 0, 0, 190, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageRotate(f, 45, 2)
+        ; 0.0, -0.2315036505460739, 2.219669818878174, 1.316941738128662, -0.15253765881061554, 0.0
+        AhkTest.AssertEqual(
+            [0, 0, 0, 0, 75, 15, 109, 190, 18, 15, 14, 64,
+             140, 145, 168, 63, 213, 50, 28, 190, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageRotate(f, 45, 3)
+        ; 0.0, -0.7440593242645264, 2.3637824058532715, 1.5026237964630127, -0.5503451228141785, 0.0
+        AhkTest.AssertEqual(
+            [0, 0, 0, 0, 172, 122, 62, 191, 54, 72, 23, 64,
+             250, 85, 192, 63, 107, 227, 12, 191, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageRotate(f, 45, 0, false, 0.0, 0.0, false, 0.0, 0.0, false, [0, 0, 240, 64])
+        ; 7.5, -2.5, 2.0, 1.5, -0.125, 7.5
+        AhkTest.AssertEqual(
+            [0, 0, 240, 64, 0, 0, 32, 192, 0, 0, 0, 64,
+             0, 0, 192, 63, 0, 0, 0, 190, 0, 0, 240, 64],
+            PillowCImageToArray(out, 24))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        if i
+            PillowCFreeImage(i)
+        if f
+            PillowCFreeImage(f)
+    }
+}
+
+AhkTest.Test("pillow_c image_rotate interpolates numeric mode I/F samples", PillowCTestImageRotateNumericSamples)
+
 
 PillowCTestImageIcoSizesReportsAvailableFrames(*) {
     path := PillowCTempIcoPath("ico-sizes")

@@ -47,8 +47,31 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2774` AHK tests: `1377` raw DLL tests and
-`1397` facade tests.
+This suite currently registers `2777` AHK tests: `1378` raw DLL tests and
+`1399` facade tests.
+
+Latest `MODE-NUM-001CI` verification: the Pillow 11.3.0 oracle (kept
+in `oracle/probe_mode_rotate.py`) shows `rotate()` builds the same
+affine matrix as the existing native `rotate_affine_geometry` and
+dispatches through the AFFINE transform path, so mode I/F rotate needs
+the same one-sample interpolation as transform. The rotate
+bilinear/bicubic loops now route numeric modes through
+`bilinear_transform_numeric_sample` /
+`bicubic_transform_numeric_sample` with float32 casts and int32
+truncation (NEAREST already whole-copied samples), and the rotate fill
+reuses the numeric `TransformFillBuffer` packing. The ctypes
+cross-check (kept in `oracle/probe_mode_rotate_dll_compose.py`)
+matches Pillow's I/F NEAREST/BILINEAR/BICUBIC rotate outputs at 45
+degrees with expand=False/True plus fills exactly (`FAILURES: 0`).
+Raw/facade numeric rotate targets pass `3/3` in `125ms`; the Rotate
+filter passes `20/20` in `47ms`; the numeric filter passes `119/119`
+in `610ms`; and the full directory suite passes `2777/2777` in
+`18562ms`, with zero failures, errors, or skips. Release x64 Rebuild
+has `0 Warning(s), 0 Error(s)`; source/DLL export parity remains
+`463/463` with zero difference; and the rebuilt DLL SHA-256 is
+`0F5D6849D8818779F2D8D72361CB4DC724DF44EA3DB73034E1CE71ECFA67644B`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `91% ±4%`.
 
 Latest `MODE-NUM-001CH` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_mode_transform.py`,

@@ -22101,6 +22101,82 @@ PillowTestImageTransformAffineModeF(*) {
 
 AhkTest.Test("Pillow Image.Transform interpolates numeric mode F AFFINE/EXTENT samples", PillowTestImageTransformAffineModeF)
 
+PillowTestImageRotateModeI(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("I", [3, 2], PillowTestBuffer(PillowTestBytesFromI32([1000, -2000, 3000, 7, -8, 9])))
+    out := 0
+    try {
+        out := image.Rotate(45, Pillow.Resampling.NEAREST)
+        AhkTest.AssertEqual("I", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([0, -2000, 9, 1000, -8, 0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Rotate(45, Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([0, -198, 447, 854, -139, 0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Rotate(45, Pillow.Resampling.BICUBIC)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([0, -577, 486, 991, -250, 0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Rotate(45, Pillow.Resampling.NEAREST, false, unset, unset, -33)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([-33, -2000, 9, 1000, -8, -33]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+    } finally {
+        if IsObject(out)
+            out.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Rotate interpolates numeric mode I samples", PillowTestImageRotateModeI)
+
+PillowTestImageRotateModeF(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("F", [3, 2], PillowTestBuffer(PillowTestBytesFromF32([1.5, -2.5, 3.5, 0.25, -0.125, 2.0])))
+    out := 0
+    try {
+        out := image.Rotate(45, Pillow.Resampling.NEAREST)
+        AhkTest.AssertEqual("F", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([0.0, -2.5, 2.0, 1.5, -0.125, 0.0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Rotate(45, Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([0.0, -0.2315036505460739, 2.219669818878174, 1.316941738128662, -0.15253765881061554, 0.0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Rotate(45, Pillow.Resampling.BICUBIC)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([0.0, -0.7440593242645264, 2.3637824058532715, 1.5026237964630127, -0.5503451228141785, 0.0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Rotate(45, Pillow.Resampling.NEAREST, false, unset, unset, 7.5)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([7.5, -2.5, 2.0, 1.5, -0.125, 7.5]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+    } finally {
+        if IsObject(out)
+            out.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Rotate interpolates numeric mode F samples", PillowTestImageRotateModeF)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])

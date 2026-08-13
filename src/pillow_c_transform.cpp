@@ -700,6 +700,11 @@ int rotate_bilinear_into(
                 write_transform_values(source, fill, dst);
                 continue;
             }
+            if (is_numeric_transform_mode(source)) {
+                const double value = bilinear_transform_numeric_sample(source, source_x, source_y);
+                write_transform_numeric_sample(source, value, dst);
+                continue;
+            }
             std::uint8_t values[4]{0, 0, 0, 0};
             for (int channel = 0; channel < source->channels; ++channel) {
                 values[channel] = bilinear_transform_channel(source, source_x, source_y, channel, is_premultiplied_alpha_mode(source));
@@ -790,6 +795,11 @@ int rotate_bicubic_into(
             std::uint8_t* dst = dst_row + static_cast<std::size_t>(dst_x) * pixel_bytes;
             if (source_x < 0.0 || source_y < 0.0 || source_x >= source->width || source_y >= source->height) {
                 write_transform_values(source, fill, dst);
+                continue;
+            }
+            if (is_numeric_transform_mode(source)) {
+                const double value = bicubic_transform_numeric_sample(source, source_x, source_y);
+                write_transform_numeric_sample(source, value, dst);
                 continue;
             }
             std::uint8_t values[4]{0, 0, 0, 0};
