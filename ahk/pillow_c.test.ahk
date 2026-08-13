@@ -47198,6 +47198,91 @@ PillowCTestImageSaveTiffBigTiffFramesMetadata(*) {
 
 AhkTest.Test("pillow_c image save_tiff_bigtiff frames metadata options writes per-frame BigTIFF metadata", PillowCTestImageSaveTiffBigTiffFramesMetadata)
 
+PillowCTiffBigTiffPaletteStripBytes() {
+    ; Pillow 11.3.0 big_tiff=True P save layout (oracle/probe_tiff_bigtiff_
+    ; p_save.py): photometric 3, ColorMap 320 SHORT[768] channel-major at
+    ; 232, strip at 1768.
+    bytes := [73, 73, 43, 0, 8, 0, 0, 0]
+    PillowCAppendLe64(bytes, 16)
+    PillowCAppendLe64(bytes, 10)
+    entries := [
+        [256, 4, 1, 2],
+        [257, 4, 1, 2],
+        [258, 3, 1, 8],
+        [259, 3, 1, 1],
+        [262, 3, 1, 3],
+        [273, 4, 1, 1768],
+        [278, 4, 1, 2],
+        [279, 4, 1, 4],
+        [284, 3, 1, 1],
+        [320, 3, 768, 232],
+    ]
+    for entry in entries
+        PillowCAppendBigTiffEntry(bytes, entry, true)
+    PillowCAppendLe64(bytes, 0)
+    for plane in [[0, 255, 0, 255], [0, 0, 255, 255], [0, 0, 0, 255]] {
+        for value in plane
+            PillowCAppendLe16(bytes, value << 8)
+        loop 252
+            PillowCAppendLe16(bytes, 0)
+    }
+    bytes.Push(0, 1, 2, 3)
+    return bytes
+}
+
+PillowCTestImageSaveTiffBigTiffPaletteMode(*) {
+    ; Pillow 11.3.0 saves P-mode BigTIFFs with photometric 3 and a full
+    ; 768-SHORT channel-major ColorMap; the DLL round-trips both.
+    path := PillowCTempTiffPath("save-bigtiff-p")
+    image := PillowCCreateImageMode(2, 2, 6)
+    loaded := 0
+    palette := [0, 0, 0, 255, 0, 0, 0, 255, 0, 255, 255, 255]
+    try {
+        PillowCImageSetBytes(image, [0, 1, 2, 3])
+        PillowCImagePutPaletteRgb(image, palette)
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_tiff_bigtiff",
+            "Ptr", image,
+            "Ptr", PillowCUtf8Buffer(path),
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual([73, 73, 43, 0], PillowCArraySlice(PillowCReadFileBytes(path), 1, 4))
+        AhkTest.AssertEqual(1, PillowCImageFrameCountTiff(path))
+        loaded := PillowCImageOpenTiff(path)
+        AhkTest.AssertEqual(6, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowCImageToArray(loaded, 4))
+        AhkTest.AssertEqual(palette, PillowCArraySlice(PillowCImageGetPaletteRgb(loaded), 1, 12))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        if image
+            PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_tiff_bigtiff round-trips palette P mode", PillowCTestImageSaveTiffBigTiffPaletteMode)
+
+PillowCTestImageOpenTiffBigTiffPaletteStripFixture(*) {
+    path := PillowCTempTiffPath("open-bigtiff-p")
+    loaded := 0
+    try {
+        PillowCWriteFileBytes(path, PillowCTiffBigTiffPaletteStripBytes())
+        AhkTest.AssertEqual(1, PillowCImageFrameCountTiff(path))
+        loaded := PillowCImageOpenTiff(path)
+        AhkTest.AssertEqual(6, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowCImageToArray(loaded, 4))
+        AhkTest.AssertEqual([0, 0, 0, 255, 0, 0, 0, 255, 0, 255, 255, 255], PillowCArraySlice(PillowCImageGetPaletteRgb(loaded), 1, 12))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image open_tiff reads Pillow 11.3.0 BigTIFF palette strip", PillowCTestImageOpenTiffBigTiffPaletteStripFixture)
+
 PillowCTestImageOpenTiffReadsPillowBigTiffStripL(*) {
     path := PillowCTempTiffPath("open-bigtiff-strip-l")
     loaded := 0

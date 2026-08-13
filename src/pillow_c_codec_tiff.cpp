@@ -3194,6 +3194,7 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
     std::uint64_t planar_config = 1u;
     std::uint64_t strip_offset = 0u;
     std::uint64_t strip_byte_count = 0u;
+    std::uint64_t color_map_offset = 0u;
     bool has_width = false;
     bool has_height = false;
     bool has_bits = false;
@@ -3204,6 +3205,7 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
     bool has_planar_config = false;
     bool has_strip_offset = false;
     bool has_strip_byte_count = false;
+    bool has_color_map = false;
 
     if (entry_count > std::numeric_limits<std::size_t>::max() / 20u) {
         return PILLOW_C_INVALID_ARGUMENT;
@@ -3244,6 +3246,13 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
             break;
         case 339u:
             has_sample_format = read_scalar(entry, &sample_format);
+            break;
+        case 320u:
+            if (read_tiff16(entry + 2u, little_endian) == 3u &&
+                read_tiff64(entry + 4u, little_endian) == 768u) {
+                color_map_offset = read_tiff64(entry + 12u, little_endian);
+                has_color_map = true;
+            }
             break;
         default:
             break;
@@ -3316,8 +3325,15 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
         has_samples_per_pixel && samples_per_pixel == 4u &&
         !has_extra_samples &&
         (!has_planar_config || planar_config == 1u);
+    const bool matches_palette =
+        has_width && has_height && has_bits && has_photometric &&
+        has_strip_offset && has_strip_byte_count &&
+        bits_per_sample.size() == 1u && bits_per_sample[0] == 8u && photometric == 3u &&
+        supported_compression && has_color_map &&
+        (!has_samples_per_pixel || samples_per_pixel == 1u) &&
+        (!has_planar_config || planar_config == 1u);
     if (!matches_l && !matches_rgb && !matches_rgba && !matches_la &&
-        !matches_i16 && !matches_i && !matches_f && !matches_cmyk) {
+        !matches_i16 && !matches_i && !matches_f && !matches_cmyk && !matches_palette) {
         return PILLOW_C_OK;
     }
     if (width == 0u || height == 0u ||
@@ -3333,9 +3349,11 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
                 ? PILLOW_C_MODE_F
                 : (matches_cmyk
                     ? PILLOW_C_MODE_CMYK
-                    : (matches_rgba
-                        ? PILLOW_C_MODE_RGBA
-                        : (matches_la ? PILLOW_C_MODE_LA : (matches_rgb ? PILLOW_C_MODE_RGB : PILLOW_C_MODE_L))))));
+                    : (matches_palette
+                        ? PILLOW_C_MODE_P
+                        : (matches_rgba
+                            ? PILLOW_C_MODE_RGBA
+                            : (matches_la ? PILLOW_C_MODE_LA : (matches_rgb ? PILLOW_C_MODE_RGB : PILLOW_C_MODE_L)))))));
     const int channels = matches_i16
         ? 2
         : ((matches_i || matches_f || matches_cmyk || matches_rgba)
@@ -3380,6 +3398,25 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
             }
             strip_source = numeric_storage.data();
         }
+        std::vector<std::uint8_t> palette_rgb;
+        if (matches_palette) {
+            // 320 ColorMap is channel-major SHORT[768]; convert to byte RGB
+            // triplets like the classic palette route (value >> 8).
+            if (color_map_offset > static_cast<std::uint64_t>(tiff_size) ||
+                static_cast<std::uint64_t>(256u * 3u * 2u) > static_cast<std::uint64_t>(tiff_size) - color_map_offset) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            palette_rgb.assign(256u * 3u, 0u);
+            for (std::size_t index = 0u; index < 256u; ++index) {
+                for (std::size_t channel = 0u; channel < 3u; ++channel) {
+                    const std::size_t plane_index = channel * 256u + index;
+                    const std::uint16_t value = read_tiff16(
+                        tiff + static_cast<std::size_t>(color_map_offset) + plane_index * 2u,
+                        little_endian);
+                    palette_rgb[index * 3u + channel] = static_cast<std::uint8_t>(value >> 8);
+                }
+            }
+        }
         auto* image = new PillowCImage{
             static_cast<int>(width),
             static_cast<int>(height),
@@ -3387,6 +3424,9 @@ int parse_tiff_bigtiff_strip_image_for_ifd(
             channels,
             stride,
             std::vector<std::uint8_t>(strip_source, strip_source + image_size)};
+        if (matches_palette) {
+            image->palette_rgb = std::move(palette_rgb);
+        }
         *recognized = true;
         *out_image = image;
         return PILLOW_C_OK;
@@ -8267,6 +8307,9 @@ int save_tiff_bigtiff_frames_image_metadata_with_compression(
         std::vector<std::uint64_t> ascii_blob_offsets;
         std::uint64_t xmp_blob_offset;
         std::uint64_t icc_blob_offset;
+        bool is_palette;
+        std::vector<std::uint8_t> color_map_blob;
+        std::uint64_t color_map_offset;
     };
     std::vector<BigTiffFrame> frames;
     try {
@@ -8298,6 +8341,8 @@ int save_tiff_bigtiff_frames_image_metadata_with_compression(
             frame.ascii_blob_offsets.assign(ascii_count, 0u);
             frame.xmp_blob_offset = 0u;
             frame.icc_blob_offset = 0u;
+            frame.is_palette = false;
+            frame.color_map_offset = 0u;
             int channels = 0;
             switch (image->mode) {
             case PILLOW_C_MODE_L:
@@ -8348,11 +8393,33 @@ int save_tiff_bigtiff_frames_image_metadata_with_compression(
                 channels = 4;
                 frame.photometric = 5u;
                 break;
+            case PILLOW_C_MODE_P:
+                channels = 1;
+                frame.photometric = 3u;
+                frame.is_palette = true;
+                break;
             default:
                 return PILLOW_C_INVALID_ARGUMENT;
             }
             if (image->channels != channels) {
                 return PILLOW_C_INVALID_ARGUMENT;
+            }
+            if (frame.is_palette) {
+                // Pillow writes the full 256-entry channel-major ColorMap
+                // (768 SHORTs, byte << 8 per entry, zeros beyond the stored
+                // palette); validate_tiff_save_image bounds palette_rgb.
+                frame.color_map_blob.resize(256u * 3u * 2u, 0u);
+                const std::size_t entry_count_3 = image->palette_rgb.size() / 3u;
+                for (std::size_t channel = 0u; channel < 3u; ++channel) {
+                    for (std::size_t entry_index = 0u; entry_index < 256u; ++entry_index) {
+                        const std::size_t value = entry_index < entry_count_3
+                            ? static_cast<std::size_t>(image->palette_rgb[entry_index * 3u + channel]) << 8
+                            : 0u;
+                        const std::size_t plane_index = channel * 256u + entry_index;
+                        frame.color_map_blob[plane_index * 2u] = static_cast<std::uint8_t>(value & 0xFFu);
+                        frame.color_map_blob[plane_index * 2u + 1u] = static_cast<std::uint8_t>((value >> 8) & 0xFFu);
+                    }
+                }
             }
             if ((frame.has_sample_format || frame.is_i16 || image->mode == PILLOW_C_MODE_CMYK) &&
                 compression != TIFF_COMPRESSION_NONE) {
@@ -8367,6 +8434,7 @@ int save_tiff_bigtiff_frames_image_metadata_with_compression(
                 channels > 1 && !frame.is_i16 && !frame.has_sample_format;
             frame.entry_count = 9u + (has_samples_per_pixel ? 1u : 0u) +
                 (frame.has_extra_samples ? 1u : 0u) + (frame.has_sample_format ? 1u : 0u) +
+                (frame.is_palette ? 1u : 0u) +
                 (has_dpi_tag ? 3u : 0u) + (has_icc_profile ? 1u : 0u) +
                 (has_xmp ? 1u : 0u) + ascii_count;
             frame.ifd_bytes = 8u + frame.entry_count * 20u + 8u;
@@ -8402,6 +8470,11 @@ int save_tiff_bigtiff_frames_image_metadata_with_compression(
             ifd_offsets[index] = cursor;
             std::uint64_t blob_cursor = cursor + static_cast<std::uint64_t>(frames[index].ifd_bytes);
             BigTiffFrame& frame = frames[index];
+            if (frame.is_palette) {
+                blob_cursor = align_tiff_offset(blob_cursor);
+                frame.color_map_offset = blob_cursor;
+                blob_cursor += static_cast<std::uint64_t>(frame.color_map_blob.size());
+            }
             for (std::size_t ascii_index = 0u; ascii_index < ascii_count; ++ascii_index) {
                 if (ascii_sizes[ascii_index] > 8u) {
                     blob_cursor = align_tiff_offset(blob_cursor);
@@ -8510,6 +8583,9 @@ int save_tiff_bigtiff_frames_image_metadata_with_compression(
                 append_entry(296u, 3u, 1u, 2u);
             }
             append_ascii_entry(315);
+            if (frame.is_palette) {
+                append_entry(320u, 3u, 768u, frame.color_map_offset);
+            }
             if (frame.has_extra_samples) {
                 append_entry(338u, 3u, 1u, 2u);
             }
@@ -8531,6 +8607,12 @@ int save_tiff_bigtiff_frames_image_metadata_with_compression(
                     blob_entry_value(icc_profile, icc_profile_size, frame.icc_blob_offset));
             }
             append_le64(out, index + 1u < image_count ? ifd_offsets[index + 1u] : 0u);
+            if (frame.is_palette) {
+                if (out.size() < static_cast<std::size_t>(frame.color_map_offset)) {
+                    out.resize(static_cast<std::size_t>(frame.color_map_offset), 0);
+                }
+                out.insert(out.end(), frame.color_map_blob.begin(), frame.color_map_blob.end());
+            }
             for (std::size_t ascii_index = 0u; ascii_index < ascii_count; ++ascii_index) {
                 if (ascii_sizes[ascii_index] > 8u) {
                     if (out.size() < static_cast<std::size_t>(frame.ascii_blob_offsets[ascii_index])) {

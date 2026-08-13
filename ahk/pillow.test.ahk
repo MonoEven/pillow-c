@@ -44173,6 +44173,30 @@ PillowTestImageSaveTiffBigTiffSaveAllComposition(*) {
 
 AhkTest.Test("Pillow Image.Save TIFF big_tiff save_all composes numeric frames and per-frame metadata", PillowTestImageSaveTiffBigTiffSaveAllComposition)
 
+PillowTestImageSaveTiffBigTiffPaletteMode(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    palette := [0, 0, 0, 255, 0, 0, 0, 255, 0, 255, 255, 255]
+    image := Pillow.Image.FromBytes("P", [2, 2], PillowTestBuffer([0, 1, 2, 3]))
+    image.PutPalette(palette)
+    path := PillowTestTempTiffPath("save-bigtiff-p-facade")
+    loaded := 0
+    try {
+        image.Save(path, "TIFF", { big_tiff: true })
+        AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual("P", loaded.Mode)
+        AhkTest.AssertEqual([0, 1, 2, 3], PillowTestBufferToArray(loaded.ToBytes()))
+        AhkTest.AssertEqual(palette, PillowTestArraySlice(loaded.GetPalette(), 1, 12))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF big_tiff round-trips palette P mode", PillowTestImageSaveTiffBigTiffPaletteMode)
+
 PillowTestTiffClassicTwoFramePillowBytes() {
     ; Pillow 11.3.0 save_all two-frame classic layout (see
     ; oracle/probe_tiff_classic_two_frame_save.py).

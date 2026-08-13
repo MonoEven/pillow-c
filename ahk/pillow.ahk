@@ -10917,8 +10917,8 @@ class Pillow {
             if bigTiffOption.Set && bigTiffOption.Value {
                 if this.Mode != "L" && this.Mode != "RGB" && this.Mode != "RGBA" && this.Mode != "LA"
                     && this.Mode != "CMYK" && this.Mode != "I;16" && this.Mode != "I;16B"
-                    && this.Mode != "I" && this.Mode != "F"
-                    throw Error("Pillow.Image.Save big_tiff currently supports L, RGB, RGBA, LA, CMYK, I;16, I, and F modes", -1)
+                    && this.Mode != "I" && this.Mode != "F" && this.Mode != "P"
+                    throw Error("Pillow.Image.Save big_tiff currently supports L, RGB, RGBA, LA, CMYK, I;16, I, F, and P modes", -1)
                 compression := compressionOption.Set
                     ? Pillow.Image.SaveTiffCompression(compressionOption.Value)
                     : 1

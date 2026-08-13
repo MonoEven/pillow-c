@@ -21,9 +21,9 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 79% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 80% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
-Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BG` closes the bounded
+Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BH` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
 malformed-metadata robustness slice, one-level ExifIFD/GPSInfo sub-IFD
 traversal on both routes, the classic-route TIFF save `exif=` option with
@@ -32,27 +32,27 @@ BigTIFF save matrix with compression, the two-frame BigTIFF save, the
 Pillow multi-frame layout lock-in, the numeric BigTIFF strip save/open
 family (I16/I16B/I/F/CMYK), the BigTIFF save metadata composition
 (dpi/icc_profile/tiffinfo 270/315/700), the BigTIFF save `exif=` family
-(IFD0 patch through the shared family classifier/blob parser), and the
+(IFD0 patch through the shared family classifier/blob parser), the
 BigTIFF save_all composition lock-in (chained numeric multi-frame and
-per-frame metadata with zero native changes; compression combinations
-fall back to classic TIFF like Pillow).
+per-frame metadata), and the BigTIFF save palette (P) mode (photometric
+3 with a full 256-entry channel-major ColorMap 320 round-trip in both
+directions).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. BigTIFF save_all compositions were
-cross-verified through Pillow 11.3.0 ctypes (exact per-frame bytes and
-per-frame dpi/icc/ascii metadata, `FAILURES: 0`), the TIFF filter passes
-`699/699` in `5437ms`, and the full directory suite passes `2751/2751`
-in `18469ms`; source/DLL exports remain `461/461` with zero difference;
-and the DLL SHA-256 remains
-`7B8A9E95408CF59C584495C8E9B9467776A8D60A422560ABB60E1F9D9E46FD6D`.
+IFD as a writer artifact. BigTIFF P saves/opens were cross-verified
+through Pillow 11.3.0 ctypes (exact indices and palette prefixes,
+`FAILURES: 0`), the TIFF filter passes `702/702` in `5063ms`, and the
+full directory suite passes `2754/2754` in `19062ms`; source/DLL exports
+remain `461/461` with zero difference; and the DLL SHA-256 is
+`E920652B69C1F2733281781B5A09A74FE0A25B38840B26A60C589A36ECCB91E9`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`FMT-TIFF-003BH` BigTIFF save palette (P) mode (photometric 3 with
-ColorMap 320 round-trip), with wider BigTIFF save remaining separate.
-Dither exact parity, libimagequant, broader quantize cross-products,
-qtables with more than two tables, malformed marker streams, and exact
-whole-file parity remain separate.
+`FMT-TIFF-003BI` BigTIFF save bilevel (1) mode (photometric 0 with
+BitsPerSample 1 and a packed strip), with wider BigTIFF save remaining
+separate. Dither exact parity, libimagequant, broader quantize
+cross-products, qtables with more than two tables, malformed marker
+streams, and exact whole-file parity remain separate.
 ```
 
 Current work packet:
@@ -395,9 +395,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `FMT-TIFF-003BH` BigTIFF save palette (P)
-  mode (photometric 3 with ColorMap 320 round-trip), with wider BigTIFF
-  save staying separate.
+- Selected next gap: bounded `FMT-TIFF-003BI` BigTIFF save bilevel (1)
+  mode (photometric 0 with BitsPerSample 1 and a packed strip), with
+  wider BigTIFF save staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -471,6 +471,31 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `FMT-TIFF-003BH` is GREEN for the bounded BigTIFF save palette
+(P) mode. The Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_bigtiff_p_save.py`) shows P-mode `big_tiff=True`
+saves use photometric 3 with a full 256-entry channel-major ColorMap
+320 SHORT[768] blob (each palette byte as `byte << 8`, zeros beyond the
+stored entries) and the index strip after it. The frames metadata
+writer gained the P mode case plus the colormap blob layout/emission,
+and the strip parser gained the `matches_palette` predicate plus the
+channel-major `>> 8` palette conversion into `palette_rgb`; the facade
+big_tiff mode guard accepts P. A ctypes cross-check (kept in
+`oracle/probe_tiff_bigtiff_p_dll_compose.py`) reopens the DLL-written P
+BigTIFF in Pillow 11.3.0 (mode/indices/palette) and the DLL reopens
+Pillow's own P BigTIFF (`FAILURES: 0`). Raw save round-trip and
+Pillow-layout fixture open targets plus the facade P save target pass
+`1/1` each; the TIFF filter passes `702/702` in `5063ms`; and the full
+directory suite passes `2754/2754` in `19062ms`, with zero failures,
+errors, or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity remains `461/461` with zero difference; and the
+rebuilt DLL SHA-256 is
+`E920652B69C1F2733281781B5A09A74FE0A25B38840B26A60C589A36ECCB91E9`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed
+beyond the BigTIFF palette save family. The estimate moves to `80% ±4%`.
+The next bounded child is `FMT-TIFF-003BI`, BigTIFF save bilevel (1)
+mode.
 
 2026-08-13: `FMT-TIFF-003BG` is GREEN as a BigTIFF save_all composition
 lock-in with zero native changes. The Pillow 11.3.0 oracle (kept in

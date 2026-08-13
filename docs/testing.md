@@ -47,8 +47,29 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2751` AHK tests: `1366` raw DLL tests and
-`1385` facade tests.
+This suite currently registers `2754` AHK tests: `1368` raw DLL tests and
+`1386` facade tests.
+
+Latest `FMT-TIFF-003BH` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_bigtiff_p_save.py`) confirms P-mode `big_tiff=True`
+saves use photometric 3 with a full 256-entry channel-major ColorMap
+320 SHORT[768] blob and the index strip after it. The ctypes cross-check
+(kept in `oracle/probe_tiff_bigtiff_p_dll_compose.py`) reopens the
+DLL-written P BigTIFF in Pillow 11.3.0 (mode/indices/palette) and the
+DLL reopens Pillow's own P BigTIFF (`FAILURES: 0`). The frames metadata
+writer gained the P mode case plus the colormap blob, the strip parser
+gained the `matches_palette` predicate plus the channel-major `>> 8`
+palette conversion, and the facade big_tiff guard accepts P. Raw save
+round-trip and Pillow-layout fixture open targets plus the facade P save
+target pass `1/1` each; the TIFF filter passes `702/702` in `5063ms`;
+and the full directory suite passes `2754/2754` in `19062ms`, with zero
+failures, errors, or skips. Release x64 Rebuild has `0 Warning(s),
+0 Error(s)`; source/DLL export parity remains `461/461` with zero
+difference; and the rebuilt DLL SHA-256 is
+`E920652B69C1F2733281781B5A09A74FE0A25B38840B26A60C589A36ECCB91E9`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed
+beyond the BigTIFF palette save family. The overall Pillow
+replacement-readiness estimate moves to `80% ±4%`.
 
 Latest `FMT-TIFF-003BG` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_tiff_bigtiff_saveall_compose.py`) confirms `save_all`+

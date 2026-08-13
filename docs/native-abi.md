@@ -29,11 +29,32 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`461/461`; the full AHK suite is `2751/2751`; and the current DLL SHA-256 is
-`7B8A9E95408CF59C584495C8E9B9467776A8D60A422560ABB60E1F9D9E46FD6D`.
+`461/461`; the full AHK suite is `2754/2754`; and the current DLL SHA-256 is
+`E920652B69C1F2733281781B5A09A74FE0A25B38840B26A60C589A36ECCB91E9`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
+
+## TIFF BigTIFF Save Palette ABI Behavior
+
+`FMT-TIFF-003BH` changes no exported name or signature. Existing
+`pillow_c_image_save_tiff_bigtiff(_frames_metadata_ascii_entries_
+options)`, `pillow_c_image_open_tiff`, and
+`pillow_c_image_frame_count_tiff` status, handle ownership, and
+synchronous path/source-file lifetime contracts remain unchanged.
+
+The frames metadata writer now accepts `PILLOW_C_MODE_P` frames:
+channels 1, photometric 3, and a full 256-entry channel-major ColorMap
+320 blob (SHORT[768], each palette byte written as `byte << 8`, zeros
+beyond the stored `palette_rgb` triplets) placed even-aligned after the
+IFD with the 320 entry (type 3, count 768, u64 offset) emitted in
+ascending tag order. The BigTIFF strip parser recognizes the same layout
+(photometric 3, bits 8, samples 1, planar 1) and converts the
+channel-major SHORT colormap into byte RGB `palette_rgb` triplets with
+`value >> 8`, mirroring the classic palette route.
+
+No facade lifetime rule, fallback, or AHK per-pixel loop was added
+beyond the BigTIFF palette save family above.
 
 ## TIFF BigTIFF Save Exif ABI Behavior
 
