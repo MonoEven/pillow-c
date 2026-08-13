@@ -29,8 +29,8 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`463/463`; the full AHK suite is `2777/2777`; and the current DLL SHA-256 is
-`0F5D6849D8818779F2D8D72361CB4DC724DF44EA3DB73034E1CE71ECFA67644B`.
+`463/463`; the full AHK suite is `2779/2779`; and the current DLL SHA-256 is
+`2CADF992A741F27D32A7E72F5A3881162F2FE882920ADD8F7601A348FE742F1B`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
@@ -93,9 +93,15 @@ through the same per-sample helpers (Pillow 11.3.0's `rotate()` builds
 the same affine matrix as `rotate_affine_geometry` and dispatches
 through the AFFINE transform path), while the rotate NEAREST path
 already whole-copied samples with equivalent geometry; the rotate fill
-reuses the numeric `TransformFillBuffer` packing. Numeric
-PERSPECTIVE/QUAD/MESH verification, I;16, and the other transform
-families remain separate.
+reuses the numeric `TransformFillBuffer` packing.
+
+`MODE-NUM-001CJ` adds no public export either and completes the
+numeric transform family: `mesh_transform_image_into` routes
+`PILLOW_C_MODE_I` and `PILLOW_C_MODE_F` through the same per-sample
+helpers (its own per-byte channel loop was the last holdout), while the
+perspective and quad exports already shared the
+`transform_with_mapper_into` numeric branch. Numeric Resize
+interpolation, I;16, and the other transform families remain separate.
 
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.

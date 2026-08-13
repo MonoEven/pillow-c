@@ -47,8 +47,27 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2777` AHK tests: `1378` raw DLL tests and
-`1399` facade tests.
+This suite currently registers `2779` AHK tests: `1379` raw DLL tests and
+`1400` facade tests.
+
+Latest `MODE-NUM-001CJ` verification: the Pillow 11.3.0 oracle (kept
+in `oracle/probe_mode_pqm.py`) shows perspective/quad/mesh on modes I
+and F interpolate one 32-bit sample per pixel like AFFINE. The ctypes
+cross-check (kept in `oracle/probe_mode_pqm_dll_compose.py`) proved
+PERSPECTIVE and QUAD already matched through the shared
+`transform_with_mapper_into` numeric branch, while MESH
+bilinear/bicubic diverged because `mesh_transform_image_into` kept its
+own per-byte channel loop (the compose recorded `FAILURES: 4` before
+the fix, `FAILURES: 0` after). Raw/facade PQM numeric targets pass
+`2/2` in `47ms`; the transform filter passes `179/179` in `5016ms`;
+the numeric filter passes `121/121` in `578ms`; and the full directory
+suite passes `2779/2779` in `18531ms`, with zero failures, errors, or
+skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity remains `463/463` with zero difference; and the rebuilt
+DLL SHA-256 is
+`2CADF992A741F27D32A7E72F5A3881162F2FE882920ADD8F7601A348FE742F1B`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `92% ±4%`.
 
 Latest `MODE-NUM-001CI` verification: the Pillow 11.3.0 oracle (kept
 in `oracle/probe_mode_rotate.py`) shows `rotate()` builds the same

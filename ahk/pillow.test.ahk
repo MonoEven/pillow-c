@@ -22177,6 +22177,63 @@ PillowTestImageRotateModeF(*) {
 
 AhkTest.Test("Pillow Image.Rotate interpolates numeric mode F samples", PillowTestImageRotateModeF)
 
+PillowTestImageTransformPerspectiveQuadMeshNumeric(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    i := Pillow.Image.FromBytes("I", [3, 2], PillowTestBuffer(PillowTestBytesFromI32([1000, -2000, 3000, 7, -8, 9])))
+    f := Pillow.Image.FromBytes("F", [3, 2], PillowTestBuffer(PillowTestBytesFromF32([1.5, -2.5, 3.5, 0.25, -0.125, 2.0])))
+    out := 0
+    try {
+        perspective := [1.0, 0.05, 0.5, -0.05, 1.0, 0.5, 0.0005, 0.0005]
+        quad := [0.5, 0.5, 2.5, 0.5, 2.5, 1.5, 0.5, 1.5]
+        mesh := [[[0, 0, 2, 2], [0.0, 0.0, 2.5, 0.0, 2.5, 1.5, 0.0, 1.5]]]
+
+        out := i.Transform([3, 2], Pillow.Transform.PERSPECTIVE, perspective, Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual("I", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([-301, 354, 0, -1, 1, 0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := i.Transform([3, 2], Pillow.Transform.QUAD, quad, Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([-416, -250, -83, 416, 250, 83]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := i.Transform([3, 2], Pillow.Transform.MESH, mesh, Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([625, 237, 0, -125, -47, 0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := f.Transform([3, 2], Pillow.Transform.PERSPECTIVE, perspective, Pillow.Resampling.BICUBIC)
+        AhkTest.AssertEqual("F", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([-0.8332401514053345, 0.49256348609924316, 0.0, -0.08292502164840698, 1.1269274950027466, 0.0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := f.Transform([3, 2], Pillow.Transform.QUAD, quad, Pillow.Resampling.BICUBIC)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([-1.0755208730697632, -0.7265625, -0.3776041567325592, 0.1484375, 0.4453125, 0.7421875]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := f.Transform([3, 2], Pillow.Transform.MESH, mesh, Pillow.Resampling.BICUBIC)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([0.9891619682312012, 0.453033447265625, 0.0, -0.974982738494873, 0.072113037109375, 0.0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+    } finally {
+        if IsObject(out)
+            out.Close()
+        i.Close()
+        f.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Transform interpolates numeric PERSPECTIVE/QUAD/MESH samples", PillowTestImageTransformPerspectiveQuadMeshNumeric)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])

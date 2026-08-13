@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 91% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 92% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
@@ -39,27 +39,27 @@ family is COMPLETE), plus the bounded ICO/CUR family (`FMT-ICO-001B`,
 also COMPLETE), the facade API slice (`API-IMG-001D`/`API-IMG-001E`),
 the numeric point() slice (`MODE-I-001B` int32 and `MODE-F-001B`
 float32 linear callables through `pillow_c_image_point_transform` with
-Pillow's list/non-linear rejections), `MODE-NUM-001CH` numeric
-AFFINE/EXTENT interpolation (per-sample NEAREST/BILINEAR/BICUBIC with
-float32 casts and int32 truncation plus the numeric fill matrix), and
-`MODE-NUM-001CI` numeric `Image.Rotate` interpolation (the same
-per-sample math through the rotate bilinear/bicubic loops).
+Pillow's list/non-linear rejections), and the numeric transform family
+(`MODE-NUM-001CH` AFFINE/EXTENT, `MODE-NUM-001CI` Rotate, and
+`MODE-NUM-001CJ` PERSPECTIVE/QUAD/MESH lock-in — per-sample
+NEAREST/BILINEAR/BICUBIC with float32 casts and int32 truncation plus
+the numeric fill matrix across every transform route).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. Numeric rotate was cross-verified against
-Pillow's rotate outputs (exact int32/float32 samples, `FAILURES: 0`),
-the Rotate filter passes `20/20` in `47ms`, the numeric filter passes
-`119/119` in `610ms`, and the full directory suite passes `2777/2777`
-in `18562ms`; source/DLL exports remain `463/463` with zero difference;
-and the DLL SHA-256 is
-`0F5D6849D8818779F2D8D72361CB4DC724DF44EA3DB73034E1CE71ECFA67644B`.
+IFD as a writer artifact. The PQM lock-in was cross-verified against
+Pillow's perspective/quad/mesh outputs (exact int32/float32 samples,
+`FAILURES: 0`), the transform filter passes `179/179` in `5016ms`, the
+numeric filter passes `121/121` in `578ms`, and the full directory
+suite passes `2779/2779` in `18531ms`; source/DLL exports remain
+`463/463` with zero difference; and the DLL SHA-256 is
+`2CADF992A741F27D32A7E72F5A3881162F2FE882920ADD8F7601A348FE742F1B`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`MODE-NUM-001CJ` numeric PERSPECTIVE/QUAD/MESH transform lock-in.
-Dither exact parity, libimagequant, broader quantize cross-products,
-qtables with more than two tables, malformed marker streams, and exact
-whole-file parity remain separate.
+`MODE-NUM-001CK` numeric `Image.Resize` interpolation. Dither exact
+parity, libimagequant, broader quantize cross-products, qtables with
+more than two tables, malformed marker streams, and exact whole-file
+parity remain separate.
 ```
 
 Current work packet:
@@ -402,9 +402,8 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `MODE-NUM-001CJ` numeric
-  PERSPECTIVE/QUAD/MESH transform lock-in, with broader numeric-mode
-  gaps staying separate.
+- Selected next gap: bounded `MODE-NUM-001CK` numeric `Image.Resize`
+  interpolation, with broader numeric-mode gaps staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -478,6 +477,31 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `MODE-NUM-001CJ` is GREEN for the bounded mode I/F
+PERSPECTIVE/QUAD/MESH transform lock-in, completing the numeric
+transform family. The Pillow 11.3.0 oracle (kept in
+`oracle/probe_mode_pqm.py`) shows perspective/quad/mesh on I and F use
+the same per-sample interpolation as AFFINE. The ctypes cross-check
+(kept in `oracle/probe_mode_pqm_dll_compose.py`) proved PERSPECTIVE and
+QUAD already matched through the shared `transform_with_mapper_into`
+numeric branch, while the MESH bilinear/bicubic paths diverged because
+`mesh_transform_image_into` kept its own per-byte channel loop; that
+loop now routes numeric modes through
+`bilinear_transform_numeric_sample` /
+`bicubic_transform_numeric_sample` and
+`write_transform_numeric_sample` (the compose initially recorded
+`FAILURES: 4` on mesh bilinear/bicubic, then `FAILURES: 0` after the
+fix). Raw/facade PQM numeric targets pass `2/2` in `47ms`; the
+transform filter passes `179/179` in `5016ms`; the numeric filter
+passes `121/121` in `578ms`; and the full directory suite passes
+`2779/2779` in `18531ms`, with zero failures, errors, or skips. Release
+x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity
+remains `463/463` with zero difference; and the rebuilt DLL SHA-256 is
+`2CADF992A741F27D32A7E72F5A3881162F2FE882920ADD8F7601A348FE742F1B`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+estimate moves to `92% ±4%`. The next bounded child is
+`MODE-NUM-001CK`, numeric `Image.Resize` interpolation.
 
 2026-08-13: `MODE-NUM-001CI` is GREEN for the bounded mode I/F
 `Image.Rotate()` per-sample interpolation, the rotate twin of
@@ -17632,9 +17656,11 @@ Current highest-value remaining areas:
    matrix. `MODE-NUM-001CH` covers bounded mode I/F AFFINE/EXTENT per-sample
    interpolation (NEAREST whole-sample copies, BILINEAR float64 with float32
    casts and int32 truncation, BICUBIC clamped Catmull-Rom, and the numeric
-   fill matrix), and `MODE-NUM-001CI` covers the same per-sample math through
-   numeric `Image.Rotate` (bilinear/bicubic loops plus the numeric fill).
-   Numeric PERSPECTIVE/QUAD/MESH verification, I;16, and the other transform
+   fill matrix), `MODE-NUM-001CI` covers the same per-sample math through
+   numeric `Image.Rotate` (bilinear/bicubic loops plus the numeric fill),
+   and `MODE-NUM-001CJ` completes the numeric transform family with the
+   PERSPECTIVE/QUAD/MESH lock-in (the mesh loop was the last per-byte
+   holdout). Numeric Resize interpolation, I;16, and the other transform
    families remain separate. Continue only through a new explicit gap ID.
 3. `FMT-TIFF-002` to `FMT-TIFF-005`: TIFF tag/compression behavior and broader
    mode coverage after the now-covered `FMT-TIFF-001A` bounded multipage

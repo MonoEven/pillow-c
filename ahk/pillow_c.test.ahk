@@ -22516,6 +22516,120 @@ PillowCTestImageRotateNumericSamples(*) {
 
 AhkTest.Test("pillow_c image_rotate interpolates numeric mode I/F samples", PillowCTestImageRotateNumericSamples)
 
+PillowCTestImageTransformPerspectiveQuadMeshNumericSamples(*) {
+    ; Pillow 11.3.0 interpolates mode I/F perspective/quad/mesh transforms
+    ; per 32-bit sample (the mesh loop was the last per-byte holdout).
+    i := PillowCCreateImageMode(3, 2, 8)
+    f := PillowCCreateImageMode(3, 2, 9)
+    out := 0
+    try {
+        ; 1000, -2000, 3000, 7, -8, 9
+        PillowCImageSetBytes(i, [
+            232, 3, 0, 0, 48, 248, 255, 255, 184, 11, 0, 0,
+            7, 0, 0, 0, 248, 255, 255, 255, 9, 0, 0, 0,
+        ])
+        ; 1.5, -2.5, 3.5, 0.25, -0.125, 2.0
+        PillowCImageSetBytes(f, [
+            0, 0, 192, 63, 0, 0, 32, 192, 0, 0, 96, 64,
+            0, 0, 128, 62, 0, 0, 0, 190, 0, 0, 0, 64,
+        ])
+        perspective := [1.0, 0.05, 0.5, -0.05, 1.0, 0.5, 0.0005, 0.0005]
+        quad := [0.5, 0.5, 2.5, 0.5, 2.5, 1.5, 0.5, 1.5]
+        meshBox := [0, 0, 2, 2]
+        meshQuad := [0.0, 0.0, 2.5, 0.0, 2.5, 1.5, 0.0, 1.5]
+
+        out := PillowCImageTransformPerspective(i, 3, 2, perspective, 0)
+        AhkTest.AssertEqual(8, PillowCImageMode(out))
+        ; -2000, 3000, 0, -8, 9, 0
+        AhkTest.AssertEqual(
+            [48, 248, 255, 255, 184, 11, 0, 0, 0, 0, 0, 0,
+             248, 255, 255, 255, 9, 0, 0, 0, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageTransformPerspective(i, 3, 2, perspective, 2)
+        ; -301, 354, 0, -1, 1, 0
+        AhkTest.AssertEqual(
+            [211, 254, 255, 255, 98, 1, 0, 0, 0, 0, 0, 0,
+             255, 255, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageTransformQuad(i, 3, 2, quad, 2)
+        ; -416, -250, -83, 416, 250, 83
+        AhkTest.AssertEqual(
+            [96, 254, 255, 255, 6, 255, 255, 255, 173, 255, 255, 255,
+             160, 1, 0, 0, 250, 0, 0, 0, 83, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageTransformMesh(i, 3, 2, meshBox, meshQuad, 2)
+        ; 625, 237, 0, -125, -47, 0
+        AhkTest.AssertEqual(
+            [113, 2, 0, 0, 237, 0, 0, 0, 0, 0, 0, 0,
+             131, 255, 255, 255, 209, 255, 255, 255, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageTransformMesh(i, 3, 2, meshBox, meshQuad, 3)
+        ; 609, 211, 0, -618, -214, 0
+        AhkTest.AssertEqual(
+            [97, 2, 0, 0, 211, 0, 0, 0, 0, 0, 0, 0,
+             150, 253, 255, 255, 42, 255, 255, 255, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageTransformPerspective(f, 3, 2, perspective, 3)
+        AhkTest.AssertEqual(9, PillowCImageMode(out))
+        ; -0.8332401514053345, 0.49256348609924316, 0.0, -0.08292502164840698, 1.1269274950027466, 0.0
+        AhkTest.AssertEqual(
+            [58, 79, 85, 191, 72, 49, 252, 62, 0, 0, 0, 0,
+             152, 212, 169, 189, 41, 63, 144, 63, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageTransformQuad(f, 3, 2, quad, 3)
+        ; -1.0755208730697632, -0.7265625, -0.3776041567325592, 0.1484375, 0.4453125, 0.7421875
+        AhkTest.AssertEqual(
+            [171, 170, 137, 191, 0, 0, 58, 191, 85, 85, 193, 190,
+             0, 0, 24, 62, 0, 0, 228, 62, 0, 0, 62, 63],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageTransformMesh(f, 3, 2, meshBox, meshQuad, 3)
+        ; 0.9891619682312012, 0.453033447265625, 0.0, -0.974982738494873, 0.072113037109375, 0.0
+        AhkTest.AssertEqual(
+            [184, 57, 125, 63, 0, 244, 231, 62, 0, 0, 0, 0,
+             120, 152, 121, 191, 0, 176, 147, 61, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageTransformMesh(f, 3, 2, meshBox, meshQuad, 0)
+        ; 1.5, 0.25, 0.0, -2.5, -0.125, 0.0
+        AhkTest.AssertEqual(
+            [0, 0, 192, 63, 0, 0, 128, 62, 0, 0, 0, 0,
+             0, 0, 32, 192, 0, 0, 0, 190, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        if i
+            PillowCFreeImage(i)
+        if f
+            PillowCFreeImage(f)
+    }
+}
+
+AhkTest.Test("pillow_c perspective/quad/mesh interpolate numeric mode I/F samples", PillowCTestImageTransformPerspectiveQuadMeshNumericSamples)
+
 
 PillowCTestImageIcoSizesReportsAvailableFrames(*) {
     path := PillowCTempIcoPath("ico-sizes")

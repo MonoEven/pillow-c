@@ -1249,6 +1249,13 @@ int mesh_transform_image_into(
                     write_transform_values(source, fill, dst);
                     continue;
                 }
+                if (is_numeric_transform_mode(source)) {
+                    const double value = resample == PILLOW_C_RESAMPLE_BILINEAR
+                        ? bilinear_transform_numeric_sample(source, source_x, source_y)
+                        : bicubic_transform_numeric_sample(source, source_x, source_y);
+                    write_transform_numeric_sample(source, value, dst);
+                    continue;
+                }
                 std::uint8_t values[4]{0, 0, 0, 0};
                 for (int channel = 0; channel < source->channels; ++channel) {
                     values[channel] = resample == PILLOW_C_RESAMPLE_BILINEAR
