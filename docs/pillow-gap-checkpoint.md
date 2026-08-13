@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 97% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 98% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
@@ -45,27 +45,29 @@ Pillow's list/non-linear rejections), the numeric transform family
 family (`MODE-NUM-001CK` per-sample two-pass resampling,
 `MODE-NUM-001CL` boxed-Resize/Thumbnail lock-in, `MODE-NUM-001CM`
 I;16 uint16 semantics with documented boundaries, and
-`MODE-NUM-001CN` the reducing-gap composition), and `MODE-NUM-001CO`
-the I;16/I;16B transform fill packing (uint16 scalars/tuples/color
-names with modulo-65536 wrapping and Pillow's rejection messages).
+`MODE-NUM-001CN` the reducing-gap composition), `MODE-NUM-001CO` the
+I;16/I;16B transform fill packing, and `MODE-NUM-001CP` the I;16
+statistics/conversion semantics (uint16 getextrema, exact
+convert("I"/"F"), Pillow's high-byte convert("L") rule, and explicit
+boundaries for I;16B getextrema plus the layout-dependent I;16
+histogram).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The I;16 fill slice was cross-verified
-against Pillow's fill matrix (exact uint16 samples including the
-wrap-around, `FAILURES: 0` via pinned test values), the numeric filter
-passes `128/128` in `641ms`, the Rotate filter passes `22/22` in
-`47ms`, and the full directory suite passes `2789/2789` in `18219ms`;
+IFD as a writer artifact. The I;16 stats slice was cross-verified
+against Pillow (exact uint16 extrema and conversions, `FAILURES: 0`),
+the numeric filter passes `128/128` in `578ms`, the convert filter
+passes `141/141` in `250ms`, the Extrema filter passes `11/11` in
+`47ms`, and the full directory suite passes `2791/2791` in `18750ms`;
 source/DLL exports remain `463/463` with zero difference; and the DLL
-SHA-256 remains
-`ADAB3C0F6DBFD41B8C116D35F5B92C9B7A968F817F292C5B675EA1A667F0BA05`
-(facade-only slice).
+SHA-256 is
+`793768DFFDBD8E3088960A3E1B27E58AD9295581C13B3F86AC60D2DC4B3BD393`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`MODE-NUM-001CP` I;16 statistics/conversion semantics. Dither exact
-parity, libimagequant, broader quantize cross-products, qtables with
-more than two tables, malformed marker streams, and exact whole-file
-parity remain separate.
+`MODE-NUM-001CQ` I;16 entropy/getcolors/ImageStat semantics. Dither
+exact parity, libimagequant, broader quantize cross-products, qtables
+with more than two tables, malformed marker streams, and exact
+whole-file parity remain separate.
 ```
 
 Current work packet:
@@ -408,9 +410,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `MODE-NUM-001CP` I;16
-  statistics/conversion semantics, with broader numeric-mode and format
-  gaps staying separate.
+- Selected next gap: bounded `MODE-NUM-001CQ` I;16
+  entropy/getcolors/ImageStat semantics, with broader numeric-mode and
+  format gaps staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -484,6 +486,37 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `MODE-NUM-001CP` is GREEN for the bounded I;16
+statistics/conversion semantics. The Pillow 11.3.0 oracle (kept in
+`oracle/probe_mode_i16_stats.py`) shows `getextrema()` scans uint16
+samples ((200, 65535)), I;16B `getextrema()` raises
+`ValueError: image has wrong mode`, `convert("I")`/`convert("F")`
+copy the sample exactly, and `convert("L")` applies Pillow's
+Convert.c high-byte rule (high byte nonzero -> 255, else the low
+byte: [255, 255, 255, 255, 200, 255]); the I;16 `histogram()` C path
+reads 2-byte storage through layout-dependent byte misreads, so it is
+an explicit documented boundary. The native `extrema_image_numeric`
+gains the uint16 branch (and rejects I;16B), and
+`convert_image_mode_into` gains the I;16/I;16B source branch for
+I/F/L targets; the facade routes `GetExtrema` numerically for I;16,
+surfaces Pillow's `image has wrong mode` for I;16B, and rejects
+`Histogram` on I;16/I;16B with a documented boundary error. A ctypes
+cross-check (kept in
+`oracle/probe_mode_i16_stats_dll_compose.py`) matches Pillow's
+extrema, the I;16B boundary, and all three conversions for both modes
+exactly (`FAILURES: 0`). Raw/facade I;16 stats targets pass `4/4` in
+`47ms`; the numeric filter passes `128/128` in `578ms`; the convert
+filter passes `141/141` in `250ms`; the Extrema filter passes `11/11`
+in `47ms`; and the full directory suite passes `2791/2791` in
+`18750ms`, with zero failures, errors, or skips. Release x64 Rebuild
+has `0 Warning(s), 0 Error(s)`; source/DLL export parity remains
+`463/463` with zero difference; and the rebuilt DLL SHA-256 is
+`793768DFFDBD8E3088960A3E1B27E58AD9295581C13B3F86AC60D2DC4B3BD393`.
+I;16 entropy/getcolors/ImageStat remain separate. No facade lifetime
+rule, fallback, or AHK pixel loop changed. The estimate moves to
+`98% ±4%`. The next bounded child is `MODE-NUM-001CQ`, bounded I;16
+entropy/getcolors/ImageStat semantics.
 
 2026-08-13: `MODE-NUM-001CO` is GREEN for the bounded I;16/I;16B
 transform/rotate fill packing (facade-only). The Pillow 11.3.0 oracles
@@ -17817,8 +17850,11 @@ Current highest-value remaining areas:
    Pillow's `image has wrong mode` rejection for the I;16 reduce step).
    `MODE-NUM-001CO` covers the I;16/I;16B transform fill packing (uint16
    scalars/tuples/color names, modulo-65536 wrapping, Pillow rejection
-   messages). I;16 statistics/conversion and the other transform families
-   remain separate. Continue only through a new explicit gap ID.
+   messages), and `MODE-NUM-001CP` covers I;16 statistics/conversion
+   semantics (uint16 getextrema, exact convert I/F, Pillow's high-byte
+   convert-L rule, I;16B getextrema and I;16 histogram boundaries). I;16
+   entropy/getcolors/ImageStat and the other transform families remain
+   separate. Continue only through a new explicit gap ID.
 3. `FMT-TIFF-002` to `FMT-TIFF-005`: TIFF tag/compression behavior and broader
    mode coverage after the now-covered `FMT-TIFF-001A` bounded multipage
    `save_all` child. `FMT-TIFF-002A` covers Orientation=3 open-side

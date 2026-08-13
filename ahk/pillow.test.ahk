@@ -22604,6 +22604,62 @@ PillowTestImageTransformFillI16(*) {
 
 AhkTest.Test("Pillow I;16 Transform/Rotate packs numeric fill colors as uint16 samples", PillowTestImageTransformFillI16)
 
+PillowTestImageExtremaConvertI16(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("I;16", [3, 2], PillowTestBuffer(PillowTestBytesFromU16([1000, 50000, 60000, 300, 200, 65535])))
+    imageB := Pillow.Image.FromBytes("I;16B", [3, 2], PillowTestBuffer(PillowTestBytesFromU16BE([1000, 50000, 60000, 300, 200, 65535])))
+    out := 0
+    try {
+        AhkTest.AssertEqual([200, 65535], image.GetExtrema())
+
+        boundaryError := ""
+        try {
+            imageB.GetExtrema()
+        } catch Error as err {
+            boundaryError := err.Message
+        }
+        AhkTest.AssertEqual("image has wrong mode", boundaryError)
+
+        out := image.Convert("I")
+        AhkTest.AssertEqual("I", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromI32([1000, 50000, 60000, 300, 200, 65535]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Convert("F")
+        AhkTest.AssertEqual("F", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromF32([1000.0, 50000.0, 60000.0, 300.0, 200.0, 65535.0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Convert("L")
+        AhkTest.AssertEqual("L", out.Mode)
+        AhkTest.AssertEqual([255, 255, 255, 255, 200, 255], PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := imageB.Convert("L")
+        AhkTest.AssertEqual([255, 255, 255, 255, 200, 255], PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        histogramError := ""
+        try {
+            image.Histogram()
+        } catch Error as err {
+            histogramError := err.Message
+        }
+        AhkTest.AssertEqual("Pillow.Image.Histogram is not supported for mode I;16", histogramError)
+    } finally {
+        if IsObject(out)
+            out.Close()
+        image.Close()
+        imageB.Close()
+    }
+}
+
+AhkTest.Test("Pillow I;16 GetExtrema/Convert read uint16 samples with the histogram boundary", PillowTestImageExtremaConvertI16)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])

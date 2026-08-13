@@ -47,8 +47,31 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2789` AHK tests: `1384` raw DLL tests and
-`1405` facade tests.
+This suite currently registers `2791` AHK tests: `1385` raw DLL tests and
+`1406` facade tests.
+
+Latest `MODE-NUM-001CP` verification: the Pillow 11.3.0 oracle (kept
+in `oracle/probe_mode_i16_stats.py`) shows I;16 `getextrema()` scans
+uint16 samples, I;16B `getextrema()` raises `image has wrong mode`,
+`convert("I")`/`convert("F")` copy the sample exactly, `convert("L")`
+applies the Convert.c high-byte rule (high byte nonzero -> 255, else
+the low byte), and the I;16 `histogram()` C path reads 2-byte storage
+through layout-dependent byte misreads (documented boundary). The
+native `extrema_image_numeric` gains the uint16 branch (rejecting
+I;16B), `convert_image_mode_into` gains the I;16/I;16B source branch,
+and the facade surfaces the I;16B GetExtrema and I;16 Histogram
+boundaries. The ctypes cross-check (kept in
+`oracle/probe_mode_i16_stats_dll_compose.py`) matches Pillow exactly
+(`FAILURES: 0`). Raw/facade I;16 stats targets pass `4/4` in `47ms`;
+the numeric filter passes `128/128` in `578ms`; the convert filter
+passes `141/141` in `250ms`; the Extrema filter passes `11/11` in
+`47ms`; and the full directory suite passes `2791/2791` in `18750ms`,
+with zero failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity remains `463/463`
+with zero difference; and the rebuilt DLL SHA-256 is
+`793768DFFDBD8E3088960A3E1B27E58AD9295581C13B3F86AC60D2DC4B3BD393`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `98% ±4%`.
 
 Latest `MODE-NUM-001CO` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_mode_i16_fill.py` and

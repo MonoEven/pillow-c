@@ -3576,6 +3576,33 @@ int convert_image_mode_into(const PillowCImage* source, int target_mode, PillowC
         return PILLOW_C_OK;
     }
 
+    if ((source->mode == PILLOW_C_MODE_I16 || source->mode == PILLOW_C_MODE_I16B) &&
+        source->channels == 2 &&
+        (target_mode == PILLOW_C_MODE_I ||
+         target_mode == PILLOW_C_MODE_F ||
+         target_mode == PILLOW_C_MODE_L)) {
+        // Pillow 11.3.0 Convert.c I16L_I/I16B_I, I16L_F/I16B_F, and
+        // I16L_L/I16B_L: I/F copy the uint16 sample exactly; L writes
+        // 255 when the high byte is nonzero, else the low byte.
+        const bool big_endian = source->mode == PILLOW_C_MODE_I16B;
+        for (std::size_t i = 0; i < pixels; ++i) {
+            const std::uint8_t* src = source->pixels.data() + i * 2u;
+            const std::uint16_t value = big_endian
+                ? static_cast<std::uint16_t>((static_cast<std::uint16_t>(src[0]) << 8) | src[1])
+                : static_cast<std::uint16_t>(src[0]) | (static_cast<std::uint16_t>(src[1]) << 8);
+            if (target_mode == PILLOW_C_MODE_I) {
+                pillow_c_write_i32_le(target->pixels.data() + i * 4u, value);
+            } else if (target_mode == PILLOW_C_MODE_F) {
+                pillow_c_write_f32_le(target->pixels.data() + i * 4u, static_cast<float>(value));
+            } else {
+                const std::uint8_t high = big_endian ? src[0] : src[1];
+                const std::uint8_t low = big_endian ? src[1] : src[0];
+                target->pixels[i] = high != 0 ? 255 : low;
+            }
+        }
+        return PILLOW_C_OK;
+    }
+
     if (target_mode == PILLOW_C_MODE_L && source->mode == PILLOW_C_MODE_I) {
         const std::uint8_t* src = source->pixels.data();
         std::uint8_t* dst = target->pixels.data();

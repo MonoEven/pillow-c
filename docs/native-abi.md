@@ -29,8 +29,8 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`463/463`; the full AHK suite is `2787/2787`; and the current DLL SHA-256 is
-`ADAB3C0F6DBFD41B8C116D35F5B92C9B7A968F817F292C5B675EA1A667F0BA05`.
+`463/463`; the full AHK suite is `2791/2791`; and the current DLL SHA-256 is
+`793768DFFDBD8E3088960A3E1B27E58AD9295581C13B3F86AC60D2DC4B3BD393`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
@@ -140,7 +140,18 @@ mode`), surfaced by a facade guard that reproduces the factor check.
 `TransformFillBuffer` gains the I;16/I;16B uint16 packing branch
 (UShort little-endian for I;16, byte-swapped big-endian for I;16B),
 while the native 2-byte fill copy already worked; the DLL SHA-256 is
-unchanged. I;16 statistics/conversion semantics remain separate.
+unchanged.
+
+`MODE-NUM-001CP` adds no public export either and covers I;16
+statistics/conversion: `extrema_image_numeric` gains the uint16 scan
+branch for `PILLOW_C_MODE_I16` and returns
+`PILLOW_C_INVALID_ARGUMENT` for `PILLOW_C_MODE_I16B` (Pillow's
+`image has wrong mode`), and `convert_image_mode_into` gains the
+I;16/I;16B source branch for I/F/L targets with Pillow 11.3.0
+`Convert.c` semantics (exact I/F copies; L = 255 when the high byte is
+nonzero, else the low byte). The I;16 `histogram()` storage-read
+artifact remains an explicit documented boundary (the facade rejects
+it). I;16 entropy/getcolors/ImageStat remain separate.
 
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.

@@ -23010,6 +23010,98 @@ PillowCTestImageRotateI16FillSamples(*) {
 
 AhkTest.Test("pillow_c image_rotate accepts raw uint16 I;16/I;16B fill samples", PillowCTestImageRotateI16FillSamples)
 
+PillowCTestImageExtremaConvertI16Samples(*) {
+    ; Pillow 11.3.0: I;16 getextrema scans uint16 samples; I;16B
+    ; getextrema raises "image has wrong mode"; convert("I"/"F") copies
+    ; the sample exactly and convert("L") writes 255 when the high byte
+    ; is nonzero, else the low byte.
+    i16 := PillowCCreateImageMode(3, 2, 11)
+    i16b := PillowCCreateImageMode(3, 2, 12)
+    out := 0
+    try {
+        ; 1000, 50000, 60000, 300, 200, 65535
+        PillowCImageSetBytes(i16, [
+            232, 3, 80, 195, 96, 234, 44, 1, 200, 0, 255, 255,
+        ])
+        PillowCImageSetBytes(i16b, [
+            3, 232, 195, 80, 234, 96, 1, 44, 0, 200, 255, 255,
+        ])
+
+        min := 0.0
+        max := 0.0
+        has := 0
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_get_extrema_numeric",
+            "Ptr", i16,
+            "Double*", &min,
+            "Double*", &max,
+            "UChar*", &has,
+            "UPtr", 1,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual(1, has)
+        AhkTest.AssertEqual(200, Integer(min))
+        AhkTest.AssertEqual(65535, Integer(max))
+
+        min := 0.0
+        max := 0.0
+        has := 0
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_get_extrema_numeric",
+            "Ptr", i16b,
+            "Double*", &min,
+            "Double*", &max,
+            "UChar*", &has,
+            "UPtr", 1,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        out := PillowCImageConvertMode(i16, 8)
+        AhkTest.AssertEqual(
+            [232, 3, 0, 0, 80, 195, 0, 0, 96, 234, 0, 0,
+             44, 1, 0, 0, 200, 0, 0, 0, 255, 255, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageConvertMode(i16, 9)
+        AhkTest.AssertEqual(
+            [0, 0, 122, 68, 0, 80, 67, 71, 0, 96, 106, 71,
+             0, 0, 150, 67, 0, 0, 72, 67, 0, 255, 127, 71],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageConvertMode(i16, 1)
+        AhkTest.AssertEqual(1, PillowCImageMode(out))
+        AhkTest.AssertEqual([255, 255, 255, 255, 200, 255], PillowCImageToArray(out, 6))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageConvertMode(i16b, 1)
+        AhkTest.AssertEqual([255, 255, 255, 255, 200, 255], PillowCImageToArray(out, 6))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageConvertMode(i16b, 8)
+        AhkTest.AssertEqual(
+            [232, 3, 0, 0, 80, 195, 0, 0, 96, 234, 0, 0,
+             44, 1, 0, 0, 200, 0, 0, 0, 255, 255, 0, 0],
+            PillowCImageToArray(out, 24))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        if i16
+            PillowCFreeImage(i16)
+        if i16b
+            PillowCFreeImage(i16b)
+    }
+}
+
+AhkTest.Test("pillow_c I;16 extrema/convert reads uint16 samples with the I;16B boundary", PillowCTestImageExtremaConvertI16Samples)
+
 PillowCTestI32Bytes(values) {
     bytes := []
     for value in values {

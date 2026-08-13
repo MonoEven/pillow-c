@@ -12266,6 +12266,12 @@ class Pillow {
         }
 
         Histogram(mask := unset) {
+            if this.Mode = "I;16" || this.Mode = "I;16B"
+                ; Pillow 11.3.0's C histogram reads 2-byte I;16 storage
+                ; through byte/word misreads, producing layout-dependent
+                ; bins; this runtime fails loudly instead (documented
+                ; boundary). getextrema/convert cover the useful paths.
+                throw Error("Pillow.Image.Histogram is not supported for mode " this.Mode, -1)
             count := Pillow.Image.GetModeBands(this.Mode) * 256
             out := Buffer(count * 8, 0)
             if IsSet(mask) {
@@ -12316,7 +12322,11 @@ class Pillow {
         }
 
         GetExtrema() {
-            if this.Mode = "I" || this.Mode = "F" {
+            if this.Mode = "I;16B"
+                ; Pillow 11.3.0 raises "image has wrong mode" for I;16B
+                ; getextrema() (documented boundary).
+                throw Error("image has wrong mode", -1)
+            if this.Mode = "I" || this.Mode = "F" || this.Mode = "I;16" {
                 bandCount := Pillow.Image.GetModeBands(this.Mode)
                 minBuf := Buffer(bandCount * 8, 0)
                 maxBuf := Buffer(bandCount * 8, 0)

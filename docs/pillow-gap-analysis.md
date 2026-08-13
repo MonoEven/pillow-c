@@ -37,6 +37,49 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-13 MODE-NUM-001CP I;16 Statistics/Conversion (GREEN)
+
+`MODE-NUM-001CP` closes the bounded I;16 statistics/conversion slice.
+
+The Pillow 11.3.0 oracle (kept in `oracle/probe_mode_i16_stats.py`)
+shows `getextrema()` scans uint16 samples ((200, 65535)), I;16B
+`getextrema()` raises `ValueError: image has wrong mode`,
+`convert("I")`/`convert("F")` copy the sample exactly, and
+`convert("L")` applies Pillow's `Convert.c` high-byte rule (high byte
+nonzero -> 255, else the low byte — `[255, 255, 255, 255, 200, 255]`);
+the I;16 `histogram()` C path reads 2-byte storage through
+layout-dependent byte misreads, so it is recorded as an explicit
+documented boundary. The native `extrema_image_numeric` gains the
+uint16 branch (and rejects I;16B with `PILLOW_C_INVALID_ARGUMENT`),
+and `convert_image_mode_into` gains the I;16/I;16B source branch for
+I/F/L targets (`I16L_I`/`I16B_I`, `I16L_F`/`I16B_F`,
+`I16L_L`/`I16B_L` semantics). The facade routes `GetExtrema`
+numerically for I;16, surfaces Pillow's `image has wrong mode` for
+I;16B, and rejects `Histogram` on I;16/I;16B with a documented
+boundary error. No new export: parity remains `463/463`.
+
+Verification:
+
+- Red evidence: the byte-channel extrema/convert paths treated the two
+  I;16 storage bytes as independent channels.
+- ctypes cross-check (`oracle/probe_mode_i16_stats_dll_compose.py`):
+  extrema, the I;16B boundary, and all three conversions match Pillow
+  for both modes exactly; `FAILURES: 0`.
+- Raw/facade I;16 stats targets pass `4/4` in `47ms`.
+- Numeric filter: `128/128` in `578ms`; convert filter: `141/141` in
+  `250ms`; Extrema filter: `11/11` in `47ms`.
+- Full AHK directory suite: `2791/2791` in `18750ms`; zero failures,
+  errors, or skips.
+- Release x64 Rebuild: `0 Warning(s), 0 Error(s)`.
+- Source/DLL export parity: `463/463`, zero difference.
+- DLL SHA-256:
+  `793768DFFDBD8E3088960A3E1B27E58AD9295581C13B3F86AC60D2DC4B3BD393`.
+
+I;16 entropy/getcolors/ImageStat remain separate; no facade lifetime
+rule, fallback, or AHK pixel loop changed. The estimate moves to
+`98% ±4%`. The next bounded child is `MODE-NUM-001CQ`, bounded I;16
+entropy/getcolors/ImageStat semantics.
+
 ## 2026-08-13 MODE-NUM-001CO I;16 Transform Fill Packing (GREEN)
 
 `MODE-NUM-001CO` closes the bounded I;16/I;16B transform/rotate fill
@@ -39547,6 +39590,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | MODE-NUM-001CM | Modes | covered | Bounded I;16 resize/transform sample semantics: Pillow 11.3.0's I;16 resize runs the 16bpc two-pass resampler (ROUND_UP plus per-byte CLIP8 writes per pass — values above 65535 wrap the high byte to 255), while I;16 transform/rotate NEAREST whole-copies samples and bilinear/bicubic transform/rotate interpolate the storage bytes as byte channels (endian-bug garbage on I;16B, whose 16bpc resampler misreads big-endian raw bytes). The native resize filter gains a uint16 branch (`resize_read_i16_sample`, `resize_round_clip_i16_sample` replicating the CLIP8 artifact, `resize_write_i16_sample`), and bilinear/bicubic on I;16/I;16B plus I;16B filter resizes become explicit documented boundaries (`PILLOW_C_INVALID_ARGUMENT`). The facade defaults `;`-modes to NEAREST and surfaces the boundary errors. A ctypes cross-check matches Pillow exactly on resize and NEAREST transform/rotate with the boundary statuses (`FAILURES: 0`). Export parity remains `463/463`. I;16 fill packing and reducing-gap composition remain separate. | `oracle/probe_mode_i16.py`, `oracle/probe_mode_i16_dll_compose.py`, `resize_read_i16_sample`/`resize_round_clip_i16_sample`/`resize_write_i16_sample`, `transform_resample_unsupported_for_mode`, facade `ThrowUnsupportedTransformResample` + I;16B resize guard + `;`-mode NEAREST default, raw/facade I;16 tests. |
 | MODE-NUM-001CN | Modes | covered | Bounded numeric reducing-gap Resize composition completing the numeric resize family: Pillow 11.3.0 computes per-axis factors and, when a factor exceeds 1, runs `reduce(factor, box=safe_box)` then a boxed resize — Reduce.c's 32bpc path block-averages one sample per pixel (I stores `ROUND_UP(sum/count)`, F stores the float32 cast) with partial-edge corner multipliers, while I;16's reduce step raises `ValueError: image has wrong mode` (IMAGING_TYPE_SPECIAL). `supports_reduce_mode` now accepts I and F, `reduce_image_into` gains the numeric branch, the I;16 reduce step stays rejected, and the facade surfaces Pillow's `image has wrong mode` message when the factor exceeds 1. A ctypes cross-check matches Pillow's 24x24-to-3x3 I/F NEAREST/BILINEAR/BICUBIC outputs, the I;16 NEAREST output, and the boundary exactly (`FAILURES: 0`). Export parity remains `463/463`. | `oracle/probe_mode_reducing_gap.py`, `oracle/probe_mode_reducing_gap2.py`, `oracle/probe_mode_reducing_gap_dll_compose.py`, `supports_reduce_mode` + `reduce_image_into` numeric branch, facade I;16 reducing-gap guard, raw/facade reducing-gap tests. |
 | MODE-NUM-001CO | Modes | covered | Bounded I;16/I;16B transform/rotate fill packing (facade-only): Pillow 11.3.0 packs NEAREST fills as one uint16 sample — int scalars and single-element tuples wrap modulo 65536 (70000 -> 4464, -5 -> 65531), color names resolve through the grayscale map (`"red"` -> 76), floats and multi-element sequences reject with `color must be int or single-element tuple`, and I;16B keeps big-endian raw bytes. The facade `TransformFillBuffer` gains the I;16/I;16B branch (UShort LE for I;16, byte-swapped BE for I;16B), while the native ABI already accepted the raw 2-byte fill. Export parity remains `463/463` and the DLL SHA-256 is unchanged. | `oracle/probe_mode_i16_fill.py`, `oracle/probe_mode_i16_fill_range.py`, facade `TransformFillBuffer` I;16/I;16B branch, raw 2-byte fill pin, facade fill-matrix test. |
+| MODE-NUM-001CP | Modes | covered | Bounded I;16 statistics/conversion semantics: Pillow 11.3.0's `getextrema()` scans uint16 samples, I;16B `getextrema()` raises `image has wrong mode`, `convert("I")`/`convert("F")` copy the sample exactly, `convert("L")` applies the Convert.c high-byte rule (high byte nonzero -> 255, else the low byte), and the I;16 `histogram()` C path reads 2-byte storage through layout-dependent byte misreads (recorded as an explicit documented boundary). The native `extrema_image_numeric` gains the uint16 branch (rejecting I;16B), `convert_image_mode_into` gains the I;16/I;16B source branch for I/F/L targets, and the facade surfaces Pillow's `image has wrong mode` for I;16B GetExtrema plus a documented Histogram boundary. A ctypes cross-check matches Pillow exactly (`FAILURES: 0`). Export parity remains `463/463`. I;16 entropy/getcolors/ImageStat remain separate. | `oracle/probe_mode_i16_stats.py`, `oracle/probe_mode_i16_stats_dll_compose.py`, `extrema_image_numeric` uint16 branch, `convert_image_mode_into` I;16 branch, facade GetExtrema/Histogram boundaries, raw/facade I;16 stats tests. |
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
 | FMT-WEBP-001 | WebP | not started | Open/save WebP and animation if a codec strategy is selected. | New format module boundary. |
 | FMT-AVIF-001 | AVIF | not started | Open/save AVIF if dependency and packaging constraints allow it. | New format module boundary. |

@@ -340,7 +340,16 @@ int extrema_image_numeric(
 
     const bool mode_i = source->mode == PILLOW_C_MODE_I;
     const bool mode_f = source->mode == PILLOW_C_MODE_F;
-    const std::size_t required = (mode_i || mode_f) ? 1u : static_cast<std::size_t>(source->channels);
+    const bool mode_i16 = source->mode == PILLOW_C_MODE_I16 && source->channels == 2;
+    const bool mode_i16b = source->mode == PILLOW_C_MODE_I16B && source->channels == 2;
+    if (mode_i16b) {
+        // Pillow 11.3.0 raises "image has wrong mode" for I;16B
+        // getextrema() (the C extrema rejects the big-endian special
+        // mode), so this is an explicit documented boundary.
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t required =
+        (mode_i || mode_f || mode_i16 || mode_i16b) ? 1u : static_cast<std::size_t>(source->channels);
     if (out_count != required) {
         return PILLOW_C_INVALID_LENGTH;
     }
@@ -376,6 +385,29 @@ int extrema_image_numeric(
         float max_value = min_value;
         for (std::size_t pixel = 1; pixel < pixels; ++pixel) {
             const float value = pillow_c_read_f32_le(data + pixel * 4u);
+            if (value < min_value) {
+                min_value = value;
+            } else if (value > max_value) {
+                max_value = value;
+            }
+        }
+        out_min[0] = static_cast<double>(min_value);
+        out_max[0] = static_cast<double>(max_value);
+        out_has_value[0] = 1;
+        return PILLOW_C_OK;
+    }
+
+    if (mode_i16 || mode_i16b) {
+        // Pillow 11.3.0 getextrema() on I;16/I;16B scans uint16 samples.
+        const auto read_sample = [mode_i16b](const std::uint8_t* px) -> std::uint16_t {
+            return mode_i16b
+                ? static_cast<std::uint16_t>((static_cast<std::uint16_t>(px[0]) << 8) | px[1])
+                : static_cast<std::uint16_t>(px[0]) | (static_cast<std::uint16_t>(px[1]) << 8);
+        };
+        std::uint16_t min_value = read_sample(data);
+        std::uint16_t max_value = min_value;
+        for (std::size_t pixel = 1; pixel < pixels; ++pixel) {
+            const std::uint16_t value = read_sample(data + pixel * 2u);
             if (value < min_value) {
                 min_value = value;
             } else if (value > max_value) {
