@@ -47066,6 +47066,138 @@ PillowCTestImagePatchTiffBigTiffExifEntries(*) {
 
 AhkTest.Test("pillow_c image patch_tiff_bigtiff_exif_entries patches BigTIFF IFD0 exif families", PillowCTestImagePatchTiffBigTiffExifEntries)
 
+PillowCTestImageSaveTiffBigTiffFramesNumeric(*) {
+    ; Pillow 11.3.0 save_all + big_tiff writes chained BigTIFF with exact
+    ; per-frame numeric bytes (oracle/probe_tiff_bigtiff_saveall_compose.py);
+    ; the same-mode frames writer already covers the numeric family.
+    cases := [
+        { Mode: 11, Name: "i16", First: [1, 0, 2, 0, 3, 0, 4, 0], Second: [7, 0, 8, 0, 9, 0, 10, 0] },
+        { Mode: 8, Name: "i32", First: [1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0], Second: [255, 255, 255, 255, 7, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0] },
+    ]
+    for item in cases {
+        path := PillowCTempTiffPath("save-bigtiff-frames-" item.Name)
+        first := PillowCCreateImageMode(2, 2, item.Mode)
+        second := PillowCCreateImageMode(2, 2, item.Mode)
+        firstLoaded := 0
+        secondLoaded := 0
+        try {
+            PillowCImageSetBytes(first, item.First)
+            PillowCImageSetBytes(second, item.Second)
+            handleBuffer := Buffer(2 * A_PtrSize, 0)
+            NumPut("Ptr", first, handleBuffer, 0)
+            NumPut("Ptr", second, handleBuffer, A_PtrSize)
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_save_tiff_bigtiff_frames_compression_options",
+                "Ptr", handleBuffer,
+                "UPtr", 2,
+                "Ptr", PillowCUtf8Buffer(path),
+                "Int", 1,
+                "Int"
+            )
+            PillowCAssertStatus(status)
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowCArraySlice(PillowCReadFileBytes(path), 1, 4))
+            AhkTest.AssertEqual(2, PillowCImageFrameCountTiff(path))
+            firstLoaded := PillowCImageOpenTiffFrame(path, 0)
+            secondLoaded := PillowCImageOpenTiffFrame(path, 1)
+            AhkTest.AssertEqual(item.Mode, PillowCImageMode(firstLoaded))
+            AhkTest.AssertEqual(item.First, PillowCImageToArray(firstLoaded, item.First.Length))
+            AhkTest.AssertEqual(item.Mode, PillowCImageMode(secondLoaded))
+            AhkTest.AssertEqual(item.Second, PillowCImageToArray(secondLoaded, item.Second.Length))
+        } finally {
+            if firstLoaded
+                PillowCFreeImage(firstLoaded)
+            if secondLoaded
+                PillowCFreeImage(secondLoaded)
+            if first
+                PillowCFreeImage(first)
+            if second
+                PillowCFreeImage(second)
+            PillowCDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image save_tiff_bigtiff frames writes chained numeric two-frame BigTIFF", PillowCTestImageSaveTiffBigTiffFramesNumeric)
+
+PillowCTestImageSaveTiffBigTiffFramesMetadata(*) {
+    ; Pillow 11.3.0 save_all + big_tiff + metadata writes dpi/icc/tiffinfo
+    ; into every frame's IFD (chained layout); the metadata writer already
+    ; attaches per-frame metadata.
+    path := PillowCTempTiffPath("save-bigtiff-frames-meta")
+    first := PillowCCreateImageMode(2, 2, 1)
+    second := PillowCCreateImageMode(2, 2, 1)
+    firstLoaded := 0
+    secondLoaded := 0
+    icc := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    try {
+        PillowCImageSetBytes(first, [7, 7, 7, 7])
+        PillowCImageSetBytes(second, [9, 9, 9, 9])
+        handleBuffer := Buffer(2 * A_PtrSize, 0)
+        NumPut("Ptr", first, handleBuffer, 0)
+        NumPut("Ptr", second, handleBuffer, A_PtrSize)
+        iccBuffer := PillowCBuffer(icc)
+        tags := Buffer(4, 0)
+        NumPut("Int", 270, tags, 0)
+        desc := PillowCUtf8Buffer("desc")
+        valuePointers := Buffer(A_PtrSize, 0)
+        NumPut("Ptr", desc.Ptr, valuePointers, 0)
+        valueSizes := Buffer(A_PtrSize, 0)
+        NumPut("UPtr", desc.Size, valueSizes, 0)
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_tiff_bigtiff_frames_metadata_ascii_entries_options",
+            "Ptr", handleBuffer,
+            "UPtr", 2,
+            "Ptr", PillowCUtf8Buffer(path),
+            "Int", 1,
+            "Double", 300.0,
+            "Double", 150.0,
+            "Int", 1,
+            "Ptr", iccBuffer,
+            "UPtr", iccBuffer.Size,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr", tags,
+            "Ptr", valuePointers,
+            "Ptr", valueSizes,
+            "UPtr", 1,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual([73, 73, 43, 0], PillowCArraySlice(PillowCReadFileBytes(path), 1, 4))
+        AhkTest.AssertEqual(2, PillowCImageFrameCountTiff(path))
+        firstLoaded := PillowCImageOpenTiffFrame(path, 0)
+        secondLoaded := PillowCImageOpenTiffFrame(path, 1)
+        for entry in [
+            { Handle: firstLoaded, Bytes: [7, 7, 7, 7] },
+            { Handle: secondLoaded, Bytes: [9, 9, 9, 9] },
+        ] {
+            AhkTest.AssertEqual(1, PillowCImageMode(entry.Handle))
+            AhkTest.AssertEqual(entry.Bytes, PillowCImageToArray(entry.Handle, 4))
+            resolution := PillowCImageMetadataResolution(entry.Handle)
+            AhkTest.AssertEqual(1, resolution.HasDpi)
+            AhkTest.AssertEqual(300.0, resolution.DpiX)
+            AhkTest.AssertEqual(150.0, resolution.DpiY)
+            iccMetadata := PillowCImageMetadataJpegBlob(entry.Handle, "pillow_c_image_metadata_tiff_icc_profile")
+            AhkTest.AssertEqual(1, iccMetadata.Has)
+            AhkTest.AssertEqual(icc, iccMetadata.Bytes)
+            exif := PillowCImageMetadataTiffExif(entry.Handle)
+            AhkTest.AssertEqual("desc", PillowCExifAsciiTagValue(exif.Exif, 270))
+        }
+    } finally {
+        if firstLoaded
+            PillowCFreeImage(firstLoaded)
+        if secondLoaded
+            PillowCFreeImage(secondLoaded)
+        if first
+            PillowCFreeImage(first)
+        if second
+            PillowCFreeImage(second)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_tiff_bigtiff frames metadata options writes per-frame BigTIFF metadata", PillowCTestImageSaveTiffBigTiffFramesMetadata)
+
 PillowCTestImageOpenTiffReadsPillowBigTiffStripL(*) {
     path := PillowCTempTiffPath("open-bigtiff-strip-l")
     loaded := 0

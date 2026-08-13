@@ -47,8 +47,27 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2748` AHK tests: `1364` raw DLL tests and
-`1384` facade tests.
+This suite currently registers `2751` AHK tests: `1366` raw DLL tests and
+`1385` facade tests.
+
+Latest `FMT-TIFF-003BG` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_bigtiff_saveall_compose.py`) confirms `save_all`+
+`big_tiff` writes chained BigTIFF with exact per-frame I;16 bytes,
+dpi/icc_profile/tiffinfo land in every frame's IFD, and numeric save_all
+plus compression falls back to classic TIFF; the existing frames and
+per-frame metadata writers already implement all three shapes, so zero
+native changes were needed. The ctypes cross-check (kept in
+`oracle/probe_tiff_bigtiff_saveall_dll_compose.py`) reopens both
+DLL-written compositions through Pillow 11.3.0 with exact bytes and
+per-frame metadata (`FAILURES: 0`). Raw numeric two-frame and per-frame
+metadata two-frame targets plus the facade save_all composition target
+pass `1/1` each; the TIFF filter passes `699/699` in `5437ms`; and the
+full directory suite passes `2751/2751` in `18469ms`, with zero
+failures, errors, or skips. Source/DLL export parity remains `461/461`
+with zero difference, and the DLL SHA-256 remains
+`7B8A9E95408CF59C584495C8E9B9467776A8D60A422560ABB60E1F9D9E46FD6D`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The overall Pillow replacement-readiness estimate moves to `79% ±4%`.
 
 Latest `FMT-TIFF-003BF` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_tiff_bigtiff_exif_save.py`) confirms exif object tags land

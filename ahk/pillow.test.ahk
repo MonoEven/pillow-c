@@ -44076,6 +44076,103 @@ PillowTestImageSaveTiffBigTiffExifOption(*) {
 
 AhkTest.Test("Pillow Image.Save TIFF big_tiff exif option patches IFD0 exif families", PillowTestImageSaveTiffBigTiffExifOption)
 
+PillowTestImageSaveTiffBigTiffSaveAllComposition(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    loaded := 0
+    try {
+        ; numeric save_all: chained BigTIFF with exact per-frame bytes.
+        first := Pillow.Image.FromBytes("I;16", [2, 2], PillowTestBuffer([1, 0, 2, 0, 3, 0, 4, 0]))
+        second := Pillow.Image.FromBytes("I;16", [2, 2], PillowTestBuffer([7, 0, 8, 0, 9, 0, 10, 0]))
+        numericPath := PillowTestTempTiffPath("save-bigtiff-sa-num-facade")
+        try {
+            first.Save(numericPath, "TIFF", { big_tiff: true, save_all: true, append_images: [second] })
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(numericPath), 1, 4))
+            loaded := Pillow.Image.Open(numericPath, ["TIFF"])
+            AhkTest.AssertEqual(2, loaded.NFrames)
+            AhkTest.AssertEqual("I;16", loaded.Mode)
+            AhkTest.AssertEqual([1, 0, 2, 0, 3, 0, 4, 0], PillowTestBufferToArray(loaded.ToBytes()))
+            loaded.Seek(1)
+            AhkTest.AssertEqual([7, 0, 8, 0, 9, 0, 10, 0], PillowTestBufferToArray(loaded.ToBytes()))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            first.Close()
+            second.Close()
+            PillowTestDeleteFile(numericPath)
+        }
+
+        ; metadata save_all: dpi/icc_profile/tiffinfo land in every frame's
+        ; IFD (Pillow 11.3.0 writes per-frame metadata in the chained layout).
+        frame0 := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([7, 7, 7, 7]))
+        frame1 := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([9, 9, 9, 9]))
+        metaPath := PillowTestTempTiffPath("save-bigtiff-sa-meta-facade")
+        loaded := 0
+        try {
+            frame0.Save(metaPath, "TIFF", {
+                big_tiff: true,
+                save_all: true,
+                append_images: [frame1],
+                dpi: [300.0, 150.0],
+                icc_profile: PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
+                tiffinfo: Map(270, "desc", 315, "artist"),
+            })
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(metaPath), 1, 4))
+            loaded := Pillow.Image.Open(metaPath, ["TIFF"])
+            AhkTest.AssertEqual(2, loaded.NFrames)
+            for index, expectedBytes in [[7, 7, 7, 7], [9, 9, 9, 9]] {
+                loaded.Seek(index - 1)
+                AhkTest.AssertEqual(expectedBytes, PillowTestBufferToArray(loaded.ToBytes()))
+                PillowTestAssertFloatArrayClose([300.0, 150.0], loaded.Info["dpi"], 0.0001)
+                AhkTest.AssertEqual(
+                    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+                    PillowTestBufferToArray(loaded.Info["icc_profile"]))
+                exif := loaded.GetExif()
+                AhkTest.AssertEqual("desc", exif[270])
+                AhkTest.AssertEqual("artist", exif[315])
+            }
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            frame0.Close()
+            frame1.Close()
+            PillowTestDeleteFile(metaPath)
+        }
+
+        ; numeric save_all + compression: Pillow ignores big_tiff and falls
+        ; back to classic TIFF; the facade mirrors that.
+        first := Pillow.Image.FromBytes("I;16", [2, 2], PillowTestBuffer([1, 0, 2, 0, 3, 0, 4, 0]))
+        second := Pillow.Image.FromBytes("I;16", [2, 2], PillowTestBuffer([7, 0, 8, 0, 9, 0, 10, 0]))
+        cmpPath := PillowTestTempTiffPath("save-bigtiff-sa-num-cmp-facade")
+        loaded := 0
+        try {
+            first.Save(cmpPath, "TIFF", {
+                big_tiff: true,
+                save_all: true,
+                append_images: [second],
+                compression: "lzw",
+            })
+            AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(cmpPath), 1, 4))
+            loaded := Pillow.Image.Open(cmpPath, ["TIFF"])
+            AhkTest.AssertEqual(2, loaded.NFrames)
+            AhkTest.AssertEqual("I;16", loaded.Mode)
+            AhkTest.AssertEqual([1, 0, 2, 0, 3, 0, 4, 0], PillowTestBufferToArray(loaded.ToBytes()))
+            loaded.Seek(1)
+            AhkTest.AssertEqual([7, 0, 8, 0, 9, 0, 10, 0], PillowTestBufferToArray(loaded.ToBytes()))
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            first.Close()
+            second.Close()
+            PillowTestDeleteFile(cmpPath)
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF big_tiff save_all composes numeric frames and per-frame metadata", PillowTestImageSaveTiffBigTiffSaveAllComposition)
+
 PillowTestTiffClassicTwoFramePillowBytes() {
     ; Pillow 11.3.0 save_all two-frame classic layout (see
     ; oracle/probe_tiff_classic_two_frame_save.py).

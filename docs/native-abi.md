@@ -29,8 +29,11 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`461/461`; the full AHK suite is `2748/2748`; and the current DLL SHA-256 is
+`461/461`; the full AHK suite is `2751/2751`; and the current DLL SHA-256 is
 `7B8A9E95408CF59C584495C8E9B9467776A8D60A422560ABB60E1F9D9E46FD6D`.
+`FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
+numeric multi-frame and per-frame metadata) is a lock-in over the existing
+frames/metadata writers, verified against Pillow 11.3.0 ctypes.
 
 ## TIFF BigTIFF Save Exif ABI Behavior
 

@@ -21,9 +21,9 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 78% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 79% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
-Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BF` closes the bounded
+Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BG` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
 malformed-metadata robustness slice, one-level ExifIFD/GPSInfo sub-IFD
 traversal on both routes, the classic-route TIFF save `exif=` option with
@@ -31,30 +31,28 @@ its array families, compression/option composition, raw-bytes form, the
 BigTIFF save matrix with compression, the two-frame BigTIFF save, the
 Pillow multi-frame layout lock-in, the numeric BigTIFF strip save/open
 family (I16/I16B/I/F/CMYK), the BigTIFF save metadata composition
-(dpi/icc_profile/tiffinfo 270/315/700), and the BigTIFF save `exif=`
-family (exif families patched directly into the BigTIFF IFD0 through
-`pillow_c_image_patch_tiff_bigtiff_exif_entries`/`_bytes`: u64 entry
-widths, inline <= 8 value fields, 273/offset shifting, blobs after the
-grown IFD; the shared family classifier/blob parser are extracted and
-reused by both classic and BigTIFF patch routes; the facade composes
-exif with dpi/icc_profile on the uncompressed big_tiff route).
+(dpi/icc_profile/tiffinfo 270/315/700), the BigTIFF save `exif=` family
+(IFD0 patch through the shared family classifier/blob parser), and the
+BigTIFF save_all composition lock-in (chained numeric multi-frame and
+per-frame metadata with zero native changes; compression combinations
+fall back to classic TIFF like Pillow).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. BigTIFF exif patches were cross-verified
-through Pillow 11.3.0 ctypes (exact ascii/uint/rational/rational-array/
-short-array/signed-rational/undefined values, `FAILURES: 0`), the TIFF
-filter passes `696/696` in `5000ms`, and the full directory suite passes
-`2748/2748` in `18906ms`; source/DLL exports remain `461/461` with zero
-difference; and the DLL SHA-256 is
+IFD as a writer artifact. BigTIFF save_all compositions were
+cross-verified through Pillow 11.3.0 ctypes (exact per-frame bytes and
+per-frame dpi/icc/ascii metadata, `FAILURES: 0`), the TIFF filter passes
+`699/699` in `5437ms`, and the full directory suite passes `2751/2751`
+in `18469ms`; source/DLL exports remain `461/461` with zero difference;
+and the DLL SHA-256 remains
 `7B8A9E95408CF59C584495C8E9B9467776A8D60A422560ABB60E1F9D9E46FD6D`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`FMT-TIFF-003BG` BigTIFF save_all composition (numeric-mode frames and
-metadata on the big_tiff multi-frame route), with wider BigTIFF save
-remaining separate. Dither exact parity, libimagequant, broader quantize
-cross-products, qtables with more than two tables, malformed marker
-streams, and exact whole-file parity remain separate.
+`FMT-TIFF-003BH` BigTIFF save palette (P) mode (photometric 3 with
+ColorMap 320 round-trip), with wider BigTIFF save remaining separate.
+Dither exact parity, libimagequant, broader quantize cross-products,
+qtables with more than two tables, malformed marker streams, and exact
+whole-file parity remain separate.
 ```
 
 Current work packet:
@@ -397,9 +395,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `FMT-TIFF-003BG` BigTIFF save_all composition
-  (numeric-mode frames and metadata on the big_tiff multi-frame route),
-  with wider BigTIFF save staying separate.
+- Selected next gap: bounded `FMT-TIFF-003BH` BigTIFF save palette (P)
+  mode (photometric 3 with ColorMap 320 round-trip), with wider BigTIFF
+  save staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -473,6 +471,27 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `FMT-TIFF-003BG` is GREEN as a BigTIFF save_all composition
+lock-in with zero native changes. The Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_bigtiff_saveall_compose.py`) confirms `save_all`+
+`big_tiff` writes chained BigTIFF with exact per-frame I;16 bytes,
+dpi/icc_profile/tiffinfo land in EVERY frame's IFD, and numeric save_all
+plus compression falls back to classic TIFF; the existing same-mode
+frames writer and per-frame metadata writer already implement all three
+shapes. A ctypes cross-check (kept in
+`oracle/probe_tiff_bigtiff_saveall_dll_compose.py`) reopens both
+DLL-written compositions through Pillow 11.3.0 with exact bytes and
+per-frame metadata (`FAILURES: 0`). Raw numeric two-frame and per-frame
+metadata two-frame targets plus the facade save_all composition target
+pass `1/1` each; the TIFF filter passes `699/699` in `5437ms`; and the
+full directory suite passes `2751/2751` in `18469ms`, with zero
+failures, errors, or skips. Source/DLL export parity remains `461/461`
+with zero difference, and the DLL SHA-256 remains
+`7B8A9E95408CF59C584495C8E9B9467776A8D60A422560ABB60E1F9D9E46FD6D`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `79% ±4%`. The next bounded child is
+`FMT-TIFF-003BH`, BigTIFF save palette (P) mode.
 
 2026-08-13: `FMT-TIFF-003BF` is GREEN for the bounded BigTIFF save `exif=`
 family. The Pillow 11.3.0 oracle (kept in
