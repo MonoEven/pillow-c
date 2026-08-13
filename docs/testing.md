@@ -47,8 +47,27 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2763` AHK tests: `1373` raw DLL tests and
-`1390` facade tests.
+This suite currently registers `2765` AHK tests: `1374` raw DLL tests and
+`1391` facade tests.
+
+Latest `FMT-ICO-002G` verification: Pillow 11.3.0 registers no CUR save
+and its CUR reader only accepts DIB payloads, so the CUR save is a
+standards extension following the XBM hotspot precedent. The ctypes
+cross-check (kept in `oracle/probe_cur_save_dll_compose.py`) reopens the
+DLL-written CUR through Pillow 11.3.0's CUR reader (format/size/bytes)
+and our open exposes the hotspot (5, 7) (`FAILURES: 0`). The new
+`pillow_c_image_save_cur_options` export writes the ICO type-2 container
+with one DIB payload and the hotspot in the planes/bit_count fields; the
+facade routes `Save(path, "CUR", { hotspot: [x, y] })` and surfaces
+`Info["hotspot"]`. Raw/facade CUR hotspot targets pass `1/1` each; the
+CUR filter passes `18/18` in `140ms`; and the full directory suite
+passes `2765/2765` in `19016ms`, with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export
+parity moves to `462/462` (one deliberate new export) with zero
+difference; and the rebuilt DLL SHA-256 is
+`13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `85% ±4%`.
 
 Latest `FMT-ICO-001C` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_ico_multi_source_matrix.py`) confirms each exact-size

@@ -29,14 +29,32 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`461/461`; the full AHK suite is `2761/2761`; and the current DLL SHA-256 is
-`984A7D84657C5D9EF8D236A44CF13697A6C8939F2932FC5CB19A7B4CCDD180A3`.
+`462/462`; the full AHK suite is `2765/2765`; and the current DLL SHA-256 is
+`13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
 `FMT-TIFF-003BJ` likewise changes no ABI: the mixed-size chained BigTIFF
 frames lock-in completes the bounded BigTIFF save family over the
 existing per-frame writer, verified against Pillow 11.3.0 ctypes.
+
+## CUR Save With Hotspot ABI Behavior
+
+`FMT-ICO-002G` adds one public export:
+`pillow_c_image_save_cur_options(image, path, has_hotspot, hotspot_x,
+hotspot_y)`. Existing exported names, signatures, status codes,
+image-handle ownership, source-pointer lifetimes, and facade routes
+remain unchanged. The writer emits the ICO type-2 container (magic
+`00 00 02 00`, one entry) with a single DIB payload from the shared ICO
+DIB encoder and the hotspot in the entry's planes/bit_count fields;
+width/height are bounded to 256 and the hotspot to 0..65535.
+`open_cur_image` now attaches `has_hotspot`/`hotspot_x`/`hotspot_y` from
+the selected entry's planes/bit_count fields through the existing
+`pillow_c_image_metadata_hotspot` export. Pillow 11.3.0 registers no
+CUR save, so this is a documented standards extension.
+
+No facade lifetime rule, fallback, or AHK per-pixel loop was added
+beyond the CUR save family above.
 
 ## ICO Non-Exact Thumbnail Source Selection ABI Behavior
 

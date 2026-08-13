@@ -2362,6 +2362,9 @@ int open_cur_image(const char* path, PillowCImage** out_image)
         image->dpi_y = dpi_y;
         image->has_dib_compression = true;
         image->dib_compression = compression;
+        image->has_hotspot = true;
+        image->hotspot_x = static_cast<int>(selected_entry.planes);
+        image->hotspot_y = static_cast<int>(selected_entry.bit_count);
         *out_image = image;
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
@@ -3036,6 +3039,65 @@ int save_ico_images_format_options(
     }
 }
 
+int save_cur_image_with_hotspot(
+    const PillowCImage* image,
+    const char* path,
+    bool has_hotspot,
+    int hotspot_x,
+    int hotspot_y)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->width <= 0 || image->height <= 0 ||
+        image->width > 256 || image->height > 256) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (has_hotspot &&
+        (hotspot_x < 0 || hotspot_x > 65535 || hotspot_y < 0 || hotspot_y > 65535)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    int status = pillow_c_refresh_const_buffer_view_image(image);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+
+    try {
+        // Pillow 11.3.0's CUR reader only accepts DIB payloads, so the
+        // cursor body uses the shared ICO DIB encoder.
+        std::vector<std::uint8_t> payload;
+        int bit_count = 0;
+        int color_count = 0;
+        status = encode_ico_dib_image(image, &payload, &bit_count, &color_count);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+        if (payload.size() > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::vector<std::uint8_t> cur;
+        cur.reserve(22u + payload.size());
+        append_le16(cur, 0);
+        append_le16(cur, 2);
+        append_le16(cur, 1);
+        cur.push_back(static_cast<std::uint8_t>(image->width));
+        cur.push_back(static_cast<std::uint8_t>(image->height));
+        cur.push_back(static_cast<std::uint8_t>(color_count >= 256 ? 0 : color_count));
+        cur.push_back(0);
+        // CUR entries carry the hotspot in the planes/bit_count fields.
+        append_le16(cur, static_cast<std::uint16_t>(has_hotspot ? hotspot_x : 0));
+        append_le16(cur, static_cast<std::uint16_t>(has_hotspot ? hotspot_y : 0));
+        append_le32(cur, static_cast<std::uint32_t>(payload.size()));
+        append_le32(cur, 22u);
+        cur.insert(cur.end(), payload.begin(), payload.end());
+        return write_binary_file(path, cur) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 
 
 } // namespace
@@ -3242,6 +3304,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_ico_frames_format_optio
     const char* bitmap_format)
 {
     return save_ico_images_format_options(images, image_count, path, sizes, size_count, has_sizes, bitmap_format);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_cur_options(
+    const PillowCImage* image,
+    const char* path,
+    int has_hotspot,
+    int hotspot_x,
+    int hotspot_y)
+{
+    return save_cur_image_with_hotspot(image, path, has_hotspot != 0, hotspot_x, hotspot_y);
 }
 
 

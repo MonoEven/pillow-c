@@ -22213,6 +22213,47 @@ PillowCTestImageSaveIcoMultiSourceMatrix(*) {
 
 AhkTest.Test("pillow_c image save_ico writes mixed-mode sources and first same-size PNG wins", PillowCTestImageSaveIcoMultiSourceMatrix)
 
+PillowCTestImageSaveCurWithHotspot(*) {
+    ; Pillow 11.3.0 registers no CUR save; the DLL writes the ICO type-2
+    ; container with the hotspot in the planes/bit_count fields and a DIB
+    ; payload (the CUR reader's supported body).
+    path := PillowCTempCurPath("save-cur")
+    image := PillowCCreateImageMode(16, 16, 4)
+    loaded := 0
+    try {
+        bytes := []
+        loop 16 * 16
+            bytes.Push(255, 0, 0, 255)
+        PillowCImageSetBytes(image, bytes)
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_cur_options",
+            "Ptr", image,
+            "Ptr", PillowCUtf8Buffer(path),
+            "Int", 1,
+            "Int", 5,
+            "Int", 7,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual([0, 0, 2, 0], PillowCArraySlice(PillowCReadFileBytes(path), 1, 4))
+        loaded := PillowCImageOpenCur(path)
+        AhkTest.AssertEqual(4, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([255, 0, 0, 255], PillowCArraySlice(PillowCImageToArray(loaded, 16 * 16 * 4), 1, 4))
+        hotspot := PillowCImageMetadataHotspot(loaded)
+        AhkTest.AssertEqual(1, hotspot.HasHotspot)
+        AhkTest.AssertEqual(5, hotspot.X)
+        AhkTest.AssertEqual(7, hotspot.Y)
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        if image
+            PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_cur_options writes a CUR with hotspot fields", PillowCTestImageSaveCurWithHotspot)
+
 PillowCTestImageIcoSizesReportsAvailableFrames(*) {
     path := PillowCTempIcoPath("ico-sizes")
     base := PillowCCreateImageMode(32, 32, 4)

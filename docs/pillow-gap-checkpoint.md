@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 84% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 85% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
@@ -34,23 +34,23 @@ family (I16/I16B/I/F/CMYK), the BigTIFF save metadata composition, the
 BigTIFF save `exif=` family, the BigTIFF save_all composition lock-in,
 the BigTIFF save palette (P) mode, the BigTIFF save bilevel (1) mode,
 and the mixed-size BigTIFF frames lock-in (the bounded BigTIFF save
-family is COMPLETE), plus the bounded ICO save family
-(`FMT-ICO-001B` non-exact thumbnail source selection with Pillow's
-`thumbnail()` semantics and `FMT-ICO-001C` the multi-source matrix
-lock-in: per-source modes, first same-size PNG wins, bmp duplicate
-bit-depths — also COMPLETE).
+family is COMPLETE), plus the bounded ICO/CUR family
+(`FMT-ICO-001B` non-exact thumbnail source selection, `FMT-ICO-001C`
+the multi-source matrix lock-in, and `FMT-ICO-002G` CUR save with
+hotspot exposure — a standards extension since Pillow 11.3.0 registers
+no CUR save — also COMPLETE).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. ICO multi-source matrices were cross-verified
-through Pillow 11.3.0 ctypes (exact modes and pixels, `FAILURES: 0`),
-the ICO filter passes `28/28` in `282ms`, and the full directory suite
-passes `2763/2763` in `18922ms`; source/DLL exports remain `461/461`
-with zero difference; and the DLL SHA-256 remains
-`984A7D84657C5D9EF8D236A44CF13697A6C8939F2932FC5CB19A7B4CCDD180A3`.
+IFD as a writer artifact. CUR saves were cross-verified through Pillow
+11.3.0's CUR reader (format/size/bytes plus hotspot fields,
+`FAILURES: 0`), the CUR filter passes `18/18` in `140ms`, and the full
+directory suite passes `2765/2765` in `19016ms`; source/DLL exports
+remain `462/462` with zero difference; and the DLL SHA-256 is
+`13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`FMT-ICO-002G` CUR save with hotspot exposure. Dither exact parity,
+`API-IMG-001D` `Image.getim()` accessor parity. Dither exact parity,
 libimagequant, broader quantize cross-products, qtables with more than
 two tables, malformed marker streams, and exact whole-file parity remain
 separate.
@@ -396,8 +396,8 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `FMT-ICO-002G` CUR save with hotspot
-  exposure, with broader ICO/CUR matrices staying separate.
+- Selected next gap: bounded `API-IMG-001D` `Image.getim()` accessor
+  parity, with broader object/API gaps staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -471,6 +471,30 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `FMT-ICO-002G` is GREEN for the bounded CUR save with hotspot
+exposure, completing the bounded ICO/CUR family. Pillow 11.3.0 registers
+NO CUR save (`KeyError 'CUR'`) and its CUR reader only accepts DIB
+payloads, so this is a standards extension following the XBM hotspot
+precedent: the new `pillow_c_image_save_cur_options` export writes the
+ICO type-2 container (magic `00 00 02 00`) with one DIB payload and the
+hotspot in the entry's planes/bit_count fields, and `open_cur_image`
+attaches the hotspot through the existing `pillow_c_image_metadata_
+hotspot` export. The facade routes `Save(path, "CUR", { hotspot: [x, y] })`
+and surfaces `Info["hotspot"]` through the existing generic open-
+metadata block. A ctypes cross-check (kept in
+`oracle/probe_cur_save_dll_compose.py`) reopens the DLL-written CUR
+through Pillow 11.3.0's CUR reader (format/size/bytes) and our open
+exposes (5, 7) (`FAILURES: 0`); raw/facade CUR hotspot targets pass
+`1/1` each; the CUR filter passes `18/18` in `140ms`; and the full
+directory suite passes `2765/2765` in `19016ms`, with zero failures,
+errors, or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity moves to `462/462` (one deliberate new export)
+with zero difference; and the rebuilt DLL SHA-256 is
+`13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+estimate moves to `85% ±4%`. The next bounded child is
+`API-IMG-001D`, the `getim()` accessor.
 
 2026-08-13: `FMT-ICO-001C` is GREEN as the broader ICO multi-source matrix
 lock-in with zero native changes, completing the bounded ICO save

@@ -21754,6 +21754,29 @@ PillowTestImageSaveIcoMultiSourceMatrix(*) {
 
 AhkTest.Test("Pillow Image.Save ICO writes mixed-mode sources and first same-size PNG wins", PillowTestImageSaveIcoMultiSourceMatrix)
 
+PillowTestImageSaveCurWithHotspot(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGBA", [16, 16], [255, 0, 0, 255])
+    path := PillowTestTempCurPath("save-cur-facade")
+    loaded := 0
+    try {
+        image.Save(path, "CUR", { hotspot: [5, 7] })
+        AhkTest.AssertEqual([0, 0, 2, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        loaded := Pillow.Image.Open(path, ["CUR"])
+        AhkTest.AssertEqual("RGBA", loaded.Mode)
+        AhkTest.AssertEqual([16, 16], loaded.Size)
+        AhkTest.AssertEqual([255, 0, 0, 255], PillowTestArraySlice(PillowTestBufferToArray(loaded.ToBytes()), 1, 4))
+        AhkTest.AssertEqual([5, 7], loaded.Info["hotspot"])
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save CUR writes the hotspot fields", PillowTestImageSaveCurWithHotspot)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])

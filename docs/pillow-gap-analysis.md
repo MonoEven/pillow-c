@@ -37,6 +37,55 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-13 FMT-ICO-002G CUR Save With Hotspot (GREEN)
+
+`FMT-ICO-002G` closes the bounded CUR save with hotspot exposure slice,
+completing the bounded ICO/CUR family.
+
+Pillow 11.3.0 registers NO CUR save (`Image.save(path, "CUR")` raises
+`KeyError 'CUR'`), and its CUR reader (`CurImageFile`, a
+`BmpImageFile` subclass) only accepts DIB payloads. The DLL therefore
+implements a standards extension following the XBM hotspot precedent:
+the new private `save_cur_image_with_hotspot` writes the ICO type-2
+container (magic `00 00 02 00`, one entry) with a single DIB payload
+from the shared `encode_ico_dib_image` encoder, the hotspot in the
+entry's planes/bit_count fields (`wPlanes = hotspot_x`,
+`wBitCount = hotspot_y`), and the DIB color-count byte. The new public
+export `pillow_c_image_save_cur_options` brings export parity to
+`462/462`. `open_cur_image` now attaches
+`has_hotspot`/`hotspot_x`/`hotspot_y` from the selected entry's
+planes/bit_count fields, flowing through the existing
+`pillow_c_image_metadata_hotspot` export.
+
+Facade: the CUR save throw is replaced by routing —
+`Save(path, "CUR", { hotspot: [x, y] })` parses the pair through
+`SaveHotspotPair` (default 0/0) and calls the new export, while the
+existing generic open-metadata block surfaces `Info["hotspot"]` for CUR
+opens with no additional facade change.
+
+Verification:
+
+- Original raw/facade REDs: facade `Pillow.Image.Save CUR is not
+  supported` and a Pillow `Truncated File Read` on the first PNG-payload
+  attempt (switched to the DIB body the CUR reader requires).
+- ctypes cross-check (`oracle/probe_cur_save_dll_compose.py`): the
+  DLL-written CUR reopens in Pillow 11.3.0 (format CUR, 16x16, exact
+  bytes), the entry header carries planes 5 / bits 7, and our open_cur
+  hotspot metadata reports (5, 7); `FAILURES: 0`.
+- Raw/facade CUR hotspot targets pass `1/1` each.
+- CUR filter: `18/18` in `140ms`.
+- Full AHK directory suite: `2765/2765` in `19016ms`; zero failures,
+  errors, or skips.
+- Release x64 Rebuild: `0 Warning(s), 0 Error(s)`.
+- Source/DLL export parity: `462/462` (one deliberate new export), zero
+  difference.
+- DLL SHA-256:
+  `13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
+
+No facade lifetime rule, fallback, or AHK pixel loop changed beyond the
+CUR save family above. The estimate moves to `85% ±4%`. The next
+bounded child is `API-IMG-001D`, the `getim()` accessor.
+
 ## 2026-08-13 FMT-ICO-001C ICO Multi-Source Matrix (GREEN)
 
 `FMT-ICO-001C` closes the bounded broader ICO multi-source matrix as a
@@ -38982,7 +39031,8 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-ICO-001 | ICO | partial | `FMT-ICO-001A` covers `append_images` exact source-size PNG-backed entries. Remaining children include non-exact thumbnail source selection, duplicate-size BMP bit-depth entries, and broader multi-source matrices. | `pillow_c_image_save_ico_frames_format_options`, shared native ICO writer, facade ICO save option parsing. |
 | FMT-ICO-001B | ICO | covered | Bounded ICO save non-exact thumbnail source selection: exact-size sources win, otherwise the LAST provided image is thumbnailed proportionally with LANCZOS and never upscaled (Pillow 11.3.0's `provided_im.thumbnail(size, LANCZOS)` fallback; sizes larger than the base are skipped). `save_ico_images_with_sizes` caps the proportional fallback at the last source's own dimensions (the previous version upscaled, diverging from Pillow) and skips the resize when the capped size equals the source. A ctypes cross-check reopens the DLL-written downscale/aspect/smaller-source ICOs in Pillow 11.3.0 with exact per-size source pixels (`FAILURES: 0`); raw/facade tests lock the three shapes in. Grayscale PNG payloads stay a documented WIC boundary on the reopen side, so tests use RGBA sources like the earlier ICO packets. Export parity remains `461/461`. Broader mixed-mode multi-source matrices remain separate. | `oracle/probe_ico_non_exact_sources.py`, `oracle/probe_ico_thumbnail_fallback.py`, `oracle/probe_ico_non_exact_dll_compose.py`, `save_ico_images_with_sizes` thumbnail cap, raw/facade non-exact selection tests. |
 | FMT-ICO-001C | ICO | covered | Bounded broader ICO multi-source matrix lock-in: each exact-size source keeps its own mode (RGB/L/RGBA verified through Pillow 11.3.0 ctypes), the first same-size PNG source wins, and the bmp-format duplicate bit-depth behavior stays on the existing writer. Zero native changes were needed; the Pillow cross-check (oracle/probe_ico_multi_source_dll_compose.py) reopens the DLL-written mixed-mode and same-size ICOs with exact modes and pixels (`FAILURES: 0`), and raw/facade matrix tests lock the RGBA multi-size and first-wins shapes in. 24-bit RGB and grayscale PNG payloads remain a documented WIC reopen boundary, so the AHK reopen assertions use RGBA sources. Export parity remains `461/461` and the DLL SHA-256 is unchanged. This completes the bounded ICO save family. | `oracle/probe_ico_multi_source_matrix.py`, `oracle/probe_ico_multi_source_dll_compose.py`, existing ICO frames writer, raw/facade matrix tests. |
-| FMT-ICO-002G | ICO/CUR | not started | Bounded CUR save with hotspot exposure: write the CUR container with hotspot fields on the shared ICO frames route. | CUR save export/facade routing, raw/facade hotspot save tests. |
+| FMT-ICO-002G | ICO/CUR | covered | Bounded CUR save with hotspot exposure: the new public export `pillow_c_image_save_cur_options` writes the ICO type-2 container (magic `00 00 02 00`) with a single DIB payload (Pillow 11.3.0's CUR reader only accepts DIB bodies) and the hotspot in the entry's planes/bit_count fields, plus a color-count byte; `open_cur_image` now attaches `has_hotspot`/`hotspot_x`/`hotspot_y` from those fields through the existing `pillow_c_image_metadata_hotspot` export. The facade routes `Save(path, "CUR", { hotspot: [x, y] })` (default 0/0) and exposes `Info["hotspot"]` on open through the existing generic metadata block. Pillow 11.3.0 registers NO CUR save (`KeyError 'CUR'`), so this is a standards extension following the XBM hotspot precedent; a ctypes cross-check reopens the DLL-written CUR through Pillow's CUR reader (format/size/bytes) and our open exposes (5, 7) (`FAILURES: 0`). Export parity is now `462/462`. The bounded ICO/CUR family is now complete. | `oracle/probe_cur_save_dll_compose.py`, `save_cur_image_with_hotspot`, `pillow_c_image_save_cur_options`, `open_cur_image` hotspot attachment, facade CUR save routing, raw/facade CUR hotspot tests. |
+| API-IMG-001D | Facade API | not started | Bounded `Image.getim()` / low-level handle accessor parity (probe Pillow 11.3.0's public behavior first). | Facade getim method, local Pillow probe, facade tests. |
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
 | FMT-WEBP-001 | WebP | not started | Open/save WebP and animation if a codec strategy is selected. | New format module boundary. |
 | FMT-AVIF-001 | AVIF | not started | Open/save AVIF if dependency and packaging constraints allow it. | New format module boundary. |

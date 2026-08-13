@@ -8699,8 +8699,31 @@ class Pillow {
                 saveOptions := options
 
             resolvedFormat := Pillow.Image.ResolveSaveFormat(path, IsSet(saveFormat) ? saveFormat : unset)
-            if resolvedFormat = "CUR"
-                throw Error("Pillow.Image.Save CUR is not supported", -1)
+            if IsSet(saveOptions) && resolvedFormat = "CUR" {
+                ; Pillow 11.3.0 registers no CUR save; this is a standards
+                ; extension using the ICO container with hotspot fields.
+                pathBytes := Pillow.Image.Utf8Buffer(path)
+                hotspotOption := Pillow.Image.SaveOption(saveOptions, "Hotspot", "hotspot")
+                hasHotspot := 0
+                hotspotX := 0
+                hotspotY := 0
+                if hotspotOption.Set {
+                    hotspot := Pillow.Image.SaveHotspotPair(hotspotOption.Value)
+                    hasHotspot := 1
+                    hotspotX := hotspot[1]
+                    hotspotY := hotspot[2]
+                }
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_cur_options",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", pathBytes,
+                    "Int", hasHotspot,
+                    "Int", hotspotX,
+                    "Int", hotspotY,
+                    "Int"
+                ))
+                return
+            }
             if IsSet(saveOptions) && resolvedFormat = "TIFF" {
                 tiffInfoOption := Pillow.Image.SaveOption(saveOptions, "TiffInfo", "tiffinfo")
                 iccProfileOption := Pillow.Image.SaveOption(saveOptions, "IccProfile", "icc_profile")
