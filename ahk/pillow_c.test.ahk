@@ -47360,6 +47360,58 @@ PillowCTestImageOpenTiffBigTiffModeOneStripFixture(*) {
 
 AhkTest.Test("pillow_c image open_tiff reads Pillow 11.3.0 BigTIFF bilevel strip", PillowCTestImageOpenTiffBigTiffModeOneStripFixture)
 
+PillowCTestImageSaveTiffBigTiffFramesMixedSize(*) {
+    ; Pillow 11.3.0 save_all + big_tiff writes chained BigTIFF with
+    ; per-frame dimensions (oracle/probe_tiff_bigtiff_mixed_size_frames.py);
+    ; the same-mode frames writer already stores width/height per frame.
+    path := PillowCTempTiffPath("save-bigtiff-frames-mixed")
+    first := PillowCCreateImageMode(2, 2, 1)
+    second := PillowCCreateImageMode(3, 1, 1)
+    third := PillowCCreateImageMode(1, 3, 1)
+    firstLoaded := 0
+    secondLoaded := 0
+    thirdLoaded := 0
+    try {
+        PillowCImageSetBytes(first, [7, 7, 7, 7])
+        PillowCImageSetBytes(second, [9, 9, 9])
+        PillowCImageSetBytes(third, [5, 6, 4])
+        handleBuffer := Buffer(3 * A_PtrSize, 0)
+        NumPut("Ptr", first, handleBuffer, 0)
+        NumPut("Ptr", second, handleBuffer, A_PtrSize)
+        NumPut("Ptr", third, handleBuffer, 2 * A_PtrSize)
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_save_tiff_bigtiff_frames_compression_options",
+            "Ptr", handleBuffer,
+            "UPtr", 3,
+            "Ptr", PillowCUtf8Buffer(path),
+            "Int", 1,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual([73, 73, 43, 0], PillowCArraySlice(PillowCReadFileBytes(path), 1, 4))
+        AhkTest.AssertEqual(3, PillowCImageFrameCountTiff(path))
+        firstLoaded := PillowCImageOpenTiffFrame(path, 0)
+        secondLoaded := PillowCImageOpenTiffFrame(path, 1)
+        thirdLoaded := PillowCImageOpenTiffFrame(path, 2)
+        for entry in [
+            { Handle: firstLoaded, Bytes: [7, 7, 7, 7] },
+            { Handle: secondLoaded, Bytes: [9, 9, 9] },
+            { Handle: thirdLoaded, Bytes: [5, 6, 4] },
+        ] {
+            AhkTest.AssertEqual(1, PillowCImageMode(entry.Handle))
+            AhkTest.AssertEqual(entry.Bytes, PillowCImageToArray(entry.Handle, entry.Bytes.Length))
+        }
+    } finally {
+        for handle in [thirdLoaded, secondLoaded, firstLoaded, third, second, first] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_tiff_bigtiff frames writes chained mixed-size BigTIFF frames", PillowCTestImageSaveTiffBigTiffFramesMixedSize)
+
 PillowCTestImageOpenTiffReadsPillowBigTiffStripL(*) {
     path := PillowCTempTiffPath("open-bigtiff-strip-l")
     loaded := 0

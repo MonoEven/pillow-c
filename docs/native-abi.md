@@ -34,6 +34,9 @@ Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
+`FMT-TIFF-003BJ` likewise changes no ABI: the mixed-size chained BigTIFF
+frames lock-in completes the bounded BigTIFF save family over the
+existing per-frame writer, verified against Pillow 11.3.0 ctypes.
 
 ## TIFF BigTIFF Save Bilevel ABI Behavior
 

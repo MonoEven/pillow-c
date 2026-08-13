@@ -47,8 +47,25 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2757` AHK tests: `1370` raw DLL tests and
-`1387` facade tests.
+This suite currently registers `2759` AHK tests: `1371` raw DLL tests and
+`1388` facade tests.
+
+Latest `FMT-TIFF-003BJ` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_bigtiff_mixed_size_frames.py`) confirms
+`save_all`+`big_tiff` writes chained BigTIFF with per-frame dimensions;
+the existing frames writer already handles per-frame width/height, so
+zero native changes were needed. The ctypes cross-check (kept in
+`oracle/probe_tiff_bigtiff_mixed_size_dll_compose.py`) reopens a
+DLL-written three-frame 2x2/3x1/1x3 BigTIFF through Pillow 11.3.0 with
+exact per-frame sizes and bytes (`FAILURES: 0`). Raw mixed-size
+three-frame and facade save_all mixed-size targets pass `1/1` each; the
+TIFF filter passes `707/707` in `5140ms`; and the full directory suite
+passes `2759/2759` in `18485ms`, with zero failures, errors, or skips.
+Source/DLL export parity remains `461/461` with zero difference, and the
+DLL SHA-256 remains
+`D829043BE5BF716DAD7A5D6FBA958958D01D777A10D0C5C86921D9195EE4EC6E`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The overall Pillow replacement-readiness estimate moves to `82% ±4%`.
 
 Latest `FMT-TIFF-003BI` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_tiff_bigtiff_1_save.py`) confirms mode-1 `big_tiff=True`

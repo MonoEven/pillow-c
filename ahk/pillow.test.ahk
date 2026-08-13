@@ -44219,6 +44219,34 @@ PillowTestImageSaveTiffBigTiffBilevelMode(*) {
 
 AhkTest.Test("Pillow Image.Save TIFF big_tiff round-trips bilevel 1 mode", PillowTestImageSaveTiffBigTiffBilevelMode)
 
+PillowTestImageSaveTiffBigTiffSaveAllMixedSize(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    first := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([7, 7, 7, 7]))
+    second := Pillow.Image.FromBytes("L", [3, 1], PillowTestBuffer([9, 9, 9]))
+    path := PillowTestTempTiffPath("save-bigtiff-mixed-facade")
+    loaded := 0
+    try {
+        first.Save(path, "TIFF", { big_tiff: true, save_all: true, append_images: [second] })
+        AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+        loaded := Pillow.Image.Open(path, ["TIFF"])
+        AhkTest.AssertEqual(2, loaded.NFrames)
+        AhkTest.AssertEqual("L", loaded.Mode)
+        AhkTest.AssertEqual([2, 2], loaded.Size)
+        AhkTest.AssertEqual([7, 7, 7, 7], PillowTestBufferToArray(loaded.ToBytes()))
+        loaded.Seek(1)
+        AhkTest.AssertEqual([3, 1], loaded.Size)
+        AhkTest.AssertEqual([9, 9, 9], PillowTestBufferToArray(loaded.ToBytes()))
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        first.Close()
+        second.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF big_tiff save_all writes chained mixed-size frames", PillowTestImageSaveTiffBigTiffSaveAllMixedSize)
+
 PillowTestTiffClassicTwoFramePillowBytes() {
     ; Pillow 11.3.0 save_all two-frame classic layout (see
     ; oracle/probe_tiff_classic_two_frame_save.py).
