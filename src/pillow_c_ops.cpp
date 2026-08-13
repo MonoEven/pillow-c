@@ -7035,9 +7035,11 @@ extern "C" __declspec(dllexport) int pillow_c_image_point_transform(
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
-    if (source->mode != PILLOW_C_MODE_I || source->channels != 4) {
-        // Pillow's point_transform path only serves the numeric I/F/I;16
-        // callable route; the bounded surface here is mode I.
+    const bool is_mode_i = source->mode == PILLOW_C_MODE_I && source->channels == 4;
+    const bool is_mode_f = source->mode == PILLOW_C_MODE_F && source->channels == 4;
+    if (!is_mode_i && !is_mode_f) {
+        // Pillow's point_transform path only serves the numeric I/F callable
+        // route; the bounded surface here covers I and F.
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
@@ -7051,14 +7053,23 @@ extern "C" __declspec(dllexport) int pillow_c_image_point_transform(
             std::vector<std::uint8_t>(source->pixels.size())};
         const std::size_t sample_count = source->pixels.size() / 4u;
         for (std::size_t index = 0u; index < sample_count; ++index) {
-            const std::int32_t input = read_le_i32(
-                source->pixels.data() + index * 4u);
-            const double transformed = static_cast<double>(input) * scale + offset;
-            // Mirror Pillow's C point_transform: the double result is cast
-            // to int (truncation toward zero).
-            const std::int32_t output = static_cast<std::int32_t>(transformed);
-            const std::uint8_t* src = reinterpret_cast<const std::uint8_t*>(&output);
-            std::memcpy(image->pixels.data() + index * 4u, src, 4u);
+            const std::uint8_t* sample_source = source->pixels.data() + index * 4u;
+            std::uint8_t* sample_destination = image->pixels.data() + index * 4u;
+            if (is_mode_i) {
+                const std::int32_t input = read_le_i32(sample_source);
+                const double transformed = static_cast<double>(input) * scale + offset;
+                // Mirror Pillow's C point_transform: the double result is
+                // cast to int (truncation toward zero).
+                const std::int32_t output = static_cast<std::int32_t>(transformed);
+                const std::uint8_t* bytes = reinterpret_cast<const std::uint8_t*>(&output);
+                std::memcpy(sample_destination, bytes, 4u);
+            } else {
+                const float input = pillow_c_read_f32_le(sample_source);
+                const double transformed = static_cast<double>(input) * scale + offset;
+                const float output = static_cast<float>(transformed);
+                const std::uint8_t* bytes = reinterpret_cast<const std::uint8_t*>(&output);
+                std::memcpy(sample_destination, bytes, 4u);
+            }
         }
         *out_image = image;
         return PILLOW_C_OK;

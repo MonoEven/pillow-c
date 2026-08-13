@@ -12110,7 +12110,7 @@ class Pillow {
         }
 
         Point(lut, modeName := unset) {
-            if this.Mode = "I" {
+            if this.Mode = "I" || this.Mode = "F" {
                 ; Pillow 11.3.0 rejects list tables on numeric modes with
                 ; "point operation not supported for this mode" and routes
                 ; LINEAR callables through point_transform(scale, offset).
@@ -12136,7 +12136,7 @@ class Pillow {
                 ))
                 return this.WrapDerivedHandle(outHandle)
             }
-            if this.Mode = "I;16" || this.Mode = "F"
+            if this.Mode = "I;16"
                 throw Error("point operation not supported for this mode", -1)
             if lut is Func
                 lut := this.CallablePointLut(lut)

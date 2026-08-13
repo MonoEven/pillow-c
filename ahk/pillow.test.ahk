@@ -21934,6 +21934,41 @@ PillowTestImagePointModeI(*) {
 
 AhkTest.Test("Pillow Image.Point applies linear transforms to mode I and rejects numeric list tables", PillowTestImagePointModeI)
 
+PillowTestImagePointModeF(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("F", [2, 2], PillowTestBuffer(PillowTestBytesFromF32([1.5, -2.5, 3.5, 0.0])))
+    out := 0
+    try {
+        out := image.Point((value) => 2 * value + 5)
+        AhkTest.AssertEqual("F", out.Mode)
+        AhkTest.AssertEqual(PillowTestBytesFromF32([8.0, 0.0, 12.0, 5.0]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Point((value) => 0.5 * value)
+        AhkTest.AssertEqual("F", out.Mode)
+        AhkTest.AssertEqual(PillowTestBytesFromF32([0.75, -1.25, 1.75, 0.0]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Point((value) => -1.5)
+        AhkTest.AssertEqual(PillowTestBytesFromF32([-1.5, -1.5, -1.5, -1.5]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        nonlinearError := ""
+        try {
+            image.Point((value) => value * value)
+        } catch Error as err {
+            nonlinearError := err.Message
+        }
+        AhkTest.AssertEqual("point operation not supported for this mode", nonlinearError)
+    } finally {
+        if IsObject(out)
+            out.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Point applies linear float32 transforms to mode F", PillowTestImagePointModeF)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])

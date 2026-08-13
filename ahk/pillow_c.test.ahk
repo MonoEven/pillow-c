@@ -22300,6 +22300,38 @@ PillowCTestImagePointTransformModeI(*) {
 
 AhkTest.Test("pillow_c image_point_transform applies linear int32 transforms to mode I", PillowCTestImagePointTransformModeI)
 
+PillowCTestImagePointTransformModeF(*) {
+    ; Pillow 11.3.0 routes linear callables on mode F through
+    ; point_transform with float32 math (fractional scales included).
+    image := PillowCCreateImageMode(2, 2, 9)
+    out := 0
+    try {
+        ; 1.5, -2.5, 3.5, 0.0
+        PillowCImageSetBytes(image, [0, 0, 192, 63, 0, 0, 32, 192, 0, 0, 96, 64, 0, 0, 0, 0])
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_point_transform",
+            "Ptr", image,
+            "Double", 2.0,
+            "Double", 5.0,
+            "Ptr*", &out,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual(9, PillowCImageMode(out))
+        ; 8.0, 0.0, 12.0, 5.0
+        AhkTest.AssertEqual(
+            [0, 0, 0, 65, 0, 0, 0, 0, 0, 0, 64, 65, 0, 0, 160, 64],
+            PillowCImageToArray(out, 16))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        if image
+            PillowCFreeImage(image)
+    }
+}
+
+AhkTest.Test("pillow_c image_point_transform applies linear float32 transforms to mode F", PillowCTestImagePointTransformModeF)
+
 PillowCTestImageIcoSizesReportsAvailableFrames(*) {
     path := PillowCTempIcoPath("ico-sizes")
     base := PillowCCreateImageMode(32, 32, 4)

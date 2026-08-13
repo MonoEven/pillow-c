@@ -29,8 +29,8 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`463/463`; the full AHK suite is `2769/2769`; and the current DLL SHA-256 is
-`80255CEA0BA94055F2C7CC11D7A415CF58C381BA84D558B743868FF43F977152`.
+`463/463`; the full AHK suite is `2771/2771`; and the current DLL SHA-256 is
+`1D6F3743A14FCC4D37C16FF99B6D2C7ADAD76143F6BEB82DBDD093A5CED37E5B`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
@@ -43,7 +43,7 @@ returns the existing native handle with Pillow's closed-image error.
 `Show()` methods are explicit documented boundaries (no Qt binding or
 viewer registry in this runtime) with Pillow-shaped errors.
 
-## Mode I Point Transform ABI Behavior
+## Mode I/F Point Transform ABI Behavior
 
 `MODE-I-001B` adds one public export:
 `pillow_c_image_point_transform(source, scale, offset, out_image)`.
@@ -51,15 +51,17 @@ Existing exported names, signatures, status codes, image-handle
 ownership, source-pointer lifetimes, and facade routes remain
 unchanged. The export applies `scale * x + offset` per little-endian
 int32 sample with double math and C-cast truncation (mirroring Pillow's
-C `point_transform` semantics) for `PILLOW_C_MODE_I` images only; other
-modes return `PILLOW_C_INVALID_ARGUMENT`. The facade routes linear AHK
-callables on mode I through this export and rejects list tables,
-non-linear callables, the `modeName` output-mode parameter, and I;16/F
-inputs with Pillow's `point operation not supported for this mode`
-message.
+C `point_transform` semantics) for `PILLOW_C_MODE_I` images, and per
+little-endian float32 sample for `PILLOW_C_MODE_F` images
+(`MODE-F-001B`, the same export name and signature — fractional scales
+such as `0.5` are exact); other modes return
+`PILLOW_C_INVALID_ARGUMENT`. The facade routes linear AHK callables on
+mode I or F through this export and rejects list tables, non-linear
+callables, the `modeName` output-mode parameter, and I;16 inputs with
+Pillow's `point operation not supported for this mode` message.
 
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
-beyond the mode-I point family above.
+beyond the mode I/F point family above.
 
 ## CUR Save With Hotspot ABI Behavior
 
