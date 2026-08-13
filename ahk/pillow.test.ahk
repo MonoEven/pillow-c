@@ -35,6 +35,13 @@ PillowTestBytesFromF32(values) {
     return PillowTestBufferToArray(buf)
 }
 
+PillowTestBytesFromU16(values) {
+    buf := Buffer(values.Length * 2, 0)
+    for index, value in values
+        NumPut("UShort", value, buf, (index - 1) * 2)
+    return PillowTestBufferToArray(buf)
+}
+
 PillowTestRowSums(values, width, height) {
     rows := []
     loop height {
@@ -22347,6 +22354,85 @@ PillowTestImageResizeBoxThumbnailNumeric(*) {
 }
 
 AhkTest.Test("Pillow Image.Resize box and Image.Thumbnail resample numeric mode I/F samples", PillowTestImageResizeBoxThumbnailNumeric)
+
+PillowTestImageResizeTransformI16(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("I;16", [3, 2], PillowTestBuffer(PillowTestBytesFromU16([1000, 50000, 60000, 300, 200, 65535])))
+    imageB := Pillow.Image.FromBytes("I;16B", [3, 2], PillowTestBuffer(PillowTestBytesFromU16([1000, 50000, 60000, 300, 200, 65535])))
+    out := 0
+    try {
+        ; Pillow defaults special modes (with ";") to NEAREST.
+        out := image.Resize([4, 3])
+        AhkTest.AssertEqual("I;16", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([1000, 50000, 50000, 60000, 300, 200, 200, 65535, 300, 200, 200, 65535]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Resize([4, 3], Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([1000, 31625, 53750, 60000, 650, 15932, 39226, 62768, 300, 238, 24701, 65535]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Resize([4, 3], Pillow.Resampling.BICUBIC)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([0, 33049, 59314, 60203, 153, 15505, 40875, 62943, 325, 0, 22435, 65427]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Transform([4, 3], Pillow.Transform.AFFINE, [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.NEAREST)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([200, 65535, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := image.Rotate(45, Pillow.Resampling.NEAREST)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([0, 50000, 65535, 1000, 200, 0]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        boundaryError := ""
+        try {
+            image.Transform([4, 3], Pillow.Transform.AFFINE, [1, 0, 0.5, 0, 1, 0.5], Pillow.Resampling.BILINEAR)
+        } catch Error as err {
+            boundaryError := err.Message
+        }
+        AhkTest.AssertEqual("Pillow.Image.Transform BILINEAR/BICUBIC is not supported for mode I;16", boundaryError)
+
+        boundaryError := ""
+        try {
+            image.Rotate(45, Pillow.Resampling.BICUBIC)
+        } catch Error as err {
+            boundaryError := err.Message
+        }
+        AhkTest.AssertEqual("Pillow.Image.Transform BILINEAR/BICUBIC is not supported for mode I;16", boundaryError)
+
+        boundaryError := ""
+        try {
+            imageB.Resize([4, 3], Pillow.Resampling.BILINEAR)
+        } catch Error as err {
+            boundaryError := err.Message
+        }
+        AhkTest.AssertEqual("Pillow.Image.Resize BILINEAR/BICUBIC is not supported for mode I;16B", boundaryError)
+
+        ; I;16B NEAREST stays supported.
+        out := imageB.Resize([4, 3], Pillow.Resampling.NEAREST)
+        AhkTest.AssertEqual("I;16B", out.Mode)
+        AhkTest.AssertEqual(
+            PillowTestBytesFromU16([1000, 50000, 50000, 60000, 300, 200, 200, 65535, 300, 200, 200, 65535]),
+            PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+    } finally {
+        if IsObject(out)
+            out.Close()
+        image.Close()
+        imageB.Close()
+    }
+}
+
+AhkTest.Test("Pillow I;16 Resize/Transform resamples per-sample with documented boundaries", PillowTestImageResizeTransformI16)
 
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

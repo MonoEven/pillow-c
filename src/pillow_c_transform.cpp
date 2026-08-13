@@ -445,6 +445,13 @@ bool is_numeric_transform_mode(const PillowCImage* source)
            (source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F);
 }
 
+bool transform_resample_unsupported_for_mode(const PillowCImage* source, int resample)
+{
+    return source &&
+           resample != PILLOW_C_RESAMPLE_NEAREST &&
+           (source->mode == PILLOW_C_MODE_I16 || source->mode == PILLOW_C_MODE_I16B);
+}
+
 double transform_numeric_sample(const PillowCImage* source, int x, int y)
 {
     const std::uint8_t* px =
@@ -635,6 +642,9 @@ int rotate_bilinear_into(
     if (!source || !target) {
         return PILLOW_C_NULL_POINTER;
     }
+    if (transform_resample_unsupported_for_mode(source, PILLOW_C_RESAMPLE_BILINEAR)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
 
     double normalized_angle = 0.0;
     int status = normalize_angle_degrees(angle, &normalized_angle);
@@ -731,6 +741,9 @@ int rotate_bicubic_into(
 {
     if (!source || !target) {
         return PILLOW_C_NULL_POINTER;
+    }
+    if (transform_resample_unsupported_for_mode(source, PILLOW_C_RESAMPLE_BICUBIC)) {
+        return PILLOW_C_INVALID_ARGUMENT;
     }
 
     double normalized_angle = 0.0;
@@ -899,6 +912,13 @@ int transform_with_mapper_into(
         return PILLOW_C_NULL_POINTER;
     }
     if (!supported_affine_transform_resample(resample) || out_width < 0 || out_height < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (transform_resample_unsupported_for_mode(source, resample)) {
+        // Pillow 11.3.0's bilinear/bicubic transform interpolates I;16
+          // storage bytes as byte channels (endian-bug garbage for I;16B),
+          // so those are explicit documented boundaries instead of
+          // replicated garbage. NEAREST whole-copies samples.
         return PILLOW_C_INVALID_ARGUMENT;
     }
     if (!pillow_c_image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {
@@ -1151,6 +1171,9 @@ int mesh_transform_image_into(
         return PILLOW_C_NULL_POINTER;
     }
     if (!supported_affine_transform_resample(resample) || out_width < 0 || out_height < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (transform_resample_unsupported_for_mode(source, resample)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
     if (!pillow_c_image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {

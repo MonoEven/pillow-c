@@ -29,8 +29,8 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`463/463`; the full AHK suite is `2781/2781`; and the current DLL SHA-256 is
-`77D2F0BB93546810708B69A4F39671FE6186A93762DB00D9871186D1AC4BEE9F`.
+`463/463`; the full AHK suite is `2785/2785`; and the current DLL SHA-256 is
+`9280B7142878AB5A8CF17A379AA40E1B22CB2C5FB0C4FA5B0FBC380CECEFF26E`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
@@ -115,8 +115,18 @@ no clipping) across BILINEAR/BICUBIC/LANCZOS/BOX/HAMMING.
 (`pillow_c_image_resize_box`) is served by the same
 `MODE-NUM-001CK` numeric branch, and the facade `Thumbnail` aspect
 math routes through `pillow_c_image_resize`; the DLL SHA-256 is
-unchanged. I;16 numeric resize/transform semantics, numeric
-reducing-gap composition, and the other numeric families remain
+unchanged.
+
+`MODE-NUM-001CM` adds no public export either and covers I;16 sample
+semantics: the resize filter gains a uint16 two-pass branch for
+`PILLOW_C_MODE_I16` replicating Pillow 11.3.0's 16bpc ROUND_UP plus
+per-byte CLIP8 writes, while bilinear/bicubic transforms (affine,
+perspective, quad, mesh, rotate) on `PILLOW_C_MODE_I16`/
+`PILLOW_C_MODE_I16B` and filter resizes on `PILLOW_C_MODE_I16B` now
+return `PILLOW_C_INVALID_ARGUMENT` as explicit documented boundaries
+instead of interpolating storage bytes (Pillow itself emits
+byte-channel garbage there). NEAREST paths keep whole-copying samples.
+Numeric reducing-gap composition and I;16 fill packing remain
 separate.
 
 No facade lifetime rule, fallback, or AHK per-pixel loop was added

@@ -22838,6 +22838,137 @@ PillowCTestImageResizeBoxNumericSamples(*) {
 
 AhkTest.Test("pillow_c image_resize_box and thumbnail resizes resample numeric mode I/F samples", PillowCTestImageResizeBoxNumericSamples)
 
+PillowCTestImageResizeTransformI16Samples(*) {
+    ; Pillow 11.3.0 resamples mode I;16 per uint16 sample with ROUND_UP
+    ; plus per-byte CLIP8 writes; filter resizes on I;16B and bilinear/
+    ; bicubic transforms on I;16/I;16B are explicit documented boundaries.
+    i16 := PillowCCreateImageMode(3, 2, 11)
+    i16b := PillowCCreateImageMode(3, 2, 12)
+    out := 0
+    try {
+        ; 1000, 50000, 60000, 300, 200, 65535
+        PillowCImageSetBytes(i16, [
+            232, 3, 80, 195, 96, 234, 44, 1, 200, 0, 255, 255,
+        ])
+        PillowCImageSetBytes(i16b, [
+            232, 3, 80, 195, 96, 234, 44, 1, 200, 0, 255, 255,
+        ])
+
+        out := PillowCImageResize(i16, 4, 3, 0)
+        AhkTest.AssertEqual(11, PillowCImageMode(out))
+        ; 1000, 50000, 50000, 60000, 300, 200, 200, 65535, 300, 200, 200, 65535
+        AhkTest.AssertEqual(
+            [232, 3, 80, 195, 80, 195, 96, 234, 44, 1, 200, 0,
+             200, 0, 255, 255, 44, 1, 200, 0, 200, 0, 255, 255],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResize(i16, 4, 3, 2)
+        ; 1000, 31625, 53750, 60000, 650, 15932, 39226, 62768, 300, 238, 24701, 65535
+        AhkTest.AssertEqual(
+            [232, 3, 137, 123, 246, 209, 96, 234, 138, 2, 60, 62,
+             58, 153, 48, 245, 44, 1, 238, 0, 125, 96, 255, 255],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        out := PillowCImageResize(i16, 4, 3, 3)
+        ; 0, 33049, 59314, 60203, 153, 15505, 40875, 62943, 325, 0, 22435, 65427
+        AhkTest.AssertEqual(
+            [0, 0, 25, 129, 178, 231, 43, 235, 153, 0, 145, 60,
+             171, 159, 223, 245, 69, 1, 0, 0, 163, 87, 147, 255],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; AFFINE NEAREST: 200, 65535, then zero fill
+        out := PillowCImageTransformAffine(i16, 4, 3, [1.0, 0.0, 0.5, 0.0, 1.0, 0.5], 0)
+        AhkTest.AssertEqual(11, PillowCImageMode(out))
+        AhkTest.AssertEqual(
+            [200, 0, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            PillowCImageToArray(out, 24))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; Rotate 45 NEAREST: 0, 50000, 65535, 1000, 200, 0
+        out := PillowCImageRotate(i16, 45, 0)
+        AhkTest.AssertEqual(
+            [0, 0, 80, 195, 255, 255, 232, 3, 200, 0, 0, 0],
+            PillowCImageToArray(out, 12))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; Boundaries: bilinear/bicubic transforms and I;16B filter resizes.
+        matrix := PillowCAffineMatrix([1.0, 0.0, 0.5, 0.0, 1.0, 0.5])
+        boundaryOut := 0
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_transform_affine",
+            "Ptr", i16,
+            "Int", 4,
+            "Int", 3,
+            "Ptr", matrix,
+            "Int", 2,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr*", &boundaryOut,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, boundaryOut)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_rotate",
+            "Ptr", i16,
+            "Double", 45.0,
+            "Int", 2,
+            "Int", 0,
+            "Double", 0.0,
+            "Double", 0.0,
+            "Int", 0,
+            "Double", 0.0,
+            "Double", 0.0,
+            "Int", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "Ptr*", &boundaryOut,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, boundaryOut)
+
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_resize",
+            "Ptr", i16b,
+            "Int", 4,
+            "Int", 3,
+            "Int", 2,
+            "Ptr*", &boundaryOut,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+        AhkTest.AssertEqual(0, boundaryOut)
+
+        ; I;16B NEAREST stays supported (whole-copy preserves raw bytes).
+        out := PillowCImageResize(i16b, 4, 3, 0)
+        AhkTest.AssertEqual(12, PillowCImageMode(out))
+        AhkTest.AssertEqual(
+            [232, 3, 80, 195, 80, 195, 96, 234, 44, 1, 200, 0,
+             200, 0, 255, 255, 44, 1, 200, 0, 200, 0, 255, 255],
+            PillowCImageToArray(out, 24))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        if i16
+            PillowCFreeImage(i16)
+        if i16b
+            PillowCFreeImage(i16b)
+    }
+}
+
+AhkTest.Test("pillow_c I;16 resize/transform resamples per-sample with documented boundaries", PillowCTestImageResizeTransformI16Samples)
+
 
 PillowCTestImageIcoSizesReportsAvailableFrames(*) {
     path := PillowCTempIcoPath("ico-sizes")

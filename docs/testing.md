@@ -47,8 +47,35 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2783` AHK tests: `1381` raw DLL tests and
-`1402` facade tests.
+This suite currently registers `2785` AHK tests: `1382` raw DLL tests and
+`1403` facade tests.
+
+Latest `MODE-NUM-001CM` verification: the Pillow 11.3.0 oracle (kept
+in `oracle/probe_mode_i16.py`) shows I;16 resize runs the 16bpc
+two-pass resampler with ROUND_UP plus per-byte CLIP8 writes per pass
+(values above 65535 wrap the high byte to 255), while I;16
+transform/rotate NEAREST whole-copies samples and bilinear/bicubic
+transform/rotate interpolate the storage bytes as byte channels
+(endian-bug garbage on I;16B). The native resize filter gains the
+uint16 branch (`resize_read_i16_sample`,
+`resize_round_clip_i16_sample` with the exact CLIP8 artifact,
+`resize_write_i16_sample`), and bilinear/bicubic transforms on
+I;16/I;16B plus I;16B filter resizes become explicit documented
+boundaries (`PILLOW_C_INVALID_ARGUMENT`); the facade defaults
+`;`-modes to NEAREST and surfaces the boundary errors. The ctypes
+cross-check (kept in `oracle/probe_mode_i16_dll_compose.py`) matches
+Pillow's I;16 resize NEAREST/BILINEAR/BICUBIC outputs, the NEAREST
+transform/rotate outputs, and the boundary statuses exactly
+(`FAILURES: 0`). Raw/facade I;16 targets pass `3/3` in `63ms`; the
+numeric filter passes `125/125` in `593ms`; the resize filter passes
+`29/29` in `63ms`; the transform filter passes `181/181` in `4985ms`;
+and the full directory suite passes `2785/2785` in `18718ms`, with
+zero failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity remains `463/463`
+with zero difference; and the rebuilt DLL SHA-256 is
+`9280B7142878AB5A8CF17A379AA40E1B22CB2C5FB0C4FA5B0FBC380CECEFF26E`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `95% ±4%`.
 
 Latest `MODE-NUM-001CL` verification: the Pillow 11.3.0 oracle (kept
 in `oracle/probe_mode_box_thumb.py`) shows boxed

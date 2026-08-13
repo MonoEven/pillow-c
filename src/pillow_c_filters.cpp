@@ -280,6 +280,44 @@ std::int32_t resize_round_i32_sample(double value)
     return static_cast<std::int32_t>(value >= 0.0 ? value + 0.5 : value - 0.5);
 }
 
+std::uint16_t resize_read_i16_sample(const PillowCImage* source, int x, int y)
+{
+    const std::uint8_t* px =
+        source->pixels.data() +
+        static_cast<std::size_t>(y) * source->stride +
+        static_cast<std::size_t>(x) * 2u;
+    return static_cast<std::uint16_t>(px[0]) |
+           (static_cast<std::uint16_t>(px[1]) << 8);
+}
+
+std::uint16_t resize_round_clip_i16_sample(double value)
+{
+    // Pillow 11.3.0 Resample.c 16bpc writes each byte through CLIP8
+    // (CLIP8(ss_int % 256), CLIP8(ss_int >> 8)), so values above 65535
+    // wrap the high byte to 255 instead of clamping the whole sample.
+    const std::int32_t rounded =
+        static_cast<std::int32_t>(value >= 0.0 ? value + 0.5 : value - 0.5);
+    const std::int32_t low = rounded % 256;
+    const std::int32_t high = rounded >> 8;
+    const auto clip8 = [](std::int32_t v) -> std::uint8_t {
+        if (v < 0) {
+            return 0;
+        }
+        if (v > 255) {
+            return 255;
+        }
+        return static_cast<std::uint8_t>(v);
+    };
+    return static_cast<std::uint16_t>(clip8(low)) |
+           (static_cast<std::uint16_t>(clip8(high)) << 8);
+}
+
+void resize_write_i16_sample(std::uint16_t value, std::uint8_t* dst)
+{
+    dst[0] = static_cast<std::uint8_t>(value);
+    dst[1] = static_cast<std::uint8_t>(value >> 8);
+}
+
 bool valid_resize_box(const PillowCImage* source, double left, double top, double right, double bottom)
 {
     return source &&
@@ -318,6 +356,12 @@ int resize_filter_box_into(
     if (!pillow_c_image_shape_matches(target, out_width, out_height, source->mode, source->channels)) {
         return PILLOW_C_MISMATCH;
     }
+    if (source->mode == PILLOW_C_MODE_I16B) {
+        // Pillow 11.3.0's 16bpc resampler misreads I;16B raw bytes
+          // (endian-bug garbage), so filter resizes on I;16B are an
+          // explicit documented boundary instead of replicated garbage.
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
 
     try {
         const ResampleFilterSpec* filter = filter_spec_for_resample(resample);
@@ -332,7 +376,7 @@ int resize_filter_box_into(
         }
 
         if (source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F) {
-            ; // Pillow 11.3.0 resamples 32-bit modes per sample with
+            // Pillow 11.3.0 resamples 32-bit modes per sample with
               // unquantized double weights (Resample.c 32bpc paths):
               // mode F keeps float32 intermediates, mode I rounds half
               // away from zero after EACH pass.
@@ -377,6 +421,48 @@ int resize_filter_box_into(
                             dst,
                             static_cast<std::uint32_t>(resize_round_i32_sample(sum)));
                     }
+                }
+            }
+            return PILLOW_C_OK;
+        }
+
+        if (source->mode == PILLOW_C_MODE_I16 && source->channels == 2) {
+            // Pillow 11.3.0 Resample.c 16bpc: one uint16 sample per
+              // pixel, double weights, ROUND_UP plus 0..65535 clipping
+              // after EACH pass (little-endian storage).
+            std::vector<double> temp(
+                static_cast<std::size_t>(out_width) *
+                static_cast<std::size_t>(source->height),
+                0.0);
+            const double* x_norm = x_coeffs.normalized_weights.data();
+            const double* y_norm = y_coeffs.normalized_weights.data();
+            for (int y = 0; y < source->height; ++y) {
+                for (int out_x = 0; out_x < out_width; ++out_x) {
+                    const int xmin = x_coeffs.bounds[static_cast<std::size_t>(out_x) * 2u];
+                    const int count = x_coeffs.bounds[static_cast<std::size_t>(out_x) * 2u + 1u];
+                    const double* weights = x_norm + static_cast<std::size_t>(out_x) * x_coeffs.kernel_size;
+                    double sum = 0.0;
+                    for (int i = 0; i < count; ++i) {
+                        sum += static_cast<double>(resize_read_i16_sample(source, xmin + i, y)) * weights[i];
+                    }
+                    temp[static_cast<std::size_t>(y) * out_width + out_x] =
+                        static_cast<double>(resize_round_clip_i16_sample(sum));
+                }
+            }
+            for (int out_y = 0; out_y < out_height; ++out_y) {
+                const int ymin = y_coeffs.bounds[static_cast<std::size_t>(out_y) * 2u];
+                const int count = y_coeffs.bounds[static_cast<std::size_t>(out_y) * 2u + 1u];
+                const double* weights = y_norm + static_cast<std::size_t>(out_y) * y_coeffs.kernel_size;
+                for (int out_x = 0; out_x < out_width; ++out_x) {
+                    double sum = 0.0;
+                    for (int i = 0; i < count; ++i) {
+                        sum += temp[static_cast<std::size_t>(ymin + i) * out_width + out_x] * weights[i];
+                    }
+                    std::uint8_t* dst =
+                        target->pixels.data() +
+                        static_cast<std::size_t>(out_y) * target->stride +
+                        static_cast<std::size_t>(out_x) * 2u;
+                    resize_write_i16_sample(resize_round_clip_i16_sample(sum), dst);
                 }
             }
             return PILLOW_C_OK;

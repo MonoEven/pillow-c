@@ -12065,6 +12065,16 @@ class Pillow {
             return buf
         }
 
+        ThrowUnsupportedTransformResample(resample) {
+            ; Pillow 11.3.0 interpolates I;16 transform storage bytes as
+            ; byte channels for BILINEAR/BICUBIC (endian-bug garbage on
+            ; I;16B), so those are explicit documented boundaries here.
+            if (this.Mode = "I;16" || this.Mode = "I;16B") {
+                if resample = Pillow.Resampling.BILINEAR || resample = Pillow.Resampling.BICUBIC
+                    throw Error("Pillow.Image.Transform BILINEAR/BICUBIC is not supported for mode " this.Mode, -1)
+            }
+        }
+
         TransformFillBuffer(color) {
             if this.Mode = "I" || this.Mode = "F" {
                 ; Pillow 11.3.0 packs numeric transform fill colors as one
@@ -12593,7 +12603,9 @@ class Pillow {
             if size.Length != 2
                 throw Error("Pillow.Image.Resize expects size [width, height]", -1)
             if !IsSet(resample)
-                resample := (this.Mode = "1" || this.Mode = "P") ? Pillow.Resampling.NEAREST : Pillow.Resampling.BICUBIC
+                resample := (this.Mode = "1" || this.Mode = "P" || InStr(this.Mode, ";")) ? Pillow.Resampling.NEAREST : Pillow.Resampling.BICUBIC
+            if this.Mode = "I;16B" && resample != Pillow.Resampling.NEAREST
+                throw Error("Pillow.Image.Resize BILINEAR/BICUBIC is not supported for mode I;16B", -1)
 
             outHandle := 0
             if IsSet(reducingGap) {
@@ -12792,6 +12804,7 @@ class Pillow {
                 throw Error("Pillow.Image.Transform PERSPECTIVE expects at least 8 coefficients", -1)
             if !IsSet(resample)
                 resample := Pillow.Resampling.NEAREST
+            this.ThrowUnsupportedTransformResample(resample)
             coefficientBuffer := Buffer(8 * 8, 0)
             loop 8 {
                 value := coefficients[A_Index]
@@ -12824,6 +12837,7 @@ class Pillow {
                 throw Error("Pillow.Image.Transform QUAD expects at least 8 corner values", -1)
             if !IsSet(resample)
                 resample := Pillow.Resampling.NEAREST
+            this.ThrowUnsupportedTransformResample(resample)
             cornerBuffer := Buffer(8 * 8, 0)
             loop 8 {
                 value := corners[A_Index]
@@ -12856,6 +12870,7 @@ class Pillow {
                 throw Error("Pillow.Image.Transform MESH expects an array of [box, quad] entries", -1)
             if !IsSet(resample)
                 resample := Pillow.Resampling.NEAREST
+            this.ThrowUnsupportedTransformResample(resample)
 
             meshCount := mesh.Length
             boxes := Buffer(meshCount * 4 * 4, 0)
@@ -12909,6 +12924,7 @@ class Pillow {
                 throw Error("Pillow.Image.TransformAffine expects a 6-value affine matrix", -1)
             if !IsSet(resample)
                 resample := Pillow.Resampling.NEAREST
+            this.ThrowUnsupportedTransformResample(resample)
             matrixBuffer := Buffer(6 * 8, 0)
             for index, value in matrix {
                 if !(value is Number)
@@ -12938,6 +12954,7 @@ class Pillow {
                 throw Error("Pillow.Image.Rotate angle must be numeric", -1)
             if !IsSet(resample)
                 resample := Pillow.Resampling.NEAREST
+            this.ThrowUnsupportedTransformResample(resample)
             hasCenter := IsSet(center)
             centerX := 0.0
             centerY := 0.0
