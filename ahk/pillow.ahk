@@ -10797,27 +10797,109 @@ class Pillow {
                     && this.Mode != "CMYK" && this.Mode != "I;16" && this.Mode != "I;16B"
                     && this.Mode != "I" && this.Mode != "F"
                     throw Error("Pillow.Image.Save big_tiff currently supports L, RGB, RGBA, LA, CMYK, I;16, I, and F modes", -1)
-                if exifOption.Set || iccProfileOption.Set || tiffInfoOption.Set || dpiOption.Set
-                    throw Error("Pillow.Image.Save big_tiff does not compose with exif, icc_profile, tiffinfo, or dpi yet", -1)
                 compression := compressionOption.Set
                     ? Pillow.Image.SaveTiffCompression(compressionOption.Value)
                     : 1
                 numericMode := this.Mode = "CMYK" || this.Mode = "I;16" || this.Mode = "I;16B"
                     || this.Mode = "I" || this.Mode = "F"
-                if !numericMode || compression = 1 {
+                hasMetadata := iccProfileOption.Set || tiffInfoOption.Set || dpiOption.Set || exifOption.Set
+                if !hasMetadata {
+                    if !numericMode || compression = 1 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_tiff_bigtiff_frames_compression_options",
+                            "Ptr", handles,
+                            "UPtr", images.Length,
+                            "Ptr", pathBytes,
+                            "Int", compression,
+                            "Int"
+                        ))
+                        return
+                    }
+                } else if compression = 1 && !exifOption.Set {
+                    if tiffInfoOption.Set {
+                        if !(tiffInfoOption.Value is Map)
+                            throw Error("Pillow.Image.Save tiffinfo expects a Map", -1)
+                        if !tiffInfoOption.Value.Has(270)
+                            && !tiffInfoOption.Value.Has(315)
+                            && !tiffInfoOption.Value.Has(700)
+                            throw Error("Pillow.Image.Save tiffinfo currently supports tags 270, 315, and 700", -1)
+                        for tag, value in tiffInfoOption.Value {
+                            if tag != 270 && tag != 315 && tag != 700
+                                throw Error("Pillow.Image.Save tiffinfo currently supports tags 270, 315, and 700", -1)
+                        }
+                    }
+                    xmp := 0
+                    if tiffInfoOption.Set && tiffInfoOption.Value.Has(700) {
+                        xmp := Pillow.Image.BinaryBuffer(
+                            tiffInfoOption.Value[700],
+                            "Pillow.Image.Save tiffinfo tag 700"
+                        )
+                        if xmp.Size = 0
+                            throw Error("Pillow.Image.Save tiffinfo tag 700 must not be empty", -1)
+                    }
+                    asciiTags := []
+                    asciiValues := []
+                    if tiffInfoOption.Set {
+                        for tag in [270, 315] {
+                            if !tiffInfoOption.Value.Has(tag)
+                                continue
+                            if !(tiffInfoOption.Value[tag] is String)
+                                throw Error("Pillow.Image.Save tiffinfo tag " tag " expects a string", -1)
+                            asciiTags.Push(tag)
+                            asciiValues.Push(Pillow.Image.Utf8Buffer(tiffInfoOption.Value[tag]))
+                        }
+                    }
+                    iccProfile := 0
+                    if iccProfileOption.Set {
+                        iccProfile := Pillow.Image.BinaryBuffer(
+                            iccProfileOption.Value,
+                            "Pillow.Image.Save icc_profile"
+                        )
+                        if iccProfile.Size = 0
+                            throw Error("Pillow.Image.Save icc_profile must not be empty", -1)
+                    }
+                    hasDpi := 0
+                    dpiX := 0.0
+                    dpiY := 0.0
+                    if dpiOption.Set {
+                        dpi := Pillow.Image.SaveDpiPair(dpiOption.Value)
+                        hasDpi := 1
+                        dpiX := dpi[1]
+                        dpiY := dpi[2]
+                    }
+                    asciiTagBuffer := Buffer(asciiTags.Length * 4, 0)
+                    asciiValuePointers := Buffer(asciiTags.Length * A_PtrSize, 0)
+                    asciiValueSizes := Buffer(asciiTags.Length * A_PtrSize, 0)
+                    for index, tag in asciiTags {
+                        NumPut("Int", tag, asciiTagBuffer, (index - 1) * 4)
+                        NumPut("Ptr", asciiValues[index].Ptr, asciiValuePointers, (index - 1) * A_PtrSize)
+                        NumPut("UPtr", asciiValues[index].Size, asciiValueSizes, (index - 1) * A_PtrSize)
+                    }
                     Pillow.CheckStatus(DllCall(
-                        Pillow.RequireDllPath() "\pillow_c_image_save_tiff_bigtiff_frames_compression_options",
+                        Pillow.RequireDllPath() "\pillow_c_image_save_tiff_bigtiff_frames_metadata_ascii_entries_options",
                         "Ptr", handles,
                         "UPtr", images.Length,
                         "Ptr", pathBytes,
+                        "Int", hasDpi,
+                        "Double", dpiX,
+                        "Double", dpiY,
                         "Int", compression,
+                        "Ptr", IsObject(iccProfile) ? iccProfile : 0,
+                        "UPtr", IsObject(iccProfile) ? iccProfile.Size : 0,
+                        "Ptr", IsObject(xmp) ? xmp : 0,
+                        "UPtr", IsObject(xmp) ? xmp.Size : 0,
+                        "Ptr", asciiTagBuffer,
+                        "Ptr", asciiValuePointers,
+                        "Ptr", asciiValueSizes,
+                        "UPtr", asciiTags.Length,
                         "Int"
                     ))
                     return
                 }
                 ; Pillow falls back to classic TIFF when big_tiff combines with
-                ; compression (libtiff ignores big_tiff); numeric modes reuse
-                ; the classic writer below.
+                ; compression (libtiff ignores big_tiff), so numeric or
+                ; metadata saves with compression reuse the classic writer
+                ; below; big_tiff exif also stays on the classic route for now.
             }
             if tiffInfoOption.Set {
                 if !(tiffInfoOption.Value is Map)

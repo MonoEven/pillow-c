@@ -21,36 +21,37 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 76% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 77% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
-Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BD` closes the bounded
+Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BE` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
 malformed-metadata robustness slice, one-level ExifIFD/GPSInfo sub-IFD
 traversal on both routes, the classic-route TIFF save `exif=` option with
 its array families, compression/option composition, raw-bytes form, the
 BigTIFF save matrix with compression, the two-frame BigTIFF save, the
-Pillow multi-frame layout lock-in, and the numeric BigTIFF strip
-save/open family (I16/I16B/I/F/CMYK: count-1 258 bits, 339 SampleFormat
-2/3, photometric 5, big-endian I/F normalization, I;16B swap on save,
-numeric+compression -3 rejection plus the facade classic-TIFF fallback
-matching Pillow's libtiff behavior). `003BC` CORRECTS the round-16 oracle
-note: Pillow 11.3.0's `save_all` (classic AND `big_tiff`) output is
-CHAIN-LINKED — IFD0's next pointer jumps to page 1's IFD, with each
-page's own inline header preceding its IFD as a writer artifact — so the
-DLL's chained readers already open Pillow-written multi-frame files with
-the right frame count and per-frame bytes. Numeric BigTIFF saves were
-cross-verified through Pillow 11.3.0 ctypes (exact bytes, `FAILURES: 0`),
-the TIFF filter passes `692/692` in `5157ms`, and the full directory
-suite passes `2744/2744` in `18109ms`; source/DLL exports remain `458/458`
-with zero difference; and the DLL SHA-256 is
-`B893B53F49D4B3B20F7BD4C0AD79FBAEC2A2F15374BC8DE16C2A37A2BBFC4DDE`.
+Pillow multi-frame layout lock-in, the numeric BigTIFF strip save/open
+family (I16/I16B/I/F/CMYK), and the BigTIFF save metadata composition
+(dpi/icc_profile/tiffinfo 270/315/700 through the new
+`pillow_c_image_save_tiff_bigtiff_frames_metadata_ascii_entries_options`
+export: inline ASCII <= 8, inline RATIONAL 282/283, BYTE XMP, UNDEFINED
+ICC, even-aligned LONG8 blobs, metadata per frame; compression combos
+and big_tiff exif stay on the classic writer like Pillow's own fallback).
+`003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
+(classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
+jumps to page 1's IFD, with each page's own inline header preceding its
+IFD as a writer artifact. BigTIFF metadata saves were cross-verified
+through Pillow 11.3.0 ctypes (exact dpi/icc/xmp/ascii bytes,
+`FAILURES: 0`), the TIFF filter passes `694/694` in `5172ms`, and the
+full directory suite passes `2746/2746` in `19797ms`; source/DLL exports
+remain `459/459` with zero difference; and the DLL SHA-256 is
+`DB37A0C75CE70EFFCA5CC31CD7C880B8684257DCFC4482F8C712D0361781BDE0`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is the bounded
-`FMT-TIFF-003BE` BigTIFF save metadata composition (dpi/icc_profile/
-tiffinfo/exif on the big_tiff route), with wider BigTIFF save remaining
-separate. Dither exact parity, libimagequant, broader quantize
-cross-products, qtables with more than two tables, malformed marker
-streams, and exact whole-file parity remain separate.
+`FMT-TIFF-003BF` BigTIFF save `exif=` (exif tag families written directly
+into the BigTIFF IFD0), with wider BigTIFF save remaining separate.
+Dither exact parity, libimagequant, broader quantize cross-products,
+qtables with more than two tables, malformed marker streams, and exact
+whole-file parity remain separate.
 ```
 
 Current work packet:
@@ -393,9 +394,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `FMT-TIFF-003BE` BigTIFF save metadata
-  composition (dpi/icc_profile/tiffinfo/exif on the big_tiff route), with
-  wider BigTIFF save staying separate.
+- Selected next gap: bounded `FMT-TIFF-003BF` BigTIFF save `exif=` (exif
+  tag families written directly into the BigTIFF IFD0), with wider
+  BigTIFF save staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -469,6 +470,33 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `FMT-TIFF-003BE` is GREEN for the bounded BigTIFF save metadata
+composition (dpi/icc_profile/tiffinfo 270/315/700). The Pillow 11.3.0
+oracle (kept in `oracle/probe_tiff_bigtiff_metadata_save.py`) confirms
+every metadata family composes with `big_tiff=True` and keeps the
+BigTIFF layout (inline RATIONAL 282/283, SHORT 296, inline ASCII <= 8,
+BYTE-type XMP, UNDEFINED-type ICC, even-aligned LONG8 blobs, ascending
+entries, strip after blobs), while Pillow ignores `big_tiff` whenever
+compression is set. `save_tiff_bigtiff_frames_image_with_compression` is
+generalized into `save_tiff_bigtiff_frames_image_metadata_with_
+compression` (the plain frames writer delegates), and the new public
+export `pillow_c_image_save_tiff_bigtiff_frames_metadata_ascii_entries_
+options` writes the oracle layout with per-frame metadata. The facade
+routes dpi/icc_profile/tiffinfo through the new export, falls back to
+the classic writer for compression combinations, and keeps big_tiff
+`exif=` on the classic route for now (003BF). The ctypes cross-check
+reopens every DLL-written combination through Pillow 11.3.0 with exact
+metadata (`FAILURES: 0`). Raw/facade targets pass `1/1` each; the TIFF
+filter passes `694/694` in `5172ms`; and the full directory suite passes
+`2746/2746` in `19797ms`, with zero failures, errors, or skips. Release
+x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity
+moves to `459/459` (one deliberate new export) with zero difference; and
+the rebuilt DLL SHA-256 is
+`DB37A0C75CE70EFFCA5CC31CD7C880B8684257DCFC4482F8C712D0361781BDE0`.
+No facade lifetime rule, fallback, or AHK pixel loop changed beyond the
+BigTIFF metadata save family. The estimate moves to `77% ±4%`. The next
+bounded child is `FMT-TIFF-003BF`, BigTIFF save `exif=`.
 
 2026-08-13: `FMT-TIFF-003BD` is GREEN for the bounded numeric BigTIFF strip
 save/open family (I16/I16B/I/F/CMYK). The Pillow 11.3.0 oracle (kept in

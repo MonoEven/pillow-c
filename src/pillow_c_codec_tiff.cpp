@@ -7688,11 +7688,22 @@ int save_tiff_bigtiff_image_with_compression(
     }
 }
 
-int save_tiff_bigtiff_frames_image_with_compression(
+int save_tiff_bigtiff_frames_image_metadata_with_compression(
     const PillowCImage* const* images,
     std::size_t image_count,
     const char* path,
-    std::uint16_t compression)
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    std::uint16_t compression,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* xmp,
+    std::size_t xmp_size,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    const std::size_t* ascii_sizes,
+    std::size_t ascii_count)
 {
     if (!images || !path) {
         return PILLOW_C_NULL_POINTER;
@@ -7706,6 +7717,31 @@ int save_tiff_bigtiff_frames_image_with_compression(
         compression != TIFF_COMPRESSION_ADOBE_DEFLATE) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    if (ascii_count > 0u && (!ascii_tags || !ascii_values || !ascii_sizes)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    for (std::size_t index = 0u; index < ascii_count; ++index) {
+        if (!ascii_values[index] || ascii_sizes[index] == 0u) {
+            return PILLOW_C_NULL_POINTER;
+        }
+    }
+    if ((icc_profile_size > 0u && !icc_profile) || (xmp_size > 0u && !xmp)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    std::uint32_t x_resolution_numerator = 0u;
+    std::uint32_t y_resolution_numerator = 0u;
+    const int dpi_status = tiff_dpi_to_rational(
+        has_dpi != 0,
+        dpi_x,
+        dpi_y,
+        &x_resolution_numerator,
+        &y_resolution_numerator);
+    if (dpi_status != PILLOW_C_OK) {
+        return dpi_status;
+    }
+    const bool has_xmp = xmp_size > 0u;
+    const bool has_icc_profile = icc_profile_size > 0u;
+    const bool has_dpi_tag = has_dpi != 0;
 
     struct BigTiffFrame
     {
@@ -7720,6 +7756,9 @@ int save_tiff_bigtiff_frames_image_with_compression(
         std::size_t entry_count;
         std::size_t ifd_bytes;
         std::vector<std::uint8_t> strip_bytes;
+        std::vector<std::uint64_t> ascii_blob_offsets;
+        std::uint64_t xmp_blob_offset;
+        std::uint64_t icc_blob_offset;
     };
     std::vector<BigTiffFrame> frames;
     try {
@@ -7748,6 +7787,9 @@ int save_tiff_bigtiff_frames_image_with_compression(
             frame.bits_value = 0u;
             frame.entry_count = 0u;
             frame.ifd_bytes = 0u;
+            frame.ascii_blob_offsets.assign(ascii_count, 0u);
+            frame.xmp_blob_offset = 0u;
+            frame.icc_blob_offset = 0u;
             int channels = 0;
             switch (image->mode) {
             case PILLOW_C_MODE_L:
@@ -7816,7 +7858,9 @@ int save_tiff_bigtiff_frames_image_with_compression(
             const bool has_samples_per_pixel =
                 channels > 1 && !frame.is_i16 && !frame.has_sample_format;
             frame.entry_count = 9u + (has_samples_per_pixel ? 1u : 0u) +
-                (frame.has_extra_samples ? 1u : 0u) + (frame.has_sample_format ? 1u : 0u);
+                (frame.has_extra_samples ? 1u : 0u) + (frame.has_sample_format ? 1u : 0u) +
+                (has_dpi_tag ? 3u : 0u) + (has_icc_profile ? 1u : 0u) +
+                (has_xmp ? 1u : 0u) + ascii_count;
             frame.ifd_bytes = 8u + frame.entry_count * 20u + 8u;
 
             std::vector<std::uint8_t> swapped_pixels;
@@ -7848,9 +7892,27 @@ int save_tiff_bigtiff_frames_image_with_compression(
         std::vector<std::uint64_t> strip_offsets(image_count, 0u);
         for (std::size_t index = 0u; index < image_count; ++index) {
             ifd_offsets[index] = cursor;
-            cursor += static_cast<std::uint64_t>(frames[index].ifd_bytes);
-            strip_offsets[index] = cursor;
-            cursor += static_cast<std::uint64_t>(frames[index].strip_bytes.size());
+            std::uint64_t blob_cursor = cursor + static_cast<std::uint64_t>(frames[index].ifd_bytes);
+            BigTiffFrame& frame = frames[index];
+            for (std::size_t ascii_index = 0u; ascii_index < ascii_count; ++ascii_index) {
+                if (ascii_sizes[ascii_index] > 8u) {
+                    blob_cursor = align_tiff_offset(blob_cursor);
+                    frame.ascii_blob_offsets[ascii_index] = blob_cursor;
+                    blob_cursor += static_cast<std::uint64_t>(ascii_sizes[ascii_index]);
+                }
+            }
+            if (has_xmp && xmp_size > 8u) {
+                blob_cursor = align_tiff_offset(blob_cursor);
+                frame.xmp_blob_offset = blob_cursor;
+                blob_cursor += static_cast<std::uint64_t>(xmp_size);
+            }
+            if (has_icc_profile && icc_profile_size > 8u) {
+                blob_cursor = align_tiff_offset(blob_cursor);
+                frame.icc_blob_offset = blob_cursor;
+                blob_cursor += static_cast<std::uint64_t>(icc_profile_size);
+            }
+            strip_offsets[index] = blob_cursor;
+            cursor = blob_cursor + static_cast<std::uint64_t>(frames[index].strip_bytes.size());
         }
 
         const auto append_le64 = [](std::vector<std::uint8_t>& out, std::uint64_t value) {
@@ -7875,6 +7937,35 @@ int save_tiff_bigtiff_frames_image_with_compression(
         for (std::size_t index = 0u; index < image_count; ++index) {
             const BigTiffFrame& frame = frames[index];
             const PillowCImage* image = frame.image;
+            const auto append_ascii_entry = [&](int wanted_tag) {
+                for (std::size_t ascii_index = 0u; ascii_index < ascii_count; ++ascii_index) {
+                    if (ascii_tags[ascii_index] != wanted_tag) {
+                        continue;
+                    }
+                    const std::size_t size = ascii_sizes[ascii_index];
+                    const char* value_bytes = ascii_values[ascii_index];
+                    std::uint64_t value = frame.ascii_blob_offsets[ascii_index];
+                    if (size <= 8u) {
+                        value = 0u;
+                        for (std::size_t byte_index = 0u; byte_index < size; ++byte_index) {
+                            value |= static_cast<std::uint64_t>(
+                                static_cast<std::uint8_t>(value_bytes[byte_index])) << (byte_index * 8u);
+                        }
+                    }
+                    append_entry(static_cast<std::uint16_t>(wanted_tag), 2u, static_cast<std::uint64_t>(size), value);
+                    return;
+                }
+            };
+            const auto blob_entry_value = [](const std::uint8_t* bytes, std::size_t size, std::uint64_t offset) -> std::uint64_t {
+                if (size > 8u) {
+                    return offset;
+                }
+                std::uint64_t value = 0u;
+                for (std::size_t byte_index = 0u; byte_index < size; ++byte_index) {
+                    value |= static_cast<std::uint64_t>(bytes[byte_index]) << (byte_index * 8u);
+                }
+                return value;
+            };
             append_le64(out, static_cast<std::uint64_t>(frame.entry_count));
             append_entry(256u, 4u, 1u, static_cast<std::uint64_t>(image->width));
             append_entry(257u, 4u, 1u, static_cast<std::uint64_t>(image->height));
@@ -7887,20 +7978,74 @@ int save_tiff_bigtiff_frames_image_with_compression(
                 frame.bits_value);
             append_entry(259u, 3u, 1u, compression);
             append_entry(262u, 3u, 1u, frame.photometric);
+            append_ascii_entry(270);
             append_entry(273u, 4u, 1u, strip_offsets[index]);
             if (image->channels > 1 && !frame.is_i16 && !frame.has_sample_format) {
                 append_entry(277u, 3u, 1u, static_cast<std::uint64_t>(image->channels));
             }
             append_entry(278u, 4u, 1u, static_cast<std::uint64_t>(image->height));
             append_entry(279u, 4u, 1u, static_cast<std::uint64_t>(frame.strip_bytes.size()));
+            if (has_dpi_tag) {
+                append_entry(
+                    282u,
+                    5u,
+                    1u,
+                    static_cast<std::uint64_t>(x_resolution_numerator) | (std::uint64_t{1u} << 32u));
+                append_entry(
+                    283u,
+                    5u,
+                    1u,
+                    static_cast<std::uint64_t>(y_resolution_numerator) | (std::uint64_t{1u} << 32u));
+            }
             append_entry(284u, 3u, 1u, 1u);
+            if (has_dpi_tag) {
+                append_entry(296u, 3u, 1u, 2u);
+            }
+            append_ascii_entry(315);
             if (frame.has_extra_samples) {
                 append_entry(338u, 3u, 1u, 2u);
             }
             if (frame.has_sample_format) {
                 append_entry(339u, 3u, 1u, static_cast<std::uint64_t>(frame.sample_format));
             }
+            if (has_xmp) {
+                append_entry(
+                    700u,
+                    1u,
+                    static_cast<std::uint64_t>(xmp_size),
+                    blob_entry_value(xmp, xmp_size, frame.xmp_blob_offset));
+            }
+            if (has_icc_profile) {
+                append_entry(
+                    34675u,
+                    7u,
+                    static_cast<std::uint64_t>(icc_profile_size),
+                    blob_entry_value(icc_profile, icc_profile_size, frame.icc_blob_offset));
+            }
             append_le64(out, index + 1u < image_count ? ifd_offsets[index + 1u] : 0u);
+            for (std::size_t ascii_index = 0u; ascii_index < ascii_count; ++ascii_index) {
+                if (ascii_sizes[ascii_index] > 8u) {
+                    if (out.size() < static_cast<std::size_t>(frame.ascii_blob_offsets[ascii_index])) {
+                        out.resize(static_cast<std::size_t>(frame.ascii_blob_offsets[ascii_index]), 0);
+                    }
+                    out.insert(
+                        out.end(),
+                        ascii_values[ascii_index],
+                        ascii_values[ascii_index] + ascii_sizes[ascii_index]);
+                }
+            }
+            if (has_xmp && xmp_size > 8u) {
+                if (out.size() < static_cast<std::size_t>(frame.xmp_blob_offset)) {
+                    out.resize(static_cast<std::size_t>(frame.xmp_blob_offset), 0);
+                }
+                out.insert(out.end(), xmp, xmp + xmp_size);
+            }
+            if (has_icc_profile && icc_profile_size > 8u) {
+                if (out.size() < static_cast<std::size_t>(frame.icc_blob_offset)) {
+                    out.resize(static_cast<std::size_t>(frame.icc_blob_offset), 0);
+                }
+                out.insert(out.end(), icc_profile, icc_profile + icc_profile_size);
+            }
             if (out.size() < static_cast<std::size_t>(strip_offsets[index])) {
                 out.resize(static_cast<std::size_t>(strip_offsets[index]), 0);
             }
@@ -7910,6 +8055,30 @@ int save_tiff_bigtiff_frames_image_with_compression(
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int save_tiff_bigtiff_frames_image_with_compression(
+    const PillowCImage* const* images,
+    std::size_t image_count,
+    const char* path,
+    std::uint16_t compression)
+{
+    return save_tiff_bigtiff_frames_image_metadata_with_compression(
+        images,
+        image_count,
+        path,
+        0,
+        0.0,
+        0.0,
+        compression,
+        nullptr,
+        0u,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u);
 }
 
 int save_tiff_bigtiff_image(const PillowCImage* image, const char* path)
@@ -8180,6 +8349,46 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_bigtiff_frames_com
         return status;
     }
     return save_tiff_bigtiff_frames_image_with_compression(images, image_count, path, normalized_compression);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_bigtiff_frames_metadata_ascii_entries_options(
+    const PillowCImage* const* images,
+    std::size_t image_count,
+    const char* path,
+    int has_dpi,
+    double dpi_x,
+    double dpi_y,
+    int compression,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const std::uint8_t* xmp,
+    std::size_t xmp_size,
+    const int* ascii_tags,
+    const char* const* ascii_values,
+    const std::size_t* ascii_sizes,
+    std::size_t ascii_count)
+{
+    std::uint16_t normalized_compression = TIFF_COMPRESSION_NONE;
+    const int status = normalize_tiff_save_compression(compression, &normalized_compression);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return save_tiff_bigtiff_frames_image_metadata_with_compression(
+        images,
+        image_count,
+        path,
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        normalized_compression,
+        icc_profile,
+        icc_profile_size,
+        xmp,
+        xmp_size,
+        ascii_tags,
+        ascii_values,
+        ascii_sizes,
+        ascii_count);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_options(

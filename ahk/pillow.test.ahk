@@ -43885,6 +43885,98 @@ PillowTestImageSaveTiffBigTiffNumericCompressionFallsBack(*) {
 
 AhkTest.Test("Pillow Image.Save TIFF big_tiff numeric compression falls back to classic TIFF", PillowTestImageSaveTiffBigTiffNumericCompressionFallsBack)
 
+PillowTestImageSaveTiffBigTiffMetadataComposition(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    icc := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    xmp := PillowTestBuffer(PillowTestTextBytes("<x:xmpmeta>probe</x:xmpmeta>"))
+    image := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([7, 7, 7, 7]))
+    loaded := 0
+    try {
+        path := PillowTestTempTiffPath("save-bigtiff-meta-facade")
+        try {
+            image.Save(path, "TIFF", {
+                big_tiff: true,
+                dpi: [300.0, 150.0],
+                icc_profile: PillowTestBuffer(icc),
+                tiffinfo: Map(270, "desc", 315, "artist", 700, xmp),
+            })
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowTestArraySlice(PillowTestReadFileBytes(path), 1, 4))
+            loaded := Pillow.Image.Open(path, ["TIFF"])
+            AhkTest.AssertEqual("L", loaded.Mode)
+            AhkTest.AssertEqual([7, 7, 7, 7], PillowTestBufferToArray(loaded.ToBytes()))
+            PillowTestAssertFloatArrayClose([300.0, 150.0], loaded.Info["dpi"], 0.0001)
+            AhkTest.AssertEqual(icc, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertEqual(PillowTestBufferToArray(xmp), PillowTestBufferToArray(loaded.Info["xmp"]))
+            exif := loaded.GetExif()
+            AhkTest.AssertEqual("desc", exif[270])
+            AhkTest.AssertEqual("artist", exif[315])
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            PillowTestDeleteFile(path)
+        }
+
+        ; Pillow 11.3.0 ignores big_tiff when compression is set (classic
+        ; fallback), so metadata plus compression reuses the classic writer.
+        lzwPath := PillowTestTempTiffPath("save-bigtiff-meta-lzw-facade")
+        loaded := 0
+        try {
+            image.Save(lzwPath, "TIFF", {
+                big_tiff: true,
+                compression: "lzw",
+                dpi: [300.0, 150.0],
+                icc_profile: PillowTestBuffer(icc),
+                tiffinfo: Map(270, "desc", 700, xmp),
+            })
+            AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(lzwPath), 1, 4))
+            loaded := Pillow.Image.Open(lzwPath, ["TIFF"])
+            AhkTest.AssertEqual("L", loaded.Mode)
+            AhkTest.AssertEqual([7, 7, 7, 7], PillowTestBufferToArray(loaded.ToBytes()))
+            PillowTestAssertFloatArrayClose([300.0, 150.0], loaded.Info["dpi"], 0.0001)
+            AhkTest.AssertEqual(icc, PillowTestBufferToArray(loaded.Info["icc_profile"]))
+            AhkTest.AssertEqual(PillowTestBufferToArray(xmp), PillowTestBufferToArray(loaded.Info["xmp"]))
+            AhkTest.AssertEqual("desc", loaded.GetExif()[270])
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            PillowTestDeleteFile(lzwPath)
+        }
+
+        ; big_tiff exif stays on the classic route for now (bounded): the
+        ; save still succeeds and the exif tags survive.
+        exifPath := PillowTestTempTiffPath("save-bigtiff-exif-facade")
+        loaded := 0
+        try {
+            exifObject := Pillow.Image.Exif(
+                unset,
+                false,
+                Map(270, "desc-exif", 305, "Pillow"),
+                Map(),
+                Map(),
+                Map(),
+                Map(),
+                Map(),
+                Map())
+            image.Save(exifPath, "TIFF", { big_tiff: true, exif: exifObject })
+            AhkTest.AssertEqual([73, 73, 42, 0], PillowTestArraySlice(PillowTestReadFileBytes(exifPath), 1, 4))
+            loaded := Pillow.Image.Open(exifPath, ["TIFF"])
+            exif := loaded.GetExif()
+            AhkTest.AssertEqual("desc-exif", exif[270])
+            AhkTest.AssertEqual("Pillow", exif[305])
+        } finally {
+            if IsObject(loaded)
+                loaded.Close()
+            PillowTestDeleteFile(exifPath)
+        }
+    } finally {
+        if IsObject(loaded)
+            loaded.Close()
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF big_tiff composes dpi icc_profile and tiffinfo metadata", PillowTestImageSaveTiffBigTiffMetadataComposition)
+
 PillowTestTiffClassicTwoFramePillowBytes() {
     ; Pillow 11.3.0 save_all two-frame classic layout (see
     ; oracle/probe_tiff_classic_two_frame_save.py).

@@ -46851,6 +46851,95 @@ PillowCTestImageOpenTiffBigTiffNumericRejectsMissingSampleFormat(*) {
 
 AhkTest.Test("pillow_c image open_tiff rejects a numeric BigTIFF strip missing SampleFormat", PillowCTestImageOpenTiffBigTiffNumericRejectsMissingSampleFormat)
 
+PillowCTestImageSaveTiffBigTiffMetadataOptions(*) {
+    ; Pillow 11.3.0 composes dpi/icc_profile/tiffinfo with big_tiff=True and
+    ; keeps the BigTIFF layout (oracle/probe_tiff_bigtiff_metadata_save.py):
+    ; inline ASCII <= 8 bytes, inline RATIONAL 282/283 (numerator, 1), SHORT
+    ; 296 unit 2, XMP as type-1 BYTE and ICC as type-7 UNDEFINED out-of-line.
+    xmpBytes := PillowCBufferToArray(PillowCUtf8Buffer("<x:xmpmeta>probe</x:xmpmeta>"))
+    icc := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    cases := [
+        { Name: "full", Tags: [270, 315], Values: ["desc", "artist"],
+          Expected: [{ Tag: 270, Text: "desc" }, { Tag: 315, Text: "artist" }] },
+        { Name: "outline", Tags: [270], Values: ["a longer description text"],
+          Expected: [{ Tag: 270, Text: "a longer description text" }] },
+        { Name: "dpi-only", Tags: [], Values: [], Expected: [] },
+    ]
+    for item in cases {
+        path := PillowCTempTiffPath("save-bigtiff-meta-" item.Name)
+        image := PillowCCreateImageMode(2, 2, 1)
+        loaded := 0
+        try {
+            PillowCImageSetBytes(image, [7, 7, 7, 7])
+            handleArray := Buffer(A_PtrSize, 0)
+            NumPut("Ptr", image, handleArray, 0)
+            iccBuffer := PillowCBuffer(icc)
+            xmpBuffer := PillowCUtf8Buffer("<x:xmpmeta>probe</x:xmpmeta>")
+            tags := Buffer(item.Tags.Length * 4, 0)
+            valuePointers := Buffer(item.Tags.Length * A_PtrSize, 0)
+            valueSizes := Buffer(item.Tags.Length * A_PtrSize, 0)
+            valueBuffers := []
+            for index, tag in item.Tags {
+                NumPut("Int", tag, tags, (index - 1) * 4)
+                valueBuffer := PillowCUtf8Buffer(item.Values[index])
+                valueBuffers.Push(valueBuffer)
+                NumPut("Ptr", valueBuffer.Ptr, valuePointers, (index - 1) * A_PtrSize)
+                NumPut("UPtr", valueBuffer.Size, valueSizes, (index - 1) * A_PtrSize)
+            }
+            status := DllCall(
+                PillowCDllPath() "\pillow_c_image_save_tiff_bigtiff_frames_metadata_ascii_entries_options",
+                "Ptr", handleArray,
+                "UPtr", 1,
+                "Ptr", PillowCUtf8Buffer(path),
+                "Int", item.Name = "dpi-only" ? 1 : 0,
+                "Double", 300.0,
+                "Double", 150.0,
+                "Int", 1,
+                "Ptr", item.Name = "dpi-only" ? 0 : iccBuffer,
+                "UPtr", item.Name = "dpi-only" ? 0 : iccBuffer.Size,
+                "Ptr", item.Name = "dpi-only" ? 0 : xmpBuffer,
+                "UPtr", item.Name = "dpi-only" ? 0 : xmpBuffer.Size,
+                "Ptr", tags,
+                "Ptr", valuePointers,
+                "Ptr", valueSizes,
+                "UPtr", item.Tags.Length,
+                "Int"
+            )
+            PillowCAssertStatus(status)
+            AhkTest.AssertEqual([73, 73, 43, 0], PillowCArraySlice(PillowCReadFileBytes(path), 1, 4))
+            AhkTest.AssertEqual(1, PillowCImageFrameCountTiff(path))
+            loaded := PillowCImageOpenTiff(path)
+            AhkTest.AssertEqual(1, PillowCImageMode(loaded))
+            AhkTest.AssertEqual([7, 7, 7, 7], PillowCImageToArray(loaded, 4))
+            resolution := PillowCImageMetadataResolution(loaded)
+            AhkTest.AssertEqual(item.Name = "dpi-only" ? 1 : 0, resolution.HasDpi)
+            if item.Name = "dpi-only" {
+                AhkTest.AssertEqual(300.0, resolution.DpiX)
+                AhkTest.AssertEqual(150.0, resolution.DpiY)
+            }
+            iccMetadata := PillowCImageMetadataJpegBlob(loaded, "pillow_c_image_metadata_tiff_icc_profile")
+            AhkTest.AssertEqual(item.Name = "dpi-only" ? 0 : 1, iccMetadata.Has)
+            if item.Name != "dpi-only"
+                AhkTest.AssertEqual(icc, iccMetadata.Bytes)
+            xmpMetadata := PillowCImageMetadataXmp(loaded)
+            AhkTest.AssertEqual(item.Name = "dpi-only" ? 0 : 1, xmpMetadata.Has)
+            if item.Name != "dpi-only"
+                AhkTest.AssertEqual(xmpBytes, xmpMetadata.Bytes)
+            exif := PillowCImageMetadataTiffExif(loaded)
+            for entry in item.Expected
+                AhkTest.AssertEqual(entry.Text, PillowCExifAsciiTagValue(exif.Exif, entry.Tag))
+        } finally {
+            if loaded
+                PillowCFreeImage(loaded)
+            if image
+                PillowCFreeImage(image)
+            PillowCDeleteFile(path)
+        }
+    }
+}
+
+AhkTest.Test("pillow_c image save_tiff_bigtiff metadata options writes dpi icc xmp and ascii tags", PillowCTestImageSaveTiffBigTiffMetadataOptions)
+
 PillowCTestImageOpenTiffReadsPillowBigTiffStripL(*) {
     path := PillowCTempTiffPath("open-bigtiff-strip-l")
     loaded := 0

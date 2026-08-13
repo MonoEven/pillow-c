@@ -29,8 +29,34 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`458/458`; the full AHK suite is `2744/2744`; and the current DLL SHA-256 is
-`B893B53F49D4B3B20F7BD4C0AD79FBAEC2A2F15374BC8DE16C2A37A2BBFC4DDE`.
+`459/459`; the full AHK suite is `2746/2746`; and the current DLL SHA-256 is
+`DB37A0C75CE70EFFCA5CC31CD7C880B8684257DCFC4482F8C712D0361781BDE0`.
+
+## TIFF BigTIFF Save Metadata ABI Behavior
+
+`FMT-TIFF-003BE` adds one public export:
+`pillow_c_image_save_tiff_bigtiff_frames_metadata_ascii_entries_options`
+with the same parameter shape as the classic
+`pillow_c_image_save_tiff_frames_metadata_ascii_entries_options` export
+(images, count, path, has_dpi, dpi_x, dpi_y, compression, icc bytes,
+xmp bytes, ascii tag/pointer/size arrays). Existing exported names,
+signatures, status codes, image-handle ownership, source-pointer
+lifetimes, and facade routes remain unchanged; the plain frames writer
+now delegates to the generalized internal metadata writer.
+
+The writer emits Pillow 11.3.0's BigTIFF metadata layout: ascending
+20-byte entries, inline ASCII <= 8 bytes (NUL-terminated values are
+zero-padded in the value field), inline RATIONAL 282/283 as
+numerator/denominator-1 pairs, SHORT 296 unit 2, XMP tag 700 as type-1
+BYTE and ICC tag 34675 as type-7 UNDEFINED (inline <= 8, else
+even-aligned LONG8-offset blobs appended after each IFD and before the
+strip), with dpi/icc/xmp/ascii metadata written to every frame's IFD.
+All pointer arguments are consumed synchronously for the call. Numeric
+modes combined with compression still return
+`PILLOW_C_INVALID_ARGUMENT`.
+
+No facade lifetime rule, fallback, or AHK per-pixel loop was added
+beyond the BigTIFF metadata save family above.
 
 ## TIFF Numeric BigTIFF Strip Save/Open ABI Behavior
 
