@@ -21863,6 +21863,48 @@ PillowTestImageImAccessorBoundary(*) {
 
 AhkTest.Test("Pillow Image.im exposes the native handle as the ImagingCore analogue boundary", PillowTestImageImAccessorBoundary)
 
+PillowTestDependencyGatedFormatBoundaries(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [2, 2], 7)
+    path := StrReplace(PillowTestTempPngPath("bndry-dep"), ".png", ".webp")
+    try {
+        ; BNDRY-001: dependency-gated formats (WebP/AVIF/PDF/JPEG2000/MPO
+        ; and the other long-tail families) are explicit documented
+        ; boundaries — open and save fail loudly with the same error.
+        for format in ["WEBP", "AVIF", "PDF", "JPEG2000", "MPO", "PSD"] {
+            boundaryError := ""
+            try {
+                image.Save(path, format)
+            } catch Error as err {
+                boundaryError := err.Message
+            }
+            AhkTest.AssertEqual("Pillow image file format is unsupported", boundaryError)
+        }
+        boundaryError := ""
+        try {
+            Pillow.Image.Open(path)
+        } catch Error as err {
+            boundaryError := err.Message
+        }
+        AhkTest.AssertEqual("Pillow image file format is unsupported", boundaryError)
+
+        ; BNDRY-001: libimagequant stays a compile-time dependency boundary
+        ; with Pillow's exact error (QUANT-001).
+        boundaryError := ""
+        try {
+            image.Quantize(16, Pillow.Quantize.LIBIMAGEQUANT)
+        } catch Error as err {
+            boundaryError := err.Message
+        }
+        AhkTest.AssertEqual("dependency required by this method was not enabled at compile time", boundaryError)
+    } finally {
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow dependency-gated formats and libimagequant surface documented boundaries", PillowTestDependencyGatedFormatBoundaries)
+
 PillowTestImageDisplayApiBoundaries(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [2, 2], 7)

@@ -21,8 +21,10 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 99% (about ±4%) under
-the real-workload Pillow replacement-readiness model.
+Estimate: AHK-first Pillow-runtime overall completion 100% (about ±4%) under
+the real-workload Pillow replacement-readiness model — every remaining
+item is either covered by a GREEN packet or recorded as an explicit
+documented boundary.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
 malformed-metadata robustness slice, one-level ExifIFD/GPSInfo sub-IFD
@@ -36,34 +38,32 @@ the BigTIFF save palette (P) mode, the BigTIFF save bilevel (1) mode,
 and the mixed-size BigTIFF frames lock-in (the bounded BigTIFF save
 family is COMPLETE), plus the bounded ICO/CUR family (`FMT-ICO-001B`,
 `FMT-ICO-001C`, and `FMT-ICO-002G` CUR save with hotspot exposure —
-also COMPLETE), the facade API slice (`API-IMG-001D`/`API-IMG-001E`
-plus `API-IMG-001F` — the `im` accessor now exposes the native handle
-as the ImagingCore analogue boundary, completing the named
-`PIL.Image.Image` object-model list), the numeric point() slice
-(`MODE-I-001B` int32 and `MODE-F-001B` float32 linear callables
-through `pillow_c_image_point_transform` with Pillow's list/non-linear
-rejections), the numeric transform family (`MODE-NUM-001CH`/`001CI`/
-`001CJ`), the numeric resize family (`MODE-NUM-001CK`/`001CL`/`001CM`/
-`001CN`), `MODE-NUM-001CO` the I;16/I;16B transform fill packing,
-`MODE-NUM-001CP` the I;16 statistics/conversion semantics, and
-`MODE-NUM-001CQ` the I;16 entropy/getcolors/ImageStat boundaries.
+also COMPLETE), the complete facade API slice (`API-IMG-001D` getim,
+`API-IMG-001E` show/toqimage/toqpixmap boundaries, `API-IMG-001F` the
+`im` accessor boundary), the numeric point() slice (`MODE-I-001B` and
+`MODE-F-001B`), the complete numeric transform family
+(`MODE-NUM-001CH`/`001CI`/`001CJ`), the complete numeric resize family
+(`MODE-NUM-001CK`/`001CL`/`001CM`/`001CN`), the complete I;16 numeric
+surface (`MODE-NUM-001CO` fill packing, `MODE-NUM-001CP`
+statistics/conversion, `MODE-NUM-001CQ` entropy/getcolors/ImageStat
+boundaries), and `BNDRY-001` — the explicit remaining-item boundary
+ledger that records the dependency-gated formats (WebP/AVIF/JPEG2000/
+PDF/PSD/DDS/PCX/ICNS/SGI/SUN/EPS/MPO/FLI/DCX/XPM), APNG and true PNG
+compression strategy, dither exact parity and libimagequant, qtables
+beyond two tables, malformed marker streams, explicit YCCK encoding,
+the META-002 tail, and the whole-file parity policy as documented
+boundaries.
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The im-accessor target passes `1/1` in
-`47ms`, and the full directory suite passes `2794/2794` in `19266ms`;
-source/DLL exports remain `463/463` with zero difference; and the DLL
-SHA-256 remains
+IFD as a writer artifact. The BNDRY-001 boundary target passes `1/1`
+in `31ms`, and the final full directory suite passes `2795/2795` in
+`18437ms`; source/DLL exports remain `463/463` with zero difference;
+and the DLL SHA-256 remains
 `8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`
 (facade-only slice).
-`ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
-the next selected compatibility work packet is
-`BNDRY-001`, the explicit remaining-item boundary ledger (dependency-
-gated formats, APNG/PNG compression strategy, dither exact parity,
-libimagequant, qtables beyond two tables, malformed marker streams,
-explicit YCCK encoding, META-002 tail, and the whole-file parity
-policy — each recorded as a covered item or an explicit documented
-boundary).
+`ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets.
+No further bounded child is selected: the completion definition is met.
 ```
 
 Current work packet:
@@ -406,11 +406,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `BNDRY-001`, the explicit remaining-item boundary
-  ledger (dependency-gated formats, APNG/PNG compression strategy,
-  dither exact parity, libimagequant, qtables beyond two tables,
-  malformed marker streams, explicit YCCK encoding, META-002 tail, and
-  the whole-file parity policy).
+- Selected next gap: NONE — `BNDRY-001` closed the ledger; the
+  completion definition is met (every remaining item is covered or an
+  explicit documented boundary).
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -484,6 +482,30 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `BNDRY-001` is GREEN — the explicit remaining-item boundary
+ledger completes the coverage definition. Every remaining item is now
+recorded as an explicit documented boundary: dependency-gated formats
+(WebP/AVIF/JPEG2000/PDF/PSD/DDS/PCX/ICNS/SGI/SUN/EPS/MPO/FLI/DCX/XPM)
+fail loudly with `Pillow image file format is unsupported`; APNG and
+true PNG compression strategy stay future families; dither exact
+parity stays bounded to the FLOYDSTEINBERG slices with libimagequant
+keeping Pillow's exact dependency error; qtables beyond two tables,
+malformed marker streams, and explicit YCCK encoding are not
+replicated; the META-002 tail stays behind explicit children; and
+byte-exact whole-file parity is claimed only for the verified bounded
+packets. The facade boundary test
+(`PillowTestDependencyGatedFormatBoundaries`) pins the dependency-
+gated open/save rejections and the libimagequant dependency error.
+Facade-only change, no native rebuild: the BNDRY-001 boundary target
+passes `1/1` in `31ms`, and the final full directory suite passes
+`2795/2795` in `18437ms`, with zero failures, errors, or skips.
+Source/DLL export parity remains `463/463` with zero difference, and
+the DLL SHA-256 remains
+`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `100% ±4%`. No further bounded child is
+selected: the completion definition is met.
 
 2026-08-13: `API-IMG-001F` is GREEN for the low-level `im` accessor
 boundary, completing the named `PIL.Image.Image` object-model list
@@ -18045,13 +18067,19 @@ Current highest-value remaining areas:
     Other intervals/
     fixtures, explicit YCCK encoding, and broader
     matrices remain separate.
-8. New save-all format families such as APNG/WebP/MPO/PDF only after an
-   explicit dependency and scope decision.
-9. `QUANT-001`: broader quantize/public algorithm parity beyond bounded GIF
-   save slices.
+8. New save-all format families such as APNG/WebP/MPO/PDF: recorded as
+   explicit documented boundaries by `BNDRY-001` (dependency-gated; the
+   runtime fails loudly with `Pillow image file format is unsupported`
+   until an explicit dependency/scope decision lands).
+9. `QUANT-001`: recorded as an explicit documented boundary by
+   `BNDRY-001` — the native median-cut/max-coverage/fast-octree/k-means
+   algorithms and the bounded FLOYDSTEINBERG slices are covered, while
+   libimagequant keeps Pillow's exact dependency error and ADAPTIVE/none
+   dither cross-products are not byte-exactly replicated.
 10. Dependency-gated format families: WebP still image open/save first if a
    dependency/package decision is made; AVIF, JPEG2000, PDF, PCX, DDS, ICNS,
-   CUR, and other long-tail formats stay behind explicit gap IDs.
+   CUR, and other long-tail formats stay behind explicit gap IDs — all
+   recorded as explicit documented boundaries by `BNDRY-001`.
 11. `META-002A` covers bounded PNG/JPEG XMP open metadata plus `getxmp()`,
     `META-002B` covers bounded explicit JPEG `xmp=` save round-trip,
     `META-002C` covers bounded explicit JPEG `qtables + xmp` save routing,

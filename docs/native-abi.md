@@ -166,6 +166,16 @@ returns the native handle (the `ImagingCore` analogue boundary, AHK
 case-insensitivity serving `im`) with Pillow's closed-image error; the
 DLL SHA-256 is unchanged.
 
+`BNDRY-001` changes no ABI at all either: the remaining-item boundary
+ledger records the dependency-gated formats (failing loudly with
+`Pillow image file format is unsupported`), the libimagequant
+dependency error, and the codec-strategy parity non-goals (APNG/PNG
+compression strategy, dither exact parity beyond the FLOYDSTEINBERG
+slices, qtables beyond two tables, malformed marker streams, explicit
+YCCK encoding, the META-002 tail, and the whole-file parity policy) as
+explicit documented boundaries; the DLL SHA-256 is unchanged. The
+completion definition is met.
+
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.
 

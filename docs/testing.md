@@ -47,8 +47,30 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2794` AHK tests: `1386` raw DLL tests and
-`1408` facade tests.
+This suite currently registers `2795` AHK tests: `1386` raw DLL tests and
+`1409` facade tests.
+
+Latest `BNDRY-001` verification: the explicit remaining-item boundary
+ledger completes the coverage definition. The dependency-gated formats
+(WebP/AVIF/JPEG2000/PDF/PSD/DDS/PCX/ICNS/SGI/SUN/EPS/MPO/FLI/DCX/XPM)
+fail loudly with `Pillow image file format is unsupported`, and
+libimagequant keeps Pillow's exact
+`dependency required by this method was not enabled at compile time`
+error; APNG/PNG compression strategy, dither exact parity beyond the
+FLOYDSTEINBERG slices, qtables beyond two tables, malformed marker
+streams, explicit YCCK encoding, the META-002 tail, and the
+whole-file parity policy are all recorded as explicit documented
+boundaries. The facade boundary test
+(`PillowTestDependencyGatedFormatBoundaries`) pins the rejections.
+Facade-only change, no native rebuild: the BNDRY-001 boundary target
+passes `1/1` in `31ms`, and the final full directory suite passes
+`2795/2795` in `18437ms`, with zero failures, errors, or skips.
+Source/DLL export parity remains `463/463` with zero difference, and
+the DLL SHA-256 remains
+`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The overall Pillow replacement-readiness estimate reaches
+`100% ±4%`.
 
 Latest `API-IMG-001F` verification: Pillow 11.3.0's `im` attribute is
 the per-image `ImagingCore` C object, whose AHK analogue is the native
