@@ -29,7 +29,7 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`462/462`; the full AHK suite is `2766/2766`; and the current DLL SHA-256 is
+`462/462`; the full AHK suite is `2767/2767`; and the current DLL SHA-256 is
 `13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
@@ -39,6 +39,9 @@ frames lock-in completes the bounded BigTIFF save family over the
 existing per-frame writer, verified against Pillow 11.3.0 ctypes.
 `API-IMG-001D` changes no ABI: the facade `Image.GetIm()` accessor
 returns the existing native handle with Pillow's closed-image error.
+`API-IMG-001E` changes no ABI: the facade `ToQImage()`/`ToQPixmap()`/
+`Show()` methods are explicit documented boundaries (no Qt binding or
+viewer registry in this runtime) with Pillow-shaped errors.
 
 ## CUR Save With Hotspot ABI Behavior
 

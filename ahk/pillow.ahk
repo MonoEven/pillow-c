@@ -7865,6 +7865,28 @@ class Pillow {
             return this.Handle
         }
 
+        ToQImage() {
+            ; Pillow 11.3.0 raises ImportError("Qt bindings are not
+            ; installed") without PyQt6/PySide6; this runtime ships no Qt
+            ; binding, so the method is an explicit documented boundary
+            ; (AHK case-insensitivity makes toqimage() the same method).
+            this.RequireHandle()
+            throw Error("Qt bindings are not installed", -1)
+        }
+
+        ToQPixmap() {
+            this.RequireHandle()
+            throw Error("Qt bindings are not installed", -1)
+        }
+
+        Show(title := unset) {
+            ; Pillow 11.3.0 dispatches to a registered system viewer; this
+            ; runtime ships no viewer registry, so show() is an explicit
+            ; documented boundary with the Pillow-shaped error.
+            this.RequireHandle()
+            throw Error("no viewers found", -1)
+        }
+
         RefreshBufferView() {
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_refresh_buffer",

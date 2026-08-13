@@ -21821,6 +21821,53 @@ PillowTestImageGetImReturnsNativeHandle(*) {
 
 AhkTest.Test("Pillow Image.getim returns the native handle and rejects closed images", PillowTestImageGetImReturnsNativeHandle)
 
+PillowTestImageDisplayApiBoundaries(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [2, 2], 7)
+    try {
+        errors := []
+        try {
+            image.ToQImage()
+        } catch Error as err {
+            errors.Push(err.Message)
+        }
+        try {
+            image.toqimage()
+        } catch Error as err {
+            errors.Push(err.Message)
+        }
+        try {
+            image.ToQPixmap()
+        } catch Error as err {
+            errors.Push(err.Message)
+        }
+        try {
+            image.toqpixmap()
+        } catch Error as err {
+            errors.Push(err.Message)
+        }
+        try {
+            image.Show()
+        } catch Error as err {
+            errors.Push(err.Message)
+        }
+        try {
+            image.show()
+        } catch Error as err {
+            errors.Push(err.Message)
+        }
+        AhkTest.AssertEqual(
+            ["Qt bindings are not installed", "Qt bindings are not installed",
+             "Qt bindings are not installed", "Qt bindings are not installed",
+             "no viewers found", "no viewers found"],
+            errors)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.show toqimage and toqpixmap are explicit documented boundaries", PillowTestImageDisplayApiBoundaries)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])

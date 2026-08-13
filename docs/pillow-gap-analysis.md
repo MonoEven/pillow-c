@@ -37,6 +37,39 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-13 API-IMG-001E Display API Boundaries (GREEN)
+
+`API-IMG-001E` records the bounded explicit boundaries for
+`Image.show()`, `toqimage()`, and `toqpixmap()`.
+
+The Pillow 11.3.0 probe (kept in
+`oracle/probe_image_display_apis.py`, run in isolated subprocesses
+because the local environment has Qt and a viewer installed) shows
+`toqimage()`/`toqpixmap()` raise `ImportError("Qt bindings are not
+installed")` without PyQt6/PySide6 (the ImageQt import loop), and
+`show()` dispatches to a registered system viewer. The AHK runtime
+ships no Qt binding and no viewer registry, so the facade adds
+`ToQImage()`/`ToQPixmap()` (AHK identifiers are case-insensitive, so
+`toqimage()`/`toqpixmap()` resolve to the same methods) raising the
+exact Qt message, and `Show()` raising the Pillow-shaped
+`no viewers found` error. These are recorded as explicit documented
+boundaries rather than positive parity. Facade-only change; no native
+source, ABI, or export changed.
+
+Verification:
+
+- Facade display-API boundary target passes `1/1` (all six spellings
+  raise the expected messages on an open image).
+- Full AHK directory suite: `2767/2767` in `19469ms`; zero failures,
+  errors, or skips.
+- Source/DLL export parity remains `462/462` with zero difference, and
+  the DLL SHA-256 remains
+  `13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
+
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `87% ±4%`. The next bounded child is
+`MODE-I-001B`, mode I point() table operations.
+
 ## 2026-08-13 API-IMG-001D Image.getim Accessor (GREEN)
 
 `API-IMG-001D` closes the bounded `Image.getim()` accessor parity slice.
@@ -39061,7 +39094,8 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-ICO-001C | ICO | covered | Bounded broader ICO multi-source matrix lock-in: each exact-size source keeps its own mode (RGB/L/RGBA verified through Pillow 11.3.0 ctypes), the first same-size PNG source wins, and the bmp-format duplicate bit-depth behavior stays on the existing writer. Zero native changes were needed; the Pillow cross-check (oracle/probe_ico_multi_source_dll_compose.py) reopens the DLL-written mixed-mode and same-size ICOs with exact modes and pixels (`FAILURES: 0`), and raw/facade matrix tests lock the RGBA multi-size and first-wins shapes in. 24-bit RGB and grayscale PNG payloads remain a documented WIC reopen boundary, so the AHK reopen assertions use RGBA sources. Export parity remains `461/461` and the DLL SHA-256 is unchanged. This completes the bounded ICO save family. | `oracle/probe_ico_multi_source_matrix.py`, `oracle/probe_ico_multi_source_dll_compose.py`, existing ICO frames writer, raw/facade matrix tests. |
 | FMT-ICO-002G | ICO/CUR | covered | Bounded CUR save with hotspot exposure: the new public export `pillow_c_image_save_cur_options` writes the ICO type-2 container (magic `00 00 02 00`) with a single DIB payload (Pillow 11.3.0's CUR reader only accepts DIB bodies) and the hotspot in the entry's planes/bit_count fields, plus a color-count byte; `open_cur_image` now attaches `has_hotspot`/`hotspot_x`/`hotspot_y` from those fields through the existing `pillow_c_image_metadata_hotspot` export. The facade routes `Save(path, "CUR", { hotspot: [x, y] })` (default 0/0) and exposes `Info["hotspot"]` on open through the existing generic metadata block. Pillow 11.3.0 registers NO CUR save (`KeyError 'CUR'`), so this is a standards extension following the XBM hotspot precedent; a ctypes cross-check reopens the DLL-written CUR through Pillow's CUR reader (format/size/bytes) and our open exposes (5, 7) (`FAILURES: 0`). Export parity is now `462/462`. The bounded ICO/CUR family is now complete. | `oracle/probe_cur_save_dll_compose.py`, `save_cur_image_with_hotspot`, `pillow_c_image_save_cur_options`, `open_cur_image` hotspot attachment, facade CUR save routing, raw/facade CUR hotspot tests. |
 | API-IMG-001D | Facade API | covered | Bounded `Image.getim()` accessor parity: Pillow 11.3.0's `getim()` returns the low-level "Pillow Imaging" capsule for open (including empty) images and raises `ValueError: Operation on closed image` once closed. The facade adds `Image.GetIm()` returning the native handle pointer (the AHK analogue; AHK identifiers are case-insensitive so `getim()` resolves to the same method) with the Pillow-shaped closed-image error. Facade-only change; no native rebuild. | `Image.GetIm`, facade getim test. |
-| API-IMG-001E | Facade API | not started | Bounded explicit boundaries for `Image.show()`, `toqimage()`, and `toqpixmap()`: no Qt binding or system viewer dispatch in the AHK runtime; record the boundaries and add Pillow-shaped facade errors. | Facade boundary stubs, local Pillow probe, facade tests, ledger boundary rows. |
+| API-IMG-001E | Facade API | covered | Bounded explicit boundaries for `Image.show()`, `toqimage()`, and `toqpixmap()`: Pillow 11.3.0 raises `ImportError("Qt bindings are not installed")` from both Qt methods without PyQt6/PySide6 and dispatches `show()` to a registered system viewer. The AHK runtime ships no Qt binding and no viewer registry, so the facade adds `ToQImage()`/`ToQPixmap()` (AHK case-insensitivity serves `toqimage()`/`toqpixmap()`) raising the exact Qt message and `Show()` raising the Pillow-shaped `no viewers found`; the boundaries are recorded in the ledger. Facade-only change; no native rebuild. | `oracle/probe_image_display_apis.py`, facade boundary stubs, facade display-API boundary test. |
+| MODE-I-001B | Modes | not started | Bounded mode I `Image.Point()` table operations: int32 lookup semantics, bounds, and wrong-mode behavior (probe Pillow 11.3.0 first). | Facade/native point route for mode I, local Pillow probe, raw/facade tests. |
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
 | FMT-WEBP-001 | WebP | not started | Open/save WebP and animation if a codec strategy is selected. | New format module boundary. |
 | FMT-AVIF-001 | AVIF | not started | Open/save AVIF if dependency and packaging constraints allow it. | New format module boundary. |

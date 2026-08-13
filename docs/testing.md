@@ -47,8 +47,25 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2766` AHK tests: `1374` raw DLL tests and
-`1392` facade tests.
+This suite currently registers `2767` AHK tests: `1374` raw DLL tests and
+`1393` facade tests.
+
+Latest `API-IMG-001E` verification: the Pillow 11.3.0 probe (kept in
+`oracle/probe_image_display_apis.py`, run in isolated subprocesses)
+shows `toqimage()`/`toqpixmap()` raise `ImportError("Qt bindings are
+not installed")` without PyQt6/PySide6 and `show()` dispatches to a
+registered system viewer. The AHK runtime ships neither, so the facade
+adds `ToQImage()`/`ToQPixmap()` (case-insensitive aliases serve
+`toqimage()`/`toqpixmap()`) raising the exact Qt message and `Show()`
+raising the Pillow-shaped `no viewers found` error; these are recorded
+explicit documented boundaries. Facade-only change, no native rebuild:
+the display-API boundary target passes `1/1`, and the full directory
+suite passes `2767/2767` in `19469ms`, with zero failures, errors, or
+skips. Source/DLL export parity remains `462/462` with zero difference,
+and the DLL SHA-256 remains
+`13D0390BED6D26E94B1640407004C81BE279F8255A5F3A4968DA25F2C0628566`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The overall Pillow replacement-readiness estimate moves to `87% ±4%`.
 
 Latest `API-IMG-001D` verification: the Pillow 11.3.0 probe shows
 `getim()` returns the low-level "Pillow Imaging" capsule for open
