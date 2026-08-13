@@ -29,8 +29,8 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`463/463`; the full AHK suite is `2791/2791`; and the current DLL SHA-256 is
-`793768DFFDBD8E3088960A3E1B27E58AD9295581C13B3F86AC60D2DC4B3BD393`.
+`463/463`; the full AHK suite is `2793/2793`; and the current DLL SHA-256 is
+`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
@@ -151,7 +151,15 @@ I;16/I;16B source branch for I/F/L targets with Pillow 11.3.0
 `Convert.c` semantics (exact I/F copies; L = 255 when the high byte is
 nonzero, else the low byte). The I;16 `histogram()` storage-read
 artifact remains an explicit documented boundary (the facade rejects
-it). I;16 entropy/getcolors/ImageStat remain separate.
+it).
+
+`MODE-NUM-001CQ` adds no public export either and closes the I;16
+boundary slice: the native entropy and getcolors entry points return
+`PILLOW_C_INVALID_ARGUMENT` for `PILLOW_C_MODE_I16`/
+`PILLOW_C_MODE_I16B` (Pillow's `image has wrong mode` for getcolors,
+a documented fail-loud boundary for the layout-dependent entropy
+misreads), and the facade `ImageStat.Stat` inherits the histogram
+boundary through its histogram route.
 
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.

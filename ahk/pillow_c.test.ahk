@@ -23102,6 +23102,79 @@ PillowCTestImageExtremaConvertI16Samples(*) {
 
 AhkTest.Test("pillow_c I;16 extrema/convert reads uint16 samples with the I;16B boundary", PillowCTestImageExtremaConvertI16Samples)
 
+PillowCTestImageEntropyGetcolorsI16Boundaries(*) {
+    ; Pillow 11.3.0: I;16 getcolors() raises "image has wrong mode" and
+    ; the C entropy returns layout-dependent byte-misread values, so both
+    ; are explicit documented boundaries at the ABI level.
+    i16 := PillowCCreateImageMode(3, 2, 11)
+    i16b := PillowCCreateImageMode(3, 2, 12)
+    try {
+        PillowCImageSetBytes(i16, [
+            232, 3, 80, 195, 96, 234, 44, 1, 200, 0, 255, 255,
+        ])
+        PillowCImageSetBytes(i16b, [
+            3, 232, 195, 80, 234, 96, 1, 44, 0, 200, 255, 255,
+        ])
+
+        value := 0.0
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_entropy",
+            "Ptr", i16,
+            "Ptr", 0,
+            "Double*", &value,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        count := 0
+        exceeded := 0
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_getcolors",
+            "Ptr", i16,
+            "Int", 256,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "UPtr*", &count,
+            "Int*", &exceeded,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        value := 0.0
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_entropy",
+            "Ptr", i16b,
+            "Ptr", 0,
+            "Double*", &value,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+
+        count := 0
+        exceeded := 0
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_getcolors",
+            "Ptr", i16b,
+            "Int", 256,
+            "Ptr", 0,
+            "Ptr", 0,
+            "UPtr", 0,
+            "UPtr*", &count,
+            "Int*", &exceeded,
+            "Int"
+        )
+        AhkTest.AssertEqual(-3, status)
+    } finally {
+        if i16
+            PillowCFreeImage(i16)
+        if i16b
+            PillowCFreeImage(i16b)
+    }
+}
+
+AhkTest.Test("pillow_c I;16 entropy/getcolors reject with documented boundaries", PillowCTestImageEntropyGetcolorsI16Boundaries)
+
 PillowCTestI32Bytes(values) {
     bytes := []
     for value in values {

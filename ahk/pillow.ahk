@@ -12301,6 +12301,11 @@ class Pillow {
         }
 
         Entropy(mask := unset) {
+            if this.Mode = "I;16" || this.Mode = "I;16B"
+                ; Pillow 11.3.0's C entropy reads 2-byte I;16 storage
+                ; through byte misreads (layout-dependent log2 values);
+                ; this runtime fails loudly instead (documented boundary).
+                throw Error("Pillow.Image.Entropy is not supported for mode " this.Mode, -1)
             value := 0.0
             maskHandle := 0
             if IsSet(mask) {
@@ -12420,6 +12425,10 @@ class Pillow {
         }
 
         GetColors(maxcolors := 256) {
+            if this.Mode = "I;16" || this.Mode = "I;16B"
+                ; Pillow 11.3.0 raises "image has wrong mode" for I;16
+                ; getcolors() (documented boundary parity).
+                throw Error("image has wrong mode", -1)
             if this.Mode = "I" || this.Mode = "F"
                 return this.GetColorsNumeric(maxcolors)
 

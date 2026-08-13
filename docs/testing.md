@@ -47,8 +47,28 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2791` AHK tests: `1385` raw DLL tests and
-`1406` facade tests.
+This suite currently registers `2793` AHK tests: `1386` raw DLL tests and
+`1407` facade tests.
+
+Latest `MODE-NUM-001CQ` verification: the Pillow 11.3.0 oracle (kept
+in `oracle/probe_mode_i16_stats2.py`) shows I;16/I;16B `getcolors()`
+raises `image has wrong mode`, while the C entropy returns
+layout-dependent byte-misread values (`log2(6)` for six
+misread-distinct samples) and `ImageStat.Stat` derives from that
+misread histogram. The native entropy and getcolors entry points now
+return `PILLOW_C_INVALID_ARGUMENT` for I;16/I;16B, and the facade
+surfaces Pillow's `image has wrong mode` for `GetColors`, a documented
+boundary error for `Entropy`, and inherits the histogram boundary
+through `ImageStat.Stat`. Raw/facade boundary targets pass `5/5` in
+`140ms`; the numeric filter passes `128/128` in `578ms`; the entropy
+filter passes `48/48` in `406ms`; the getcolors filter passes `8/8` in
+`47ms`; and the full directory suite passes `2793/2793` in `19219ms`,
+with zero failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity remains `463/463`
+with zero difference; and the rebuilt DLL SHA-256 is
+`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `99% ±4%`.
 
 Latest `MODE-NUM-001CP` verification: the Pillow 11.3.0 oracle (kept
 in `oracle/probe_mode_i16_stats.py`) shows I;16 `getextrema()` scans

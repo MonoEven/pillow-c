@@ -37,6 +37,43 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-13 MODE-NUM-001CQ I;16 Entropy/GetColors/ImageStat Boundaries (GREEN)
+
+`MODE-NUM-001CQ` closes the bounded I;16 entropy/getcolors/ImageStat
+boundary slice.
+
+The Pillow 11.3.0 oracle (kept in `oracle/probe_mode_i16_stats2.py`)
+shows I;16/I;16B `getcolors()` raises
+`ValueError: image has wrong mode`, while the C entropy returns
+layout-dependent values (`log2(6)` for six byte-misread-distinct
+samples — the same 2-byte-storage misread class as the histogram) and
+`ImageStat.Stat` derives from that misread histogram. The native
+entropy and getcolors entry points now return
+`PILLOW_C_INVALID_ARGUMENT` for I;16/I;16B (exact parity for
+getcolors, a documented fail-loud boundary for the entropy misread),
+and the facade surfaces Pillow's `image has wrong mode` for
+`GetColors`, a documented boundary error for `Entropy`, and inherits
+the histogram boundary through `ImageStat.Stat`. No new export:
+parity remains `463/463`.
+
+Verification:
+
+- Red evidence: the byte-channel entropy/getcolors paths treated the
+  two I;16 storage bytes as independent channels.
+- Raw/facade boundary targets pass `5/5` in `140ms`.
+- Numeric filter: `128/128` in `578ms`; entropy filter: `48/48` in
+  `406ms`; getcolors filter: `8/8` in `47ms`.
+- Full AHK directory suite: `2793/2793` in `19219ms`; zero failures,
+  errors, or skips.
+- Release x64 Rebuild: `0 Warning(s), 0 Error(s)`.
+- Source/DLL export parity: `463/463`, zero difference.
+- DLL SHA-256:
+  `8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
+
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+estimate moves to `99% ±4%`. The next bounded child is
+`API-IMG-001F`, the low-level `im` accessor boundary.
+
 ## 2026-08-13 MODE-NUM-001CP I;16 Statistics/Conversion (GREEN)
 
 `MODE-NUM-001CP` closes the bounded I;16 statistics/conversion slice.
@@ -39591,6 +39628,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | MODE-NUM-001CN | Modes | covered | Bounded numeric reducing-gap Resize composition completing the numeric resize family: Pillow 11.3.0 computes per-axis factors and, when a factor exceeds 1, runs `reduce(factor, box=safe_box)` then a boxed resize — Reduce.c's 32bpc path block-averages one sample per pixel (I stores `ROUND_UP(sum/count)`, F stores the float32 cast) with partial-edge corner multipliers, while I;16's reduce step raises `ValueError: image has wrong mode` (IMAGING_TYPE_SPECIAL). `supports_reduce_mode` now accepts I and F, `reduce_image_into` gains the numeric branch, the I;16 reduce step stays rejected, and the facade surfaces Pillow's `image has wrong mode` message when the factor exceeds 1. A ctypes cross-check matches Pillow's 24x24-to-3x3 I/F NEAREST/BILINEAR/BICUBIC outputs, the I;16 NEAREST output, and the boundary exactly (`FAILURES: 0`). Export parity remains `463/463`. | `oracle/probe_mode_reducing_gap.py`, `oracle/probe_mode_reducing_gap2.py`, `oracle/probe_mode_reducing_gap_dll_compose.py`, `supports_reduce_mode` + `reduce_image_into` numeric branch, facade I;16 reducing-gap guard, raw/facade reducing-gap tests. |
 | MODE-NUM-001CO | Modes | covered | Bounded I;16/I;16B transform/rotate fill packing (facade-only): Pillow 11.3.0 packs NEAREST fills as one uint16 sample — int scalars and single-element tuples wrap modulo 65536 (70000 -> 4464, -5 -> 65531), color names resolve through the grayscale map (`"red"` -> 76), floats and multi-element sequences reject with `color must be int or single-element tuple`, and I;16B keeps big-endian raw bytes. The facade `TransformFillBuffer` gains the I;16/I;16B branch (UShort LE for I;16, byte-swapped BE for I;16B), while the native ABI already accepted the raw 2-byte fill. Export parity remains `463/463` and the DLL SHA-256 is unchanged. | `oracle/probe_mode_i16_fill.py`, `oracle/probe_mode_i16_fill_range.py`, facade `TransformFillBuffer` I;16/I;16B branch, raw 2-byte fill pin, facade fill-matrix test. |
 | MODE-NUM-001CP | Modes | covered | Bounded I;16 statistics/conversion semantics: Pillow 11.3.0's `getextrema()` scans uint16 samples, I;16B `getextrema()` raises `image has wrong mode`, `convert("I")`/`convert("F")` copy the sample exactly, `convert("L")` applies the Convert.c high-byte rule (high byte nonzero -> 255, else the low byte), and the I;16 `histogram()` C path reads 2-byte storage through layout-dependent byte misreads (recorded as an explicit documented boundary). The native `extrema_image_numeric` gains the uint16 branch (rejecting I;16B), `convert_image_mode_into` gains the I;16/I;16B source branch for I/F/L targets, and the facade surfaces Pillow's `image has wrong mode` for I;16B GetExtrema plus a documented Histogram boundary. A ctypes cross-check matches Pillow exactly (`FAILURES: 0`). Export parity remains `463/463`. I;16 entropy/getcolors/ImageStat remain separate. | `oracle/probe_mode_i16_stats.py`, `oracle/probe_mode_i16_stats_dll_compose.py`, `extrema_image_numeric` uint16 branch, `convert_image_mode_into` I;16 branch, facade GetExtrema/Histogram boundaries, raw/facade I;16 stats tests. |
+| MODE-NUM-001CQ | Modes | covered | Bounded I;16 entropy/getcolors/ImageStat boundaries: Pillow 11.3.0 raises `image has wrong mode` for I;16/I;16B `getcolors()`, while its C entropy returns layout-dependent byte-misread values (`log2(6)` for six misread-distinct samples) and `ImageStat.Stat` derives from that same misread histogram. The native entropy and getcolors entry points return `PILLOW_C_INVALID_ARGUMENT` for I;16/I;16B, the facade surfaces Pillow's `image has wrong mode` for `GetColors`, a documented boundary error for `Entropy`, and inherits the histogram boundary through `ImageStat.Stat`. Export parity remains `463/463`. | `oracle/probe_mode_i16_stats2.py`, native entropy/getcolors I;16 rejections, facade GetColors/Entropy boundaries, ImageStat histogram inheritance, raw/facade boundary tests. |
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
 | FMT-WEBP-001 | WebP | not started | Open/save WebP and animation if a codec strategy is selected. | New format module boundary. |
 | FMT-AVIF-001 | AVIF | not started | Open/save AVIF if dependency and packaging constraints allow it. | New format module boundary. |

@@ -224,6 +224,12 @@ int entropy_image(const PillowCImage* source, const PillowCImage* mask, double* 
     if (!source || !out_entropy) {
         return PILLOW_C_NULL_POINTER;
     }
+    if (source->mode == PILLOW_C_MODE_I16 || source->mode == PILLOW_C_MODE_I16B) {
+        // Pillow 11.3.0's C entropy reads 2-byte I;16 storage through
+        // byte misreads (layout-dependent log2 values); this runtime
+        // fails loudly instead (documented boundary).
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
     const bool numeric_mode = source->mode == PILLOW_C_MODE_I || source->mode == PILLOW_C_MODE_F;
     if (mask && numeric_mode) {
         return PILLOW_C_INVALID_ARGUMENT;
@@ -583,6 +589,11 @@ int getcolors_image(
 
     *out_count = 0;
     *out_exceeded = 0;
+    if (source->mode == PILLOW_C_MODE_I16 || source->mode == PILLOW_C_MODE_I16B) {
+        // Pillow 11.3.0 raises "image has wrong mode" for I;16/I;16B
+        // getcolors() (documented boundary parity).
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
     const std::size_t pixels = static_cast<std::size_t>(source->width) * source->height;
     if (pixels == 0) {
         if (maxcolors < 0) {

@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 98% (about ±4%) under
+Estimate: AHK-first Pillow-runtime overall completion 99% (about ±4%) under
 the real-workload Pillow replacement-readiness model.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
@@ -42,32 +42,28 @@ float32 linear callables through `pillow_c_image_point_transform` with
 Pillow's list/non-linear rejections), the numeric transform family
 (`MODE-NUM-001CH` AFFINE/EXTENT, `MODE-NUM-001CI` Rotate, and
 `MODE-NUM-001CJ` PERSPECTIVE/QUAD/MESH lock-in), the numeric resize
-family (`MODE-NUM-001CK` per-sample two-pass resampling,
-`MODE-NUM-001CL` boxed-Resize/Thumbnail lock-in, `MODE-NUM-001CM`
-I;16 uint16 semantics with documented boundaries, and
-`MODE-NUM-001CN` the reducing-gap composition), `MODE-NUM-001CO` the
-I;16/I;16B transform fill packing, and `MODE-NUM-001CP` the I;16
-statistics/conversion semantics (uint16 getextrema, exact
-convert("I"/"F"), Pillow's high-byte convert("L") rule, and explicit
-boundaries for I;16B getextrema plus the layout-dependent I;16
-histogram).
+family (`MODE-NUM-001CK`/`001CL`/`001CM`/`001CN`), `MODE-NUM-001CO`
+the I;16/I;16B transform fill packing, `MODE-NUM-001CP` the I;16
+statistics/conversion semantics, and `MODE-NUM-001CQ` the I;16
+entropy/getcolors/ImageStat boundaries (Pillow's `image has wrong
+mode` for getcolors, documented boundaries for the layout-dependent
+C entropy misreads and the histogram-derived ImageStat).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The I;16 stats slice was cross-verified
-against Pillow (exact uint16 extrema and conversions, `FAILURES: 0`),
-the numeric filter passes `128/128` in `578ms`, the convert filter
-passes `141/141` in `250ms`, the Extrema filter passes `11/11` in
-`47ms`, and the full directory suite passes `2791/2791` in `18750ms`;
+IFD as a writer artifact. The I;16 boundary slice passed its targeted
+filters (`5/5` documented-boundary targets in `140ms`, numeric
+`128/128` in `578ms`, entropy `48/48` in `406ms`, getcolors `8/8` in
+`47ms`) and the full directory suite passes `2793/2793` in `19219ms`;
 source/DLL exports remain `463/463` with zero difference; and the DLL
 SHA-256 is
-`793768DFFDBD8E3088960A3E1B27E58AD9295581C13B3F86AC60D2DC4B3BD393`.
+`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
-the next selected compatibility work packet is the bounded
-`MODE-NUM-001CQ` I;16 entropy/getcolors/ImageStat semantics. Dither
-exact parity, libimagequant, broader quantize cross-products, qtables
-with more than two tables, malformed marker streams, and exact
-whole-file parity remain separate.
+the next selected compatibility work packet is
+`API-IMG-001F`, the low-level `im` accessor boundary. Dither exact
+parity, libimagequant, broader quantize cross-products, qtables with
+more than two tables, malformed marker streams, and exact whole-file
+parity remain separate.
 ```
 
 Current work packet:
@@ -410,9 +406,8 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: bounded `MODE-NUM-001CQ` I;16
-  entropy/getcolors/ImageStat semantics, with broader numeric-mode and
-  format gaps staying separate.
+- Selected next gap: `API-IMG-001F`, the low-level `im` accessor
+  boundary, with broader facade-API and format gaps staying separate.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -486,6 +481,30 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-13: `MODE-NUM-001CQ` is GREEN for the bounded I;16
+entropy/getcolors/ImageStat boundaries. The Pillow 11.3.0 oracle
+(kept in `oracle/probe_mode_i16_stats2.py`) shows I;16/I;16B
+`getcolors()` raises `ValueError: image has wrong mode`, while the C
+entropy returns layout-dependent values (`log2(6)` for six
+byte-misread-distinct samples) and `ImageStat.Stat` derives from the
+same misread histogram. The native entropy and getcolors entry points
+now return `PILLOW_C_INVALID_ARGUMENT` for I;16/I;16B (exact parity
+for getcolors, a documented fail-loud boundary for the entropy
+misread), and the facade surfaces Pillow's `image has wrong mode` for
+`GetColors`, a documented boundary error for `Entropy`, and inherits
+the histogram boundary through `ImageStat.Stat`. Raw/facade boundary
+targets pass `5/5` in `140ms`; the numeric filter passes `128/128` in
+`578ms`; the entropy filter passes `48/48` in `406ms`; the getcolors
+filter passes `8/8` in `47ms`; and the full directory suite passes
+`2793/2793` in `19219ms`, with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export
+parity remains `463/463` with zero difference; and the rebuilt DLL
+SHA-256 is
+`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+estimate moves to `99% ±4%`. The next bounded child is
+`API-IMG-001F`, the low-level `im` accessor boundary.
 
 2026-08-13: `MODE-NUM-001CP` is GREEN for the bounded I;16
 statistics/conversion semantics. The Pillow 11.3.0 oracle (kept in
@@ -17850,10 +17869,13 @@ Current highest-value remaining areas:
    Pillow's `image has wrong mode` rejection for the I;16 reduce step).
    `MODE-NUM-001CO` covers the I;16/I;16B transform fill packing (uint16
    scalars/tuples/color names, modulo-65536 wrapping, Pillow rejection
-   messages), and `MODE-NUM-001CP` covers I;16 statistics/conversion
+   messages), `MODE-NUM-001CP` covers I;16 statistics/conversion
    semantics (uint16 getextrema, exact convert I/F, Pillow's high-byte
-   convert-L rule, I;16B getextrema and I;16 histogram boundaries). I;16
-   entropy/getcolors/ImageStat and the other transform families remain
+   convert-L rule, I;16B getextrema and I;16 histogram boundaries), and
+   `MODE-NUM-001CQ` covers the I;16 entropy/getcolors/ImageStat
+   boundaries (Pillow's `image has wrong mode` for getcolors, documented
+   boundaries for the entropy misreads and the histogram-derived
+   ImageStat). The low-level `im` accessor and the other families remain
    separate. Continue only through a new explicit gap ID.
 3. `FMT-TIFF-002` to `FMT-TIFF-005`: TIFF tag/compression behavior and broader
    mode coverage after the now-covered `FMT-TIFF-001A` bounded multipage

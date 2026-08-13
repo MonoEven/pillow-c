@@ -22660,6 +22660,62 @@ PillowTestImageExtremaConvertI16(*) {
 
 AhkTest.Test("Pillow I;16 GetExtrema/Convert read uint16 samples with the histogram boundary", PillowTestImageExtremaConvertI16)
 
+PillowTestImageEntropyGetcolorsStatI16Boundaries(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.FromBytes("I;16", [3, 2], PillowTestBuffer(PillowTestBytesFromU16([1000, 50000, 60000, 300, 200, 50000])))
+    imageB := Pillow.Image.FromBytes("I;16B", [3, 2], PillowTestBuffer(PillowTestBytesFromU16BE([1000, 50000, 60000, 300, 200, 50000])))
+    try {
+        ; Pillow 11.3.0 raises "image has wrong mode" for I;16 getcolors().
+        boundaryError := ""
+        try {
+            image.GetColors()
+        } catch Error as err {
+            boundaryError := err.Message
+        }
+        AhkTest.AssertEqual("image has wrong mode", boundaryError)
+
+        boundaryError := ""
+        try {
+            imageB.GetColors()
+        } catch Error as err {
+            boundaryError := err.Message
+        }
+        AhkTest.AssertEqual("image has wrong mode", boundaryError)
+
+        ; Pillow's C entropy returns layout-dependent byte-misread values,
+        ; so this runtime fails loudly (documented boundary).
+        boundaryError := ""
+        try {
+            image.Entropy()
+        } catch Error as err {
+            boundaryError := err.Message
+        }
+        AhkTest.AssertEqual("Pillow.Image.Entropy is not supported for mode I;16", boundaryError)
+
+        boundaryError := ""
+        try {
+            imageB.Entropy()
+        } catch Error as err {
+            boundaryError := err.Message
+        }
+        AhkTest.AssertEqual("Pillow.Image.Entropy is not supported for mode I;16B", boundaryError)
+
+        ; ImageStat routes through the histogram boundary.
+        boundaryError := ""
+        try {
+            Pillow.ImageStat.Stat(image)
+        } catch Error as err {
+            boundaryError := err.Message
+        }
+        AhkTest.AssertEqual("Pillow.Image.Histogram is not supported for mode I;16", boundaryError)
+    } finally {
+        image.Close()
+        imageB.Close()
+    }
+}
+
+AhkTest.Test("Pillow I;16 Entropy/GetColors/ImageStat surface documented boundaries", PillowTestImageEntropyGetcolorsStatI16Boundaries)
+
 PillowTestImageOpenIcoChoosesPillowDuplicateSizeColorDepth(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     high := Pillow.Image.New("RGBA", [16, 16], [0, 255, 0, 255])
