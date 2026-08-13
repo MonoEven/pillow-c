@@ -46776,6 +46776,75 @@ PillowCTestImagePatchTiffExifEntries(*) {
 
 AhkTest.Test("pillow_c image patch_tiff_exif_entries writes IFD0 exif tags", PillowCTestImagePatchTiffExifEntries)
 
+PillowCExifBlobBytes() {
+    ; "Exif\0\0" + MM TIFF with IFD0: 270 ascii "Description Text\0"
+    ; (17 bytes at 50), 33434 rational 1/125 (at 67), 37377 srational
+    ; -3/1 (at 75).
+    bytes := [69, 120, 105, 102, 0, 0, 77, 77]
+    PillowCAppendBe16(bytes, 42)
+    PillowCAppendBe32(bytes, 8)
+    PillowCAppendBe16(bytes, 3)
+    PillowCAppendBe16(bytes, 270)
+    PillowCAppendBe16(bytes, 2)
+    PillowCAppendBe32(bytes, 17)
+    PillowCAppendBe32(bytes, 50)
+    PillowCAppendBe16(bytes, 33434)
+    PillowCAppendBe16(bytes, 5)
+    PillowCAppendBe32(bytes, 1)
+    PillowCAppendBe32(bytes, 67)
+    PillowCAppendBe16(bytes, 37377)
+    PillowCAppendBe16(bytes, 10)
+    PillowCAppendBe32(bytes, 1)
+    PillowCAppendBe32(bytes, 75)
+    PillowCAppendBe32(bytes, 0)
+    for value in PillowCTextBytes("Description Text")
+        bytes.Push(value)
+    bytes.Push(0)
+    PillowCAppendBe32(bytes, 1)
+    PillowCAppendBe32(bytes, 125)
+    PillowCAppendBe32(bytes, -3)
+    PillowCAppendBe32(bytes, 1)
+    return bytes
+}
+
+PillowCTestImagePatchTiffExifBytes(*) {
+    path := PillowCTempTiffPath("patch-tiff-exif-bytes")
+    image := PillowCCreateImageMode(2, 2, 1)
+    loaded := 0
+    try {
+        PillowCImageSetBytes(image, [1, 2, 3, 4])
+        PillowCImageSaveTiff(image, path)
+
+        pathBytes := PillowCUtf8Buffer(path)
+        blobBuffer := PillowCBuffer(PillowCExifBlobBytes())
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_patch_tiff_exif_bytes",
+            "Ptr", pathBytes,
+            "Ptr", blobBuffer,
+            "UPtr", blobBuffer.Size,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+
+        loaded := PillowCImageOpenTiff(path)
+        exif := PillowCImageMetadataTiffExif(loaded)
+        AhkTest.AssertEqual(1, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([1, 2, 3, 4], PillowCImageToArray(loaded, 4))
+        AhkTest.AssertEqual(1, exif.HasExif)
+        AhkTest.AssertEqual("Description Text", PillowCExifAsciiTagValue(exif.Exif, 270))
+        AhkTest.AssertEqual([1, 125], PillowCExifRationalTagValue(exif.Exif, 33434))
+        AhkTest.AssertEqual([-3, 1], PillowCExifSignedRationalTagValue(exif.Exif, 37377))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        if image
+            PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image patch_tiff_exif_bytes parses EXIF blob into IFD0", PillowCTestImagePatchTiffExifBytes)
+
 PillowCTestImageSaveTiffOptionsWritesDpiMetadata(*) {
     image := PillowCCreateImageMode(2, 1, 3)
     path := PillowCTempTiffPath("dpi-rgb")

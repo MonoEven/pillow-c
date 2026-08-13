@@ -6996,6 +6996,252 @@ int patch_tiff_ifd0_exif_entries(
     }
 }
 
+int patch_tiff_ifd0_exif_blob(
+    const char* path,
+    const std::uint8_t* exif_bytes,
+    std::size_t exif_size)
+{
+    if (!path || !exif_bytes || exif_size < 8u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::uint8_t* tiff = exif_bytes;
+    std::size_t tiff_size = exif_size;
+    if (tiff_size >= 6u && tiff[0] == 'E' && tiff[1] == 'x' && tiff[2] == 'i' && tiff[3] == 'f' &&
+        tiff[4] == 0u && tiff[5] == 0u) {
+        tiff += 6u;
+        tiff_size -= 6u;
+    }
+    if (tiff_size < 8u || tiff[0] != 'M' || tiff[1] != 'M' || read_be16(tiff + 2u) != 42u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::uint32_t ifd_offset = read_be32(tiff + 4u);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 6u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::uint16_t entry_count = read_be16(tiff + ifd_offset);
+    if (entry_count == 0u || entry_count > 4096u ||
+        static_cast<std::size_t>(2u + static_cast<std::size_t>(entry_count) * 12u + 4u) >
+            tiff_size - ifd_offset) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const auto blob_type_size = [](std::uint16_t type) -> std::size_t {
+        switch (type) {
+        case 1u:
+        case 2u:
+        case 7u:
+            return 1u;
+        case 3u:
+            return 2u;
+        case 4u:
+        case 11u:
+            return 4u;
+        case 5u:
+        case 10u:
+        case 12u:
+        case 16u:
+            return 8u;
+        default:
+            return 0u;
+        }
+    };
+
+    std::vector<int> ascii_tags;
+    std::vector<std::vector<std::uint8_t>> ascii_values;
+    std::vector<int> uint_tags;
+    std::vector<std::uint32_t> uint_values;
+    std::vector<int> uint_types;
+    std::vector<int> rational_tags;
+    std::vector<std::uint32_t> rational_numerators;
+    std::vector<std::uint32_t> rational_denominators;
+    std::vector<int> rational_array_tags;
+    std::vector<std::uint32_t> rational_array_numerators;
+    std::vector<std::uint32_t> rational_array_denominators;
+    std::vector<std::size_t> rational_array_offsets;
+    std::vector<std::size_t> rational_array_counts;
+    std::vector<int> short_array_tags;
+    std::vector<std::uint32_t> short_array_values;
+    std::vector<std::size_t> short_array_offsets;
+    std::vector<std::size_t> short_array_counts;
+    std::vector<int> byte_array_tags;
+    std::vector<std::uint8_t> byte_array_values;
+    std::vector<std::size_t> byte_array_offsets;
+    std::vector<std::size_t> byte_array_counts;
+    std::vector<int> uint_array_tags;
+    std::vector<std::uint32_t> uint_array_values;
+    std::vector<std::size_t> uint_array_offsets;
+    std::vector<std::size_t> uint_array_counts;
+    std::vector<int> signed_rational_tags;
+    std::vector<std::int32_t> signed_rational_numerators;
+    std::vector<std::int32_t> signed_rational_denominators;
+    std::vector<int> undefined_tags;
+    std::vector<std::uint8_t> undefined_values;
+    std::vector<std::size_t> undefined_offsets;
+    std::vector<std::size_t> undefined_counts;
+
+    try {
+        for (std::uint16_t index = 0u; index < entry_count; ++index) {
+            const std::uint8_t* entry = tiff + ifd_offset + 2u + static_cast<std::size_t>(index) * 12u;
+            const std::uint16_t tag = read_be16(entry);
+            const std::uint16_t type = read_be16(entry + 2u);
+            const std::uint32_t count = read_be32(entry + 4u);
+            const std::uint32_t value = read_be32(entry + 8u);
+            const std::size_t type_size = blob_type_size(type);
+            if (type_size == 0u || count == 0u || count > 0xFFFFFFu) {
+                continue;
+            }
+            const std::uint64_t byte_count = static_cast<std::uint64_t>(count) * type_size;
+            const std::uint8_t* data = nullptr;
+            if (byte_count <= 4u) {
+                data = entry + 8u;
+            } else {
+                if (value > tiff_size || byte_count > tiff_size - static_cast<std::size_t>(value)) {
+                    continue;
+                }
+                data = tiff + value;
+            }
+            const std::size_t count_size = static_cast<std::size_t>(count);
+            if (type == 2u) {
+                std::size_t text_size = count_size;
+                while (text_size > 0u && data[text_size - 1u] == 0u) {
+                    --text_size;
+                }
+                if (text_size == 0u) {
+                    continue;
+                }
+                ascii_tags.push_back(static_cast<int>(tag));
+                ascii_values.emplace_back(data, data + text_size);
+            } else if (type == 3u && count == 1u) {
+                uint_tags.push_back(static_cast<int>(tag));
+                uint_values.push_back(static_cast<std::uint32_t>(read_be16(data)));
+                uint_types.push_back(3);
+            } else if (type == 4u && count == 1u) {
+                uint_tags.push_back(static_cast<int>(tag));
+                uint_values.push_back(read_be32(data));
+                uint_types.push_back(4);
+            } else if (type == 5u && count == 1u) {
+                const std::uint32_t numerator = read_be32(data);
+                const std::uint32_t denominator = read_be32(data + 4u);
+                if (denominator == 0u) {
+                    continue;
+                }
+                rational_tags.push_back(static_cast<int>(tag));
+                rational_numerators.push_back(numerator);
+                rational_denominators.push_back(denominator);
+            } else if (type == 10u && count == 1u) {
+                const std::int32_t numerator = static_cast<std::int32_t>(read_be32(data));
+                const std::int32_t denominator = static_cast<std::int32_t>(read_be32(data + 4u));
+                if (denominator == 0) {
+                    continue;
+                }
+                signed_rational_tags.push_back(static_cast<int>(tag));
+                signed_rational_numerators.push_back(numerator);
+                signed_rational_denominators.push_back(denominator);
+            } else if (type == 5u) {
+                rational_array_tags.push_back(static_cast<int>(tag));
+                rational_array_offsets.push_back(rational_array_numerators.size());
+                rational_array_counts.push_back(count_size);
+                for (std::size_t value_index = 0u; value_index < count_size; ++value_index) {
+                    const std::uint32_t denominator = read_be32(data + value_index * 8u + 4u);
+                    if (denominator == 0u) {
+                        rational_array_tags.pop_back();
+                        rational_array_offsets.pop_back();
+                        rational_array_counts.pop_back();
+                        rational_array_numerators.resize(rational_array_offsets.back());
+                        rational_array_denominators.resize(rational_array_offsets.back());
+                        break;
+                    }
+                    rational_array_numerators.push_back(read_be32(data + value_index * 8u));
+                    rational_array_denominators.push_back(denominator);
+                }
+            } else if (type == 3u) {
+                short_array_tags.push_back(static_cast<int>(tag));
+                short_array_offsets.push_back(short_array_values.size());
+                short_array_counts.push_back(count_size);
+                for (std::size_t value_index = 0u; value_index < count_size; ++value_index) {
+                    short_array_values.push_back(static_cast<std::uint32_t>(read_be16(data + value_index * 2u)));
+                }
+            } else if (type == 4u) {
+                uint_array_tags.push_back(static_cast<int>(tag));
+                uint_array_offsets.push_back(uint_array_values.size());
+                uint_array_counts.push_back(count_size);
+                for (std::size_t value_index = 0u; value_index < count_size; ++value_index) {
+                    uint_array_values.push_back(read_be32(data + value_index * 4u));
+                }
+            } else if (type == 1u) {
+                byte_array_tags.push_back(static_cast<int>(tag));
+                byte_array_offsets.push_back(byte_array_values.size());
+                byte_array_counts.push_back(count_size);
+                byte_array_values.insert(byte_array_values.end(), data, data + count_size);
+            } else if (type == 7u) {
+                undefined_tags.push_back(static_cast<int>(tag));
+                undefined_offsets.push_back(undefined_values.size());
+                undefined_counts.push_back(count_size);
+                undefined_values.insert(undefined_values.end(), data, data + count_size);
+            }
+        }
+
+        std::vector<const std::uint8_t*> ascii_ptrs;
+        std::vector<std::size_t> ascii_sizes;
+        ascii_ptrs.reserve(ascii_values.size());
+        ascii_sizes.reserve(ascii_values.size());
+        for (const std::vector<std::uint8_t>& ascii_value : ascii_values) {
+            ascii_ptrs.push_back(ascii_value.data());
+            ascii_sizes.push_back(ascii_value.size());
+        }
+        return patch_tiff_ifd0_exif_entries(
+            path,
+            ascii_tags.empty() ? nullptr : ascii_tags.data(),
+            ascii_ptrs.empty() ? nullptr : ascii_ptrs.data(),
+            ascii_sizes.empty() ? nullptr : ascii_sizes.data(),
+            ascii_tags.size(),
+            uint_tags.empty() ? nullptr : uint_tags.data(),
+            uint_values.empty() ? nullptr : uint_values.data(),
+            uint_types.empty() ? nullptr : uint_types.data(),
+            uint_tags.size(),
+            rational_tags.empty() ? nullptr : rational_tags.data(),
+            rational_numerators.empty() ? nullptr : rational_numerators.data(),
+            rational_denominators.empty() ? nullptr : rational_denominators.data(),
+            rational_tags.size(),
+            rational_array_tags.empty() ? nullptr : rational_array_tags.data(),
+            rational_array_numerators.empty() ? nullptr : rational_array_numerators.data(),
+            rational_array_denominators.empty() ? nullptr : rational_array_denominators.data(),
+            rational_array_numerators.size(),
+            rational_array_offsets.empty() ? nullptr : rational_array_offsets.data(),
+            rational_array_counts.empty() ? nullptr : rational_array_counts.data(),
+            rational_array_tags.size(),
+            short_array_tags.empty() ? nullptr : short_array_tags.data(),
+            short_array_values.empty() ? nullptr : short_array_values.data(),
+            short_array_values.size(),
+            short_array_offsets.empty() ? nullptr : short_array_offsets.data(),
+            short_array_counts.empty() ? nullptr : short_array_counts.data(),
+            short_array_tags.size(),
+            byte_array_tags.empty() ? nullptr : byte_array_tags.data(),
+            byte_array_values.empty() ? nullptr : byte_array_values.data(),
+            byte_array_values.size(),
+            byte_array_offsets.empty() ? nullptr : byte_array_offsets.data(),
+            byte_array_counts.empty() ? nullptr : byte_array_counts.data(),
+            byte_array_tags.size(),
+            uint_array_tags.empty() ? nullptr : uint_array_tags.data(),
+            uint_array_values.empty() ? nullptr : uint_array_values.data(),
+            uint_array_values.size(),
+            uint_array_offsets.empty() ? nullptr : uint_array_offsets.data(),
+            uint_array_counts.empty() ? nullptr : uint_array_counts.data(),
+            uint_array_tags.size(),
+            signed_rational_tags.empty() ? nullptr : signed_rational_tags.data(),
+            signed_rational_numerators.empty() ? nullptr : signed_rational_numerators.data(),
+            signed_rational_denominators.empty() ? nullptr : signed_rational_denominators.data(),
+            signed_rational_tags.size(),
+            undefined_tags.empty() ? nullptr : undefined_tags.data(),
+            undefined_values.empty() ? nullptr : undefined_values.data(),
+            undefined_values.size(),
+            undefined_offsets.empty() ? nullptr : undefined_offsets.data(),
+            undefined_counts.empty() ? nullptr : undefined_counts.data(),
+            undefined_tags.size());
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 } // namespace
 
 int pillow_c_tiff_parse_orientation(const std::uint8_t* tiff, std::size_t tiff_size)
@@ -7485,6 +7731,15 @@ extern "C" __declspec(dllexport) int pillow_c_image_patch_tiff_exif_entries(
         undefined_offsets,
         undefined_counts,
         undefined_count);
+}
+
+
+extern "C" __declspec(dllexport) int pillow_c_image_patch_tiff_exif_bytes(
+    const char* path,
+    const std::uint8_t* exif_bytes,
+    std::size_t exif_size)
+{
+    return patch_tiff_ifd0_exif_blob(path, exif_bytes, exif_size);
 }
 
 

@@ -54,9 +54,15 @@ def main():
         exif_ifd = flat.get_ifd(0x8769)
         print("exif_ifd:", None if exif_ifd is None else {k: exif_ifd.get(k) for k in exif_ifd})
 
-    # compression composition
+    # compression composition (scalar exif only: array exif plus compression
+    # fails upstream in libtiff, see probe_tiff_exif_compression.py)
+    scalar_exif = Image.Exif()
+    scalar_exif[270] = "Description Text"
+    scalar_exif[282] = 300.0
+    scalar_exif[283] = 150.0
+    scalar_exif[296] = 2
     path3 = os.path.join(tempfile.gettempdir(), "probe-tiff-exif-save-lzw.tif")
-    im.save(path3, "TIFF", exif=exif, compression="tiff_lzw")
+    im.save(path3, "TIFF", exif=scalar_exif, compression="tiff_lzw")
     with open(path3, "rb") as handle:
         data3 = handle.read()
     print("lzw file size:", len(data3))
@@ -69,7 +75,22 @@ def main():
         print("lzw exif[50719]:", repr(flat3.get(50719)))
         print("lzw exif[270]:", repr(flat3.get(270)))
 
-    for p in (path, path3):
+    # bytes form
+    raw = scalar_exif.tobytes()
+    path2 = os.path.join(tempfile.gettempdir(), "probe-tiff-exif-save-bytes.tif")
+    im.save(path2, "TIFF", exif=raw)
+    with open(path2, "rb") as handle:
+        data2 = handle.read()
+    print("bytes-form file size:", len(data2))
+    with Image.open(path2) as reopened2:
+        flat2 = reopened2.getexif()
+        print("bytes-form exif keys:", sorted(flat2.keys()))
+        print("bytes-form exif[270]:", repr(flat2.get(270)))
+        print("bytes-form exif[318]:", repr(flat2.get(318)))
+        print("bytes-form exif[50719]:", repr(flat2.get(50719)))
+        print("bytes-form dpi:", reopened2.info.get("dpi"))
+
+    for p in (path, path2, path3):
         try:
             os.remove(p)
         except OSError:

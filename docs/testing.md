@@ -47,8 +47,26 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2729` AHK tests: `1352` raw DLL tests and
-`1377` facade tests.
+This suite currently registers `2731` AHK tests: `1353` raw DLL tests and
+`1378` facade tests.
+
+Latest `FMT-TIFF-003AY` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_tiff_exif_save.py`) confirms the `exif=` bytes form parses
+the caller's EXIF blob into IFD0 with the same reopen behavior as the
+object form. The new `pillow_c_image_patch_tiff_exif_bytes` export parses
+`Exif\0\0`-prefixed or bare MM TIFF blobs into the bounded tag families
+(ascii with NUL stripping, uint scalars, rational/signed-rational
+scalars, rational/short/LONG arrays, byte and undefined blobs, 4096-entry
+and 0xFFFFFF-count caps) and patches IFD0 through the same vector path;
+the facade `Image.Save` accepts a Buffer for `exif=`. Raw/facade
+bytes-form targets pass `1/1` and `1/1`; the TIFF filter passes `679/679`
+in `5297ms`; and the full directory suite passes `2731/2731` in `19171ms`,
+with zero failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity is `455/455` (one
+deliberate new export) with zero difference; and the rebuilt DLL SHA-256
+is `8CE63E4837EF18A39A16124FE2187032AF83FC624C86538BEAD93E5DD0BDFC05`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The overall
+Pillow replacement-readiness estimate moves to `71% ±4%`.
 
 Latest `FMT-TIFF-003AX` verification: the Pillow 11.3.0 oracle (kept in
 `oracle/probe_tiff_exif_combos.py`) confirms `exif=`+`dpi=` and

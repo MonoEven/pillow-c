@@ -10555,6 +10555,18 @@ class Pillow {
         }
 
         static PatchTiffExifEntries(pathBytes, exif) {
+            if IsObject(exif) && Type(exif) = "Buffer" {
+                if exif.Size = 0
+                    throw Error("Pillow.Image.Save TIFF exif Buffer must not be empty", -1)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_patch_tiff_exif_bytes",
+                    "Ptr", pathBytes,
+                    "Ptr", exif,
+                    "UPtr", exif.Size,
+                    "Int"
+                ))
+                return
+            }
             asciiCount := exif.AsciiTags.Count
             intCount := exif.IntTags.Count
             rationalCount := exif.RationalTags.Count
@@ -10749,8 +10761,9 @@ class Pillow {
         SaveTiffFrames(path, options) {
             appendOption := Pillow.Image.SaveOption(options, "AppendImages", "append_images")
             exifOption := Pillow.Image.SaveOption(options, "Exif", "exif")
-            if exifOption.Set && !(IsObject(exifOption.Value) && exifOption.Value is Pillow.Image.Exif)
-                throw Error("Pillow.Image.Save TIFF exif expects a Pillow.Image.Exif value", -1)
+            if exifOption.Set && !((IsObject(exifOption.Value) && exifOption.Value is Pillow.Image.Exif)
+                || (IsObject(exifOption.Value) && Type(exifOption.Value) = "Buffer"))
+                throw Error("Pillow.Image.Save TIFF exif expects a Pillow.Image.Exif value or Buffer", -1)
             images := [this]
             if appendOption.Set {
                 appendImages := appendOption.Value

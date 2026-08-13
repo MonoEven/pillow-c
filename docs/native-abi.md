@@ -187,8 +187,18 @@ fails upstream (benign superset). `FMT-TIFF-003AX` changes no native code:
 the facade mirrors Pillow 11.3.0's `tiffinfo` precedence by dropping
 `exif` whenever `tiffinfo` is set, and the patch export's collision rule
 keeps a dpi-saved base's 282/283/296 trio when patched ascii tags are
-added. Existing save exports, handle ownership, and synchronous path
-lifetime contracts remain unchanged.
+added. `FMT-TIFF-003AY` adds one more public export,
+`pillow_c_image_patch_tiff_exif_bytes`, raising source/DLL export parity
+from `454/454` to `455/455` with zero difference. It parses a
+caller-supplied EXIF blob (`Exif\0\0`-prefixed or bare MM TIFF) into the
+same bounded tag families — ascii with NUL stripping, uint scalars,
+rational/signed-rational scalars, rational/short/LONG arrays, byte and
+undefined blobs, with a 4096-entry cap and a 0xFFFFFF-count cap — and
+patches IFD0 through the same vector path; double/float/LONG8 blob
+entries are skipped. The facade `Image.Save` accepts a Buffer for
+`exif=` and routes it through the bytes export, matching Pillow 11.3.0's
+bytes-form IFD0 parsing. Existing save exports, handle ownership, and
+synchronous path lifetime contracts remain unchanged.
 
 ## TIFF Classic ExifIFD/GPSInfo Sub-IFD ABI Behavior
 
