@@ -178,10 +178,22 @@ from the file headers and replays Pillow's exact messages
 (including the 11.3.0 fact that plugin ValueErrors/KeyErrors do
 NOT wrap to the identification error).
 
+`BEHAV-OPEN-003` is facade-only and changes NO ABI: the IPTC field
+walker and the MCIDAS big-endian directory parse run in the facade
+and feed the existing FromBytes raw seam (`I;16B` keeps big-endian
+samples verbatim, `I;32B` byte-swaps to native int32) plus the
+native JPEG route for IPTC JPEG payloads. The facade replays
+Pillow's exact mode/error shapes (the `No packer found from X to X`
+single-char modes, `Unknown IPTC image compression`, `illegal field
+length in IPTC/NAA file`, `cannot load this image`, and the
+row-modulo truncated counts).
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`492/492`; the full AHK suite is `2826/2826`; and the current DLL SHA-256 is
+`492/492`; the full AHK suite is `2827/2827`; and the current DLL SHA-256 is
 `24D6E15F69678B8EB2E40798F7D0754634A0A7413DA44A9A4320B878B40408BF`
-(BEHAV-OPEN-002 adds the `pillow_c_image_open_ftex`,
+(BEHAV-OPEN-003 changes no ABI — the IPTC/MCIDAS openers are
+facade-only;
+BEHAV-OPEN-002 adds the `pillow_c_image_open_ftex`,
 `pillow_c_image_open_sun`, `pillow_c_image_open_gbr`,
 `pillow_c_image_open_fits`, and `pillow_c_image_open_xpm` exports
 below;

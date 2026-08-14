@@ -7804,6 +7804,24 @@ class Pillow {
                         throw Error("b'" Pillow.Image.XpmRgbUnknownKey(path) "'", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "IPTC" {
+                    ; BEHAV-OPEN-003: IptcImageFile — facade-only field
+                    ; walker; raw payloads become L images and JPEG
+                    ; payloads decode through the native JPEG route.
+                    image := Pillow.Image.OpenIptc(path)
+                    image.Format := "IPTC"
+                    image.FramePath := path
+                    image.FrameFormat := "IPTC"
+                    return image
+                } else if format = "MCIDAS" {
+                    ; BEHAV-OPEN-003: McIdasImageFile — facade-only
+                    ; big-endian directory parse with the stride rows
+                    ; fed through the raw decoder.
+                    image := Pillow.Image.OpenMcIdas(path)
+                    image.Format := "MCIDAS"
+                    image.FramePath := path
+                    image.FrameFormat := "MCIDAS"
+                    return image
                 } else if format = "HDF5" || format = "BUFR" || format = "GRIB" {
                     ; BEHAV-OPEN-001: the HDF5/BUFR/GRIB stub plugins
                     ; accept the magic and open an F(1,1) image whose
@@ -9319,6 +9337,223 @@ class Pillow {
             }
         }
 
+        static Be32At(buf, offset) {
+            return (NumGet(buf, offset, "UChar") << 24) | (NumGet(buf, offset + 1, "UChar") << 16) | (NumGet(buf, offset + 2, "UChar") << 8) | NumGet(buf, offset + 3, "UChar")
+        }
+
+        static OpenMcIdas(path) {
+            ; BEHAV-OPEN-003: McIdasImageFile — the 256-byte big-endian
+            ; directory (magic 00..00 04), bytes-per-sample 1/2/4 as
+            ; L/I;16B/I, offset w[34]+w[15], and rows of stride
+            ; w[15]+w[10]*bpp*w[14] with only the first w*bpp bytes used.
+            data := Pillow.Image.ReadAllBytes(path)
+            if data.Size < 256
+                throw Error("cannot identify image file <" path ">", -1)
+            magicOk := true
+            loop 7 {
+                if NumGet(data, A_Index - 1, "UChar") != 0
+                    magicOk := false
+            }
+            if !magicOk || NumGet(data, 7, "UChar") != 4
+                throw Error("cannot identify image file <" path ">", -1)
+            bpp := Pillow.Image.Be32At(data, 40)
+            width := Pillow.Image.Be32At(data, 36)
+            height := Pillow.Image.Be32At(data, 32)
+            aux := Pillow.Image.Be32At(data, 52)
+            prefixLen := Pillow.Image.Be32At(data, 56)
+            offsetPrefix := Pillow.Image.Be32At(data, 132)
+            modeName := ""
+            rawMode := ""
+            if bpp = 1 {
+                modeName := "L"
+                rawMode := "L"
+            } else if bpp = 2 {
+                modeName := "I;16B"
+                rawMode := "I;16B"
+            } else if bpp = 4 {
+                modeName := "I"
+                rawMode := "I;32B"
+            } else {
+                throw Error("cannot identify image file <" path ">", -1)
+            }
+            if width <= 0 || height <= 0
+                throw Error("cannot identify image file <" path ">", -1)
+            offset := offsetPrefix + prefixLen
+            stride := prefixLen + width * bpp * aux
+            if stride <= 0 || offset > data.Size
+                throw Error("cannot identify image file <" path ">", -1)
+            present := data.Size - offset
+            needed := (height - 1) * stride + width * bpp
+            if present < needed
+                throw Error("image file is truncated (" Mod(present, stride) " bytes not processed)", -1)
+            tight := Buffer(width * height * bpp, 0)
+            rowBytes := width * bpp
+            loop height {
+                DllCall("msvcrt\memcpy", "Ptr", tight.Ptr + (A_Index - 1) * rowBytes, "Ptr", data.Ptr + offset + (A_Index - 1) * stride, "UPtr", rowBytes, "CDecl Ptr")
+            }
+            image := Pillow.Image.New(modeName, [width, height])
+            try {
+                image.FromBytes(tight, "raw", rawMode)
+            } catch {
+                image.Close()
+                throw
+            }
+            return image
+        }
+
+        static OpenIptc(path) {
+            ; BEHAV-OPEN-003: IptcImageFile — the 5-byte field headers
+            ; (record 1-9/240, size byte with the 128-extended form),
+            ; the (3,60)/(3,65)/(3,20)/(3,30)/(3,120) descriptive fields,
+            ; and the (8,10) data fields decoded as a raw PGM (L) or a
+            ; plain JPEG.
+            data := Pillow.Image.ReadAllBytes(path)
+            pos := 0
+            layers := 0
+            component := 0
+            id := 0
+            hasId := false
+            width := 0
+            height := 0
+            compression := 0
+            payloadStart := 0
+            payloadEnd := 0
+            sawData := false
+            loop {
+                if pos + 5 > data.Size
+                    break
+                allZero := true
+                loop 5 {
+                    if NumGet(data, pos + A_Index - 1, "UChar") != 0
+                        allZero := false
+                }
+                if allZero
+                    break
+                if NumGet(data, pos, "UChar") != 0x1C
+                    throw Error("cannot identify image file <" path ">", -1)
+                record := NumGet(data, pos + 1, "UChar")
+                tagNum := NumGet(data, pos + 2, "UChar")
+                if !(record = 1 || record = 2 || record = 3 || record = 4 || record = 5 || record = 6 || record = 7 || record = 8 || record = 9 || record = 240)
+                    throw Error("cannot identify image file <" path ">", -1)
+                sizeByte := NumGet(data, pos + 3, "UChar")
+                size := 0
+                headerLen := 5
+                if sizeByte > 132
+                    throw Error("illegal field length in IPTC/NAA file", -1)
+                else if sizeByte = 128 {
+                    size := 0
+                } else if sizeByte > 128 {
+                    extBytes := sizeByte - 128
+                    if pos + 5 + extBytes > data.Size
+                        throw Error("cannot identify image file <" path ">", -1)
+                    size := 0
+                    loop extBytes
+                        size := size * 256 + NumGet(data, pos + 4 + A_Index, "UChar")
+                    headerLen := 5 + extBytes
+                } else {
+                    size := (NumGet(data, pos + 3, "UChar") << 8) | NumGet(data, pos + 4, "UChar")
+                }
+                fieldData := pos + headerLen
+                if fieldData + size > data.Size
+                    throw Error("cannot identify image file <" path ">", -1)
+                if record = 8 && tagNum = 10 {
+                    sawData := true
+                    if payloadStart = 0
+                        payloadStart := fieldData
+                    payloadEnd := fieldData + size
+                } else if sawData {
+                    ; a non-(8,10) field after the data stops the copy
+                    break
+                } else {
+                    if record = 3 && tagNum = 60 && size >= 2 {
+                        layers := NumGet(data, fieldData, "UChar")
+                        component := NumGet(data, fieldData + 1, "UChar")
+                    }
+                    if record = 3 && tagNum = 65 && size >= 1 {
+                        hasId := true
+                        id := Integer(NumGet(data, fieldData, "UChar")) - 1
+                    }
+                    if record = 3 && tagNum = 20 && size >= 2 {
+                        width := (NumGet(data, fieldData, "UChar") << 8) | NumGet(data, fieldData + 1, "UChar")
+                    }
+                    if record = 3 && tagNum = 30 && size >= 2 {
+                        height := (NumGet(data, fieldData, "UChar") << 8) | NumGet(data, fieldData + 1, "UChar")
+                    }
+                    if record = 3 && tagNum = 120 && size >= 2 {
+                        compression := (NumGet(data, fieldData, "UChar") << 8) | NumGet(data, fieldData + 1, "UChar")
+                    }
+                }
+                pos := fieldData + size
+            }
+            if !hasId
+                id := 0
+            if layers = 1 && !component {
+                ; L mode
+            } else if layers = 3 && component {
+                ; Pillow indexes "RGB"[id] with Python semantics —
+                ; negative ids wrap from the end and out-of-range ids
+                ; raise IndexError (the identification error).
+                if id < -3 || id > 2
+                    throw Error("cannot identify image file <" path ">", -1)
+                if id < 0
+                    id := id + 3
+                modeChar := SubStr("RGB", id + 1, 1)
+                throw Error("No packer found from " modeChar " to " modeChar, -1)
+            } else if layers = 4 && component {
+                if id < -4 || id > 3
+                    throw Error("cannot identify image file <" path ">", -1)
+                if id < 0
+                    id := id + 4
+                modeChar := SubStr("CMYK", id + 1, 1)
+                throw Error("No packer found from " modeChar " to " modeChar, -1)
+            } else {
+                throw Error("cannot identify image file <" path ">", -1)
+            }
+            if !sawData || payloadStart = 0 || payloadEnd <= payloadStart
+                throw Error("cannot load this image", -1)
+            if !(compression = 1 || compression = 5)
+                throw Error("Unknown IPTC image compression", -1)
+            payload := Buffer(payloadEnd - payloadStart, 0)
+            DllCall("msvcrt\memcpy", "Ptr", payload, "Ptr", data.Ptr + payloadStart, "UPtr", payload.Size, "CDecl Ptr")
+            if compression = 1 {
+                if width <= 0 || height <= 0
+                    throw Error("cannot load this image", -1)
+                if payload.Size < width * height
+                    throw Error("image file is truncated (" Mod(payload.Size, width) " bytes not processed)", -1)
+                image := Pillow.Image.New("L", [width, height])
+                try {
+                    image.FromBytes(payload)
+                } catch {
+                    image.Close()
+                    throw
+                }
+                return image
+            }
+            ; JPEG payload: decode via the native JPEG route (Pillow
+            ; re-opens the extracted bytes as a JPEG).
+            tempPath := A_Temp "\pillow-ahk-iptc-" A_TickCount "-" Random(1, 1000000) ".jpg"
+            try {
+                file := FileOpen(tempPath, "w")
+                try
+                    file.RawWrite(payload, payload.Size)
+                finally
+                    file.Close()
+                image := Pillow.Image.Open(tempPath)
+                try {
+                    FileDelete(tempPath)
+                } catch {
+                }
+                image.Format := "IPTC"
+                return image
+            } catch {
+                try {
+                    FileDelete(tempPath)
+                } catch {
+                }
+                throw Error("cannot identify image file <" path ">", -1)
+            }
+        }
+
         static StubAccepts(path, format) {
             ; BEHAV-OPEN-001: HDF5/BUFR/GRIB stub plugins accept only the
             ; exact magic (HDF5 8 bytes; BUFR "BUFR"/"ZCZC"; GRIB "GRIB"
@@ -9770,6 +10005,8 @@ class Pillow {
                 return "FITS"
             if RegExMatch(path, "i)\.xpm$")
                 return "XPM"
+            if RegExMatch(path, "i)\.iim$")
+                return "IPTC"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -9799,7 +10036,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -9831,6 +10068,8 @@ class Pillow {
                 "GBR", "GIMP brush file",
                 "FITS", "FITS",
                 "XPM", "X11 Pixel Map",
+                "IPTC", "IPTC/NAA",
+                "MCIDAS", "McIdas area file",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -11734,9 +11973,10 @@ class Pillow {
                 ; OSError before writing anything.
                 throw Error(resolvedFormat " save handler not installed", -1)
             }
-            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" {
-                ; BEHAV-OPEN-001/002: these plugins register no save handler
-                ; at all — Pillow raises KeyError with the bare name.
+            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" || resolvedFormat = "IPTC" || resolvedFormat = "MCIDAS" {
+                ; BEHAV-OPEN-001/002/003: these plugins register no save
+                ; handler at all — Pillow raises KeyError with the bare
+                ; name.
                 throw Error("'" resolvedFormat "'", -1)
             }
             if resolvedFormat = "PDF" {

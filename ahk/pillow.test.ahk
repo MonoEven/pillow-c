@@ -21877,7 +21877,7 @@ PillowTestDependencyGatedFormatBoundaries(*) {
     try {
         ; BNDRY-001: dependency-gated formats (WebP/AVIF/JPEG2000
         ; and the other long-tail families) are explicit documented
-        ; boundaries — open and save fail loudly with the same error.
+        ; boundaries —?open and save fail loudly with the same error.
         ; PDF left this list via BEHAV-PDF-001 (its LA/RGBA/mode-1
         ; sub-mode boundaries are pinned by PillowTestPdfFormat).
         for format in ["WEBP", "AVIF", "JPEG2000", "PSD"] {
@@ -21920,7 +21920,7 @@ PillowTestUnrecordedFormatBoundaries(*) {
     path := StrReplace(PillowTestTempPngPath("fmt-unrec"), ".png", ".blp")
     try {
         ; FMT-UNREC-001: the AUDIT-002 unrecorded format families are now
-        ; explicit documented codec boundaries — the AHK native ABI
+        ; explicit documented codec boundaries —?the AHK native ABI
         ; implements neither codec (Pillow's own 11.3.0 build supports
         ; BLP/DIB/IM/SPIDER via C/numpy plugins and errors per-mode or
         ; per-handler on the rest), so open and save fail loudly with the
@@ -21931,7 +21931,7 @@ PillowTestUnrecordedFormatBoundaries(*) {
         ; errors). PIXAR/XVTHUMB/DCX plus the HDF5/BUFR/GRIB stub
         ; handlers and the IMT non-registration left this list in
         ; BEHAV-OPEN-001 (Pillow's exact KeyError/save-handler errors).
-        for format in ["WMF", "FPX", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD"] {
+        for format in ["WMF", "FPX", "MIC", "MPEG", "PCD"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -25006,6 +25006,310 @@ PillowTestOpenMidFormats(*) {
 
 AhkTest.Test("Pillow FTEX SUN GBR FITS XPM openers match Pillow 11.3.0 shapes and errors", PillowTestOpenMidFormats)
 
+PillowTestRangeBuffer(n) {
+    buf := Buffer(n, 0)
+    loop n
+        NumPut("UChar", A_Index - 1, buf, A_Index - 1)
+    return buf
+}
+
+PillowTestIptcLayersField() {
+    buf := Buffer(2, 0)
+    NumPut("UChar", 1, buf, 0)
+    return buf
+}
+
+PillowTestIptcField(record, tagNum, data) {
+    size := data.Size
+    if size < 128 {
+        out := Buffer(5 + size, 0)
+        NumPut("UChar", 0x1C, out, 0)
+        NumPut("UChar", record, out, 1)
+        NumPut("UChar", tagNum, out, 2)
+        NumPut("UChar", (size >> 8) & 0xFF, out, 3)
+        NumPut("UChar", size & 0xFF, out, 4)
+        if size
+            DllCall("msvcrt\memcpy", "Ptr", out.Ptr + 5, "Ptr", data, "UPtr", size, "CDecl Ptr")
+        return out
+    }
+    ; extended form: s[3] = 128+n, s[4] = 0, then n BE size bytes
+    n := 0
+    if size = 128
+        n := 0
+    else if size <= 132
+        n := size - 128
+    else if size <= 255
+        n := 1
+    else
+        n := 2
+    out := Buffer(5 + n + size, 0)
+    NumPut("UChar", 0x1C, out, 0)
+    NumPut("UChar", record, out, 1)
+    NumPut("UChar", tagNum, out, 2)
+    NumPut("UChar", 128 + n, out, 3)
+    NumPut("UChar", 0, out, 4)
+    offset := 5
+    loop n {
+        NumPut("UChar", (size >> (8 * (n - A_Index))) & 0xFF, out, offset)
+        offset += 1
+    }
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", data, "UPtr", size, "CDecl Ptr")
+    return out
+}
+
+PillowTestMcIdas(bpp, w, h, payload, prefixLen := 0, aux := 1) {
+    header := Buffer(256, 0)
+    NumPut("UChar", 4, header, 7)
+    PillowTestPutBe32(header, 32, h)
+    PillowTestPutBe32(header, 36, w)
+    PillowTestPutBe32(header, 40, bpp)
+    PillowTestPutBe32(header, 52, aux)
+    PillowTestPutBe32(header, 56, prefixLen)
+    PillowTestPutBe32(header, 132, 256)
+    out := Buffer(256 + payload.Size, 0)
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr, "Ptr", header, "UPtr", 256, "CDecl Ptr")
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + 256, "Ptr", payload, "UPtr", payload.Size, "CDecl Ptr")
+    return out
+}
+
+PillowTestConcatBuffers(buffers) {
+    total := 0
+    for buf in buffers
+        total += buf.Size
+    out := Buffer(total, 0)
+    offset := 0
+    for buf in buffers {
+        DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", buf, "UPtr", buf.Size, "CDecl Ptr")
+        offset += buf.Size
+    }
+    return out
+}
+
+PillowTestBe16Bytes(value) {
+    buf := Buffer(2, 0)
+    NumPut("UChar", (value >> 8) & 0xFF, buf, 0)
+    NumPut("UChar", value & 0xFF, buf, 1)
+    return buf
+}
+
+PillowTestOpenThreeFormats(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    iptcPath := A_Temp "\open-3.iim"
+    mcPath := A_Temp "\open-3-mcidas.bin"
+    jpegPath := A_Temp "\open-3.jpg"
+    savePath := A_Temp "\open-3-save.bin"
+    try {
+        ; --- IPTC: raw L payload ---
+        PillowTestWriteFileBuffer(iptcPath, PillowTestConcatBuffers([
+            PillowTestIptcField(3, 60, PillowTestIptcLayersField()),
+            PillowTestIptcField(3, 20, PillowTestBe16Bytes(3)),
+            PillowTestIptcField(3, 30, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 120, PillowTestBe16Bytes(1)),
+            PillowTestIptcField(8, 10, PillowTestRangeBuffer(6))
+        ]))
+        opened := Pillow.Image.Open(iptcPath)
+        try {
+            AhkTest.AssertEqual("IPTC", opened.Format)
+            AhkTest.AssertEqual("L", opened.Mode)
+            AhkTest.AssertEqual([3, 2], opened.Size)
+            AhkTest.AssertEqual([0, 1, 2, 3, 4, 5], PillowTestBufferToArray(opened.ToBytes()))
+        } finally {
+            opened.Close()
+        }
+
+        ; --- IPTC: JPEG payload round-trips through the native JPEG ---
+        jpegImage := Pillow.Image.New("L", [2, 2])
+        try {
+            jpegImage.Save(jpegPath, "JPEG")
+        } finally {
+            jpegImage.Close()
+        }
+        jpegPayload := Buffer(PillowTestReadFileBytes(jpegPath).Length, 0)
+        jpegBytes := PillowTestReadFileBytes(jpegPath)
+        loop jpegBytes.Length
+            NumPut("UChar", jpegBytes[A_Index], jpegPayload, A_Index - 1)
+        PillowTestWriteFileBuffer(iptcPath, PillowTestConcatBuffers([
+            PillowTestIptcField(3, 60, PillowTestIptcLayersField()),
+            PillowTestIptcField(3, 20, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 30, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 120, PillowTestBe16Bytes(5)),
+            PillowTestIptcField(8, 10, jpegPayload)
+        ]))
+        openedJpeg := Pillow.Image.Open(iptcPath)
+        refJpeg := Pillow.Image.Open(jpegPath)
+        try {
+            AhkTest.AssertEqual("IPTC", openedJpeg.Format)
+            AhkTest.AssertEqual("L", openedJpeg.Mode)
+            AhkTest.AssertEqual(PillowTestBufferToArray(refJpeg.ToBytes()), PillowTestBufferToArray(openedJpeg.ToBytes()))
+        } finally {
+            openedJpeg.Close()
+            refJpeg.Close()
+        }
+
+        ; --- IPTC: single-char modes raise the packer ValueErrors ---
+        PillowTestWriteFileBuffer(iptcPath, PillowTestConcatBuffers([
+            PillowTestIptcField(3, 60, (b := Buffer(2, 0), NumPut("UChar", 3, b, 0), NumPut("UChar", 1, b, 1), b)),
+            PillowTestIptcField(3, 20, PillowTestBe16Bytes(3)),
+            PillowTestIptcField(3, 30, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 120, PillowTestBe16Bytes(1)),
+            PillowTestIptcField(8, 10, Buffer(6, 0))
+        ]))
+        AhkTest.AssertEqual("No packer found from R to R", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
+        PillowTestWriteFileBuffer(iptcPath, PillowTestConcatBuffers([
+            PillowTestIptcField(3, 60, (b := Buffer(2, 0), NumPut("UChar", 4, b, 0), NumPut("UChar", 1, b, 1), b)),
+            PillowTestIptcField(3, 20, PillowTestBe16Bytes(3)),
+            PillowTestIptcField(3, 30, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 120, PillowTestBe16Bytes(1)),
+            PillowTestIptcField(8, 10, Buffer(6, 0))
+        ]))
+        AhkTest.AssertEqual("No packer found from C to C", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
+        PillowTestWriteFileBuffer(iptcPath, PillowTestConcatBuffers([
+            PillowTestIptcField(3, 60, (b := Buffer(2, 0), NumPut("UChar", 3, b, 0), NumPut("UChar", 1, b, 1), b)),
+            PillowTestIptcField(3, 65, PillowTestBe16Bytes(3)),
+            PillowTestIptcField(3, 20, PillowTestBe16Bytes(3)),
+            PillowTestIptcField(3, 30, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 120, PillowTestBe16Bytes(1)),
+            PillowTestIptcField(8, 10, Buffer(6, 0))
+        ]))
+        AhkTest.AssertEqual("No packer found from B to B", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
+        PillowTestWriteFileBuffer(iptcPath, PillowTestConcatBuffers([
+            PillowTestIptcField(3, 60, (b := Buffer(2, 0), NumPut("UChar", 3, b, 0), b)),
+            PillowTestIptcField(3, 20, PillowTestBe16Bytes(3)),
+            PillowTestIptcField(3, 30, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 120, PillowTestBe16Bytes(1)),
+            PillowTestIptcField(8, 10, Buffer(6, 0))
+        ]))
+        AhkTest.AssertEqual("cannot identify image file <" iptcPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
+
+        ; --- IPTC: error shapes ---
+        PillowTestWriteFileBuffer(iptcPath, PillowTestConcatBuffers([
+            PillowTestIptcField(3, 60, PillowTestIptcLayersField()),
+            PillowTestIptcField(3, 20, PillowTestBe16Bytes(3)),
+            PillowTestIptcField(3, 30, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 120, PillowTestBe16Bytes(7)),
+            PillowTestIptcField(8, 10, Buffer(6, 0))
+        ]))
+        AhkTest.AssertEqual("Unknown IPTC image compression", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
+        badRecord := Buffer(8, 0)
+        NumPut("UChar", 0x1C, badRecord, 0)
+        NumPut("UChar", 11, badRecord, 1)
+        PillowTestWriteFileBuffer(iptcPath, badRecord)
+        AhkTest.AssertEqual("cannot identify image file <" iptcPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
+        illegal := Buffer(6, 0)
+        NumPut("UChar", 0x1C, illegal, 0)
+        NumPut("UChar", 3, illegal, 1)
+        NumPut("UChar", 60, illegal, 2)
+        NumPut("UChar", 133, illegal, 3)
+        PillowTestWriteFileBuffer(iptcPath, illegal)
+        AhkTest.AssertEqual("illegal field length in IPTC/NAA file", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
+        PillowTestWriteFileBuffer(iptcPath, PillowTestConcatBuffers([
+            PillowTestIptcField(3, 60, PillowTestIptcLayersField()),
+            PillowTestIptcField(3, 20, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 30, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 120, PillowTestBe16Bytes(1))
+        ]))
+        AhkTest.AssertEqual("cannot load this image", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
+        PillowTestWriteFileBuffer(iptcPath, PillowTestConcatBuffers([
+            PillowTestIptcField(3, 60, PillowTestIptcLayersField()),
+            PillowTestIptcField(3, 20, PillowTestBe16Bytes(3)),
+            PillowTestIptcField(3, 30, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 120, PillowTestBe16Bytes(1)),
+            PillowTestIptcField(8, 10, (b := Buffer(2, 0), NumPut("UChar", 1, b, 0), NumPut("UChar", 2, b, 1), b))
+        ]))
+        AhkTest.AssertEqual("image file is truncated (2 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
+        ; extended-size field (3,60) with 132 bytes
+        ext := Buffer(132, 0)
+        NumPut("UChar", 1, ext, 0)
+        PillowTestWriteFileBuffer(iptcPath, PillowTestConcatBuffers([
+            PillowTestIptcField(3, 60, ext),
+            PillowTestIptcField(3, 20, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 30, PillowTestBe16Bytes(2)),
+            PillowTestIptcField(3, 120, PillowTestBe16Bytes(1)),
+            PillowTestIptcField(8, 10, PillowTestRangeBuffer(4))
+        ]))
+        openedExt := Pillow.Image.Open(iptcPath)
+        try {
+            AhkTest.AssertEqual("L", openedExt.Mode)
+            AhkTest.AssertEqual([2, 2], openedExt.Size)
+            AhkTest.AssertEqual([0, 1, 2, 3], PillowTestBufferToArray(openedExt.ToBytes()))
+        } finally {
+            openedExt.Close()
+        }
+
+        ; --- MCIDAS: L / I;16B / I / stride prefix ---
+        PillowTestWriteFileBuffer(mcPath, PillowTestMcIdas(1, 3, 2, PillowTestRangeBuffer(6)))
+        openedMc := Pillow.Image.Open(mcPath, ["MCIDAS"])
+        try {
+            AhkTest.AssertEqual("MCIDAS", openedMc.Format)
+            AhkTest.AssertEqual("L", openedMc.Mode)
+            AhkTest.AssertEqual([3, 2], openedMc.Size)
+            AhkTest.AssertEqual([0, 1, 2, 3, 4, 5], PillowTestBufferToArray(openedMc.ToBytes()))
+        } finally {
+            openedMc.Close()
+        }
+        mc16 := Buffer(8, 0)
+        loop 4 {
+            NumPut("UChar", 0, mc16, (A_Index - 1) * 2)
+            NumPut("UChar", A_Index, mc16, (A_Index - 1) * 2 + 1)
+        }
+        PillowTestWriteFileBuffer(mcPath, PillowTestMcIdas(2, 2, 2, mc16))
+        openedMc16 := Pillow.Image.Open(mcPath, ["MCIDAS"])
+        try {
+            AhkTest.AssertEqual("I;16B", openedMc16.Mode)
+            AhkTest.AssertEqual("0001000200030004", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedMc16.ToBytes())))
+        } finally {
+            openedMc16.Close()
+        }
+        mc32 := Buffer(16, 0)
+        loop 4
+            PillowTestPutBe32(mc32, (A_Index - 1) * 4, A_Index)
+        PillowTestWriteFileBuffer(mcPath, PillowTestMcIdas(4, 2, 2, mc32))
+        openedMc32 := Pillow.Image.Open(mcPath, ["MCIDAS"])
+        try {
+            AhkTest.AssertEqual("I", openedMc32.Mode)
+            AhkTest.AssertEqual("01000000020000000300000004000000", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedMc32.ToBytes())))
+        } finally {
+            openedMc32.Close()
+        }
+        mcPrefix := Buffer(10, 0)
+        loop 10
+            NumPut("UChar", A_Index - 1, mcPrefix, A_Index - 1)
+        PillowTestWriteFileBuffer(mcPath, PillowTestMcIdas(1, 3, 2, mcPrefix, 2))
+        openedMcPrefix := Pillow.Image.Open(mcPath, ["MCIDAS"])
+        try {
+            AhkTest.AssertEqual([2, 3, 4, 7, 8, 9], PillowTestBufferToArray(openedMcPrefix.ToBytes()))
+        } finally {
+            openedMcPrefix.Close()
+        }
+        PillowTestWriteFileBuffer(mcPath, PillowTestMcIdas(3, 2, 2, Buffer(8, 0)))
+        AhkTest.AssertEqual("cannot identify image file <" mcPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(mcPath, ["MCIDAS"])))
+        PillowTestWriteFileBuffer(mcPath, Buffer(64, 0))
+        AhkTest.AssertEqual("cannot identify image file <" mcPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(mcPath, ["MCIDAS"])))
+        PillowTestWriteFileBuffer(mcPath, PillowTestMcIdas(1, 3, 2, Buffer(2, 0)))
+        AhkTest.AssertEqual("image file is truncated (2 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(mcPath, ["MCIDAS"])))
+
+        ; --- saves raise the exact KeyError strings ---
+        saveImage := Pillow.Image.New("L", [2, 2], 7)
+        try {
+            PillowTestAssertSaveKeyError(saveImage, savePath, "IPTC")
+            PillowTestAssertSaveKeyError(saveImage, savePath, "MCIDAS")
+        } finally {
+            saveImage.Close()
+        }
+
+        ; --- format descriptions ---
+        AhkTest.AssertEqual("IPTC/NAA", Pillow.Image.FormatDescription("IPTC"))
+        AhkTest.AssertEqual("McIdas area file", Pillow.Image.FormatDescription("MCIDAS"))
+    } finally {
+        PillowTestDeleteFile(iptcPath)
+        PillowTestDeleteFile(mcPath)
+        PillowTestDeleteFile(jpegPath)
+        PillowTestDeleteFile(savePath)
+    }
+}
+
+AhkTest.Test("Pillow IPTC MCIDAS openers match Pillow 11.3.0 shapes and errors", PillowTestOpenThreeFormats)
+
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     try {
@@ -25351,7 +25655,7 @@ PillowTestImageQtTkBoundaries(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [2, 2], 7)
     try {
-        ; API-QTTK-001: dependency-gated boundaries — no Qt binding and no
+        ; API-QTTK-001: dependency-gated boundaries —?no Qt binding and no
         ; Tk interpreter ship with the AHK runtime.
         for entry in [
             (() => Pillow.ImageQt.ImageQt(image)),

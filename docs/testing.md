@@ -47,8 +47,27 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2826` AHK tests: `1391` raw DLL tests and
-`1435` facade tests.
+This suite currently registers `2827` AHK tests: `1391` raw DLL tests and
+`1436` facade tests.
+
+Latest `BEHAV-OPEN-003` verification: the Pillow 11.3.0 oracle
+(`oracle/probe_open_3.py`/`probe_open_3.json`) pins the IPTC field
+walker (5-byte headers, the 128-extended size form, the (8,10) data
+fields as a raw PGM L or a plain JPEG, the Python negative-wrap
+`"RGB"[id]` single-char modes with `No packer found from X to X`,
+`Unknown IPTC image compression`, `illegal field length in
+IPTC/NAA file`, `cannot load this image`, and the row-modulo
+truncated count) and the MCIDAS directory (256-byte big-endian
+header, L/I;16B/I modes with the (h-1)*stride + w*bpp decode size,
+the verbatim big-endian I;16B and native-int32 I;32B storage, the
+stride-prefix rows, and the identification-error collapses). The
+facade open-3 target passes `1/1` in `32ms`; the full directory
+suite passes `2827/2827` in `21750ms` with zero failures, errors,
+or skips. Facade-only change: source/DLL export parity remains
+`492/492` with zero difference and the DLL SHA-256 stays
+`24D6E15F69678B8EB2E40798F7D0754634A0A7413DA44A9A4320B878B40408BF`.
+The behavioral-parity wave continues with the remaining open
+families (FLI/MIC/PCD/PSD) next.
 
 Latest `BEHAV-OPEN-002` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_mid.py`/`probe_open_mid.json` with the ctypes

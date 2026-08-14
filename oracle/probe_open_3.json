@@ -1,0 +1,130 @@
+{
+ "iptc_raw": {
+  "ok": [
+   "L",
+   [
+    3,
+    2
+   ],
+   "000102030405",
+   {
+    "(3, 60)": "0100",
+    "(3, 20)": "0003",
+    "(3, 30)": "0002",
+    "(3, 120)": "0001"
+   }
+  ]
+ },
+ "iptc_rgb_layers3": {
+  "err": "ValueError: No packer found from R to R"
+ },
+ "iptc_layers3_nocomponent": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x0000028204290E00>"
+ },
+ "iptc_layers4": {
+  "err": "ValueError: No packer found from C to C"
+ },
+ "iptc_id3": {
+  "err": "ValueError: No packer found from B to B"
+ },
+ "iptc_jpeg": {
+  "ok": [
+   "L",
+   [
+    2,
+    2
+   ],
+   "00447ecb",
+   {
+    "(3, 60)": "0100",
+    "(3, 20)": "0002",
+    "(3, 30)": "0002",
+    "(3, 120)": "0005"
+   }
+  ]
+ },
+ "iptc_bad_compression": {
+  "err": "OSError: Unknown IPTC image compression"
+ },
+ "iptc_bad_record": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x0000028205F08FE0>"
+ },
+ "iptc_illegal_length": {
+  "err": "OSError: illegal field length in IPTC/NAA file"
+ },
+ "iptc_extended_size": {
+  "ok": [
+   "L",
+   [
+    2,
+    2
+   ],
+   "00010203",
+   {
+    "(3, 60)": "010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "(3, 20)": "0002",
+    "(3, 30)": "0002",
+    "(3, 120)": "0001"
+   }
+  ]
+ },
+ "iptc_no_data": {
+  "err": "OSError: cannot load this image"
+ },
+ "iptc_truncated_payload": {
+  "err": "OSError: image file is truncated (2 bytes not processed)"
+ },
+ "mcidas_l": {
+  "ok": [
+   "L",
+   [
+    3,
+    2
+   ],
+   "000102030405",
+   {}
+  ]
+ },
+ "mcidas_i16b": {
+  "ok": [
+   "I;16B",
+   [
+    2,
+    2
+   ],
+   "0001000200030004",
+   {}
+  ]
+ },
+ "mcidas_i32b": {
+  "ok": [
+   "I",
+   [
+    2,
+    2
+   ],
+   "01000000020000000300000004000000",
+   {}
+  ]
+ },
+ "mcidas_prefix": {
+  "ok": [
+   "L",
+   [
+    3,
+    2
+   ],
+   "010203040506",
+   {}
+  ]
+ },
+ "mcidas_bad_bpp": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x0000028205F093F0>"
+ },
+ "mcidas_bad_magic": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x0000028205F093F0>"
+ },
+ "mcidas_truncated": {
+  "err": "OSError: image file is truncated (2 bytes not processed)"
+ }
+}

@@ -25,14 +25,14 @@ Estimate (AUDIT-003, the behavioral standard): literal 100% runtime
 identity with the local Pillow 11.3.0 build is NOT reachable and is
 no longer claimed. The honest split:
 
-- Formats: SAVE 20/30 and OPEN 27/45 byte-exact and test-pinned;
+- Formats: SAVE 20/30 and OPEN 29/45 byte-exact and test-pinned;
   ICNS, EPS, MPO, PDF, PIXAR, XVTHUMB, DCX, FTEX, SUN, GBR, FITS,
-  and XPM are DONE (BEHAV-ICNS-001 / BEHAV-EPS-001 /
-  BEHAV-MPO-001 / BEHAV-PDF-001 / BEHAV-OPEN-001 / BEHAV-OPEN-002);
-  the
+  XPM, IPTC, and MCIDAS are DONE (BEHAV-ICNS-001 / BEHAV-EPS-001 /
+  BEHAV-MPO-001 / BEHAV-PDF-001 / BEHAV-OPEN-001 / BEHAV-OPEN-002 /
+  BEHAV-OPEN-003); the
   matchable remainder is bounded
-  (0 saves left; 6
-  opens: FLI/IPTC/MCIDAS/MIC/PCD/PSD (IMT is
+  (0 saves left; 4
+  opens: FLI/MIC/PCD/PSD (IMT is
   NOT registered in 11.3.0 — probe-verified no-op); the
   MPEG header-then-cannot-load error match;
   PDF open is unregistered in 11.3.0 -> identification error (DONE
@@ -71,15 +71,16 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-OPEN-002 (FTEX/SUN/GBR/FITS/XPM
-openers with Pillow's exact decodes and error shapes) after
+Latest covered gap tail: BEHAV-OPEN-003 (IPTC/MCIDAS openers,
+facade-only with Pillow's exact field-walk and directory shapes)
+after BEHAV-OPEN-002/
 BEHAV-OPEN-001/
 BEHAV-PDF-001/
 BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
 the next bounded child is the remaining pure-Python open families
-(FLI/IPTC/MCIDAS/MIC/PCD/PSD), then the MPEG
+(FLI/MIC/PCD/PSD), then the MPEG
 error match and WMF open, then
 the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
@@ -532,6 +533,33 @@ errors, or skips. Facade-only change: source/DLL export parity
 remains `482/482` and the DLL SHA-256 remains
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
 The next bounded child is `BEHAV-PDF-001`, the PDF format.
+
+2026-08-14: `BEHAV-OPEN-003` is GREEN as the IPTC and MCIDAS openers
+(facade-only). The Pillow 11.3.0 oracle (`oracle/probe_open_3.py`/
+`probe_open_3.json`) pins IptcImageFile (the 5-byte field headers
+with record 1-9/240, the 128-extended size form whose s[4] byte is
+unused, the (3,60)/(3,65)/(3,20)/(3,30)/(3,120) descriptive fields,
+and the (8,10) data fields decoded as a raw PGM L or a plain JPEG;
+layers/component mode math with Pillow's Python `"RGB"[id]`
+negative-wrap single-char modes raising `No packer found from X to
+X` at tobytes, the mode-None identification error, `Unknown IPTC
+image compression`, `illegal field length in IPTC/NAA file`,
+`cannot load this image` without data, and the row-modulo
+truncated count from the PGM re-open) and McIdasImageFile (the
+256-byte big-endian directory with the 00..00 04 magic, bytes-per-
+sample 1/2/4 as L/I;16B/I, the w[34]+w[15] offset, and rows of
+stride w[15]+w[10]*bpp*w[14] needing (h-1)*stride + w*bpp bytes;
+I;16B keeps the big-endian samples verbatim while I;32B swaps to
+native int32). The facade walks both formats itself (no new exports)
+and feeds the payloads through the existing FromBytes raw seam and
+the native JPEG route. The facade open-3 target passes `1/1` in
+`32ms`; the full directory suite passes `2827/2827` in `21750ms`
+with zero failures, errors, or skips. Facade-only change:
+source/DLL export parity remains `492/492` and the DLL SHA-256
+remains
+`24D6E15F69678B8EB2E40798F7D0754634A0A7413DA44A9A4320B878B40408BF`.
+The next bounded child is the remaining pure-Python open families
+(FLI/MIC/PCD/PSD).
 
 2026-08-14: `BEHAV-OPEN-002` is GREEN as the FTEX/SUN/GBR/FITS/XPM
 openers. The Pillow 11.3.0 oracle (`oracle/probe_open_mid.py`/
