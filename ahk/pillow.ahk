@@ -7933,6 +7933,17 @@ class Pillow {
                     }
                     if lastStatus = -3
                         throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "MPEG" {
+                    ; BEHAV-OPEN-008: MpegImageFile parses the
+                    ; 0x000001B3 sequence-header bits into an RGB
+                    ; (w,h) image with no tile, so Pillow's load
+                    ; raises "cannot load this image" — the eager
+                    ; facade surfaces that at Open. Bad magic and
+                    ; short streams collapse to the identification
+                    ; error; n_frames/is_animated are not exposed.
+                    if !Pillow.Image.MpegAccepts(path)
+                        throw Error("cannot identify image file <" path ">", -1)
+                    throw Error("cannot load this image", -1)
                 } else if format = "HDF5" || format = "BUFR" || format = "GRIB" {
                     ; BEHAV-OPEN-001: the HDF5/BUFR/GRIB stub plugins
                     ; accept the magic and open an F(1,1) image whose
@@ -9336,6 +9347,27 @@ class Pillow {
             return Max(header["NFrames"], 1)
         }
 
+        static MpegAccepts(path) {
+            ; BEHAV-OPEN-008: the 0x000001B3 sequence header plus the
+            ; 12+12 size bits (7 bytes total) — shorter streams raise
+            ; the identification error through the i8 IndexError wrap.
+            file := FileOpen(path, "r")
+            if !file
+                return false
+            try {
+                if file.Length < 7
+                    return false
+                head := Buffer(7, 0)
+                file.RawRead(head, 7)
+                return NumGet(head, 0, "UChar") = 0x00
+                    && NumGet(head, 1, "UChar") = 0x00
+                    && NumGet(head, 2, "UChar") = 0x01
+                    && NumGet(head, 3, "UChar") = 0xB3
+            } finally {
+                file.Close()
+            }
+        }
+
         static FitsRowBytes(path) {
             ; BEHAV-OPEN-002: NAXIS1 * bytes-per-sample plus the data
             ; offset for the truncation row-modulo count.
@@ -10251,6 +10283,8 @@ class Pillow {
                 return "MIC"
             if RegExMatch(path, "i)\.pcd$")
                 return "PCD"
+            if RegExMatch(path, "i)\.(mpg|mpeg)$")
+                return "MPEG"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -10280,7 +10314,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "FLI" || name = "MIC" || name = "PCD" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "FLI" || name = "MIC" || name = "PCD" || name = "MPEG" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -10318,6 +10352,7 @@ class Pillow {
                 "FLI", "Autodesk FLI/FLC Animation",
                 "MIC", "Microsoft Image Composer",
                 "PCD", "Kodak PhotoCD",
+                "MPEG", "MPEG",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -12221,10 +12256,10 @@ class Pillow {
                 ; OSError before writing anything.
                 throw Error(resolvedFormat " save handler not installed", -1)
             }
-            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" || resolvedFormat = "IPTC" || resolvedFormat = "MCIDAS" || resolvedFormat = "PSD" || resolvedFormat = "FLI" || resolvedFormat = "MIC" || resolvedFormat = "PCD" {
-                ; BEHAV-OPEN-001/002/003/004/005/006/007: these plugins register no
-                ; save handler at all — Pillow raises KeyError with the
-                ; bare name.
+            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" || resolvedFormat = "IPTC" || resolvedFormat = "MCIDAS" || resolvedFormat = "PSD" || resolvedFormat = "FLI" || resolvedFormat = "MIC" || resolvedFormat = "PCD" || resolvedFormat = "MPEG" {
+                ; BEHAV-OPEN-001/002/003/004/005/006/007/008: these plugins
+                ; register no save handler at all — Pillow raises
+                ; KeyError with the bare name.
                 throw Error("'" resolvedFormat "'", -1)
             }
             if resolvedFormat = "PDF" {

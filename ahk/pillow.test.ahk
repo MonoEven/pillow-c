@@ -21933,9 +21933,10 @@ PillowTestUnrecordedFormatBoundaries(*) {
         ; handlers and the IMT non-registration left this list in
         ; BEHAV-OPEN-001 (Pillow's exact KeyError/save-handler errors).
         ; MIC left this list in BEHAV-OPEN-006 (the OLE container opener
-        ; with Pillow's exact errors and the 'MIC' KeyError save string)
-        ; and PCD in BEHAV-OPEN-007.
-        for format in ["WMF", "FPX", "MPEG"] {
+        ; with Pillow's exact errors and the 'MIC' KeyError save string),
+        ; PCD in BEHAV-OPEN-007, and MPEG in BEHAV-OPEN-008 (the header
+        ; parse plus the exact cannot-load error).
+        for format in ["WMF", "FPX"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -26231,6 +26232,48 @@ PillowTestOpenPcd(*) {
 }
 
 AhkTest.Test("Pillow PCD opener matches Pillow 11.3.0 YCC decode, orientation quirk, and errors", PillowTestOpenPcd)
+
+PillowTestOpenMpeg(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    mpegPath := A_Temp "\open-8.mpg"
+    savePath := A_Temp "\open-8-save.bin"
+    try {
+        ; a sequence header: 0x000001B3 + 12-bit 352 + 12-bit 288
+        header := Buffer(8, 0)
+        NumPut("UChar", 0x00, header, 0)
+        NumPut("UChar", 0x00, header, 1)
+        NumPut("UChar", 0x01, header, 2)
+        NumPut("UChar", 0xB3, header, 3)
+        NumPut("UChar", (352 >> 4) & 0xFF, header, 4)
+        NumPut("UChar", ((352 & 0x0F) << 4) | ((288 >> 8) & 0x0F), header, 5)
+        NumPut("UChar", 288 & 0xFF, header, 6)
+        NumPut("UChar", 0x10, header, 7)
+        PillowTestWriteFileBuffer(mpegPath, header)
+        AhkTest.AssertEqual("cannot load this image", PillowTestFormatCaptureError(() => Pillow.Image.Open(mpegPath)))
+
+        ; errors
+        PillowTestWriteFileBuffer(mpegPath, Buffer(8, 0))
+        AhkTest.AssertEqual("cannot identify image file <" mpegPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(mpegPath)))
+        PillowTestWriteFileBuffer(mpegPath, PillowTestFliSlice(header, 4))
+        AhkTest.AssertEqual("cannot identify image file <" mpegPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(mpegPath)))
+        PillowTestWriteFileBuffer(mpegPath, PillowTestFliSlice(header, 6))
+        AhkTest.AssertEqual("cannot identify image file <" mpegPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(mpegPath)))
+
+        ; save raises the exact KeyError
+        saveImage := Pillow.Image.New("L", [2, 2], 7)
+        try {
+            PillowTestAssertSaveKeyError(saveImage, savePath, "MPEG")
+        } finally {
+            saveImage.Close()
+        }
+        AhkTest.AssertEqual("MPEG", Pillow.Image.FormatDescription("MPEG"))
+    } finally {
+        PillowTestDeleteFile(mpegPath)
+        PillowTestDeleteFile(savePath)
+    }
+}
+
+AhkTest.Test("Pillow MPEG opener matches Pillow 11.3.0 header parse and cannot-load error", PillowTestOpenMpeg)
 
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

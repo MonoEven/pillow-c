@@ -248,10 +248,19 @@ local status `-53`; truncated data uses local status `-54` and the
 facade derives Pillow's `(fileLen - 196608) mod 2304` bytes-not-
 processed count from the file. Save raises the `'PCD'` KeyError.
 
+`BEHAV-OPEN-008` is facade-only and changes NO ABI: the MPEG open
+error match (the `00 00 01 B3` sequence-header parse into an RGB
+(w,h) image with the exact `cannot load this image` load error, the
+identification collapses, and the `'MPEG'` KeyError save string)
+runs in the facade; the extension-string save shape
+(`KeyError: 'X.MPEG'`) stays a documented general-save-dispatch
+edge.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`497/497`; the full AHK suite is `2831/2831`; and the current DLL SHA-256 is
+`497/497`; the full AHK suite is `2832/2832`; and the current DLL SHA-256 is
 `635866E602CD558D9FE984347C0F25ED82AADED7C860CCE5D6FD64FB5E5141E0`
-(BEHAV-OPEN-007 adds the `pillow_c_image_open_pcd` export below;
+(BEHAV-OPEN-008 changes no ABI;
+BEHAV-OPEN-007 adds the `pillow_c_image_open_pcd` export below;
 BEHAV-OPEN-006 adds the `pillow_c_image_open_mic` export below;
 BEHAV-OPEN-005 adds the `pillow_c_image_open_fli` and
 `pillow_c_image_fli_truncation_count` exports below;

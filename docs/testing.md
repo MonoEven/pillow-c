@@ -47,8 +47,21 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2831` AHK tests: `1391` raw DLL tests and
-`1440` facade tests.
+This suite currently registers `2832` AHK tests: `1391` raw DLL tests and
+`1441` facade tests.
+
+Latest `BEHAV-OPEN-008` verification: the Pillow 11.3.0 oracle
+(`oracle/probe_open_8.py`/`probe_open_8.json`) pins the MPEG open
+error match (the `00 00 01 B3` sequence header, the contiguous
+12+12 size bits, the tileless RGB image whose load raises
+`cannot load this image`, the identification collapses for bad
+magic and short streams, and the `'MPEG'` KeyError save). The
+facade MPEG target passes `1/1` in `0ms`; the full directory suite
+passes `2832/2832` in `22219ms` with zero failures, errors, or
+skips. Facade-only change: source/DLL export parity remains
+`497/497` and the DLL SHA-256 remains
+`635866E602CD558D9FE984347C0F25ED82AADED7C860CCE5D6FD64FB5E5141E0`.
+The wave continues with the WMF GDI open next.
 
 Latest `BEHAV-OPEN-007` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_7.py`/`probe_open_7.json` with the ctypes
@@ -66,7 +79,8 @@ export parity moves to `497/497` (one deliberate new export) with
 zero difference; and the rebuilt DLL SHA-256 is
 `635866E602CD558D9FE984347C0F25ED82AADED7C860CCE5D6FD64FB5E5141E0`.
 The pure-Python open families are now complete; the wave continues
-with the MPEG error match and the WMF GDI open next.
+with the MPEG error match and the WMF GDI open next — the MPEG
+match is now DONE with BEHAV-OPEN-008.
 
 Latest `BEHAV-OPEN-006` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_6.py`/`probe_open_6.json` with the hand-crafted

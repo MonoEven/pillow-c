@@ -35,9 +35,10 @@ no longer claimed. The honest split:
   matchable remainder is bounded
   (0 saves left; 0 pure-Python
   opens left — every remaining open family is either implemented,
-  unmatchable, or an exact-error match; the
-  MPEG header-then-cannot-load error match and the WMF GDI open
-  are the remaining open-side rows);
+  unmatchable, or an exact-error match; the MPEG
+  header-parse-then-cannot-load error match is DONE
+  (BEHAV-OPEN-008) and the WMF GDI open
+  is the remaining open-side row);
   PDF open is unregistered in 11.3.0 -> identification error (DONE
   with BEHAV-PDF-001); HDF5/BUFR/GRIB stub opens are DONE
   (BEHAV-OPEN-001: F(1,1) open shape plus the exact load/save
@@ -73,11 +74,12 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-OPEN-007 (PCD opener: the PhotoYCC
-base-image decode with the UnpackYCC lookup tables, byte-identical
-to Pillow's md5, the orientation 1/3 ImagingCore-rotate
-AttributeError quirk, and the mod-2304 truncation count)
-after BEHAV-OPEN-006/
+Latest covered gap tail: BEHAV-OPEN-008 (MPEG open: the
+0x000001B3 sequence-header parse with the exact
+`cannot load this image` error, the identification collapses, and
+the 'MPEG' KeyError save)
+after BEHAV-OPEN-007/
+BEHAV-OPEN-006/
 BEHAV-OPEN-005/
 BEHAV-OPEN-004/
 BEHAV-OPEN-003/
@@ -87,9 +89,8 @@ BEHAV-PDF-001/
 BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
-the pure-Python open families are now COMPLETE; the next bounded
-children are the MPEG
-error match and WMF open, then
+the pure-Python open families and the MPEG error match are now
+COMPLETE; the next bounded child is the WMF GDI open, then
 the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
 follow as their own packets.
@@ -541,6 +542,26 @@ errors, or skips. Facade-only change: source/DLL export parity
 remains `482/482` and the DLL SHA-256 remains
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
 The next bounded child is `BEHAV-PDF-001`, the PDF format.
+
+2026-08-14: `BEHAV-OPEN-008` is GREEN as the MPEG open error match
+(facade-only). The Pillow 11.3.0 oracle (`oracle/probe_open_8.py`/
+`probe_open_8.json`) pins MpegImageFile: the `00 00 01 B3` sequence
+header accept, the BitStream 32-bit start-code read plus the
+contiguous 12+12 size bits into an RGB (w,h) image, NO tile — so
+`load()` raises `OSError: cannot load this image` (the eager facade
+surfaces it at Open) — n_frames/is_animated are not exposed, bad
+magic and short streams (the i8 IndexError wrap) collapse to the
+identification error, and save raises the exact `'MPEG'` KeyError
+(the extension-string save shape `KeyError: 'X.MPEG'` stays a
+documented general-save-dispatch edge). The facade routes
+`.mpg`/`.mpeg`, parses the header itself (`MpegAccepts`), and
+throws the exact messages; the facade MPEG target passes `1/1` in
+`0ms`; the full directory suite passes `2832/2832` in `22219ms`
+with zero failures, errors, or skips. Facade-only change:
+source/DLL export parity remains
+`497/497` and the DLL SHA-256 remains
+`635866E602CD558D9FE984347C0F25ED82AADED7C860CCE5D6FD64FB5E5141E0`.
+The next bounded child is the WMF GDI open.
 
 2026-08-14: `BEHAV-OPEN-007` is GREEN as the PCD (Kodak PhotoCD)
 opener. The Pillow 11.3.0 oracle (`oracle/probe_open_7.py`/

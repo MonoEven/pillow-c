@@ -1,0 +1,45 @@
+{
+ "mpeg_open": {
+  "ok": [
+   "MPEG",
+   "RGB",
+   [
+    352,
+    288
+   ],
+   null,
+   null
+  ]
+ },
+ "mpeg_open2": {
+  "ok": [
+   "MPEG",
+   "RGB",
+   [
+    2748,
+    291
+   ],
+   null,
+   null
+  ]
+ },
+ "mpeg_load": {
+  "err": "OSError: cannot load this image"
+ },
+ "mpeg_bad_magic": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x000001EA0924E6B0>"
+ },
+ "mpeg_truncated": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x000001EA0924E6B0>"
+ },
+ "mpeg_truncated2": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x000001EA0924E6B0>"
+ },
+ "mpeg_save": {
+  "err": "KeyError: 'MPEG'"
+ },
+ "mpeg_save_mpeg_ext": {
+  "err": "KeyError: 'X.MPEG'"
+ },
+ "mpeg_description": "MPEG"
+}
