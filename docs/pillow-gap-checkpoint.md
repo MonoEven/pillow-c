@@ -84,7 +84,12 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-CMSDISP-001 (the ImageCms display
+Latest covered gap tail: BEHAV-MODSURF-001 (the ImageDraw module
+surface: getdraw/ImageDraw2, ImageStat.Global, the ImageFilter base
+classes + exact validation messages, and ImageMath
+lambda_eval/imagemath_*)
+after BEHAV-DRAWTEXT-001 (the ImageDraw text option surface)
+after BEHAV-CMSDISP-001 (the ImageCms display
 surface: the exact lcms Direction/Flags/Intent enums, PyCMSError,
 versions, buildProofTransformFromOpenProfiles, and the native
 get_display_profile GDI/ICM load)
@@ -470,14 +475,11 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-DRAW-TEXT-001` (draw text/multiline_text
-  spacing/align/embedded_color/font_size plus the RAQM KeyError
-  direction/features/language shapes, ImageDraw.getdraw,
-  ImageMath.lambda_eval/imagemath_*, ImageStat.Global, the ImageFilter
-  base classes, and the exact filter-validation messages), then
-  `API-OPENINFO-001` (open-side JPEG quantization/progressive/adobe,
-  GIF version/extension, TIFF compression, TGA compression/orientation)
-  and the `API-FONTVAR-002` FreeType-dependent variable-font boundary.
+- Selected next gap: `API-OPENINFO-001` (open-side JPEG
+  quantization/progressive/adobe, GIF version/extension, TIFF
+  compression, TGA compression/orientation), then the
+  `API-FONTVAR-002` FreeType-dependent variable-font boundary and
+  the `API-DRAWFONT-001`/`API-FONTANCHOR-001` native follow-ups.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19720,6 +19722,53 @@ default-font-only seam (new ledger row API-DRAWFONT-001). The
 API-DRAW-TEXT-001 module half (getdraw/ImageDraw2, ImageStat.Global,
 the ImageFilter base classes + validation messages, and ImageMath
 lambda_eval/imagemath_*) stays the next packet.
+```
+
+2026-08-15: `BEHAV-MODSURF-001` is GREEN as the ImageDraw module
+surface wave (the API-DRAW-TEXT-001 module half). The Pillow 11.3.0
+oracle (fresh pins plus the ImageDraw2/ImageStat/ImageFilter/
+ImageMath sources) pins: `ImageDraw.getdraw(im, hints)` returns
+`(ImageDraw2.Draw(im) or 0, ImageDraw2)` with the full WCK pendulum
+interface — `Pen`/`Brush`/`Font` with ImageColor.getrgb colors (the
+exact `'tuple' object has no attribute 'lower'` AttributeError),
+Draw2 rectangle/line/arc/chord/ellipse/pieslice/polygon/text/
+textbbox/textlength/flush, the `(1, 0, xoffset, 0, 1, yoffset)`
+settransform affine through ImagePath, and the mode-string
+constructor with the exact `If image argument is mode string, size
+must be a list or tuple` error. `ImageStat.Global` is the Stat alias
+(the facade exposes it as a static constructor method — AHK property
+calls cannot forward construction arguments). The `ImageFilter` base
+surface is complete: `Filter`/`MultibandFilter` raise the exact
+abstract-class TypeErrors, `BuiltinFilter` is concrete with the
+`'BuiltinFilter' object has no attribute 'name'/'filterargs'`
+AttributeErrors (concrete class name via `__Class`), `Kernel`
+extends BuiltinFilter with the exact `filterargs`/`name`, the
+MinFilter/MedianFilter/MaxFilter RankFilter subclasses, the
+`RankFilter.__init__() missing 1 required positional argument:
+'rank'` TypeError, Pillow's exact string/float TypeErrors
+(`'int' object is not subscriptable`, `can't multiply sequence by
+non-int of type 'str'`, `unsupported operand type(s) for //: 'str'
+and 'int'`, `'float' object cannot be interpreted as an integer`),
+the `cannot filter palette images` rejections, the `(0, 0)` copy
+short-circuits, the P/1 `image has wrong mode` blur rejections, the
+C parse errors (`argument 1 must be sequence of length 2, not N`,
+`must be real number, not str`, `'<' not supported between instances
+of 'str' and 'int'`), and `Image.filter(Class)` instantiates the
+class (`BoxBlur.__init__() missing 1 required positional argument:
+'radius'`). `ImageMath.lambda_eval` calls the AHK Func with Pillow's
+ops dict (int/float/equal/notequal/min/max/convert) plus the
+documented AHK arithmetic extension (add/sub/mul/div/mod/neg — this
+AHK build does not dispatch operator meta-functions) and the
+imagemath_* module functions build/evaluate expressions through the
+existing Eval compiler (which now accepts plain grouping
+parentheses; the RPN seam's convert-to-L reports mode I — a recorded
+micro-divergence). All pure facade changes; no native code changed.
+The facade target passes `1/1` in `15ms`; the full directory suite
+passes `2852/2852` in `23140ms` with zero failures, errors, or
+skips. Export parity stays `514/514` and the DLL SHA-256 stays
+`5787FE4F5D322204C0845136B13FD7B09326C78230A7DDF68E4BF42EB6B3CABF`.
+API-DRAW-TEXT-001 is now DONE; API-OPENINFO-001 stays the next
+packet, then the API-FONTVAR-002 FreeType-dependent boundary.
 ```
 
 If any line above is no longer true, update this file first, then update

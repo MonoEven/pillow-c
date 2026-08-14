@@ -7288,3 +7288,22 @@ the truetype-font draw seam (API-DRAWFONT-001) are recorded as
 follow-ups. No native code changed: export parity stays `514/514`
 and the DLL SHA-256 stays
 `5787FE4F5D322204C0845136B13FD7B09326C78230A7DDF68E4BF42EB6B3CABF`.
+
+2026-08-15 BEHAV-MODSURF-001 verification: the facade
+`Pillow ImageDraw module surface matches Pillow 11.3.0` target
+passes `1/1` in `15ms`; the full directory suite passes `2852/2852`
+in `23140ms` with zero failures, errors, or skips. The oracle pins
+cover the getdraw/ImageDraw2 pendulum surface (Pen/Brush/Font
+getrgb colors, the rectangle/line ops with pixel checks, the
+settransform affine, the mode-string constructor, and the exact
+errors), ImageStat.Global's full stat surface, the ImageFilter base
+classes and inheritance (`is` checks), the exact abstract-class/
+AttributeError/missing-argument/string-float/C-parse filter
+messages, the palette rejections and `(0,0)` copy paths, and
+ImageMath lambda_eval (scalar/add/float/convert/equal results, the
+ops dictionary keys, and the imagemath_* expression builders)
+against local Pillow 11.3.0. The AHK operator-dispatch limitation
+(the ops-dict arithmetic extension) and the RPN convert-to-L mode
+are recorded. No native code changed: export parity stays `514/514`
+and the DLL SHA-256 stays
+`5787FE4F5D322204C0845136B13FD7B09326C78230A7DDF68E4BF42EB6B3CABF`.

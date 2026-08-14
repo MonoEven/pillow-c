@@ -224,10 +224,12 @@ class Pillow {
                     if ops.Length = 0 || ops[ops.Length].Kind != "Open"
                         throw Error("unbalanced parentheses", -1)
                     ops.Pop()
-                    if ops.Length = 0 || ops[ops.Length].Kind != "Function"
-                        throw Error("unbalanced parentheses", -1)
-                    last := ops.Pop()
-                    Pillow.ImageMath.EmitCall(last.Name, output)
+                    ; a Function right below the "(" is a call; otherwise
+                    ; the parentheses are plain grouping.
+                    if ops.Length > 0 && ops[ops.Length].Kind = "Function" {
+                        last := ops.Pop()
+                        Pillow.ImageMath.EmitCall(last.Name, output)
+                    }
                     continue
                 }
                 if token.Kind = "Comma" {
@@ -511,6 +513,243 @@ class Pillow {
                 case 22: return { IsFloat: false, Value: Max(a, b) }
             }
             return { IsFloat: false, Value: 0 }
+        }
+
+        ; API-DRAW-TEXT-001 (module half): Pillow's ImageMath.lambda_eval and
+        ; the imagemath_* helpers. Operands build expression strings that the
+        ; existing Eval compiler evaluates; lambda_eval calls the AHK Func
+        ; with the ops dictionary (int/float/equal/notequal/min/max/convert)
+        ; plus the keyword images as Operands, exactly like Pillow.
+        class Operand {
+            __New(expr, variables := unset) {
+                this.Expr := expr
+                this.Variables := IsSet(variables) ? variables : Map()
+            }
+
+            ; AHK 2.1-alpha.30 does not dispatch operator meta-functions, so
+            ; Pillow's _Operand operator surface is exposed as methods (the
+            ; documented AHK adaptation); lambda_eval also receives them as
+            ; the add/sub/mul/div/mod/neg functions.
+            Add(other) {
+                return Pillow.ImageMath.OperandBinary(this, "+", other)
+            }
+            Sub(other) {
+                return Pillow.ImageMath.OperandBinary(this, "-", other)
+            }
+            Mul(other) {
+                return Pillow.ImageMath.OperandBinary(this, "*", other)
+            }
+            Div(other) {
+                return Pillow.ImageMath.OperandBinary(this, "/", other)
+            }
+            Mod(other) {
+                return Pillow.ImageMath.OperandBinary(this, "%", other)
+            }
+            LShift(other) {
+                return Pillow.ImageMath.OperandBinary(this, "<<", other)
+            }
+            RShift(other) {
+                return Pillow.ImageMath.OperandBinary(this, ">>", other)
+            }
+            BitAnd(other) {
+                return Pillow.ImageMath.OperandBinary(this, "&", other)
+            }
+            BitOr(other) {
+                return Pillow.ImageMath.OperandBinary(this, "|", other)
+            }
+            BitXor(other) {
+                return Pillow.ImageMath.OperandBinary(this, "^", other)
+            }
+            Neg() {
+                return Pillow.ImageMath.OperandUnary(this, "-")
+            }
+            BitNot() {
+                return Pillow.ImageMath.OperandUnary(this, "~")
+            }
+        }
+
+        static OperandScalar(value) {
+            if IsObject(value) && value is Pillow.ImageMath.Operand
+                return value
+            if value is Number
+                return Pillow.ImageMath.Operand(String(value))
+            throw Error("Pillow.ImageMath operand must be numeric or an Operand", -1)
+        }
+
+        static OperandBinary(left, op, right) {
+            l := Pillow.ImageMath.OperandScalar(left)
+            r := Pillow.ImageMath.OperandScalar(right)
+            variables := Map()
+            for name, value in l.Variables
+                variables[name] := value
+            for name, value in r.Variables
+                variables[name] := value
+            return Pillow.ImageMath.Operand("(" l.Expr " " op " " r.Expr ")", variables)
+        }
+
+        static OperandUnary(value, op) {
+            v := Pillow.ImageMath.OperandScalar(value)
+            return Pillow.ImageMath.Operand("(" op " " v.Expr ")", v.Variables)
+        }
+
+        static OperandFunction(name, args*) {
+            ; builds name(arg1, arg2, ...) over operand expressions with the
+            ; merged variable tables.
+            variables := Map()
+            parts := []
+            for index, arg in args {
+                v := Pillow.ImageMath.OperandScalar(arg)
+                for varName, value in v.Variables
+                    variables[varName] := value
+                parts.Push(v.Expr)
+            }
+            joined := ""
+            for index, part in parts
+                joined .= (index = 1 ? "" : ", ") part
+            return Pillow.ImageMath.Operand(name "(" joined ")", variables)
+        }
+
+        static ImagemathInt(self) {
+            return Pillow.ImageMath.OperandFunction("int", self)
+        }
+
+        static imagemath_int(self) {
+            return Pillow.ImageMath.ImagemathInt(self)
+        }
+
+        static ImagemathFloat(self) {
+            return Pillow.ImageMath.OperandFunction("float", self)
+        }
+
+        static imagemath_float(self) {
+            return Pillow.ImageMath.ImagemathFloat(self)
+        }
+
+        static ImagemathEqual(self, other) {
+            return Pillow.ImageMath.OperandBinary(self, "==", other)
+        }
+
+        static imagemath_equal(self, other) {
+            return Pillow.ImageMath.ImagemathEqual(self, other)
+        }
+
+        static ImagemathNotequal(self, other) {
+            return Pillow.ImageMath.OperandBinary(self, "!=", other)
+        }
+
+        static imagemath_notequal(self, other) {
+            return Pillow.ImageMath.ImagemathNotequal(self, other)
+        }
+
+        static ImagemathMin(self, other) {
+            return Pillow.ImageMath.OperandFunction("min", self, other)
+        }
+
+        static imagemath_min(self, other) {
+            return Pillow.ImageMath.ImagemathMin(self, other)
+        }
+
+        static ImagemathMax(self, other) {
+            return Pillow.ImageMath.OperandFunction("max", self, other)
+        }
+
+        static imagemath_max(self, other) {
+            return Pillow.ImageMath.ImagemathMax(self, other)
+        }
+
+        static ImagemathConvert(self, mode) {
+            if !(mode is String)
+                throw Error("Pillow.ImageMath.imagemath_convert mode expects a string", -1)
+            ; the RPN seam's convert opcode clamps L values but reports the
+            ; result as mode I (the recorded RPN-seam mode divergence for L).
+            operand := Pillow.ImageMath.OperandScalar(self)
+            return Pillow.ImageMath.Operand("convert(" operand.Expr ", '" mode "')", operand.Variables)
+        }
+
+        static imagemath_convert(self, mode) {
+            return Pillow.ImageMath.ImagemathConvert(self, mode)
+        }
+
+        static OperandOps() {
+            ops := Map()
+            ops["int"] := (self) => Pillow.ImageMath.ImagemathInt(self)
+            ops["float"] := (self) => Pillow.ImageMath.ImagemathFloat(self)
+            ops["equal"] := (self, other) => Pillow.ImageMath.ImagemathEqual(self, other)
+            ops["notequal"] := (self, other) => Pillow.ImageMath.ImagemathNotequal(self, other)
+            ops["min"] := (self, other) => Pillow.ImageMath.ImagemathMin(self, other)
+            ops["max"] := (self, other) => Pillow.ImageMath.ImagemathMax(self, other)
+            ops["convert"] := (self, mode) => Pillow.ImageMath.ImagemathConvert(self, mode)
+            ; the AHK adaptation of Pillow's _Operand operator surface (this
+            ; AHK build does not dispatch operator meta-functions).
+            ops["add"] := (self, other) => Pillow.ImageMath.OperandBinary(self, "+", other)
+            ops["sub"] := (self, other) => Pillow.ImageMath.OperandBinary(self, "-", other)
+            ops["mul"] := (self, other) => Pillow.ImageMath.OperandBinary(self, "*", other)
+            ops["div"] := (self, other) => Pillow.ImageMath.OperandBinary(self, "/", other)
+            ops["mod"] := (self, other) => Pillow.ImageMath.OperandBinary(self, "%", other)
+            ops["neg"] := (self) => Pillow.ImageMath.OperandUnary(self, "-")
+            return ops
+        }
+
+        static LambdaEval(expression, options := unset, kwargs*) {
+            ; Pillow's lambda_eval: args = ops + options + kwargs; images
+            ; become _Operands; the expression result's .im becomes the
+            ; return value (or the raw value for scalars).
+            if !(IsObject(expression) && HasMethod(expression, "Call"))
+                throw Error("Pillow.ImageMath.lambda_eval expects a callable expression", -1)
+            args := Pillow.ImageMath.OperandOps()
+            if IsSet(options) {
+                if !(options is Map)
+                    throw Error("Pillow.ImageMath.lambda_eval options must be a Map", -1)
+                for name, value in options {
+                    args[name] := IsObject(value) && value is Pillow.Image
+                        ? Pillow.ImageMath.Operand(name, Map(name, value))
+                        : value
+                }
+            }
+            for index, entry in kwargs {
+                if IsObject(entry) && entry is Array && entry.Length = 2 && entry[1] is String {
+                    name := entry[1]
+                    value := entry[2]
+                    args[name] := IsObject(value) && value is Pillow.Image
+                        ? Pillow.ImageMath.Operand(name, Map(name, value))
+                        : value
+                }
+            }
+            ; AHK callers pass Pillow's keyword arguments as flat
+            ; name, value pairs in the variadic tail.
+            loop kwargs.Length // 2 {
+                name := kwargs[A_Index * 2 - 1]
+                value := kwargs[A_Index * 2]
+                if name is String
+                    args[name] := IsObject(value) && value is Pillow.Image
+                        ? Pillow.ImageMath.Operand(name, Map(name, value))
+                        : value
+            }
+            result := expression.Call(args)
+            if IsObject(result) && result is Pillow.ImageMath.Operand
+                return Pillow.ImageMath.Eval(result.Expr, result.Variables)
+            return result
+        }
+
+        static lambda_eval(expression, options := unset, kwargs*) {
+            return Pillow.ImageMath.LambdaEval(expression, IsSet(options) ? options : unset, kwargs*)
+        }
+
+        static SortedKeys(map) {
+            keys := []
+            for key, value in map
+                keys.Push(key)
+            loop keys.Length - 1 {
+                index := A_Index + 1
+                current := keys[index]
+                position := index - 1
+                while position >= 1 && StrCompare(keys[position], current) > 0 {
+                    keys[position + 1] := keys[position]
+                    position--
+                }
+                keys[position + 1] := current
+            }
+            return keys
         }
     }
     class ImageQt {
@@ -2543,12 +2782,103 @@ class Pillow {
     }
 
     class ImageFilter {
-        class Kernel {
-            __New(size, kernel, scale := unset, offset := 0) {
-                if !IsObject(size) || size.Length != 2
-                    throw Error("Pillow.ImageFilter.Kernel expects size [width, height]", -1)
-                if !(size[1] is Integer) || !(size[2] is Integer)
+        ; API-DRAW-TEXT-001 (module half): Pillow's base-class surface.
+        ; Filter and MultibandFilter are abstract (Pillow raises TypeError
+        ; on instantiation); BuiltinFilter is concrete but has no
+        ; filterargs, so its .filter() raises the AttributeError.
+        class Filter {
+            __New() {
+                throw Error("Can't instantiate abstract class Filter with abstract method filter", -1)
+            }
+
+            static TypeName => "Filter"
+        }
+
+        class MultibandFilter extends Pillow.ImageFilter.Filter {
+            __New() {
+                throw Error("Can't instantiate abstract class MultibandFilter with abstract method filter", -1)
+            }
+
+            static TypeName => "MultibandFilter"
+        }
+
+        class BuiltinFilter extends Pillow.ImageFilter.MultibandFilter {
+            __New() {
+                ; Pillow's BuiltinFilter is concrete: its filter() reads
+                ; self.filterargs, which the bare class lacks.
+            }
+
+            static TypeName => "BuiltinFilter"
+
+            Apply(image) {
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("Pillow.ImageFilter.BuiltinFilter expects a Pillow.Image", -1)
+                if image.Mode = "P"
+                    throw Error("cannot filter palette images", -1)
+                args := this.Filterargs
+                return Pillow.ImageFilter.ApplyKernelArgs(image, args)
+            }
+
+            __Get(name, params) {
+                ; Pillow's AttributeError names the concrete class and the
+                ; lowercase attribute; derive the short class name from
+                ; __Class (safe: base props bypass __Get).
+                className := this.__Class
+                short := SubStr(className, InStr(className, ".", false, -1) + 1)
+                throw Error("'" short "' object has no attribute '" StrLower(name) "'", -1)
+            }
+        }
+
+        static ApplyKernelArgs(image, args) {
+            ; args = (size, scale, offset, kernel) like Pillow's filterargs.
+            size := args[1]
+            scale := args[2]
+            offset := args[3]
+            kernel := args[4]
+            kernelBuffer := Buffer(kernel.Length * 8, 0)
+            for index, value in kernel {
+                if !(value is Number)
+                    throw Error("Pillow.ImageFilter.Kernel coefficients must be numeric", -1)
+                NumPut("Double", value, kernelBuffer, (index - 1) * 8)
+            }
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_filter_kernel",
+                "Ptr", image.RequireHandle(),
+                "Int", size[1],
+                "Int", size[2],
+                "Ptr", kernelBuffer,
+                "UPtr", kernel.Length,
+                "Double", scale,
+                "Double", offset,
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return Pillow.WrapImageHandle(outHandle)
+        }
+
+        class Kernel extends Pillow.ImageFilter.BuiltinFilter {
+            static TypeName => "Kernel"
+
+            __New(size := unset, kernel := unset, scale := unset, offset := 0) {
+                if !IsSet(size) && !IsSet(kernel)
+                    throw Error("Kernel.__init__() missing 2 required positional arguments: 'size' and 'kernel'", -1)
+                if !IsSet(size)
+                    throw Error("Kernel.__init__() missing 1 required positional argument: 'size'", -1)
+                if !IsSet(kernel)
+                    throw Error("Kernel.__init__() missing 1 required positional argument: 'kernel'", -1)
+                if !IsObject(size) {
+                    if size is String
+                        throw Error("can't multiply sequence by non-int of type 'str'", -1)
+                    throw Error("'int' object is not subscriptable", -1)
+                }
+                if size.Length != 2
+                    throw Error("'int' object is not subscriptable", -1)
+                if !(size[1] is Integer) || !(size[2] is Integer) {
+                    if size[1] is String || size[2] is String
+                        throw Error("can't multiply sequence by non-int of type 'str'", -1)
                     throw Error("Pillow.ImageFilter.Kernel size values must be integers", -1)
+                }
                 if !IsObject(kernel)
                     throw Error("Pillow.ImageFilter.Kernel expects an array of coefficients", -1)
                 expected := size[1] * size[2]
@@ -2557,6 +2887,7 @@ class Pillow {
                 if !(offset is Number)
                     throw Error("Pillow.ImageFilter.Kernel offset must be numeric", -1)
 
+                this.Name := "Kernel"
                 this.Size := [size[1], size[2]]
                 this.Kernel := kernel.Clone()
                 if IsSet(scale) {
@@ -2569,51 +2900,42 @@ class Pillow {
                 this.Offset := offset
             }
 
+            Filterargs {
+                get => [this.Size, this.Scale, this.Offset, this.Kernel]
+            }
+
             Apply(image) {
                 if !(IsObject(image) && image is Pillow.Image)
                     throw Error("Pillow.ImageFilter.Kernel expects a Pillow.Image", -1)
                 if !((this.Size[1] = 3 && this.Size[2] = 3) || (this.Size[1] = 5 && this.Size[2] = 5))
                     throw Error("bad kernel size", -1)
+                if image.Mode = "P"
+                    throw Error("cannot filter palette images", -1)
                 if image.Mode = "F"
                     throw Error("image has wrong mode", -1)
-
-                kernelBuffer := Buffer(this.Kernel.Length * 8, 0)
-                for index, value in this.Kernel {
-                    if !(value is Number)
-                        throw Error("Pillow.ImageFilter.Kernel coefficients must be numeric", -1)
-                    NumPut("Double", value, kernelBuffer, (index - 1) * 8)
-                }
-
-                outHandle := 0
-                Pillow.CheckStatus(DllCall(
-                    Pillow.RequireDllPath() "\pillow_c_image_filter_kernel",
-                    "Ptr", image.RequireHandle(),
-                    "Int", this.Size[1],
-                    "Int", this.Size[2],
-                    "Ptr", kernelBuffer,
-                    "UPtr", this.Kernel.Length,
-                    "Double", this.Scale,
-                    "Double", this.Offset,
-                    "Ptr*", &outHandle,
-                    "Int"
-                ))
-                return Pillow.WrapImageHandle(outHandle)
+                return Pillow.ImageFilter.ApplyKernelArgs(image, this.Filterargs)
             }
         }
 
         class BuiltinKernel extends Pillow.ImageFilter.Kernel {
             __New(name, size, scale, offset, kernel) {
-                this.Name := name
                 super.__New(size, kernel, scale, offset)
+                this.Name := name
             }
         }
 
-        class RankFilter {
-            __New(size, rank, name := "Rank") {
-                if !(size is Integer)
-                    throw Error("Pillow.ImageFilter.RankFilter size must be an integer", -1)
-                if !(rank is Integer)
-                    throw Error("Pillow.ImageFilter.RankFilter rank must be an integer", -1)
+        class RankFilter extends Pillow.ImageFilter.Filter {
+            static TypeName => "Rank"
+
+            __New(size := unset, rank := unset, name := "Rank") {
+                if !IsSet(size) && !IsSet(rank)
+                    throw Error("RankFilter.__init__() missing 2 required positional arguments: 'size' and 'rank'", -1)
+                if !IsSet(size)
+                    throw Error("RankFilter.__init__() missing 1 required positional argument: 'size'", -1)
+                if !IsSet(rank)
+                    throw Error("RankFilter.__init__() missing 1 required positional argument: 'rank'", -1)
+                ; Pillow's RankFilter.__init__ stores the values verbatim —
+                ; every validation happens at filter() time.
                 this.Name := name
                 this.Size := size
                 this.Rank := rank
@@ -2622,6 +2944,21 @@ class Pillow {
             Apply(image) {
                 if !(IsObject(image) && image is Pillow.Image)
                     throw Error("Pillow.ImageFilter.RankFilter expects a Pillow.Image", -1)
+                ; Pillow's RankFilter.filter order: the palette rejection,
+                ; the size//2 expand TypeErrors, the rank C-int parse, then
+                ; the C rankfilter errors.
+                if image.Mode = "P"
+                    throw Error("cannot filter palette images", -1)
+                if !(this.Size is Integer) {
+                    if this.Size is String
+                        throw Error("unsupported operand type(s) for //: 'str' and 'int'", -1)
+                    throw Error("'float' object cannot be interpreted as an integer", -1)
+                }
+                if !(this.Rank is Integer) {
+                    if this.Rank is String
+                        throw Error("'str' object cannot be interpreted as an integer", -1)
+                    throw Error("'float' object cannot be interpreted as an integer", -1)
+                }
                 if this.Size <= 0 || Mod(this.Size, 2) = 0
                     throw Error("bad filter size", -1)
                 maxRank := this.Size * this.Size - 1
@@ -2641,19 +2978,39 @@ class Pillow {
             }
         }
 
-        static MinFilter(size := 3) {
-            return Pillow.ImageFilter.RankFilter(size, 0, "Min")
+        class MinFilter extends Pillow.ImageFilter.RankFilter {
+            static TypeName => "Min"
+
+            __New(size := 3) {
+                super.__New(size, 0, "Min")
+            }
         }
 
-        static MedianFilter(size := 3) {
-            return Pillow.ImageFilter.RankFilter(size, size * size // 2, "Median")
+        class MedianFilter extends Pillow.ImageFilter.RankFilter {
+            static TypeName => "Median"
+
+            __New(size := 3) {
+                ; Pillow computes rank = size * size // 2 in __init__, so a
+                ; string size raises the exact sequence-multiply TypeError.
+                if size is String
+                    throw Error("can't multiply sequence by non-int of type 'str'", -1)
+                super.__New(size, size * size // 2, "Median")
+            }
         }
 
-        static MaxFilter(size := 3) {
-            return Pillow.ImageFilter.RankFilter(size, size * size - 1, "Max")
+        class MaxFilter extends Pillow.ImageFilter.RankFilter {
+            static TypeName => "Max"
+
+            __New(size := 3) {
+                if size is String
+                    throw Error("can't multiply sequence by non-int of type 'str'", -1)
+                super.__New(size, size * size - 1, "Max")
+            }
         }
 
-        class ModeFilter {
+        class ModeFilter extends Pillow.ImageFilter.Filter {
+            static TypeName => "Mode"
+
             __New(size := 3) {
                 if !(size is Integer)
                     throw Error("Pillow.ImageFilter.ModeFilter size must be an integer", -1)
@@ -2680,9 +3037,21 @@ class Pillow {
             }
         }
 
-        class BoxBlur {
-            __New(radius) {
-                xy := Pillow.ImageFilter.RadiusPair(radius, "BoxBlur")
+        class BoxBlur extends Pillow.ImageFilter.MultibandFilter {
+            static TypeName => "BoxBlur"
+
+            __New(radius := unset) {
+                ; Pillow's BoxBlur.__init__: xy = radius if tuple/list else
+                ; (radius, radius); `xy[0] < 0 or xy[1] < 0` raises the
+                ; exact construction errors (a short list hits the xy[1]
+                ; IndexError; longer lists pass through to filter()).
+                if !IsSet(radius)
+                    throw Error("BoxBlur.__init__() missing 1 required positional argument: 'radius'", -1)
+                xy := IsObject(radius) ? radius : [radius, radius]
+                if IsObject(radius) && radius.Length < 2
+                    throw Error("list index out of range", -1)
+                if !(xy[1] is Number) || !(xy[2] is Number)
+                    throw Error("'<' not supported between instances of 'str' and 'int'", -1)
                 if xy[1] < 0 || xy[2] < 0
                     throw Error("radius must be >= 0", -1)
                 this.Name := "BoxBlur"
@@ -2694,6 +3063,15 @@ class Pillow {
             Apply(image) {
                 if !(IsObject(image) && image is Pillow.Image)
                     throw Error("Pillow.ImageFilter.BoxBlur expects a Pillow.Image", -1)
+                ; a wrong-length radius list surfaces in the C call.
+                if IsObject(this.Radius) && this.Radius.Length != 2
+                    throw Error("argument 1 must be sequence of length 2, not " this.Radius.Length, -1)
+                ; Pillow short-circuits xy == (0, 0) to a copy before the C
+                ; call (so it works on P images), then rejects P/1 modes.
+                if this.XRadius = 0 && this.YRadius = 0
+                    return image.Copy()
+                if image.Mode = "P" || image.Mode = "1"
+                    throw Error("image has wrong mode", -1)
 
                 outHandle := 0
                 status := DllCall(
@@ -2711,18 +3089,44 @@ class Pillow {
             }
         }
 
-        class GaussianBlur {
+        class GaussianBlur extends Pillow.ImageFilter.MultibandFilter {
+            static TypeName => "GaussianBlur"
+
             __New(radius := 2) {
-                xy := Pillow.ImageFilter.RadiusPair(radius, "GaussianBlur")
+                ; Pillow's GaussianBlur.__init__ stores radius verbatim (no
+                ; validation — negative radii blur fine); the C call raises
+                ; the exact TypeErrors for strings.
                 this.Name := "GaussianBlur"
                 this.Radius := radius
-                this.XRadius := xy[1]
-                this.YRadius := xy[2]
+                if IsObject(radius) {
+                    this.XRadius := radius.Length >= 1 ? radius[1] : unset
+                    this.YRadius := radius.Length >= 2 ? radius[2] : unset
+                } else {
+                    this.XRadius := radius
+                    this.YRadius := radius
+                }
             }
 
             Apply(image) {
                 if !(IsObject(image) && image is Pillow.Image)
                     throw Error("Pillow.ImageFilter.GaussianBlur expects a Pillow.Image", -1)
+                ; Pillow's gaussian_blur parses the radius sequence with the
+                ; exact TypeErrors (strings count as their length; None is
+                ; its own shape).
+                if this.Radius is String
+                    throw Error("argument 1 must be sequence of length 2, not " StrLen(this.Radius), -1)
+                if IsObject(this.Radius) {
+                    if this.Radius.Length != 2
+                        throw Error("argument 1 must be sequence of length 2, not " this.Radius.Length, -1)
+                    if !(this.XRadius is Number) || !(this.YRadius is Number)
+                        throw Error("must be real number, not str", -1)
+                } else if !(this.Radius is Number) {
+                    throw Error("argument 1 must be 2-item sequence, not None", -1)
+                }
+                if this.XRadius = 0 && this.YRadius = 0
+                    return image.Copy()
+                if image.Mode = "P" || image.Mode = "1"
+                    throw Error("image has wrong mode", -1)
 
                 outHandle := 0
                 status := DllCall(
@@ -2740,14 +3144,13 @@ class Pillow {
             }
         }
 
-        class UnsharpMask {
+        class UnsharpMask extends Pillow.ImageFilter.MultibandFilter {
+            static TypeName => "UnsharpMask"
+
             __New(radius := 2, percent := 150, threshold := 3) {
-                if !(radius is Number)
-                    throw Error("Pillow.ImageFilter.UnsharpMask radius must be numeric", -1)
-                if !(percent is Integer)
-                    throw Error("Pillow.ImageFilter.UnsharpMask percent must be an integer", -1)
-                if !(threshold is Integer)
-                    throw Error("Pillow.ImageFilter.UnsharpMask threshold must be an integer", -1)
+                ; Pillow stores the values verbatim; the C call raises the
+                ; exact TypeErrors (radius parses as double, percent and
+                ; threshold as C ints).
                 this.Name := "UnsharpMask"
                 this.Radius := radius
                 this.Percent := percent
@@ -2757,6 +3160,24 @@ class Pillow {
             Apply(image) {
                 if !(IsObject(image) && image is Pillow.Image)
                     throw Error("Pillow.ImageFilter.UnsharpMask expects a Pillow.Image", -1)
+                if this.Radius is String
+                    throw Error("must be real number, not str", -1)
+                if IsObject(this.Radius)
+                    throw Error("must be real number, not list", -1)
+                if !(this.Radius is Number)
+                    throw Error("must be real number, not NoneType", -1)
+                if !(this.Percent is Integer) {
+                    if this.Percent is String
+                        throw Error("'str' object cannot be interpreted as an integer", -1)
+                    throw Error("'float' object cannot be interpreted as an integer", -1)
+                }
+                if !(this.Threshold is Integer) {
+                    if this.Threshold is String
+                        throw Error("'str' object cannot be interpreted as an integer", -1)
+                    throw Error("'float' object cannot be interpreted as an integer", -1)
+                }
+                if image.Mode = "P" || image.Mode = "1"
+                    throw Error("image has wrong mode", -1)
 
                 outHandle := 0
                 status := DllCall(
@@ -6553,6 +6974,171 @@ class Pillow {
             }
             return buf
         }
+
+        ; API-DRAW-TEXT-001 (module half): Pillow's ImageDraw.getdraw.
+        static getdraw(im := unset, hints := unset) {
+            ; Pillow returns (ImageDraw2.Draw(im) or None, ImageDraw2 module);
+            ; 0 is the facade's None analogue. The deprecated hints parameter
+            ; is accepted-and-ignored (Pillow emits a DeprecationWarning).
+            draw2 := IsSet(im) ? Pillow.ImageDraw2.Draw(im) : 0
+            return [draw2, Pillow.ImageDraw2]
+        }
+    }
+
+    ; The WCK-style ImageDraw2 pendulum interface (Pen/Brush/Font/Draw).
+    class ImageDraw2 {
+        class Pen {
+            __New(color, width := 1, opacity := 255) {
+                ; Pillow's Pen stores ImageColor.getrgb(color) — color names
+                ; and #hex strings only (tuples raise getrgb's exact
+                ; AttributeError).
+                this.Color := Pillow.ImageDraw2.GetRgbColor(color)
+                this.Width := width
+                this.Opacity := opacity
+            }
+        }
+
+        class Brush {
+            __New(color, opacity := 255) {
+                this.Color := Pillow.ImageDraw2.GetRgbColor(color)
+                this.Opacity := opacity
+            }
+        }
+
+        class Font {
+            __New(color, file, size := 12) {
+                this.Color := Pillow.ImageDraw2.GetRgbColor(color)
+                this.Font := Pillow.ImageFont.Truetype(file, size)
+            }
+        }
+
+        static GetRgbColor(color) {
+            if color is String
+                return Pillow.ImageColor.GetRgb(color)
+            ; Pillow's ImageColor.getrgb calls color.lower() on the value — a
+            ; tuple raises the exact AttributeError.
+            throw Error("'tuple' object has no attribute 'lower'", -1)
+        }
+
+        class Draw {
+            __New(image, size := unset, color := unset) {
+                if image is String {
+                    if !IsSet(size)
+                        throw Error("If image argument is mode string, size must be a list or tuple", -1)
+                    image := Pillow.Image.New(image, size, IsSet(color) ? color : unset)
+                }
+                if !(IsObject(image) && image is Pillow.Image)
+                    throw Error("Pillow.ImageDraw2.Draw expects a Pillow.Image or a mode string", -1)
+                this.Draw := Pillow.ImageDraw.Draw(image)
+                this.Image := image
+                this.Transform := unset
+            }
+
+            Flush() {
+                return this.Image
+            }
+
+            Settransform(offset) {
+                ; (xoffset, yoffset) -> (1, 0, xoffset, 0, 1, yoffset)
+                this.Transform := [1, 0, offset[1], 0, 1, offset[2]]
+            }
+
+            Render(op, xy, pen := unset, brush := unset, options := unset) {
+                outline := unset
+                fill := unset
+                width := 1
+                if IsSet(pen) && pen is Pillow.ImageDraw2.Pen {
+                    outline := pen.Color
+                    width := pen.Width
+                } else if IsSet(brush) && brush is Pillow.ImageDraw2.Pen {
+                    outline := brush.Color
+                    width := brush.Width
+                }
+                if IsSet(brush) && brush is Pillow.ImageDraw2.Brush
+                    fill := brush.Color
+                else if IsSet(pen) && pen is Pillow.ImageDraw2.Brush
+                    fill := pen.Color
+                if this.HasOwnProp("Transform") {
+                    path := Pillow.ImagePath.Path(xy)
+                    path.Transform(this.Transform)
+                    xy := path.Points.Clone()
+                }
+                if op = "arc" {
+                    this.Draw.Arc(xy, options.Start, options.End, IsSet(outline) ? outline : unset, width)
+                } else if op = "line" {
+                    this.Draw.Line(xy, IsSet(outline) ? outline : unset, width)
+                } else if op = "chord" {
+                    this.Draw.Chord(xy, options.Start, options.End, IsSet(fill) ? fill : unset, IsSet(outline) ? outline : unset, width)
+                } else if op = "ellipse" {
+                    this.Draw.Ellipse(xy, IsSet(fill) ? fill : unset, IsSet(outline) ? outline : unset, width)
+                } else if op = "pieslice" {
+                    this.Draw.Pieslice(xy, options.Start, options.End, IsSet(fill) ? fill : unset, IsSet(outline) ? outline : unset, width)
+                } else if op = "polygon" {
+                    this.Draw.Polygon(xy, IsSet(fill) ? fill : unset, IsSet(outline) ? outline : unset, width)
+                } else if op = "rectangle" {
+                    this.Draw.Rectangle(xy, IsSet(fill) ? fill : unset, IsSet(outline) ? outline : unset, width)
+                } else {
+                    throw Error("Pillow.ImageDraw2 unknown operation: " op, -1)
+                }
+            }
+
+            Arc(xy, pen := unset, start := 0, end := 360, brush := unset) {
+                return this.Render("arc", xy, IsSet(pen) ? pen : unset, IsSet(brush) ? brush : unset, { Start: start, End: end })
+            }
+
+            Chord(xy, pen := unset, start := 0, end := 360, brush := unset) {
+                return this.Render("chord", xy, IsSet(pen) ? pen : unset, IsSet(brush) ? brush : unset, { Start: start, End: end })
+            }
+
+            Ellipse(xy, pen := unset, brush := unset) {
+                return this.Render("ellipse", xy, IsSet(pen) ? pen : unset, IsSet(brush) ? brush : unset)
+            }
+
+            Line(xy, pen := unset, brush := unset) {
+                return this.Render("line", xy, IsSet(pen) ? pen : unset, IsSet(brush) ? brush : unset)
+            }
+
+            Pieslice(xy, pen := unset, start := 0, end := 360, brush := unset) {
+                return this.Render("pieslice", xy, IsSet(pen) ? pen : unset, IsSet(brush) ? brush : unset, { Start: start, End: end })
+            }
+
+            Polygon(xy, pen := unset, brush := unset) {
+                return this.Render("polygon", xy, IsSet(pen) ? pen : unset, IsSet(brush) ? brush : unset)
+            }
+
+            Rectangle(xy, pen := unset, brush := unset) {
+                return this.Render("rectangle", xy, IsSet(pen) ? pen : unset, IsSet(brush) ? brush : unset)
+            }
+
+            Text(xy, text, font) {
+                if !(IsObject(font) && font is Pillow.ImageDraw2.Font)
+                    throw Error("Pillow.ImageDraw2.Text font expects a Pillow.ImageDraw2.Font", -1)
+                if this.HasOwnProp("Transform") {
+                    path := Pillow.ImagePath.Path(xy)
+                    path.Transform(this.Transform)
+                    xy := path.Tolist()
+                }
+                this.Draw.Text(xy, text, font.Color, font.Font)
+                return this
+            }
+
+            Textbbox(xy, text, font) {
+                if !(IsObject(font) && font is Pillow.ImageDraw2.Font)
+                    throw Error("Pillow.ImageDraw2.Textbbox font expects a Pillow.ImageDraw2.Font", -1)
+                if this.HasOwnProp("Transform") {
+                    path := Pillow.ImagePath.Path(xy)
+                    path.Transform(this.Transform)
+                    xy := path.Tolist()
+                }
+                return this.Draw.TextBbox(xy, text, font.Font)
+            }
+
+            Textlength(text, font) {
+                if !(IsObject(font) && font is Pillow.ImageDraw2.Font)
+                    throw Error("Pillow.ImageDraw2.Textlength font expects a Pillow.ImageDraw2.Font", -1)
+                return this.Draw.TextLength(text, font.Font)
+            }
+        }
     }
 
     class ImageStat {
@@ -6735,6 +7321,13 @@ class Pillow {
                     return this._StdDev
                 }
             }
+        }
+
+        ; Pillow's ImageStat.Global is the plain alias `Global = Stat`.
+        ; AHK property calls cannot forward construction arguments, so the
+        ; facade exposes the alias as a static constructor method.
+        static Global(imageOrList, mask := unset) {
+            return Pillow.ImageStat.Stat(imageOrList, IsSet(mask) ? mask : unset)
         }
     }
 
@@ -18389,6 +18982,12 @@ class Pillow {
         }
 
         Filter(filter) {
+            if IsObject(filter) && HasMethod(filter, "Call") {
+                ; Pillow accepts filter CLASSES: it instantiates with no
+                ; arguments, so the constructors raise Pillow's exact
+                ; missing-argument TypeErrors.
+                filter := filter()
+            }
             if IsObject(filter) && HasMethod(filter, "Apply") {
                 image := filter.Apply(this)
                 if IsObject(image) && image is Pillow.Image

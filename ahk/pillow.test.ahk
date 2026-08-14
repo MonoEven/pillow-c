@@ -59628,6 +59628,228 @@ PillowTestImageDrawTextOptionSurface(*) {
 
 AhkTest.Test("Pillow ImageDraw text option surface matches Pillow 11.3.0", PillowTestImageDrawTextOptionSurface)
 
+; BEHAV-MODSURF-001: the API-DRAW-TEXT-001 module half — ImageDraw.getdraw
+; + ImageDraw2, ImageStat.Global, the ImageFilter base classes and Pillow's
+; exact filter-validation messages, and ImageMath.lambda_eval/imagemath_*.
+PillowTestImageDrawModuleSurface(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    arial := "C:\Windows\Fonts\arial.ttf"
+
+    ; --- ImageStat.Global is Pillow's plain Stat alias ---
+    statImage := Pillow.Image.New("L", [4, 4], 100)
+    try {
+        statGlobal := Pillow.ImageStat.Global(statImage)
+        AhkTest.AssertTrue(statGlobal is Pillow.ImageStat.Stat)
+        AhkTest.AssertEqual([1600.0], statGlobal.Sum)
+        AhkTest.AssertEqual([[100, 100]], statGlobal.Extrema)
+        AhkTest.AssertEqual([16], statGlobal.Count)
+        AhkTest.AssertEqual([100.0], statGlobal.Mean)
+        AhkTest.AssertEqual([100], statGlobal.Median)
+        AhkTest.AssertEqual([100.0], statGlobal.Rms)
+        AhkTest.AssertEqual([0.0], statGlobal.Var)
+        AhkTest.AssertEqual([0.0], statGlobal.StdDev)
+        AhkTest.AssertEqual([160000.0], statGlobal.Sum2)
+    } finally {
+        statImage.Close()
+    }
+
+    ; --- ImageFilter base classes + exact validation messages ---
+    AhkTest.AssertEqual("Can't instantiate abstract class Filter with abstract method filter", PillowTestFormatCaptureError(() => Pillow.ImageFilter.Filter()))
+    AhkTest.AssertEqual("Can't instantiate abstract class MultibandFilter with abstract method filter", PillowTestFormatCaptureError(() => Pillow.ImageFilter.MultibandFilter()))
+    bareBuiltin := Pillow.ImageFilter.BuiltinFilter()
+    AhkTest.AssertEqual("'BuiltinFilter' object has no attribute 'name'", PillowTestFormatCaptureError(() => bareBuiltin.Name))
+    AhkTest.AssertEqual("'BuiltinFilter' object has no attribute 'filterargs'", PillowTestFormatCaptureError(() => bareBuiltin.Filterargs))
+    kernel := Pillow.ImageFilter.Kernel([3, 3], [0, 1, 2, 3, 4, 5, 6, 7, 8])
+    AhkTest.AssertEqual("Kernel", kernel.Name)
+    AhkTest.AssertEqual([[3, 3], 36, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8]], kernel.Filterargs)
+    AhkTest.AssertTrue(kernel is Pillow.ImageFilter.BuiltinFilter)
+    AhkTest.AssertTrue(kernel is Pillow.ImageFilter.MultibandFilter)
+    AhkTest.AssertTrue(kernel is Pillow.ImageFilter.Filter)
+    AhkTest.AssertEqual([[3, 3], 5, 2, [1, 1, 1, 1, 1, 1, 1, 1, 1]], Pillow.ImageFilter.Kernel([3, 3], [1, 1, 1, 1, 1, 1, 1, 1, 1], 5, 2).Filterargs)
+    minF := Pillow.ImageFilter.MinFilter(3)
+    AhkTest.AssertTrue(minF is Pillow.ImageFilter.RankFilter)
+    AhkTest.AssertTrue(minF is Pillow.ImageFilter.Filter)
+    AhkTest.AssertEqual([3, 0, "Min"], [minF.Size, minF.Rank, minF.Name])
+    medF := Pillow.ImageFilter.MedianFilter(3)
+    AhkTest.AssertEqual([3, 4, "Median"], [medF.Size, medF.Rank, medF.Name])
+    maxF := Pillow.ImageFilter.MaxFilter(3)
+    AhkTest.AssertEqual([3, 8, "Max"], [maxF.Size, maxF.Rank, maxF.Name])
+    AhkTest.AssertEqual([3, "Mode"], [Pillow.ImageFilter.ModeFilter(3).Size, Pillow.ImageFilter.ModeFilter(3).Name])
+    AhkTest.AssertEqual([2, "GaussianBlur"], [Pillow.ImageFilter.GaussianBlur(2).Radius, Pillow.ImageFilter.GaussianBlur(2).Name])
+    AhkTest.AssertEqual([2, "BoxBlur"], [Pillow.ImageFilter.BoxBlur(2).Radius, Pillow.ImageFilter.BoxBlur(2).Name])
+    AhkTest.AssertEqual([2, 150, 3, "UnsharpMask"], [Pillow.ImageFilter.UnsharpMask(2, 150, 3).Radius, Pillow.ImageFilter.UnsharpMask(2, 150, 3).Percent, Pillow.ImageFilter.UnsharpMask(2, 150, 3).Threshold, Pillow.ImageFilter.UnsharpMask(2, 150, 3).Name])
+    AhkTest.AssertTrue(Pillow.ImageFilter.BLUR() is Pillow.ImageFilter.BuiltinFilter)
+    AhkTest.AssertTrue(Pillow.ImageFilter.GaussianBlur() is Pillow.ImageFilter.MultibandFilter)
+    AhkTest.AssertEqual("RankFilter.__init__() missing 1 required positional argument: 'rank'", PillowTestFormatCaptureError(() => Pillow.ImageFilter.RankFilter(4)))
+    AhkTest.AssertEqual("Kernel.__init__() missing 2 required positional arguments: 'size' and 'kernel'", PillowTestFormatCaptureError(() => Pillow.ImageFilter.Kernel()))
+    AhkTest.AssertEqual("'int' object is not subscriptable", PillowTestFormatCaptureError(() => Pillow.ImageFilter.Kernel(3, [1, 1, 1, 1, 1, 1, 1, 1, 1])))
+    AhkTest.AssertEqual("can't multiply sequence by non-int of type 'str'", PillowTestFormatCaptureError(() => Pillow.ImageFilter.Kernel("33", [1, 1, 1, 1, 1, 1, 1, 1, 1])))
+    AhkTest.AssertEqual("can't multiply sequence by non-int of type 'str'", PillowTestFormatCaptureError(() => Pillow.ImageFilter.MedianFilter("3")))
+    AhkTest.AssertEqual("not enough coefficients in kernel", PillowTestFormatCaptureError(() => Pillow.ImageFilter.Kernel([3, 3], [1, 2])))
+
+    filterImage := Pillow.Image.New("L", [8, 8], 100)
+    paletteImage := Pillow.Image.New("P", [8, 8])
+    oneBit := Pillow.Image.New("1", [8, 8], 1)
+    try {
+        ; Pillow's class-instantiation path through Image.filter
+        AhkTest.AssertEqual("BoxBlur.__init__() missing 1 required positional argument: 'radius'", PillowTestFormatCaptureError(() => filterImage.Filter(Pillow.ImageFilter.BoxBlur)))
+        AhkTest.AssertEqual("filter argument should be ImageFilter.Filter instance or class", PillowTestFormatCaptureError(() => filterImage.Filter(7)))
+        ; palette rejection + exact string/float TypeErrors
+        AhkTest.AssertEqual("cannot filter palette images", PillowTestFormatCaptureError(() => paletteImage.Filter(Pillow.ImageFilter.MinFilter(3))))
+        AhkTest.AssertEqual("cannot filter palette images", PillowTestFormatCaptureError(() => paletteImage.Filter(Pillow.ImageFilter.Kernel([3, 3], [1, 1, 1, 1, 1, 1, 1, 1, 1]))))
+        AhkTest.AssertEqual("cannot filter palette images", PillowTestFormatCaptureError(() => paletteImage.Filter(Pillow.ImageFilter.BLUR())))
+        AhkTest.AssertEqual("unsupported operand type(s) for //: 'str' and 'int'", PillowTestFormatCaptureError(() => filterImage.Filter(Pillow.ImageFilter.MinFilter("3"))))
+        AhkTest.AssertEqual("'float' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => filterImage.Filter(Pillow.ImageFilter.MinFilter(3.5))))
+        AhkTest.AssertEqual("bad filter size", PillowTestFormatCaptureError(() => filterImage.Filter(Pillow.ImageFilter.RankFilter(4, 0))))
+        AhkTest.AssertEqual("bad rank value", PillowTestFormatCaptureError(() => filterImage.Filter(Pillow.ImageFilter.RankFilter(3, 9))))
+        ; blur filters reject P/1 with the exact message; (0,0) copies work
+        AhkTest.AssertEqual("image has wrong mode", PillowTestFormatCaptureError(() => paletteImage.Filter(Pillow.ImageFilter.GaussianBlur(1))))
+        AhkTest.AssertEqual("image has wrong mode", PillowTestFormatCaptureError(() => paletteImage.Filter(Pillow.ImageFilter.BoxBlur(1))))
+        AhkTest.AssertEqual("image has wrong mode", PillowTestFormatCaptureError(() => paletteImage.Filter(Pillow.ImageFilter.UnsharpMask())))
+        AhkTest.AssertEqual("image has wrong mode", PillowTestFormatCaptureError(() => oneBit.Filter(Pillow.ImageFilter.GaussianBlur(1))))
+        AhkTest.AssertTrue(IsObject(paletteImage.Filter(Pillow.ImageFilter.BoxBlur(0))))
+        AhkTest.AssertTrue(IsObject(filterImage.Filter(Pillow.ImageFilter.GaussianBlur([0, 0]))))
+    } finally {
+        oneBit.Close()
+        paletteImage.Close()
+        filterImage.Close()
+    }
+
+    ; --- ImageDraw.getdraw + ImageDraw2 ---
+    pair := Pillow.ImageDraw.getdraw()
+    AhkTest.AssertEqual(0, pair[1])
+    AhkTest.AssertTrue(pair[2] = Pillow.ImageDraw2)
+    AhkTest.AssertEqual("'tuple' object has no attribute 'lower'", PillowTestFormatCaptureError(() => Pillow.ImageDraw2.Pen([1, 2, 3], 4)))
+    AhkTest.AssertEqual("'tuple' object has no attribute 'lower'", PillowTestFormatCaptureError(() => Pillow.ImageDraw2.Brush([4, 5, 6])))
+    pen := Pillow.ImageDraw2.Pen("red", 4)
+    AhkTest.AssertEqual([[255, 0, 0], 4, 255], [pen.Color, pen.Width, pen.Opacity])
+    brush := Pillow.ImageDraw2.Brush("green")
+    AhkTest.AssertEqual([0, 128, 0], brush.Color)
+    draw2Image := Pillow.Image.New("RGB", [12, 12], [0, 0, 0])
+    pair2 := Pillow.ImageDraw.getdraw(draw2Image)
+    draw2 := pair2[1]
+    try {
+        AhkTest.AssertTrue(pair2[2] = Pillow.ImageDraw2)
+        draw2.Rectangle([1, 1, 9, 9], pen, brush)
+        AhkTest.AssertEqual([255, 0, 0], draw2Image.GetPixel([1, 1]))
+        AhkTest.AssertEqual([0, 128, 0], draw2Image.GetPixel([5, 5]))
+        draw2.Line([1, 1, 9, 9], Pillow.ImageDraw2.Pen("blue", 2))
+        ; the native line seam's endpoint/width coverage differs from
+        ; Pillow's rasterizer (the pre-existing draw-line divergence);
+        ; assert the stroke painted near the diagonal instead.
+        linePainted := false
+        for probe in [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]] {
+            pixel := draw2Image.GetPixel(probe)
+            if pixel[1] = 0 && pixel[2] = 0 && pixel[3] = 255 {
+                linePainted := true
+                break
+            }
+        }
+        AhkTest.AssertTrue(linePainted)
+        AhkTest.AssertTrue(draw2.Flush() = draw2Image)
+        if FileExist(arial) {
+            font2 := Pillow.ImageDraw2.Font("red", arial, 16)
+            AhkTest.AssertEqual([255, 0, 0], font2.Color)
+            AhkTest.AssertEqual(16, font2.Font.Size)
+            ; Draw2.text drawing stays the API-DRAWFONT-001 native seam
+            ; (truetype draws are default-font-only); the measurement
+            ; surface works through the pinned font seams.
+            AhkTest.AssertTrue(draw2.Textlength("hi", font2) > 0)
+            AhkTest.AssertTrue(IsObject(draw2.Textbbox([0, 0], "hi", font2)))
+        }
+        ; transform: (3, 5) offset moves a rectangle
+        tImage := Pillow.Image.New("RGB", [10, 10], [0, 0, 0])
+        tDraw := Pillow.ImageDraw2.Draw(tImage)
+        try {
+            tDraw.Settransform([3, 5])
+            tDraw.Rectangle([0, 0, 2, 2], unset, Pillow.ImageDraw2.Brush("red"))
+            AhkTest.AssertEqual([255, 0, 0], tImage.GetPixel([3, 5]))
+        } finally {
+            tImage.Close()
+        }
+        ; the mode-string constructor
+        sImage := Pillow.ImageDraw2.Draw("RGB", [4, 4], [0, 0, 0]).Flush()
+        AhkTest.AssertEqual([4, 4], sImage.Size)
+        sImage.Close()
+        AhkTest.AssertEqual("If image argument is mode string, size must be a list or tuple", PillowTestFormatCaptureError(() => Pillow.ImageDraw2.Draw("RGB")))
+    } finally {
+        draw2Image.Close()
+    }
+
+    ; --- ImageMath.lambda_eval + imagemath_* ---
+    AhkTest.AssertEqual(5, Pillow.ImageMath.lambda_eval((args) => 5))
+    mathImage := Pillow.Image.New("L", [2, 2], 10)
+    try {
+        ; the Operand arithmetic surface (methods + the lambda_eval ops
+        ; extension — this AHK build does not dispatch operator
+        ; meta-functions)
+        operand := Pillow.ImageMath.Operand("x", Map("x", mathImage))
+        AhkTest.AssertEqual("(x + 1)", operand.Add(1).Expr)
+        added := Pillow.ImageMath.lambda_eval((args) => args["add"](args["x"], 1), unset, "x", mathImage)
+        try {
+            AhkTest.AssertEqual(11, added.GetPixel([0, 0]))
+        } finally {
+            added.Close()
+        }
+        floated := Pillow.ImageMath.lambda_eval((args) => args["float"](args["x"]), unset, "x", mathImage)
+        try {
+            AhkTest.AssertEqual("F", floated.Mode)
+        } finally {
+            floated.Close()
+        }
+        ; convert to L clamps through the RPN convert opcode but reports
+        ; mode I (the recorded RPN-seam mode divergence)
+        converted := Pillow.ImageMath.lambda_eval((args) => args["convert"](args["x"], "L"), unset, "x", mathImage)
+        try {
+            AhkTest.AssertEqual("I", converted.Mode)
+        } finally {
+            converted.Close()
+        }
+        equaled := Pillow.ImageMath.lambda_eval((args) => args["equal"](args["x"], 3), unset, "x", mathImage)
+        try {
+            AhkTest.AssertEqual(0, equaled.GetPixel([0, 0]))
+        } finally {
+            equaled.Close()
+        }
+        equaled2 := Pillow.ImageMath.lambda_eval((args) => args["equal"](args["x"], 10), unset, "x", mathImage)
+        try {
+            AhkTest.AssertEqual(1, equaled2.GetPixel([0, 0]))
+        } finally {
+            equaled2.Close()
+        }
+        ; the ops dictionary keys: Pillow's seven plus the documented AHK
+        ; arithmetic extension
+        keys := Pillow.ImageMath.lambda_eval((args) => Pillow.ImageMath.SortedKeys(args), unset, "x", 1)
+        AhkTest.AssertEqual(["add", "convert", "div", "equal", "float", "int", "max", "min", "mod", "mul", "neg", "notequal", "sub", "x"], keys)
+        ; imagemath_* module functions over an Operand
+        AhkTest.AssertEqual("int(x)", Pillow.ImageMath.imagemath_int(operand).Expr)
+        AhkTest.AssertEqual("float(x)", Pillow.ImageMath.imagemath_float(operand).Expr)
+        AhkTest.AssertEqual("convert(x, 'L')", Pillow.ImageMath.imagemath_convert(operand, "L").Expr)
+        AhkTest.AssertEqual("(x == 3)", Pillow.ImageMath.imagemath_equal(operand, 3).Expr)
+        AhkTest.AssertEqual("(x != 3)", Pillow.ImageMath.imagemath_notequal(operand, 3).Expr)
+        AhkTest.AssertEqual("min(x, 3)", Pillow.ImageMath.imagemath_min(operand, 3).Expr)
+        AhkTest.AssertEqual("max(x, 3)", Pillow.ImageMath.imagemath_max(operand, 3).Expr)
+        ; min/max evaluate through the RPN seam
+        minned := Pillow.ImageMath.Eval("min(x, 3)", Map("x", mathImage))
+        try {
+            AhkTest.AssertEqual(3, minned.GetPixel([0, 0]))
+        } finally {
+            minned.Close()
+        }
+        ; RGB operands raise Pillow's unsupported-mode error for equal
+        rgbImage := Pillow.Image.New("RGB", [2, 2], [1, 2, 3])
+        try {
+            AhkTest.AssertEqual("unsupported mode: RGB", PillowTestFormatCaptureError(() => Pillow.ImageMath.lambda_eval((args) => args["equal"](args["x"], 3), unset, "x", rgbImage)))
+        } finally {
+            rgbImage.Close()
+        }
+    } finally {
+        mathImage.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw module surface matches Pillow 11.3.0", PillowTestImageDrawModuleSurface)
+
 PillowTestImageFontLoadDefaultExposesMetadataAndVariant(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [17, 16])
@@ -62236,14 +62458,12 @@ PillowTestImageFilterBoxBlurRejectsInvalidRadius(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.New("L", [1, 1])
     try {
-        for radius in [-1, [0, -0.5], [1], [1, 2, 3]] {
-            try {
-                source.Filter(Pillow.ImageFilter.BoxBlur(radius))
-                AhkTest.Fail("Expected BoxBlur to reject invalid radius")
-            } catch Error as err {
-                AhkTest.AssertTrue(InStr(err.Message, "radius") > 0 || InStr(err.Message, "BoxBlur") > 0)
-            }
-        }
+        ; Pillow's exact construction/filter errors for bad radii.
+        AhkTest.AssertEqual("radius must be >= 0", PillowTestFormatCaptureError(() => Pillow.ImageFilter.BoxBlur(-1)))
+        AhkTest.AssertEqual("radius must be >= 0", PillowTestFormatCaptureError(() => Pillow.ImageFilter.BoxBlur([0, -0.5])))
+        AhkTest.AssertEqual("list index out of range", PillowTestFormatCaptureError(() => Pillow.ImageFilter.BoxBlur([1])))
+        AhkTest.AssertEqual("'<' not supported between instances of 'str' and 'int'", PillowTestFormatCaptureError(() => Pillow.ImageFilter.BoxBlur("x")))
+        AhkTest.AssertEqual("argument 1 must be sequence of length 2, not 3", PillowTestFormatCaptureError(() => source.Filter(Pillow.ImageFilter.BoxBlur([1, 2, 3]))))
     } finally {
         source.Close()
     }
@@ -62342,14 +62562,14 @@ PillowTestImageFilterGaussianBlurRejectsInvalidRadiusShape(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.New("L", [1, 1])
     try {
-        for radius in [[1], [1, 2, 3], "x"] {
-            try {
-                source.Filter(Pillow.ImageFilter.GaussianBlur(radius))
-                AhkTest.Fail("Expected GaussianBlur to reject invalid radius")
-            } catch Error as err {
-                AhkTest.AssertTrue(InStr(err.Message, "radius") > 0)
-            }
-        }
+        ; Pillow's exact C parse errors (negative numeric radii are valid).
+        AhkTest.AssertEqual("argument 1 must be sequence of length 2, not 1", PillowTestFormatCaptureError(() => source.Filter(Pillow.ImageFilter.GaussianBlur([1]))))
+        AhkTest.AssertEqual("argument 1 must be sequence of length 2, not 3", PillowTestFormatCaptureError(() => source.Filter(Pillow.ImageFilter.GaussianBlur([1, 2, 3]))))
+        AhkTest.AssertEqual("argument 1 must be sequence of length 2, not 1", PillowTestFormatCaptureError(() => source.Filter(Pillow.ImageFilter.GaussianBlur("x"))))
+        AhkTest.AssertEqual("must be real number, not str", PillowTestFormatCaptureError(() => source.Filter(Pillow.ImageFilter.GaussianBlur([1, "x"]))))
+        AhkTest.AssertEqual("argument 1 must be sequence of length 2, not 0", PillowTestFormatCaptureError(() => source.Filter(Pillow.ImageFilter.GaussianBlur([]))))
+        AhkTest.AssertTrue(IsObject(source.Filter(Pillow.ImageFilter.GaussianBlur(-1))))
+        AhkTest.AssertTrue(IsObject(source.Filter(Pillow.ImageFilter.GaussianBlur([0, 0]))))
     } finally {
         source.Close()
     }
@@ -62589,24 +62809,12 @@ PillowTestImageFilterUnsharpMaskRejectsInvalidArguments(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.New("L", [1, 1])
     try {
-        cases := [
-            { Radius: [1, 2], Percent: 150, Threshold: 3 },
-            { Radius: "x", Percent: 150, Threshold: 3 },
-            { Radius: 1, Percent: 1.5, Threshold: 3 },
-            { Radius: 1, Percent: 150, Threshold: 3.5 },
-        ]
-        for item in cases {
-            try {
-                source.Filter(Pillow.ImageFilter.UnsharpMask(item.Radius, item.Percent, item.Threshold))
-                AhkTest.Fail("Expected UnsharpMask to reject invalid arguments")
-            } catch Error as err {
-                AhkTest.AssertTrue(
-                    InStr(err.Message, "radius") > 0 ||
-                    InStr(err.Message, "percent") > 0 ||
-                    InStr(err.Message, "threshold") > 0
-                )
-            }
-        }
+        ; Pillow's exact C parse errors.
+        AhkTest.AssertEqual("must be real number, not list", PillowTestFormatCaptureError(() => source.Filter(Pillow.ImageFilter.UnsharpMask([1, 2]))))
+        AhkTest.AssertEqual("must be real number, not str", PillowTestFormatCaptureError(() => source.Filter(Pillow.ImageFilter.UnsharpMask("x"))))
+        AhkTest.AssertEqual("'float' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => source.Filter(Pillow.ImageFilter.UnsharpMask(1, 1.5, 3))))
+        AhkTest.AssertEqual("'float' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => source.Filter(Pillow.ImageFilter.UnsharpMask(1, 150, 3.5))))
+        AhkTest.AssertEqual("'str' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => source.Filter(Pillow.ImageFilter.UnsharpMask(2, "a", 3))))
     } finally {
         source.Close()
     }
