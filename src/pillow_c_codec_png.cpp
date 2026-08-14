@@ -2398,7 +2398,8 @@ int encode_png_custom_image_with_text_entries(
     const PngCustomChunkSpec* custom_chunks = nullptr,
     std::size_t custom_chunk_count = 0u,
     bool custom_chunks_after_text = false,
-    const std::size_t* text_value_sizes = nullptr)
+    const std::size_t* text_value_sizes = nullptr,
+    int bits_override = -1)
 {
     if (!image || !out_png) {
         return PILLOW_C_NULL_POINTER;
@@ -2515,6 +2516,24 @@ int encode_png_custom_image_with_text_entries(
     if (status != PILLOW_C_OK) {
         return status;
     }
+    // BEHAV-SAVEOPTS-001: Pillow 11.3.0 minimizes the palette bit depth on
+    // every P save (colors <= 2 -> 1, <= 4 -> 2, <= 16 -> 4, else 8) and
+    // accepts a `bits` override through the same colors = min(1 << bits,
+    // 256) chain; out-of-depth pixel indices are truncated to the depth.
+    int bit_depth = 8;
+    if (image->mode == PILLOW_C_MODE_P) {
+        std::size_t colors = image->palette_rgb.size() / 3u;
+        colors = std::min<std::size_t>(std::max<std::size_t>(colors, 1u), 256u);
+        if (bits_override >= 0) {
+            const int shift = bits_override > 16 ? 16 : bits_override;
+            colors = std::min<std::size_t>(std::size_t{1u} << shift, 256u);
+        }
+        bit_depth = colors <= 2u ? 1 : (colors <= 4u ? 2 : (colors <= 16u ? 4 : 8));
+    }
+    const std::size_t packed_row_bytes =
+        image->mode == PILLOW_C_MODE_P && bit_depth < 8
+            ? (static_cast<std::size_t>(image->width) * static_cast<std::size_t>(bit_depth) + 7u) / 8u
+            : 0u;
     const int refresh_status = pillow_c_refresh_const_buffer_view_image(image);
     if (refresh_status != PILLOW_C_OK) {
         return refresh_status;
@@ -2522,7 +2541,9 @@ int encode_png_custom_image_with_text_entries(
     if (image->width > (std::numeric_limits<int>::max() - 1) / payload_channels) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    const std::size_t raw_stride = 1u + static_cast<std::size_t>(image->width) * static_cast<std::size_t>(payload_channels);
+    const std::size_t raw_stride = packed_row_bytes > 0u
+        ? 1u + packed_row_bytes
+        : 1u + static_cast<std::size_t>(image->width) * static_cast<std::size_t>(payload_channels);
     if (image->height > 0 && raw_stride > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(image->height)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
@@ -2534,7 +2555,17 @@ int encode_png_custom_image_with_text_entries(
             std::uint8_t* dst = raw.data() + static_cast<std::size_t>(y) * raw_stride;
             const std::uint8_t* src = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
             dst[0] = 0;
-            std::memcpy(dst + 1, src, static_cast<std::size_t>(image->width) * static_cast<std::size_t>(payload_channels));
+            if (packed_row_bytes > 0u) {
+                const std::uint8_t mask = static_cast<std::uint8_t>((1 << bit_depth) - 1);
+                for (int x = 0; x < image->width; ++x) {
+                    const std::uint8_t index = src[x] & mask;
+                    const std::size_t bit_offset = static_cast<std::size_t>(x) * static_cast<std::size_t>(bit_depth);
+                    dst[1u + (bit_offset >> 3)] |= static_cast<std::uint8_t>(
+                        index << (8 - static_cast<int>(bit_offset & 7u) - bit_depth));
+                }
+            } else {
+                std::memcpy(dst + 1, src, static_cast<std::size_t>(image->width) * static_cast<std::size_t>(payload_channels));
+            }
         }
 
         std::vector<std::uint8_t> png;
@@ -2544,7 +2575,7 @@ int encode_png_custom_image_with_text_entries(
         std::vector<std::uint8_t> ihdr;
         append_be32(ihdr, static_cast<std::uint32_t>(image->width));
         append_be32(ihdr, static_cast<std::uint32_t>(image->height));
-        ihdr.push_back(8);
+        ihdr.push_back(static_cast<std::uint8_t>(bit_depth));
         ihdr.push_back(static_cast<std::uint8_t>(color_type));
         ihdr.push_back(0);
         ihdr.push_back(0);
@@ -2755,7 +2786,8 @@ int encode_png_custom_image(
     std::vector<std::uint8_t>* out_png,
     const char* text_key = nullptr,
     const char* text_value = nullptr,
-    bool optimize = false)
+    bool optimize = false,
+    int bits_override = -1)
 {
     if ((text_key && !text_value) || (!text_key && text_value)) {
         return PILLOW_C_NULL_POINTER;
@@ -2789,7 +2821,21 @@ int encode_png_custom_image(
         0u,
         nullptr,
         0u,
-        optimize);
+        optimize,
+        false,
+        false,
+        0u,
+        nullptr,
+        nullptr,
+        0u,
+        false,
+        false,
+        -1,
+        nullptr,
+        0u,
+        false,
+        nullptr,
+        bits_override);
 }
 
 int save_png_custom_image_with_dpi(
@@ -4117,6 +4163,25 @@ int save_png_image_with_compress_level(const PillowCImage* image, const char* pa
         return save_png_custom_image(image, path);
     }
     return save_png_image(image, path);
+}
+
+// BEHAV-SAVEOPTS-001: the P-mode `bits` option (the bits_override seam in
+// the shared encoder; the auto-minimized depth is the default path).
+int save_png_image_with_bits(const PillowCImage* image, const char* path, int bits)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->mode != PILLOW_C_MODE_P) {
+        return save_png_image(image, path);
+    }
+    std::vector<std::uint8_t> png;
+    const int status = encode_png_custom_image(
+        image, false, 0.0, 0.0, false, 0, false, 0, 0, 0, &png, nullptr, nullptr, false, bits);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    return write_binary_file(path, png) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
 }
 
 int save_png_image_with_options(const PillowCImage* image, const char* path, int compress_level, double dpi_x, double dpi_y)
@@ -6142,6 +6207,14 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_png_compress_level(
     int compress_level)
 {
     return save_png_image_with_compress_level(image, path, compress_level);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_png_bits(
+    const PillowCImage* image,
+    const char* path,
+    int bits)
+{
+    return save_png_image_with_bits(image, path, bits);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_png_options(

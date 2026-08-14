@@ -1202,6 +1202,199 @@ int save_gif_image_with_comment_options(
     return save_gif_indexed_native(image, path, true, transparency, comment, comment_size);
 }
 
+// BEHAV-SAVEOPTS-001: Pillow 11.3.0's GIF interlace/palette options. The
+// palette replaces the global color table (the pixel indices keep their
+// meaning, padded to the power-of-two table); interlace sets the 0x40 image
+// descriptor flag and emits the rows in the classic four-pass order.
+void append_gif_comment_extension(
+    std::vector<std::uint8_t>& out,
+    const std::uint8_t* comment,
+    std::size_t comment_size);
+void append_gif_sub_blocks(std::vector<std::uint8_t>& out, const std::vector<std::uint8_t>& data);
+bool gif_lzw_encode_indices_interlaced(
+    const std::uint8_t* pixels,
+    int width,
+    int height,
+    std::size_t stride,
+    int color_table_entries,
+    int min_code_size,
+    bool interlace,
+    std::vector<std::uint8_t>* out);
+
+int save_gif_indexed_native_with_interlace_palette(
+    const PillowCImage* image,
+    const char* path,
+    bool has_transparency,
+    int transparency,
+    bool interlace,
+    const std::uint8_t* custom_palette,
+    std::size_t custom_palette_size,
+    const std::uint8_t* comment,
+    std::size_t comment_size)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (comment_size > 0u && !comment) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (custom_palette_size > 0u && !custom_palette) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->width <= 0 || image->height <= 0 ||
+        image->mode != PILLOW_C_MODE_P || image->channels != 1 ||
+        image->width > std::numeric_limits<std::uint16_t>::max() ||
+        image->height > std::numeric_limits<std::uint16_t>::max() ||
+        (has_transparency && (transparency < 0 || transparency > 255))) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = pillow_c_refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+
+    std::vector<std::uint8_t> palette_source_storage;
+    if (custom_palette_size > 0u) {
+        palette_source_storage.assign(custom_palette, custom_palette + custom_palette_size);
+    } else {
+        palette_source_storage = image->palette_rgb;
+    }
+    const std::vector<std::uint8_t>& palette_source = palette_source_storage;
+    if (palette_source.empty() || palette_source.size() % 3u != 0u || palette_source.size() > 256u * 3u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    // Pillow 11.3.0's palette option uses _normalize_palette + remap_palette:
+    // each given palette color matches the image palette by EXACT RGB value
+    // (first occurrence); colors absent from the image palette take the
+    // first unused index in the given palette's order, and image palette
+    // entries beyond the given palette map to index 0.
+    std::vector<std::uint8_t> remap;
+    const std::uint8_t* remap_source = image->pixels.data();
+    std::vector<std::uint8_t> remapped_pixels;
+    if (custom_palette_size > 0u) {
+        const std::size_t custom_entries = palette_source.size() / 3u;
+        const std::size_t image_entries = image->palette_rgb.size() / 3u;
+        std::unordered_map<std::uint32_t, int> image_color_index;
+        image_color_index.reserve(image_entries * 2u);
+        for (std::size_t k = 0; k < image_entries; ++k) {
+            const std::uint32_t key = (static_cast<std::uint32_t>(image->palette_rgb[k * 3u]) << 16) |
+                (static_cast<std::uint32_t>(image->palette_rgb[k * 3u + 1u]) << 8) |
+                static_cast<std::uint32_t>(image->palette_rgb[k * 3u + 2u]);
+            if (image_color_index.find(key) == image_color_index.end()) {
+                image_color_index.emplace(key, static_cast<int>(k));
+            }
+        }
+        std::vector<int> used;
+        used.reserve(custom_entries);
+        for (std::size_t c = 0; c < custom_entries; ++c) {
+            const std::uint32_t key = (static_cast<std::uint32_t>(palette_source[c * 3u]) << 16) |
+                (static_cast<std::uint32_t>(palette_source[c * 3u + 1u]) << 8) |
+                static_cast<std::uint32_t>(palette_source[c * 3u + 2u]);
+            const auto found = image_color_index.find(key);
+            int index = found != image_color_index.end() ? found->second : -1;
+            if (index >= 0 &&
+                std::find(used.begin(), used.end(), index) != used.end()) {
+                index = -1;
+            }
+            used.push_back(index);
+        }
+        for (std::size_t i = 0; i < used.size(); ++i) {
+            if (used[i] < 0) {
+                for (std::size_t j = 0; j < used.size(); ++j) {
+                    if (std::find(used.begin(), used.end(), static_cast<int>(j)) == used.end()) {
+                        used[i] = static_cast<int>(j);
+                        break;
+                    }
+                }
+            }
+        }
+        remap.reserve(std::min<std::size_t>(image_entries, 256u));
+        for (std::size_t k = 0; k < image_entries; ++k) {
+            remap.push_back(static_cast<std::uint8_t>(k < used.size() ? used[k] : 0));
+        }
+        remapped_pixels.assign(image->pixels.size(), 0);
+        for (std::size_t i = 0; i < image->pixels.size(); ++i) {
+            const std::uint8_t index = image->pixels[i];
+            remapped_pixels[i] = index < remap.size() ? remap[index] : 0;
+        }
+        remap_source = remapped_pixels.data();
+    }
+    int color_table_entries = 2;
+    while (color_table_entries * 3 < static_cast<int>(palette_source.size())) {
+        color_table_entries <<= 1;
+    }
+    if (color_table_entries > 256) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    int min_code_size = 0;
+    while ((1 << min_code_size) < color_table_entries) {
+        ++min_code_size;
+    }
+    min_code_size = std::max(2, min_code_size);
+
+    try {
+        std::vector<std::uint8_t> lzw;
+        if (!gif_lzw_encode_indices_interlaced(
+                remap_source,
+                image->width,
+                image->height,
+                image->stride,
+                color_table_entries,
+                min_code_size,
+                interlace,
+                &lzw)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::vector<std::uint8_t> gif;
+        gif.reserve(32u + palette_source.size() + lzw.size());
+        gif.push_back('G');
+        gif.push_back('I');
+        gif.push_back('F');
+        gif.push_back('8');
+        gif.push_back(static_cast<std::uint8_t>((has_transparency || comment_size > 0u || interlace) ? '9' : '7'));
+        gif.push_back('a');
+        append_le16(gif, static_cast<std::uint16_t>(image->width));
+        append_le16(gif, static_cast<std::uint16_t>(image->height));
+        int table_size_code = 0;
+        for (int entries = 2; entries < color_table_entries; entries <<= 1) {
+            ++table_size_code;
+        }
+        const int color_resolution = std::max(0, min_code_size - 1);
+        gif.push_back(static_cast<std::uint8_t>(0x80 | ((color_resolution & 0x07) << 4) | (table_size_code & 0x07)));
+        gif.push_back(0);
+        gif.push_back(0);
+        gif.insert(gif.end(), palette_source.begin(), palette_source.end());
+        gif.resize(gif.size() + static_cast<std::size_t>(color_table_entries) * 3u - palette_source.size(), 0);
+
+        append_gif_comment_extension(gif, comment, comment_size);
+
+        if (has_transparency) {
+            gif.insert(gif.end(), {0x21, 0xf9, 0x04, 0x01});
+            append_le16(gif, 0);
+            gif.push_back(static_cast<std::uint8_t>(transparency & 0xff));
+            gif.push_back(0);
+        }
+
+        gif.push_back(0x2c);
+        append_le16(gif, 0);
+        append_le16(gif, 0);
+        append_le16(gif, static_cast<std::uint16_t>(image->width));
+        append_le16(gif, static_cast<std::uint16_t>(image->height));
+        gif.push_back(static_cast<std::uint8_t>(interlace ? 0x40 : 0));
+        gif.push_back(static_cast<std::uint8_t>(min_code_size));
+        append_gif_sub_blocks(gif, lzw);
+        gif.push_back(0x3b);
+
+        if (!write_binary_file(path, gif)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 int save_gif_image(const PillowCImage* image, const char* path)
 {
     return save_gif_image_with_comment(image, path, nullptr, 0u);
@@ -1302,6 +1495,85 @@ bool gif_lzw_encode_indices(
     int min_code_size,
     std::vector<std::uint8_t>* out);
 
+bool gif_lzw_encode_indices_interlaced(
+    const std::uint8_t* pixels,
+    int width,
+    int height,
+    std::size_t stride,
+    int color_table_entries,
+    int min_code_size,
+    bool interlace,
+    std::vector<std::uint8_t>* out)
+{
+    if (!pixels || !out || width <= 0 || height <= 0 || stride < static_cast<std::size_t>(width) ||
+        color_table_entries <= 0 || min_code_size < 2 || min_code_size > 8) {
+        return false;
+    }
+    const int clear_code = 1 << min_code_size;
+    const int end_code = clear_code + 1;
+    int next_code = end_code + 1;
+    int code_size = min_code_size + 1;
+
+    GifBitWriter writer;
+    std::unordered_map<std::uint32_t, int> dictionary;
+    dictionary.reserve(4096);
+
+    // GIF interlace visits rows in the classic four passes.
+    const int pass_starts[4] = {0, 4, 2, 1};
+    const int pass_steps[4] = {8, 8, 4, 2};
+    const int pass_count = interlace ? 4 : 1;
+
+    writer.write(clear_code, code_size);
+    int prefix = -1;
+    for (int pass = 0; pass < pass_count; ++pass) {
+        const int start = interlace ? pass_starts[pass] : 0;
+        const int step = interlace ? pass_steps[pass] : 1;
+        for (int y = start; y < height; y += step) {
+            const std::uint8_t* row = pixels + static_cast<std::size_t>(y) * stride;
+            for (int x = 0; x < width; ++x) {
+                const int value = row[x];
+                if (value < 0 || value >= color_table_entries) {
+                    return false;
+                }
+                if (prefix < 0) {
+                    prefix = value;
+                    continue;
+                }
+
+                const std::uint32_t key = (static_cast<std::uint32_t>(prefix) << 8) |
+                                          static_cast<std::uint32_t>(value);
+                const auto found = dictionary.find(key);
+                if (found != dictionary.end()) {
+                    prefix = found->second;
+                    continue;
+                }
+
+                writer.write(prefix, code_size);
+                if (next_code <= 4095) {
+                    dictionary.emplace(key, next_code++);
+                    if (next_code > (1 << code_size) && code_size < 12) {
+                        ++code_size;
+                    }
+                } else {
+                    writer.write(clear_code, code_size);
+                    dictionary.clear();
+                    next_code = end_code + 1;
+                    code_size = min_code_size + 1;
+                }
+                prefix = value;
+            }
+        }
+    }
+    if (prefix < 0) {
+        return false;
+    }
+    writer.write(prefix, code_size);
+    writer.write(end_code, code_size);
+    writer.flush();
+    *out = std::move(writer.bytes);
+    return true;
+}
+
 bool gif_lzw_encode_image(
     const PillowCImage* image,
     int color_table_entries,
@@ -1330,64 +1602,8 @@ bool gif_lzw_encode_indices(
     int min_code_size,
     std::vector<std::uint8_t>* out)
 {
-    if (!pixels || !out || width <= 0 || height <= 0 || stride < static_cast<std::size_t>(width) ||
-        color_table_entries <= 0 || min_code_size < 2 || min_code_size > 8) {
-        return false;
-    }
-    const int clear_code = 1 << min_code_size;
-    const int end_code = clear_code + 1;
-    int next_code = end_code + 1;
-    int code_size = min_code_size + 1;
-
-    GifBitWriter writer;
-    std::unordered_map<std::uint32_t, int> dictionary;
-    dictionary.reserve(4096);
-
-    writer.write(clear_code, code_size);
-    int prefix = -1;
-    for (int y = 0; y < height; ++y) {
-        const std::uint8_t* row = pixels + static_cast<std::size_t>(y) * stride;
-        for (int x = 0; x < width; ++x) {
-            const int value = row[x];
-            if (value < 0 || value >= color_table_entries) {
-                return false;
-            }
-            if (prefix < 0) {
-                prefix = value;
-                continue;
-            }
-
-            const std::uint32_t key = (static_cast<std::uint32_t>(prefix) << 8) |
-                                      static_cast<std::uint32_t>(value);
-            const auto found = dictionary.find(key);
-            if (found != dictionary.end()) {
-                prefix = found->second;
-                continue;
-            }
-
-            writer.write(prefix, code_size);
-            if (next_code <= 4095) {
-                dictionary.emplace(key, next_code++);
-                if (next_code > (1 << code_size) && code_size < 12) {
-                    ++code_size;
-                }
-            } else {
-                writer.write(clear_code, code_size);
-                dictionary.clear();
-                next_code = end_code + 1;
-                code_size = min_code_size + 1;
-            }
-            prefix = value;
-        }
-    }
-    if (prefix < 0) {
-        return false;
-    }
-    writer.write(prefix, code_size);
-    writer.write(end_code, code_size);
-    writer.flush();
-    *out = std::move(writer.bytes);
-    return true;
+    return gif_lzw_encode_indices_interlaced(
+        pixels, width, height, stride, color_table_entries, min_code_size, false, out);
 }
 
 int gif_table_size_code_for_entries(int entries)
@@ -2532,6 +2748,90 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_gif_options(
         return save_gif_image(image, path);
     }
     return save_gif_indexed_native(image, path, true, transparency, nullptr, 0u);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_gif_interlace_palette_options(
+    const PillowCImage* image,
+    const char* path,
+    int has_transparency,
+    int transparency,
+    int interlace,
+    const std::uint8_t* custom_palette,
+    std::size_t custom_palette_size)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const int refresh_status = pillow_c_refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+    if (image->mode == PILLOW_C_MODE_P && image->channels == 1 &&
+        !image->palette_rgb.empty() && image->palette_rgb.size() % 3u == 0u) {
+        return save_gif_indexed_native_with_interlace_palette(
+            image,
+            path,
+            has_transparency != 0,
+            transparency,
+            interlace != 0,
+            custom_palette,
+            custom_palette_size,
+            nullptr,
+            0u);
+    }
+    // Non-indexed sources keep the WIC/native quantization routes; interlace
+    // and palette need the native writer, so quantize first.
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(image->width, image->height, 1, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    try {
+        PillowCImage quantized{
+            image->width,
+            image->height,
+            PILLOW_C_MODE_P,
+            1,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        if (image->mode == PILLOW_C_MODE_L && image->channels == 1) {
+            const int status = pillow_c_quantize_exact_image_into(image, 256, &quantized);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else if (image->mode == PILLOW_C_MODE_RGB && image->channels == 3) {
+            const int status = pillow_c_quantize_exact_image_into(image, 256, &quantized);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+        } else if (image->mode == PILLOW_C_MODE_RGBA && image->channels == 4) {
+            bool has_transparency_out = false;
+            int transparency_out = 0;
+            const int status = pillow_c_quantize_exact_rgba_gif_into(
+                image, &quantized, &has_transparency_out, &transparency_out);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            if (has_transparency_out && !has_transparency) {
+                has_transparency = 1;
+                transparency = transparency_out;
+            }
+        } else {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return save_gif_indexed_native_with_interlace_palette(
+            &quantized,
+            path,
+            has_transparency != 0,
+            transparency,
+            interlace != 0,
+            custom_palette,
+            custom_palette_size,
+            nullptr,
+            0u);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_gif_comment(

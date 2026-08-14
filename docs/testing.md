@@ -7153,3 +7153,14 @@ byte-identical QOI/TGA option containers against local Pillow 11.3.0.
 Source/DLL export parity is `505/505` (two deliberate new exports) and the
 rebuilt DLL SHA-256 is
 `0A9FAB1D3D5D3A0175EC6994ABEDB57A75F26B89BF38DD69F91223269D27406C`.
+
+2026-08-15 BEHAV-SAVEOPTS-002 verification: the facade
+`Pillow Image.Save PNG P-mode bit depths` and `GIF interlace defaults`
+targets pass `1/1` each; the full directory suite passes `2841/2841` in
+`22266ms` with zero failures, errors, or skips. The ctypes cross-checks
+`oracle/probe_pngbits_dll.py` and `oracle/probe_gifopts2_dll.py` pin the
+auto-minimized depths, the bits-override chain, and the interlaced default /
+palette remap against local Pillow 11.3.0 (reopened pixels byte-for-byte).
+Source/DLL export parity is `507/507` (two deliberate new exports) and the
+rebuilt DLL SHA-256 is
+`9852FA232B737D709EB0A12960A7F0770BF116E0D3074DA38A4A0F93BAB55D09`.

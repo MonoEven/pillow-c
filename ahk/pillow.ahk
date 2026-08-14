@@ -13331,6 +13331,46 @@ class Pillow {
             if IsSet(saveOptions) && resolvedFormat = "GIF" {
                 transparencyOption := Pillow.Image.SaveOption(saveOptions, "Transparency", "transparency")
                 commentOption := Pillow.Image.SaveOption(saveOptions, "Comment", "comment")
+                interlaceOption := Pillow.Image.SaveOption(saveOptions, "Interlace", "interlace")
+                paletteOption := Pillow.Image.SaveOption(saveOptions, "Palette", "palette")
+                if interlaceOption.Set || paletteOption.Set {
+                    ; Pillow 11.3.0's interlace flag (0x40 + four-pass rows)
+                    ; and the palette global-color-table override (the pixel
+                    ; indices keep their meaning).
+                    hasTransparency := 0
+                    transparency := 0
+                    if transparencyOption.Set {
+                        if !(transparencyOption.Value is Integer)
+                            throw Error("Pillow.Image.Save transparency must be an integer", -1)
+                        hasTransparency := 1
+                        transparency := transparencyOption.Value
+                    }
+                    interlace := 1
+                    if interlaceOption.Set
+                        interlace := interlaceOption.Value ? 1 : 0
+                    ; Pillow's @PIL153 workaround disables interlace whenever
+                    ; either side is shorter than 16 pixels (even explicit).
+                    if Min(this.Width, this.Height) < 16
+                        interlace := 0
+                    paletteBytes := 0
+                    paletteSize := 0
+                    if paletteOption.Set {
+                        paletteBytes := Pillow.Image.SaveTransparencyByteTable(paletteOption.Value)
+                        paletteSize := paletteBytes.Size
+                    }
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_gif_interlace_palette_options",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Int", hasTransparency,
+                        "Int", transparency,
+                        "Int", interlace,
+                        "Ptr", paletteBytes,
+                        "UPtr", paletteSize,
+                        "Int"
+                    ))
+                    return
+                }
                 if commentOption.Set {
                     commentState := Pillow.Image.SaveGifCommentBuffer(commentOption)
                     if transparencyOption.Set {
@@ -13426,6 +13466,8 @@ class Pillow {
 
             if IsSet(saveOptions) && resolvedFormat = "PNG" {
                 compressLevelOption := Pillow.Image.SaveOption(saveOptions, "CompressLevel", "compress_level")
+                compressTypeOption := Pillow.Image.SaveOption(saveOptions, "CompressType", "compress_type")
+                bitsOption := Pillow.Image.SaveOption(saveOptions, "Bits", "bits")
                 dpiOption := Pillow.Image.SaveOption(saveOptions, "Dpi", "dpi")
                 transparencyOption := Pillow.Image.SaveOption(saveOptions, "Transparency", "transparency")
                 pngInfoOption := Pillow.Image.SaveOption(saveOptions, "PngInfo", "pnginfo")
@@ -13434,7 +13476,36 @@ class Pillow {
                 interlaceOption := Pillow.Image.SaveOption(saveOptions, "Interlace", "interlace")
                 gammaOption := Pillow.Image.SaveOption(saveOptions, "Gamma", "gamma")
                 optimizeOption := Pillow.Image.SaveOption(saveOptions, "Optimize", "optimize")
-                if compressLevelOption.Set || dpiOption.Set || transparencyOption.Set || pngInfoOption.Set || iccProfileOption.Set || exifOption.Set || interlaceOption.Set || gammaOption.Set || optimizeOption.Set {
+                if compressLevelOption.Set || compressTypeOption.Set || bitsOption.Set || dpiOption.Set || transparencyOption.Set || pngInfoOption.Set || iccProfileOption.Set || exifOption.Set || interlaceOption.Set || gammaOption.Set || optimizeOption.Set {
+                    ; Pillow's C encoder parses compress_type the same way
+                    ; (the exact TypeError) and only the 0-4 range is
+                    ; accepted-and-ignored; 5+ fails with the zlib codec
+                    ; configuration OSError.
+                    if compressTypeOption.Set {
+                        if !(compressTypeOption.Value is Integer)
+                            throw Error("'str' object cannot be interpreted as an integer", -1)
+                        if compressTypeOption.Value < 0 || compressTypeOption.Value > 4
+                            throw Error("codec configuration error when writing image file", -1)
+                    }
+                    ; Pillow's bits override uses colors = min(1 << bits, 256)
+                    ; with the exact shift errors, then picks 1/2/4/8 depth.
+                    if bitsOption.Set {
+                        if !(bitsOption.Value is Integer)
+                            throw Error("unsupported operand type(s) for <<: 'int' and 'str'", -1)
+                        if bitsOption.Value < 0
+                            throw Error("negative shift count", -1)
+                        if this.Mode = "P" {
+                            pathBytes := Pillow.Image.Utf8Buffer(path)
+                            Pillow.CheckStatus(DllCall(
+                                Pillow.RequireDllPath() "\pillow_c_image_save_png_bits",
+                                "Ptr", this.RequireHandle(),
+                                "Ptr", pathBytes,
+                                "Int", bitsOption.Value,
+                                "Int"
+                            ))
+                            return
+                        }
+                    }
                     compressLevel := -1
                     if compressLevelOption.Set {
                         ; Pillow parses the value as a C int (the exact
@@ -15188,6 +15259,26 @@ class Pillow {
                     ))
                     return
                 }
+            }
+
+            if resolvedFormat = "GIF" {
+                ; BEHAV-SAVEOPTS-001: Pillow's GIF save is interlaced by
+                ; default (interlace=1) except images with a side shorter
+                ; than 16 pixels (the @PIL153 workaround), so the plain save
+                ; routes through the native writer with that default.
+                gifInterlace := Min(this.Width, this.Height) < 16 ? 0 : 1
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_gif_interlace_palette_options",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", pathBytes,
+                    "Int", 0,
+                    "Int", 0,
+                    "Int", gifInterlace,
+                    "Ptr", 0,
+                    "UPtr", 0,
+                    "Int"
+                ))
+                return
             }
 
             Pillow.CheckStatus(DllCall(

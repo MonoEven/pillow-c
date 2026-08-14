@@ -83,11 +83,13 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-SAVEOPTS-001 (save-option parity
-wave 1: the API-SAVEOPTS-002 error messages all Pillow-exact, the
-JPEG quality-preset alias removal, the QOI colorspace byte and the
-TGA id_section/orientation containers byte-identical to Pillow)
-after BEHAV-FONTFILE-002/
+Latest covered gap tail: BEHAV-SAVEOPTS-002 (save-option parity
+wave 2: the PNG P-mode auto-minimized bit depths and the bits
+override chain, the compress_type 0-4 semantics, the GIF interlaced
+default with the @PIL153 workaround, and the GIF palette exact-match
+remap — reopened pixels byte-for-byte Pillow-identical)
+after BEHAV-SAVEOPTS-001/
+BEHAV-FONTFILE-002/
 BEHAV-FONTFILE-001/
 BEHAV-FONT-002/
 BEHAV-PARSER-001/
@@ -107,11 +109,11 @@ BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
 the format-family surface, ImagePalette.load, the Parser, and the
 font mask/TransposedFont/truetype/PILfont surfaces are now COMPLETE
-and the save-option error messages are Pillow-exact; the next
+and the save-option error messages plus the PNG/GIF/QOI/TGA option
+containers are Pillow-exact; the next
 bounded children are the remaining API-SAVEOPTS-001 option
-implementations (PNG compress_type/dictionary/bits, JPEG
-smooth/streamtype, TIFF strip_size/resolution/named tags, GIF
-palette/interlace), then API-ERRMSGS-001.
+implementations (PNG dictionary, JPEG smooth/streamtype, TIFF
+strip_size/resolution/named tags), then API-ERRMSGS-001.
 ```
 
 Current work packet:
@@ -455,9 +457,8 @@ Current work packet:
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
 - Selected next gap: `API-SAVEOPTS-001` remainder, the save-option
-  implementations (PNG compress_type/dictionary/bits, JPEG
-  smooth/streamtype, TIFF strip_size/resolution/named tags, GIF
-  palette/interlace), then `API-ERRMSGS-001`.
+  implementations (PNG dictionary, JPEG smooth/streamtype, TIFF
+  strip_size/resolution/named tags), then `API-ERRMSGS-001`.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19364,6 +19365,29 @@ to `505/505` with zero difference; and the rebuilt DLL SHA-256 is
 The remaining API-SAVEOPTS-001 children (PNG compress_type/dictionary/bits,
 JPEG smooth/streamtype, TIFF strip_size/resolution/named tags, GIF
 palette/interlace) stay the next packets.
+
+2026-08-15: `BEHAV-SAVEOPTS-002` is GREEN as the save-option parity wave 2.
+The Pillow 11.3.0 oracle (fresh pins plus `oracle/probe_pngbits_dll.py` and
+`oracle/probe_gifopts2_dll.py`) pins: the PNG P-mode auto-minimized bit
+depths (<=2 colors -> 1, <=4 -> 2, <=16 -> 4, else 8) and the `bits`
+override chain (3 -> 4, 9 -> 8, 0 -> 1, 16 -> 8) with the exact shift errors;
+the PNG `compress_type` 0-4 accepted-and-ignored range with the exact 5+
+OSError (the DLL's stored-deflate payload is the documented no-compressor
+boundary); the GIF interlaced DEFAULT (interlace=1) with the @PIL153
+sub-16px workaround and the four-pass row order; and the GIF `palette`
+exact-RGB-match remap with the first-unused-index fallback — the reopened
+pixels match Pillow byte-for-byte on every case. Two deliberate native
+exports (`pillow_c_image_save_png_bits`,
+`pillow_c_image_save_gif_interlace_palette_options`) implement the
+containers. The PNG bits and GIF option targets pass `1/1` each; the full
+directory suite passes `2841/2841` in `22266ms` with zero failures,
+errors, or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity moves to `507/507` with zero difference; and the
+rebuilt DLL SHA-256 is
+`9852FA232B737D709EB0A12960A7F0770BF116E0D3074DA38A4A0F93BAB55D09`.
+The remaining API-SAVEOPTS-001 children (PNG dictionary, JPEG
+smooth/streamtype, TIFF strip_size/resolution/named tags) stay the next
+packets.
 ```
 
 If any line above is no longer true, update this file first, then update

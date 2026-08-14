@@ -27811,6 +27811,185 @@ PillowTestSaveOptionParity(*) {
 
 AhkTest.Test("Pillow Image.Save option errors and QOI/TGA option bytes match Pillow 11.3.0", PillowTestSaveOptionParity)
 
+; BEHAV-SAVEOPTS-001 wave 2: the PNG P-mode bit depths. Pillow 11.3.0
+; minimizes the palette depth on every P save (<=2 colors -> 1, <=4 -> 2,
+; <=16 -> 4, else 8) and accepts a bits override through the same
+; colors = min(1 << bits, 256) chain (bits 3 -> 4, 9 -> 8, 0 -> 1, 16 -> 8);
+; the exact shift errors and the compress_type 0-4 validation are pinned
+; (oracle/probe_pngbits_dll.py).
+PillowTestSaveOptionPngBits(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    ; 16-color palette fixture
+    image := Pillow.Image.New("P", [8, 8], 0)
+    try {
+        palette := []
+        i := 0
+        while i < 48 {
+            palette.Push(Mod(i * 40, 256))
+            i += 1
+        }
+        image.PutPalette(palette)
+        x := 0
+        while x < 8 {
+            y := 0
+            while y < 8 {
+                image.PutPixel([x, y], Mod(x + y, 16))
+                y += 1
+            }
+            x += 1
+        }
+
+        ; --- auto-minimized default save: depth 4 ---
+        autoPath := PillowTestTempPngPath("bits-auto")
+        image.Save(autoPath, "PNG")
+        autoBytes := PillowTestReadFileBytes(autoPath)
+        AhkTest.AssertEqual(4, autoBytes[25]) ; IHDR bit depth byte
+        autoReopen := Pillow.Image.Open(autoPath)
+        try {
+            AhkTest.AssertEqual("P", autoReopen.Mode)
+            AhkTest.AssertEqual(0, autoReopen.GetPixel([0, 0]))
+            AhkTest.AssertEqual(1, autoReopen.GetPixel([1, 0]))
+        } finally {
+            autoReopen.Close()
+        }
+        PillowTestDeleteFile(autoPath)
+
+        ; --- bits override chain ---
+        for item in [{ Bits: 1, Depth: 1 }, { Bits: 2, Depth: 2 }, { Bits: 4, Depth: 4 }, { Bits: 3, Depth: 4 }, { Bits: 9, Depth: 8 }, { Bits: 0, Depth: 1 }, { Bits: 16, Depth: 8 }] {
+            bitsPath := PillowTestTempPngPath("bits-" item.Bits)
+            image.Save(bitsPath, "PNG", { bits: item.Bits })
+            bitsBytes := PillowTestReadFileBytes(bitsPath)
+            AhkTest.AssertEqual(item.Depth, bitsBytes[25])
+            bitsReopen := Pillow.Image.Open(bitsPath)
+            try {
+                AhkTest.AssertEqual("P", bitsReopen.Mode)
+            } finally {
+                bitsReopen.Close()
+            }
+            PillowTestDeleteFile(bitsPath)
+        }
+
+        ; --- bits errors ---
+        errPath := PillowTestTempPngPath("bits-err")
+        AhkTest.AssertEqual("negative shift count", PillowTestFormatCaptureError(() => image.Save(errPath, "PNG", { bits: -1 })))
+        AhkTest.AssertEqual("unsupported operand type(s) for <<: 'int' and 'str'", PillowTestFormatCaptureError(() => image.Save(errPath, "PNG", { bits: "x" })))
+        PillowTestDeleteFile(errPath)
+
+        ; --- compress_type: 0-4 accepted-and-ignored, 5+/bogus exact errors ---
+        for value in [0, 1, 4] {
+            ctPath := PillowTestTempPngPath("ct-" value)
+            ctValue := value
+            AhkTest.AssertEqual("", PillowTestFormatCaptureError(() => image.Save(ctPath, "PNG", { compress_type: ctValue })))
+            ctBytes := PillowTestReadFileBytes(ctPath)
+            AhkTest.AssertEqual(4, ctBytes[25])
+            PillowTestDeleteFile(ctPath)
+        }
+        for value in [5, 9, 999] {
+            ctPath := PillowTestTempPngPath("ct-err")
+            ctValue := value
+            AhkTest.AssertEqual("codec configuration error when writing image file", PillowTestFormatCaptureError(() => image.Save(ctPath, "PNG", { compress_type: ctValue })))
+            PillowTestDeleteFile(ctPath)
+        }
+        ctPath := PillowTestTempPngPath("ct-err")
+        AhkTest.AssertEqual("'str' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Save(ctPath, "PNG", { compress_type: "x" })))
+        PillowTestDeleteFile(ctPath)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save PNG P-mode bit depths and compress_type match Pillow 11.3.0", PillowTestSaveOptionPngBits)
+
+; BEHAV-SAVEOPTS-001 wave 2: the GIF interlace/palette options. Pillow
+; 11.3.0 interlaces by default for images >= 16px on both sides (the @PIL153
+; workaround forces 0 otherwise, even for explicit interlace=True) and the
+; palette option remaps pixels by exact RGB match with the first-unused-index
+; fallback (oracle/probe_gifopts2_dll.py).
+PillowTestSaveOptionGif(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("P", [16, 16], 0)
+    try {
+        palette := []
+        i := 0
+        while i < 48 {
+            palette.Push(Mod(i * 32, 256))
+            i += 1
+        }
+        image.PutPalette(palette)
+        x := 0
+        while x < 16 {
+            y := 0
+            while y < 16 {
+                image.PutPixel([x, y], Mod(x + y, 4))
+                y += 1
+            }
+            x += 1
+        }
+
+        ; --- the default save is interlaced (flags 0x40) ---
+        defaultPath := PillowTestTempGifPath("gif-default")
+        image.Save(defaultPath, "GIF")
+        defaultBytes := PillowTestReadFileBytes(defaultPath)
+        AhkTest.AssertEqual(0x40, defaultBytes[PillowTestGifDescriptorFlagsIndex(defaultBytes)] & 0x40)
+        defaultReopen := Pillow.Image.Open(defaultPath)
+        try {
+            AhkTest.AssertEqual("P", defaultReopen.Mode)
+            AhkTest.AssertEqual([0, 1, 2, 3], PillowTestPaletteBufferUChars(defaultReopen.ToBytes(), 0, 4))
+        } finally {
+            defaultReopen.Close()
+        }
+        PillowTestDeleteFile(defaultPath)
+
+        ; --- explicit interlace=False ---
+        noInterlacePath := PillowTestTempGifPath("gif-noint")
+        image.Save(noInterlacePath, "GIF", { interlace: false })
+        noBytes := PillowTestReadFileBytes(noInterlacePath)
+        AhkTest.AssertEqual(0, noBytes[PillowTestGifDescriptorFlagsIndex(noBytes)] & 0x40)
+        PillowTestDeleteFile(noInterlacePath)
+
+        ; --- small images are never interlaced (the @PIL153 workaround) ---
+        small := Pillow.Image.New("P", [8, 8], 0)
+        try {
+            small.PutPalette(palette)
+            smallPath := PillowTestTempGifPath("gif-small")
+            small.Save(smallPath, "GIF", { interlace: true })
+            smallBytes := PillowTestReadFileBytes(smallPath)
+            AhkTest.AssertEqual(0, smallBytes[PillowTestGifDescriptorFlagsIndex(smallBytes)] & 0x40)
+            PillowTestDeleteFile(smallPath)
+        } finally {
+            small.Close()
+        }
+
+        ; --- palette= remaps by Pillow's exact-match algorithm ---
+        palettePath := PillowTestTempGifPath("gif-palette")
+        image.Save(palettePath, "GIF", { palette: [0, 0, 0, 255, 255, 255] })
+        paletteReopen := Pillow.Image.Open(palettePath)
+        try {
+            AhkTest.AssertEqual([0, 1, 0, 0], PillowTestPaletteBufferUChars(paletteReopen.ToBytes(), 0, 4))
+            reopenedPalette := paletteReopen.GetPalette()
+            AhkTest.AssertEqual([0, 0, 0, 255, 255, 255], PillowTestPaletteBufferUChars(PillowTestBuffer(reopenedPalette), 0, 6))
+        } finally {
+            paletteReopen.Close()
+        }
+        PillowTestDeleteFile(palettePath)
+    } finally {
+        image.Close()
+    }
+}
+
+PillowTestGifDescriptorFlagsIndex(bytes) {
+    ; the image descriptor (0x2c) flags byte sits 9 bytes after the marker
+    index := 1
+    while index <= bytes.Length {
+        if bytes[index] = 0x2c
+            return index + 9
+        index += 1
+    }
+    return -1
+}
+
+AhkTest.Test("Pillow Image.Save GIF interlace defaults and palette remap match Pillow 11.3.0", PillowTestSaveOptionGif)
+
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
 

@@ -1,0 +1,103 @@
+{
+ "dll_default": [
+  0,
+  64,
+  84
+ ],
+ "ref_default": [
+  64,
+  95
+ ],
+ "dll_nointerlace": [
+  0,
+  0,
+  88
+ ],
+ "ref_nointerlace": [
+  0,
+  100
+ ],
+ "dll_interlace": [
+  0,
+  64,
+  84
+ ],
+ "ref_interlace": [
+  64,
+  95
+ ],
+ "dll_palette": [
+  0,
+  64,
+  64
+ ],
+ "ref_palette": [
+  64,
+  93
+ ],
+ "reopen_d_default.gif": [
+  "P",
+  [
+   16,
+   16
+  ],
+  [
+   0,
+   1,
+   2,
+   3
+  ]
+ ],
+ "reopen_d_noint.gif": [
+  "P",
+  [
+   16,
+   16
+  ],
+  [
+   0,
+   1,
+   2,
+   3
+  ]
+ ],
+ "reopen_d_i.gif": [
+  "P",
+  [
+   16,
+   16
+  ],
+  [
+   0,
+   1,
+   2,
+   3
+  ]
+ ],
+ "reopen_d_p.gif": [
+  "P",
+  [
+   16,
+   16
+  ],
+  [
+   0,
+   1,
+   0,
+   0
+  ]
+ ],
+ "reopen_r.gif": [
+  "P",
+  [
+   16,
+   16
+  ],
+  [
+   0,
+   1,
+   0,
+   0
+  ]
+ ]
+}

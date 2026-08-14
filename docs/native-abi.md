@@ -12809,3 +12809,24 @@ kind-3 handle follows the existing font-handle ownership rules.
 No other export, status code, handle-ownership rule, or pointer
 lifetime changed; the facade's save-option error messages now match
 Pillow's exact strings (the facade-side validation only).
+
+`BEHAV-SAVEOPTS-002` adds two deliberate exports:
+
+- `pillow_c_image_save_png_bits(const PillowCImage* image, const
+  char* path, int bits)` — the PNG P-mode bit-depth override (the
+  shared encoder's `bits_override` seam). Every P save now
+  auto-minimizes the palette depth like Pillow 11.3.0 (palette colors
+  <= 2 -> 1, <= 4 -> 2, <= 16 -> 4, else 8); the override follows
+  Pillow's `colors = min(1 << bits, 256)` chain and out-of-depth
+  indices are truncated; the scanlines pack MSB-first with filter 0.
+- `pillow_c_image_save_gif_interlace_palette_options(const
+  PillowCImage* image, const char* path, int has_transparency, int
+  transparency, int interlace, const uint8_t* custom_palette, size_t
+  custom_palette_size)` — the GIF interlace flag (0x40 descriptor byte
+  plus the four-pass row order in the LZW stream) and the palette
+  override (Pillow's `_normalize_palette` + `remap_palette` exact-RGB
+  match with the first-unused-index fallback and the out-of-range
+  index-0 mapping). Non-indexed sources quantize through the existing
+  native seams first; the plain GIF save routes through this export
+  with Pillow's interlaced default (non-interlaced for images with a
+  side shorter than 16 pixels — the @PIL153 workaround).
