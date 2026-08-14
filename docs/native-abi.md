@@ -274,10 +274,17 @@ load(dpi) stays a documented child and save raises the exact
 ImagePalette.load GIMP/.ggr/Teragon parser family runs in the
 facade with Pillow's exact try-chain and error escapes.
 
+`BEHAV-PARSER-001` is facade-only and changes NO ABI: the
+ImageFile.Parser feed/close consumer (buffered feeds, per-feed
+content open, close reopen, and the exact error/reset surface) runs
+in the facade; the decoder-based incremental decode stays a
+documented child.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`498/498`; the full AHK suite is `2834/2834`; and the current DLL SHA-256 is
+`498/498`; the full AHK suite is `2835/2835`; and the current DLL SHA-256 is
 `6603840FEEA48553F2D42ED2444DD5A30331A17ABE3ABCBBB8E262D0988AE747`
-(BEHAV-PALETTE-002 changes no ABI;
+(BEHAV-PARSER-001 changes no ABI;
+BEHAV-PALETTE-002 changes no ABI;
 BEHAV-OPEN-009 adds the `pillow_c_image_open_wmf` export below;
 BEHAV-OPEN-008 changes no ABI;
 BEHAV-OPEN-007 adds the `pillow_c_image_open_pcd` export below;

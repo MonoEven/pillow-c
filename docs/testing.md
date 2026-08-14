@@ -47,8 +47,21 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2834` AHK tests: `1392` raw DLL tests and
-`1442` facade tests.
+This suite currently registers `2835` AHK tests: `1392` raw DLL tests and
+`1443` facade tests.
+
+Latest `BEHAV-PARSER-001` verification: the Pillow 11.3.0 oracle
+(`oracle/probe_parser.py`/`probe_parser.json`) pins ImageFile.Parser
+feed/close (whole/pieces/bytewise feeds, the per-feed content open
+with the OSError-family swallow, `cannot parse this image`,
+`cannot reuse parsers`, the finished-ignore feed and second-close
+image, and the data-reopen branch). The facade Parser target passes
+`1/1` in `110ms`; the full directory suite passes `2835/2835` in
+`22047ms` with zero failures, errors, or skips. Facade-only change:
+source/DLL export parity remains `498/498` and the DLL SHA-256
+remains
+`6603840FEEA48553F2D42ED2444DD5A30331A17ABE3ABCBBB8E262D0988AE747`.
+The wave continues with TransposedFont.GetMask next.
 
 Latest `BEHAV-PALETTE-002` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_palette_load.py`/`probe_palette_load.json`) pins

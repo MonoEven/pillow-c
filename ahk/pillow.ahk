@@ -580,7 +580,163 @@ class Pillow {
         }
 
         class Parser {
-            __New(args*) => Pillow.ImageFile.RequireIncremental()
+            ; BEHAV-PARSER-001: Pillow 11.3.0's ImageFile.Parser feed/close
+            ; consumer. The facade accumulates the fed buffers and reopens
+            ; the whole stream through the eager Open at close() — Pillow's
+            ; own fallback path for non-incremental formats (the
+            ; decoder-based incremental decode stays a documented child;
+            ; the observable feed/close/error surface matches).
+            __New() {
+                this.Data := unset
+                this.Image := unset
+                this.Finished := false
+            }
+
+            Reset() {
+                ; Pillow asserts the parser has not collected data yet.
+                if this.HasOwnProp("Data")
+                    throw Error("cannot reuse parsers", -1)
+            }
+
+            Feed(data) {
+                if this.Finished
+                    return
+                if !this.HasOwnProp("Data")
+                    this.Data := data
+                else
+                    this.Data := Pillow.ImageFile.ParserConcat(this.Data, data)
+                if !this.HasOwnProp("Image") {
+                    ; Pillow attempts an open on every feed and swallows the
+                    ; OSError-family failures (UnidentifiedImageError is an
+                    ; OSError subclass) until the data suffices
+                    path := Pillow.ImageFile.ParserWriteTemp(this.Data)
+                    try {
+                        this.Image := Pillow.Image.Open(path)
+                    } catch {
+                        ; not enough data / not yet identifiable
+                    } finally {
+                        Pillow.ImageFile.ParserDeleteTemp(path)
+                    }
+                }
+            }
+
+            Close() {
+                if !this.HasOwnProp("Image")
+                    throw Error("cannot parse this image", -1)
+                if this.HasOwnProp("Data") {
+                    ; Pillow reopens the accumulated stream after a
+                    ; successful earlier open; identification/decode
+                    ; failures surface
+                    path := Pillow.ImageFile.ParserWriteTemp(this.Data)
+                    try {
+                        this.Image := Pillow.Image.Open(path)
+                    } finally {
+                        Pillow.ImageFile.ParserDeleteTemp(path)
+                    }
+                }
+                this.Data := unset
+                this.Finished := true
+                return this.Image
+            }
+
+            __Enter() {
+                return this
+            }
+
+            __Exit(args*) {
+                this.Close()
+            }
+        }
+
+        static ParserConcat(a, b) {
+            out := Buffer(a.Size + b.Size, 0)
+            DllCall("msvcrt\memcpy", "Ptr", out, "Ptr", a, "UPtr", a.Size, "CDecl Ptr")
+            DllCall("msvcrt\memcpy", "Ptr", out.Ptr + a.Size, "Ptr", b, "UPtr", b.Size, "CDecl Ptr")
+            return out
+        }
+
+        static ParserWriteTemp(data) {
+            ext := Pillow.ImageFile.ParserProbeExtension(data)
+            path := A_Temp "\pillow-c-parser-" DllCall("GetTickCount64", "Int64") "-" Random(100000, 999999) ext
+            file := FileOpen(path, "w")
+            try {
+                if data.Size > 0
+                    file.RawWrite(data, data.Size)
+            } finally {
+                file.Close()
+            }
+            return path
+        }
+
+        static ParserProbeExtension(data) {
+            ; Pillow's Parser feeds a BytesIO to Image.open (content-sniffed);
+            ; the facade routes by extension, so the temp file gets the
+            ; extension matching the magic bytes. Unrecognized data keeps a
+            ; benign extension — the open fails and the close raises Pillow's
+            ; "cannot parse this image" either way.
+            if data.Size >= 8 {
+                b0 := NumGet(data, 0, "UChar")
+                b1 := NumGet(data, 1, "UChar")
+                b2 := NumGet(data, 2, "UChar")
+                b3 := NumGet(data, 3, "UChar")
+                if b0 = 0x89 && b1 = 0x50 && b2 = 0x4E && b3 = 0x47
+                    return ".png"
+                if b0 = 0xFF && b1 = 0xD8
+                    return ".jpg"
+                if b0 = 0x47 && b1 = 0x49 && b2 = 0x46 && b3 = 0x38
+                    return ".gif"
+                if b0 = 0x49 && b1 = 0x49 && b2 = 0x2A
+                    return ".tif"
+                if b0 = 0x4D && b1 = 0x4D && b2 = 0x00 && b3 = 0x2A
+                    return ".tif"
+                if b0 = 0x42 && b1 = 0x4D
+                    return ".bmp"
+                if b0 = 0x00 && b1 = 0x00 && b2 = 0x01 && b3 = 0x00
+                    return ".ico"
+                if b0 = 0x00 && b1 = 0x00 && b2 = 0x02 && b3 = 0x00
+                    return ".cur"
+                if b0 = 0x38 && b1 = 0x42 && b2 = 0x50 && b3 = 0x53
+                    return ".psd"
+                if b0 = 0x44 && b1 = 0x44 && b2 = 0x53 && b3 = 0x20
+                    return ".dds"
+                if b0 = 0x69 && b1 = 0x63 && b2 = 0x6E && b3 = 0x73
+                    return ".icns"
+                if b0 = 0x01 && b1 = 0xDA
+                    return ".sgi"
+                if b0 = 0x46 && b1 = 0x54 && b2 = 0x45 && b3 = 0x58
+                    return ".ftc"
+                if b0 = 0x59 && b1 = 0xA6 && b2 = 0x6A && b3 = 0x95
+                    return ".ras"
+                if b0 = 0x53 && b1 = 0x49 && b2 = 0x4D && b3 = 0x50
+                    return ".fit"
+                if b0 = 0x2F && b1 = 0x2A && b2 = 0x20
+                    return ".xpm"
+                if b0 = 0xD0 && b1 = 0xCF && b2 = 0x11 && b3 = 0xE0
+                    return ".mic"
+                if b0 = 0xD7 && b1 = 0xCD && b2 = 0xC6 && b3 = 0x9A
+                    return ".wmf"
+                if b0 = 0x00 && b1 = 0x00 && b2 = 0x01 && b3 = 0xB3
+                    return ".mpg"
+                if b0 = 0x71 && b1 = 0x6F && b2 = 0x69 && b3 = 0x66
+                    return ".qoi"
+                if b0 = 0x0A && b1 <= 5
+                    return ".pcx"
+                if b0 = 0x50 && b1 >= 0x31 && b1 <= 0x36
+                    return ".ppm"
+                if NumGet(data, 4, "UChar") = 0x11 && NumGet(data, 5, "UChar") = 0xAF
+                    return ".fli"
+                if NumGet(data, 4, "UChar") = 0x12 && NumGet(data, 5, "UChar") = 0xAF
+                    return ".flc"
+                if b0 = 0x25 && b1 = 0x21
+                    return ".eps"
+                if b0 = 0xC5 && b1 = 0xD0 && b2 = 0xD3 && b3 = 0xC6
+                    return ".eps"
+            }
+            return ".png"
+        }
+
+        static ParserDeleteTemp(path) {
+            FileDelete(path)
         }
 
         class StubImageFile {

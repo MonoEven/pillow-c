@@ -331,6 +331,32 @@ export parity moves to `493/493` and the DLL SHA-256 is
 The next bounded child is the remaining pure-Python open families
 (MIC/PCD).
 
+## 2026-08-14 BEHAV-PARSER-001 ImageFile.Parser feed/close (GREEN)
+
+`BEHAV-PARSER-001` implements ImageFile.Parser feed/close
+(facade-only, no ABI change). The Pillow 11.3.0 oracle
+(`oracle/probe_parser.py`/`probe_parser.json`) pins: whole/pieces/
+bytewise feeds returning the same loaded image, the per-feed
+content open that swallows the OSError-family failures
+(UnidentifiedImageError is an OSError subclass) until the data
+suffices, close() with no image raising `cannot parse this image`
+(including garbage, truncated, and empty-feed data), the
+data-reopen branch when an earlier open succeeded (trailing
+garbage tolerated by the format's own open), feeds after close
+ignored with a second close returning the image, reset() as a no-op
+on a fresh parser and `cannot reuse parsers` after a feed, and the
+context-manager close. The facade Parser accumulates the fed
+buffers, probes the magic bytes for the temp-file extension (the
+facade routes opens by extension where Pillow content-sniffs), and
+replays the exact surface; the decoder-based incremental decode
+stays a documented child (the close reopens the whole stream —
+Pillow's own fallback for non-incremental formats). The facade
+Parser target passes `1/1` in `110ms`; the full directory suite
+passes `2835/2835` in `22047ms`; source/DLL export parity remains
+`498/498` and the DLL SHA-256 remains
+`6603840FEEA48553F2D42ED2444DD5A30331A17ABE3ABCBBB8E262D0988AE747`.
+The next bounded child is TransposedFont.GetMask.
+
 ## 2026-08-14 BEHAV-PALETTE-002 ImagePalette.load (GREEN)
 
 `BEHAV-PALETTE-002` implements `ImagePalette.load` (facade-only,
@@ -1133,7 +1159,7 @@ Classification of every boundary item (treatment applies per packet):
 | BUFR/GRIB/HDF5/WMF save | `X save handler not installed` (OSError) | MATCH the exact message |
 | JPEG2000 P save | `broken data stream when writing image file` | MATCH the exact message |
 | WEBP/AVIF/JPEG2000 | work via bundled libs | dependency-gated: match Pillow's own not-enabled messages; remain documented build boundaries |
-| ImageFile.Parser | feed/close works (partial feed → close returns correct image) | IMPLEMENT feed/close semantics (facade buffer + native open at close) |
+| ImageFile.Parser | feed/close works (partial feed → close returns correct image) | DONE with BEHAV-PARSER-001 — the facade Parser accumulates fed buffers, attempts Pillow's per-feed content open (swallowing the OSError-family failures), reopens the complete stream at close(), and replays Pillow's exact surface: `cannot parse this image`, `cannot reuse parsers`, the finished-ignore feed, and the second-close image return; the decoder-based incremental decode stays a documented child |
 | ImagePalette.load | parses GIMP/Adobe palette files | DONE with BEHAV-PALETTE-002 — facade parsers for GimpPaletteFile (the "GIMP Palette" walk with the 259-line/768-byte caps, field/comment skips, and the bad-file/bad-entry errors), GimpGradientFile (the "GIMP Gradient" header, the five segment functions, the RGBA 256-entry render, the HSV-colour-space OSError escape, and the short-line IndexError escape), and PaletteFile (the Teragon 256-grayscale-default override) with the try-chain fall-through to `cannot load palette` and Pillow's FileNotFoundError shape; byte-pinned against the 11.3.0 oracle |
 | TransposedFont.GetMask | returns an L-mode mask with glyphs | IMPLEMENT via native text rasterization into an L image |
 | ImageQt/ImageTk | local Pillow HAS Qt/Tk bindings (PyQt5/PySide6/tkinter installed) | environment-gated: the AHK runtime can never create QImage/Tk objects; keep the Pillow no-binding/no-root messages as the honest environment boundary |

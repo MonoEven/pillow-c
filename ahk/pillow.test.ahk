@@ -26822,12 +26822,12 @@ PillowTestImageFileBoundaries(*) {
     AhkTest.AssertEqual(0, state.Xoff)
     AhkTest.AssertEqual(0, state.Yoff)
 
-    ; The incremental/plugin protocol is a documented boundary: the ImageFile
-    ; base object and Parser fail loudly on construction.
+    ; The incremental/plugin protocol base classes fail loudly on
+    ; construction; Parser left this boundary with BEHAV-PARSER-001 (its
+    ; feed/close semantics are pinned by PillowTestParser).
     for entry in [
         (() => Pillow.ImageFile()),
         (() => Pillow.ImageFile.ImageFile()),
-        (() => Pillow.ImageFile.Parser()),
     ] {
         message := ""
         try {
@@ -27155,6 +27155,112 @@ PillowTestImagePaletteLoad(*) {
 }
 
 AhkTest.Test("Pillow ImagePalette.load matches Pillow 11.3.0 GIMP/gradient/Teragon parsing and errors", PillowTestImagePaletteLoad)
+
+PillowTestParser(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pngPath := A_Temp "\parser-src.png"
+    try {
+        src := Pillow.Image.New("RGB", [2, 2], [10, 20, 30])
+        try {
+            src.Save(pngPath, "PNG")
+        } finally {
+            src.Close()
+        }
+        file := FileOpen(pngPath, "r")
+        pngBuffer := Buffer(file.Length, 0)
+        file.RawRead(pngBuffer, file.Length)
+        file.Close()
+
+        ; --- whole / pieces / bytewise feeds ---
+        p := Pillow.ImageFile.Parser()
+        p.Feed(pngBuffer)
+        opened := p.Close()
+        try {
+            AhkTest.AssertEqual("PNG", opened.Format)
+            AhkTest.AssertEqual("RGB", opened.Mode)
+            AhkTest.AssertEqual([2, 2], opened.Size)
+            AhkTest.AssertEqual("0a141e0a141e0a141e0a141e", PillowTestPdfBytesToHex(PillowTestBufferToArray(opened.ToBytes())))
+        } finally {
+            opened.Close()
+        }
+
+        p2 := Pillow.ImageFile.Parser()
+        loop 20 {
+            one := Buffer(1, 0)
+            NumPut("UChar", NumGet(pngBuffer, A_Index - 1, "UChar"), one, 0)
+            p2.Feed(one)
+        }
+        rest := Buffer(pngBuffer.Size - 20, 0)
+        DllCall("msvcrt\memcpy", "Ptr", rest, "Ptr", pngBuffer.Ptr + 20, "UPtr", pngBuffer.Size - 20, "CDecl Ptr")
+        p2.Feed(rest)
+        opened2 := p2.Close()
+        try {
+            AhkTest.AssertEqual([2, 2], opened2.Size)
+        } finally {
+            opened2.Close()
+        }
+
+        p3 := Pillow.ImageFile.Parser()
+        loop pngBuffer.Size {
+            one := Buffer(1, 0)
+            NumPut("UChar", NumGet(pngBuffer, A_Index - 1, "UChar"), one, 0)
+            p3.Feed(one)
+        }
+        opened3 := p3.Close()
+        try {
+            AhkTest.AssertEqual("0a141e0a141e0a141e0a141e", PillowTestPdfBytesToHex(PillowTestBufferToArray(opened3.ToBytes())))
+        } finally {
+            opened3.Close()
+        }
+
+        ; --- errors ---
+        AhkTest.AssertEqual("cannot parse this image", PillowTestFormatCaptureError(() => Pillow.ImageFile.Parser().Close()))
+        p4 := Pillow.ImageFile.Parser()
+        p4.Feed(PillowTestBuffer([0, 1, 2, 32, 110, 111, 116]))
+        AhkTest.AssertEqual("cannot parse this image", PillowTestFormatCaptureError(() => p4.Close()))
+        p5 := Pillow.ImageFile.Parser()
+        p5.Feed(PillowTestFliSlice(pngBuffer, 30))
+        AhkTest.AssertEqual("cannot parse this image", PillowTestFormatCaptureError(() => p5.Close()))
+        p6 := Pillow.ImageFile.Parser()
+        p6.Feed(Pillow.ImageFile.ParserConcat(pngBuffer, PillowTestBuffer([0, 1, 2])))
+        opened6 := p6.Close()
+        try {
+            AhkTest.AssertEqual("PNG", opened6.Format)
+        } finally {
+            opened6.Close()
+        }
+
+        ; --- feed after close is ignored; a second close returns the image ---
+        p7 := Pillow.ImageFile.Parser()
+        p7.Feed(pngBuffer)
+        opened7 := p7.Close()
+        p7.Feed(PillowTestBuffer([0, 1]))
+        opened7b := p7.Close()
+        try {
+            AhkTest.AssertEqual("PNG", opened7.Format)
+            AhkTest.AssertEqual("PNG", opened7b.Format)
+        } finally {
+            opened7.Close()
+            opened7b.Close()
+        }
+
+        ; --- reset semantics ---
+        p8 := Pillow.ImageFile.Parser()
+        p8.Reset()
+        p9 := Pillow.ImageFile.Parser()
+        p9.Feed(PillowTestFliSlice(pngBuffer, 10))
+        AhkTest.AssertEqual("cannot reuse parsers", PillowTestFormatCaptureError(() => p9.Reset()))
+
+        ; --- empty feed then close ---
+        p10 := Pillow.ImageFile.Parser()
+        p10.Feed(Buffer(0, 0))
+        AhkTest.AssertEqual("cannot parse this image", PillowTestFormatCaptureError(() => p10.Close()))
+    } finally {
+        PillowTestDeleteFile(pngPath)
+    }
+}
+
+AhkTest.Test("Pillow ImageFile.Parser feed/close matches Pillow 11.3.0 semantics and errors", PillowTestParser)
 
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

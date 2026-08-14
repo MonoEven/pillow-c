@@ -1,0 +1,73 @@
+{
+ "png_whole": {
+  "ok": [
+   "PNG",
+   "RGB",
+   [
+    2,
+    2
+   ],
+   "0a141e0a141e0a141e0a141e"
+  ]
+ },
+ "png_pieces": {
+  "ok": [
+   "PNG",
+   "RGB",
+   [
+    2,
+    2
+   ],
+   "0a141e0a141e0a141e0a141e"
+  ]
+ },
+ "png_bytewise": {
+  "ok": [
+   "PNG",
+   "RGB",
+   [
+    2,
+    2
+   ],
+   "0a141e0a141e0a141e0a141e"
+  ]
+ },
+ "empty_close": {
+  "err": "OSError: cannot parse this image"
+ },
+ "garbage": {
+  "err": "OSError: cannot parse this image"
+ },
+ "truncated_png": {
+  "err": "OSError: cannot parse this image"
+ },
+ "extra_garbage_after": {
+  "ok": [
+   "PNG",
+   "RGB",
+   [
+    2,
+    2
+   ],
+   "0a141e0a141e0a141e0a141e"
+  ]
+ },
+ "feed_after_close": {
+  "ok": [
+   "PNG",
+   "PNG"
+  ]
+ },
+ "reset_fresh": {
+  "ok": true
+ },
+ "reset_after_feed": {
+  "err": "AssertionError: cannot reuse parsers"
+ },
+ "context": {
+  "ok": "PNG"
+ },
+ "empty_feed": {
+  "err": "OSError: cannot parse this image"
+ }
+}

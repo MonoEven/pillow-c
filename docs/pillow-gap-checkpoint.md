@@ -74,10 +74,11 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-PALETTE-002 (ImagePalette.load: the
-GIMP .gpl/.ggr and Teragon palette-file parsers with the try-chain
-fall-through and the exact error escapes)
-after BEHAV-OPEN-009/
+Latest covered gap tail: BEHAV-PARSER-001 (ImageFile.Parser
+feed/close: the buffered feeds, the per-feed content open, the
+close reopen, and the exact error/reset/finished surface)
+after BEHAV-PALETTE-002/
+BEHAV-OPEN-009/
 BEHAV-OPEN-008/
 BEHAV-OPEN-007/
 BEHAV-OPEN-006/
@@ -90,10 +91,9 @@ BEHAV-PDF-001/
 BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
-the format-family open/save surface and ImagePalette.load are now
-COMPLETE; the next
-bounded children are ImageFile.Parser feed/close semantics and
-TransposedFont.GetMask rasterization, then
+the format-family surface, ImagePalette.load, and the Parser are
+now COMPLETE; the next
+bounded child is TransposedFont.GetMask rasterization, then
 the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
 follow as their own packets.
@@ -545,6 +545,26 @@ errors, or skips. Facade-only change: source/DLL export parity
 remains `482/482` and the DLL SHA-256 remains
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
 The next bounded child is `BEHAV-PDF-001`, the PDF format.
+
+2026-08-14: `BEHAV-PARSER-001` is GREEN as ImageFile.Parser feed/close
+(facade-only). The Pillow 11.3.0 oracle (`oracle/probe_parser.py`/
+`probe_parser.json`) pins the whole/pieces/bytewise feeds returning
+the loaded image, the per-feed content open that swallows the
+OSError-family failures, close() raising `cannot parse this image`
+(garbage/truncated/empty data), the data-reopen branch for
+trailing data after a successful open, the finished-ignore feed
+with a second-close image return, `cannot reuse parsers` after a
+feed, and the context-manager close. The facade Parser accumulates
+the fed buffers, probes the magic bytes for the temp extension (the
+facade routes opens by extension where Pillow content-sniffs), and
+replays the exact surface; the decoder-based incremental decode
+stays a documented child. The facade Parser target passes `1/1` in
+`110ms`; the full directory suite passes `2835/2835` in `22047ms`
+with zero failures, errors, or skips. Facade-only change:
+source/DLL export parity remains `498/498` and the DLL SHA-256
+remains
+`6603840FEEA48553F2D42ED2444DD5A30331A17ABE3ABCBBB8E262D0988AE747`.
+The next bounded child is TransposedFont.GetMask.
 
 2026-08-14: `BEHAV-PALETTE-002` is GREEN as ImagePalette.load
 (facade-only). The Pillow 11.3.0 oracle
