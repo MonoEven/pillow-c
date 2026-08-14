@@ -1,0 +1,77 @@
+{
+ "wmf_open": {
+  "ok": [
+   "WMF",
+   "RGB",
+   [
+    75,
+    75
+   ],
+   72,
+   [
+    0,
+    0,
+    100,
+    100
+   ]
+  ]
+ },
+ "wmf_load": {
+  "ok": [
+   [
+    75,
+    75
+   ],
+   "d002d7ab58804a886b05d5985d66bab4",
+   "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   447
+  ]
+ },
+ "wmf_load_empty": {
+  "ok": [
+   [
+    75,
+    75
+   ],
+   "e9538d7cc2ee5a4b7b6b31e32987c3f2",
+   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   0
+  ]
+ },
+ "wmf_inch_zero": {
+  "err": "ValueError: Invalid inch"
+ },
+ "wmf_bad_sanity": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x0000024AB5877060>"
+ },
+ "wmf_bad_magic": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x0000024AB5877060>"
+ },
+ "wmf_short": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x0000024AB5877060>"
+ },
+ "wmf_save": {
+  "err": "OSError: WMF save handler not installed"
+ },
+ "wmf_description": "Windows Metafile",
+ "emf_open": {
+  "ok": [
+   "WMF",
+   "RGB",
+   [
+    100,
+    100
+   ],
+   2540.0,
+   [
+    0,
+    0,
+    100,
+    100
+   ]
+  ]
+ },
+ "emf_load": {
+  "err": "OSError: cannot load metafile"
+ }
+}

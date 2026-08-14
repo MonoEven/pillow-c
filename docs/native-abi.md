@@ -256,10 +256,25 @@ runs in the facade; the extension-string save shape
 (`KeyError: 'X.MPEG'`) stays a documented general-save-dispatch
 edge.
 
+`BEHAV-OPEN-009` adds one deliberate export —
+`pillow_c_image_open_wmf` — that decodes Pillow 11.3.0's
+WmfImageFile: the placeable/EMF header math (inch/bbox/size/dpi,
+the `01 00 09 00` sanity check, and the EMF frame dpi), and the
+GDI render mirroring display.c PyImaging_DrawWmf
+(SetWinMetaFileBits/SetEnhMetaFileBits -> a white-filled 24-bit DIB
+-> EnumEnhMetaFile with plain PlayEnhMetaFileRecord; the bottom-up
+BGR DIB is converted to top-down RGB and the dpi is attached
+through the standard dpi fields). Local statuses -55..-58 carry the
+exact `Invalid inch` / `cannot load metafile` / `cannot create
+bitmap` / `cannot select bitmap` escapes; the dpi-override
+load(dpi) stays a documented child and save raises the exact
+`WMF save handler not installed` OSError.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`497/497`; the full AHK suite is `2832/2832`; and the current DLL SHA-256 is
-`635866E602CD558D9FE984347C0F25ED82AADED7C860CCE5D6FD64FB5E5141E0`
-(BEHAV-OPEN-008 changes no ABI;
+`498/498`; the full AHK suite is `2833/2833`; and the current DLL SHA-256 is
+`6603840FEEA48553F2D42ED2444DD5A30331A17ABE3ABCBBB8E262D0988AE747`
+(BEHAV-OPEN-009 adds the `pillow_c_image_open_wmf` export below;
+BEHAV-OPEN-008 changes no ABI;
 BEHAV-OPEN-007 adds the `pillow_c_image_open_pcd` export below;
 BEHAV-OPEN-006 adds the `pillow_c_image_open_mic` export below;
 BEHAV-OPEN-005 adds the `pillow_c_image_open_fli` and

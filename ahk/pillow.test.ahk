@@ -21934,9 +21934,11 @@ PillowTestUnrecordedFormatBoundaries(*) {
         ; BEHAV-OPEN-001 (Pillow's exact KeyError/save-handler errors).
         ; MIC left this list in BEHAV-OPEN-006 (the OLE container opener
         ; with Pillow's exact errors and the 'MIC' KeyError save string),
-        ; PCD in BEHAV-OPEN-007, and MPEG in BEHAV-OPEN-008 (the header
-        ; parse plus the exact cannot-load error).
-        for format in ["WMF", "FPX"] {
+        ; PCD in BEHAV-OPEN-007, MPEG in BEHAV-OPEN-008 (the header
+        ; parse plus the exact cannot-load error), and WMF in
+        ; BEHAV-OPEN-009 (the GDI render plus the exact save-handler
+        ; error).
+        for format in ["FPX"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -21945,14 +21947,18 @@ PillowTestUnrecordedFormatBoundaries(*) {
             }
             AhkTest.AssertEqual("Pillow image file format is unsupported", boundaryError)
         }
+        ; the .wmf open-side boundary left this test with
+        ; BEHAV-OPEN-009: a non-WMF .wmf now routes through the WMF
+        ; opener and fails with the identification error instead
         for extension in [".wmf"] {
+            unrecOpenPath := StrReplace(PillowTestTempPngPath("fmt-unrec-open"), ".png", extension)
             boundaryError := ""
             try {
-                Pillow.Image.Open(StrReplace(PillowTestTempPngPath("fmt-unrec-open"), ".png", extension))
+                Pillow.Image.Open(unrecOpenPath)
             } catch Error as err {
                 boundaryError := err.Message
             }
-            AhkTest.AssertEqual("Pillow image file format is unsupported", boundaryError)
+            AhkTest.AssertEqual("cannot identify image file <" unrecOpenPath ">", boundaryError)
         }
     } finally {
         image.Close()
@@ -26274,6 +26280,134 @@ PillowTestOpenMpeg(*) {
 }
 
 AhkTest.Test("Pillow MPEG opener matches Pillow 11.3.0 header parse and cannot-load error", PillowTestOpenMpeg)
+
+PillowTestWmf(bbox := [0, 0, 100, 100], inch := 96, records := unset, sanity := [0x01, 0x00, 0x09, 0x00]) {
+    ; mirrors the oracle's placeable_wmf: 22-byte placeable header
+    ; (checksummed) + 18-byte METAHEADER + records + EOF
+    recordBytes := Buffer(0)
+    if IsSet(records) {
+        recordBytes.Size := 0
+        for record in records {
+            tmp := Buffer(6 + record[2].Length * 2, 0)
+            NumPut("UInt", 3 + record[2].Length, tmp, 0)
+            NumPut("UShort", record[1], tmp, 4)
+            for param in record[2]
+                NumPut("UShort", param, tmp, 6 + (A_Index - 1) * 2)
+            merged := Buffer(recordBytes.Size + tmp.Size, 0)
+            DllCall("msvcrt\memcpy", "Ptr", merged, "Ptr", recordBytes, "UPtr", recordBytes.Size, "CDecl Ptr")
+            DllCall("msvcrt\memcpy", "Ptr", merged.Ptr + recordBytes.Size, "Ptr", tmp, "UPtr", tmp.Size, "CDecl Ptr")
+            recordBytes := merged
+        }
+    }
+    eof := Buffer(8, 0)
+    NumPut("UInt", 3, eof, 0)
+    allRecords := Buffer(recordBytes.Size + 8, 0)
+    DllCall("msvcrt\memcpy", "Ptr", allRecords, "Ptr", recordBytes, "UPtr", recordBytes.Size, "CDecl Ptr")
+    DllCall("msvcrt\memcpy", "Ptr", allRecords.Ptr + recordBytes.Size, "Ptr", eof, "UPtr", 8, "CDecl Ptr")
+    totalDwords := (18 + allRecords.Size) // 2
+    maxRecord := 3
+    pos := 0
+    while pos + 4 <= allRecords.Size {
+        sizeWords := NumGet(allRecords, pos, "UInt")
+        maxRecord := Max(maxRecord, sizeWords)
+        pos += sizeWords * 2
+    }
+    body := Buffer(18 + allRecords.Size, 0)
+    for byte in sanity
+        NumPut("UChar", byte, body, A_Index - 1)
+    NumPut("UShort", 0x0300, body, 4)
+    NumPut("UInt", totalDwords, body, 6)
+    NumPut("UShort", 0, body, 10)
+    NumPut("UInt", maxRecord, body, 12)
+    NumPut("UShort", 0, body, 16)
+    DllCall("msvcrt\memcpy", "Ptr", body.Ptr + 18, "Ptr", allRecords, "UPtr", allRecords.Size, "CDecl Ptr")
+    head := Buffer(22, 0)
+    NumPut("UInt", 0x9AC6CDD7, head, 0)
+    NumPut("UShort", 0, head, 4)
+    for i in [1, 2, 3, 4] {
+        value := bbox[i]
+        NumPut("Short", value, head, 6 + (i - 1) * 2)
+    }
+    NumPut("UShort", inch, head, 14)
+    checksum := 0
+    loop 10
+        checksum := checksum ^ NumGet(head, (A_Index - 1) * 2, "UShort")
+    NumPut("UShort", checksum, head, 20)
+    out := Buffer(22 + body.Size, 0)
+    DllCall("msvcrt\memcpy", "Ptr", out, "Ptr", head, "UPtr", 22, "CDecl Ptr")
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + 22, "Ptr", body, "UPtr", body.Size, "CDecl Ptr")
+    return out
+}
+
+PillowTestOpenWmf(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    wmfPath := A_Temp "\open-9.wmf"
+    savePath := A_Temp "\open-9-save.bin"
+    try {
+        ; --- placeable metafile: 75x75 at 72 dpi, white render ---
+        PillowTestWriteFileBuffer(wmfPath, PillowTestWmf())
+        opened := Pillow.Image.Open(wmfPath)
+        try {
+            AhkTest.AssertEqual("WMF", opened.Format)
+            AhkTest.AssertEqual("RGB", opened.Mode)
+            AhkTest.AssertEqual([75, 75], opened.Size)
+            AhkTest.AssertEqual([72.0, 72.0], opened.Info["dpi"])
+            values := PillowTestBufferToArray(opened.ToBytes())
+            AhkTest.AssertEqual(16875, values.Length)
+            AhkTest.AssertEqual("ffffffffffffffffffffffff", PillowTestPdfBytesToHex(PillowTestArraySlice(values, 1, 12)))
+        } finally {
+            opened.Close()
+        }
+
+        ; --- a record set renders the rectangle border (byte-parity
+        ; pinned by the ctypes cross-check md5 d002d7ab.../447 nonwhite
+        ; against the Pillow 11.3.0 oracle) ---
+        records := [
+            [0x0103, [8]],
+            [0x020B, [0, 0]],
+            [0x020C, [100, 100]],
+            [0x041B, [100, 100, 0, 0]]
+        ]
+        PillowTestWriteFileBuffer(wmfPath, PillowTestWmf(, , records))
+        openedRec := Pillow.Image.Open(wmfPath)
+        try {
+            recValues := PillowTestBufferToArray(openedRec.ToBytes())
+            AhkTest.AssertEqual("000000000000000000000000", PillowTestPdfBytesToHex(PillowTestArraySlice(recValues, 1, 12)))
+        } finally {
+            openedRec.Close()
+        }
+
+        ; --- a minimal EMF: the header opens (100x100, dpi 2540) but the
+        ; GDI metafile load fails ---
+        PillowTestWriteFileBuffer(wmfPath, PillowTestBuffer(PillowTestHexBytes("0100000058000000000000000000000064000000640000000000000000000000640000006400000020454d466c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e0000001400000000000000000000000000000000000000")))
+        AhkTest.AssertEqual("cannot load metafile", PillowTestFormatCaptureError(() => Pillow.Image.Open(wmfPath)))
+
+        ; --- errors ---
+        PillowTestWriteFileBuffer(wmfPath, PillowTestWmf(, 0))
+        AhkTest.AssertEqual("Invalid inch", PillowTestFormatCaptureError(() => Pillow.Image.Open(wmfPath)))
+        PillowTestWriteFileBuffer(wmfPath, PillowTestWmf(, , , [0, 0, 0, 0]))
+        AhkTest.AssertEqual("cannot identify image file <" wmfPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(wmfPath)))
+        PillowTestWriteFileBuffer(wmfPath, Buffer(64, 0))
+        AhkTest.AssertEqual("cannot identify image file <" wmfPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(wmfPath)))
+        short := PillowTestWmf()
+        PillowTestWriteFileBuffer(wmfPath, PillowTestFliSlice(short, 20))
+        AhkTest.AssertEqual("cannot identify image file <" wmfPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(wmfPath)))
+
+        ; --- save raises the exact handler error ---
+        saveImage := Pillow.Image.New("L", [2, 2], 7)
+        try {
+            PillowTestAssertSaveHandlerError(saveImage, savePath, "WMF")
+        } finally {
+            saveImage.Close()
+        }
+        AhkTest.AssertEqual("Windows Metafile", Pillow.Image.FormatDescription("WMF"))
+    } finally {
+        PillowTestDeleteFile(wmfPath)
+        PillowTestDeleteFile(savePath)
+    }
+}
+
+AhkTest.Test("Pillow WMF opener matches Pillow 11.3.0 GDI render, header math, and errors", PillowTestOpenWmf)
 
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

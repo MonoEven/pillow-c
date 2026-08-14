@@ -7944,6 +7944,30 @@ class Pillow {
                     if !Pillow.Image.MpegAccepts(path)
                         throw Error("cannot identify image file <" path ">", -1)
                     throw Error("cannot load this image", -1)
+                } else if format = "WMF" {
+                    ; BEHAV-OPEN-009: WmfImageFile — the native opener
+                    ; parses the 44-byte placeable/EMF header (size and
+                    ; dpi math) and renders the metafile through GDI
+                    ; (SetWinMetaFileBits/SetEnhMetaFileBits -> a white
+                    ; 24-bit DIB -> EnumEnhMetaFile), mirroring Pillow's
+                    ; display.c drawwmf. The dpi-override load(dpi)
+                    ; stays a documented child (eager 72-dpi decode).
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_wmf",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -55
+                        throw Error("Invalid inch", -1)
+                    if lastStatus = -56
+                        throw Error("cannot load metafile", -1)
+                    if lastStatus = -57
+                        throw Error("cannot create bitmap", -1)
+                    if lastStatus = -58
+                        throw Error("cannot select bitmap", -1)
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
                 } else if format = "HDF5" || format = "BUFR" || format = "GRIB" {
                     ; BEHAV-OPEN-001: the HDF5/BUFR/GRIB stub plugins
                     ; accept the magic and open an F(1,1) image whose
@@ -10285,6 +10309,8 @@ class Pillow {
                 return "PCD"
             if RegExMatch(path, "i)\.(mpg|mpeg)$")
                 return "MPEG"
+            if RegExMatch(path, "i)\.(wmf|emf)$")
+                return "WMF"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -10314,7 +10340,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "FLI" || name = "MIC" || name = "PCD" || name = "MPEG" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "FLI" || name = "MIC" || name = "PCD" || name = "MPEG" || name = "WMF" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -10353,6 +10379,7 @@ class Pillow {
                 "MIC", "Microsoft Image Composer",
                 "PCD", "Kodak PhotoCD",
                 "MPEG", "MPEG",
+                "WMF", "Windows Metafile",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -12250,10 +12277,10 @@ class Pillow {
                 }
                 return
             }
-            if resolvedFormat = "HDF5" || resolvedFormat = "BUFR" || resolvedFormat = "GRIB" {
-                ; BEHAV-OPEN-001: the stub plugins register a save whose
-                ; handler is never installed — Pillow raises the exact
-                ; OSError before writing anything.
+            if resolvedFormat = "HDF5" || resolvedFormat = "BUFR" || resolvedFormat = "GRIB" || resolvedFormat = "WMF" {
+                ; BEHAV-OPEN-001/009: the stub plugins register a save
+                ; whose handler is never installed — Pillow raises the
+                ; exact OSError before writing anything.
                 throw Error(resolvedFormat " save handler not installed", -1)
             }
             if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" || resolvedFormat = "IPTC" || resolvedFormat = "MCIDAS" || resolvedFormat = "PSD" || resolvedFormat = "FLI" || resolvedFormat = "MIC" || resolvedFormat = "PCD" || resolvedFormat = "MPEG" {

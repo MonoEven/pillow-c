@@ -34,17 +34,17 @@ no longer claimed. The honest split:
   BEHAV-OPEN-005 / BEHAV-OPEN-006 / BEHAV-OPEN-007); the
   matchable remainder is bounded
   (0 saves left; 0 pure-Python
-  opens left — every remaining open family is either implemented,
-  unmatchable, or an exact-error match; the MPEG
+  opens left — every open-side format family is now implemented,
+  unmatchable, or an exact-error match: the MPEG
   header-parse-then-cannot-load error match is DONE
-  (BEHAV-OPEN-008) and the WMF GDI open
-  is the remaining open-side row);
+  (BEHAV-OPEN-008) and the WMF GDI open is DONE
+  (BEHAV-OPEN-009));
   PDF open is unregistered in 11.3.0 -> identification error (DONE
   with BEHAV-PDF-001); HDF5/BUFR/GRIB stub opens are DONE
   (BEHAV-OPEN-001: F(1,1) open shape plus the exact load/save
   handler messages); plus 4 exact save-error matches for
-  BUFR/GRIB/HDF5/WMF — the three stub save-handler errors are DONE
-  with BEHAV-OPEN-001).
+  BUFR/GRIB/HDF5/WMF — all DONE (BEHAV-OPEN-001 plus the WMF save
+  handler error with BEHAV-OPEN-009).
 - UNMATCHABLE BY NATURE (7, documented as boundaries): WEBP /
   JPEG2000 / AVIF (real codecs the local Pillow build WORKS with —
   oracle-verified round-trips — that this runtime does not ship),
@@ -74,11 +74,12 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-OPEN-008 (MPEG open: the
-0x000001B3 sequence-header parse with the exact
-`cannot load this image` error, the identification collapses, and
-the 'MPEG' KeyError save)
-after BEHAV-OPEN-007/
+Latest covered gap tail: BEHAV-OPEN-009 (WMF/EMF open: the
+placeable/EMF header math, the GDI render byte-identical to
+Pillow's drawwmf md5, the Invalid-inch/cannot-load-metafile
+escapes, and the exact save-handler error)
+after BEHAV-OPEN-008/
+BEHAV-OPEN-007/
 BEHAV-OPEN-006/
 BEHAV-OPEN-005/
 BEHAV-OPEN-004/
@@ -89,8 +90,10 @@ BEHAV-PDF-001/
 BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
-the pure-Python open families and the MPEG error match are now
-COMPLETE; the next bounded child is the WMF GDI open, then
+the format-family open/save surface is now COMPLETE; the next
+bounded children are the AUDIT-003 gaps
+(truetype font loading, save-option parity, error-message parity),
+then
 the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
 follow as their own packets.
@@ -542,6 +545,40 @@ errors, or skips. Facade-only change: source/DLL export parity
 remains `482/482` and the DLL SHA-256 remains
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
 The next bounded child is `BEHAV-PDF-001`, the PDF format.
+
+2026-08-14: `BEHAV-OPEN-009` is GREEN as the WMF/EMF open (GDI
+render). The Pillow 11.3.0 oracle (`oracle/probe_open_9.py`/
+`probe_open_9.json` with the ctypes cross-check in
+`oracle/probe_open_9_dll.py`, pinned against display.c
+PyImaging_DrawWmf) pins WmfImagePlugin: the placeable branch (the
+22-byte header, inch word with the `Invalid inch` ValueError
+escape, the bbox shorts, `(x1-x0)*72//inch` size math with
+info["dpi"] = 72, the `01 00 09 00` sanity check), the EMF branch
+(`01 00 00 00` + ` EMF`, the bbox/frame longs, the
+`2540.0*(x1-x0)/(frame)` dpi math), and the GDI render —
+SetWinMetaFileBits/SetEnhMetaFileBits -> a white-filled 24-bit DIB
+-> EnumEnhMetaFile with plain PlayEnhMetaFileRecord — whose output
+is byte-identical to Pillow's md5 for both the EOF-only white
+fixture (e9538d7c...) and the rectangle-border fixture (d002d7ab...,
+447 nonwhite pixels). The minimal-EMF fixture opens (100x100,
+dpi 2540.0) but its GDI load raises `cannot load metafile`; bad
+magic, short headers, and sanity mismatches collapse to the
+identification error; save raises the exact
+`WMF save handler not installed` OSError (closing the last of the
+four save-error matches). One deliberate native export
+(`pillow_c_image_open_wmf`) implements the header math and the GDI
+render (bottom-up BGR DIB converted to top-down RGB, dpi attached);
+the dpi-override load(dpi) stays a documented child. The facade
+WMF target passes `1/1` in `31ms`; the full directory suite passes
+`2833/2833` in `42969ms` with zero failures, errors, or skips.
+Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity moves to
+`498/498` (one deliberate new export) with zero difference; and
+the rebuilt DLL SHA-256 is
+`6603840FEEA48553F2D42ED2444DD5A30331A17ABE3ABCBBB8E262D0988AE747`.
+The format-family open/save surface is now complete; the next
+bounded children are the AUDIT-003 gaps (truetype font
+loading, save-option parity, error-message parity).
 
 2026-08-14: `BEHAV-OPEN-008` is GREEN as the MPEG open error match
 (facade-only). The Pillow 11.3.0 oracle (`oracle/probe_open_8.py`/

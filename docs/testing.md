@@ -47,8 +47,28 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2832` AHK tests: `1391` raw DLL tests and
+This suite currently registers `2833` AHK tests: `1392` raw DLL tests and
 `1441` facade tests.
+
+Latest `BEHAV-OPEN-009` verification: the Pillow 11.3.0 oracle
+(`oracle/probe_open_9.py`/`probe_open_9.json` with the ctypes
+cross-check in `oracle/probe_open_9_dll.py`, pinned against
+display.c PyImaging_DrawWmf) pins the WMF/EMF open (the placeable
+header math with the `Invalid inch` escape and the sanity check,
+the EMF bbox/frame dpi math, and the GDI render byte-identical to
+Pillow's md5 for the EOF-only white fixture e9538d7c... and the
+rectangle-border fixture d002d7ab.../447 nonwhite; the minimal-EMF
+`cannot load metafile` escape; and the exact
+`WMF save handler not installed` save error). The facade WMF target
+passes `1/1` in `31ms`; the full directory suite passes
+`2833/2833` in `42969ms` with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity moves to `498/498` (one deliberate new export) with
+zero difference; and the rebuilt DLL SHA-256 is
+`6603840FEEA48553F2D42ED2444DD5A30331A17ABE3ABCBBB8E262D0988AE747`.
+The format-family open/save surface is now complete; the wave
+continues with the AUDIT-003 gaps (truetype font loading,
+save-option parity, error-message parity) next.
 
 Latest `BEHAV-OPEN-008` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_8.py`/`probe_open_8.json`) pins the MPEG open
@@ -79,8 +99,8 @@ export parity moves to `497/497` (one deliberate new export) with
 zero difference; and the rebuilt DLL SHA-256 is
 `635866E602CD558D9FE984347C0F25ED82AADED7C860CCE5D6FD64FB5E5141E0`.
 The pure-Python open families are now complete; the wave continues
-with the MPEG error match and the WMF GDI open next — the MPEG
-match is now DONE with BEHAV-OPEN-008.
+with the MPEG error match and the WMF GDI open next — both are now
+DONE with BEHAV-OPEN-008/BEHAV-OPEN-009.
 
 Latest `BEHAV-OPEN-006` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_6.py`/`probe_open_6.json` with the hand-crafted

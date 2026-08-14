@@ -1,0 +1,5 @@
+empty: OK len=16875 md5=e9538d7cc2ee5a4b7b6b31e32987c3f2 nonwhite=0
+records: status -56
+inch0: status -55
+sanity: status -3
+emf: status -56
