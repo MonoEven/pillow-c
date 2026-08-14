@@ -252,6 +252,15 @@ the RNG stream a documented boundary, and `load()` with the
 GimpPaletteFile/GimpGradientFile/PaletteFile parser classes is a
 documented fail-loud boundary; the DLL SHA-256 is unchanged.
 
+`API-TRANSFORMCLS-001` changes no ABI at all either: the facade
+`Pillow.ImageTransform` covers the base `Transform` class (data
+storage, the getdata AttributeError shape, transform routing through
+the existing `Image.Transform` seam) and the five method-constant
+subclasses (AffineTransform/ExtentTransform/PerspectiveTransform/
+QuadTransform/MeshTransform); constructing the module class fails
+loudly as Pillow's module is not callable; the DLL SHA-256 is
+unchanged.
+
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.
 

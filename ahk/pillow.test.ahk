@@ -22449,6 +22449,66 @@ PillowTestImagePalette(*) {
 
 AhkTest.Test("Pillow ImagePalette matches Pillow 11.3.0 palette semantics", PillowTestImagePalette)
 
+PillowTestImageTransformClasses(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+
+    ; Pillow's module is not callable (TypeError: 'module' object is not
+    ; callable); construction on the module class fails loudly.
+    moduleError := ""
+    try {
+        Pillow.ImageTransform()
+    } catch Error as err {
+        moduleError := err.Message
+    }
+    AhkTest.AssertEqual("Pillow ImageTransform module is not callable; construct Pillow.ImageTransform.Transform subclasses", moduleError)
+
+    ; getdata() = (method constant, data) per subclass.
+    AhkTest.AssertEqual([Pillow.Transform.AFFINE, [1, 0, 0, 0, 1, 0]], Pillow.ImageTransform.AffineTransform([1, 0, 0, 0, 1, 0]).GetData())
+    AhkTest.AssertEqual([Pillow.Transform.EXTENT, [0, 0, 2, 2]], Pillow.ImageTransform.ExtentTransform([0, 0, 2, 2]).GetData())
+    AhkTest.AssertEqual([Pillow.Transform.PERSPECTIVE, [1, 0, 0, 0, 1, 0, 0, 0]], Pillow.ImageTransform.PerspectiveTransform([1, 0, 0, 0, 1, 0, 0, 0]).GetData())
+    AhkTest.AssertEqual([Pillow.Transform.QUAD, [0, 0, 1, 0, 1, 1, 0, 1]], Pillow.ImageTransform.QuadTransform([0, 0, 1, 0, 1, 1, 0, 1]).GetData())
+    meshData := [[[0, 0, 2, 2], [0, 0, 1, 0, 1, 1, 0, 1]]]
+    AhkTest.AssertEqual([Pillow.Transform.MESH, meshData], Pillow.ImageTransform.MeshTransform(meshData).GetData())
+
+    ; the base class stores data; getdata() raises (Pillow AttributeError
+    ; because method is only a type annotation on the base).
+    base := Pillow.ImageTransform.Transform([9, 9])
+    AhkTest.AssertEqual([9, 9], base.Data)
+    baseError := ""
+    try {
+        base.GetData()
+    } catch Error as err {
+        baseError := err.Message
+    }
+    AhkTest.AssertTrue(baseError != "")
+
+    ; transform() routes through Image.Transform with the class method.
+    image := Pillow.Image.New("L", [4, 4], 7)
+    try {
+        t := Pillow.ImageTransform.AffineTransform([1, 0, 0, 0, 1, 0])
+        result := t.Transform([4, 4], image)
+        direct := image.Transform([4, 4], Pillow.Transform.AFFINE, [1, 0, 0, 0, 1, 0])
+        AhkTest.AssertEqual(PillowTestPaletteBufferUChars(direct.Tobytes(), 0, 16), PillowTestPaletteBufferUChars(result.Tobytes(), 0, 16))
+        result2 := t.Transform([3, 3], image, Pillow.Resampling.BILINEAR)
+        direct2 := image.Transform([3, 3], Pillow.Transform.AFFINE, [1, 0, 0, 0, 1, 0], Pillow.Resampling.BILINEAR)
+        AhkTest.AssertEqual(PillowTestPaletteBufferUChars(direct2.Tobytes(), 0, 9), PillowTestPaletteBufferUChars(result2.Tobytes(), 0, 9))
+        et := Pillow.ImageTransform.ExtentTransform([0, 0, 2, 2])
+        eresult := et.Transform([2, 2], image)
+        edirect := image.Transform([2, 2], Pillow.Transform.EXTENT, [0, 0, 2, 2])
+        AhkTest.AssertEqual(PillowTestPaletteBufferUChars(edirect.Tobytes(), 0, 4), PillowTestPaletteBufferUChars(eresult.Tobytes(), 0, 4))
+        result.Close()
+        direct.Close()
+        result2.Close()
+        direct2.Close()
+        eresult.Close()
+        edirect.Close()
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageTransform class objects match Pillow 11.3.0", PillowTestImageTransformClasses)
+
 PillowTestImageDisplayApiBoundaries(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [2, 2], 7)

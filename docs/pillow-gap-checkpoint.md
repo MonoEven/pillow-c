@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 91% (about ±5%) under
+Estimate: AHK-first Pillow-runtime overall completion 92% (about ±5%) under
 the real-workload Pillow replacement-readiness model — measured against
 the FULL Pillow 11.3.0 public surface since the AUDIT-002 re-audit.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
@@ -58,25 +58,29 @@ False with True a documented fail-loud boundary, PyCodecState covered
 exactly, and the incremental/plugin protocol — ImageFile/Parser/
 StubImageFile/StubHandler/PyCodec/PyDecoder/PyEncoder/raise_oserror —
 an explicit documented boundary that fails loudly on construction with
-Pillow-shaped messages), and `API-PALETTE-001` — the ImagePalette
+Pillow-shaped messages), `API-PALETTE-001` — the ImagePalette
 module surface (the ImagePalette class with palette/colors/getcolor/
 getdata/tobytes/tostring/copy/save covered exactly, plus raw/negative/
 sepia/wedge/make_linear_lut/make_gamma_lut covered exactly; random()
 shares Pillow's shape with the RNG stream a documented boundary, and
 load() with the GimpPaletteFile/GimpGradientFile/PaletteFile parser
-classes a documented fail-loud boundary).
+classes a documented fail-loud boundary), and `API-TRANSFORMCLS-001` —
+the ImageTransform class objects (the base Transform data storage/
+getdata-shape/transform routing plus AffineTransform/ExtentTransform/
+PerspectiveTransform/QuadTransform/MeshTransform method constants,
+all covered exactly; the module itself fails loudly as not callable).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The ImagePalette target passes `1/1` in
-`32ms`, and the full directory suite passes `2803/2803` in `21000ms`;
+IFD as a writer artifact. The ImageTransform target passes `1/1` in
+`47ms`, and the full directory suite passes `2804/2804` in `20890ms`;
 source/DLL exports remain `466/466` with zero difference; and the DLL
 SHA-256 remains
 `7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`
 (facade-only slice).
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is
-`API-TRANSFORMCLS-001`, the ImageTransform class-object surface.
+`API-FONTVAR-001`, the ImageFont variation surface.
 ```
 
 Current work packet:
@@ -493,6 +497,30 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `API-TRANSFORMCLS-001` is GREEN as the ImageTransform
+class-object surface (facade-only). The Pillow 11.3.0 oracle (kept in
+`oracle/probe_imagetransform.py`) shows the module holds the base
+`Transform` class (data storage, `getdata()` returning the annotated
+`method` — an AttributeError on the base, and `transform()` routing
+through `Image.transform`) plus AffineTransform/ExtentTransform/
+PerspectiveTransform/QuadTransform/MeshTransform which only set the
+AFFINE/EXTENT/PERSPECTIVE/QUAD/MESH method constants, and the module
+itself is not callable. The facade `Pillow.ImageTransform` covers all
+six classes exactly: each subclass carries its method constant,
+`GetData()` returns `[method, data]`, `Transform()` routes through the
+facade `Image.Transform` seam with resample/fillcolor options
+(oracle-verified byte-equal for affine identity and extent routing),
+and constructing the module class fails loudly with the
+not-callable message. Facade-only change, no native rebuild: the
+ImageTransform target passes `1/1` in `47ms`, and the full directory
+suite passes `2804/2804` in `20890ms`, with zero failures, errors, or
+skips. Source/DLL export parity remains `466/466` (DLL
+byte-identical), and the DLL SHA-256 remains
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `92% ±5%`. The next bounded child is
+`API-FONTVAR-001`, the ImageFont variation surface.
 
 2026-08-14: `API-PALETTE-001` is GREEN as the ImagePalette module
 surface (facade-only). The Pillow 11.3.0 oracle (kept in

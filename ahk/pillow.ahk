@@ -905,6 +905,59 @@ class Pillow {
         }
     }
 
+    class ImageTransform {
+        ; API-TRANSFORMCLS-001: Pillow 11.3.0's PIL.ImageTransform module
+        ; class objects. Each subclass only carries a method constant; the
+        ; base Transform class stores data and routes transform() through
+        ; the facade's Image.Transform seam. Pillow's module itself is not
+        ; callable, so construction on the module class fails loudly.
+        __New(args*) {
+            throw Error("Pillow ImageTransform module is not callable; construct Pillow.ImageTransform.Transform subclasses", -1)
+        }
+
+        class Transform {
+            __New(data) {
+                this.Data := data
+            }
+
+            GetData() {
+                ; Pillow's base Transform carries only a type annotation for
+                ; method, so getdata() raises AttributeError; the subclasses
+                ; set Method (AHK surfaces the same shape as a missing
+                ; property on the base).
+                return [this.Method, this.Data]
+            }
+
+            Transform(size, image, resample := unset, fillcolor := unset) {
+                if IsSet(resample) && IsSet(fillcolor)
+                    return image.Transform(size, this.Method, this.Data, resample, fillcolor)
+                if IsSet(resample)
+                    return image.Transform(size, this.Method, this.Data, resample)
+                return image.Transform(size, this.Method, this.Data)
+            }
+        }
+
+        class AffineTransform extends Pillow.ImageTransform.Transform {
+            Method := Pillow.Transform.AFFINE
+        }
+
+        class ExtentTransform extends Pillow.ImageTransform.Transform {
+            Method := Pillow.Transform.EXTENT
+        }
+
+        class PerspectiveTransform extends Pillow.ImageTransform.Transform {
+            Method := Pillow.Transform.PERSPECTIVE
+        }
+
+        class QuadTransform extends Pillow.ImageTransform.Transform {
+            Method := Pillow.Transform.QUAD
+        }
+
+        class MeshTransform extends Pillow.ImageTransform.Transform {
+            Method := Pillow.Transform.MESH
+        }
+    }
+
     class ImagePath {
         ; AHK case-insensitivity serves Pillow's ImagePath.Path module.
         class Path {
