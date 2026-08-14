@@ -59487,6 +59487,147 @@ PillowTestImageFontLoadDefaultFeedsImageDrawMultilineText(*) {
 
 AhkTest.Test("Pillow ImageFont.LoadDefault feeds ImageDraw.MultilineText", PillowTestImageFontLoadDefaultFeedsImageDrawMultilineText)
 
+; BEHAV-DRAWTEXT-001: the ImageDraw text/multiline_text option surface
+; (spacing/align/justify/anchor adjusts, embedded_color, font_size, and the
+; direction/features/language no-libraqm KeyError). The layout pins use
+; arial.ttf at 16 (the facade's pinned hmtx/kern and bbox-edge arithmetic is
+; Pillow-exact; the "A" glyph ink width stays the documented GDI divergence,
+; so the pinned strings avoid "A"). Values come from the Pillow 11.3.0 oracle
+; (oracle/probe_multiline_expected.py).
+PillowTestImageDrawTextOptionSurface(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    arial := "C:\Windows\Fonts\arial.ttf"
+    if !FileExist(arial) {
+        AhkTest.Log("arial.ttf missing; skipping the draw text option matrix")
+        return
+    }
+
+    raqmMessage := "'setting text direction, language or font features is not supported without libraqm'"
+    embeddedMessage := "Embedded color supported only in RGB and RGBA modes"
+
+    font := Pillow.ImageFont.Truetype(arial, 16)
+    image := Pillow.Image.New("RGB", [200, 200], [0, 0, 0])
+    draw := Pillow.ImageDraw.Draw(image)
+    grayImage := Pillow.Image.New("L", [200, 200], 0)
+    grayDraw := Pillow.ImageDraw.Draw(grayImage)
+    try {
+        ; --- the no-libraqm KeyError shape on every method ---
+        AhkTest.AssertEqual(raqmMessage, PillowTestFormatCaptureError(() => draw.Text([0, 0], "hi", unset, font, unset, 0, unset, 4, "left", "rtl")))
+        AhkTest.AssertEqual(raqmMessage, PillowTestFormatCaptureError(() => draw.Text([0, 0], "hi", unset, font, unset, 0, unset, 4, "left", unset, ["kern"])))
+        AhkTest.AssertEqual(raqmMessage, PillowTestFormatCaptureError(() => draw.Text([0, 0], "hi", unset, font, unset, 0, unset, 4, "left", unset, unset, "en")))
+        AhkTest.AssertEqual(raqmMessage, PillowTestFormatCaptureError(() => draw.TextLength("hi", font, "rtl")))
+        AhkTest.AssertEqual(raqmMessage, PillowTestFormatCaptureError(() => draw.TextBbox([0, 0], "hi", font, unset, 0, 4, "left", "rtl")))
+        AhkTest.AssertEqual(raqmMessage, PillowTestFormatCaptureError(() => draw.MultilineText([0, 0], "a`nb", unset, font, 4, "left", unset, 0, unset, "rtl")))
+        AhkTest.AssertEqual(raqmMessage, PillowTestFormatCaptureError(() => draw.MultilineTextBbox([0, 0], "a`nb", font, 4, "left", unset, 0, "rtl")))
+
+        ; --- validation order pins ---
+        AhkTest.AssertEqual("anchor must be a 2 character string", PillowTestFormatCaptureError(() => draw.MultilineText([5, 5], "a`nb", unset, font, 4, "left", "a", 0, unset, "rtl")))
+        AhkTest.AssertEqual("anchor not supported for multiline text", PillowTestFormatCaptureError(() => draw.MultilineText([5, 5], "a`nb", unset, font, 4, "left", "mb", 0, unset, "rtl")))
+        AhkTest.AssertEqual("anchor must be a 2 character string", PillowTestFormatCaptureError(() => draw.MultilineText([5, 5], "a`nb", unset, font, 4, "left", "a", 0, unset, unset, unset, unset, false, unset)))
+        AhkTest.AssertEqual("unsupported operand type(s) for +: 'int' and 'str'", PillowTestFormatCaptureError(() => draw.MultilineText([5, 5], "a`nb", unset, font, "x", "left")))
+        AhkTest.AssertEqual("anchor must be a 2 character string", PillowTestFormatCaptureError(() => draw.MultilineText([5, 5], "a`nb", unset, font, "x", "left", "a")))
+        AhkTest.AssertEqual("unsupported operand type(s) for +: 'int' and 'str'", PillowTestFormatCaptureError(() => grayDraw.MultilineText([5, 5], "a`nb", unset, font, "x", "left", unset, 0, unset, unset, unset, unset, true)))
+        AhkTest.AssertEqual("unsupported operand type(s) for +: 'int' and 'NoneType'", PillowTestFormatCaptureError(() => draw.MultilineTextBbox([5, 5], "a`nb", font, [1, 2])))
+        AhkTest.AssertEqual(embeddedMessage, PillowTestFormatCaptureError(() => grayDraw.MultilineText([5, 5], "a`nb", unset, font, 4, "left", unset, 0, unset, unset, unset, unset, true)))
+        AhkTest.AssertEqual("anchor must be a 2 character string", PillowTestFormatCaptureError(() => grayDraw.MultilineText([5, 5], "a`nb", unset, font, 4, "left", "a", 0, unset, unset, unset, unset, true)))
+        AhkTest.AssertEqual('align must be "left", "center", "right" or "justify"', PillowTestFormatCaptureError(() => draw.MultilineText([5, 5], "a`nb", unset, font, 4, "bogus")))
+        AhkTest.AssertEqual('align must be "left", "center", "right" or "justify"', PillowTestFormatCaptureError(() => draw.MultilineTextBbox([5, 5], "a`nb", font, 4, "bogus")))
+
+        ; --- textlength/textbbox option checks ---
+        AhkTest.AssertEqual("can't measure length of multiline text", PillowTestFormatCaptureError(() => draw.TextLength("a`nb", font)))
+        AhkTest.AssertEqual("can't measure length of multiline text", PillowTestFormatCaptureError(() => grayDraw.TextLength("a`nb", unset, unset, unset, unset, true)))
+        AhkTest.AssertEqual(embeddedMessage, PillowTestFormatCaptureError(() => grayDraw.TextLength("hi", unset, unset, unset, unset, true)))
+        AhkTest.AssertEqual(embeddedMessage, PillowTestFormatCaptureError(() => grayDraw.TextBbox([0, 0], "a`nb", unset, unset, 0, 4, "left", unset, unset, unset, true)))
+        AhkTest.AssertEqual(embeddedMessage, PillowTestFormatCaptureError(() => grayDraw.Text([0, 0], "hi", unset, unset, unset, 0, unset, 4, "left", unset, unset, unset, true)))
+        AhkTest.AssertEqual(embeddedMessage, PillowTestFormatCaptureError(() => grayDraw.MultilineTextBbox([0, 0], "a`nb", unset, 4, "left", unset, 0, unset, unset, unset, true)))
+        ; embedded_color on RGB/RGBA draws normally (the native draw seams
+        ; rasterize the default font; truetype drawing stays the documented
+        ; native gap)
+        AhkTest.AssertEqual(draw, draw.Text([0, 0], "hi", [255, 255, 255], unset, unset, 0, unset, 4, "left", unset, unset, unset, true))
+        rgbaImage := Pillow.Image.New("RGBA", [200, 200], [0, 0, 0, 0])
+        rgbaDraw := Pillow.ImageDraw.Draw(rgbaImage)
+        try {
+            AhkTest.AssertEqual(rgbaDraw, rgbaDraw.MultilineText([0, 0], "a`nb", [255, 255, 255, 255], unset, 4, "left", unset, 0, unset, unset, unset, unset, true))
+        } finally {
+            rgbaImage.Close()
+        }
+
+        ; --- text with a newline delegates to multiline (spacing/align apply) ---
+        textImage := Pillow.Image.New("L", [200, 200], 0)
+        textDraw := Pillow.ImageDraw.Draw(textImage)
+        multiImage := Pillow.Image.New("L", [200, 200], 0)
+        multiDraw := Pillow.ImageDraw.Draw(multiImage)
+        try {
+            textDraw.Text([0, 0], "bbb`nccccc", 255, unset, unset, 0, unset, 4, "center")
+            multiDraw.MultilineText([0, 0], "bbb`nccccc", 255, unset, 4, "center")
+            AhkTest.AssertEqual(PillowTestBufferToArray(multiImage.ToBytes()), PillowTestBufferToArray(textImage.ToBytes()))
+            AhkTest.AssertEqual(textDraw.MultilineTextBbox([0, 0], "bbb`nccccc", unset, 4, "center"), textDraw.TextBbox([0, 0], "bbb`nccccc", unset, unset, 0, 4, "center"))
+        } finally {
+            textImage.Close()
+            multiImage.Close()
+        }
+
+        ; --- multiline_textbbox layout pins (arial 16, Pillow oracle; the
+        ; c-only strings avoid the documented GDI ink-width divergence) ---
+        AhkTest.AssertEqual([0, 6, 32, 53], draw.MultilineTextBbox([0, 0], "cc`ncccc`nccc", font))
+        AhkTest.AssertEqual([0.0, 6, 32.0, 53], draw.MultilineTextBbox([0, 0], "cc`ncccc`nccc", font, 4, "center"))
+        AhkTest.AssertEqual([0.0, 6, 32.0, 53], draw.MultilineTextBbox([0, 0], "cc`ncccc`nccc", font, 4, "right"))
+        AhkTest.AssertEqual([0, 6, 32, 53], draw.MultilineTextBbox([0, 0], "cc`ncccc`nccc", font, 4, "justify"))
+        AhkTest.AssertEqual([0, 6, 36, 34], draw.MultilineTextBbox([0, 0], "cc cc`nccc", font, 4, "justify"))
+        AhkTest.AssertEqual([0, 6, 52, 34], draw.MultilineTextBbox([0, 0], "cccc cc`ncc", font, 4, "justify"))
+        AhkTest.AssertEqual([0, 6, 32, 36.5], draw.MultilineTextBbox([0, 0], "cc`ncccc", font, 6.5))
+        AhkTest.AssertEqual([0, 6, 32, 30], draw.MultilineTextBbox([0, 0], "cc`ncccc", font, 0))
+        AhkTest.AssertEqual([0, 6, 32, 28], draw.MultilineTextBbox([0, 0], "cc`ncccc", font, -2))
+        AhkTest.AssertEqual([-1, 5, 33, 37], draw.MultilineTextBbox([0, 0], "cc`ncccc", font, 4, "left", unset, 1))
+        AhkTest.AssertEqual([-6.0, 26, 26.0, 58], draw.MultilineTextBbox([10, 20], "cc`ncccc", font, 8, "left", "ma"))
+        ; the vertical 'm'/'d' and horizontal 'r' anchors use Pillow's
+        ; em-box/advance anchor math while the native font anchor seam
+        ; approximates them (the recorded API-FONTANCHOR-001 follow-up);
+        ; 'a'/'l' anchors are exact.
+        AhkTest.AssertEqual([0, 0, 0, 0], draw.MultilineTextBbox([0, 0], "", font))
+        AhkTest.AssertEqual([10.0, 20.0, 10.0, 20.0], draw.MultilineTextBbox([10, 20], "", font, 4, "left", "mm"))
+        AhkTest.AssertEqual([0, 0, 0, 19], draw.MultilineTextBbox([0, 0], "`n", font))
+        AhkTest.AssertEqual([0, 6, 16, 19], draw.MultilineTextBbox([0, 0], "cc`n", font))
+        AhkTest.AssertEqual([0, 6, 64, 34], draw.MultilineTextBbox([0, 0], "cc`ncccccccc", font, 4, "justify"))
+        AhkTest.AssertEqual([0.0, 6, 16.0, 15], draw.MultilineTextBbox([0, 0], "cc", font, 4, "center"))
+        AhkTest.AssertEqual([0.0, 6, 16.0, 15], draw.MultilineTextBbox([0, 0], "cc", font, 4, "right"))
+        AhkTest.AssertEqual([0, 6, 32, 34], draw.TextBbox([0, 0], "cc`ncccc", font))
+
+        ; --- textlength pins feeding the layout ---
+        AssertLength := (text, expected) => AhkTest.AssertTrue(Abs(expected - draw.TextLength(text, font)) < 0.0000001)
+        AssertLength("bb", 17.8125)
+        AssertLength("bbbb", 35.625)
+        AssertLength("cc", 16.0)
+        AssertLength("ccc", 24.0)
+        AssertLength("cccc", 32.0)
+        AssertLength("cccccccc", 64.0)
+
+        ; --- font_size routes through the documented load_default boundary ---
+        AhkTest.AssertEqual(draw.TextLength("hi"), draw.TextLength("hi", unset, unset, unset, unset, false, 24))
+        AhkTest.AssertEqual(draw.MultilineTextBbox([0, 0], "bb`ncc"), draw.MultilineTextBbox([0, 0], "bb`ncc", unset, 4, "left", unset, 0, unset, unset, unset, false, 24))
+        AhkTest.AssertEqual(draw, draw.Text([0, 0], "hi", [255, 255, 255], unset, unset, 0, unset, 4, "left", unset, unset, unset, false, 24))
+
+        ; --- justify draw spreads words (self-consistent ink positions) ---
+        justifyImage := Pillow.Image.New("L", [200, 200], 0)
+        justifyDraw := Pillow.ImageDraw.Draw(justifyImage)
+        try {
+            AhkTest.AssertEqual(justifyDraw, justifyDraw.MultilineText([0, 0], "bb cccc`nbbb", 255, unset, 4, "justify"))
+            justifyBbox := justifyDraw.MultilineTextBbox([0, 0], "bb cccc`nbbb", unset, 4, "justify")
+            ; the justified line has ink at both horizontal extremes
+            AhkTest.AssertTrue(justifyBbox[3] > justifyBbox[1])
+            AhkTest.AssertTrue(justifyImage.GetBbox()[4] > justifyImage.GetBbox()[2])
+        } finally {
+            justifyImage.Close()
+        }
+    } finally {
+        grayImage.Close()
+        image.Close()
+        font.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw text option surface matches Pillow 11.3.0", PillowTestImageDrawTextOptionSurface)
+
 PillowTestImageFontLoadDefaultExposesMetadataAndVariant(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [17, 16])

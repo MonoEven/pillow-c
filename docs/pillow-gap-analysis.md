@@ -298,6 +298,60 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-15 BEHAV-DRAWTEXT-001 ImageDraw Text Options (GREEN)
+
+`BEHAV-DRAWTEXT-001` delivers the text/multiline_text half of
+API-DRAW-TEXT-001 (pure facade changes; no native change). The Pillow
+11.3.0 oracle (fresh pins plus the `ImageDraw.py` source) pins:
+
+- `direction`/`features`/`language` raise the exact no-libraqm
+  KeyError shape `'setting text direction, language or font features
+  is not supported without libraqm'` on `text`/`multiline_text`/
+  `textlength`/`textbbox`/`multiline_textbbox`. Pillow raises it for
+  BASIC-layout fonts (its bundled Aileron `load_default`); the local
+  build has libraqm so RAQM-layout fonts (the `truetype` default)
+  shape for real — the facade raises the same KeyError for them as
+  the documented dependency boundary.
+- `embedded_color` raises the exact
+  `Embedded color supported only in RGB and RGBA modes` ValueError on
+  non-RGB/RGBA images (checked first in `text`/`textlength`/
+  `textbbox`, and inside the multiline textlength loop), and draws
+  normally on RGB/RGBA.
+- `textlength` rejects multiline text with
+  `can't measure length of multiline text` (before the embedded
+  check); `text`/`textbbox` with `\n` delegate to the multiline
+  layout with spacing/align applied.
+- `multiline_text`/`multiline_textbbox` replicate Pillow's
+  `_prepare_multiline_text` in the facade: the anchor default
+  (`lt` for ttb else `la`), the `anchor must be a 2 character string`
+  and `anchor not supported for multiline text` validation order, the
+  `textbbox((0,0),"A",font,stroke_width)[3] + stroke_width + spacing`
+  line spacing with Pillow's exact
+  `unsupported operand type(s) for +: 'int' and 'str'` /
+  `'int' and 'NoneType'` TypeErrors, float spacing, the
+  left/center/right/justify layout with the exact
+  `align must be "left", "center", "right" or "justify"` error, the
+  justify word spread (`l`+vertical word anchors, the
+  `max_width - sum(word_widths)` gap over `len(words)-1`), and the
+  `m`/`d` vertical anchor adjustments — the per-line bboxes use the
+  pinned font `GetBbox`/`GetLength` seams with Pillow's float
+  addition (no truncation).
+- The `font_size` option routes through `load_default(size)`, which
+  stays accepted-and-ignored (the BEHAV-FONTFILE-001 default-font
+  boundary).
+
+The facade target passes `1/1` in `78ms`; the full directory suite
+passes `2851/2851` in `22734ms`; the Release x64 DLL, the `514/514`
+export parity, and the SHA-256
+`5787FE4F5D322204C0845136B13FD7B09326C78230A7DDF68E4BF42EB6B3CABF`
+carry over unchanged. Recorded follow-ups: the native font anchor
+seam approximates Pillow's em-box `m`/`d` and advance `r` anchor
+math (API-FONTANCHOR-001), and truetype-font drawing stays the
+native default-font-only seam (API-DRAWFONT-001). The
+API-DRAW-TEXT-001 module half (getdraw/ImageDraw2, ImageStat.Global,
+the ImageFilter base classes + validation messages, and ImageMath
+lambda_eval/imagemath_*) stays the next packet.
+
 ## 2026-08-15 BEHAV-CMSDISP-001 ImageCms Display Surface (GREEN)
 
 `BEHAV-CMSDISP-001` closes API-CMS-DISPLAY-001 (the ImageCms display
@@ -41914,7 +41968,9 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | API-FONTFILE-002 | Facade API | done | `ImageFont.load`/`load_path`/`load_default_imagefont` load complete PILfont bitmap fonts with BEHAV-FONTFILE-002 (one deliberate native export; the pinned big-endian 10-int16 metrics, the max(dst_y1)-min(dst_y0) font height, the 1:1 src-to-dst blit with clip, the mode-1/L mask mirroring, the exact src/dst-mismatch SystemError, Pillow's exact load-flow error shapes, and Pillow's own bundled courB08 bitmap font shipped as ahk/fonts fixtures with byte-identical masks). `load_path` searches the script+working directories (the AHK sys.path approximation); the info lines are AHK strings with the LF kept (Pillow keeps raw bytes — a recorded micro-divergence). | BEHAV-FONTFILE-002 (oracle/probe_pilfont*.py + DLL cross-check). |
 | API-CMS-DISPLAY-001 | Facade API | done | `ImageCms.get_display_profile(handle)` is implemented with BEHAV-CMSDISP-001 (one deliberate native export): handle 0 loads the Windows display ICM profile through GetDC/GetICMProfileW + `cmsOpenProfileFromMem` and returns a live CmsProfile (or 0/None when the session has none or the HWND is invalid — Pillow returns None with no error). Also delivered: the `Direction`/`Flags`/`Intent` enums with Pillow's exact values (incl. the `GRIDPOINTS(n)` `n<<16` helper), the `PyCMSError` exception shape, `versions()` = `["1.0.0 pil", "2.17", "3.10.11", "11.3.0"]`, `buildProofTransformFromOpenProfiles` (Pillow's alias of buildProofTransform), and the exact PyCMSError intent/flags validations (`renderingIntent must be an integer between 0 and 3`, `flags must be an integer between 0 and 100663295`) on buildTransform/buildProofTransform. | BEHAV-CMSDISP-001 (oracle pins against ImageCms source); `pillow_c_cms_display_profile` export; facade `ImageCms` enums/PyCMSError/versions/alias + display-profile target test. |
 | API-FONTVAR-002 | Facade API | partial | `FreeTypeFont.get_variation_axes/get_variation_names/set_variation_by_axes/set_variation_by_name` are implemented for non-variable fonts with Pillow's exact `invalid argument` OSError (BEHAV-FONTFILE-001); reading real axes/names and applying variation instances on variable fonts stays a documented FreeType-dependent boundary. `getmask/getmask2` are implemented for the default and truetype fonts (GDI rasterization boundary). | BEHAV-FONTFILE-001; FreeTypeFont surface diff. |
-| API-DRAW-TEXT-001 | Facade API | gap | `ImageDraw.text`/`multiline_text` drop the `spacing/align/direction/features/language/embedded_color/font_size` options; `direction`/`features`/`language` are MATCH-ERROR items on this build (Pillow raises the exact libraqm KeyError — matchable trivially), while `spacing`/`align` (incl. multiline `justify` + Pillow's exact align error)/`embedded_color`/`font_size` need real implementation. `ImageDraw.getdraw`, `ImageMath.lambda_eval`/`imagemath_*`, `ImageStat.Global`, and the `ImageFilter` base classes (`Filter`/`BuiltinFilter`/`MultibandFilter`) plus Pillow's exact filter-validation messages (`radius must be >= 0`, `bad filter size`, `bad kernel size`, `not enough coefficients in kernel`, the RankFilter missing-rank TypeError) are absent. | Red-team audit (probe_modules.py, probe_modules2.py, probe_filters2.py). |
+| API-DRAW-TEXT-001 | Facade API | partial | The text/multiline_text half is done with BEHAV-DRAWTEXT-001: `direction`/`features`/`language` raise the exact no-libraqm KeyError shape (BASIC-layout fonts; the RAQM-layout dependency boundary is documented), `embedded_color` raises Pillow's exact mode ValueError and draws normally on RGB/RGBA, `textlength` rejects multiline text with the exact message, `text`/`textbbox` delegate `\n` to the multiline layout, and `multiline_text`/`multiline_textbbox` replicate `_prepare_multiline_text` exactly (anchor validation order, float spacing with Pillow's exact TypeErrors, left/center/right/justify incl. the word spread, the `m`/`d` anchor adjustments, float bbox addition). `font_size` routes through the documented `load_default(size)` boundary. Remaining: `ImageDraw.getdraw` + ImageDraw2, `ImageMath.lambda_eval`/`imagemath_*`, `ImageStat.Global`, the `ImageFilter` base classes (`Filter`/`BuiltinFilter`/`MultibandFilter`) plus Pillow's exact filter-validation messages (`radius must be >= 0`, `bad filter size`, `bad kernel size`, `not enough coefficients in kernel`, the RankFilter missing-rank TypeError, `cannot filter palette images`, and the string TypeErrors). | BEHAV-DRAWTEXT-001 (oracle/probe_drawtext_options.py, probe_drawtext_order.py, probe_multiline_expected.py); `ImageDraw.py` source pins. |
+| API-DRAWFONT-001 | Facade API | gap | Drawing text with a TRUETYPE font through `ImageDraw.Text`/`MultilineText` fails with `pillow_c: invalid argument` — the native `draw_text_*_font` seams accept only the built-in default font handle (`font->kind == PILLOW_C_FONT_DEFAULT`), while Pillow draws any FreeTypeFont (getmask2 + bitmap paste). Found during BEHAV-DRAWTEXT-001 (the layout/bbox/length pins with arial.ttf are unaffected). | BEHAV-DRAWTEXT-001 test runs; `pillow_c_draw.cpp` `draw_text_image_font` kind gate. |
+| API-FONTANCHOR-001 | Facade API | gap | The native font anchor seam approximates Pillow's `_imagingft.c` anchor math: Pillow anchors `m`/`a`/`d` vertically on the em-box (`ascender`/`descender`) and `m`/`r` horizontally on the advance (`PIXEL(position)`) while the native seam's values diverge (verified for `m`/`d` vertical and `r` horizontal on arial.ttf 16; `a`/`l`/`la`/`rs`/`ls` pins pass). | BEHAV-DRAWTEXT-001 multiline anchor pins vs `_imagingft.c` `getbbox` anchor switch. |
 | API-SAVEOPTS-001 | Facade API | done | Waves 1-6 (BEHAV-SAVEOPTS-001 through 006) plus BEHAV-ERRMSGS-001 are done: QOI `colorspace`, TGA `id_section`/`orientation`, TIFF unknown-compression-ignored + `quality` validation, JPEG integer `subsampling` breadth, PNG `compress_type` (0-4 accepted, the exact 5+ OSError), P-mode `bits` (auto-minimized depths + the override chain with the exact shift errors), and `dictionary` (the exact bytes-like TypeError; bytes accepted-and-ignored under the documented no-compressor boundary — the DLL writes stored deflate blocks), GIF `interlace` (the interlaced default with the @PIL153 workaround) and `palette` (the exact-match remap), TIFF `resolution`/`resolution_unit` (Pillow's exact float->RATIONAL continued-fraction conversion, the pair-truncation warning, unit-only tag 296, verbatim unit values, and the exact TypeError/struct.error messages; `strip_size` is accepted-and-ignored like Pillow 11.3.0), TIFF named-tag kwargs `description`/`software`/`date_time`/`artist`/`copyright` (write_string's exact conversions plus the per-axis `x_resolution`/`y_resolution` surface and the resolution/x/y/dpi precedence chain), JPEG `smooth`/`streamtype` (libjpeg-turbo's input smoothing kernels ported into the native L/RGB/CMYK encoders and the abbreviated tables-only/image-only stream modes with Pillow's exact marker structures, reopen errors, and the PyArg_ParseTuple TypeErrors), TIFF `tiffinfo` arbitrary tags (ImageFileDirectory_v2's full type inference for unknown tags plus the registered-tag rules and the exact error shapes, patched into IFD0 after the plain save). TIFF jpeg/group3/group4 compression stays the documented rejection boundary. | Red-team audit (probe_save_options.py); BEHAV-SAVEOPTS-001/002/003/004/005/006 (oracle/probe_saveopts_dll.py, probe_pngbits_dll.py, probe_gifopts2_dll.py, probe_tiffres_dll.py, probe_tiffnamed_dll.py, probe_jpegsmooth_dll.py, probe_tiffinfo_dll.py). |
 | API-SAVEOPTS-002 | Facade API | done | All six runtime-verified error-message mismatches are Pillow-exact with BEHAV-SAVEOPTS-001: PNG `compress_level` type (`'str' object cannot be interpreted as an integer`) and range (`codec configuration error when writing image file`), JPEG `quality` bogus (`Invalid quality setting`; the non-Pillow preset aliases are removed), JPEG `subsampling` (`'str' object cannot be interpreted as an integer`), TIFF `quality` (`Invalid quality setting` on the jpeg route), ICO `sizes` (`'>' not supported between instances of 'str' and 'int'`). | Red-team audit; BEHAV-SAVEOPTS-001. |
 | API-OPENINFO-001 | Facade API | gap | Unexposed open-side info: JPEG `quantization`/`progressive`/`progression`/`adobe`/`adobe_transform`, GIF `version`/`extension`, TIFF `compression`, TGA `compression`/`orientation` — not exposed and not boundary-recorded. | Red-team audit (probe_open_info.py). |

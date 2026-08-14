@@ -7270,3 +7270,21 @@ and the native `pillow_c_cms_display_profile` GDI/GetICMProfileW load
 against local Pillow 11.3.0. One deliberate native export: source/DLL
 export parity moves to `514/514` and the rebuilt DLL SHA-256 is
 `5787FE4F5D322204C0845136B13FD7B09326C78230A7DDF68E4BF42EB6B3CABF`.
+
+2026-08-15 BEHAV-DRAWTEXT-001 verification: the facade
+`Pillow ImageDraw text option surface matches Pillow 11.3.0` target
+passes `1/1` in `78ms`; the full directory suite passes `2851/2851`
+in `22734ms` with zero failures, errors, or skips. The oracle pins
+(`oracle/probe_drawtext_options.py`, `oracle/probe_drawtext_order.py`,
+`oracle/probe_multiline_expected.py`) cover the no-libraqm KeyError
+shape on all five methods, the embedded-color mode ValueError and
+order pins, the textlength multiline rejection, the `\n` delegation,
+the exact anchor/spacing/align error messages and validation order,
+and the arial.ttf-16 multiline layout matrix (float spacing, all four
+aligns incl. justify, the `ma` anchor, stroke expansion, empty/`\n`
+texts, and the float bbox union) against local Pillow 11.3.0. The
+`m`/`d`/`r` native font anchor divergences (API-FONTANCHOR-001) and
+the truetype-font draw seam (API-DRAWFONT-001) are recorded as
+follow-ups. No native code changed: export parity stays `514/514`
+and the DLL SHA-256 stays
+`5787FE4F5D322204C0845136B13FD7B09326C78230A7DDF68E4BF42EB6B3CABF`.

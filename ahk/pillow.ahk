@@ -5420,7 +5420,132 @@ class Pillow {
                 return 2
             if align = "justify"
                 return 3
-            throw Error("Pillow.ImageDraw." operationName ' align must be "left", "center", "right" or "justify"', -1)
+            throw Error('align must be "left", "center", "right" or "justify"', -1)
+        }
+
+        ; API-DRAW-TEXT-001: the option surface of Pillow 11.3.0's
+        ; text/multiline_text/textlength/textbbox. Pillow checks the
+        ; embedded-color mode support first (ValueError), then defers to
+        ; the font layer where direction/features/language raise the
+        ; no-libraqm KeyError; the local runtime ships no libraqm, so the
+        ; facade raises the exact KeyError shape for every font (for
+        ; RAQM-layout fonts Pillow would shape with raqm — the documented
+        ; dependency boundary).
+        static CheckEmbeddedColorMode(mode, embeddedColor) {
+            if embeddedColor && mode != "RGB" && mode != "RGBA"
+                throw Error("Embedded color supported only in RGB and RGBA modes", -1)
+        }
+
+        static CheckRaqmOptions(direction := unset, features := unset, language := unset) {
+            if IsSet(direction) || IsSet(features) || IsSet(language)
+                throw Error("'setting text direction, language or font features is not supported without libraqm'", -1)
+        }
+
+        static ResolveMultilineFont(font := unset, fontSize := unset, operationName := "") {
+            if IsSet(font) {
+                if !(IsObject(font) && font is Pillow.ImageFont.FreeTypeFont)
+                    throw Error("Pillow.ImageDraw." operationName " currently supports only Pillow.ImageFont fonts", -1)
+                return font
+            }
+            ; Pillow loads ImageFont.load_default(font_size) here; the
+            ; facade's load_default(size) stays accepted-and-ignored
+            ; (the documented BEHAV-FONTFILE-001 default-font boundary).
+            return Pillow.ImageFont.LoadDefault()
+        }
+
+        static MultilineLineSpacing(bboxBottom, strokeWidth, spacing) {
+            ; Pillow's line_spacing arithmetic:
+            ; textbbox((0,0), "A", font, stroke_width)[3] + stroke_width + spacing
+            ; with Pillow's exact TypeError shapes for non-numeric spacing.
+            if !(spacing is Number) {
+                if spacing is String
+                    throw Error("unsupported operand type(s) for +: 'int' and 'str'", -1)
+                throw Error("unsupported operand type(s) for +: 'int' and 'NoneType'", -1)
+            }
+            return bboxBottom + strokeWidth + spacing
+        }
+
+        static SumFloats(values) {
+            total := 0.0
+            for value in values
+                total += value
+            return total
+        }
+
+        static MultilineLayoutParts(xy, text, font, anchor, lineSpacing, align) {
+            ; Pillow 11.3.0's _prepare_multiline_text layout loop: the
+            ; per-line textlength widths, the anchor m/d vertical
+            ; adjustment, the align offsets, and the justify word spread.
+            lines := StrSplit(text, "`n")
+            if lines.Length = 0
+                lines := [""]
+            widths := []
+            maxWidth := 0.0
+            for line in lines {
+                lineWidth := font.GetLength(line)
+                widths.Push(lineWidth)
+                maxWidth := Max(maxWidth, lineWidth)
+            }
+            horizontal := SubStr(anchor, 1, 1)
+            vertical := SubStr(anchor, 2, 1)
+            top := xy[2]
+            if vertical = "m"
+                top -= (lines.Length - 1) * lineSpacing / 2.0
+            else if vertical = "d"
+                top -= (lines.Length - 1) * lineSpacing
+            parts := []
+            for index, line in lines {
+                left := xy[1]
+                widthDifference := maxWidth - widths[index]
+                if align != "left" && align != "justify" {
+                    if align = "center"
+                        left += widthDifference / 2.0
+                    else if align = "right"
+                        left += widthDifference
+                    else
+                        throw Error('align must be "left", "center", "right" or "justify"', -1)
+                }
+                if align = "justify" && widthDifference != 0 && index != lines.Length {
+                    words := StrSplit(line, " ")
+                    if words.Length > 1 {
+                        if horizontal = "m"
+                            left -= maxWidth / 2.0
+                        else if horizontal = "r"
+                            left -= maxWidth
+                        wordWidths := []
+                        for word in words
+                            wordWidths.Push(font.GetLength(word))
+                        wordAnchor := "l" vertical
+                        wordDifference := maxWidth - Pillow.ImageDraw.SumFloats(wordWidths)
+                        for wordIndex, word in words {
+                            parts.Push({ X: left, Y: top, Anchor: wordAnchor, Text: word })
+                            left += wordWidths[wordIndex] + wordDifference / (words.Length - 1)
+                        }
+                        top += lineSpacing
+                        continue
+                    }
+                }
+                if horizontal = "m"
+                    left -= widthDifference / 2.0
+                else if horizontal = "r"
+                    left -= widthDifference
+                parts.Push({ X: left, Y: top, Anchor: anchor, Text: line })
+                top += lineSpacing
+            }
+            return parts
+        }
+
+        static BboxAt(font, x, y, text, anchor, strokeWidth) {
+            ; Pillow's per-line textbbox: the font's anchored/stroke-expanded
+            ; bbox plus the float xy (no truncation, like bbox + xy).
+            bbox := font.GetBbox(text, anchor, unset, unset, unset, unset, strokeWidth)
+            return [x + bbox[1], y + bbox[2], x + bbox[3], y + bbox[4]]
+        }
+
+        static UnionBbox(bbox, line) {
+            if !IsSet(bbox)
+                return line
+            return [Min(bbox[1], line[1]), Min(bbox[2], line[2]), Max(bbox[3], line[3]), Max(bbox[4], line[4])]
         }
 
         static ValidateMultilineAnchor(anchor) {
@@ -5810,13 +5935,41 @@ class Pillow {
                 return this
             }
 
-            Text(xy, text, fill := unset, font := unset, anchor := unset, strokeWidth := 0, strokeFill := unset) {
+            Text(xy, text, fill := unset, font := unset, anchor := unset, strokeWidth := 0, strokeFill := unset, spacing := 4, align := "left", direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
                 if !IsObject(xy) || xy.Length != 2
                     throw Error("Pillow.ImageDraw.Text xy expects [x, y]", -1)
                 if !(xy[1] is Number) || !(xy[2] is Number)
                     throw Error("Pillow.ImageDraw.Text xy coordinates must be numeric", -1)
                 if !(text is String)
                     throw Error("Pillow.ImageDraw.Text text expects a string", -1)
+                ; Pillow 11.3.0 checks the embedded-color mode support before
+                ; the font, delegates multiline text to multiline_text, and
+                ; validates the anchor length before the raqm KeyError.
+                Pillow.ImageDraw.CheckEmbeddedColorMode(this.Image.Mode, embeddedColor)
+                if InStr(text, "`n") > 0 {
+                    return this.MultilineText(
+                        xy,
+                        text,
+                        IsSet(fill) ? fill : unset,
+                        IsSet(font) ? font : unset,
+                        spacing,
+                        align,
+                        IsSet(anchor) ? anchor : unset,
+                        strokeWidth,
+                        IsSet(strokeFill) ? strokeFill : unset,
+                        IsSet(direction) ? direction : unset,
+                        IsSet(features) ? features : unset,
+                        IsSet(language) ? language : unset,
+                        embeddedColor,
+                        IsSet(fontSize) ? fontSize : unset)
+                }
+                if IsSet(anchor) {
+                    if !(anchor is String)
+                        throw Error("Pillow.ImageDraw.Text anchor expects a string", -1)
+                    if StrLen(anchor) != 2
+                        throw Error("bad anchor specified: " anchor, -1)
+                }
+                Pillow.ImageDraw.CheckRaqmOptions(IsSet(direction) ? direction : unset, IsSet(features) ? features : unset, IsSet(language) ? language : unset)
                 strokeWidth := Pillow.ImageDraw.StrokeWidth(strokeWidth, "Text")
 
                 textBytes := Pillow.Image.Utf8Buffer(text)
@@ -5948,9 +6101,16 @@ class Pillow {
                 return this
             }
 
-            TextLength(text, font := unset) {
+            TextLength(text, font := unset, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
                 if !(text is String)
                     throw Error("Pillow.ImageDraw.TextLength text expects a string", -1)
+                ; Pillow 11.3.0's textlength: the multiline rejection, then the
+                ; embedded-color mode check, then the font's getlength which
+                ; raises the no-libraqm KeyError for direction/features/language.
+                if InStr(text, "`n") > 0
+                    throw Error("can't measure length of multiline text", -1)
+                Pillow.ImageDraw.CheckEmbeddedColorMode(this.Image.Mode, embeddedColor)
+                Pillow.ImageDraw.CheckRaqmOptions(IsSet(direction) ? direction : unset, IsSet(features) ? features : unset, IsSet(language) ? language : unset)
                 if IsSet(font) {
                     if !(IsObject(font) && font is Pillow.ImageFont.FreeTypeFont)
                         throw Error("Pillow.ImageDraw.TextLength currently supports only Pillow.ImageFont fonts", -1)
@@ -5968,315 +6128,165 @@ class Pillow {
                 return length
             }
 
-            TextBbox(xy, text, font := unset, anchor := unset, strokeWidth := 0) {
+            TextBbox(xy, text, font := unset, anchor := unset, strokeWidth := 0, spacing := 4, align := "left", direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
                 if !IsObject(xy) || xy.Length != 2
                     throw Error("Pillow.ImageDraw.TextBbox xy expects [x, y]", -1)
                 if !(xy[1] is Number) || !(xy[2] is Number)
                     throw Error("Pillow.ImageDraw.TextBbox xy coordinates must be numeric", -1)
                 if !(text is String)
                     throw Error("Pillow.ImageDraw.TextBbox text expects a string", -1)
+                ; Pillow 11.3.0's textbbox: the embedded-color mode check comes
+                ; first, then the font, then the multiline delegation.
+                Pillow.ImageDraw.CheckEmbeddedColorMode(this.Image.Mode, embeddedColor)
+                if InStr(text, "`n") > 0 {
+                    return this.MultilineTextBbox(
+                        xy,
+                        text,
+                        IsSet(font) ? font : unset,
+                        spacing,
+                        align,
+                        IsSet(anchor) ? anchor : unset,
+                        strokeWidth,
+                        IsSet(direction) ? direction : unset,
+                        IsSet(features) ? features : unset,
+                        IsSet(language) ? language : unset,
+                        embeddedColor,
+                        IsSet(fontSize) ? fontSize : unset)
+                }
                 strokeWidth := Pillow.ImageDraw.StrokeWidth(strokeWidth, "TextBbox")
-
-                textBytes := Pillow.Image.Utf8Buffer(text)
-                anchorBytes := 0
                 if IsSet(anchor) {
                     if !(anchor is String)
                         throw Error("Pillow.ImageDraw.TextBbox anchor expects a string", -1)
-                    anchorBytes := Pillow.Image.Utf8Buffer(anchor)
+                    if StrLen(anchor) != 2
+                        throw Error("bad anchor specified: " anchor, -1)
                 }
+                Pillow.ImageDraw.CheckRaqmOptions(IsSet(direction) ? direction : unset, IsSet(features) ? features : unset, IsSet(language) ? language : unset)
+                if IsSet(font) {
+                    if !(IsObject(font) && font is Pillow.ImageFont.FreeTypeFont)
+                        throw Error("Pillow.ImageDraw.TextBbox currently supports only Pillow.ImageFont fonts", -1)
+                    ; the font's anchored/stroke-expanded bbox plus the xy —
+                    ; the facade-side addition keeps Pillow's float bbox.
+                    bbox := font.GetBbox(text, IsSet(anchor) ? anchor : unset, unset, unset, unset, unset, strokeWidth)
+                    return [xy[1] + bbox[1], xy[2] + bbox[2], xy[1] + bbox[3], xy[2] + bbox[4]]
+                }
+                textBytes := Pillow.Image.Utf8Buffer(text)
+                anchorBytes := 0
+                if IsSet(anchor)
+                    anchorBytes := Pillow.Image.Utf8Buffer(anchor)
                 left := 0
                 top := 0
                 right := 0
                 bottom := 0
-                if IsSet(font) {
-                    if !(IsObject(font) && font is Pillow.ImageFont.FreeTypeFont)
-                        throw Error("Pillow.ImageDraw.TextBbox currently supports only Pillow.ImageFont fonts", -1)
-                    if strokeWidth > 0 && IsSet(anchor) {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_textbbox_font_anchor_stroke",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Ptr", anchorBytes,
-                            "Int", strokeWidth,
-                            "Int*", &left,
-                            "Int*", &top,
-                            "Int*", &right,
-                            "Int*", &bottom,
-                            "Int"
-                        ))
-                        return [left, top, right, bottom]
-                    }
-                    if strokeWidth > 0 {
-                        bbox := font.GetBbox(text)
-                        return [
-                            xy[1] + bbox[1] - strokeWidth,
-                            xy[2] + bbox[2] - strokeWidth,
-                            xy[1] + bbox[3] + strokeWidth,
-                            xy[2] + bbox[4] + strokeWidth
-                        ]
-                    }
-                    if IsSet(anchor) {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_textbbox_font_anchor",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Ptr", anchorBytes,
-                            "Int*", &left,
-                            "Int*", &top,
-                            "Int*", &right,
-                            "Int*", &bottom,
-                            "Int"
-                        ))
-                        return [left, top, right, bottom]
-                    }
-                    bbox := font.GetBbox(text)
-                    return [xy[1] + bbox[1], xy[2] + bbox[2], xy[1] + bbox[3], xy[2] + bbox[4]]
+                if strokeWidth > 0 && IsSet(anchor) {
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_textbbox_anchor_stroke",
+                        "Int", xy[1],
+                        "Int", xy[2],
+                        "Ptr", textBytes,
+                        "Ptr", anchorBytes,
+                        "Int", strokeWidth,
+                        "Int*", &left,
+                        "Int*", &top,
+                        "Int*", &right,
+                        "Int*", &bottom,
+                        "Int"
+                    ))
+                } else if strokeWidth > 0 {
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_textbbox_stroke",
+                        "Int", xy[1],
+                        "Int", xy[2],
+                        "Ptr", textBytes,
+                        "Int", strokeWidth,
+                        "Int*", &left,
+                        "Int*", &top,
+                        "Int*", &right,
+                        "Int*", &bottom,
+                        "Int"
+                    ))
+                } else if IsSet(anchor) {
+                    status := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_textbbox_anchor",
+                        "Int", xy[1],
+                        "Int", xy[2],
+                        "Ptr", textBytes,
+                        "Ptr", anchorBytes,
+                        "Int*", &left,
+                        "Int*", &top,
+                        "Int*", &right,
+                        "Int*", &bottom,
+                        "Int"
+                    )
+                    if status = -3
+                        throw Error("bad anchor specified: " anchor, -1)
+                    Pillow.CheckStatus(status)
                 } else {
-                    if strokeWidth > 0 && IsSet(anchor) {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_textbbox_anchor_stroke",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", anchorBytes,
-                            "Int", strokeWidth,
-                            "Int*", &left,
-                            "Int*", &top,
-                            "Int*", &right,
-                            "Int*", &bottom,
-                            "Int"
-                        ))
-                    } else if strokeWidth > 0 {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_textbbox_stroke",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Int", strokeWidth,
-                            "Int*", &left,
-                            "Int*", &top,
-                            "Int*", &right,
-                            "Int*", &bottom,
-                            "Int"
-                        ))
-                    } else if IsSet(anchor) {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_textbbox_anchor",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", anchorBytes,
-                            "Int*", &left,
-                            "Int*", &top,
-                            "Int*", &right,
-                            "Int*", &bottom,
-                            "Int"
-                        ))
-                    } else {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_textbbox",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Int*", &left,
-                            "Int*", &top,
-                            "Int*", &right,
-                            "Int*", &bottom,
-                            "Int"
-                        ))
-                    }
-                    return [left, top, right, bottom]
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_textbbox",
+                        "Int", xy[1],
+                        "Int", xy[2],
+                        "Ptr", textBytes,
+                        "Int*", &left,
+                        "Int*", &top,
+                        "Int*", &right,
+                        "Int*", &bottom,
+                        "Int"
+                    ))
                 }
+                return [left, top, right, bottom]
             }
 
-            MultilineText(xy, text, fill := unset, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, strokeFill := unset) {
+            MultilineText(xy, text, fill := unset, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, strokeFill := unset, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
                 if !IsObject(xy) || xy.Length != 2
                     throw Error("Pillow.ImageDraw.MultilineText xy expects [x, y]", -1)
                 if !(xy[1] is Number) || !(xy[2] is Number)
                     throw Error("Pillow.ImageDraw.MultilineText xy coordinates must be numeric", -1)
                 if !(text is String)
                     throw Error("Pillow.ImageDraw.MultilineText text expects a string", -1)
-                if !(spacing is Integer)
-                    throw Error("Pillow.ImageDraw.MultilineText spacing must be an integer", -1)
                 strokeWidth := Pillow.ImageDraw.StrokeWidth(strokeWidth, "MultilineText")
-
-                alignId := Pillow.ImageDraw.TextAlignId(align, "MultilineText")
-                textBytes := Pillow.Image.Utf8Buffer(text)
-                anchorBytes := 0
-                if IsSet(anchor) {
+                resolvedFont := Pillow.ImageDraw.ResolveMultilineFont(IsSet(font) ? font : unset, IsSet(fontSize) ? fontSize : unset, "MultilineText")
+                ; Pillow's _prepare_multiline_text anchor default + validation
+                ; (the character set is validated by the per-line font layer).
+                if !IsSet(anchor) {
+                    anchor := (IsSet(direction) && direction = "ttb") ? "lt" : "la"
+                } else {
                     if !(anchor is String)
                         throw Error("Pillow.ImageDraw.MultilineText anchor expects a string", -1)
-                    Pillow.ImageDraw.ValidateMultilineAnchor(anchor)
-                    anchorBytes := Pillow.Image.Utf8Buffer(anchor)
+                    if StrLen(anchor) != 2
+                        throw Error("anchor must be a 2 character string", -1)
+                    vertical := SubStr(anchor, 2, 1)
+                    if (vertical = "t" || vertical = "b") && !(IsSet(direction) && direction = "ttb")
+                        throw Error("anchor not supported for multiline text", -1)
                 }
-                color := this.Image.PasteColorBuffer(IsSet(fill) ? fill : 0)
-                strokeColor := 0
-                if strokeWidth > 0
-                    strokeColor := this.Image.PasteColorBuffer(IsSet(strokeFill) ? strokeFill : (IsSet(fill) ? fill : 0))
-                if IsSet(font) {
-                    if !(IsObject(font) && font is Pillow.ImageFont.FreeTypeFont)
-                        throw Error("Pillow.ImageDraw.MultilineText currently supports only Pillow.ImageFont fonts", -1)
-                    if strokeWidth > 0 && IsSet(anchor) {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_font_anchor_stroke",
-                            "Ptr", this.Image.RequireHandle(),
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Ptr", color,
-                            "UPtr", color.Size,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Ptr", anchorBytes,
-                            "Int", strokeWidth,
-                            "Ptr", strokeColor,
-                            "UPtr", strokeColor.Size,
-                            "Int"
-                        ))
-                    } else if strokeWidth > 0 {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_font_align_stroke",
-                            "Ptr", this.Image.RequireHandle(),
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Ptr", color,
-                            "UPtr", color.Size,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Int", strokeWidth,
-                            "Ptr", strokeColor,
-                            "UPtr", strokeColor.Size,
-                            "Int"
-                        ))
-                    } else if IsSet(anchor) {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_font_anchor",
-                            "Ptr", this.Image.RequireHandle(),
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Ptr", color,
-                            "UPtr", color.Size,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Ptr", anchorBytes,
-                            "Int"
-                        ))
-                    } else if alignId = 0 {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_font",
-                            "Ptr", this.Image.RequireHandle(),
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Ptr", color,
-                            "UPtr", color.Size,
-                            "Int", spacing,
-                            "Int"
-                        ))
-                    } else {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_font_align",
-                            "Ptr", this.Image.RequireHandle(),
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Ptr", color,
-                            "UPtr", color.Size,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Int"
-                        ))
-                    }
-                } else {
-                    if strokeWidth > 0 && IsSet(anchor) {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_anchor_stroke",
-                            "Ptr", this.Image.RequireHandle(),
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", color,
-                            "UPtr", color.Size,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Ptr", anchorBytes,
-                            "Int", strokeWidth,
-                            "Ptr", strokeColor,
-                            "UPtr", strokeColor.Size,
-                            "Int"
-                        ))
-                    } else if strokeWidth > 0 {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_align_stroke",
-                            "Ptr", this.Image.RequireHandle(),
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", color,
-                            "UPtr", color.Size,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Int", strokeWidth,
-                            "Ptr", strokeColor,
-                            "UPtr", strokeColor.Size,
-                            "Int"
-                        ))
-                    } else if IsSet(anchor) {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_anchor",
-                            "Ptr", this.Image.RequireHandle(),
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", color,
-                            "UPtr", color.Size,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Ptr", anchorBytes,
-                            "Int"
-                        ))
-                    } else if alignId = 0 {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text",
-                            "Ptr", this.Image.RequireHandle(),
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", color,
-                            "UPtr", color.Size,
-                            "Int", spacing,
-                            "Int"
-                        ))
-                    } else {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_draw_multiline_text_align",
-                            "Ptr", this.Image.RequireHandle(),
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", color,
-                            "UPtr", color.Size,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Int"
-                        ))
-                    }
+                ; line_spacing arithmetic first (Pillow's exact spacing
+                ; TypeErrors), then the textlength loop's embedded-color mode
+                ; check and the no-libraqm KeyError, then the layout.
+                anchorBbox := resolvedFont.GetBbox("A", unset, unset, unset, unset, unset, strokeWidth)
+                lineSpacing := Pillow.ImageDraw.MultilineLineSpacing(anchorBbox[4], strokeWidth, spacing)
+                Pillow.ImageDraw.CheckEmbeddedColorMode(this.Image.Mode, embeddedColor)
+                Pillow.ImageDraw.CheckRaqmOptions(IsSet(direction) ? direction : unset, IsSet(features) ? features : unset, IsSet(language) ? language : unset)
+                parts := Pillow.ImageDraw.MultilineLayoutParts(xy, text, resolvedFont, anchor, lineSpacing, align)
+                for part in parts {
+                    this.Text(
+                        [part.X, part.Y],
+                        part.Text,
+                        IsSet(fill) ? fill : unset,
+                        resolvedFont,
+                        part.Anchor,
+                        strokeWidth,
+                        IsSet(strokeFill) ? strokeFill : unset,
+                        4,
+                        "left",
+                        unset,
+                        unset,
+                        unset,
+                        false,
+                        unset)
                 }
                 return this
             }
 
-            multiline_text(xy, text, fill := unset, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, strokeFill := unset) {
+            multiline_text(xy, text, fill := unset, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, strokeFill := unset, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
                 return this.MultilineText(
                     xy,
                     text,
@@ -6286,258 +6296,57 @@ class Pillow {
                     align,
                     IsSet(anchor) ? anchor : unset,
                     strokeWidth,
-                    IsSet(strokeFill) ? strokeFill : unset)
+                    IsSet(strokeFill) ? strokeFill : unset,
+                    IsSet(direction) ? direction : unset,
+                    IsSet(features) ? features : unset,
+                    IsSet(language) ? language : unset,
+                    embeddedColor,
+                    IsSet(fontSize) ? fontSize : unset)
             }
 
-            MultilineTextBbox(xy, text, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0) {
+            MultilineTextBbox(xy, text, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
                 if !IsObject(xy) || xy.Length != 2
                     throw Error("Pillow.ImageDraw.MultilineTextBbox xy expects [x, y]", -1)
                 if !(xy[1] is Number) || !(xy[2] is Number)
                     throw Error("Pillow.ImageDraw.MultilineTextBbox xy coordinates must be numeric", -1)
                 if !(text is String)
                     throw Error("Pillow.ImageDraw.MultilineTextBbox text expects a string", -1)
-                if !(spacing is Integer)
-                    throw Error("Pillow.ImageDraw.MultilineTextBbox spacing must be an integer", -1)
                 strokeWidth := Pillow.ImageDraw.StrokeWidth(strokeWidth, "MultilineTextBbox")
-
-                alignId := Pillow.ImageDraw.TextAlignId(align, "MultilineTextBbox")
-                textBytes := Pillow.Image.Utf8Buffer(text)
-                anchorBytes := 0
-                if IsSet(anchor) {
+                resolvedFont := Pillow.ImageDraw.ResolveMultilineFont(IsSet(font) ? font : unset, IsSet(fontSize) ? fontSize : unset, "MultilineTextBbox")
+                ; Pillow's _prepare_multiline_text anchor default + validation.
+                if !IsSet(anchor) {
+                    anchor := (IsSet(direction) && direction = "ttb") ? "lt" : "la"
+                } else {
                     if !(anchor is String)
                         throw Error("Pillow.ImageDraw.MultilineTextBbox anchor expects a string", -1)
-                    Pillow.ImageDraw.ValidateMultilineAnchor(anchor)
-                    anchorBytes := Pillow.Image.Utf8Buffer(anchor)
+                    if StrLen(anchor) != 2
+                        throw Error("anchor must be a 2 character string", -1)
+                    vertical := SubStr(anchor, 2, 1)
+                    if (vertical = "t" || vertical = "b") && !(IsSet(direction) && direction = "ttb")
+                        throw Error("anchor not supported for multiline text", -1)
                 }
-                left := 0
-                top := 0
-                right := 0
-                bottom := 0
-                if IsSet(font) {
-                    if !(IsObject(font) && font is Pillow.ImageFont.FreeTypeFont)
-                        throw Error("Pillow.ImageDraw.MultilineTextBbox currently supports only Pillow.ImageFont fonts", -1)
-                    if strokeWidth > 0 && IsSet(anchor) {
-                        left := 0.0
-                        top := 0.0
-                        right := 0.0
-                        bottom := 0.0
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_font_anchor_stroke_f64",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Ptr", anchorBytes,
-                            "Int", strokeWidth,
-                            "Double*", &left,
-                            "Double*", &top,
-                            "Double*", &right,
-                            "Double*", &bottom,
-                            "Int"
-                        ))
-                    } else if strokeWidth > 0 && alignId = 0 {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_font_align_stroke",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Int", strokeWidth,
-                            "Int*", &left,
-                            "Int*", &top,
-                            "Int*", &right,
-                            "Int*", &bottom,
-                            "Int"
-                        ))
-                    } else if strokeWidth > 0 {
-                        left := 0.0
-                        top := 0.0
-                        right := 0.0
-                        bottom := 0.0
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_font_align_stroke_f64",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Int", strokeWidth,
-                            "Double*", &left,
-                            "Double*", &top,
-                            "Double*", &right,
-                            "Double*", &bottom,
-                            "Int"
-                        ))
-                    } else if IsSet(anchor) {
-                        left := 0.0
-                        top := 0.0
-                        right := 0.0
-                        bottom := 0.0
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_font_anchor_f64",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Ptr", anchorBytes,
-                            "Double*", &left,
-                            "Double*", &top,
-                            "Double*", &right,
-                            "Double*", &bottom,
-                            "Int"
-                        ))
-                    } else if alignId = 0 {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_font",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Int", spacing,
-                            "Int*", &left,
-                            "Int*", &top,
-                            "Int*", &right,
-                            "Int*", &bottom,
-                            "Int"
-                        ))
-                    } else {
-                        left := 0.0
-                        top := 0.0
-                        right := 0.0
-                        bottom := 0.0
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_font_align_f64",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Ptr", font.RequireHandle(),
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Double*", &left,
-                            "Double*", &top,
-                            "Double*", &right,
-                            "Double*", &bottom,
-                            "Int"
-                        ))
-                    }
-                } else {
-                    if strokeWidth > 0 && IsSet(anchor) {
-                        left := 0.0
-                        top := 0.0
-                        right := 0.0
-                        bottom := 0.0
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_anchor_stroke_f64",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Ptr", anchorBytes,
-                            "Int", strokeWidth,
-                            "Double*", &left,
-                            "Double*", &top,
-                            "Double*", &right,
-                            "Double*", &bottom,
-                            "Int"
-                        ))
-                    } else if strokeWidth > 0 && alignId = 0 {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_align_stroke",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Int", strokeWidth,
-                            "Int*", &left,
-                            "Int*", &top,
-                            "Int*", &right,
-                            "Int*", &bottom,
-                            "Int"
-                        ))
-                    } else if strokeWidth > 0 {
-                        left := 0.0
-                        top := 0.0
-                        right := 0.0
-                        bottom := 0.0
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_align_stroke_f64",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Int", strokeWidth,
-                            "Double*", &left,
-                            "Double*", &top,
-                            "Double*", &right,
-                            "Double*", &bottom,
-                            "Int"
-                        ))
-                    } else if IsSet(anchor) {
-                        left := 0.0
-                        top := 0.0
-                        right := 0.0
-                        bottom := 0.0
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_anchor_f64",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Ptr", anchorBytes,
-                            "Double*", &left,
-                            "Double*", &top,
-                            "Double*", &right,
-                            "Double*", &bottom,
-                            "Int"
-                        ))
-                    } else if alignId = 0 {
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Int", spacing,
-                            "Int*", &left,
-                            "Int*", &top,
-                            "Int*", &right,
-                            "Int*", &bottom,
-                            "Int"
-                        ))
-                    } else {
-                        left := 0.0
-                        top := 0.0
-                        right := 0.0
-                        bottom := 0.0
-                        Pillow.CheckStatus(DllCall(
-                            Pillow.RequireDllPath() "\pillow_c_image_multiline_textbbox_align_f64",
-                            "Int", xy[1],
-                            "Int", xy[2],
-                            "Ptr", textBytes,
-                            "Int", spacing,
-                            "Int", alignId,
-                            "Double*", &left,
-                            "Double*", &top,
-                            "Double*", &right,
-                            "Double*", &bottom,
-                            "Int"
-                        ))
-                    }
+                ; line_spacing arithmetic first (Pillow's exact spacing
+                ; TypeErrors), then the textlength loop's embedded-color mode
+                ; check and the no-libraqm KeyError, then the layout.
+                anchorBbox := resolvedFont.GetBbox("A", unset, unset, unset, unset, unset, strokeWidth)
+                lineSpacing := Pillow.ImageDraw.MultilineLineSpacing(anchorBbox[4], strokeWidth, spacing)
+                Pillow.ImageDraw.CheckEmbeddedColorMode(this.Image.Mode, embeddedColor)
+                Pillow.ImageDraw.CheckRaqmOptions(IsSet(direction) ? direction : unset, IsSet(features) ? features : unset, IsSet(language) ? language : unset)
+                parts := Pillow.ImageDraw.MultilineLayoutParts(xy, text, resolvedFont, anchor, lineSpacing, align)
+                union := unset
+                for part in parts {
+                    bboxLine := Pillow.ImageDraw.BboxAt(resolvedFont, part.X, part.Y, part.Text, part.Anchor, strokeWidth)
+                    if IsSet(union)
+                        union := Pillow.ImageDraw.UnionBbox(union, bboxLine)
+                    else
+                        union := bboxLine
                 }
-                return [left, top, right, bottom]
+                if !IsSet(union)
+                    return [xy[1], xy[2], xy[1], xy[2]]
+                return union
             }
 
-            multiline_textbbox(xy, text, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0) {
+            multiline_textbbox(xy, text, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
                 return this.MultilineTextBbox(
                     xy,
                     text,
@@ -6545,7 +6354,12 @@ class Pillow {
                     spacing,
                     align,
                     IsSet(anchor) ? anchor : unset,
-                    strokeWidth)
+                    strokeWidth,
+                    IsSet(direction) ? direction : unset,
+                    IsSet(features) ? features : unset,
+                    IsSet(language) ? language : unset,
+                    embeddedColor,
+                    IsSet(fontSize) ? fontSize : unset)
             }
 
             Line(xy, fill := unset, width := 0, joint := unset) {

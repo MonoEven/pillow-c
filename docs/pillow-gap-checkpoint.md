@@ -19681,5 +19681,46 @@ API-DRAW-TEXT-001 stays the next packet, then API-OPENINFO-001 and
 the API-FONTVAR-002 FreeType-dependent boundary.
 ```
 
+2026-08-15: `BEHAV-DRAWTEXT-001` is GREEN as the ImageDraw text option
+wave (the API-DRAW-TEXT-001 text/multiline_text half). The Pillow
+11.3.0 oracle (fresh pins plus `ImageDraw.py` source) pins:
+`direction`/`features`/`language` raise the exact no-libraqm KeyError
+shape `'setting text direction, language or font features is not
+supported without libraqm'` on every method (BASIC-layout fonts
+raise it locally; RAQM-layout fonts would shape with raqm — the
+documented dependency boundary); `embedded_color` raises the exact
+`Embedded color supported only in RGB and RGBA modes` ValueError
+first on non-RGB/RGBA images and draws normally otherwise;
+`textlength` rejects multiline text with `can't measure length of
+multiline text` before the embedded check; `text`/`textbbox` with
+`\n` delegate to the multiline layout with spacing/align applied;
+`multiline_text`/`multiline_textbbox` now replicate Pillow's
+`_prepare_multiline_text` exactly in the facade — the anchor
+default/`anchor must be a 2 character string`/`anchor not supported
+for multiline text` validation order, the
+`textbbox("A")[3] + stroke_width + spacing` line spacing with
+Pillow's exact `unsupported operand type(s) for +: 'int' and 'str'`
+/ `'int' and 'NoneType'` TypeErrors, float spacing, the
+left/center/right/justify layout with the exact
+`align must be "left", "center", "right" or "justify"` error, the
+justify word spread (`l`+vertical word anchors and the
+`max_width - sum(word_widths)` gap), and the `m`/`d` anchor vertical
+adjustments — the per-line bboxes keep Pillow's float arithmetic via
+the pinned font seams. The `font_size` option routes through
+`load_default(size)`, which stays accepted-and-ignored (the
+BEHAV-FONTFILE-001 default-font boundary). The facade target passes
+`1/1` in `78ms`; the full directory suite passes `2851/2851` in
+`22734ms` with zero failures, errors, or skips. No native code
+changed: export parity stays `514/514` and the DLL SHA-256 stays
+`5787FE4F5D322204C0845136B13FD7B09326C78230A7DDF68E4BF42EB6B3CABF`.
+Recorded follow-ups: the native font anchor seam approximates
+Pillow's em-box `m`/`d` and advance `r` anchor math (new ledger row
+API-FONTANCHOR-001), and truetype-font drawing stays the native
+default-font-only seam (new ledger row API-DRAWFONT-001). The
+API-DRAW-TEXT-001 module half (getdraw/ImageDraw2, ImageStat.Global,
+the ImageFilter base classes + validation messages, and ImageMath
+lambda_eval/imagemath_*) stays the next packet.
+```
+
 If any line above is no longer true, update this file first, then update
 `docs/pillow-gap-analysis.md` in the same patch.
