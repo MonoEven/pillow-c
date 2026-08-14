@@ -28,8 +28,15 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_restart_marker_extra_encode_options` and
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
+`BEHAV-PALM-001` changes no ABI at all either: the facade
+`SavePalm` reproduces Pillow's save-only Palm pixmap writer (16-byte
+big-endian header, the 1026-byte colormap with Pillow's
+planar-slice quirk, row-padded 8-bit indices) plus the exact mode
+errors and the Pillow-shaped open-identification error; the DLL
+SHA-256 is unchanged.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`469/469`; the full AHK suite is `2812/2812`; and the current DLL SHA-256 is
+`469/469`; the full AHK suite is `2813/2813`; and the current DLL SHA-256 is
 `6D4D2F8378AD163017C1DDA0EF8F3A8C71014143A3B212FEBF9EE617F9A0A2CA`
 (BEHAV-MSP-001 adds two deliberate exports — `pillow_c_image_open_msp`
 and `pillow_c_image_save_msp`, the exact DanM header/checksum/rows

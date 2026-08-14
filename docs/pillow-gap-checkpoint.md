@@ -523,6 +523,28 @@ Current work packet:
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
 
+2026-08-14: `BEHAV-PALM-001` is GREEN as the PALM format (behavioral
+parity, facade-only). The Pillow 11.3.0 oracle (PalmImagePlugin
+source plus fixtures) shows Palm pixmaps are save-only: a 16-byte
+big-endian header, a 1026-byte colormap for P mode, and row-padded
+8-bit indices — with a Pillow quirk: `getpalette()` returns the
+planar "RGB;L" storage and the writer slices it LINEARLY, so entry
+i's RGB is the three blob bytes at offset 3*i (walking across the
+planes). The facade `SavePalm` reproduces the exact header, the
+quirky colormap, and the row padding; non-P modes raise
+`cannot write mode X as Palm`; and Pillow registers no Palm OPEN,
+so the facade raises the Pillow-shaped
+`cannot identify image file <path>` (the L-with-bpp and mode-1
+inverted slices stay separate children). The facade PALM target
+passes `1/1` in `32ms` (byte-exact embedded fixture, four exact
+mode errors, the open-identification error), and the full directory
+suite passes `2813/2813` in `20422ms`, with zero failures, errors,
+or skips. Facade-only change: source/DLL export parity remains
+`469/469` (DLL byte-identical) and the DLL SHA-256 remains
+`6D4D2F8378AD163017C1DDA0EF8F3A8C71014143A3B212FEBF9EE617F9A0A2CA`.
+The PALM row left the FMT-UNREC-001 boundary list. The next bounded
+child is `BEHAV-BLP-001`, the BLP format.
+
 2026-08-14: `BEHAV-MSP-001` is GREEN as the MSP format (behavioral
 parity). The Pillow 11.3.0 oracle (MspImagePlugin source plus
 fixtures) shows MSP is mode-1 only: a 32-byte little-endian header

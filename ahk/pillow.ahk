@@ -7562,6 +7562,10 @@ class Pillow {
                     ; BEHAV-IM-001: parse the ASCII header, then feed the
                     ; raw payload (and P-mode LUT) into native storage.
                     lastStatus := Pillow.Image.OpenImHandle(path, &outHandle)
+                } else if format = "PALM" {
+                    ; BEHAV-PALM-001: Pillow registers no Palm OPEN, so
+                    ; identification fails with the Pillow-shaped message.
+                    throw Error("cannot identify image file <" path ">", -1)
                 } else {
                     lastStatus := DllCall(
                         Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
@@ -8570,6 +8574,8 @@ class Pillow {
                 return "IM"
             if RegExMatch(path, "i)\.msp$")
                 return "MSP"
+            if RegExMatch(path, "i)\.palm$")
+                return "PALM"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -8599,7 +8605,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -8611,6 +8617,7 @@ class Pillow {
                 "DIB", "DIB",
                 "IM", "IM",
                 "MSP", "Windows Paint",
+                "PALM", "Palm pixmap",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -10131,6 +10138,13 @@ class Pillow {
                     "Ptr", pathBytes,
                     "Int"
                 ))
+                return
+            }
+            if resolvedFormat = "PALM" {
+                ; BEHAV-PALM-001: Pillow's Palm pixmap is save-only; the
+                ; bounded slice covers the 8-bit P path (the L-with-bpp and
+                ; mode-1 inverted slices stay separate children).
+                this.SavePalm(path)
                 return
             }
             if IsSet(saveOptions) && resolvedFormat = "CUR" {
@@ -12113,6 +12127,75 @@ class Pillow {
                 }
                 raw := this.ToBytes("raw", rawmode, -1)
                 target.RawWrite(raw.Ptr, raw.Size)
+            } finally {
+                target.Close()
+            }
+        }
+
+        SavePalm(path) {
+            ; BEHAV-PALM-001: Pillow 11.3.0's Palm pixmap save is output-only.
+            ; The bounded slice covers the 8-bit P path: a 16-byte
+            ; big-endian header, the 1026-byte colormap, and row-padded
+            ; index bytes. L-with-bpp and mode-1 inverted slices stay
+            ; separate children (Pillow raises the same mode error here).
+            if this.Mode != "P"
+                throw Error("cannot write mode " this.Mode " as Palm", -1)
+            palette := this.GetPalette("RGB")
+            while palette.Length < 768
+                palette.Push(0)
+            cols := this.Size[1]
+            rows := this.Size[2]
+            rowbytes := ((cols + 1) // 2) * 2
+            header := Buffer(16, 0)
+            NumPut("UChar", cols >> 8, header, 0)
+            NumPut("UChar", cols & 0xFF, header, 1)
+            NumPut("UChar", rows >> 8, header, 2)
+            NumPut("UChar", rows & 0xFF, header, 3)
+            NumPut("UChar", rowbytes >> 8, header, 4)
+            NumPut("UChar", rowbytes & 0xFF, header, 5)
+            NumPut("UChar", 0x40, header, 6)
+            NumPut("UChar", 0x00, header, 7)
+            NumPut("UChar", 8, header, 8)
+            NumPut("UChar", 1, header, 9)
+            NumPut("UChar", 0, header, 10)
+            NumPut("UChar", 0, header, 11)
+            NumPut("UChar", 0, header, 12)
+            NumPut("UChar", 0xFF, header, 13)
+            NumPut("UChar", 0, header, 14)
+            NumPut("UChar", 0, header, 15)
+            colormap := Buffer(2 + 256 * 4, 0)
+            NumPut("UChar", 0x01, colormap, 0)
+            NumPut("UChar", 0x00, colormap, 1)
+            ; Pillow quirk: getpalette() returns the planar "RGB;L" storage
+            ; and the writer slices it LINEARLY, so entry i's RGB is the
+            ; three blob bytes at offset 3*i (walking across the planes).
+            blob := Buffer(768, 0)
+            loop 256 {
+                blobPos := A_Index - 1
+                NumPut("UChar", palette[blobPos * 3 + 1], blob, blobPos)
+                NumPut("UChar", palette[blobPos * 3 + 2], blob, 256 + blobPos)
+                NumPut("UChar", palette[blobPos * 3 + 3], blob, 512 + blobPos)
+            }
+            loop 256 {
+                index := A_Index - 1
+                NumPut("UChar", index, colormap, 2 + index * 4)
+                NumPut("UChar", NumGet(blob, index * 3, "UChar"), colormap, 2 + index * 4 + 1)
+                NumPut("UChar", NumGet(blob, index * 3 + 1, "UChar"), colormap, 2 + index * 4 + 2)
+                NumPut("UChar", NumGet(blob, index * 3 + 2, "UChar"), colormap, 2 + index * 4 + 3)
+            }
+            tight := this.ToBytes("raw", "P")
+            padded := Buffer(rowbytes * rows, 0)
+            loop rows {
+                if cols > 0
+                    DllCall("ntdll\RtlMoveMemory", "Ptr", padded.Ptr + (A_Index - 1) * rowbytes, "Ptr", tight.Ptr + (A_Index - 1) * cols, "UPtr", cols)
+            }
+            target := FileOpen(path, "w")
+            if !target
+                throw Error("Pillow.Image.Save PALM failed to open the target file", -1)
+            try {
+                target.RawWrite(header.Ptr, header.Size)
+                target.RawWrite(colormap.Ptr, colormap.Size)
+                target.RawWrite(padded.Ptr, padded.Size)
             } finally {
                 target.Close()
             }

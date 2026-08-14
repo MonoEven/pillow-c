@@ -47,26 +47,23 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2812` AHK tests: `1390` raw DLL tests and
-`1422` facade tests.
+This suite currently registers `2813` AHK tests: `1390` raw DLL tests and
+`1423` facade tests.
 
-Latest `BEHAV-MSP-001` verification: the Pillow 11.3.0 oracle
-(MspImagePlugin source plus fixtures) shows MSP is mode-1 only — a
-32-byte XOR-checksummed header plus MSB-first packed rows (DanM),
-with LinS files carrying a per-row u16 length map and the
-0-runtype/count+value RLE — and non-mode-1 saves raise
-`cannot write mode X as MSP`. The new native
-`pillow_c_image_open_msp`/`save_msp` exports implement the exact
-header/checksum/rows/RLE, and the facade routes `.msp`/`MSP` with
-Pillow's exact mode errors. The facade MSP target passes `1/1`
-(byte-exact DanM fixture, reopen matrix, all four mode errors, the
-Pillow-verified LinS fixture) and the raw MSP target passes `1/1`;
-the full directory suite passes `2812/2812` in `20860ms`, with zero
-failures, errors, or skips. Release x64 Rebuild is clean;
-source/DLL export parity moves to `469/469` with zero difference;
-and the rebuilt DLL SHA-256 is
+Latest `BEHAV-PALM-001` verification: the Pillow 11.3.0 oracle
+(PalmImagePlugin source plus fixtures) shows Palm pixmaps are
+save-only — a 16-byte big-endian header, a 1026-byte colormap for P
+mode, and row-padded 8-bit indices, with the planar-slice colormap
+quirk — and non-P modes raise `cannot write mode X as Palm` with no
+OPEN registered. The facade `SavePalm` reproduces the exact header,
+the quirky colormap, and the row padding; mode errors and the
+Pillow-shaped open-identification error match exactly. The facade
+PALM target passes `1/1` in `32ms`, and the full directory suite
+passes `2813/2813` in `20422ms`, with zero failures, errors, or
+skips. Facade-only change: source/DLL export parity remains
+`469/469` (DLL byte-identical) and the DLL SHA-256 remains
 `6D4D2F8378AD163017C1DDA0EF8F3A8C71014143A3B212FEBF9EE617F9A0A2CA`.
-The behavioral-parity wave continues with `BEHAV-PALM-001` next.
+The behavioral-parity wave continues with `BEHAV-BLP-001` next.
 
 Latest `API-PATH-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and

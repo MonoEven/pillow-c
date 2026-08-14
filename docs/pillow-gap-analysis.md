@@ -37,6 +37,29 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 BEHAV-PALM-001 PALM Format (GREEN)
+
+`BEHAV-PALM-001` implements the PALM (Palm pixmap) format with
+byte-level behavioral parity (facade-only).
+
+The Pillow 11.3.0 oracle (PalmImagePlugin source plus fixtures)
+shows Palm pixmaps are save-only: a 16-byte big-endian header, a
+1026-byte colormap for P mode, and row-padded 8-bit indices — with a
+Pillow quirk: `getpalette()` returns the planar "RGB;L" storage and
+the writer slices it LINEARLY, so entry i's RGB is the three blob
+bytes at offset 3*i (walking across the planes). The facade
+`SavePalm` reproduces the exact header, the quirky colormap, and the
+row padding; non-P modes raise `cannot write mode X as Palm`; and
+Pillow registers no Palm OPEN, so the facade raises the Pillow-shaped
+`cannot identify image file <path>` (the L-with-bpp and mode-1
+inverted slices stay separate children). The facade PALM target
+passes `1/1` in `32ms` (byte-exact embedded fixture, four exact
+mode errors, the open-identification error), and the full directory
+suite passes `2813/2813` in `20422ms`. Facade-only change: parity
+remains `469/469` and the DLL SHA-256 is unchanged. The PALM row
+left the FMT-UNREC-001 boundary list. The next bounded child is
+`BEHAV-BLP-001`, the BLP format.
+
 ## 2026-08-14 BEHAV-MSP-001 MSP Format (GREEN)
 
 `BEHAV-MSP-001` implements the MSP format with byte-level behavioral
@@ -135,7 +158,7 @@ Classification of every boundary item (treatment applies per packet):
 | DIB | save L/RGB/RGBA/P all OK; reopen OK | DONE — BEHAV-DIB-001 (byte-exact over the native BMP seams + native mode-1 branches; P-mode stays a separate child) |
 | IM | save all modes OK; reopen OK | DONE — BEHAV-IM-001 (byte-exact 512-byte header + bottom-up ;L planar raw payloads; greyscale-LUT lut attribute recorded as a boundary note) |
 | MSP | save mode 1 (probe in packet); others `cannot write mode X as MSP` | DONE — BEHAV-MSP-001 (byte-exact DanM header/rows + LinS RLE decode + exact mode errors) |
-| PALM | save P OK; others `cannot write mode X as Palm` | IMPLEMENT save P + match mode errors |
+| PALM | save P OK; others `cannot write mode X as Palm` | DONE — BEHAV-PALM-001 (byte-exact header + planar-slice colormap quirk + exact mode errors + the no-open identification error; L-with-bpp and mode-1 slices stay separate children) |
 | BLP | save P OK; L/RGB/RGBA `Unsupported BLP image mode` | IMPLEMENT save P + match mode errors |
 | SPIDER | save L/RGB/RGBA/P OK (numpy); reopen as F | IMPLEMENT (facade float rows) |
 | PCX | save L/RGB/P OK; RGBA `Cannot save RGBA images as PCX` | IMPLEMENT (native RLE packet) |

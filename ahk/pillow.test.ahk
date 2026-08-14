@@ -21916,9 +21916,10 @@ PillowTestUnrecordedFormatBoundaries(*) {
         ; BLP/DIB/IM/SPIDER via C/numpy plugins and errors per-mode or
         ; per-handler on the rest), so open and save fail loudly with the
         ; same documented message. DIB left this list in BEHAV-DIB-001,
-        ; IM in BEHAV-IM-001, and MSP in BEHAV-MSP-001 (all now
-        ; implemented with Pillow's exact mode errors).
-        for format in ["BLP", "BUFR", "GRIB", "HDF5", "PALM", "SPIDER", "WMF", "FITS", "FPX", "FTEX", "GBR", "IMT", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD", "PIXAR", "XVTHUMB"] {
+        ; IM in BEHAV-IM-001, MSP in BEHAV-MSP-001, and PALM in
+        ; BEHAV-PALM-001 (all now implemented with Pillow's exact mode
+        ; errors).
+        for format in ["BLP", "BUFR", "GRIB", "HDF5", "SPIDER", "WMF", "FITS", "FPX", "FTEX", "GBR", "IMT", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD", "PIXAR", "XVTHUMB"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -22244,6 +22245,63 @@ PillowTestMspFormat(*) {
 }
 
 AhkTest.Test("Pillow MSP format matches Pillow 11.3.0 bytes and round-trips", PillowTestMspFormat)
+
+PillowTestPalmFormat(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := A_Temp "\palm-1.palm"
+    try {
+        ; BEHAV-PALM-001: P-mode save is byte-exact against Pillow's
+        ; Palm pixmap writer (16-byte big-endian header, the 1026-byte
+        ; colormap, and row-padded 8-bit indices; embedded fixture for
+        ; a 3x2 palette-ramp image).
+        p := Pillow.Image.New("P", [3, 2])
+        try {
+            p.FromBytes(PillowTestBuffer([0, 1, 2, 3, 4, 5]))
+            ramp := []
+            loop 256 {
+                value := A_Index - 1
+                ramp.Push(value)
+                ramp.Push(value)
+                ramp.Push(value)
+            }
+            p.PutPalette(ramp, "RGB")
+            p.Save(path, "PALM")
+        } finally {
+            p.Close()
+        }
+        AhkTest.AssertEqual(PillowTestBufferToArray(PillowTestBuffer(PillowTestHexBytes("00030002000440000801000000ff0000010000000102010304050206070803090a0b040c0d0e050f101106121314071516170818191a091b1c1d0a1e1f200b2122230c2425260d2728290e2a2b2c0f2d2e2f10303132113334351236373813393a3b143c3d3e153f404116424344174546471848494a194b4c4d1a4e4f501b5152531c5455561d5758591e5a5b5c1f5d5e5f20606162216364652266676823696a6b246c6d6e256f707126727374277576772878797a297b7c7d2a7e7f802b8182832c8485862d8788892e8a8b8c2f8d8e8f30909192319394953296979833999a9b349c9d9e359fa0a136a2a3a437a5a6a738a8a9aa39abacad3aaeafb03bb1b2b33cb4b5b63db7b8b93ebabbbc3fbdbebf40c0c1c241c3c4c542c6c7c843c9cacb44cccdce45cfd0d146d2d3d447d5d6d748d8d9da49dbdcdd4adedfe04be1e2e34ce4e5e64de7e8e94eeaebec4fedeeef50f0f1f251f3f4f552f6f7f853f9fafb54fcfdfe55ff000156020304570506075808090a590b0c0d5a0e0f105b1112135c1415165d1718195e1a1b1c5f1d1e1f60202122612324256226272863292a2b642c2d2e652f303166323334673536376838393a693b3c3d6a3e3f406b4142436c4445466d4748496e4a4b4c6f4d4e4f70505152715354557256575873595a5b745c5d5e755f606176626364776566677868696a796b6c6d7a6e6f707b7172737c7475767d7778797e7a7b7c7f7d7e7f80808182818384858286878883898a8b848c8d8e858f909186929394879596978898999a899b9c9d8a9e9fa08ba1a2a38ca4a5a68da7a8a98eaaabac8fadaeaf90b0b1b291b3b4b592b6b7b893b9babb94bcbdbe95bfc0c196c2c3c497c5c6c798c8c9ca99cbcccd9acecfd09bd1d2d39cd4d5d69dd7d8d99edadbdc9fdddedfa0e0e1e2a1e3e4e5a2e6e7e8a3e9eaeba4ecedeea5eff0f1a6f2f3f4a7f5f6f7a8f8f9faa9fbfcfdaafeff00ab010203ac040506ad070809ae0a0b0caf0d0e0fb0101112b1131415b2161718b3191a1bb41c1d1eb51f2021b6222324b7252627b828292ab92b2c2dba2e2f30bb313233bc343536bd373839be3a3b3cbf3d3e3fc0404142c1434445c2464748c3494a4bc44c4d4ec54f5051c6525354c7555657c858595ac95b5c5dca5e5f60cb616263cc646566cd676869ce6a6b6ccf6d6e6fd0707172d1737475d2767778d3797a7bd47c7d7ed57f8081d6828384d7858687d888898ad98b8c8dda8e8f90db919293dc949596dd979899de9a9b9cdf9d9e9fe0a0a1a2e1a3a4a5e2a6a7a8e3a9aaabe4acadaee5afb0b1e6b2b3b4e7b5b6b7e8b8b9bae9bbbcbdeabebfc0ebc1c2c3ecc4c5c6edc7c8c9eecacbccefcdcecff0d0d1d2f1d3d4d5f2d6d7d8f3d9dadbf4dcdddef5dfe0e1f6e2e3e4f7e5e6e7f8e8e9eaf9ebecedfaeeeff0fbf1f2f3fcf4f5f6fdf7f8f9fefafbfcfffdfeff0001020003040500"))), PillowTestReadFileBytes(path))
+
+        ; Pillow raises the exact mode errors for non-P modes.
+        for item in [["L", "cannot write mode L as Palm"], ["RGB", "cannot write mode RGB as Palm"], ["RGBA", "cannot write mode RGBA as Palm"], ["CMYK", "cannot write mode CMYK as Palm"]] {
+            bad := Pillow.Image.New(item[1], [2, 2])
+            try {
+                saveError := ""
+                try {
+                    bad.Save(path, "PALM")
+                } catch Error as err {
+                    saveError := err.Message
+                }
+                AhkTest.AssertEqual(item[2], saveError)
+            } finally {
+                bad.Close()
+            }
+        }
+
+        ; Pillow registers no Palm OPEN: identification fails loudly with
+        ; the Pillow-shaped message.
+        openError := ""
+        try {
+            Pillow.Image.Open(path)
+        } catch Error as err {
+            openError := err.Message
+        }
+        AhkTest.AssertEqual("cannot identify image file <" path ">", openError)
+    } finally {
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow PALM format matches Pillow 11.3.0 bytes and errors", PillowTestPalmFormat)
 
 
 PillowTestImageMathEval(*) {
