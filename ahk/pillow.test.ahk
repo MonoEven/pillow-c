@@ -22420,6 +22420,113 @@ PillowTestSpiderFormat(*) {
 
 AhkTest.Test("Pillow SPIDER format matches Pillow 11.3.0 bytes and round-trips", PillowTestSpiderFormat)
 
+PillowTestPcxFormat(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgbPath := A_Temp "\pcx-rgb.pcx"
+    lPath := A_Temp "\pcx-l.pcx"
+    pPath := A_Temp "\pcx-p.pcx"
+    onePath := A_Temp "\pcx-1.pcx"
+    try {
+        ; BEHAV-PCX-001: RGB (odd-width), L (RLE runs), P (palette
+        ; trailer), and mode-1 saves are byte-exact against Pillow
+        ; (embedded fixtures).
+        rgb := Pillow.Image.New("RGB", [3, 2])
+        try {
+            rgb.FromBytes(PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]))
+            rgb.Save(rgbPath, "PCX")
+        } finally {
+            rgb.Close()
+        }
+        AhkTest.AssertEqual(PillowTestBufferToArray(PillowTestBuffer(PillowTestHexBytes("0a050108000000000200010064006400000000000000000000000000000000000000000000000000ffffffffffffffffffffffffffffffffffffffffffffffff000304000100030002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000104070002050800030609000a0d10000b0e11000c0f1200"))), PillowTestReadFileBytes(rgbPath))
+        ; Pillow's own odd-width RGB reopen misreads the padded planar
+        ; rows; the facade reproduces the same tight-channel read.
+        rgbOpened := Pillow.Image.Open(rgbPath)
+        try {
+            AhkTest.AssertEqual("RGB", rgbOpened.Mode)
+            AhkTest.AssertEqual([1, 0, 8], rgbOpened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([16, 14, 12], rgbOpened.GetPixel([2, 1]))
+        } finally {
+            rgbOpened.Close()
+        }
+
+        l := Pillow.Image.New("L", [4, 2])
+        try {
+            l.FromBytes(PillowTestBuffer([7, 7, 7, 7, 1, 2, 3, 4]))
+            l.Save(lPath, "PCX")
+        } finally {
+            l.Close()
+        }
+        AhkTest.AssertEqual(PillowTestBufferToArray(PillowTestBuffer(PillowTestHexBytes("0a050108000000000300010064006400000000000000000000000000000000000000000000000000ffffffffffffffffffffffffffffffffffffffffffffffff00010400010004000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c407010203040c0000000101010202020303030404040505050606060707070808080909090a0a0a0b0b0b0c0c0c0d0d0d0e0e0e0f0f0f1010101111111212121313131414141515151616161717171818181919191a1a1a1b1b1b1c1c1c1d1d1d1e1e1e1f1f1f2020202121212222222323232424242525252626262727272828282929292a2a2a2b2b2b2c2c2c2d2d2d2e2e2e2f2f2f3030303131313232323333333434343535353636363737373838383939393a3a3a3b3b3b3c3c3c3d3d3d3e3e3e3f3f3f4040404141414242424343434444444545454646464747474848484949494a4a4a4b4b4b4c4c4c4d4d4d4e4e4e4f4f4f5050505151515252525353535454545555555656565757575858585959595a5a5a5b5b5b5c5c5c5d5d5d5e5e5e5f5f5f6060606161616262626363636464646565656666666767676868686969696a6a6a6b6b6b6c6c6c6d6d6d6e6e6e6f6f6f7070707171717272727373737474747575757676767777777878787979797a7a7a7b7b7b7c7c7c7d7d7d7e7e7e7f7f7f8080808181818282828383838484848585858686868787878888888989898a8a8a8b8b8b8c8c8c8d8d8d8e8e8e8f8f8f9090909191919292929393939494949595959696969797979898989999999a9a9a9b9b9b9c9c9c9d9d9d9e9e9e9f9f9fa0a0a0a1a1a1a2a2a2a3a3a3a4a4a4a5a5a5a6a6a6a7a7a7a8a8a8a9a9a9aaaaaaabababacacacadadadaeaeaeafafafb0b0b0b1b1b1b2b2b2b3b3b3b4b4b4b5b5b5b6b6b6b7b7b7b8b8b8b9b9b9babababbbbbbbcbcbcbdbdbdbebebebfbfbfc0c0c0c1c1c1c2c2c2c3c3c3c4c4c4c5c5c5c6c6c6c7c7c7c8c8c8c9c9c9cacacacbcbcbcccccccdcdcdcecececfcfcfd0d0d0d1d1d1d2d2d2d3d3d3d4d4d4d5d5d5d6d6d6d7d7d7d8d8d8d9d9d9dadadadbdbdbdcdcdcdddddddedededfdfdfe0e0e0e1e1e1e2e2e2e3e3e3e4e4e4e5e5e5e6e6e6e7e7e7e8e8e8e9e9e9eaeaeaebebebecececedededeeeeeeefefeff0f0f0f1f1f1f2f2f2f3f3f3f4f4f4f5f5f5f6f6f6f7f7f7f8f8f8f9f9f9fafafafbfbfbfcfcfcfdfdfdfefefeffffff"))), PillowTestReadFileBytes(lPath))
+        lOpened := Pillow.Image.Open(lPath)
+        try {
+            AhkTest.AssertEqual("L", lOpened.Mode)
+            AhkTest.AssertEqual(7, lOpened.GetPixel([0, 0]))
+            AhkTest.AssertEqual(4, lOpened.GetPixel([3, 1]))
+        } finally {
+            lOpened.Close()
+        }
+
+        p := Pillow.Image.New("P", [2, 2])
+        try {
+            p.FromBytes(PillowTestBuffer([0, 0, 0, 0]))
+            p.PutPalette([10, 20, 30], "RGB")
+            p.Save(pPath, "PCX")
+        } finally {
+            p.Close()
+        }
+        AhkTest.AssertEqual(PillowTestBufferToArray(PillowTestBuffer(PillowTestHexBytes("0a050108000000000100010064006400000000000000000000000000000000000000000000000000ffffffffffffffffffffffffffffffffffffffffffffffff00010200010002000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c200c2000c0a141e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))), PillowTestReadFileBytes(pPath))
+        pOpened := Pillow.Image.Open(pPath)
+        try {
+            AhkTest.AssertEqual("P", pOpened.Mode)
+            AhkTest.AssertEqual(0, pOpened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([10, 20, 30], PillowTestSliceBytes(pOpened.GetPalette("RGB"), 1, 3))
+        } finally {
+            pOpened.Close()
+        }
+
+        one := Pillow.Image.New("1", [8, 2])
+        try {
+            one.FromBytes(PillowTestBuffer([0xA0, 0x40]))
+            one.Save(onePath, "PCX")
+        } finally {
+            one.Close()
+        }
+        AhkTest.AssertEqual(PillowTestBufferToArray(PillowTestBuffer(PillowTestHexBytes("0a020101000000000700010064006400000000000000000000000000000000000000000000000000ffffffffffffffffffffffffffffffffffffffffffffffff00010200010008000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0004000"))), PillowTestReadFileBytes(onePath))
+        oneOpened := Pillow.Image.Open(onePath)
+        try {
+            AhkTest.AssertEqual("1", oneOpened.Mode)
+            AhkTest.AssertEqual(255, oneOpened.GetPixel([0, 0]))
+            AhkTest.AssertEqual(0, oneOpened.GetPixel([1, 0]))
+            AhkTest.AssertEqual(255, oneOpened.GetPixel([1, 1]))
+        } finally {
+            oneOpened.Close()
+        }
+
+        ; Pillow raises the exact mode error for unsupported modes.
+        for item in [["RGBA"], ["CMYK"], ["LA"], ["F"]] {
+            bad := Pillow.Image.New(item[1], [2, 2])
+            try {
+                saveError := ""
+                try {
+                    bad.Save(rgbPath, "PCX")
+                } catch Error as err {
+                    saveError := err.Message
+                }
+                AhkTest.AssertEqual("Cannot save " item[1] " images as PCX", saveError)
+            } finally {
+                bad.Close()
+            }
+        }
+    } finally {
+        PillowTestDeleteFile(rgbPath)
+        PillowTestDeleteFile(lPath)
+        PillowTestDeleteFile(pPath)
+        PillowTestDeleteFile(onePath)
+    }
+}
+
+AhkTest.Test("Pillow PCX format matches Pillow 11.3.0 bytes and round-trips", PillowTestPcxFormat)
+
 
 PillowTestImageMathEval(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

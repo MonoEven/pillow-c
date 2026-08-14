@@ -47,8 +47,26 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2816` AHK tests: `1391` raw DLL tests and
-`1425` facade tests.
+This suite currently registers `2817` AHK tests: `1391` raw DLL tests and
+`1426` facade tests.
+
+Latest `BEHAV-PCX-001` verification: the Pillow 11.3.0 oracle
+(PcxImagePlugin source plus fixtures) pins the 128-byte PCX header
+and 63-max RLE for 1/L/P/RGB saves (L/P carry their 768-byte LUT
+trailers, P zero-padded for short palettes), the L-to-P LUT
+promotion on reopen, the odd-width RGB;L tight-channel reopen
+misread, and `Cannot save X images as PCX` for every other mode.
+The new native `pillow_c_image_open_pcx`/`save_pcx` exports plus the
+facade `.pcx`/`PCX` routing reproduce all of it. The facade PCX
+target passes `1/1` in `94ms` (byte-exact embedded RGB/L/P/1
+fixtures, the reopen matrix including the misread and the LUT
+promotion, four exact mode errors), and the full directory suite
+passes `2817/2817` in `40735ms`, with zero failures, errors, or
+skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/
+DLL export parity moves to `473/473` (two deliberate new exports)
+with zero difference; and the rebuilt DLL SHA-256 is
+`04B6417EC453638E97F4FBA2D1DB6212DA2A817AA9CE2C0BA9436710E47E779A`.
+The behavioral-parity wave continues with `BEHAV-SGI-001` next.
 
 Latest `BEHAV-SPIDER-001` verification: the Pillow 11.3.0 oracle
 (SpiderImagePlugin source plus fixtures) shows SPIDER is the float
@@ -63,7 +81,8 @@ zero failures, errors, or skips. Facade-only change: source/DLL
 export parity remains `471/471` (DLL byte-identical) and the DLL
 SHA-256 remains
 `F221F74B23EED5BA832F5E551E46AA72B2B7B31C4A6CD1BD04AD656F214E45F8`.
-The behavioral-parity wave continues with `BEHAV-PCX-001` next.
+The behavioral-parity wave continues with `BEHAV-SGI-001` after
+`BEHAV-PCX-001`.
 
 Latest `API-PATH-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and

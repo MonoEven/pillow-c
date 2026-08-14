@@ -37,6 +37,35 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 BEHAV-PCX-001 PCX Format (GREEN)
+
+`BEHAV-PCX-001` implements the PCX format with byte-level behavioral
+parity.
+
+The Pillow 11.3.0 oracle (PcxImagePlugin source plus fixtures) shows
+PCX saves 1 (v2/b1/p1), L (v5/b8/p1 plus a 256-entry grayscale-ramp
+trailer), P (v5/b8/p1 plus a 768-byte RGB LUT trailer that
+zero-pads short `putpalette` data), and RGB (v5/b8/p3 with planar
+`RGB;L` rows) through a 128-byte header and RLE runs of at most 63
+(`0xC0|run` when the run is >= 2 or the byte is >= 0xC0); every
+other mode raises `Cannot save X images as PCX`. Pillow's reopen
+decodes the same RLE and, for planes==1/bits==8 files whose LUT
+trailer is NOT a linear grayscale ramp, promotes L to P carrying
+the trailer LUT; the odd-width RGB reopen misreads the stride
+padding because the raw decoder walks tight width-sized channel
+blocks. The new native `pillow_c_image_open_pcx`/`save_pcx` exports
+implement the exact header, RLE, trailers, LUT promotion, and the
+tight-channel reopen misread, and the facade routes `.pcx`/`PCX`
+with Pillow's exact mode errors. The facade PCX target passes `1/1`
+in `94ms` (byte-exact embedded RGB/L/P/1 fixtures, the reopen
+matrix including the misread and the LUT promotion, four exact mode
+errors); the full directory suite passes `2817/2817` in `40735ms`.
+Release x64 Rebuild is clean; source/DLL export parity moves to
+`473/473`; the rebuilt DLL SHA-256 is
+`04B6417EC453638E97F4FBA2D1DB6212DA2A817AA9CE2C0BA9436710E47E779A`.
+The PCX row left the FMT-UNREC-001 boundary list. The next bounded
+child is `BEHAV-SGI-001`, the SGI format.
+
 ## 2026-08-14 BEHAV-SPIDER-001 SPIDER Format (GREEN)
 
 `BEHAV-SPIDER-001` implements the SPIDER format with byte-level
@@ -210,7 +239,7 @@ Classification of every boundary item (treatment applies per packet):
 | PALM | save P OK; others `cannot write mode X as Palm` | DONE — BEHAV-PALM-001 (byte-exact header + planar-slice colormap quirk + exact mode errors + the no-open identification error; L-with-bpp and mode-1 slices stay separate children) |
 | BLP | save P OK; L/RGB/RGBA `Unsupported BLP image mode` | DONE — BEHAV-BLP-001 (byte-exact BLP1/BLP2 headers + 1172-offset quirk + linear palette walk + decode; RGBA-palette alpha and DXT stay children) |
 | SPIDER | save L/RGB/RGBA/P OK (numpy); reopen as F | DONE — BEHAV-SPIDER-001 (byte-exact float header + F;32NF payload + F reopen; facade-only) |
-| PCX | save L/RGB/P OK; RGBA `Cannot save RGBA images as PCX` | IMPLEMENT (native RLE packet) |
+| PCX | save L/RGB/P/1 OK; others `Cannot save X images as PCX` | DONE — BEHAV-PCX-001 (byte-exact 128-byte header + RLE + zero-padded LUT trailers + LUT L-to-P promotion + the odd-width RGB;L reopen misread; native open/save exports) |
 | SGI | save L/RGB/RGBA OK; P `Unsupported SGI image mode` | IMPLEMENT (native RLE packet) |
 | DDS | save L/RGB/RGBA OK; P `cannot write mode P as DDS` | IMPLEMENT (native DXT packet) |
 | ICNS | save all modes OK (PNG/JPEG2000 payloads) | IMPLEMENT (facade over native PNG) |

@@ -523,6 +523,33 @@ Current work packet:
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
 
+2026-08-14: `BEHAV-PCX-001` is GREEN as the PCX format (behavioral
+parity). The Pillow 11.3.0 oracle (PcxImagePlugin source plus
+fixtures) shows PCX saves 1 (v2/b1/p1), L (v5/b8/p1 plus the
+grayscale-ramp trailer), P (v5/b8/p1 plus the zero-padded 256-entry
+RGB LUT trailer — `putpalette` pads short palettes with zeros), and
+RGB (v5/b8/p3 with planar `RGB;L` rows) through a 128-byte header
+and byte runs of at most 63 (`0xC0|run` when run >= 2 or the byte is
+>= 0xC0); every other mode raises `Cannot save X images as PCX`.
+Pillow's reopen decodes the same RLE and, for planes==1/bits==8
+files whose LUT trailer is NOT a linear grayscale ramp, promotes L
+to P carrying the trailer LUT; the odd-width RGB reopen misreads the
+stride padding because the raw decoder walks tight width-sized
+channel blocks. The new native `pillow_c_image_open_pcx`/`save_pcx`
+exports implement the exact header, RLE, trailers, LUT promotion,
+and the tight-channel reopen misread, and the facade routes
+`.pcx`/`PCX` with Pillow's exact mode errors. The facade PCX target
+passes `1/1` in `94ms` (byte-exact embedded RGB/L/P/1 fixtures, the
+reopen matrix including the misread and the LUT promotion, four
+exact mode errors); the full directory suite passes `2817/2817` in
+`40735ms`, with zero failures, errors, or skips. Release x64
+Rebuild is clean; source/DLL export parity moves to `473/473` (two
+deliberate new exports) with zero difference; and the rebuilt DLL
+SHA-256 is
+`04B6417EC453638E97F4FBA2D1DB6212DA2A817AA9CE2C0BA9436710E47E779A`.
+The PCX row left the FMT-UNREC-001 boundary list. The next bounded
+child is `BEHAV-SGI-001`, the SGI format.
+
 2026-08-14: `BEHAV-SPIDER-001` is GREEN as the SPIDER format
 (behavioral parity, facade-only). The Pillow 11.3.0 oracle
 (SpiderImagePlugin source plus fixtures) shows SPIDER is the float

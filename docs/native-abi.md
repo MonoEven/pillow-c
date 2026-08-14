@@ -40,10 +40,23 @@ SHA-256 is unchanged.
 header records plus the `F;32NF` native float32 payload and the
 labbyt-based reopen; the DLL SHA-256 is unchanged.
 
+`BEHAV-PCX-001` adds two deliberate exports —
+`pillow_c_image_open_pcx` and `pillow_c_image_save_pcx` — that
+implement Pillow's exact 128-byte PCX header and 63-max byte-run RLE
+for 1/L/P/RGB saves (L/P carry their 768-byte LUT trailers, the P
+LUT zero-padded for short palettes), the planes==1/bits==8 L-to-P
+LUT promotion on reopen, the odd-width `RGB;L` tight-channel reopen
+misread, and the same status-code contract as the other legacy
+codec exports (`0` success, `-1` null pointer, `-2` invalid length,
+`-3` invalid argument). Existing exported names, signatures, status
+codes, image-handle ownership, and source-pointer lifetimes remain
+unchanged.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`471/471`; the full AHK suite is `2816/2816`; and the current DLL SHA-256 is
-`F221F74B23EED5BA832F5E551E46AA72B2B7B31C4A6CD1BD04AD656F214E45F8`
-(BEHAV-BLP-001 adds two deliberate exports — `pillow_c_image_open_blp`
+`473/473`; the full AHK suite is `2817/2817`; and the current DLL SHA-256 is
+`04B6417EC453638E97F4FBA2D1DB6212DA2A817AA9CE2C0BA9436710E47E779A`
+(BEHAV-PCX-001 adds the two PCX exports above over the BLP slice:
+BEHAV-BLP-001 adds two deliberate exports — `pillow_c_image_open_blp`
 and `pillow_c_image_save_blp` (with the BLP1 flag), the exact
 BLP1/BLP2 headers, the 1172-offset preamble quirk, the linear-walk
 palette, and the quirky-palette decode — over the MSP/IM/DIB slices:

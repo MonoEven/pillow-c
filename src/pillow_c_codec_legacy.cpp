@@ -2150,6 +2150,289 @@ int open_blp_image(const char* path, PillowCImage** out_image)
     }
 }
 
+int save_pcx_image(const PillowCImage* image, const char* path)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    int version = 0;
+    int bits = 0;
+    int planes = 0;
+    if (image->mode == PILLOW_C_MODE_1 && image->channels == 1) {
+        version = 2;
+        bits = 1;
+        planes = 1;
+    } else if (image->mode == PILLOW_C_MODE_L && image->channels == 1) {
+        version = 5;
+        bits = 8;
+        planes = 1;
+    } else if (image->mode == PILLOW_C_MODE_P && image->channels == 1) {
+        version = 5;
+        bits = 8;
+        planes = 1;
+    } else if (image->mode == PILLOW_C_MODE_RGB && image->channels == 3) {
+        version = 5;
+        bits = 8;
+        planes = 3;
+    } else {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = pillow_c_refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+
+    try {
+        std::size_t stride = (static_cast<std::size_t>(image->width) * static_cast<std::size_t>(bits) + 7u) / 8u;
+        stride += stride % 2u;
+        std::vector<std::uint8_t> out;
+        out.reserve(128u + static_cast<std::size_t>(planes) * stride * static_cast<std::size_t>(image->height) * 2u + 1024u);
+
+        out.push_back(10);
+        out.push_back(static_cast<std::uint8_t>(version));
+        out.push_back(1);
+        out.push_back(static_cast<std::uint8_t>(bits));
+        append_le16(out, 0);
+        append_le16(out, 0);
+        append_le16(out, static_cast<std::uint16_t>(image->width - 1));
+        append_le16(out, static_cast<std::uint16_t>(image->height - 1));
+        append_le16(out, 100);
+        append_le16(out, 100);
+        for (int i = 0; i < 24; ++i) {
+            out.push_back(0);
+        }
+        for (int i = 0; i < 24; ++i) {
+            out.push_back(0xFF);
+        }
+        out.push_back(0);
+        out.push_back(static_cast<std::uint8_t>(planes));
+        append_le16(out, static_cast<std::uint16_t>(stride));
+        append_le16(out, 1);
+        append_le16(out, static_cast<std::uint16_t>(image->width));
+        append_le16(out, static_cast<std::uint16_t>(image->height));
+        for (int i = 0; i < 54; ++i) {
+            out.push_back(0);
+        }
+
+        const std::size_t row_bytes = static_cast<std::size_t>(planes) * stride;
+        std::vector<std::uint8_t> row(row_bytes, std::uint8_t{0});
+        for (int y = 0; y < image->height; ++y) {
+            std::fill(row.begin(), row.end(), std::uint8_t{0});
+            const std::uint8_t* src_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+            if (image->mode == PILLOW_C_MODE_1) {
+                for (int x = 0; x < image->width; ++x) {
+                    if (src_row[x] != 0) {
+                        row[static_cast<std::size_t>(x) / 8u] |= static_cast<std::uint8_t>(0x80u >> (x & 7));
+                    }
+                }
+            } else if (image->mode == PILLOW_C_MODE_L || image->mode == PILLOW_C_MODE_P) {
+                std::memcpy(row.data(), src_row, static_cast<std::size_t>(image->width));
+            } else {
+                for (int x = 0; x < image->width; ++x) {
+                    row[static_cast<std::size_t>(x)] = src_row[static_cast<std::size_t>(x) * 3u + 0u];
+                    row[stride + static_cast<std::size_t>(x)] = src_row[static_cast<std::size_t>(x) * 3u + 1u];
+                    row[stride * 2u + static_cast<std::size_t>(x)] = src_row[static_cast<std::size_t>(x) * 3u + 2u];
+                }
+            }
+            std::size_t pos = 0;
+            while (pos < row_bytes) {
+                std::size_t run = 1;
+                while (pos + run < row_bytes && row[pos + run] == row[pos] && run < 63u) {
+                    ++run;
+                }
+                if (run > 1 || row[pos] >= 0xC0u) {
+                    out.push_back(static_cast<std::uint8_t>(0xC0u | run));
+                    out.push_back(row[pos]);
+                } else {
+                    out.push_back(row[pos]);
+                }
+                pos += run;
+            }
+        }
+
+        if (image->mode == PILLOW_C_MODE_P) {
+            // Pillow's putpalette pads short palettes with zeros and the C
+            // codec always writes the full 256-entry RGB LUT; reproduce that
+            // padding instead of reading past the stored palette vector.
+            out.push_back(12);
+            const std::size_t stored = image->palette_rgb.size();
+            for (int i = 0; i < 256; ++i) {
+                for (int c = 0; c < 3; ++c) {
+                    const std::size_t off = static_cast<std::size_t>(i) * 3u + static_cast<std::size_t>(c);
+                    out.push_back(off < stored ? image->palette_rgb[off] : std::uint8_t{0});
+                }
+            }
+        } else if (image->mode == PILLOW_C_MODE_L) {
+            out.push_back(12);
+            for (int i = 0; i < 256; ++i) {
+                out.push_back(static_cast<std::uint8_t>(i));
+                out.push_back(static_cast<std::uint8_t>(i));
+                out.push_back(static_cast<std::uint8_t>(i));
+            }
+        }
+
+        if (!write_binary_file(path, out)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int open_pcx_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() < 128 || data[0] != 10) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const int version = data[1];
+        const int bits = data[3];
+        const int planes = data[65];
+        const int xmin = read_le16(data.data() + 4);
+        const int ymin = read_le16(data.data() + 6);
+        const int xmax = read_le16(data.data() + 8);
+        const int ymax = read_le16(data.data() + 10);
+        const int width = xmax - xmin + 1;
+        const int height = ymax - ymin + 1;
+        if (width <= 0 || height <= 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        int mode = 0;
+        std::string rawmode;
+        if (bits == 1 && planes == 1) {
+            mode = PILLOW_C_MODE_1;
+            rawmode = "1";
+        } else if (version == 5 && bits == 8 && planes == 1) {
+            mode = PILLOW_C_MODE_L;
+            rawmode = "L";
+        } else if (version == 5 && bits == 8 && planes == 3) {
+            mode = PILLOW_C_MODE_RGB;
+            rawmode = "RGB;L";
+        } else {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::size_t stride = (static_cast<std::size_t>(width) * static_cast<std::size_t>(bits) + 7u) / 8u;
+        if (read_le16(data.data() + 66) != static_cast<std::uint16_t>(stride)) {
+            stride += stride % 2u;
+        }
+
+        std::size_t row_bytes = static_cast<std::size_t>(planes) * stride;
+        std::vector<std::uint8_t> packed;
+        packed.reserve(row_bytes * static_cast<std::size_t>(height));
+        std::size_t pos = 128u;
+        while (packed.size() < row_bytes * static_cast<std::size_t>(height)) {
+            if (pos >= data.size()) {
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            const std::uint8_t byte = data[pos++];
+            if ((byte & 0xC0u) == 0xC0u) {
+                const std::size_t count = byte & 0x3Fu;
+                if (pos >= data.size() || count == 0) {
+                    return PILLOW_C_INVALID_LENGTH;
+                }
+                const std::uint8_t value = data[pos++];
+                for (std::size_t i = 0; i < count; ++i) {
+                    if (packed.size() < row_bytes * static_cast<std::size_t>(height)) {
+                        packed.push_back(value);
+                    }
+                }
+            } else {
+                packed.push_back(byte);
+            }
+        }
+
+        std::size_t image_stride = 0;
+        std::size_t image_size = 0;
+        int channels = mode == PILLOW_C_MODE_RGB ? 3 : 1;
+        if (!checked_image_size(width, height, channels, &image_stride, &image_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        auto* image = new PillowCImage{
+            width,
+            height,
+            mode,
+            channels,
+            image_stride,
+            std::vector<std::uint8_t>(image_size)};
+
+        if (mode == PILLOW_C_MODE_1) {
+            for (int y = 0; y < height; ++y) {
+                const std::uint8_t* src_row = packed.data() + static_cast<std::size_t>(y) * row_bytes;
+                std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image_stride;
+                for (int x = 0; x < width; ++x) {
+                    const std::uint8_t packed_byte = src_row[static_cast<std::size_t>(x) / 8u];
+                    dst_row[x] = (packed_byte & static_cast<std::uint8_t>(0x80u >> (x & 7))) ? 255 : 0;
+                }
+            }
+        } else if (mode == PILLOW_C_MODE_L || mode == PILLOW_C_MODE_P) {
+            for (int y = 0; y < height; ++y) {
+                std::memcpy(
+                    image->pixels.data() + static_cast<std::size_t>(y) * image_stride,
+                    packed.data() + static_cast<std::size_t>(y) * row_bytes,
+                    static_cast<std::size_t>(width));
+            }
+        } else {
+            for (int y = 0; y < height; ++y) {
+                const std::uint8_t* src_row = packed.data() + static_cast<std::size_t>(y) * row_bytes;
+                std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image_stride;
+                for (int x = 0; x < width; ++x) {
+                    // Pillow's raw RGB;L decoder reads tight width-sized
+                    // channel blocks, so odd-width rows (stride > width)
+                    // misread the padding -- reproduced exactly here.
+                    dst_row[static_cast<std::size_t>(x) * 3u + 0u] = src_row[static_cast<std::size_t>(x)];
+                    dst_row[static_cast<std::size_t>(x) * 3u + 1u] = src_row[static_cast<std::size_t>(width) + static_cast<std::size_t>(x)];
+                    dst_row[static_cast<std::size_t>(x) * 3u + 2u] = src_row[static_cast<std::size_t>(width) * 2u + static_cast<std::size_t>(x)];
+                }
+            }
+        }
+
+        if (mode == PILLOW_C_MODE_L && version == 5 && data.size() >= 769u && data[data.size() - 769u] == 12) {
+            const std::size_t palette_start = data.size() - 768u;
+            bool linear = true;
+            for (int i = 0; i < 256; ++i) {
+                const std::size_t off = palette_start + static_cast<std::size_t>(i) * 3u;
+                if (off + 2u >= data.size() || data[off] != static_cast<std::uint8_t>(i) || data[off + 1u] != static_cast<std::uint8_t>(i) || data[off + 2u] != static_cast<std::uint8_t>(i)) {
+                    linear = false;
+                    break;
+                }
+            }
+            if (!linear) {
+                image->mode = PILLOW_C_MODE_P;
+                image->palette_rgb.assign(256u * 3u, std::uint8_t{0});
+                for (int i = 0; i < 256; ++i) {
+                    const std::size_t off = palette_start + static_cast<std::size_t>(i) * 3u;
+                    if (off + 2u >= data.size()) {
+                        break;
+                    }
+                    image->palette_rgb[static_cast<std::size_t>(i) * 3u + 0u] = data[off];
+                    image->palette_rgb[static_cast<std::size_t>(i) * 3u + 1u] = data[off + 1u];
+                    image->palette_rgb[static_cast<std::size_t>(i) * 3u + 2u] = data[off + 2u];
+                }
+            }
+        }
+
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 struct IcoDirectoryEntryInfo {
     std::uint8_t width_byte = 0;
     std::uint8_t height_byte = 0;
@@ -3520,6 +3803,20 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_blp(
     int blp1)
 {
     return save_blp_image(image, path, blp1 != 0);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_pcx(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_pcx_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_pcx(
+    const PillowCImage* image,
+    const char* path)
+{
+    return save_pcx_image(image, path);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_ppm(

@@ -8647,6 +8647,8 @@ class Pillow {
                 return "BLP"
             if RegExMatch(path, "i)\.spider$")
                 return "SPIDER"
+            if RegExMatch(path, "i)\.pcx$")
+                return "PCX"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -8676,7 +8678,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -8691,6 +8693,7 @@ class Pillow {
                 "PALM", "Palm pixmap",
                 "BLP", "Blizzard Mipmap Format",
                 "SPIDER", "The Spider image format",
+                "PCX", "PCX",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -10248,6 +10251,22 @@ class Pillow {
                 ; records plus raw native float32 samples; save composes
                 ; the exact header over the F;32NF raw encoder.
                 this.SaveSpider(path)
+                return
+            }
+            if resolvedFormat = "PCX" {
+                ; BEHAV-PCX-001: Pillow's PCX is mode 1/L/P/RGB with the
+                ; RLE rows and the L/P palette trailers; the native codec
+                ; writes the exact bytes (other modes raise Pillow's
+                ; ValueError message).
+                if !(this.Mode = "1" || this.Mode = "L" || this.Mode = "P" || this.Mode = "RGB")
+                    throw Error("Cannot save " this.Mode " images as PCX", -1)
+                pathBytes := Pillow.Image.Utf8Buffer(path)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_pcx",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", pathBytes,
+                    "Int"
+                ))
                 return
             }
             if IsSet(saveOptions) && resolvedFormat = "CUR" {
