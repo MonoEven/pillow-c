@@ -186,6 +186,40 @@ of the rows below:
 - `ImageCms` also lacks the `Direction`/`Flags`/`Intent` enums,
   `PyCMSError`, `versions`, and `buildProofTransformFromOpenProfiles`.
 
+### Red-team Image-core detailed-report additions
+
+The full Image-core report (13 findings, probes in
+`oracle/audit3-redteam/probe1.py`..`probe4.py`) adds these specifics
+on top of the rows below:
+
+- `Resize` explicit non-NEAREST on mode `1`/`P` is NOT forced to
+  NEAREST (Pillow forces it unconditionally; the native
+  `resize_image_into` interpolates the indices) — silent pixel
+  divergence.
+- `Resize` non-NEAREST on `I;16B` is REJECTED by the facade with a
+  FABRICATED boundary message (`not supported for mode I;16B`)
+  while Pillow accepts it — a divergence, not a Pillow-shaped
+  boundary.
+- `Quantize` bug: the LAB-only float/str `colors` TypeError is
+  keyed off the `kmeans` parameter instead of `colors`, so
+  `Quantize(10.5)` on LAB still reaches `bad number of colors`.
+- `Convert()` no-argument form (P→RGB/RGBA palette resolution)
+  missing; `Thumbnail((0,0))` → Pillow `ZeroDivisionError` /
+  negative → `scale must be > 0` vs the facade's own message; `Save`
+  unknown extension → Pillow `unknown file extension: .x` vs the
+  facade's unsupported-format message; closed-image `mode`/`size`/
+  `width`/`height`/`getbands` return cached values in Pillow while
+  the facade throws; `filename`/`tile`/`palette` instance
+  attributes absent.
+- Systematic facade-invented error prefixes (finding 13): resize
+  size / Point LUT / Filter type / PutPixel tuple / GetPixel tuple
+  messages all reworded vs Pillow's exact strings.
+- VERIFIED SOLID (balance): GetChannel errors exact, GetBands names,
+  FormatDescription strings, Crop banker's rounding incl. negatives,
+  PutPixel mode-1 clamping, Split/GetChannel L-mode outputs,
+  getcolors/getbbox/getextrema/histogram/entropy happy paths, and
+  GetData band out-of-range.
+
 ### Corrected estimate
 
 The honest completion split under the behavioral standard:
@@ -40651,8 +40685,8 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | API-SAVEOPTS-002 | Facade API | gap | Error-message mismatches: PNG `compress_level` range (`pillow_c: invalid argument` vs OSError `codec configuration error when writing image file`) and type (`Pillow.Image.Save compress_level must be an integer` vs TypeError `'str' object cannot be interpreted as an integer`); JPEG `quality='bogus'` (`Pillow.Image.Save quality must be an integer, 'keep', or a Pillow JPEG quality preset` vs ValueError `Invalid quality setting`); JPEG `subsampling`, TIFF `quality`, ICO `sizes` messages. | Red-team audit; runtime facade probe. |
 | API-OPENINFO-001 | Facade API | gap | Unexposed open-side info: JPEG `quantization`/`progressive`/`progression`/`adobe`/`adobe_transform`, GIF `version`/`extension`, TIFF `compression`, TGA `compression`/`orientation` — not exposed and not boundary-recorded. | Red-team audit (probe_open_info.py). |
 | MODE-NUM-001CM-CORR | Modes | gap | CORRECTION: the `MODE-NUM-001CM` claim that the default I;16 resize "matches Pillow exactly" is FALSE. Pillow 11.3.0's rule is `NEAREST if mode.startswith("BGR;") else BICUBIC`; the facade uses NEAREST for any mode containing `;` (pillow.ahk line 14579). Oracle: default `I;16` resize == BICUBIC `[59,241,59,241]` != NEAREST `[100,300,100,300]`. Needs a red test + fix. | Red-team audit (probe2.py); `Image.resize` source. |
-| API-ERRMSGS-001 | Facade API | gap | Systemic error-message gap: unvalidated facade paths emit `pillow_c: invalid argument` instead of Pillow's exact messages — runtime-verified for `resize(resample=-99)` (`Unknown resampling filter (-99). Use Image.Resampling.NEAREST (0), ...`), inverted crop (`Coordinate 'right' is less than 'left'`), getpixel OOB (`IndexError: image index out of range`), `reduce(0)`, `transpose(99)`; `resample='bogus'` surfaces an AHK type error. Each path needs a local facade validation emitting Pillow's message. | Red-team audit; runtime facade probe. |
-| API-IMGCLS-002 | Facade API | gap | `Convert` matrix handling keys on the target mode and enforces 4/12 length (Pillow keys on the source mode, accepts 4 and 12 for RGB sources); LAB→`I;16`/`I;16B` rejection missing; `Quantize` error messages diverge; closed-image `mode`/`size`/`width`/`height`/`getbands` throw while Pillow returns values. | Red-team audit (probe1.py, probe3.py, probe4.py). |
+| API-ERRMSGS-001 | Facade API | gap | Systemic error-message gap: unvalidated facade paths emit `pillow_c: invalid argument` instead of Pillow's exact messages — runtime-verified for `resize(resample=-99)` (`Unknown resampling filter (-99). Use Image.Resampling.NEAREST (0), ...`), inverted crop (`Coordinate 'right' is less than 'left'`), getpixel OOB (`IndexError: image index out of range`), `reduce(0)` (`scale must be > 0`), `transpose(99)` (`No such transpose operation`), bad histogram/entropy masks (`bad transparency mask` / `images do not match`); `resample='bogus'` surfaces an AHK type error. Plus systematic facade-invented prefixes: resize size, Point LUT (`wrong number of lut entries`), Filter type (`filter argument should be ImageFilter.Filter instance or class`), PutPixel tuple, GetPixel tuple messages are all reworded. Each path needs local facade validation emitting Pillow's message. | Red-team audit; runtime facade probe. |
+| API-IMGCLS-002 | Facade API | gap | `Convert` matrix handling keys on the target mode and enforces 4/12 length (Pillow keys on the source mode, accepts 4 and 12 for RGB sources, wrong-mode → `image has wrong mode`, wrong length → the length-N TypeError); the LAB→`I;16`/`I;16B` rejection is missing (`conversion from LAB to RGB not supported`); `Quantize` messages diverge (wrong-mode list vs `image has wrong mode`, float/str `colors` → `bad number of colors` vs the TypeError, and the LAB path keys the TypeError off `kmeans` not `colors`); closed-image `mode`/`size`/`width`/`height`/`getbands` throw while Pillow returns cached values; `Resize` explicit non-NEAREST on mode `1`/`P` is not forced (Pillow forces NEAREST unconditionally) and non-NEAREST `I;16B` resize is rejected with a fabricated boundary while Pillow accepts; `Convert()` no-arg form missing; `Thumbnail((0,0))`/negative messages diverge (`division by zero` / `scale must be > 0`); `Save` unknown extension → `unknown file extension: .x` vs the facade message; `filename`/`tile`/`palette` attributes absent. | Red-team audit (probe1.py, probe3.py, probe4.py). |
 | API-IMG-001 | Facade API | covered | Direct `PIL.Image.Image` object-name parity after common methods. `API-IMG-001A` covers `format_description`, `API-IMG-001B` covers `has_transparency_data`, `API-IMG-001C` covers `get_child_images()` empty-list parity for implemented image handles, `META-002A` covers the public `getxmp()` method for bounded PNG/JPEG XMP packets, `META-002B` covers explicit JPEG `xmp=` save round-trip, `META-002C` covers explicit JPEG `qtables + xmp` save, `META-002D` covers explicit JPEG `keep_rgb + xmp` save, and `META-002E` covers explicit JPEG `qtables + keep_rgb + xmp` save through that same public route. `API-IMG-001D` covers `getim()` (the native-handle capsule analogue), `API-IMG-001E` covers `show`/`toqimage`/`toqpixmap` as explicit documented boundaries, and `API-IMG-001F` covers the low-level `im` accessor (the `Im` property returning the native handle as the ImagingCore analogue boundary), completing the named object-model list. | `ahk/pillow.ahk` facade properties/methods, direct Pillow 11.3.0 probes, facade API tests. |
 | API-IMG-001A | Facade API | covered | `Image.FormatDescription` and `Image.format_description` expose Pillow 11.3.0 format descriptions for opened native formats, with `""` as the AHK-side `None` analogue for images with no format. | `Pillow.Image.FormatDescription`, `Image.Format`, facade format-description test. |
 | API-IMG-001B | Facade API | covered | `Image.HasTransparencyData` and `Image.has_transparency_data` match Pillow 11.3.0 for implemented alpha and transparency-info surfaces: `RGBA`/`LA`/future `PA` report true, and non-alpha modes report true when `Info["transparency"]` is present. | Facade `Image.Mode`, `Image.Info`, local Pillow probe, facade has-transparency-data test. |
