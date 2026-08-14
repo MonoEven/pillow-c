@@ -7232,3 +7232,14 @@ KeyError/encoder/decoder shapes, the quoted UnidentifiedImageError form
 missing-file FileNotFoundError against local Pillow 11.3.0. No native
 code changed: export parity stays `513/513` and the DLL SHA-256 stays
 `43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.
+
+2026-08-15 BEHAV-IMGCLS-002 verification: the facade
+`Pillow Image class messages match Pillow 11.3.0` target passes `1/1` in
+`15ms`; the full directory suite passes `2848/2848` in `21719ms` with
+zero failures, errors, or skips. The oracle pins the Convert matrix
+target/source/length precedence, the LAB->I;16 rejection, the Quantize
+colors TypeErrors and wrong-mode message, the Convert() copy form, the
+Thumbnail zero/negative sizes, and the unknown-extension save error
+against local Pillow 11.3.0. No native code changed: export parity stays
+`513/513` and the DLL SHA-256 stays
+`43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.

@@ -9951,7 +9951,16 @@ class Pillow {
         static ResolveSaveFormat(path, format := unset) {
             if IsSet(format)
                 return Pillow.Image.NormalizeFileFormat(format)
-            return Pillow.Image.FormatFromPath(path)
+            try {
+                return Pillow.Image.FormatFromPath(path)
+            } catch {
+                ; Pillow 11.3.0 raises the exact ValueError naming the
+                ; file extension for unrecognized save paths.
+                extension := ""
+                if RegExMatch(path, "i)\.[a-z0-9]+$", &extensionMatch)
+                    extension := extensionMatch[0]
+                throw Error("unknown file extension: " extension, -1)
+            }
         }
 
         static SgiTruncatedCount(path) {
@@ -17244,7 +17253,11 @@ class Pillow {
                 ))
                 return this.WrapDerivedHandle(outHandle)
             }
-            if !(colors is Integer) || colors < 1 || colors > 256
+            if colors is String
+                throw Error("'str' object cannot be interpreted as an integer", -1)
+            if !(colors is Integer)
+                throw Error("'float' object cannot be interpreted as an integer", -1)
+            if colors < 1 || colors > 256
                 throw Error("bad number of colors", -1)
             if !(kmeans is Integer) || kmeans < 0
                 throw Error("kmeans must not be negative", -1)
@@ -17256,7 +17269,7 @@ class Pillow {
             if resolvedMethod = Pillow.Quantize.LIBIMAGEQUANT
                 throw Error("dependency required by this method was not enabled at compile time", -1)
             if !(this.Mode = "RGB" || this.Mode = "L" || this.Mode = "P" || this.Mode = "RGBA")
-                throw Error("Pillow.Image.Quantize currently supports L/P/RGB/RGBA images", -1)
+                throw Error("image has wrong mode", -1)
 
             outHandle := 0
             if resolvedMethod = Pillow.Quantize.MEDIANCUT && kmeans = 0 &&
@@ -18307,7 +18320,11 @@ class Pillow {
 
             requestedWidth := Floor(size[1])
             requestedHeight := Floor(size[2])
-            if requestedWidth <= 0 || requestedHeight <= 0
+            if requestedWidth = 0 && requestedHeight = 0
+                throw Error("division by zero", -1)
+            if requestedWidth < 0 || requestedHeight < 0
+                throw Error("scale must be > 0", -1)
+            if requestedWidth = 0 || requestedHeight = 0
                 throw Error("Pillow.Image.Thumbnail height and width must be > 0", -1)
 
             sourceWidth := this.Width
@@ -18785,15 +18802,25 @@ class Pillow {
             return this.EffectSpread(distance)
         }
 
-        Convert(modeName, matrixOrDither := unset, dither := unset, palette := unset, colors := unset) {
+        Convert(modeName := unset, matrixOrDither := unset, dither := unset, palette := unset, colors := unset) {
+            if !IsSet(modeName)
+                ; Pillow 11.3.0: convert() with no arguments returns a copy.
+                return this.Copy()
             this.IcnsQuirkPending := false
             targetMode := Pillow.ModeId(modeName)
             if IsSet(matrixOrDither) && IsObject(matrixOrDither) {
+                ; Pillow 11.3.0's matrix conversion: the target must be L or
+                ; RGB ("illegal conversion"), the SOURCE must be RGB
+                ; ("image has wrong mode", checked before the length), and
+                ; the length must be 4 for L / 12 for RGB with the exact
+                ; TypeError that always names 12.
                 if !(targetMode = 1 || targetMode = 3)
-                    throw Error("Pillow.Image.Convert matrix illegal conversion", -1)
+                    throw Error("illegal conversion", -1)
+                if this.Mode != "RGB"
+                    throw Error("image has wrong mode", -1)
                 expected := targetMode = 1 ? 4 : 12
                 if matrixOrDither.Length != expected
-                    throw Error("Pillow.Image.Convert matrix length must be " expected, -1)
+                    throw Error("argument 2 must be sequence of length 12, not " matrixOrDither.Length, -1)
                 matrixBuffer := Buffer(expected * 8, 0)
                 for index, value in matrixOrDither {
                     if !(value is Number)
@@ -18849,7 +18876,9 @@ class Pillow {
             }
             if IsSet(matrixOrDither) || IsSet(dither)
                 throw Error("Pillow.Image.Convert dither is currently supported only for mode 1", -1)
-            if this.Mode = "LAB" && (targetMode = 1 || targetMode = 2 || targetMode = 6 || targetMode = 7 || targetMode = 8 || targetMode = 9 || targetMode = 13 || targetMode = 14)
+            if this.Mode = "LAB" && (targetMode = 1 || targetMode = 2 || targetMode = 6 || targetMode = 7 || targetMode = 8 || targetMode = 9 || targetMode = 11 || targetMode = 12 || targetMode = 13 || targetMode = 14)
+                ; Pillow 11.3.0: LAB to I;16/I;16B raises the same
+                ; "conversion from LAB to RGB not supported" ValueError.
                 throw Error("conversion from LAB to RGB not supported", -1)
             outHandle := 0
             Pillow.CheckStatus(DllCall(

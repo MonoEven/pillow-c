@@ -83,11 +83,12 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-ERRMSGS-002 (the dependency-gated
-format error shapes: BUFR/GRIB/HDF5/WMF/FITS/MPEG save and
-WebP/AVIF/JPEG2000 encode/decode when the DLL lacks the codec,
-plus the quoted UnidentifiedImageError form)
-after BEHAV-ERRMSGS-001/
+Latest covered gap tail: BEHAV-IMGCLS-002 (the Image class message
+parity wave: Convert matrix source-mode keying, LAB->I;16 rejection,
+Quantize colors TypeErrors and wrong-mode message, Convert() copy,
+Thumbnail zero/negative sizes, and the unknown-extension save error)
+after BEHAV-ERRMSGS-002/
+BEHAV-ERRMSGS-001/
 BEHAV-SAVEOPTS-006/
 BEHAV-SAVEOPTS-005/
 BEHAV-SAVEOPTS-004/
@@ -461,10 +462,11 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: the BNDRY-001/FMT-UNREC-001 format-plugin children
-  (the pure-Python plugin implementations not yet covered), then
-  ImagePalette.load GIMP parsing, ImageFile.Parser feed/close
-  semantics, and TransposedFont.GetMask rasterization.
+- Selected next gap: `API-IMGCLS-002` remainder (closed-image cached
+  attributes, `filename`/`tile`/`palette` attributes, format-name
+  KeyError shapes, Quantize LAB/dither tails) and `API-CMS-DISPLAY-001`
+  (`ImageCms.get_display_profile` plus the CMS enums), then
+  `API-DRAW-TEXT-001`/`API-OPENINFO-001`.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19591,6 +19593,28 @@ All pure facade changes; the DLL is unchanged. The facade target passes
 `1/1` in `15ms`; the full directory suite passes `2847/2847` in
 `21094ms` with zero failures, errors, or skips. The next
 packets are the BNDRY-001/FMT-UNREC-001 format-plugin children.
+```
+
+2026-08-15: `BEHAV-IMGCLS-002` is GREEN as the Image class message
+parity wave (the first API-IMGCLS-002 batch). The Pillow 11.3.0 oracle
+pins: `Convert(mode, matrix)` keys the matrix on the TARGET (L/RGB only
+-> `illegal conversion`), then the SOURCE (RGB only -> `image has wrong
+mode`, checked before the length), then the length with the exact
+TypeError `argument 2 must be sequence of length 12, not N` (the
+message always names 12); LAB -> `I;16`/`I;16B` raises
+`conversion from LAB to RGB not supported`; `Quantize` raises the exact
+int-parse TypeErrors for float/str `colors` (`bad number of colors`
+only for out-of-range integers) and `image has wrong mode` for
+unquantizable modes; `Convert()` with no arguments returns a copy;
+`Thumbnail((0,0))` raises `division by zero` and negative sizes raise
+`scale must be > 0`; and `Save` with an unknown extension raises
+`unknown file extension: .zzz` (the exact ValueError naming the
+extension). All pure facade changes; the DLL is unchanged. The facade
+target passes `1/1` in `15ms`; the full directory suite passes
+`2848/2848` in `21719ms` with zero failures, errors, or skips. The
+remaining API-IMGCLS-002 items (closed-image cached attributes,
+`filename`/`tile`/`palette` attributes, the format-name KeyError shape)
+plus API-CMS-DISPLAY-001 stay the next packets.
 ```
 
 If any line above is no longer true, update this file first, then update

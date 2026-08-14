@@ -28579,6 +28579,77 @@ PillowTestDependencyGatedFormatErrors(*) {
 
 AhkTest.Test("Pillow dependency-gated format errors match Pillow 11.3.0", PillowTestDependencyGatedFormatErrors)
 
+PillowTestImageClassMessageParity(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgb := Pillow.Image.New("RGB", [4, 4], [10, 20, 30])
+    l := Pillow.Image.New("L", [4, 4], 7)
+    p := Pillow.Image.New("P", [4, 4], 0)
+    try {
+        ; Convert matrix: Pillow keys the matrix on the target (L/RGB
+        ; only), then the SOURCE (RGB only), then the length with the
+        ; exact TypeError that always names 12.
+        AhkTest.AssertEqual("illegal conversion", PillowTestFormatCaptureError(() => rgb.Convert("P", [1.0, 2.0, 3.0, 4.0])))
+        AhkTest.AssertEqual("image has wrong mode", PillowTestFormatCaptureError(() => l.Convert("L", [1.0, 2.0, 3.0, 4.0])))
+        AhkTest.AssertEqual("image has wrong mode", PillowTestFormatCaptureError(() => p.Convert("L", [1.0, 2.0, 3.0, 4.0])))
+        AhkTest.AssertEqual("argument 2 must be sequence of length 12, not 3", PillowTestFormatCaptureError(() => rgb.Convert("L", [1.0, 2.0, 3.0])))
+        converted := rgb.Convert("L", [0.299, 0.587, 0.114, 0])
+        try {
+            AhkTest.AssertEqual("L", converted.Mode)
+        } finally {
+            converted.Close()
+        }
+
+        ; LAB -> I;16/I;16B raises the exact ValueError
+        lab := Pillow.Image.New("LAB", [2, 2], [50, 0, 0])
+        try {
+            AhkTest.AssertEqual("conversion from LAB to RGB not supported", PillowTestFormatCaptureError(() => lab.Convert("I;16")))
+            AhkTest.AssertEqual("conversion from LAB to RGB not supported", PillowTestFormatCaptureError(() => lab.Convert("I;16B")))
+        } finally {
+            lab.Close()
+        }
+
+        ; Quantize: wrong mode and the exact colors TypeErrors
+        one := Pillow.Image.New("1", [4, 4], 1)
+        try {
+            AhkTest.AssertEqual("image has wrong mode", PillowTestFormatCaptureError(() => one.Quantize()))
+        } finally {
+            one.Close()
+        }
+        AhkTest.AssertEqual("'float' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => rgb.Quantize(2.5)))
+        AhkTest.AssertEqual("'str' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => rgb.Quantize("abc")))
+        AhkTest.AssertEqual("bad number of colors", PillowTestFormatCaptureError(() => rgb.Quantize(257)))
+
+        ; Convert() with no arguments returns a copy
+        copy := rgb.Convert()
+        try {
+            AhkTest.AssertEqual(rgb.Size, copy.Size)
+            AhkTest.AssertEqual("RGB", copy.Mode)
+        } finally {
+            copy.Close()
+        }
+
+        ; Thumbnail zero/negative sizes
+        thumb := Pillow.Image.New("RGB", [4, 4], [0, 0, 0])
+        try {
+            AhkTest.AssertEqual("division by zero", PillowTestFormatCaptureError(() => thumb.Thumbnail([0, 0])))
+            AhkTest.AssertEqual("scale must be > 0", PillowTestFormatCaptureError(() => thumb.Thumbnail([-1, -1])))
+        } finally {
+            thumb.Close()
+        }
+
+        ; Save with an unknown extension names the extension
+        unknownExtPath := A_Temp "\pillow-ahk-unknownext-" A_TickCount "-" Random(1, 1000000) ".zzz"
+        AhkTest.AssertEqual("unknown file extension: .zzz", PillowTestFormatCaptureError(() => rgb.Save(unknownExtPath)))
+        PillowTestDeleteFile(unknownExtPath)
+    } finally {
+        rgb.Close()
+        l.Close()
+        p.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image class messages match Pillow 11.3.0", PillowTestImageClassMessageParity)
+
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
 
@@ -67424,7 +67495,7 @@ PillowTestImageConvertMatrixRejectsInvalidArguments(*) {
                 action.Call()
                 AhkTest.Fail("Expected Convert matrix to reject invalid arguments")
             } catch Error as err {
-                AhkTest.AssertTrue(InStr(err.Message, "matrix") > 0 || InStr(err.Message, "illegal conversion") > 0 || InStr(err.Message, "wrong mode") > 0 || InStr(err.Message, "invalid argument") > 0)
+                AhkTest.AssertTrue(InStr(err.Message, "matrix") > 0 || InStr(err.Message, "illegal conversion") > 0 || InStr(err.Message, "wrong mode") > 0 || InStr(err.Message, "invalid argument") > 0 || InStr(err.Message, "length 12") > 0)
             }
         }
     } finally {
