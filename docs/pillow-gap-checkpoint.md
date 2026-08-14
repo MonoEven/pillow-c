@@ -523,6 +523,23 @@ Current work packet:
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
 
+2026-08-14: `BEHAV-001` is GREEN as the behavioral-parity classification
+(the user standard "不只是外观像，实际表现也得一致"). Every boundary
+item was probed against the local Pillow 11.3.0 build (evidence in
+`oracle/probe_format_boundary_matrix.py`; local build has webp/
+jpeg2000/avif features, numpy/olefile/tkinter/h5py, PyQt5/PySide6 —
+so ImageQt and ImageTk actually WORK there, and ImageFile.Parser
+feed/close works) and classified: IMPLEMENT (DIB/IM/MSP/PALM/BLP/
+SPIDER/PCX/SGI/DDS/ICNS/EPS-save/PDF-save/MPO, the pure-Python open
+families, Parser, ImagePalette.load, TransposedFont.GetMask),
+MATCH-ERROR (the exact Pillow messages for mode errors, missing save
+handlers, KeyError-only save families, and the dependency-gated
+families), and DOCUMENTED environment/state boundaries (ImageQt/
+ImageTk — the AHK runtime can never create QImage/Tk objects — and
+the random stream). No native change in this packet; the ledger
+section is the deliverable. The next bounded child is
+`BEHAV-DIB-001`, the DIB format over the native BMP seams.
+
 2026-08-14: `FMT-UNREC-001` is GREEN as the unrecorded-format ledger
 (facade-only) — the final AUDIT-002 row, meeting the completion
 definition. The Pillow 11.3.0 oracle (kept in

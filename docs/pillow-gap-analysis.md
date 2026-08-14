@@ -37,6 +37,53 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 BEHAV-001 Behavioral-Parity Classification (GREEN)
+
+The user standard: "不只是外观像，实际表现也得一致" — boundaries that
+merely LOOK like Pillow are no longer sufficient; runtime behavior
+must match the local Pillow 11.3.0 build. `BEHAV-001` probes every
+boundary item against that build (evidence in
+`oracle/probe_format_boundary_matrix.py` and the per-packet probes
+below) and classifies each one. Local build facts: webp/webp_anim/
+webp_mux/jpg_2000/avif/libtiff/zlib features all present; numpy/
+olefile/tkinter/h5py installed, astropy/pygrib absent; PyQt5 and
+PySide6 installed (`ImageQt.qt_is_installed` is True).
+
+Classification of every boundary item (treatment applies per packet):
+
+| Item | Pillow local behavior | Treatment |
+|---|---|---|
+| DIB | save L/RGB/RGBA/P all OK; reopen OK | IMPLEMENT (facade over native BMP seams) |
+| IM | save all modes OK; reopen OK | IMPLEMENT (facade, raw-bytes writer) |
+| MSP | save mode 1 (probe in packet); others `cannot write mode X as MSP` | IMPLEMENT save 1 + match mode errors |
+| PALM | save P OK; others `cannot write mode X as Palm` | IMPLEMENT save P + match mode errors |
+| BLP | save P OK; L/RGB/RGBA `Unsupported BLP image mode` | IMPLEMENT save P + match mode errors |
+| SPIDER | save L/RGB/RGBA/P OK (numpy); reopen as F | IMPLEMENT (facade float rows) |
+| PCX | save L/RGB/P OK; RGBA `Cannot save RGBA images as PCX` | IMPLEMENT (native RLE packet) |
+| SGI | save L/RGB/RGBA OK; P `Unsupported SGI image mode` | IMPLEMENT (native RLE packet) |
+| DDS | save L/RGB/RGBA OK; P `cannot write mode P as DDS` | IMPLEMENT (native DXT packet) |
+| ICNS | save all modes OK (PNG/JPEG2000 payloads) | IMPLEMENT (facade over native PNG) |
+| EPS | save L/RGB OK; RGBA/P `image mode is not supported`; open `Unable to locate Ghostscript on paths` | IMPLEMENT save (facade PS writer) + match Ghostscript error |
+| PDF | save all modes OK (pure-Python writer); open needs Ghostscript | IMPLEMENT save (facade) + match Ghostscript error |
+| MPO | save L/RGB OK; RGBA/P `cannot write mode X as JPEG` | IMPLEMENT (facade/native over native JPEG) |
+| XPM/PIXAR/GBR/IMT/IPTC/MCIDAS/MIC/FTEX/XVTHUMB/FLI/DCX/PSD/SUN open, FITS/FPX open | pure-Python open plugins; classify per packet with Pillow-generated/hand-crafted fixtures | IMPLEMENT open where feasible (bounded per format) |
+| FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/XVTHUMB/SUN/FLI/DCX/XPM/PSD save | `KeyError: 'FMT'` (no save handler) | MATCH the exact KeyError message |
+| BUFR/GRIB/HDF5/WMF save | `X save handler not installed` (OSError) | MATCH the exact message |
+| JPEG2000 P save | `broken data stream when writing image file` | MATCH the exact message |
+| WEBP/AVIF/JPEG2000/PDF-open | work via bundled libs/ghostscript | dependency-gated: match Pillow's own not-enabled messages; remain documented build boundaries |
+| ImageFile.Parser | feed/close works (partial feed → close returns correct image) | IMPLEMENT feed/close semantics (facade buffer + native open at close) |
+| ImagePalette.load | parses GIMP/Adobe palette files | IMPLEMENT GIMP .gpl parsing (facade) |
+| TransposedFont.GetMask | returns an L-mode mask with glyphs | IMPLEMENT via native text rasterization into an L image |
+| ImageQt/ImageTk | local Pillow HAS Qt/Tk bindings (PyQt5/PySide6/tkinter installed) | environment-gated: the AHK runtime can never create QImage/Tk objects; keep the Pillow no-binding/no-root messages as the honest environment boundary |
+| ImagePalette.random stream | Python Mersenne-Twister global state | stateful-unmatchable; keep the documented boundary (shape/range identical) |
+| ImagePath map ImagingTransformHandler form | C-level handler object | environment-gated (documented) |
+| LIBIMAGEQUANT | `dependency required by this method was not enabled at compile time` | already exact-matched |
+| I;16 histogram/entropy byte-misread garbage | Pillow returns layout-dependent garbage | documented fail-loud divergence (reproducing garbage has no value) |
+
+No native change in this packet; the ledger section itself is the
+deliverable. The next bounded child is `BEHAV-DIB-001` — the DIB
+format (save/open over the native BMP seams).
+
 ## 2026-08-14 FMT-UNREC-001 Unrecorded-Format Ledger (GREEN — COMPLETION)
 
 `FMT-UNREC-001` closes the final AUDIT-002 row and meets the
