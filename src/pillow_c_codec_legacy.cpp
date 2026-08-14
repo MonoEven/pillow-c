@@ -5911,6 +5911,119 @@ int save_icns_images(const PillowCImage* const* images, std::size_t image_count,
     }
 }
 
+// ---------------------------------------------------------------------------
+// BEHAV-EPS-001: Encapsulated PostScript save (Pillow's pure-Python writer).
+//
+// Pillow 11.3.0's EpsImagePlugin._save writes the DSC 3.0 header, an
+// %ImageData descriptor, the PostScript preamble, and the pixel bytes hex
+// encoded with 39 bytes (78 hex chars) per line; L/RGB/CMYK are supported
+// and every other mode raises "image mode is not supported" (local status
+// -27 for the facade). The RGB "skip junk bytes" hack in EpsEncode.c only
+// applies to 4-byte RGBX-stored cores, which this runtime never produces
+// (tight 3-byte RGB storage), so it never triggers — verified against the
+// Pillow 11.3.0 oracle.
+// ---------------------------------------------------------------------------
+
+constexpr int PILLOW_C_EPS_MODE = -27;
+
+int save_eps_image(const PillowCImage* image, const char* path)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = pillow_c_refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+
+    const char* operator_name = nullptr;
+    if (image->mode == PILLOW_C_MODE_L && image->channels == 1) {
+        operator_name = "image";
+    } else if (image->mode == PILLOW_C_MODE_RGB && image->channels == 3) {
+        operator_name = "false 3 colorimage";
+    } else if (image->mode == PILLOW_C_MODE_CMYK && image->channels == 4) {
+        operator_name = "false 4 colorimage";
+    } else {
+        return PILLOW_C_EPS_MODE;
+    }
+
+    try {
+        static constexpr char hex_digits[] = "0123456789abcdef";
+        std::vector<std::uint8_t> eps;
+        auto append_text = [&eps](const std::string& text) {
+            eps.insert(eps.end(), text.begin(), text.end());
+        };
+        auto append_int = [&eps](std::int64_t value) {
+            const std::string text = std::to_string(value);
+            eps.insert(eps.end(), text.begin(), text.end());
+        };
+
+        append_text("%!PS-Adobe-3.0 EPSF-3.0\n");
+        append_text("%%Creator: PIL 0.1 EpsEncode\n");
+        append_text("%%BoundingBox: 0 0 ");
+        append_int(image->width);
+        eps.push_back(' ');
+        append_int(image->height);
+        eps.push_back('\n');
+        append_text("%%Pages: 1\n");
+        append_text("%%EndComments\n");
+        append_text("%%Page: 1 1\n");
+        append_text("%ImageData: ");
+        append_int(image->width);
+        eps.push_back(' ');
+        append_int(image->height);
+        append_text(" 8 ");
+        append_int(image->channels);
+        append_text(" 0 1 1 \"");
+        append_text(operator_name);
+        append_text("\"\n");
+        append_text("gsave\n");
+        append_text("10 dict begin\n");
+        append_text("/buf ");
+        append_int(static_cast<std::int64_t>(image->width) * image->channels);
+        append_text(" string def\n");
+        append_int(image->width);
+        eps.push_back(' ');
+        append_int(image->height);
+        append_text(" scale\n");
+        append_int(image->width);
+        eps.push_back(' ');
+        append_int(image->height);
+        append_text(" 8\n[");
+        append_int(image->width);
+        append_text(" 0 0 -");
+        append_int(image->height);
+        append_text(" 0 ");
+        append_int(image->height);
+        append_text("]\n");
+        append_text("{ currentfile buf readhexstring pop } bind\n");
+        append_text(operator_name);
+        eps.push_back('\n');
+
+        const std::uint8_t* pixels = image->pixels.data();
+        const std::size_t total_bytes = static_cast<std::size_t>(image->width) * static_cast<std::size_t>(image->height) * static_cast<std::size_t>(image->channels);
+        std::size_t line_bytes = 0;
+        for (std::size_t index = 0; index < total_bytes; ++index) {
+            if (line_bytes == 39u) {
+                eps.push_back('\n');
+                line_bytes = 0;
+            }
+            const std::uint8_t value = pixels[index];
+            eps.push_back(static_cast<std::uint8_t>(hex_digits[(value >> 4) & 15]));
+            eps.push_back(static_cast<std::uint8_t>(hex_digits[value & 15]));
+            ++line_bytes;
+        }
+        append_text("\n%%EndBinary\n");
+        append_text("grestore end\n");
+        return write_binary_file(path, eps) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 
 } // namespace
 
@@ -6033,6 +6146,13 @@ extern "C" __declspec(dllexport) int pillow_c_image_icns_sizes(
     int* out_count)
 {
     return icns_sizes_for_path(path, out_sizes, capacity, out_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_eps(
+    const PillowCImage* image,
+    const char* path)
+{
+    return save_eps_image(image, path);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_ppm(

@@ -23229,7 +23229,7 @@ PillowTestIcnsEntryPayload(file, type, &outSize) {
     return Buffer(0, 0)
 }
 
-PillowTestIcnsCaptureError(callable) {
+PillowTestFormatCaptureError(callable) {
     try {
         callable.Call()
     } catch Error as err {
@@ -23514,14 +23514,14 @@ PillowTestIcnsFormat(*) {
         PillowTestIcnsPutType(badMagic, 0, "noti")
         PillowTestIcnsPutBe32(badMagic, 4, 8)
         PillowTestIcnsWrite(badMagicPath, badMagic)
-        AhkTest.AssertEqual("cannot identify image file <" badMagicPath ">", PillowTestIcnsCaptureError(() => Pillow.Image.Open(badMagicPath)))
+        AhkTest.AssertEqual("cannot identify image file <" badMagicPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(badMagicPath)))
         PillowTestDeleteFile(badMagicPath)
 
         garbage := Buffer(96, 0)
         loop 96
             NumPut("UChar", 65 + Mod(A_Index - 1, 26), garbage, A_Index - 1)
         PillowTestIcnsWrite(garbagePath, PillowTestIcnsBuildBuffer([["dummy", "ic07", garbage]]))
-        AhkTest.AssertEqual("Unsupported icon subimage format", PillowTestIcnsCaptureError(() => Pillow.Image.Open(garbagePath)))
+        AhkTest.AssertEqual("Unsupported icon subimage format", PillowTestFormatCaptureError(() => Pillow.Image.Open(garbagePath)))
         PillowTestDeleteFile(garbagePath)
 
         ; jp2 signature in an icp4 chunk (our runtime ships no jpeg2000)
@@ -23530,13 +23530,13 @@ PillowTestIcnsFormat(*) {
         for index, value in jp2Sig
             NumPut("UChar", value, jp2Payload, index - 1)
         PillowTestIcnsWrite(jp2Path, PillowTestIcnsBuildBuffer([["dummy", "icp4", jp2Payload]]))
-        AhkTest.AssertEqual("Unsupported icon subimage format (rebuild PIL with JPEG 2000 support to fix this)", PillowTestIcnsCaptureError(() => Pillow.Image.Open(jp2Path)))
+        AhkTest.AssertEqual("Unsupported icon subimage format (rebuild PIL with JPEG 2000 support to fix this)", PillowTestFormatCaptureError(() => Pillow.Image.Open(jp2Path)))
         PillowTestDeleteFile(jp2Path)
 
         it32Bad := Buffer(16 * 16 * 3 + 4, 0)
         NumPut("UChar", 1, it32Bad, 0)
         PillowTestIcnsWrite(it32BadPath, PillowTestIcnsBuildBuffer([["dummy", "it32", it32Bad]]))
-        AhkTest.AssertEqual("Unknown signature, expecting 0x00000000", PillowTestIcnsCaptureError(() => Pillow.Image.Open(it32BadPath)))
+        AhkTest.AssertEqual("Unknown signature, expecting 0x00000000", PillowTestFormatCaptureError(() => Pillow.Image.Open(it32BadPath)))
         PillowTestDeleteFile(it32BadPath)
 
         ; RLE with only band 0: Pillow reports [256 left]
@@ -23547,7 +23547,7 @@ PillowTestIcnsFormat(*) {
         NumPut("UChar", 127, rlePayload, 0)
         NumPut("UChar", 127, rlePayload, 129)
         PillowTestIcnsWrite(rlePath, PillowTestIcnsBuildBuffer([["dummy", "is32", rlePayload]]))
-        AhkTest.AssertEqual("Error reading channel [256 left]", PillowTestIcnsCaptureError(() => Pillow.Image.Open(rlePath)))
+        AhkTest.AssertEqual("Error reading channel [256 left]", PillowTestFormatCaptureError(() => Pillow.Image.Open(rlePath)))
         PillowTestDeleteFile(rlePath)
 
         ; truncated PNG payload: valid signature + IHDR, no image data
@@ -23556,7 +23556,7 @@ PillowTestIcnsFormat(*) {
         for index, value in pngSig
             NumPut("UChar", value, pngPayload, index - 1)
         PillowTestIcnsWrite(pngTruncPath, PillowTestIcnsBuildBuffer([["dummy", "ic07", pngPayload]]))
-        AhkTest.AssertEqual("image file is truncated", PillowTestIcnsCaptureError(() => Pillow.Image.Open(pngTruncPath)))
+        AhkTest.AssertEqual("image file is truncated", PillowTestFormatCaptureError(() => Pillow.Image.Open(pngTruncPath)))
         PillowTestDeleteFile(pngTruncPath)
 
         ; 16-bit grayscale PNG payload (mode unsupported by our decoder)
@@ -23565,19 +23565,19 @@ PillowTestIcnsFormat(*) {
         for index, value in png16Sig
             NumPut("UChar", value, png16Payload, index - 1)
         PillowTestIcnsWrite(png16Path, PillowTestIcnsBuildBuffer([["dummy", "ic07", png16Payload]]))
-        AhkTest.AssertEqual("Pillow.Image.Open ICNS PNG payload uses an unsupported bit depth or color type", PillowTestIcnsCaptureError(() => Pillow.Image.Open(png16Path)))
+        AhkTest.AssertEqual("Pillow.Image.Open ICNS PNG payload uses an unsupported bit depth or color type", PillowTestFormatCaptureError(() => Pillow.Image.Open(png16Path)))
         PillowTestDeleteFile(png16Path)
 
         ; --- save mode errors ---
         f := Pillow.Image.New("F", [8, 8])
         try {
-            AhkTest.AssertEqual("cannot write mode F as PNG", PillowTestIcnsCaptureError(() => f.Save(pPath, "ICNS")))
+            AhkTest.AssertEqual("cannot write mode F as PNG", PillowTestFormatCaptureError(() => f.Save(pPath, "ICNS")))
         } finally {
             f.Close()
         }
         one := Pillow.Image.New("1", [8, 8])
         try {
-            AhkTest.AssertEqual("Pillow.Image.Save ICNS mode 1 is not supported", PillowTestIcnsCaptureError(() => one.Save(pPath, "ICNS")))
+            AhkTest.AssertEqual("Pillow.Image.Save ICNS mode 1 is not supported", PillowTestFormatCaptureError(() => one.Save(pPath, "ICNS")))
         } finally {
             one.Close()
         }
@@ -23600,6 +23600,211 @@ PillowTestIcnsFormat(*) {
 }
 
 AhkTest.Test("Pillow ICNS format matches Pillow 11.3.0 structure, reopen parity, and error shapes", PillowTestIcnsFormat)
+
+PillowTestEpsWriteText(path, text) {
+    bytes := PillowTestTextBytes(text)
+    buf := Buffer(bytes.Length, 0)
+    for index, value in bytes
+        NumPut("UChar", value, buf, index - 1)
+    file := FileOpen(path, "w")
+    try
+        file.RawWrite(buf, buf.Size)
+    finally
+        file.Close()
+}
+
+PillowTestEpsFormat(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    savePath := A_Temp "\eps-l.eps"
+    rgbPath := A_Temp "\eps-rgb.eps"
+    rgb3Path := A_Temp "\eps-rgb3.eps"
+    l40Path := A_Temp "\eps-l40.eps"
+    rgb14Path := A_Temp "\eps-rgb14.eps"
+    cmykPath := A_Temp "\eps-cmyk.eps"
+    psPath := A_Temp "\eps-via-ps.ps"
+    badMagicPath := A_Temp "\eps-badmagic.eps"
+    noPsAdobePath := A_Temp "\eps-nopsadobe.eps"
+    noBboxPath := A_Temp "\eps-nobbox.eps"
+    atendPath := A_Temp "\eps-atend.eps"
+    previewPath := A_Temp "\eps-preview.eps"
+    try {
+        ; --- L 4x2 byte-exact save ---
+        l := Pillow.Image.New("L", [4, 2])
+        try {
+            lValues := Buffer(8, 0)
+            loop 8
+                NumPut("UChar", A_Index - 1, lValues, A_Index - 1)
+            l.FromBytes(lValues)
+            l.Save(savePath, "EPS")
+        } finally {
+            l.Close()
+        }
+        AhkTest.AssertEqual(
+            PillowTestTextBytes("%!PS-Adobe-3.0 EPSF-3.0`n%%Creator: PIL 0.1 EpsEncode`n%%BoundingBox: 0 0 4 2`n%%Pages: 1`n%%EndComments`n%%Page: 1 1`n%ImageData: 4 2 8 1 0 1 1 `"image`"`ngsave`n10 dict begin`n/buf 4 string def`n4 2 scale`n4 2 8`n[4 0 0 -2 0 2]`n{ currentfile buf readhexstring pop } bind`nimage`n0001020304050607`n%%EndBinary`ngrestore end`n"),
+            PillowTestReadFileBytes(savePath))
+
+        ; --- RGB 4x2 byte-exact save ---
+        rgb := Pillow.Image.New("RGB", [4, 2])
+        try {
+            rgbValues := Buffer(24, 0)
+            loop 24
+                NumPut("UChar", A_Index - 1, rgbValues, A_Index - 1)
+            rgb.FromBytes(rgbValues)
+            rgb.Save(rgbPath, "EPS")
+        } finally {
+            rgb.Close()
+        }
+        AhkTest.AssertEqual(
+            PillowTestTextBytes("%!PS-Adobe-3.0 EPSF-3.0`n%%Creator: PIL 0.1 EpsEncode`n%%BoundingBox: 0 0 4 2`n%%Pages: 1`n%%EndComments`n%%Page: 1 1`n%ImageData: 4 2 8 3 0 1 1 `"false 3 colorimage`"`ngsave`n10 dict begin`n/buf 12 string def`n4 2 scale`n4 2 8`n[4 0 0 -2 0 2]`n{ currentfile buf readhexstring pop } bind`nfalse 3 colorimage`n000102030405060708090a0b0c0d0e0f1011121314151617`n%%EndBinary`ngrestore end`n"),
+            PillowTestReadFileBytes(rgbPath))
+
+        ; --- RGB 3x2 (18 bytes, single line) ---
+        rgb3 := Pillow.Image.New("RGB", [3, 2])
+        try {
+            rgb3Values := Buffer(18, 0)
+            loop 18
+                NumPut("UChar", A_Index - 1, rgb3Values, A_Index - 1)
+            rgb3.FromBytes(rgb3Values)
+            rgb3.Save(rgb3Path, "EPS")
+        } finally {
+            rgb3.Close()
+        }
+        AhkTest.AssertEqual(
+            PillowTestTextBytes("%!PS-Adobe-3.0 EPSF-3.0`n%%Creator: PIL 0.1 EpsEncode`n%%BoundingBox: 0 0 3 2`n%%Pages: 1`n%%EndComments`n%%Page: 1 1`n%ImageData: 3 2 8 3 0 1 1 `"false 3 colorimage`"`ngsave`n10 dict begin`n/buf 9 string def`n3 2 scale`n3 2 8`n[3 0 0 -2 0 2]`n{ currentfile buf readhexstring pop } bind`nfalse 3 colorimage`n000102030405060708090a0b0c0d0e0f1011`n%%EndBinary`ngrestore end`n"),
+            PillowTestReadFileBytes(rgb3Path))
+
+        ; --- L 40x1: 39-byte hex lines with the final short line ---
+        l40 := Pillow.Image.New("L", [40, 1])
+        try {
+            l40Values := Buffer(40, 0)
+            loop 40
+                NumPut("UChar", A_Index - 1, l40Values, A_Index - 1)
+            l40.FromBytes(l40Values)
+            l40.Save(l40Path, "EPS")
+        } finally {
+            l40.Close()
+        }
+        AhkTest.AssertEqual(
+            PillowTestTextBytes("%!PS-Adobe-3.0 EPSF-3.0`n%%Creator: PIL 0.1 EpsEncode`n%%BoundingBox: 0 0 40 1`n%%Pages: 1`n%%EndComments`n%%Page: 1 1`n%ImageData: 40 1 8 1 0 1 1 `"image`"`ngsave`n10 dict begin`n/buf 40 string def`n40 1 scale`n40 1 8`n[40 0 0 -1 0 1]`n{ currentfile buf readhexstring pop } bind`nimage`n000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223242526`n27`n%%EndBinary`ngrestore end`n"),
+            PillowTestReadFileBytes(l40Path))
+
+        ; --- RGB 14x1: wrap lands mid-row ---
+        rgb14 := Pillow.Image.New("RGB", [14, 1])
+        try {
+            rgb14Values := Buffer(42, 0)
+            loop 42
+                NumPut("UChar", A_Index - 1, rgb14Values, A_Index - 1)
+            rgb14.FromBytes(rgb14Values)
+            rgb14.Save(rgb14Path, "EPS")
+        } finally {
+            rgb14.Close()
+        }
+        AhkTest.AssertEqual(
+            PillowTestTextBytes("%!PS-Adobe-3.0 EPSF-3.0`n%%Creator: PIL 0.1 EpsEncode`n%%BoundingBox: 0 0 14 1`n%%Pages: 1`n%%EndComments`n%%Page: 1 1`n%ImageData: 14 1 8 3 0 1 1 `"false 3 colorimage`"`ngsave`n10 dict begin`n/buf 42 string def`n14 1 scale`n14 1 8`n[14 0 0 -1 0 1]`n{ currentfile buf readhexstring pop } bind`nfalse 3 colorimage`n000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223242526`n272829`n%%EndBinary`ngrestore end`n"),
+            PillowTestReadFileBytes(rgb14Path))
+
+        ; --- CMYK 2x2 byte-exact save ---
+        cmyk := Pillow.Image.New("CMYK", [2, 2])
+        try {
+            cmykValues := Buffer(16, 0)
+            loop 16
+                NumPut("UChar", A_Index - 1, cmykValues, A_Index - 1)
+            cmyk.FromBytes(cmykValues)
+            cmyk.Save(cmykPath, "EPS")
+        } finally {
+            cmyk.Close()
+        }
+        AhkTest.AssertEqual(
+            PillowTestTextBytes("%!PS-Adobe-3.0 EPSF-3.0`n%%Creator: PIL 0.1 EpsEncode`n%%BoundingBox: 0 0 2 2`n%%Pages: 1`n%%EndComments`n%%Page: 1 1`n%ImageData: 2 2 8 4 0 1 1 `"false 4 colorimage`"`ngsave`n10 dict begin`n/buf 8 string def`n2 2 scale`n2 2 8`n[2 0 0 -2 0 2]`n{ currentfile buf readhexstring pop } bind`nfalse 4 colorimage`n000102030405060708090a0b0c0d0e0f`n%%EndBinary`ngrestore end`n"),
+            PillowTestReadFileBytes(cmykPath))
+
+        ; --- unsupported modes raise Pillow's exact ValueError message ---
+        for mode in ["RGBA", "P", "1", "I;16", "F", "LA"] {
+            image := Pillow.Image.New(mode, [2, 2])
+            try {
+                AhkTest.AssertEqual("image mode is not supported", PillowTestFormatCaptureError(() => image.Save(savePath, "EPS")), mode)
+            } finally {
+                image.Close()
+            }
+        }
+
+        ; --- open: valid EPS needs Ghostscript ---
+        AhkTest.AssertEqual("Unable to locate Ghostscript on paths", PillowTestFormatCaptureError(() => Pillow.Image.Open(savePath)))
+
+        ; --- .ps extension routes to EPS on both save and open ---
+        l2 := Pillow.Image.New("L", [4, 2])
+        try {
+            l2Values := Buffer(8, 0)
+            loop 8
+                NumPut("UChar", A_Index - 1, l2Values, A_Index - 1)
+            l2.FromBytes(l2Values)
+            l2.Save(psPath)
+        } finally {
+            l2.Close()
+        }
+        AhkTest.AssertEqual(PillowTestReadFileBytes(savePath), PillowTestReadFileBytes(psPath))
+        AhkTest.AssertEqual("Unable to locate Ghostscript on paths", PillowTestFormatCaptureError(() => Pillow.Image.Open(psPath)))
+
+        ; --- format description ---
+        AhkTest.AssertEqual("Encapsulated Postscript", Pillow.Image.FormatDescription("EPS"))
+
+        ; --- open error shapes ---
+        badMagic := Buffer(6, 0)
+        for index, char in ["n", "o", "t", "e", "p", "s"]
+            NumPut("UChar", Ord(char), badMagic, index - 1)
+        file := FileOpen(badMagicPath, "w")
+        file.RawWrite(badMagic, badMagic.Size)
+        file.Close()
+        AhkTest.AssertEqual("cannot identify image file <" badMagicPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(badMagicPath)))
+        PillowTestDeleteFile(badMagicPath)
+
+        PillowTestEpsWriteText(noPsAdobePath, "%!PS`n%%BoundingBox: 0 0 10 10`n%%EndComments`n")
+        AhkTest.AssertEqual("cannot identify image file <" noPsAdobePath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(noPsAdobePath)))
+        PillowTestDeleteFile(noPsAdobePath)
+
+        PillowTestEpsWriteText(noBboxPath, "%!PS-Adobe-3.0 EPSF-3.0`n%%EndComments`n")
+        AhkTest.AssertEqual("cannot identify image file <" noBboxPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(noBboxPath)))
+        PillowTestDeleteFile(noBboxPath)
+
+        PillowTestEpsWriteText(atendPath, "%!PS-Adobe-3.0 EPSF-3.0`n%%BoundingBox: (atend)`n%%EndComments`n")
+        AhkTest.AssertEqual("cannot determine EPS bounding box", PillowTestFormatCaptureError(() => Pillow.Image.Open(atendPath)))
+        PillowTestDeleteFile(atendPath)
+
+        ; binary preview header: magic C6D3D0C5 + i32 offset + PS body
+        bodyBytes := PillowTestTextBytes("%!PS-Adobe-3.0 EPSF-3.0`n%%BoundingBox: 0 0 10 10`n%%EndComments`n")
+        body := Buffer(bodyBytes.Length, 0)
+        for index, value in bodyBytes
+            NumPut("UChar", value, body, index - 1)
+        preview := Buffer(12 + body.Size, 0)
+        NumPut("UChar", 0xC5, preview, 0)
+        NumPut("UChar", 0xD0, preview, 1)
+        NumPut("UChar", 0xD3, preview, 2)
+        NumPut("UChar", 0xC6, preview, 3)
+        NumPut("Int", 12, preview, 4)
+        NumPut("Int", body.Size, preview, 8)
+        DllCall("msvcrt\memcpy", "Ptr", preview.Ptr + 12, "Ptr", body.Ptr, "UPtr", body.Size, "CDecl Ptr")
+        file := FileOpen(previewPath, "w")
+        file.RawWrite(preview, preview.Size)
+        file.Close()
+        AhkTest.AssertEqual("Unable to locate Ghostscript on paths", PillowTestFormatCaptureError(() => Pillow.Image.Open(previewPath)))
+        PillowTestDeleteFile(previewPath)
+    } finally {
+        PillowTestDeleteFile(savePath)
+        PillowTestDeleteFile(rgbPath)
+        PillowTestDeleteFile(rgb3Path)
+        PillowTestDeleteFile(l40Path)
+        PillowTestDeleteFile(rgb14Path)
+        PillowTestDeleteFile(cmykPath)
+        PillowTestDeleteFile(psPath)
+        PillowTestDeleteFile(badMagicPath)
+        PillowTestDeleteFile(noPsAdobePath)
+        PillowTestDeleteFile(noBboxPath)
+        PillowTestDeleteFile(atendPath)
+        PillowTestDeleteFile(previewPath)
+    }
+}
+
+AhkTest.Test("Pillow EPS format matches Pillow 11.3.0 save bytes and open error shapes", PillowTestEpsFormat)
 
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

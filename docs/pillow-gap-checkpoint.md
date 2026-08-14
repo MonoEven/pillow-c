@@ -26,11 +26,12 @@ identity with the local Pillow 11.3.0 build is NOT reachable and is
 no longer claimed. The honest split:
 
 - Formats: SAVE 19/30 and OPEN 19/45 byte-exact and test-pinned;
-  ICNS is DONE (BEHAV-ICNS-001); the matchable remainder is bounded
-  (3 saves: EPS/MPO/PDF; 18
+  ICNS and EPS are DONE (BEHAV-ICNS-001 / BEHAV-EPS-001); the
+  matchable remainder is bounded
+  (2 saves: MPO/PDF; 18
   opens: DCX/FITS/FLI/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/
   PSD/SUN/XPM/XVTHUMB + the trivial HDF5/BUFR/GRIB 1x1-F stubs; the
-  EPS Ghostscript and MPEG header-then-cannot-load error matches;
+  MPEG header-then-cannot-load error match;
   PDF open is unregistered in 11.3.0 -> identification error; WMF
   open via native GDI; plus 4 exact save-error matches for
   BUFR/GRIB/HDF5/WMF).
@@ -63,12 +64,12 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-ICNS-001 (ICNS save/open over the
-native PNG seams: container-byte-exact TOC + mode-preserving reopen
-incl. legacy 32-bit RGB/mask chunks and the ToBytes rawmode quirk)
-after MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001; the next
-bounded child is BEHAV-EPS-001 (EPS save + the Ghostscript open
-error match), then MPO/PDF and the AUDIT-003 newly recorded gaps
+Latest covered gap tail: BEHAV-EPS-001 (EPS byte-exact DSC save for
+L/RGB/CMYK with 39-byte hex lines + the Ghostscript load error and
+Pillow's exact open-time header errors) after BEHAV-ICNS-001/
+MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001; the next
+bounded child is BEHAV-MPO-001 (MPO save over the native JPEG
+seams), then PDF, then the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
 follow as their own packets.
 ```
@@ -487,6 +488,39 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `BEHAV-EPS-001` is GREEN as the EPS format (byte-exact
+save plus the Ghostscript open error match). The Pillow 11.3.0
+oracle (EpsImagePlugin source plus the EpsEncode.c semantics,
+`oracle/probe_eps.py`) pins the DSC 3.0 header
+(`%!PS-Adobe-3.0 EPSF-3.0` / `%%Creator: PIL 0.1 EpsEncode` /
+`%%BoundingBox: 0 0 W H` / `%%Pages: 1` / `%%EndComments` /
+`%%Page: 1 1` / `%ImageData: W H 8 NCH 0 1 1 "..."`), the
+PostScript preamble (`gsave` / `10 dict begin` / `/buf W*NCH
+string def` / `W H scale` / `W H 8` / `[W 0 0 -H 0 H]` / `{
+currentfile buf readhexstring pop } bind`), the lowercase hex
+payload with 39 bytes (78 chars) per line, and `%%EndBinary` /
+`grestore end`; L/RGB/CMYK save and every other mode raises
+`image mode is not supported` (the RGB "skip junk bytes" hack only
+applies to 4-byte RGBX-stored cores and never triggers here).
+Open parses the DSC header (the required-comment SyntaxErrors
+collapse to `cannot identify image file <...>`; `cannot determine
+EPS bounding box` propagates; the binary-preview magic
+0xC6D3D0C5 offset is honored) and a valid header surfaces Pillow's
+exact `Unable to locate Ghostscript on paths` load error at Open
+(the eager facade's open+load analogue — this runtime ships no
+Ghostscript). The new native `pillow_c_image_save_eps` export
+writes the exact bytes, and the facade routes `.eps`/`.ps` with
+`Encapsulated Postscript` plus the `EpsOpenFailure` header replay.
+The facade EPS target passes `1/1` in `47ms` (six byte-exact
+embedded save fixtures including the 39-byte wrap rule, the six
+mode errors, the Ghostscript error, the .ps routing, and five open
+error shapes); the full directory suite passes `2822/2822` in
+`38531ms` with zero failures, errors, or skips. Release x64 Rebuild is
+clean; source/DLL export parity moves to `482/482` (one deliberate
+new export); the rebuilt DLL SHA-256 is
+`A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
+The next bounded child is `BEHAV-MPO-001`, the MPO format.
 
 2026-08-14: `BEHAV-ICNS-001` is GREEN as the ICNS format (behavioral
 parity over the native PNG seams). The Pillow 11.3.0 oracle

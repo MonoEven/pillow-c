@@ -47,8 +47,30 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2821` AHK tests: `1391` raw DLL tests and
-`1430` facade tests.
+This suite currently registers `2822` AHK tests: `1391` raw DLL tests and
+`1431` facade tests.
+
+Latest `BEHAV-EPS-001` verification: the Pillow 11.3.0 oracle
+(EpsImagePlugin source plus the EpsEncode.c semantics,
+`oracle/probe_eps.py`) pins the byte-exact DSC 3.0 header, the
+PostScript preamble, the lowercase hex payload with 39 bytes (78
+chars) per line, `%%EndBinary` / `grestore end` for L/RGB/CMYK, the
+`image mode is not supported` ValueError for every other mode, and
+the open-side DSC header scan whose required-comment SyntaxErrors
+collapse to the identification error while `cannot determine EPS
+bounding box` propagates and the binary-preview magic offset is
+honored; a valid header surfaces Pillow's exact `Unable to locate
+Ghostscript on paths` load error (the eager facade raises it at
+Open — this runtime ships no Ghostscript). The facade EPS target
+passes `1/1` in `47ms` (six byte-exact save fixtures including the
+39-byte wrap rule, the six mode errors, the Ghostscript error, the
+.ps routing, and five open error shapes); the full directory suite
+passes `2822/2822` in `38531ms` with zero failures, errors, or
+skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity moves to `482/482` (one deliberate new
+export) with zero difference; and the rebuilt DLL SHA-256 is
+`A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
+The behavioral-parity wave continues with `BEHAV-MPO-001` next.
 
 Latest `BEHAV-ICNS-001` verification: the Pillow 11.3.0 oracle
 (IcnsImagePlugin source plus fixtures, `oracle/probe_icns.py` and

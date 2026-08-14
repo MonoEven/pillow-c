@@ -7635,6 +7635,24 @@ class Pillow {
                         throw Error("image file is truncated", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "EPS" {
+                    ; BEHAV-EPS-001: Pillow's EpsImageFile parses the DSC
+                    ; header at open (its SyntaxErrors collapse to the
+                    ; identification error; "cannot determine EPS bounding
+                    ; box" and the bad-header OSError propagate), and only
+                    ; load() needs Ghostscript. This runtime ships no
+                    ; Ghostscript, so a VALID header surfaces Pillow's
+                    ; exact load error at Open (the eager facade's
+                    ; open+load analogue); header parsing matches Pillow's
+                    ; open-time error shapes exactly.
+                    epsError := Pillow.Image.EpsOpenFailure(path)
+                    if epsError = ""
+                        throw Error("Unable to locate Ghostscript on paths", -1)
+                    if epsError = 'EPS header missing "%!PS-Adobe" comment' || epsError = 'EPS header missing "%%BoundingBox" comment'
+                        ; Pillow's Image.open wraps the plugin's
+                        ; SyntaxError into UnidentifiedImageError.
+                        throw Error("cannot identify image file <" path ">", -1)
+                    throw Error(epsError, -1)
                 } else {
                     lastStatus := DllCall(
                         Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
@@ -8854,6 +8872,161 @@ class Pillow {
             }
         }
 
+        static EpsOpenFailure(path) {
+            ; BEHAV-EPS-001: replay Pillow's EpsImageFile._open header
+            ; scan. Returns "" for a valid header (the caller raises the
+            ; Ghostscript error) or Pillow's exact open-time message.
+            file := FileOpen(path, "r")
+            if !file
+                return "cannot identify image file <" path ">"
+            try {
+                if file.Length < 4
+                    return "cannot identify image file <" path ">"
+                head := Buffer(4, 0)
+                file.RawRead(head, 4)
+                if StrGet(head, 4, "UTF-8") = "%!PS" {
+                    file.Seek(0)
+                } else if NumGet(head, 0, "UInt") = 0xC6D3D0C5 {
+                    ; binary preview: skip to the %!PS offset (i32le)
+                    ext := Buffer(8, 0)
+                    file.RawRead(ext, 8)
+                    file.Seek(NumGet(ext, 0, "Int"))
+                } else {
+                    return "cannot identify image file <" path ">"
+                }
+
+                info := Map()
+                boundingBox := unset
+                imageDataSize := unset
+                readingHeader := true
+                readingTrailer := false
+                trailerReached := false
+                stopLoop := false
+                while !stopLoop && !file.AtEOF {
+                    line := file.ReadLine()
+                    if line = "" && file.AtEOF
+                        break
+                    if StrLen(line) > 255 && SubStr(line, 1, 1) = "%"
+                        return "cannot identify image file <" path ">"
+
+                    if readingHeader {
+                        if SubStr(line, 1, 1) != "%" || SubStr(line, 1, 13) = "%%EndComments" {
+                            if !info.Has("PS-Adobe")
+                                return 'EPS header missing "%!PS-Adobe" comment'
+                            if !info.Has("BoundingBox")
+                                return 'EPS header missing "%%BoundingBox" comment'
+                            readingHeader := false
+                            continue
+                        }
+                        handled := false
+                        ; split: ^%%([^:]*):[ \t]*(.*)[ \t]*$
+                        if SubStr(line, 1, 2) = "%%" && InStr(line, ":") {
+                            colonPos := InStr(line, ":")
+                            key := SubStr(line, 3, colonPos - 3)
+                            value := Trim(SubStr(line, colonPos + 1), " `t")
+                            info[key] := value
+                            handled := true
+                            if key = "BoundingBox" {
+                                if value = "(atend)" {
+                                    readingTrailer := true
+                                } else if !IsSet(boundingBox) || (trailerReached && readingTrailer) {
+                                    parts := StrSplit(value, " ")
+                                    parsed := []
+                                    valid := true
+                                    for part in parts {
+                                        try
+                                            parsed.Push(Integer(Float(part)))
+                                        catch {
+                                            valid := false
+                                            break
+                                        }
+                                    }
+                                    if valid
+                                        boundingBox := parsed
+                                }
+                            }
+                        } else if SubStr(line, 1, 1) = "%" {
+                            ; field: ^%[%!\w]([^:]*)[ \t]*$
+                            second := SubStr(line, 2, 1)
+                            if second = "%" || second = "!" || RegExMatch(second, "\w") {
+                                key := Trim(SubStr(line, 3), " `t")
+                                if SubStr(key, 1, 8) = "PS-Adobe"
+                                    info["PS-Adobe"] := SubStr(key, 10)
+                                else
+                                    info[key] := ""
+                                handled := true
+                            }
+                        }
+                        if !handled {
+                            if SubStr(line, 1, 1) = "%"
+                                continue
+                            return "bad EPS header"
+                        }
+                        continue
+                    }
+
+                    if SubStr(line, 1, 11) = "%ImageData:" {
+                        if IsSet(imageDataSize)
+                            continue
+                        fields := StrSplit(Trim(SubStr(line, 12)), " ")
+                        if fields.Length >= 4 {
+                            try {
+                                columns := Integer(fields[1])
+                                rows := Integer(fields[2])
+                                bitDepth := Integer(fields[3])
+                                modeId := Integer(fields[4])
+                                if bitDepth = 1 {
+                                    imageDataSize := [columns, rows]
+                                } else if bitDepth = 8 {
+                                    if modeId = 1 || modeId = 2 || modeId = 3 || modeId = 4
+                                        imageDataSize := [columns, rows]
+                                    else
+                                        stopLoop := true
+                                } else {
+                                    stopLoop := true
+                                }
+                            }
+                        }
+                        continue
+                    }
+                    if SubStr(line, 1, 5) = "%%EOF"
+                        break
+                    if trailerReached && readingTrailer {
+                        ; last BoundingBox wins in the trailer
+                        if SubStr(line, 1, 2) = "%%" && InStr(line, ":") {
+                            colonPos := InStr(line, ":")
+                            key := SubStr(line, 3, colonPos - 3)
+                            value := Trim(SubStr(line, colonPos + 1), " `t")
+                            info[key] := value
+                            if key = "BoundingBox" && value != "(atend)" {
+                                parts := StrSplit(value, " ")
+                                parsed := []
+                                valid := true
+                                for part in parts {
+                                    try
+                                        parsed.Push(Integer(Float(part)))
+                                    catch {
+                                        valid := false
+                                        break
+                                    }
+                                }
+                                if valid
+                                    boundingBox := parsed
+                            }
+                        }
+                        continue
+                    }
+                    if SubStr(line, 1, 9) = "%%Trailer"
+                        trailerReached := true
+                }
+                if !IsSet(boundingBox)
+                    return "cannot determine EPS bounding box"
+                return ""
+            } finally {
+                file.Close()
+            }
+        }
+
         static OpenDibHandle(path, &outHandle) {
             ; BEHAV-DIB-001: DIB open = synthetic BITMAPFILEHEADER + native
             ; BMP decoder. Pillow's DIB has no BITMAPFILEHEADER, so the
@@ -8936,6 +9109,8 @@ class Pillow {
                 return "DDS"
             if RegExMatch(path, "i)\.icns$")
                 return "ICNS"
+            if RegExMatch(path, "i)\.(eps|ps)$")
+                return "EPS"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -8965,7 +9140,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -8984,6 +9159,7 @@ class Pillow {
                 "SGI", "SGI Image File Format",
                 "DDS", "DirectDraw Surface",
                 "ICNS", "Mac OS icns resource",
+                "EPS", "Encapsulated Postscript",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -10694,6 +10870,23 @@ class Pillow {
                         throw Error("cannot write mode F as PNG", -1)
                     throw Error("Pillow.Image.Save ICNS mode " this.Mode " is not supported", -1)
                 }
+                Pillow.CheckStatus(status)
+                return
+            }
+            if resolvedFormat = "EPS" {
+                ; BEHAV-EPS-001: Pillow's pure-Python EPS writer covers
+                ; L/RGB/CMYK with the exact DSC header and 39-byte hex
+                ; lines; every other mode raises "image mode is not
+                ; supported" (the native codec writes the file).
+                pathBytes := Pillow.Image.Utf8Buffer(path)
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_eps",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", pathBytes,
+                    "Int"
+                )
+                if status = -27
+                    throw Error("image mode is not supported", -1)
                 Pillow.CheckStatus(status)
                 return
             }

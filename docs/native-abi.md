@@ -102,10 +102,27 @@ tobytes rawmode quirk through the `IcnsQuirkPending` instance flag
 access). PNG payload bytes use this DLL's deflate; the container
 structure is byte-exact and reopen pixels are byte-exact.
 
+`BEHAV-EPS-001` adds one deliberate export —
+`pillow_c_image_save_eps` — that writes Pillow's exact
+Encapsulated PostScript save for L/RGB/CMYK images: the DSC 3.0
+header, the `%ImageData` descriptor, the PostScript preamble, and
+the pixel bytes hex-encoded with 39 bytes (78 hex chars) per line,
+followed by `%%EndBinary` / `grestore end`. Other modes return the
+local status `-27` which the facade maps to Pillow's exact
+`image mode is not supported` ValueError; the generic statuses keep
+their public meanings. The facade's `EpsOpenFailure` replays
+Pillow's EpsImageFile header scan (required-comment SyntaxErrors
+surface as the identification error, `cannot determine EPS bounding
+box` propagates, the binary-preview 0xC6D3D0C5 offset is honored)
+and a valid header raises Pillow's exact `Unable to locate
+Ghostscript on paths` load error at Open (the eager facade's
+open+load analogue; this runtime ships no Ghostscript).
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`481/481`; the full AHK suite is `2821/2821`; and the current DLL SHA-256 is
-`9EF071F74786F59BCBF74C25BA456262EB5A703CB3626C66EFF159A49ED317C6`
-(BEHAV-ICNS-001 adds the four ICNS exports below and the internal
+`482/482`; the full AHK suite is `2822/2822`; and the current DLL SHA-256 is
+`A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`
+(BEHAV-EPS-001 adds the `pillow_c_image_save_eps` export below;
+BEHAV-ICNS-001 adds the four ICNS exports below and the internal
 memory-PNG decode seam; MODE-RGBA-RESIZE-001 changes no ABI — the resize
 premultiply roundtrip
 and default-resample rules below replace the old +128/a==0-zero behavior;
