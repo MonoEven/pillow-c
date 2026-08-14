@@ -7822,6 +7822,34 @@ class Pillow {
                     image.FramePath := path
                     image.FrameFormat := "MCIDAS"
                     return image
+                } else if format = "PSD" {
+                    ; BEHAV-OPEN-004: PsdImageFile — the native opener
+                    ; decodes the base image (raw or PackBits channels,
+                    ; CMYK inverted, RGB;L palette, mode 1 packed bits);
+                    ; layers/seek stay a documented child.
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_psd",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -47
+                        throw Error("not enough channels", -1)
+                    if lastStatus = -29 {
+                        psdInfo := Pillow.Image.PsdHeaderInfo(path)
+                        payload := 0
+                        file := FileOpen(path, "r")
+                        try {
+                            payload := file.Length - psdInfo["DataStart"]
+                        } finally {
+                            file.Close()
+                        }
+                        if psdInfo["Width"] > 0 && payload > 0
+                            throw Error("image file is truncated (" Mod(payload, psdInfo["Width"]) " bytes not processed)", -1)
+                        throw Error("image file is truncated (0 bytes not processed)", -1)
+                    }
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
                 } else if format = "HDF5" || format = "BUFR" || format = "GRIB" {
                     ; BEHAV-OPEN-001: the HDF5/BUFR/GRIB stub plugins
                     ; accept the magic and open an F(1,1) image whose
@@ -7897,6 +7925,13 @@ class Pillow {
                             transparencyKey := Pillow.Image.XpmTransparencyKey(path)
                             if transparencyKey != ""
                                 image.Info["transparency"] := transparencyKey
+                        }
+                        if format = "PSD" {
+                            ; BEHAV-OPEN-004: Pillow exposes
+                            ; info["icc_profile"] from resource 1039.
+                            icc := Pillow.Image.PsdIcc(path)
+                            if icc
+                                image.Info["icc_profile"] := icc
                         }
                     } catch {
                         image.Close()
@@ -9341,6 +9376,81 @@ class Pillow {
             return (NumGet(buf, offset, "UChar") << 24) | (NumGet(buf, offset + 1, "UChar") << 16) | (NumGet(buf, offset + 2, "UChar") << 8) | NumGet(buf, offset + 3, "UChar")
         }
 
+        static PsdHeaderInfo(path) {
+            ; BEHAV-OPEN-004: the width and the image-descriptor data
+            ; offset for the truncation count.
+            file := FileOpen(path, "r")
+            if !file
+                return Map("Width", 0, "DataStart", 0)
+            try {
+                head := Buffer(26, 0)
+                file.RawRead(head, Min(file.Length, 26))
+                width := Pillow.Image.Be32At(head, 18)
+                pos := 26
+                block := Buffer(4, 0)
+                file.Pos := pos
+                file.RawRead(block, 4)
+                colorSize := Pillow.Image.Be32At(block, 0)
+                pos += 4 + colorSize
+                file.Pos := pos
+                file.RawRead(block, 4)
+                resourceSize := Pillow.Image.Be32At(block, 0)
+                pos += 4 + resourceSize
+                file.Pos := pos
+                file.RawRead(block, 4)
+                layerSize := Pillow.Image.Be32At(block, 0)
+                pos += 4 + layerSize
+                return Map("Width", width, "DataStart", pos + 2)
+            } finally {
+                file.Close()
+            }
+        }
+
+        static PsdIcc(path) {
+            ; BEHAV-OPEN-004: Pillow exposes info["icc_profile"] from
+            ; the image-resource block id 1039.
+            file := FileOpen(path, "r")
+            if !file
+                return 0
+            try {
+                head := Buffer(26, 0)
+                file.RawRead(head, Min(file.Length, 26))
+                pos := 26
+                block := Buffer(4, 0)
+                file.Pos := pos
+                file.RawRead(block, 4)
+                pos += 4 + Pillow.Image.Be32At(block, 0)
+                file.Pos := pos
+                file.RawRead(block, 4)
+                resourceSize := Pillow.Image.Be32At(block, 0)
+                pos += 4
+                end := pos + resourceSize
+                while pos + 4 <= end {
+                    file.Pos := pos + 4
+                    small := Buffer(3, 0)
+                    file.RawRead(small, 3)
+                    id := (NumGet(small, 0, "UChar") << 8) | NumGet(small, 1, "UChar")
+                    nameLen := NumGet(small, 2, "UChar")
+                    pad := nameLen & 1 ? 0 : 1
+                    lenField := Buffer(4, 0)
+                    file.Pos := pos + 7 + nameLen + pad
+                    file.RawRead(lenField, 4)
+                    dataLen := Pillow.Image.Be32At(lenField, 0)
+                    dataStart := pos + 11 + nameLen + pad
+                    if id = 1039 {
+                        icc := Buffer(dataLen, 0)
+                        file.Pos := dataStart
+                        file.RawRead(icc, dataLen)
+                        return icc
+                    }
+                    pos := dataStart + dataLen + (dataLen & 1 ? 1 : 0)
+                }
+                return 0
+            } finally {
+                file.Close()
+            }
+        }
+
         static OpenMcIdas(path) {
             ; BEHAV-OPEN-003: McIdasImageFile — the 256-byte big-endian
             ; directory (magic 00..00 04), bytes-per-sample 1/2/4 as
@@ -10007,6 +10117,8 @@ class Pillow {
                 return "XPM"
             if RegExMatch(path, "i)\.iim$")
                 return "IPTC"
+            if RegExMatch(path, "i)\.psd$")
+                return "PSD"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -10036,7 +10148,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -10070,6 +10182,7 @@ class Pillow {
                 "XPM", "X11 Pixel Map",
                 "IPTC", "IPTC/NAA",
                 "MCIDAS", "McIdas area file",
+                "PSD", "Adobe Photoshop",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -11973,10 +12086,10 @@ class Pillow {
                 ; OSError before writing anything.
                 throw Error(resolvedFormat " save handler not installed", -1)
             }
-            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" || resolvedFormat = "IPTC" || resolvedFormat = "MCIDAS" {
-                ; BEHAV-OPEN-001/002/003: these plugins register no save
-                ; handler at all — Pillow raises KeyError with the bare
-                ; name.
+            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" || resolvedFormat = "IPTC" || resolvedFormat = "MCIDAS" || resolvedFormat = "PSD" {
+                ; BEHAV-OPEN-001/002/003/004: these plugins register no
+                ; save handler at all — Pillow raises KeyError with the
+                ; bare name.
                 throw Error("'" resolvedFormat "'", -1)
             }
             if resolvedFormat = "PDF" {

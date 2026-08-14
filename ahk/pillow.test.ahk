@@ -21877,10 +21877,11 @@ PillowTestDependencyGatedFormatBoundaries(*) {
     try {
         ; BNDRY-001: dependency-gated formats (WebP/AVIF/JPEG2000
         ; and the other long-tail families) are explicit documented
-        ; boundaries —?open and save fail loudly with the same error.
+        ; boundaries — open and save fail loudly with the same error.
         ; PDF left this list via BEHAV-PDF-001 (its LA/RGBA/mode-1
-        ; sub-mode boundaries are pinned by PillowTestPdfFormat).
-        for format in ["WEBP", "AVIF", "JPEG2000", "PSD"] {
+        ; sub-mode boundaries are pinned by PillowTestPdfFormat) and
+        ; PSD via BEHAV-OPEN-004.
+        for format in ["WEBP", "AVIF", "JPEG2000"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -25309,6 +25310,290 @@ PillowTestOpenThreeFormats(*) {
 }
 
 AhkTest.Test("Pillow IPTC MCIDAS openers match Pillow 11.3.0 shapes and errors", PillowTestOpenThreeFormats)
+
+PillowTestPackbitsRow(values) {
+    out := []
+    pos := 1
+    while pos <= values.Length {
+        run := 1
+        while pos + run <= values.Length && values[pos + run] = values[pos] && run < 128
+            run += 1
+        if run > 1 {
+            out.Push(257 - run)
+            out.Push(values[pos])
+            pos += run
+        } else {
+            lit := 1
+            while pos + lit <= values.Length && values[pos + lit] != values[pos] && lit < 128
+                lit += 1
+            out.Push(lit - 1)
+            loop lit
+                out.Push(values[pos + A_Index - 1])
+            pos += lit
+        }
+    }
+    buf := Buffer(out.Length, 0)
+    for index, value in out
+        NumPut("UChar", value, buf, index - 1)
+    return buf
+}
+
+PillowTestPutBe16(buf, offset, value) {
+    NumPut("UChar", (value >> 8) & 0xFF, buf, offset)
+    NumPut("UChar", value & 0xFF, buf, offset + 1)
+}
+
+PillowTestTwoBytePlane(v1, v2) {
+    buf := Buffer(2, 0)
+    NumPut("UChar", v1, buf, 0)
+    NumPut("UChar", v2, buf, 1)
+    return buf
+}
+
+PillowTestPsd(modeId, bits, channels, w, h, planes, compression := 0, colorData := unset, resources := unset, psdChannels := unset) {
+    psdCh := IsSet(psdChannels) ? psdChannels : channels
+    header := Buffer(26, 0)
+    NumPut("UChar", Ord("8"), header, 0)
+    NumPut("UChar", Ord("B"), header, 1)
+    NumPut("UChar", Ord("P"), header, 2)
+    NumPut("UChar", Ord("S"), header, 3)
+    PillowTestPutBe16(header, 4, 1)
+    PillowTestPutBe16(header, 12, psdCh)
+    PillowTestPutBe32(header, 14, h)
+    PillowTestPutBe32(header, 18, w)
+    PillowTestPutBe16(header, 22, bits)
+    PillowTestPutBe16(header, 24, modeId)
+    colorSize := IsSet(colorData) ? colorData.Size : 0
+    resSize := IsSet(resources) ? resources.Size : 0
+    dataSize := 0
+    if compression = 0 {
+        for plane in planes
+            dataSize += plane.Size
+    } else {
+        for plane in planes {
+            for row in plane
+                dataSize += 2 + row.Size
+        }
+    }
+    total := 26 + 4 + colorSize + 4 + resSize + 4 + 2 + dataSize
+    out := Buffer(total, 0)
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr, "Ptr", header, "UPtr", 26, "CDecl Ptr")
+    offset := 26
+    PillowTestPutBe32(out, offset, colorSize)
+    offset += 4
+    if colorSize {
+        DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", colorData, "UPtr", colorSize, "CDecl Ptr")
+        offset += colorSize
+    }
+    PillowTestPutBe32(out, offset, resSize)
+    offset += 4
+    if resSize {
+        DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", resources, "UPtr", resSize, "CDecl Ptr")
+        offset += resSize
+    }
+    PillowTestPutBe32(out, offset, 0)
+    offset += 4
+    PillowTestPutBe16(out, offset, compression)
+    offset += 2
+    if compression = 0 {
+        for plane in planes {
+            DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", plane, "UPtr", plane.Size, "CDecl Ptr")
+            offset += plane.Size
+        }
+    } else {
+        for plane in planes {
+            for row in plane {
+                PillowTestPutBe16(out, offset, row.Size)
+                offset += 2
+            }
+        }
+        for plane in planes {
+            for row in plane {
+                DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", row, "UPtr", row.Size, "CDecl Ptr")
+                offset += row.Size
+            }
+        }
+    }
+    return out
+}
+
+PillowTestOpenPsd(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    psdPath := A_Temp "\open-4.psd"
+    savePath := A_Temp "\open-4-save.bin"
+    try {
+        ; --- RGB raw ---
+        rPlane := Buffer(6, 0)
+        gPlane := Buffer(6, 0)
+        bPlane := Buffer(6, 0)
+        loop 6 {
+            NumPut("UChar", 9 + A_Index, rPlane, A_Index - 1)
+            NumPut("UChar", 19 + A_Index, gPlane, A_Index - 1)
+            NumPut("UChar", 29 + A_Index, bPlane, A_Index - 1)
+        }
+        PillowTestWriteFileBuffer(psdPath, PillowTestPsd(3, 8, 3, 3, 2, [rPlane, gPlane, bPlane]))
+        opened := Pillow.Image.Open(psdPath)
+        try {
+            AhkTest.AssertEqual("PSD", opened.Format)
+            AhkTest.AssertEqual("RGB", opened.Mode)
+            AhkTest.AssertEqual([3, 2], opened.Size)
+            AhkTest.AssertEqual("0a141e0b151f0c16200d17210e18220f1923", PillowTestPdfBytesToHex(PillowTestBufferToArray(opened.ToBytes())))
+        } finally {
+            opened.Close()
+        }
+
+        ; --- RGBA (4 channels) ---
+        PillowTestWriteFileBuffer(psdPath, PillowTestPsd(3, 8, 4, 2, 1, [
+            PillowTestTwoBytePlane(0x0a, 0x0b),
+            PillowTestTwoBytePlane(0x14, 0x15),
+            PillowTestTwoBytePlane(0x1e, 0x1f),
+            PillowTestTwoBytePlane(0x28, 0x29)
+        ]))
+        openedRgba := Pillow.Image.Open(psdPath)
+        try {
+            AhkTest.AssertEqual("RGBA", openedRgba.Mode)
+            AhkTest.AssertEqual("0a141e280b151f29", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedRgba.ToBytes())))
+        } finally {
+            openedRgba.Close()
+        }
+
+        ; --- CMYK (inverted) ---
+        cmykPlanes := []
+        for value in [[100, 101], [110, 111], [120, 121], [130, 131]] {
+            plane := Buffer(2, 0)
+            loop 2
+                NumPut("UChar", value[A_Index], plane, A_Index - 1)
+            cmykPlanes.Push(plane)
+        }
+        PillowTestWriteFileBuffer(psdPath, PillowTestPsd(4, 8, 4, 2, 1, cmykPlanes))
+        openedCmyk := Pillow.Image.Open(psdPath)
+        try {
+            AhkTest.AssertEqual("CMYK", openedCmyk.Mode)
+            AhkTest.AssertEqual("9b91877d9a90867c", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedCmyk.ToBytes())))
+        } finally {
+            openedCmyk.Close()
+        }
+
+        ; --- P with the 768-byte RGB;L palette ---
+        pal := Buffer(768, 0)
+        loop 768
+            NumPut("UChar", Mod(A_Index - 1, 256), pal, A_Index - 1)
+        pPlane := Buffer(2, 0)
+        NumPut("UChar", 1, pPlane, 1)
+        PillowTestWriteFileBuffer(psdPath, PillowTestPsd(2, 8, 1, 2, 1, [pPlane], 0, pal))
+        openedP := Pillow.Image.Open(psdPath)
+        try {
+            AhkTest.AssertEqual("P", openedP.Mode)
+            AhkTest.AssertEqual([0, 1], PillowTestBufferToArray(openedP.ToBytes()))
+            AhkTest.AssertEqual([0, 0, 0, 1, 1, 1, 2, 2, 2], PillowTestArraySlice(openedP.GetPalette(), 1, 9))
+        } finally {
+            openedP.Close()
+        }
+
+        ; --- mode 1 (packed bits) ---
+        onePlane := Buffer(2, 0)
+        NumPut("UChar", 0x60, onePlane, 0)
+        NumPut("UChar", 0x20, onePlane, 1)
+        PillowTestWriteFileBuffer(psdPath, PillowTestPsd(0, 1, 1, 3, 2, [onePlane]))
+        openedOne := Pillow.Image.Open(psdPath)
+        try {
+            AhkTest.AssertEqual("1", openedOne.Mode)
+            AhkTest.AssertEqual([0x60, 0x20], PillowTestBufferToArray(openedOne.ToBytes()))
+        } finally {
+            openedOne.Close()
+        }
+
+        ; --- LAB (verbatim L/a+128/b+128) ---
+        PillowTestWriteFileBuffer(psdPath, PillowTestPsd(9, 8, 3, 2, 1, [
+            PillowTestTwoBytePlane(10, 11),
+            PillowTestTwoBytePlane(20, 21),
+            PillowTestTwoBytePlane(30, 31)
+        ]))
+        openedLab := Pillow.Image.Open(psdPath)
+        try {
+            AhkTest.AssertEqual("LAB", openedLab.Mode)
+            AhkTest.AssertEqual("0a949e0b959f", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedLab.ToBytes())))
+        } finally {
+            openedLab.Close()
+        }
+
+        ; --- gray L ---
+        grayPlane := PillowTestRangeBuffer(6)
+        PillowTestWriteFileBuffer(psdPath, PillowTestPsd(1, 8, 1, 3, 2, [grayPlane]))
+        openedGray := Pillow.Image.Open(psdPath)
+        try {
+            AhkTest.AssertEqual("L", openedGray.Mode)
+            AhkTest.AssertEqual([0, 1, 2, 3, 4, 5], PillowTestBufferToArray(openedGray.ToBytes()))
+        } finally {
+            openedGray.Close()
+        }
+
+        ; --- PackBits RGB ---
+        rRows := [PillowTestPackbitsRow([10, 10, 10, 11, 12, 13]), PillowTestPackbitsRow([14, 14, 15, 16, 17, 18])]
+        gRows := [PillowTestPackbitsRow([20, 20, 20, 21, 22, 23]), PillowTestPackbitsRow([24, 24, 25, 26, 27, 28])]
+        bRows := [PillowTestPackbitsRow([30, 30, 30, 31, 32, 33]), PillowTestPackbitsRow([34, 34, 35, 36, 37, 38])]
+        PillowTestWriteFileBuffer(psdPath, PillowTestPsd(3, 8, 3, 3, 2, [rRows, gRows, bRows], 1))
+        openedPb := Pillow.Image.Open(psdPath)
+        try {
+            AhkTest.AssertEqual("RGB", openedPb.Mode)
+            AhkTest.AssertEqual("0a141e0a141e0a141e0b151f0c16200d1721", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedPb.ToBytes())))
+        } finally {
+            openedPb.Close()
+        }
+
+        ; --- errors ---
+        PillowTestWriteFileBuffer(psdPath, PillowTestPsd(3, 8, 3, 2, 1, [Buffer(2, 0)], 0, unset, unset, 2))
+        AhkTest.AssertEqual("not enough channels", PillowTestFormatCaptureError(() => Pillow.Image.Open(psdPath)))
+        badMode := PillowTestPsd(9, 16, 3, 2, 2, [Buffer(4, 0)])
+        PillowTestWriteFileBuffer(psdPath, badMode)
+        AhkTest.AssertEqual("cannot identify image file <" psdPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(psdPath)))
+        PillowTestWriteFileBuffer(psdPath, Buffer(64, 0))
+        AhkTest.AssertEqual("cannot identify image file <" psdPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(psdPath)))
+        truncated := PillowTestPsd(3, 8, 3, 3, 2, [Buffer(4, 0)])
+        PillowTestWriteFileBuffer(psdPath, truncated)
+        AhkTest.AssertEqual("image file is truncated (1 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(psdPath)))
+
+        ; --- ICC resource (id 1039) ---
+        iccData := Buffer(8, 0)
+        loop 8
+            NumPut("UChar", 40 + A_Index, iccData, A_Index - 1)
+        resources := Buffer(4 + 2 + 1 + 1 + 4 + iccData.Size, 0)
+        offset := 0
+        ; signature
+        offset += 4
+        PillowTestPutBe16(resources, offset, 1039)
+        offset += 2
+        NumPut("UChar", 0, resources, offset)
+        offset += 1
+        ; padding (name length even -> one pad byte)
+        offset += 1
+        PillowTestPutBe32(resources, offset, iccData.Size)
+        offset += 4
+        DllCall("msvcrt\memcpy", "Ptr", resources.Ptr + offset, "Ptr", iccData, "UPtr", iccData.Size, "CDecl Ptr")
+        PillowTestWriteFileBuffer(psdPath, PillowTestPsd(1, 8, 1, 2, 2, [Buffer(4, 0)], 0, unset, resources))
+        openedIcc := Pillow.Image.Open(psdPath)
+        try {
+            AhkTest.AssertTrue(openedIcc.Info.Has("icc_profile"))
+            AhkTest.AssertEqual([41, 42, 43, 44, 45, 46, 47, 48], PillowTestBufferToArray(openedIcc.Info["icc_profile"]))
+        } finally {
+            openedIcc.Close()
+        }
+
+        ; --- save raises the exact KeyError ---
+        saveImage := Pillow.Image.New("L", [2, 2], 7)
+        try {
+            PillowTestAssertSaveKeyError(saveImage, savePath, "PSD")
+        } finally {
+            saveImage.Close()
+        }
+        AhkTest.AssertEqual("Adobe Photoshop", Pillow.Image.FormatDescription("PSD"))
+    } finally {
+        PillowTestDeleteFile(psdPath)
+        PillowTestDeleteFile(savePath)
+    }
+}
+
+AhkTest.Test("Pillow PSD opener matches Pillow 11.3.0 modes, PackBits, and errors", PillowTestOpenPsd)
 
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

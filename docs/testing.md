@@ -47,8 +47,27 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2827` AHK tests: `1391` raw DLL tests and
-`1436` facade tests.
+This suite currently registers `2828` AHK tests: `1391` raw DLL tests and
+`1437` facade tests.
+
+Latest `BEHAV-OPEN-004` verification: the Pillow 11.3.0 oracle
+(`oracle/probe_open_4.py`/`probe_open_4.json` with the ctypes
+cross-check in `oracle/probe_open_4_dll.py`) pins the PSD opener
+(the 26-byte header, the MODES table with the mode-1 packed bits,
+the RGB;L palette, the RGBA promotion, the inverted CMYK raw modes
+and the LAB +128 offset, the raw and PackBits channel layouts with
+the BE16 row byte counts, the id-1039 ICC profile resource, the
+ImageFile KeyError-to-SyntaxError wrap for unknown mode pairs, the
+unwrapped `not enough channels` OSError, and the raw row-modulo
+`bytes not processed` truncation count). The facade PSD target
+passes `1/1` in `16ms`; the full directory suite passes
+`2828/2828` in `20360ms` with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity moves to `493/493` (one deliberate new export) with
+zero difference; and the rebuilt DLL SHA-256 is
+`7CB27E1ED11709523A74955A517251B74FA5B6815AC96A5CCADBD02C9F2BECE7`.
+The behavioral-parity wave continues with the remaining open
+families (FLI/MIC/PCD) next.
 
 Latest `BEHAV-OPEN-003` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_3.py`/`probe_open_3.json`) pins the IPTC field

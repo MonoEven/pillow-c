@@ -188,10 +188,22 @@ single-char modes, `Unknown IPTC image compression`, `illegal field
 length in IPTC/NAA file`, `cannot load this image`, and the
 row-modulo truncated counts).
 
+`BEHAV-OPEN-004` adds one deliberate export —
+`pillow_c_image_open_psd` — that decodes Pillow 11.3.0's
+PsdImageFile base image: the MODES table (mode 1 packed bits,
+L/P/RGB/RGBA/CMYK/LAB), the plane-major RGB;L palette, the
+inverted CMYK raw modes, the raw and PackBits channel layouts with
+the BE16 row byte counts, and the raw row-modulo truncation
+counting. Local status `-47` carries Pillow's exact `not enough
+channels` shape; layers/seek/n_frames stay a facade-side
+documented child and the PackBits short-stream count is a
+documented micro-boundary.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`492/492`; the full AHK suite is `2827/2827`; and the current DLL SHA-256 is
-`24D6E15F69678B8EB2E40798F7D0754634A0A7413DA44A9A4320B878B40408BF`
-(BEHAV-OPEN-003 changes no ABI — the IPTC/MCIDAS openers are
+`493/493`; the full AHK suite is `2828/2828`; and the current DLL SHA-256 is
+`7CB27E1ED11709523A74955A517251B74FA5B6815AC96A5CCADBD02C9F2BECE7`
+(BEHAV-OPEN-004 adds the `pillow_c_image_open_psd` export below;
+BEHAV-OPEN-003 changes no ABI — the IPTC/MCIDAS openers are
 facade-only;
 BEHAV-OPEN-002 adds the `pillow_c_image_open_ftex`,
 `pillow_c_image_open_sun`, `pillow_c_image_open_gbr`,

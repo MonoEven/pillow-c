@@ -25,14 +25,14 @@ Estimate (AUDIT-003, the behavioral standard): literal 100% runtime
 identity with the local Pillow 11.3.0 build is NOT reachable and is
 no longer claimed. The honest split:
 
-- Formats: SAVE 20/30 and OPEN 29/45 byte-exact and test-pinned;
+- Formats: SAVE 20/30 and OPEN 30/45 byte-exact and test-pinned;
   ICNS, EPS, MPO, PDF, PIXAR, XVTHUMB, DCX, FTEX, SUN, GBR, FITS,
-  XPM, IPTC, and MCIDAS are DONE (BEHAV-ICNS-001 / BEHAV-EPS-001 /
-  BEHAV-MPO-001 / BEHAV-PDF-001 / BEHAV-OPEN-001 / BEHAV-OPEN-002 /
-  BEHAV-OPEN-003); the
+  XPM, IPTC, MCIDAS, and PSD are DONE (BEHAV-ICNS-001 /
+  BEHAV-EPS-001 / BEHAV-MPO-001 / BEHAV-PDF-001 / BEHAV-OPEN-001 /
+  BEHAV-OPEN-002 / BEHAV-OPEN-003 / BEHAV-OPEN-004); the
   matchable remainder is bounded
-  (0 saves left; 4
-  opens: FLI/MIC/PCD/PSD (IMT is
+  (0 saves left; 3
+  opens: FLI/MIC/PCD (IMT is
   NOT registered in 11.3.0 — probe-verified no-op); the
   MPEG header-then-cannot-load error match;
   PDF open is unregistered in 11.3.0 -> identification error (DONE
@@ -71,16 +71,17 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-OPEN-003 (IPTC/MCIDAS openers,
-facade-only with Pillow's exact field-walk and directory shapes)
-after BEHAV-OPEN-002/
+Latest covered gap tail: BEHAV-OPEN-004 (PSD opener: raw and
+PackBits channels, every mode mapping, and the exact error shapes)
+after BEHAV-OPEN-003/
+BEHAV-OPEN-002/
 BEHAV-OPEN-001/
 BEHAV-PDF-001/
 BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
 the next bounded child is the remaining pure-Python open families
-(FLI/MIC/PCD/PSD), then the MPEG
+(FLI/MIC/PCD), then the MPEG
 error match and WMF open, then
 the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
@@ -533,6 +534,34 @@ errors, or skips. Facade-only change: source/DLL export parity
 remains `482/482` and the DLL SHA-256 remains
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
 The next bounded child is `BEHAV-PDF-001`, the PDF format.
+
+2026-08-14: `BEHAV-OPEN-004` is GREEN as the PSD opener. The Pillow
+11.3.0 oracle (`oracle/probe_open_4.py`/`probe_open_4.json` with
+the ctypes cross-check in `oracle/probe_open_4_dll.py`) pins
+PsdImageFile: the 26-byte header (magic `8BPS`, version 1), the
+MODES table ((0,1) mode 1 packed bits, (0/1/7/8,8) L, (2,8) P with
+the plane-major RGB;L 768-byte palette, (3,8) RGB plus the
+4-channel RGBA promotion, (4,8) CMYK with the inverted `;I` raw
+modes, (9,8) LAB whose a/b channels get the +128 offset in the
+raw decode; unknown pairs become the identification error through
+the ImageFile KeyError-to-SyntaxError wrap), `not enough channels`
+(OSError, unwrapped), the color-mode/resource/layer blocks (the
+resource walk exposes id 1039 as info["icc_profile"]), the image
+descriptor with compression 0 raw or 1 PackBits channels (the
+BE16 per-row byte counts, the 0-127/129-255/128 PackBits ops), and
+the raw row-modulo `bytes not processed` truncation count. One
+deliberate native export (`pillow_c_image_open_psd`) decodes the
+base image; layers/seek/n_frames stay a documented child and the
+exact PackBits short-stream count is a documented micro-boundary
+(the message shape matches; the C accounting differs). The facade
+PSD target passes `1/1` in `16ms`; the full directory suite passes
+`2828/2828` in `20360ms` with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity moves to `493/493` (one deliberate new export) with
+zero difference; and the rebuilt DLL SHA-256 is
+`7CB27E1ED11709523A74955A517251B74FA5B6815AC96A5CCADBD02C9F2BECE7`.
+The next bounded child is the remaining pure-Python open families
+(FLI/MIC/PCD).
 
 2026-08-14: `BEHAV-OPEN-003` is GREEN as the IPTC and MCIDAS openers
 (facade-only). The Pillow 11.3.0 oracle (`oracle/probe_open_3.py`/
