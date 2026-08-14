@@ -11206,6 +11206,32 @@ PillowCImageSaveMsp(handle, path) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageOpenBlp(path) {
+    handle := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_open_blp",
+        "Ptr", pathBytes,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
+PillowCImageSaveBlp(handle, path, blp1) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_blp",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int", blp1,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageOpenPpm(path) {
     handle := 0
     pathBytes := PillowCUtf8Buffer(path)
@@ -21118,6 +21144,44 @@ PillowCTestImageSaveOpenMsp(*) {
 }
 
 AhkTest.Test("pillow_c image save_msp and open_msp cover Pillow DanM and LinS", PillowCTestImageSaveOpenMsp)
+
+PillowCTestImageSaveOpenBlp(*) {
+    ; BEHAV-BLP-001: Pillow 11.3.0 BLP byte parity (embedded BLP2 fixture:
+    ; the 20-byte header, the 128-byte preamble with the 1172 offset field
+    ; and the pixel count, the quirky linear palette walk, and the indices).
+    image := PillowCCreateImageMode(3, 2, 6)
+    path := PillowCTempBmpPath("save-blp")
+    loaded := 0
+    try {
+        PillowCImageSetBytes(image, [0, 1, 2, 3, 4, 5])
+        ramp := []
+        loop 256 {
+            value := A_Index - 1
+            ramp.Push(value)
+            ramp.Push(value)
+            ramp.Push(value)
+        }
+        PillowCImagePutPaletteRgb(image, ramp)
+        PillowCImageSaveBlp(image, path, 0)
+
+        AhkTest.AssertEqual([
+            66, 76, 80, 50, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0,
+            2, 0, 0, 0, 148, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ], PillowCArraySlice(PillowCReadFileBytes(path), 1, 32))
+        AhkTest.AssertEqual([0, 1, 2, 3, 4, 5], PillowCArraySlice(PillowCReadFileBytes(path), 1173, 1178))
+
+        loaded := PillowCImageOpenBlp(path)
+        AhkTest.AssertEqual(3, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17], PillowCImageToArray(loaded, 18))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_blp and open_blp cover Pillow BLP2", PillowCTestImageSaveOpenBlp)
 
 PillowCTestImageBmpRejectsUnsupportedModesAndInvalidFiles(*) {
     cmyk := PillowCCreateImageMode(1, 1, 7)

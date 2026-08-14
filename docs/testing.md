@@ -47,23 +47,26 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2813` AHK tests: `1390` raw DLL tests and
-`1423` facade tests.
+This suite currently registers `2815` AHK tests: `1391` raw DLL tests and
+`1424` facade tests.
 
-Latest `BEHAV-PALM-001` verification: the Pillow 11.3.0 oracle
-(PalmImagePlugin source plus fixtures) shows Palm pixmaps are
-save-only — a 16-byte big-endian header, a 1026-byte colormap for P
-mode, and row-padded 8-bit indices, with the planar-slice colormap
-quirk — and non-P modes raise `cannot write mode X as Palm` with no
-OPEN registered. The facade `SavePalm` reproduces the exact header,
-the quirky colormap, and the row padding; mode errors and the
-Pillow-shaped open-identification error match exactly. The facade
-PALM target passes `1/1` in `32ms`, and the full directory suite
-passes `2813/2813` in `20422ms`, with zero failures, errors, or
-skips. Facade-only change: source/DLL export parity remains
-`469/469` (DLL byte-identical) and the DLL SHA-256 remains
-`6D4D2F8378AD163017C1DDA0EF8F3A8C71014143A3B212FEBF9EE617F9A0A2CA`.
-The behavioral-parity wave continues with `BEHAV-BLP-001` next.
+Latest `BEHAV-BLP-001` verification: the Pillow 11.3.0 oracle
+(BlpImagePlugin source plus fixtures) shows BLP is P-mode only —
+BLP2/BLP1 headers, a 128-byte preamble with Pillow's 1172-offset
+quirk, 256 quirky linear-walk palette entries, and raw indices,
+decoded back through the quirky palette into RGB. The new native
+`pillow_c_image_open_blp`/`save_blp` exports implement the exact
+layout (RGBA-palette alpha and DXT stay separate children), and the
+facade routes `.blp`/`BLP` with the `blp_version` option and Pillow's
+exact `Unsupported BLP image mode` error. The facade BLP target
+passes `1/1` (byte-exact BLP2 and BLP1 fixtures, the reopen matrix,
+five exact mode errors) and the raw BLP target passes `1/1`; the
+full directory suite passes `2815/2815` in `42047ms`, with zero
+failures, errors, or skips. Release x64 Rebuild is clean;
+source/DLL export parity moves to `471/471` with zero difference;
+and the rebuilt DLL SHA-256 is
+`F221F74B23EED5BA832F5E551E46AA72B2B7B31C4A6CD1BD04AD656F214E45F8`.
+The behavioral-parity wave continues with `BEHAV-SPIDER-001` next.
 
 Latest `API-PATH-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and

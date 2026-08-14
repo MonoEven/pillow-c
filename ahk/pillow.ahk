@@ -8576,6 +8576,8 @@ class Pillow {
                 return "MSP"
             if RegExMatch(path, "i)\.palm$")
                 return "PALM"
+            if RegExMatch(path, "i)\.blp$")
+                return "BLP"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -8605,7 +8607,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -8618,6 +8620,7 @@ class Pillow {
                 "IM", "IM",
                 "MSP", "Windows Paint",
                 "PALM", "Palm pixmap",
+                "BLP", "Blizzard Mipmap Format",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -10145,6 +10148,29 @@ class Pillow {
                 ; bounded slice covers the 8-bit P path (the L-with-bpp and
                 ; mode-1 inverted slices stay separate children).
                 this.SavePalm(path)
+                return
+            }
+            if resolvedFormat = "BLP" {
+                ; BEHAV-BLP-001: Pillow's BLP is P-mode only; the native
+                ; codec writes the exact BLP1/BLP2 header, the 128-byte
+                ; preamble, the quirky linear palette, and the indices
+                ; (RGB-palette slice; RGBA-palette alpha stays a child).
+                if this.Mode != "P"
+                    throw Error("Unsupported BLP image mode", -1)
+                blp1 := 0
+                if IsSet(saveOptions) {
+                    versionOption := Pillow.Image.SaveOption(saveOptions, "BlpVersion", "blp_version")
+                    if versionOption.Set && versionOption.Value = "BLP1"
+                        blp1 := 1
+                }
+                pathBytes := Pillow.Image.Utf8Buffer(path)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_blp",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", pathBytes,
+                    "Int", blp1,
+                    "Int"
+                ))
                 return
             }
             if IsSet(saveOptions) && resolvedFormat = "CUR" {

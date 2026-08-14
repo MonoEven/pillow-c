@@ -37,6 +37,34 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 BEHAV-BLP-001 BLP Format (GREEN)
+
+`BEHAV-BLP-001` implements the BLP (Blizzard Mipmap) format with
+byte-level behavioral parity.
+
+The Pillow 11.3.0 oracle (BlpImagePlugin source plus fixtures) shows
+BLP is P-mode only: BLP2 (20-byte header) or BLP1 (28-byte header
+with the blp_version option), both followed by a 128-byte preamble
+(the u32 pixel-offset field carrying Pillow's quirk value 1172 even
+for BLP1, 60 zero bytes, the u32 pixel count, 60 more zero bytes),
+256 four-byte palette entries produced by Pillow's linear walk
+through the planar RGB blob with a BGR swap (entry k = blob[3k+2],
+blob[3k+1], blob[3k+0], 255), and the raw indices; the reopen
+decodes through that quirky palette into RGB. The new native
+`pillow_c_image_open_blp`/`save_blp` exports implement the exact
+headers, preamble, quirky palette, and decode (RGBA-palette alpha
+and DXT-compressed files stay separate children), and the facade
+routes `.blp`/`BLP` with the `blp_version` option and Pillow's exact
+`Unsupported BLP image mode` error. The facade BLP target passes
+`1/1` (byte-exact BLP2 and BLP1 fixtures, the reopen matrix, five
+exact mode errors) and the raw BLP target passes `1/1`; the full
+directory suite passes `2815/2815` in `42047ms`. Release x64 Rebuild
+is clean; source/DLL export parity moves to `471/471`; the rebuilt
+DLL SHA-256 is
+`F221F74B23EED5BA832F5E551E46AA72B2B7B31C4A6CD1BD04AD656F214E45F8`.
+The BLP row left the FMT-UNREC-001 boundary list. The next bounded
+child is `BEHAV-SPIDER-001`, the SPIDER format.
+
 ## 2026-08-14 BEHAV-PALM-001 PALM Format (GREEN)
 
 `BEHAV-PALM-001` implements the PALM (Palm pixmap) format with
@@ -159,7 +187,7 @@ Classification of every boundary item (treatment applies per packet):
 | IM | save all modes OK; reopen OK | DONE — BEHAV-IM-001 (byte-exact 512-byte header + bottom-up ;L planar raw payloads; greyscale-LUT lut attribute recorded as a boundary note) |
 | MSP | save mode 1 (probe in packet); others `cannot write mode X as MSP` | DONE — BEHAV-MSP-001 (byte-exact DanM header/rows + LinS RLE decode + exact mode errors) |
 | PALM | save P OK; others `cannot write mode X as Palm` | DONE — BEHAV-PALM-001 (byte-exact header + planar-slice colormap quirk + exact mode errors + the no-open identification error; L-with-bpp and mode-1 slices stay separate children) |
-| BLP | save P OK; L/RGB/RGBA `Unsupported BLP image mode` | IMPLEMENT save P + match mode errors |
+| BLP | save P OK; L/RGB/RGBA `Unsupported BLP image mode` | DONE — BEHAV-BLP-001 (byte-exact BLP1/BLP2 headers + 1172-offset quirk + linear palette walk + decode; RGBA-palette alpha and DXT stay children) |
 | SPIDER | save L/RGB/RGBA/P OK (numpy); reopen as F | IMPLEMENT (facade float rows) |
 | PCX | save L/RGB/P OK; RGBA `Cannot save RGBA images as PCX` | IMPLEMENT (native RLE packet) |
 | SGI | save L/RGB/RGBA OK; P `Unsupported SGI image mode` | IMPLEMENT (native RLE packet) |

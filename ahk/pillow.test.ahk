@@ -21916,10 +21916,10 @@ PillowTestUnrecordedFormatBoundaries(*) {
         ; BLP/DIB/IM/SPIDER via C/numpy plugins and errors per-mode or
         ; per-handler on the rest), so open and save fail loudly with the
         ; same documented message. DIB left this list in BEHAV-DIB-001,
-        ; IM in BEHAV-IM-001, MSP in BEHAV-MSP-001, and PALM in
-        ; BEHAV-PALM-001 (all now implemented with Pillow's exact mode
-        ; errors).
-        for format in ["BLP", "BUFR", "GRIB", "HDF5", "SPIDER", "WMF", "FITS", "FPX", "FTEX", "GBR", "IMT", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD", "PIXAR", "XVTHUMB"] {
+        ; IM in BEHAV-IM-001, MSP in BEHAV-MSP-001, PALM in
+        ; BEHAV-PALM-001, and BLP in BEHAV-BLP-001 (all now implemented
+        ; with Pillow's exact mode errors).
+        for format in ["BUFR", "GRIB", "HDF5", "SPIDER", "WMF", "FITS", "FPX", "FTEX", "GBR", "IMT", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD", "PIXAR", "XVTHUMB"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -21928,7 +21928,7 @@ PillowTestUnrecordedFormatBoundaries(*) {
             }
             AhkTest.AssertEqual("Pillow image file format is unsupported", boundaryError)
         }
-        for extension in [".blp", ".fits", ".wmf"] {
+        for extension in [".fits", ".wmf"] {
             boundaryError := ""
             try {
                 Pillow.Image.Open(StrReplace(PillowTestTempPngPath("fmt-unrec-open"), ".png", extension))
@@ -22302,6 +22302,69 @@ PillowTestPalmFormat(*) {
 }
 
 AhkTest.Test("Pillow PALM format matches Pillow 11.3.0 bytes and errors", PillowTestPalmFormat)
+
+PillowTestBlpFormat(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := A_Temp "\blp-1.blp"
+    blp1Path := A_Temp "\blp-2.blp"
+    try {
+        ; BEHAV-BLP-001: P-mode BLP2/BLP1 saves are byte-exact against
+        ; Pillow (embedded fixtures for a 3x2 palette-ramp image).
+        p := Pillow.Image.New("P", [3, 2])
+        try {
+            p.FromBytes(PillowTestBuffer([0, 1, 2, 3, 4, 5]))
+            ramp := []
+            loop 256 {
+                value := A_Index - 1
+                ramp.Push(value)
+                ramp.Push(value)
+                ramp.Push(value)
+            }
+            p.PutPalette(ramp, "RGB")
+            p.Save(path, "BLP")
+            p.Save(blp1Path, "BLP", { blp_version: "BLP1" })
+        } finally {
+            p.Close()
+        }
+        AhkTest.AssertEqual(PillowTestBufferToArray(PillowTestBuffer(PillowTestHexBytes("424c5032010000000100000003000000020000009404000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020100ff050403ff080706ff0b0a09ff0e0d0cff11100fff141312ff171615ff1a1918ff1d1c1bff201f1eff232221ff262524ff292827ff2c2b2aff2f2e2dff323130ff353433ff383736ff3b3a39ff3e3d3cff41403fff444342ff474645ff4a4948ff4d4c4bff504f4eff535251ff565554ff595857ff5c5b5aff5f5e5dff626160ff656463ff686766ff6b6a69ff6e6d6cff71706fff747372ff777675ff7a7978ff7d7c7bff807f7eff838281ff868584ff898887ff8c8b8aff8f8e8dff929190ff959493ff989796ff9b9a99ff9e9d9cffa1a09fffa4a3a2ffa7a6a5ffaaa9a8ffadacabffb0afaeffb3b2b1ffb6b5b4ffb9b8b7ffbcbbbaffbfbebdffc2c1c0ffc5c4c3ffc8c7c6ffcbcac9ffcecdccffd1d0cfffd4d3d2ffd7d6d5ffdad9d8ffdddcdbffe0dfdeffe3e2e1ffe6e5e4ffe9e8e7ffecebeaffefeeedfff2f1f0fff5f4f3fff8f7f6fffbfaf9fffefdfcff0100ffff040302ff070605ff0a0908ff0d0c0bff100f0eff131211ff161514ff191817ff1c1b1aff1f1e1dff222120ff252423ff282726ff2b2a29ff2e2d2cff31302fff343332ff373635ff3a3938ff3d3c3bff403f3eff434241ff464544ff494847ff4c4b4aff4f4e4dff525150ff555453ff585756ff5b5a59ff5e5d5cff61605fff646362ff676665ff6a6968ff6d6c6bff706f6eff737271ff767574ff797877ff7c7b7aff7f7e7dff828180ff858483ff888786ff8b8a89ff8e8d8cff91908fff949392ff979695ff9a9998ff9d9c9bffa09f9effa3a2a1ffa6a5a4ffa9a8a7ffacabaaffafaeadffb2b1b0ffb5b4b3ffb8b7b6ffbbbab9ffbebdbcffc1c0bfffc4c3c2ffc7c6c5ffcac9c8ffcdcccbffd0cfceffd3d2d1ffd6d5d4ffd9d8d7ffdcdbdaffdfdeddffe2e1e0ffe5e4e3ffe8e7e6ffebeae9ffeeedecfff1f0effff4f3f2fff7f6f5fffaf9f8fffdfcfbff00fffeff030201ff060504ff090807ff0c0b0aff0f0e0dff121110ff151413ff181716ff1b1a19ff1e1d1cff21201fff242322ff272625ff2a2928ff2d2c2bff302f2eff333231ff363534ff393837ff3c3b3aff3f3e3dff424140ff454443ff484746ff4b4a49ff4e4d4cff51504fff545352ff575655ff5a5958ff5d5c5bff605f5eff636261ff666564ff696867ff6c6b6aff6f6e6dff727170ff757473ff787776ff7b7a79ff7e7d7cff81807fff848382ff878685ff8a8988ff8d8c8bff908f8eff939291ff969594ff999897ff9c9b9aff9f9e9dffa2a1a0ffa5a4a3ffa8a7a6ffabaaa9ffaeadacffb1b0afffb4b3b2ffb7b6b5ffbab9b8ffbdbcbbffc0bfbeffc3c2c1ffc6c5c4ffc9c8c7ffcccbcaffcfcecdffd2d1d0ffd5d4d3ffd8d7d6ffdbdad9ffdedddcffe1e0dfffe4e3e2ffe7e6e5ffeae9e8ffedecebfff0efeefff3f2f1fff6f5f4fff9f8f7fffcfbfafffffefdff000102030405"))), PillowTestReadFileBytes(path))
+        AhkTest.AssertEqual(PillowTestBufferToArray(PillowTestBuffer(PillowTestHexBytes("424c50310100000000000000030000000200000005000000000000009404000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020100ff050403ff080706ff0b0a09ff0e0d0cff11100fff141312ff171615ff1a1918ff1d1c1bff201f1eff232221ff262524ff292827ff2c2b2aff2f2e2dff323130ff353433ff383736ff3b3a39ff3e3d3cff41403fff444342ff474645ff4a4948ff4d4c4bff504f4eff535251ff565554ff595857ff5c5b5aff5f5e5dff626160ff656463ff686766ff6b6a69ff6e6d6cff71706fff747372ff777675ff7a7978ff7d7c7bff807f7eff838281ff868584ff898887ff8c8b8aff8f8e8dff929190ff959493ff989796ff9b9a99ff9e9d9cffa1a09fffa4a3a2ffa7a6a5ffaaa9a8ffadacabffb0afaeffb3b2b1ffb6b5b4ffb9b8b7ffbcbbbaffbfbebdffc2c1c0ffc5c4c3ffc8c7c6ffcbcac9ffcecdccffd1d0cfffd4d3d2ffd7d6d5ffdad9d8ffdddcdbffe0dfdeffe3e2e1ffe6e5e4ffe9e8e7ffecebeaffefeeedfff2f1f0fff5f4f3fff8f7f6fffbfaf9fffefdfcff0100ffff040302ff070605ff0a0908ff0d0c0bff100f0eff131211ff161514ff191817ff1c1b1aff1f1e1dff222120ff252423ff282726ff2b2a29ff2e2d2cff31302fff343332ff373635ff3a3938ff3d3c3bff403f3eff434241ff464544ff494847ff4c4b4aff4f4e4dff525150ff555453ff585756ff5b5a59ff5e5d5cff61605fff646362ff676665ff6a6968ff6d6c6bff706f6eff737271ff767574ff797877ff7c7b7aff7f7e7dff828180ff858483ff888786ff8b8a89ff8e8d8cff91908fff949392ff979695ff9a9998ff9d9c9bffa09f9effa3a2a1ffa6a5a4ffa9a8a7ffacabaaffafaeadffb2b1b0ffb5b4b3ffb8b7b6ffbbbab9ffbebdbcffc1c0bfffc4c3c2ffc7c6c5ffcac9c8ffcdcccbffd0cfceffd3d2d1ffd6d5d4ffd9d8d7ffdcdbdaffdfdeddffe2e1e0ffe5e4e3ffe8e7e6ffebeae9ffeeedecfff1f0effff4f3f2fff7f6f5fffaf9f8fffdfcfbff00fffeff030201ff060504ff090807ff0c0b0aff0f0e0dff121110ff151413ff181716ff1b1a19ff1e1d1cff21201fff242322ff272625ff2a2928ff2d2c2bff302f2eff333231ff363534ff393837ff3c3b3aff3f3e3dff424140ff454443ff484746ff4b4a49ff4e4d4cff51504fff545352ff575655ff5a5958ff5d5c5bff605f5eff636261ff666564ff696867ff6c6b6aff6f6e6dff727170ff757473ff787776ff7b7a79ff7e7d7cff81807fff848382ff878685ff8a8988ff8d8c8bff908f8eff939291ff969594ff999897ff9c9b9aff9f9e9dffa2a1a0ffa5a4a3ffa8a7a6ffabaaa9ffaeadacffb1b0afffb4b3b2ffb7b6b5ffbab9b8ffbdbcbbffc0bfbeffc3c2c1ffc6c5c4ffc9c8c7ffcccbcaffcfcecdffd2d1d0ffd5d4d3ffd8d7d6ffdbdad9ffdedddcffe1e0dfffe4e3e2ffe7e6e5ffeae9e8ffedecebfff0efeefff3f2f1fff6f5f4fff9f8f7fffcfbfafffffefdff000102030405"))), PillowTestReadFileBytes(blp1Path))
+
+        ; reopen decodes through the quirky palette into RGB (Pillow parity).
+        for file in [path, blp1Path] {
+            opened := Pillow.Image.Open(file)
+            try {
+                AhkTest.AssertEqual("BLP", opened.Format)
+                AhkTest.AssertEqual("RGB", opened.Mode)
+                AhkTest.AssertEqual([3, 2], opened.Size)
+                AhkTest.AssertEqual([0, 1, 2], opened.GetPixel([0, 0]))
+                AhkTest.AssertEqual([9, 10, 11], opened.GetPixel([0, 1]))
+            } finally {
+                opened.Close()
+            }
+        }
+
+        ; Pillow raises the exact mode error for non-P modes.
+        for item in [["L"], ["RGB"], ["RGBA"], ["CMYK"], ["1"]] {
+            bad := Pillow.Image.New(item[1], [2, 2])
+            try {
+                saveError := ""
+                try {
+                    bad.Save(path, "BLP")
+                } catch Error as err {
+                    saveError := err.Message
+                }
+                AhkTest.AssertEqual("Unsupported BLP image mode", saveError)
+            } finally {
+                bad.Close()
+            }
+        }
+    } finally {
+        PillowTestDeleteFile(path)
+        PillowTestDeleteFile(blp1Path)
+    }
+}
+
+AhkTest.Test("Pillow BLP format matches Pillow 11.3.0 bytes and round-trips", PillowTestBlpFormat)
 
 
 PillowTestImageMathEval(*) {

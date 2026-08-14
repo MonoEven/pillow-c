@@ -36,13 +36,14 @@ errors and the Pillow-shaped open-identification error; the DLL
 SHA-256 is unchanged.
 
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`469/469`; the full AHK suite is `2813/2813`; and the current DLL SHA-256 is
-`6D4D2F8378AD163017C1DDA0EF8F3A8C71014143A3B212FEBF9EE617F9A0A2CA`
-(BEHAV-MSP-001 adds two deliberate exports — `pillow_c_image_open_msp`
-and `pillow_c_image_save_msp`, the exact DanM header/checksum/rows
-and the LinS RLE decode — over the BEHAV-IM-001 raw slice, which
-added `pillow_c_image_get_raw_bytes_oriented` and the per-row planar
-`;L` raw modes).
+`471/471`; the full AHK suite is `2815/2815`; and the current DLL SHA-256 is
+`F221F74B23EED5BA832F5E551E46AA72B2B7B31C4A6CD1BD04AD656F214E45F8`
+(BEHAV-BLP-001 adds two deliberate exports — `pillow_c_image_open_blp`
+and `pillow_c_image_save_blp` (with the BLP1 flag), the exact
+BLP1/BLP2 headers, the 1172-offset preamble quirk, the linear-walk
+palette, and the quirky-palette decode — over the MSP/IM/DIB slices:
+`pillow_c_image_open_msp`/`save_msp`, the oriented raw-bytes export,
+the `;L` planar raw modes, and the mode-1 BMP branches).
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.

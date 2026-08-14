@@ -523,6 +523,31 @@ Current work packet:
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
 
+2026-08-14: `BEHAV-BLP-001` is GREEN as the BLP format (behavioral
+parity). The Pillow 11.3.0 oracle (BlpImagePlugin source plus
+fixtures) shows BLP is P-mode only: BLP2 (20-byte header) or BLP1
+(28-byte header with the blp_version option), both followed by a
+128-byte preamble (the u32 pixel-offset field carrying Pillow's
+quirk value 1172 even for BLP1, 60 zero bytes, the u32 pixel count,
+60 more zero bytes), 256 four-byte palette entries produced by
+Pillow's linear walk through the planar RGB blob with a BGR swap
+(entry k = blob[3k+2], blob[3k+1], blob[3k+0], 255), and the raw
+indices; the reopen decodes through that quirky palette into RGB.
+The new native `pillow_c_image_open_blp`/`save_blp` exports implement
+the exact headers, preamble, quirky palette, and decode (RGBA-palette
+alpha and DXT-compressed files stay separate children), and the
+facade routes `.blp`/`BLP` with the `blp_version` option and Pillow's
+exact `Unsupported BLP image mode` error. The facade BLP target
+passes `1/1` (byte-exact BLP2 and BLP1 fixtures, the reopen matrix,
+five exact mode errors) and the raw BLP target passes `1/1`; the
+full directory suite passes `2815/2815` in `42047ms`, with zero
+failures, errors, or skips. Release x64 Rebuild is clean;
+source/DLL export parity moves to `471/471` (two deliberate new
+exports) with zero difference; and the rebuilt DLL SHA-256 is
+`F221F74B23EED5BA832F5E551E46AA72B2B7B31C4A6CD1BD04AD656F214E45F8`.
+The BLP row left the FMT-UNREC-001 boundary list. The next bounded
+child is `BEHAV-SPIDER-001`, the SPIDER format.
+
 2026-08-14: `BEHAV-PALM-001` is GREEN as the PALM format (behavioral
 parity, facade-only). The Pillow 11.3.0 oracle (PalmImagePlugin
 source plus fixtures) shows Palm pixmaps are save-only: a 16-byte

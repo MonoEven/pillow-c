@@ -1985,6 +1985,171 @@ int open_msp_image(const char* path, PillowCImage** out_image)
     }
 }
 
+int save_blp_image(const PillowCImage* image, const char* path, int blp1)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->mode != PILLOW_C_MODE_P || image->channels != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->palette_alpha_mode != PILLOW_C_PALETTE_ALPHA_NONE) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = pillow_c_refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+
+    try {
+        std::vector<std::uint8_t> out;
+        out.reserve(128u + 1024u + static_cast<std::size_t>(image->width) * static_cast<std::size_t>(image->height) + 64u);
+        if (blp1) {
+            append_ascii_text(out, "BLP1");
+            append_le32(out, 1);
+            append_le32(out, 0); // alpha depth
+            append_le32(out, static_cast<std::uint32_t>(image->width));
+            append_le32(out, static_cast<std::uint32_t>(image->height));
+            append_le32(out, 5);
+            append_le32(out, 0);
+        } else {
+            append_ascii_text(out, "BLP2");
+            append_le32(out, 1);
+            out.push_back(1); // encoding: uncompressed
+            out.push_back(0); // alpha depth
+            out.push_back(0); // alpha encoding
+            out.push_back(0); // mips
+            append_le32(out, static_cast<std::uint32_t>(image->width));
+            append_le32(out, static_cast<std::uint32_t>(image->height));
+        }
+        const std::size_t header_size = out.size();
+        // Pillow's C encoder writes 1172 (the BLP2-style offset = 20 + 128
+        // + 1024) for BLP1 files too, even though the BLP1 header is 28
+        // bytes; the actual indices still follow the 128-byte preamble.
+        const std::uint32_t pixel_offset = 1172u;
+        (void)header_size;
+        append_le32(out, pixel_offset);
+        for (int i = 0; i < 60; ++i) {
+            out.push_back(0);
+        }
+        append_le32(out, static_cast<std::uint32_t>(image->width) * static_cast<std::uint32_t>(image->height));
+        for (int i = 0; i < 60; ++i) {
+            out.push_back(0);
+        }
+        // Pillow quirk: the writer walks the planar RGB blob linearly with
+        // a BGR swap, so entry k = (blob[3k+2], blob[3k+1], blob[3k+0]).
+        const auto blob_byte = [&image](std::size_t i) -> std::uint8_t {
+            if (i < 256u) {
+                return image->palette_rgb[i * 3u + 0u];
+            }
+            if (i < 512u) {
+                return image->palette_rgb[(i - 256u) * 3u + 1u];
+            }
+            if (i < 768u) {
+                return image->palette_rgb[(i - 512u) * 3u + 2u];
+            }
+            return 0;
+        };
+        for (int k = 0; k < 256; ++k) {
+            const std::size_t index = static_cast<std::size_t>(k) * 3u;
+            out.push_back(blob_byte(index + 2u));
+            out.push_back(blob_byte(index + 1u));
+            out.push_back(blob_byte(index));
+            out.push_back(255);
+        }
+        out.insert(out.end(), image->pixels.begin(), image->pixels.end());
+        if (!write_binary_file(path, out)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int open_blp_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const bool is_blp1 = data.size() >= 4 && data[0] == 'B' && data[1] == 'L' && data[2] == 'P' && data[3] == '1';
+        const bool is_blp2 = data.size() >= 4 && data[0] == 'B' && data[1] == 'L' && data[2] == 'P' && data[3] == '2';
+        if (!is_blp1 && !is_blp2) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::size_t header_size = is_blp1 ? 28u : 20u;
+        if (data.size() < header_size + 4u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::uint32_t compression = read_le32(data.data() + 4u);
+        if (compression != 1) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::uint32_t width = read_le32(data.data() + (is_blp1 ? 12u : 12u));
+        const std::uint32_t height = read_le32(data.data() + (is_blp1 ? 16u : 16u));
+        if (width <= 0 || height <= 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::uint32_t pixel_offset = read_le32(data.data() + header_size);
+        const std::uint32_t pixel_count = data.size() >= header_size + 68u ? read_le32(data.data() + header_size + 64u) : 0u;
+        if (pixel_offset > data.size() || pixel_count != width * height) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::size_t palette_offset = header_size + 128u;
+        if (palette_offset + 1024u > data.size()) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        // The offset field carries Pillow's BLP2-style 1172 quirk even for
+        // BLP1 files; the real index data starts after the palette block.
+        const std::size_t indices_offset = data.size() - static_cast<std::size_t>(pixel_count);
+        if (indices_offset < palette_offset + 1024u) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+
+        std::size_t stride = 0;
+        std::size_t size = 0;
+        if (!checked_image_size(static_cast<int>(width), static_cast<int>(height), 3, &stride, &size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        auto* image = new PillowCImage{
+            static_cast<int>(width),
+            static_cast<int>(height),
+            PILLOW_C_MODE_RGB,
+            3,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        for (std::uint32_t i = 0; i < pixel_count; ++i) {
+            const std::uint8_t index = data[indices_offset + i];
+            const std::size_t entry = palette_offset + static_cast<std::size_t>(index) * 4u;
+            if (entry + 4u > data.size()) {
+                delete image;
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            const std::uint8_t b = data[entry];
+            const std::uint8_t g = data[entry + 1u];
+            const std::uint8_t r = data[entry + 2u];
+            image->pixels[static_cast<std::size_t>(i) * 3u + 0u] = r;
+            image->pixels[static_cast<std::size_t>(i) * 3u + 1u] = g;
+            image->pixels[static_cast<std::size_t>(i) * 3u + 2u] = b;
+        }
+
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 struct IcoDirectoryEntryInfo {
     std::uint8_t width_byte = 0;
     std::uint8_t height_byte = 0;
@@ -3340,6 +3505,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_msp(
     const char* path)
 {
     return save_msp_image(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_blp(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_blp_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_blp(
+    const PillowCImage* image,
+    const char* path,
+    int blp1)
+{
+    return save_blp_image(image, path, blp1 != 0);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_ppm(
