@@ -27990,6 +27990,117 @@ PillowTestGifDescriptorFlagsIndex(bytes) {
 
 AhkTest.Test("Pillow Image.Save GIF interlace defaults and palette remap match Pillow 11.3.0", PillowTestSaveOptionGif)
 
+PillowTestReadTiffResolutionTags(path) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0Entries(bytes)
+    result := Map()
+    if entries.Has(282) {
+        entry := entries[282]
+        result["x"] := [PillowTestReadLe32(bytes, entry.Value + 1), PillowTestReadLe32(bytes, entry.Value + 5)]
+    }
+    if entries.Has(283) {
+        entry := entries[283]
+        result["y"] := [PillowTestReadLe32(bytes, entry.Value + 1), PillowTestReadLe32(bytes, entry.Value + 5)]
+    }
+    if entries.Has(296)
+        result["unit"] := entries[296].Value
+    return result
+}
+
+PillowTestSaveOptionTiff(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGB", [8, 8], [0, 0, 0])
+    try {
+        ; --- resolution writes X/YResolution rationals and no unit tag ---
+        tiffPath := PillowTestTempTiffPath("saveopt-res300")
+        image.Save(tiffPath, "TIFF", { resolution: 300 })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertEqual([300, 1], tags["x"])
+        AhkTest.AssertEqual([300, 1], tags["y"])
+        AhkTest.AssertFalse(tags.Has("unit"))
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- fractional resolution uses Pillow's exact rational (291/2) ---
+        tiffPath := PillowTestTempTiffPath("saveopt-res1455")
+        image.Save(tiffPath, "TIFF", { resolution: 145.5 })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertEqual([291, 2], tags["x"])
+        AhkTest.AssertEqual([291, 2], tags["y"])
+        AhkTest.AssertFalse(tags.Has("unit"))
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- continued-fraction rationals (145.1 -> 1451/10, 5000 -> 5000/1) ---
+        tiffPath := PillowTestTempTiffPath("saveopt-res1451")
+        image.Save(tiffPath, "TIFF", { resolution: 145.1 })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertEqual([1451, 10], tags["x"])
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-res5000")
+        image.Save(tiffPath, "TIFF", { resolution: 5000 })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertEqual([5000, 1], tags["x"])
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- resolution 0 is legal in Pillow and writes 0/1 ---
+        tiffPath := PillowTestTempTiffPath("saveopt-reszero")
+        image.Save(tiffPath, "TIFF", { resolution: 0 })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertEqual([0, 1], tags["x"])
+        AhkTest.AssertEqual([0, 1], tags["y"])
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- a pair truncates to its first value on both axes (libtiff warning) ---
+        tiffPath := PillowTestTempTiffPath("saveopt-respair")
+        image.Save(tiffPath, "TIFF", { resolution: [145.5, 72.5] })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertEqual([291, 2], tags["x"])
+        AhkTest.AssertEqual([291, 2], tags["y"])
+        AhkTest.AssertFalse(tags.Has("unit"))
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- resolution + resolution_unit writes tag 296 with the unit ---
+        tiffPath := PillowTestTempTiffPath("saveopt-resunit")
+        image.Save(tiffPath, "TIFF", { resolution: 300, resolution_unit: 3 })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertEqual([300, 1], tags["x"])
+        AhkTest.AssertEqual(3, tags["unit"])
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- resolution_unit alone writes ONLY tag 296 ---
+        tiffPath := PillowTestTempTiffPath("saveopt-unitonly")
+        image.Save(tiffPath, "TIFF", { resolution_unit: 3 })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertFalse(tags.Has("x"))
+        AhkTest.AssertFalse(tags.Has("y"))
+        AhkTest.AssertEqual(3, tags["unit"])
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- unit values are written verbatim (0 and 65535 included) ---
+        tiffPath := PillowTestTempTiffPath("saveopt-unit0")
+        image.Save(tiffPath, "TIFF", { resolution_unit: 0 })
+        AhkTest.AssertEqual(0, PillowTestReadTiffResolutionTags(tiffPath)["unit"])
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-unit65535")
+        image.Save(tiffPath, "TIFF", { resolution_unit: 65535 })
+        AhkTest.AssertEqual(65535, PillowTestReadTiffResolutionTags(tiffPath)["unit"])
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- Pillow's exact error shapes ---
+        tiffPath := PillowTestTempTiffPath("saveopt-reserr")
+        AhkTest.AssertEqual("bad operand type for abs(): 'str'", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { resolution: "x" })))
+        AhkTest.AssertEqual("argument out of range", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { resolution: -300 })))
+        AhkTest.AssertEqual("required argument is not an integer", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { resolution_unit: "x" })))
+        AhkTest.AssertEqual("required argument is not an integer", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { resolution_unit: 2.5 })))
+        AhkTest.AssertEqual("ushort format requires 0 <= number <= 0xffff", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { resolution_unit: -1 })))
+        AhkTest.AssertEqual("ushort format requires 0 <= number <= 0xffff", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { resolution_unit: 65536 })))
+        PillowTestDeleteFile(tiffPath)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF resolution and resolution_unit match Pillow 11.3.0", PillowTestSaveOptionTiff)
+
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
 

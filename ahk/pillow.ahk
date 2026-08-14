@@ -13416,6 +13416,51 @@ class Pillow {
             if IsSet(saveOptions) && resolvedFormat = "TIFF" {
                 dpiOption := Pillow.Image.SaveOption(saveOptions, "Dpi", "dpi")
                 compressionOption := Pillow.Image.SaveOption(saveOptions, "Compression", "compression")
+                resolutionOption := Pillow.Image.SaveOption(saveOptions, "Resolution", "resolution")
+                resolutionUnitOption := Pillow.Image.SaveOption(saveOptions, "ResolutionUnit", "resolution_unit")
+                stripSizeOption := Pillow.Image.SaveOption(saveOptions, "StripSize", "strip_size")
+                if resolutionOption.Set || resolutionUnitOption.Set {
+                    ; Pillow 11.3.0's resolution/resolution_unit: the scalar
+                    ; (a pair truncates to its first value for BOTH axes,
+                    ; matching the "too many entries" libtiff warning) writes
+                    ; X/YResolution with NO ResolutionUnit tag unless
+                    ; resolution_unit is given; resolution_unit alone writes
+                    ; tag 296. strip_size is accepted and ignored by Pillow
+                    ; (the strip writer always packs the full image).
+                    hasResolution := 0
+                    resolutionX := 0.0
+                    if resolutionOption.Set {
+                        first := IsObject(resolutionOption.Value) ? resolutionOption.Value[1] : resolutionOption.Value
+                        if !(first is Number)
+                            throw Error("bad operand type for abs(): 'str'", -1)
+                        if first < 0
+                            throw Error("argument out of range", -1)
+                        hasResolution := 1
+                        resolutionX := first
+                    }
+                    hasUnit := 0
+                    resolutionUnit := 0
+                    if resolutionUnitOption.Set {
+                        if !(resolutionUnitOption.Value is Integer)
+                            throw Error("required argument is not an integer", -1)
+                        if resolutionUnitOption.Value < 0 || resolutionUnitOption.Value > 65535
+                            throw Error("ushort format requires 0 <= number <= 0xffff", -1)
+                        hasUnit := 1
+                        resolutionUnit := resolutionUnitOption.Value
+                    }
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_tiff_resolution_options",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Int", hasResolution,
+                        "Double", resolutionX,
+                        "Double", resolutionX,
+                        "Int", hasUnit,
+                        "Int", resolutionUnit,
+                        "Int"
+                    ))
+                    return
+                }
                 if dpiOption.Set || compressionOption.Set {
                     hasDpi := 0
                     dpiX := 0.0

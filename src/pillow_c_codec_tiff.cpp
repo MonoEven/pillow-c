@@ -4,8 +4,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <intrin.h>
 #include <limits>
 #include <new>
+#include <numeric>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -5442,28 +5444,249 @@ bool tiff_u32_offset(std::size_t value, std::uint32_t* out_value)
     return true;
 }
 
-int tiff_dpi_to_rational(bool has_dpi, double dpi_x, double dpi_y, std::uint32_t* out_x, std::uint32_t* out_y)
+namespace {
+
+// Pillow 11.3 TiffImagePlugin float -> RATIONAL conversion
+// (ImageFileDirectory_v2.write_rational -> _limit_rational):
+// IFDRational(1/value if value > 1 else value).limit_rational(2**32 - 1),
+// with the (numerator, denominator) pair swapped back when value > 1.
+// Zero maps to 0/1.  This reproduces CPython's exact-binary Fraction plus
+// fractions.Fraction.limit_denominator, so 145.5 -> 291/2, 145.1 -> 1451/10,
+// 0.5 -> 1/2 and 300 -> 300/1, matching Pillow byte for byte.
+bool tiff_float_to_rational(double value, std::uint32_t* out_num, std::uint32_t* out_den)
 {
-    if (!out_x || !out_y) {
+    const std::uint64_t max_den = 0xFFFFFFFFull; // 2**32 - 1
+    if (value == 0.0) {
+        *out_num = 0u;
+        *out_den = 1u;
+        return true;
+    }
+    const bool inverted = value > 1.0;
+    const double v = inverted ? (1.0 / value) : value; // v in (0, 1]
+    int exp2 = 0;
+    const double mantissa = std::frexp(v, &exp2); // v = mantissa * 2**exp2, 0.5 <= mantissa < 1
+    if (exp2 > 1) {
+        return false; // v > 2 cannot occur for validated input
+    }
+    // v = n0 / 2**d_bits exactly; n0 in [2**52, 2**53), d_bits >= 52.
+    std::uint64_t n0 = static_cast<std::uint64_t>(mantissa * 9007199254740992.0); // mantissa * 2**53
+    int d_bits = 53 - exp2;
+    unsigned long trailing = 0;
+    if (_BitScanForward64(&trailing, n0) != 0) {
+        const int shift = static_cast<int>(trailing) < d_bits ? static_cast<int>(trailing) : d_bits;
+        n0 >>= shift;
+        d_bits -= shift;
+    }
+    if (d_bits <= 31) {
+        // The exact binary fraction already fits Pillow's denominator cap.
+        std::uint64_t numerator = n0;
+        std::uint64_t denominator = 1ull << d_bits;
+        if (inverted) {
+            std::swap(numerator, denominator);
+        }
+        *out_num = static_cast<std::uint32_t>(numerator);
+        *out_den = static_cast<std::uint32_t>(denominator);
+        return true;
+    }
+    if (d_bits > 95) {
+        // self < 2**-43, so the continued-fraction limit of CPython's
+        // limit_denominator(2**32-1) is 0/1 (bound2 always wins the tie-break).
+        *out_num = inverted ? 1u : 0u;
+        *out_den = inverted ? 0u : 1u;
+        return true;
+    }
+
+    // Continued-fraction limit_denominator(max_den), ported from
+    // CPython fractions.Fraction.limit_denominator.  The first partial
+    // quotient is always 0 here because 0 < self < 1.
+    std::uint64_t p0 = 1u;
+    std::uint64_t q0 = 0u;
+    std::uint64_t p1 = 0u;
+    std::uint64_t q1 = 1u;
+    std::uint64_t n = n0;
+    std::uint64_t d = 0u; // remainder after the second step
+    std::uint64_t a2 = 0u;
+    if (d_bits <= 63) {
+        const std::uint64_t d0 = 1ull << d_bits;
+        a2 = d0 / n0;
+        d = d0 % n0;
+    } else {
+        // d0 = 2**d_bits with 64 <= d_bits <= 95: obtain the exact quotient
+        // floor(2**d_bits / n0) through a double estimate plus 128-bit fixes.
+        a2 = static_cast<std::uint64_t>(std::ldexp(1.0, d_bits) / static_cast<double>(n0));
+        const std::uint64_t pow_hi = 1ull << (d_bits - 64);
+        std::uint64_t prod_hi = 0u;
+        std::uint64_t prod_lo = _umul128(a2, n0, &prod_hi);
+        while (prod_hi > pow_hi || (prod_hi == pow_hi && prod_lo > 0u)) {
+            --a2;
+            prod_lo = _umul128(a2, n0, &prod_hi);
+        }
+        for (;;) {
+            std::uint64_t next_hi = 0u;
+            const std::uint64_t next_lo = _umul128(a2 + 1u, n0, &next_hi);
+            if (next_hi > pow_hi || (next_hi == pow_hi && next_lo > 0u)) {
+                break;
+            }
+            ++a2;
+            prod_hi = next_hi;
+            prod_lo = next_lo;
+        }
+        // remainder = 2**d_bits - a2*n0 < n0 <= 2**53, so only its low word matters.
+        d = (prod_lo == 0u) ? 0u : (0u - prod_lo);
+    }
+    if (a2 > max_den - q0) {
+        // q2 = q0 + a2*q1 with q1 == 1 would exceed max_den: stop here.
+    } else {
+        const std::uint64_t q2 = q0 + a2;
+        const std::uint64_t p2 = p0; // p0 + a2*p1 with p1 == 0
+        p0 = p1;
+        q0 = q1;
+        p1 = p2;
+        q1 = q2;
+        n = n0;
+        std::uint64_t remainder = d;
+        for (;;) {
+            const std::uint64_t a = n / remainder;
+            if (a > (max_den - q0) / q1) {
+                break; // q0 + a*q1 would exceed max_den
+            }
+            const std::uint64_t next_q = q0 + a * q1;
+            const std::uint64_t next_p = p0 + a * p1;
+            p0 = p1;
+            q0 = q1;
+            p1 = next_p;
+            q1 = next_q;
+            const std::uint64_t r = n - a * remainder;
+            n = remainder;
+            remainder = r;
+        }
+    }
+    const std::uint64_t k = (max_den - q0) / q1;
+    const std::uint64_t bound1_num = p0 + k * p1;
+    const std::uint64_t bound1_den = q0 + k * q1;
+    // CPython picks bound2 = p1/q1 when |p1/q1 - self| <= |bound1 - self|;
+    // cross-multiply exactly.  self = n0 / 2**d_bits with d_bits <= 95, so
+    // both sides fit 128-bit products before the final 160-bit comparison.
+    std::uint64_t self_hi = 0u;
+    std::uint64_t self_lo = 0u;
+    if (d_bits <= 63) {
+        self_lo = 1ull << d_bits;
+    } else {
+        self_hi = 1ull << (d_bits - 64);
+    }
+    const auto multiply_self = [self_hi, self_lo](std::uint64_t factor, std::uint64_t* out_hi, std::uint64_t* out_lo) {
+        std::uint64_t lo_hi = 0u;
+        const std::uint64_t lo_lo = _umul128(factor, self_lo, &lo_hi);
+        std::uint64_t hi_hi = 0u;
+        const std::uint64_t hi_lo = _umul128(factor, self_hi, &hi_hi);
+        *out_hi = hi_lo + lo_hi + (hi_lo > std::numeric_limits<std::uint64_t>::max() - lo_hi ? 1u : 0u);
+        *out_lo = lo_lo;
+        (void)hi_hi; // factor <= 2**32 and self <= 2**95: the 128th bit is never set
+    };
+    const auto u128_abs_sub = [](std::uint64_t x_hi, std::uint64_t x_lo,
+                                 std::uint64_t y_hi, std::uint64_t y_lo,
+                                 std::uint64_t* out_hi, std::uint64_t* out_lo) {
+        if (x_hi > y_hi || (x_hi == y_hi && x_lo >= y_lo)) {
+            *out_lo = x_lo - y_lo;
+            *out_hi = x_hi - y_hi - (x_lo < y_lo ? 1u : 0u);
+        } else {
+            *out_lo = y_lo - x_lo;
+            *out_hi = y_hi - x_hi - (y_lo < x_lo ? 1u : 0u);
+        }
+    };
+    const auto u160_mul_le = [](std::uint64_t a_hi, std::uint64_t a_lo, std::uint64_t a_mult,
+                                std::uint64_t b_hi, std::uint64_t b_lo, std::uint64_t b_mult) {
+        // compares (a_hi,a_lo)*a_mult <= (b_hi,b_lo)*b_mult as 160-bit values
+        std::uint64_t a_hl = 0u;
+        const std::uint64_t a_ll = _umul128(a_hi, a_mult, &a_hl);
+        std::uint64_t a_lh = 0u;
+        const std::uint64_t a_lo2 = _umul128(a_lo, a_mult, &a_lh);
+        const std::uint64_t a_mid = a_ll + a_lh;
+        const std::uint64_t a_top = a_hl + (a_mid < a_ll ? 1u : 0u);
+        std::uint64_t b_hl = 0u;
+        const std::uint64_t b_ll = _umul128(b_hi, b_mult, &b_hl);
+        std::uint64_t b_lh = 0u;
+        const std::uint64_t b_lo2 = _umul128(b_lo, b_mult, &b_lh);
+        const std::uint64_t b_mid = b_ll + b_lh;
+        const std::uint64_t b_top = b_hl + (b_mid < b_ll ? 1u : 0u);
+        if (a_top != b_top) {
+            return a_top < b_top;
+        }
+        if (a_mid != b_mid) {
+            return a_mid < b_mid;
+        }
+        return a_lo2 <= b_lo2;
+    };
+    std::uint64_t p1_self_hi = 0u;
+    std::uint64_t p1_self_lo = 0u;
+    multiply_self(p1, &p1_self_hi, &p1_self_lo);
+    std::uint64_t n0_q1_hi = 0u;
+    const std::uint64_t n0_q1_lo = _umul128(n0, q1, &n0_q1_hi);
+    std::uint64_t diff_a_hi = 0u;
+    std::uint64_t diff_a_lo = 0u;
+    u128_abs_sub(p1_self_hi, p1_self_lo, n0_q1_hi, n0_q1_lo, &diff_a_hi, &diff_a_lo);
+    std::uint64_t b1_self_hi = 0u;
+    std::uint64_t b1_self_lo = 0u;
+    multiply_self(bound1_num, &b1_self_hi, &b1_self_lo);
+    std::uint64_t n0_b1_hi = 0u;
+    const std::uint64_t n0_b1_lo = _umul128(n0, bound1_den, &n0_b1_hi);
+    std::uint64_t diff_b_hi = 0u;
+    std::uint64_t diff_b_lo = 0u;
+    u128_abs_sub(b1_self_hi, b1_self_lo, n0_b1_hi, n0_b1_lo, &diff_b_hi, &diff_b_lo);
+
+    std::uint64_t numerator = 0u;
+    std::uint64_t denominator = 1u;
+    if (u160_mul_le(diff_a_hi, diff_a_lo, bound1_den, diff_b_hi, diff_b_lo, q1)) {
+        numerator = p1;
+        denominator = q1;
+    } else {
+        numerator = bound1_num;
+        denominator = bound1_den;
+    }
+    if (inverted) {
+        std::swap(numerator, denominator);
+    }
+    if (numerator > max_den || denominator > max_den) {
+        return false;
+    }
+    *out_num = static_cast<std::uint32_t>(numerator);
+    *out_den = static_cast<std::uint32_t>(denominator);
+    return true;
+}
+
+} // namespace
+
+int tiff_dpi_to_rational(
+    bool has_dpi,
+    double dpi_x,
+    double dpi_y,
+    std::uint32_t* out_x_num,
+    std::uint32_t* out_x_den,
+    std::uint32_t* out_y_num,
+    std::uint32_t* out_y_den)
+{
+    if (!out_x_num || !out_x_den || !out_y_num || !out_y_den) {
         return PILLOW_C_NULL_POINTER;
     }
-    *out_x = 0u;
-    *out_y = 0u;
+    *out_x_num = 0u;
+    *out_x_den = 1u;
+    *out_y_num = 0u;
+    *out_y_den = 1u;
     if (!has_dpi) {
         return PILLOW_C_OK;
     }
-
-    std::int64_t rounded_x = 0;
-    std::int64_t rounded_y = 0;
-    if (!pillow_c_round_to_i64(dpi_x, &rounded_x) || !pillow_c_round_to_i64(dpi_y, &rounded_y) ||
-        rounded_x <= 0 || rounded_y <= 0 ||
-        rounded_x > static_cast<std::int64_t>(std::numeric_limits<std::uint32_t>::max()) ||
-        rounded_y > static_cast<std::int64_t>(std::numeric_limits<std::uint32_t>::max())) {
-        return PILLOW_C_INVALID_ARGUMENT;
+    const auto convert = [](double value, std::uint32_t* out_num, std::uint32_t* out_den) {
+        if (!std::isfinite(value) || value < 0.0 ||
+            value > static_cast<double>(std::numeric_limits<std::uint32_t>::max())) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return tiff_float_to_rational(value, out_num, out_den) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    };
+    const int x_status = convert(dpi_x, out_x_num, out_x_den);
+    if (x_status != PILLOW_C_OK) {
+        return x_status;
     }
-    *out_x = static_cast<std::uint32_t>(rounded_x);
-    *out_y = static_cast<std::uint32_t>(rounded_y);
-    return PILLOW_C_OK;
+    return convert(dpi_y, out_y_num, out_y_den);
 }
 
 struct TiffFrameLayout {
@@ -5795,13 +6018,17 @@ int save_tiff_i16b_frames_image(
     }
 
     std::uint32_t x_resolution_numerator = 0u;
+    std::uint32_t x_resolution_denominator = 1u;
     std::uint32_t y_resolution_numerator = 0u;
+    std::uint32_t y_resolution_denominator = 1u;
     const int dpi_status = tiff_dpi_to_rational(
         true,
         dpi_x,
         dpi_y,
         &x_resolution_numerator,
-        &y_resolution_numerator);
+        &x_resolution_denominator,
+        &y_resolution_numerator,
+        &y_resolution_denominator);
     if (dpi_status != PILLOW_C_OK) {
         return dpi_status;
     }
@@ -5903,9 +6130,9 @@ int save_tiff_i16b_frames_image(
 
             out.resize(layout.x_resolution_offset, 0u);
             append_be32(out, x_resolution_numerator);
-            append_be32(out, 1u);
+            append_be32(out, x_resolution_denominator);
             append_be32(out, y_resolution_numerator);
-            append_be32(out, 1u);
+            append_be32(out, y_resolution_denominator);
             out.resize(layout.xmp_offset, 0u);
             out.insert(out.end(), xmp, xmp + xmp_size);
             out.resize(layout.icc_profile_offset, 0u);
@@ -5943,9 +6170,17 @@ int save_tiff_i16b_image(
         return PILLOW_C_INVALID_ARGUMENT;
     }
     std::uint32_t x_resolution_numerator = 0u;
+    std::uint32_t x_resolution_denominator = 1u;
     std::uint32_t y_resolution_numerator = 0u;
+    std::uint32_t y_resolution_denominator = 1u;
     const int dpi_status = tiff_dpi_to_rational(
-        has_dpi, dpi_x, dpi_y, &x_resolution_numerator, &y_resolution_numerator);
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        &x_resolution_numerator,
+        &x_resolution_denominator,
+        &y_resolution_numerator,
+        &y_resolution_denominator);
     if (dpi_status != PILLOW_C_OK) {
         return dpi_status;
     }
@@ -6075,10 +6310,10 @@ int save_tiff_i16b_image(
         if (has_dpi) {
             out.resize(x_resolution_offset, 0u);
             append_be32(out, x_resolution_numerator);
-            append_be32(out, 1u);
+            append_be32(out, x_resolution_denominator);
             out.resize(y_resolution_offset, 0u);
             append_be32(out, y_resolution_numerator);
-            append_be32(out, 1u);
+            append_be32(out, y_resolution_denominator);
         }
         for (std::size_t index = 0u; index < ascii_count; ++index) {
             if (ascii_tags[index] != 315 || ascii_sizes[index] <= 4u) {
@@ -6118,7 +6353,9 @@ int save_tiff_frames_image_with_ascii_entries_options(
     const int* ascii_tags,
     const std::uint8_t* const* ascii_values,
     const std::size_t* ascii_sizes,
-    std::size_t ascii_count)
+    std::size_t ascii_count,
+    std::uint32_t resolution_unit = 2u,
+    bool has_resolution_unit = false)
 {
     if (!images || !path) {
         return PILLOW_C_NULL_POINTER;
@@ -6325,8 +6562,17 @@ int save_tiff_frames_image_with_ascii_entries_options(
         }
     }
     std::uint32_t x_resolution_numerator = 0;
+    std::uint32_t x_resolution_denominator = 1;
     std::uint32_t y_resolution_numerator = 0;
-    int status = tiff_dpi_to_rational(has_dpi, dpi_x, dpi_y, &x_resolution_numerator, &y_resolution_numerator);
+    std::uint32_t y_resolution_denominator = 1;
+    int status = tiff_dpi_to_rational(
+        has_dpi,
+        dpi_x,
+        dpi_y,
+        &x_resolution_numerator,
+        &x_resolution_denominator,
+        &y_resolution_numerator,
+        &y_resolution_denominator);
     if (status != PILLOW_C_OK) {
         return status;
     }
@@ -6386,9 +6632,11 @@ int save_tiff_frames_image_with_ascii_entries_options(
             const bool has_sample_format = is_numeric;
             const bool has_icc_profile = icc_profile_size > 0u;
             const bool has_xmp = xmp_size > 0u;
+            const bool write_unit = (has_dpi && resolution_unit != 0u) || has_resolution_unit;
             const std::size_t base_entry_count =
                 7u + (has_bits_per_sample ? 1u : 0u) + (has_samples_per_pixel ? 1u : 0u) +
-                (has_dpi ? 3u : 0u) + (has_planar_config ? 1u : 0u) + (has_extra_samples ? 1u : 0u) +
+                (has_dpi ? 2u : 0u) + (write_unit ? 1u : 0u) +
+                (has_planar_config ? 1u : 0u) + (has_extra_samples ? 1u : 0u) +
                 (is_palette ? 1u : 0u) + (has_sample_format ? 1u : 0u) +
                 (has_xmp ? 1u : 0u) + (has_icc_profile ? 1u : 0u);
             if (base_entry_count + ascii_count > static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max())) {
@@ -6471,6 +6719,7 @@ int save_tiff_frames_image_with_ascii_entries_options(
                 image->channels > 1 && !is_mode_one && !is_palette && !is_numeric && !is_i16;
             const bool has_planar_config =
                 image->mode == PILLOW_C_MODE_L || image->channels > 1 || is_mode_one || is_palette || is_numeric || is_i16;
+            const bool write_unit = (has_dpi && resolution_unit != 0u) || has_resolution_unit;
             const auto append_ascii_entry = [&](int wanted_tag) {
                 for (std::size_t order_index = 0u; order_index < ascii_count; ++order_index) {
                     const std::size_t entry_index = ascii_order[order_index];
@@ -6540,8 +6789,8 @@ int save_tiff_frames_image_with_ascii_entries_options(
             if (has_planar_config) {
                 append_tiff_entry(out, 284u, 3u, 1u, 1u);
             }
-            if (has_dpi) {
-                append_tiff_entry(out, 296u, 3u, 1u, 2u);
+            if (write_unit) {
+                append_tiff_entry(out, 296u, 3u, 1u, resolution_unit);
             }
             append_ascii_entry(315);
             if (image->mode == PILLOW_C_MODE_LA || image->mode == PILLOW_C_MODE_RGBA) {
@@ -6587,9 +6836,9 @@ int save_tiff_frames_image_with_ascii_entries_options(
             }
             if (has_dpi) {
                 append_le32(out, x_resolution_numerator);
-                append_le32(out, 1u);
+                append_le32(out, x_resolution_denominator);
                 append_le32(out, y_resolution_numerator);
-                append_le32(out, 1u);
+                append_le32(out, y_resolution_denominator);
             }
             if (xmp_size > 4u) {
                 if (out.size() < layout.xmp_offset) {
@@ -8316,13 +8565,17 @@ int save_tiff_bigtiff_frames_image_metadata_with_compression(
         return PILLOW_C_NULL_POINTER;
     }
     std::uint32_t x_resolution_numerator = 0u;
+    std::uint32_t x_resolution_denominator = 1u;
     std::uint32_t y_resolution_numerator = 0u;
+    std::uint32_t y_resolution_denominator = 1u;
     const int dpi_status = tiff_dpi_to_rational(
         has_dpi != 0,
         dpi_x,
         dpi_y,
         &x_resolution_numerator,
-        &y_resolution_numerator);
+        &x_resolution_denominator,
+        &y_resolution_numerator,
+        &y_resolution_denominator);
     if (dpi_status != PILLOW_C_OK) {
         return dpi_status;
     }
@@ -8628,12 +8881,14 @@ int save_tiff_bigtiff_frames_image_metadata_with_compression(
                     282u,
                     5u,
                     1u,
-                    static_cast<std::uint64_t>(x_resolution_numerator) | (std::uint64_t{1u} << 32u));
+                    static_cast<std::uint64_t>(x_resolution_numerator) |
+                        (static_cast<std::uint64_t>(x_resolution_denominator) << 32u));
                 append_entry(
                     283u,
                     5u,
                     1u,
-                    static_cast<std::uint64_t>(y_resolution_numerator) | (std::uint64_t{1u} << 32u));
+                    static_cast<std::uint64_t>(y_resolution_numerator) |
+                        (static_cast<std::uint64_t>(y_resolution_denominator) << 32u));
             }
             append_entry(284u, 3u, 1u, 1u);
             if (has_dpi_tag) {
@@ -9046,6 +9301,62 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_options(
     double dpi_y)
 {
     return save_tiff_image_with_options(image, path, has_dpi != 0, dpi_x, dpi_y);
+}
+
+// BEHAV-SAVEOPTS-003: Pillow's TIFF resolution/resolution_unit options.
+// `resolution` writes X/YResolution as Pillow's float->RATIONAL conversion
+// (0 -> 0/1, 145.5 -> 291/2, 145.1 -> 1451/10); a pair is truncated to its
+// first value for BOTH axes (Pillow's "too many entries" libtiff warning),
+// and NO ResolutionUnit tag is written unless `resolution_unit` is given.
+// `resolution_unit` alone writes tag 296 with the value verbatim (0 and
+// 65535 included); negative or non-finite resolutions are rejected here and
+// surfaced by the facade as Pillow's "argument out of range" error.
+extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_resolution_options(
+    const PillowCImage* image,
+    const char* path,
+    int has_resolution,
+    double resolution_x,
+    double resolution_y,
+    int has_unit,
+    int unit)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    std::uint32_t x_numerator = 0u;
+    std::uint32_t x_denominator = 1u;
+    std::uint32_t y_numerator = 0u;
+    std::uint32_t y_denominator = 1u;
+    const int dpi_status = tiff_dpi_to_rational(
+        has_resolution != 0,
+        resolution_x,
+        resolution_y,
+        &x_numerator,
+        &x_denominator,
+        &y_numerator,
+        &y_denominator);
+    if (dpi_status != PILLOW_C_OK) {
+        return dpi_status;
+    }
+    const PillowCImage* images[] = {image};
+    return save_tiff_frames_image_with_ascii_entries_options(
+        images,
+        1u,
+        path,
+        has_resolution != 0,
+        resolution_x,
+        resolution_y,
+        TIFF_COMPRESSION_NONE,
+        nullptr,
+        0u,
+        nullptr,
+        0u,
+        nullptr,
+        nullptr,
+        nullptr,
+        0u,
+        has_unit != 0 ? static_cast<std::uint32_t>(unit & 0xFFFFu) : 0u,
+        has_unit != 0);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_compression_options(

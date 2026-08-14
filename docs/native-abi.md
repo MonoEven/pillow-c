@@ -9603,6 +9603,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_frame_count_tiff`
 - `pillow_c_image_save_tiff`
 - `pillow_c_image_save_tiff_options`
+- `pillow_c_image_save_tiff_resolution_options`
 - `pillow_c_image_save_tiff_compression_options`
 - `pillow_c_image_save_tiff_frames`
 - `pillow_c_image_open_gif`
@@ -12182,9 +12183,23 @@ validating the container. Native save writes little-endian baseline TIFF bytes
 through a DLL-owned IFD writer, including chained uncompressed IFDs for
 `pillow_c_image_save_tiff_frames`. `pillow_c_image_save_tiff_options`
 currently adds a bounded DPI option shape after the UTF-8 path: `has_dpi`,
-`dpi_x`, and `dpi_y`; when `has_dpi != 0`, both DPI values must be positive
-finite numbers and are written as IFD0 RATIONAL numerator/denominator pairs
-with denominator `1`, plus `ResolutionUnit=2`.
+`dpi_x`, and `dpi_y`; when `has_dpi != 0`, both DPI values must be finite,
+non-negative numbers no larger than `2**32-1` and are written as IFD0
+RATIONAL tags 282/283 with Pillow 11.3.0's exact float->RATIONAL conversion
+(the `IFDRational(...).limit_rational(2**32-1)` rule: `300` -> `300/1`,
+`145.5` -> `291/2`, `145.1` -> `1451/10`, `0` -> `0/1`), plus
+`ResolutionUnit=2`. Negative, non-finite, or out-of-range values return
+`-3`.
+`pillow_c_image_save_tiff_resolution_options` (BEHAV-SAVEOPTS-003) takes
+`image`, `path`, `has_resolution`, `resolution_x`, `resolution_y`,
+`has_unit`, and `unit`. When `has_resolution != 0`, both axes receive
+Pillow's exact rational pair from the first value (the facade passes the
+same value for both axes, matching Pillow's pair-truncation warning
+behavior) and NO ResolutionUnit tag is written unless `has_unit != 0`.
+When `has_unit != 0`, tag 296 is written with the verbatim SHORT unit value
+(0 and 65535 included, as Pillow writes them) even without any resolution.
+Resolution validation matches the DPI route; the facade maps the `-3`
+rejection to Pillow's `argument out of range` error.
 `pillow_c_image_save_tiff_compression_options` adds an `int compression` after
 the same DPI fields; compression `0` and `1` write uncompressed tag `1`,
 compression `32773` writes tag `259` as PackBits and encodes each scanline

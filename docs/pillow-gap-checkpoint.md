@@ -83,12 +83,14 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-SAVEOPTS-002 (save-option parity
-wave 2: the PNG P-mode auto-minimized bit depths and the bits
-override chain, the compress_type 0-4 semantics, the GIF interlaced
-default with the @PIL153 workaround, and the GIF palette exact-match
-remap — reopened pixels byte-for-byte Pillow-identical)
-after BEHAV-SAVEOPTS-001/
+Latest covered gap tail: BEHAV-SAVEOPTS-003 (save-option parity
+wave 3: the TIFF resolution/resolution_unit options — Pillow's exact
+float->RATIONAL conversion including the continued-fraction
+limit_denominator port, resolution 0 -> 0/1, the pair-truncation
+warning behavior, the resolution_unit-only tag 296, verbatim unit
+values 0/65535, and the exact TypeError/struct.error messages)
+after BEHAV-SAVEOPTS-002/
+BEHAV-SAVEOPTS-001/
 BEHAV-FONTFILE-002/
 BEHAV-FONTFILE-001/
 BEHAV-FONT-002/
@@ -109,11 +111,11 @@ BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
 the format-family surface, ImagePalette.load, the Parser, and the
 font mask/TransposedFont/truetype/PILfont surfaces are now COMPLETE
-and the save-option error messages plus the PNG/GIF/QOI/TGA option
-containers are Pillow-exact; the next
+and the save-option error messages plus the PNG/GIF/QOI/TGA/TIFF
+option containers are Pillow-exact; the next
 bounded children are the remaining API-SAVEOPTS-001 option
-implementations (PNG dictionary, JPEG smooth/streamtype, TIFF
-strip_size/resolution/named tags), then API-ERRMSGS-001.
+implementations (PNG dictionary, JPEG smooth/streamtype, TIFF named
+tags), then API-ERRMSGS-001.
 ```
 
 Current work packet:
@@ -457,8 +459,8 @@ Current work packet:
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
 - Selected next gap: `API-SAVEOPTS-001` remainder, the save-option
-  implementations (PNG dictionary, JPEG smooth/streamtype, TIFF
-  strip_size/resolution/named tags), then `API-ERRMSGS-001`.
+  implementations (PNG dictionary, JPEG smooth/streamtype, TIFF named
+  tags), then `API-ERRMSGS-001`.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19388,6 +19390,39 @@ rebuilt DLL SHA-256 is
 The remaining API-SAVEOPTS-001 children (PNG dictionary, JPEG
 smooth/streamtype, TIFF strip_size/resolution/named tags) stay the next
 packets.
+```
+
+2026-08-15: `BEHAV-SAVEOPTS-003` is GREEN as the save-option parity wave 3
+(the TIFF `resolution`/`resolution_unit` options). The Pillow 11.3.0 oracle
+(fresh pins plus the ctypes cross-check `oracle/probe_tiffres_dll.py` and the
+174-value rational fuzz) pins the full TiffImagePlugin float->RATIONAL
+conversion: `_limit_rational` = `IFDRational(1/v if v>1 else
+v).limit_rational(2**32-1)` reversed when v>1 — 300 -> 300/1, 145.5 -> 291/2,
+145.1 -> 1451/10, 0.5 -> 1/2, 5000 -> 5000/1, 0 -> 0/1 (0 is legal), tiny
+values collapse to 0/1, and every one of 174 fuzzed values across
+(0, 2**32-1] writes the identical (numerator, denominator) pair. The native
+`tiff_float_to_rational` ports CPython's exact-binary Fraction plus
+`limit_denominator` continued fractions (64-bit Euclid with a 128-bit
+`_umul128`-assisted first quotient for denominators above 2**63 and an exact
+160-bit semi-convergent tie-break). `resolution` as a 2-pair truncates to the
+FIRST value on both axes (the "too many entries" libtiff warning);
+`resolution_unit` alone writes ONLY tag 296 (no 282/283); unit values are
+written verbatim including 0 and 65535; and the facade throws Pillow's exact
+errors: `bad operand type for abs(): 'str'` (non-Number resolution),
+`argument out of range` (negative resolution), `required argument is not an
+integer` (non-int unit), and `ushort format requires 0 <= number <= 0xffff`
+(unit outside [0, 65535]). `strip_size` stays accepted-and-ignored (Pillow
+11.3.0 ignores it; the strip writer packs the full image). The deliberate
+native export is `pillow_c_image_save_tiff_resolution_options` (facade-
+routed, with the dpi path sharing the same now-exact rational conversion, so
+fractional dpi metadata also stops rounding). The facade target passes `1/1`
+in `16ms`; the full directory suite passes `2842/2842` in `22422ms` with zero
+failures, errors, or skips. Release x64 Rebuild has `0 Warning(s),
+0 Error(s)`; source/DLL export parity moves to `508/508` with zero
+difference; and the rebuilt DLL SHA-256 is
+`1E83872CBCD49B9E35A326F64F02C7B59B3147535627FACA36C03B2DDDDCAB8C`.
+The remaining API-SAVEOPTS-001 children (PNG dictionary, JPEG
+smooth/streamtype, TIFF named tags) stay the next packets.
 ```
 
 If any line above is no longer true, update this file first, then update
