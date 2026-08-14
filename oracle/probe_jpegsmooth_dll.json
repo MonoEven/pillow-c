@@ -1,0 +1,161 @@
+{
+ "dll_st0": [
+  216,
+  224,
+  219,
+  219,
+  192,
+  196,
+  196,
+  196,
+  196,
+  218,
+  217
+ ],
+ "ref_st0": [
+  216,
+  224,
+  219,
+  219,
+  192,
+  196,
+  196,
+  196,
+  196,
+  218,
+  217
+ ],
+ "dll_st0_decode": [
+  [
+   32,
+   24
+  ],
+  "RGB"
+ ],
+ "ref_st0_decode": [
+  [
+   32,
+   24
+  ],
+  "RGB"
+ ],
+ "dll_st1": [
+  216,
+  219,
+  219,
+  196,
+  196,
+  196,
+  196,
+  217
+ ],
+ "ref_st1": [
+  216,
+  219,
+  219,
+  196,
+  196,
+  196,
+  196,
+  217
+ ],
+ "dll_st1_decode": [
+  "ERROR",
+  "UnidentifiedImageError",
+  "cannot identify image file <_io.BytesIO object at 0x0000021283A77830>"
+ ],
+ "ref_st1_decode": [
+  "ERROR",
+  "UnidentifiedImageError",
+  "cannot identify image file <_io.BytesIO object at 0x0000021283A77830>"
+ ],
+ "dll_st2": [
+  216,
+  224,
+  192,
+  218,
+  217
+ ],
+ "ref_st2": [
+  216,
+  224,
+  192,
+  218,
+  217
+ ],
+ "dll_st2_decode": [
+  "ERROR",
+  "OSError",
+  "broken data stream when reading image file"
+ ],
+ "ref_st2_decode": [
+  "ERROR",
+  "OSError",
+  "broken data stream when reading image file"
+ ],
+ "dll_smooth_plain_decode": [
+  [
+   32,
+   24
+  ],
+  "RGB"
+ ],
+ "dll_smooth_50_differs": true,
+ "dll_smooth_50_decode": [
+  [
+   32,
+   24
+  ],
+  "RGB"
+ ],
+ "dll_smooth_100_differs_from_50": true,
+ "dll_smooth_neg_decode": [
+  [
+   32,
+   24
+  ],
+  "RGB"
+ ],
+ "dll_smooth_neg_differs": true,
+ "dll_smooth_444_decode": [
+  [
+   32,
+   24
+  ],
+  "RGB"
+ ],
+ "dll_smooth_101_ok": true,
+ "dll_concat_decode": [
+  [
+   32,
+   24
+  ],
+  "RGB"
+ ],
+ "dll_st5_markers": [
+  216,
+  224,
+  219,
+  219,
+  192,
+  196,
+  196,
+  196,
+  196,
+  218,
+  217
+ ],
+ "ref_st0_markers": [
+  216,
+  224,
+  219,
+  219,
+  192,
+  196,
+  196,
+  196,
+  196,
+  218,
+  217
+ ]
+}

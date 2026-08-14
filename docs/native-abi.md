@@ -9577,6 +9577,8 @@ Image lifecycle and metadata:
 - `pillow_c_image_save_jpeg_options`
 - `pillow_c_image_save_jpeg_subsampling_options`
 - `pillow_c_image_save_jpeg_encode_options`
+- `pillow_c_image_save_jpeg_smooth_streamtype_options`
+- `pillow_c_image_patch_jpeg_streamtype`
 - `pillow_c_image_save_jpeg_extra_options`
 - `pillow_c_image_save_jpeg_restart_marker_blocks_options`
 - `pillow_c_image_save_jpeg_restart_marker_rows_options`
@@ -11299,7 +11301,24 @@ and 4:2:0 sampling for `subsampling == 2`, with ten RGB progressive SOS
 headers and mode `RGB` reopen. `optimize == 1` composes with this RGB
 progressive route because the progressive encoder already writes scan-local
 optimized Huffman tables. Other unsupported mode/option combinations still
-return `-3`. `optimize == 1` is accepted for the bounded mode `L` path when
+return `-3`.
+`pillow_c_image_save_jpeg_smooth_streamtype_options` (BEHAV-SAVEOPTS-005)
+appends two integers after `optimize`: `smoothing_factor` and `streamtype`.
+A nonzero `smoothing_factor` routes through the native L/RGB/CMYK encoders
+with libjpeg-turbo 3.1.1's INPUT_SMOOTHING kernels ported from
+`jcsample.c` (`fullsize_smooth_downsample` on every full-size plane and
+`h2v2_smooth_downsample` on the 4:2:0 chroma pair; the 4:2:2 h2v1 path
+keeps the plain box downsample, matching libjpeg), with no clamping so
+negative and 101+ values run the raw integer arithmetic like the C
+encoder. `streamtype` post-filters the written file into the abbreviated
+stream forms after the source-comment patch: `1` keeps SOI + DQT + DHT +
+EOI (the `jpeg_write_tables` tables-only stream), `2` keeps SOI + APP0 +
+SOF + SOS + data + EOI while dropping DQT/DHT/ICC-APP2/XMP-APP1 (the
+`jpeg_suppress_tables` image-only stream; Exif APP1 and COM survive), and
+any other value leaves the interchange stream unchanged.
+`pillow_c_image_patch_jpeg_streamtype` applies only the streamtype
+post-filter to an existing JPEG file, so routes that compose streamtype
+with the other metadata/keep/qtables exports can reuse it. `optimize == 1` is accepted for the bounded mode `L` path when
 `subsampling == -1`; the DLL uses a native grayscale baseline JPEG
 encoder with quality-scaled luminance quantization, optimized Huffman frequency
 collection, pseudo-symbol guarded DHT generation, entropy bit writing, and

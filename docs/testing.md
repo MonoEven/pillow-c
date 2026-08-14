@@ -7186,3 +7186,17 @@ Pillow 11.3.0 (tag-level byte-for-byte on all 17 cases). Source/DLL export
 parity is `509/509` (one deliberate new export) and the rebuilt DLL
 SHA-256 is
 `106C6182EED0CA6F0A6DA38B38A2A11A540377728A0DECA15205B2384EB618F0`.
+
+2026-08-15 BEHAV-SAVEOPTS-005 verification: the facade
+`Pillow Image.Save JPEG smooth and streamtype` target passes `1/1` in
+`109ms`; the full directory suite passes `2844/2844` in `22797ms` with
+zero failures, errors, or skips. The ctypes cross-check
+`oracle/probe_jpegsmooth_dll.py` pins the streamtype marker structures
+byte-structure-identical to local Pillow 11.3.0 for all three modes, the
+exact reopen errors (UnidentifiedImageError for tables-only, OSError
+broken data stream for image-only), the smooth behavior (payloads change,
+decode, no clamping for -1/101), and the tables-only + image-only
+concatenation decoding to the same size/mode as the plain save. Source/DLL
+export parity is `511/511` (two deliberate new exports) and the rebuilt
+DLL SHA-256 is
+`1D90A06E26EB53534E2D123A987D3F3816E7BE9033C5CC10BADC712617200C4B`.

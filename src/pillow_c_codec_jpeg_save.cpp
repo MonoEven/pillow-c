@@ -56,7 +56,7 @@ int jpeg_wic_subsampling_option(int subsampling,
 int save_jpeg_image_with_options(const PillowCImage *image, const char *path,
                                  int quality, bool has_dpi, double dpi_x,
                                  double dpi_y, int subsampling, int progressive,
-                                 int optimize) {
+                                 int optimize, int smoothing_factor = 0) {
   if (!image || !path) {
     return PILLOW_C_NULL_POINTER;
   }
@@ -82,6 +82,38 @@ int save_jpeg_image_with_options(const PillowCImage *image, const char *path,
   const int clamped_quality = std::max(0, std::min(quality, 100));
   if (progressive < -1 || progressive > 1 || optimize < -1 || optimize > 1) {
     return PILLOW_C_INVALID_ARGUMENT;
+  }
+  if (smoothing_factor != 0) {
+    // libjpeg's INPUT_SMOOTHING only exists in the native encoder, so a
+    // nonzero smooth routes through it (the WIC baseline has no smoothing).
+    if (image->mode == PILLOW_C_MODE_CMYK) {
+      if (progressive == 1) {
+        return save_jpeg_cmyk_progressive(image, path, quality, has_dpi, dpi_x,
+                                          dpi_y, nullptr, 0u, -1, 0u, 0u,
+                                          smoothing_factor);
+      }
+      return save_jpeg_cmyk_baseline(
+          image, path, quality, nullptr, 0u, optimize == 1, has_dpi, dpi_x,
+          dpi_y, -1, 0u, smoothing_factor);
+    }
+    if (image->mode == PILLOW_C_MODE_L && image->channels == 1) {
+      if (progressive == 1) {
+        return save_jpeg_l_progressive_huffman(
+            image, path, quality, has_dpi, dpi_x, dpi_y, nullptr, 0,
+            smoothing_factor);
+      }
+      return save_jpeg_l_optimized_huffman(
+          image, path, quality, has_dpi, dpi_x, dpi_y, nullptr,
+          optimize == 1, 0, smoothing_factor);
+    }
+    if (progressive == 1) {
+      return save_jpeg_rgb_progressive_huffman(
+          image, path, quality, has_dpi, dpi_x, dpi_y, subsampling, nullptr,
+          nullptr, 0, 0, 0, smoothing_factor);
+    }
+    return save_jpeg_rgb_optimized_huffman(
+        image, path, quality, has_dpi, dpi_x, dpi_y, subsampling,
+        optimize == 1, 0, smoothing_factor);
   }
   if (image->mode == PILLOW_C_MODE_CMYK) {
     if (progressive == 1) {
@@ -930,6 +962,106 @@ int save_jpeg_metadata_restart_marker_core(
                                       icc_profile_size, exif, exif_size, xmp,
                                       xmp_size);
 }
+
+// Pillow 11.3.0 JpegEncode.c streamtype: 1 = tables-only abbreviated stream
+// (jpeg_write_tables: SOI + DQT + DHT + EOI), 2 = image-only abbreviated
+// stream (jpeg_suppress_tables + the suppressed extra markers: no DQT/DHT,
+// no ICC APP2, no XMP APP1; the Exif APP1 and the COM segment survive).
+// Any other value is the interchange stream and leaves the file unchanged.
+int filter_jpeg_streamtype_file(const char *path, int streamtype) {
+  if (!path) {
+    return PILLOW_C_NULL_POINTER;
+  }
+  if (streamtype != 1 && streamtype != 2) {
+    return PILLOW_C_OK;
+  }
+  try {
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+      return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const auto exif_app1 = [](const std::uint8_t *payload,
+                              std::size_t size) -> bool {
+      return size >= 6u && payload[0] == 'E' && payload[1] == 'x' &&
+             payload[2] == 'i' && payload[3] == 'f' && payload[4] == 0u &&
+             payload[5] == 0u;
+    };
+    std::vector<std::uint8_t> out;
+    out.reserve(data.size());
+    const bool copy_data = streamtype != 1;
+    std::size_t i = 0u;
+    const std::size_t n = data.size();
+    while (i < n) {
+      if (data[i] != 0xffu) {
+        if (copy_data) {
+          out.push_back(data[i]);
+        }
+        ++i;
+        continue;
+      }
+      std::size_t j = i;
+      while (j < n && data[j] == 0xffu) {
+        ++j;
+      }
+      if (j >= n) {
+        if (copy_data) {
+          out.insert(out.end(), data.begin() + static_cast<std::ptrdiff_t>(i),
+                     data.end());
+        }
+        break;
+      }
+      const std::uint8_t marker = data[j];
+      if (marker == 0x00u || marker == 0x01u ||
+          (marker >= 0xd0u && marker <= 0xd7u)) {
+        if (copy_data) {
+          out.insert(out.end(), data.begin() + static_cast<std::ptrdiff_t>(i),
+                     data.begin() + static_cast<std::ptrdiff_t>(j + 1u));
+        }
+        i = j + 1u;
+        continue;
+      }
+      if (marker == 0xd8u || marker == 0xd9u) {
+        out.insert(out.end(), data.begin() + static_cast<std::ptrdiff_t>(i),
+                   data.begin() + static_cast<std::ptrdiff_t>(j + 1u));
+        i = j + 1u;
+        continue;
+      }
+      if (j + 2u >= n) {
+        if (copy_data) {
+          out.insert(out.end(), data.begin() + static_cast<std::ptrdiff_t>(i),
+                     data.end());
+        }
+        break;
+      }
+      const std::size_t segment_length =
+          (static_cast<std::size_t>(data[j + 1u]) << 8u) | data[j + 2u];
+      if (segment_length < 2u) {
+        return PILLOW_C_INVALID_ARGUMENT;
+      }
+      const std::size_t segment_end = j + 1u + segment_length;
+      if (segment_end > n) {
+        return PILLOW_C_INVALID_ARGUMENT;
+      }
+      bool keep = true;
+      if (streamtype == 1) {
+        keep = marker == 0xdbu || marker == 0xc4u;
+      } else {
+        keep = !(marker == 0xdbu || marker == 0xc4u || marker == 0xe2u ||
+                 (marker == 0xe1u &&
+                  !exif_app1(data.data() + j + 3u, segment_length - 2u)));
+      }
+      if (keep) {
+        out.insert(out.end(), data.begin() + static_cast<std::ptrdiff_t>(i),
+                   data.begin() + static_cast<std::ptrdiff_t>(segment_end));
+      }
+      i = segment_end;
+    }
+    return write_binary_file(path, out) ? PILLOW_C_OK
+                                        : PILLOW_C_INVALID_ARGUMENT;
+  } catch (const std::bad_alloc &) {
+    return PILLOW_C_ALLOCATION_FAILED;
+  }
+}
 } // namespace pillow_c_jpeg
 
 using namespace pillow_c_jpeg;
@@ -976,6 +1108,32 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_encode_options(
     return status;
   }
   return patch_jpeg_source_comment_segment(image, path);
+}
+// BEHAV-SAVEOPTS-005: Pillow's smooth/streamtype options.  A nonzero
+// smoothing_factor routes through the native encoder with libjpeg-turbo's
+// INPUT_SMOOTHING kernels (fullsize + smooth 2x2 downsample); streamtype
+// post-filters the written stream into the abbreviated tables-only (1) or
+// image-only (2) form.  Other streamtype values keep the interchange stream.
+extern "C" __declspec(dllexport) int
+pillow_c_image_save_jpeg_smooth_streamtype_options(
+    const PillowCImage *image, const char *path, int quality, int has_dpi,
+    double dpi_x, double dpi_y, int subsampling, int progressive, int optimize,
+    int smoothing_factor, int streamtype) {
+  int status = save_jpeg_image_with_options(
+      image, path, quality, has_dpi != 0, dpi_x, dpi_y, subsampling,
+      progressive, optimize, smoothing_factor);
+  if (status != PILLOW_C_OK) {
+    return status;
+  }
+  status = patch_jpeg_source_comment_segment(image, path);
+  if (status != PILLOW_C_OK) {
+    return status;
+  }
+  return filter_jpeg_streamtype_file(path, streamtype);
+}
+extern "C" __declspec(dllexport) int
+pillow_c_image_patch_jpeg_streamtype(const char *path, int streamtype) {
+  return filter_jpeg_streamtype_file(path, streamtype);
 }
 extern "C" __declspec(dllexport) int pillow_c_image_save_jpeg_extra_options(
     const PillowCImage *image, const char *path, int quality, int has_dpi,

@@ -19,7 +19,8 @@ int save_jpeg_l_optimized_huffman(const PillowCImage *image, const char *path,
                                   int quality, bool has_dpi, double dpi_x,
                                   double dpi_y, const int *custom_qtable,
                                   bool optimize_huffman,
-                                  int restart_marker_blocks) {
+                                  int restart_marker_blocks,
+                                  int smoothing_factor) {
   if (!image || !path) {
     return PILLOW_C_NULL_POINTER;
   }
@@ -52,13 +53,37 @@ int save_jpeg_l_optimized_huffman(const PillowCImage *image, const char *path,
     }
     const int blocks_x = (image->width + 7) / 8;
     const int blocks_y = (image->height + 7) / 8;
+    std::vector<std::uint8_t> smoothed_plane;
+    const bool has_smoothed_plane = smoothing_factor != 0;
+    if (has_smoothed_plane) {
+      std::vector<std::uint8_t> l_plane;
+      l_plane.reserve(static_cast<std::size_t>(image->width) *
+                      static_cast<std::size_t>(image->height));
+      for (int y = 0; y < image->height; ++y) {
+        const std::uint8_t *row =
+            image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+        l_plane.insert(l_plane.end(), row, row + image->width);
+      }
+      status = jpeg_smooth_fullsize_plane(l_plane, image->width, image->height,
+                                          blocks_x * 8, smoothing_factor,
+                                          &smoothed_plane);
+      if (status != PILLOW_C_OK) {
+        return status;
+      }
+    }
     std::vector<int> blocks;
     blocks.reserve(static_cast<std::size_t>(blocks_x) *
                    static_cast<std::size_t>(blocks_y) * 64u);
     for (int by = 0; by < blocks_y; ++by) {
       for (int bx = 0; bx < blocks_x; ++bx) {
         int zz[64] = {};
-        jpeg_fdct_quantize_luma_block(image, bx * 8, by * 8, qtable, zz);
+        if (has_smoothed_plane) {
+          jpeg_fdct_quantize_plane_block(smoothed_plane, image->width,
+                                         image->height, bx * 8, by * 8, qtable,
+                                         zz);
+        } else {
+          jpeg_fdct_quantize_luma_block(image, bx * 8, by * 8, qtable, zz);
+        }
         blocks.insert(blocks.end(), zz, zz + 64);
       }
     }
@@ -170,7 +195,8 @@ int save_jpeg_l_optimized_huffman(const PillowCImage *image, const char *path,
 int save_jpeg_l_progressive_huffman(const PillowCImage *image, const char *path,
                                     int quality, bool has_dpi, double dpi_x,
                                     double dpi_y, const int *custom_qtable,
-                                    int restart_marker_blocks) {
+                                    int restart_marker_blocks,
+                                    int smoothing_factor) {
   if (!image || !path) {
     return PILLOW_C_NULL_POINTER;
   }
@@ -205,13 +231,37 @@ int save_jpeg_l_progressive_huffman(const PillowCImage *image, const char *path,
     }
     const int blocks_x = (image->width + 7) / 8;
     const int blocks_y = (image->height + 7) / 8;
+    std::vector<std::uint8_t> smoothed_plane;
+    const bool has_smoothed_plane = smoothing_factor != 0;
+    if (has_smoothed_plane) {
+      std::vector<std::uint8_t> l_plane;
+      l_plane.reserve(static_cast<std::size_t>(image->width) *
+                      static_cast<std::size_t>(image->height));
+      for (int y = 0; y < image->height; ++y) {
+        const std::uint8_t *row =
+            image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+        l_plane.insert(l_plane.end(), row, row + image->width);
+      }
+      status = jpeg_smooth_fullsize_plane(l_plane, image->width, image->height,
+                                          blocks_x * 8, smoothing_factor,
+                                          &smoothed_plane);
+      if (status != PILLOW_C_OK) {
+        return status;
+      }
+    }
     std::vector<int> blocks;
     blocks.reserve(static_cast<std::size_t>(blocks_x) *
                    static_cast<std::size_t>(blocks_y) * 64u);
     for (int by = 0; by < blocks_y; ++by) {
       for (int bx = 0; bx < blocks_x; ++bx) {
         int zz[64] = {};
-        jpeg_fdct_quantize_luma_block(image, bx * 8, by * 8, qtable, zz);
+        if (has_smoothed_plane) {
+          jpeg_fdct_quantize_plane_block(smoothed_plane, image->width,
+                                         image->height, bx * 8, by * 8, qtable,
+                                         zz);
+        } else {
+          jpeg_fdct_quantize_luma_block(image, bx * 8, by * 8, qtable, zz);
+        }
         blocks.insert(blocks.end(), zz, zz + 64);
       }
     }

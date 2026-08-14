@@ -28242,6 +28242,108 @@ PillowTestSaveOptionTiffNamed(*) {
 
 AhkTest.Test("Pillow Image.Save TIFF named kwargs and per-axis resolution match Pillow 11.3.0", PillowTestSaveOptionTiffNamed)
 
+PillowTestJpegMarkerList(path) {
+    bytes := PillowTestReadFileBytes(path)
+    result := []
+    index := 1
+    while index <= bytes.Length {
+        if bytes[index] != 0xFF {
+            index += 1
+            continue
+        }
+        j := index
+        while j <= bytes.Length && bytes[j] = 0xFF
+            j += 1
+        if j > bytes.Length
+            break
+        marker := bytes[j]
+        if marker = 0x00 || (marker >= 0xD0 && marker <= 0xD7) || marker = 0x01 {
+            index := j + 1
+            continue
+        }
+        result.Push(marker)
+        if marker = 0xD8 || marker = 0xD9 {
+            index := j + 1
+            continue
+        }
+        if j + 2 > bytes.Length
+            break
+        length := bytes[j + 1] * 256 + bytes[j + 2]
+        index := j + 1 + length
+    }
+    return result
+}
+
+PillowTestSaveOptionJpegSmoothStreamtype(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGB", [32, 24], [0, 0, 0])
+    try {
+        y := 0
+        while y < 24 {
+            x := 0
+            while x < 32 {
+                image.PutPixel([x, y], [Mod(x * 7 + y * 13, 256), Mod(x * 3 + y * 29, 256), Mod(x * 11 + y * 5, 256)])
+                x += 1
+            }
+            y += 1
+        }
+
+        ; --- streamtype marker structures (Pillow's abbreviated streams) ---
+        jpgPath := PillowTestTempJpegPath("saveopt-st0")
+        image.Save(jpgPath, "JPEG", { streamtype: 0 })
+        AhkTest.AssertEqual([216, 224, 219, 219, 192, 196, 196, 196, 196, 218, 217], PillowTestJpegMarkerList(jpgPath))
+        PillowTestDeleteFile(jpgPath)
+        jpgPath := PillowTestTempJpegPath("saveopt-st1")
+        image.Save(jpgPath, "JPEG", { streamtype: 1 })
+        AhkTest.AssertEqual([216, 219, 219, 196, 196, 196, 196, 217], PillowTestJpegMarkerList(jpgPath))
+        PillowTestDeleteFile(jpgPath)
+        jpgPath := PillowTestTempJpegPath("saveopt-st2")
+        image.Save(jpgPath, "JPEG", { streamtype: 2 })
+        AhkTest.AssertEqual([216, 224, 192, 218, 217], PillowTestJpegMarkerList(jpgPath))
+        PillowTestDeleteFile(jpgPath)
+        ; values outside 1/2 keep the interchange stream
+        jpgPath := PillowTestTempJpegPath("saveopt-st5")
+        image.Save(jpgPath, "JPEG", { streamtype: 5 })
+        AhkTest.AssertEqual([216, 224, 219, 219, 192, 196, 196, 196, 196, 218, 217], PillowTestJpegMarkerList(jpgPath))
+        PillowTestDeleteFile(jpgPath)
+
+        ; --- smooth changes the payload and still decodes ---
+        plainPath := PillowTestTempJpegPath("saveopt-sm0")
+        smoothPath := PillowTestTempJpegPath("saveopt-sm50")
+        image.Save(plainPath, "JPEG", { smooth: 0 })
+        image.Save(smoothPath, "JPEG", { smooth: 50 })
+        plainBytes := PillowTestReadFileBytes(plainPath)
+        smoothBytes := PillowTestReadFileBytes(smoothPath)
+        AhkTest.AssertTrue(plainBytes.Length != smoothBytes.Length || !PillowTestArrayEquals(plainBytes, smoothBytes))
+        reopened := Pillow.Image.Open(smoothPath)
+        try {
+            AhkTest.AssertEqual([32, 24], reopened.Size)
+            AhkTest.AssertEqual("RGB", reopened.Mode)
+        } finally {
+            reopened.Close()
+        }
+        ; out-of-range integers are accepted like the C encoder (no clamp)
+        AhkTest.AssertEqual("", PillowTestFormatCaptureError(() => image.Save(PillowTestTempJpegPath("saveopt-sm101"), "JPEG", { smooth: 101 })))
+        AhkTest.AssertEqual("", PillowTestFormatCaptureError(() => image.Save(PillowTestTempJpegPath("saveopt-smneg"), "JPEG", { smooth: -1 })))
+        PillowTestDeleteFile(PillowTestTempJpegPath("saveopt-sm101"))
+        PillowTestDeleteFile(PillowTestTempJpegPath("saveopt-smneg"))
+        PillowTestDeleteFile(plainPath)
+        PillowTestDeleteFile(smoothPath)
+
+        ; --- Pillow's exact int-parse TypeErrors ---
+        jpgPath := PillowTestTempJpegPath("saveopt-smerr")
+        AhkTest.AssertEqual("'str' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Save(jpgPath, "JPEG", { smooth: "x" })))
+        AhkTest.AssertEqual("'float' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Save(jpgPath, "JPEG", { smooth: 2.5 })))
+        AhkTest.AssertEqual("'str' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Save(jpgPath, "JPEG", { streamtype: "x" })))
+        AhkTest.AssertEqual("'float' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Save(jpgPath, "JPEG", { streamtype: 1.5 })))
+        PillowTestDeleteFile(jpgPath)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save JPEG smooth and streamtype match Pillow 11.3.0", PillowTestSaveOptionJpegSmoothStreamtype)
+
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
 

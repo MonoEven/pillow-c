@@ -53,7 +53,7 @@ int jpeg_cmyk_sampling_from_subsampling(int subsampling, int *out_h,
 int jpeg_prepare_cmyk_blocks(const PillowCImage *image, int quality,
                              const int *qtables, std::size_t qtable_count,
                              JpegCmykPreparedBlocks *prepared,
-                             int subsampling) {
+                             int subsampling, int smoothing_factor) {
   if (!image || !prepared) {
     return PILLOW_C_NULL_POINTER;
   }
@@ -138,6 +138,55 @@ int jpeg_prepare_cmyk_blocks(const PillowCImage *image, int quality,
     std::vector<std::uint8_t> m_plane(myk_count);
     std::vector<std::uint8_t> y_plane(myk_count);
     std::vector<std::uint8_t> k_plane(myk_count);
+    if (smoothing_factor != 0) {
+      std::vector<std::uint8_t> smoothed;
+      status = jpeg_smooth_fullsize_plane(c_plane, image->width, image->height,
+                                          mcu_cols * 8 * h_samp,
+                                          smoothing_factor, &smoothed);
+      if (status != PILLOW_C_OK) {
+        return status;
+      }
+      c_plane = std::move(smoothed);
+      if (h_samp == 2 && v_samp == 2) {
+        status = jpeg_smooth_h2v2_plane(m_full, image->width, image->height,
+                                        myk_width, smoothing_factor, &m_plane);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+        status = jpeg_smooth_h2v2_plane(y_full, image->width, image->height,
+                                        myk_width, smoothing_factor, &y_plane);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+        status = jpeg_smooth_h2v2_plane(k_full, image->width, image->height,
+                                        myk_width, smoothing_factor, &k_plane);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+      } else {
+        status = jpeg_smooth_fullsize_plane(m_full, image->width,
+                                            image->height, mcu_cols * 8,
+                                            smoothing_factor, &smoothed);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+        m_full = std::move(smoothed);
+        status = jpeg_smooth_fullsize_plane(y_full, image->width,
+                                            image->height, mcu_cols * 8,
+                                            smoothing_factor, &smoothed);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+        y_full = std::move(smoothed);
+        status = jpeg_smooth_fullsize_plane(k_full, image->width,
+                                            image->height, mcu_cols * 8,
+                                            smoothing_factor, &smoothed);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+        k_full = std::move(smoothed);
+      }
+    }
     for (int cy = 0; cy < myk_height; ++cy) {
       for (int cx = 0; cx < myk_width; ++cx) {
         int m_sum = 0;
@@ -162,6 +211,9 @@ int jpeg_prepare_cmyk_blocks(const PillowCImage *image, int quality,
         const std::size_t dst_index =
             static_cast<std::size_t>(cy) * static_cast<std::size_t>(myk_width) +
             static_cast<std::size_t>(cx);
+        if (smoothing_factor != 0 && h_samp == 2 && v_samp == 2) {
+          continue;
+        }
         m_plane[dst_index] =
             static_cast<std::uint8_t>((m_sum + downsample_bias) / divisor);
         y_plane[dst_index] =
@@ -495,7 +547,8 @@ int save_jpeg_cmyk_baseline(const PillowCImage *image, const char *path,
                             int quality, const int *qtables,
                             std::size_t qtable_count, bool optimize,
                             bool has_dpi, double dpi_x, double dpi_y,
-                            int subsampling, std::uint16_t restart_interval) {
+                            int subsampling, std::uint16_t restart_interval,
+                            int smoothing_factor) {
   if (!image || !path) {
     return PILLOW_C_NULL_POINTER;
   }
@@ -508,7 +561,8 @@ int save_jpeg_cmyk_baseline(const PillowCImage *image, const char *path,
   try {
     JpegCmykPreparedBlocks prepared;
     int status = jpeg_prepare_cmyk_blocks(image, quality, qtables, qtable_count,
-                                          &prepared, subsampling);
+                                          &prepared, subsampling,
+                                          smoothing_factor);
     if (status != PILLOW_C_OK) {
       return status;
     }
@@ -620,7 +674,8 @@ int save_jpeg_cmyk_progressive(const PillowCImage *image, const char *path,
                                double dpi_y, const int *qtables,
                                std::size_t qtable_count, int subsampling,
                                std::uint16_t restart_interval,
-                               std::uint16_t c_ac_restart_interval) {
+                               std::uint16_t c_ac_restart_interval,
+                               int smoothing_factor) {
   if (!image || !path) {
     return PILLOW_C_NULL_POINTER;
   }
@@ -633,7 +688,8 @@ int save_jpeg_cmyk_progressive(const PillowCImage *image, const char *path,
   try {
     JpegCmykPreparedBlocks prepared;
     int status = jpeg_prepare_cmyk_blocks(image, quality, qtables, qtable_count,
-                                          &prepared, subsampling);
+                                          &prepared, subsampling,
+                                          smoothing_factor);
     if (status != PILLOW_C_OK) {
       return status;
     }

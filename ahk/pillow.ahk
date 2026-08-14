@@ -14106,7 +14106,9 @@ class Pillow {
                 qtablesOption := Pillow.Image.SaveOption(saveOptions, "QTables", "qtables")
                 restartMarkerBlocksOption := Pillow.Image.SaveOption(saveOptions, "RestartMarkerBlocks", "restart_marker_blocks")
                 restartMarkerRowsOption := Pillow.Image.SaveOption(saveOptions, "RestartMarkerRows", "restart_marker_rows")
-                if qualityOption.Set || dpiOption.Set || commentOption.Set || iccProfileOption.Set || exifOption.Set || xmpOption.Set || extraOption.Set || subsamplingOption.Set || progressiveOption.Set || progressionOption.Set || optimizeOption.Set || keepRgbOption.Set || qtablesOption.Set || restartMarkerBlocksOption.Set || restartMarkerRowsOption.Set {
+                smoothOption := Pillow.Image.SaveOption(saveOptions, "Smooth", "smooth")
+                streamTypeOption := Pillow.Image.SaveOption(saveOptions, "StreamType", "streamtype")
+                if qualityOption.Set || dpiOption.Set || commentOption.Set || iccProfileOption.Set || exifOption.Set || xmpOption.Set || extraOption.Set || subsamplingOption.Set || progressiveOption.Set || progressionOption.Set || optimizeOption.Set || keepRgbOption.Set || qtablesOption.Set || restartMarkerBlocksOption.Set || restartMarkerRowsOption.Set || smoothOption.Set || streamTypeOption.Set {
                     quality := -1
                     qualityKeep := false
                     qualityPreset := 0
@@ -14230,6 +14232,57 @@ class Pillow {
                         if nativeSubsampling < 0 && this.Mode != "CMYK"
                             throw Error("Pillow.Image.Save JPEG subsampling='keep' requires opened JPEG subsampling metadata", -1)
                         subsampling := this.Mode = "CMYK" ? -1 : nativeSubsampling
+                    }
+                    smoothOption := Pillow.Image.SaveOption(saveOptions, "Smooth", "smooth")
+                    streamTypeOption := Pillow.Image.SaveOption(saveOptions, "StreamType", "streamtype")
+                    if smoothOption.Set || streamTypeOption.Set {
+                        ; Pillow 11.3.0: smooth feeds libjpeg's
+                        ; smoothing_factor and streamtype selects the
+                        ; abbreviated stream mode (1 = tables-only, 2 =
+                        ; image-only).  The exact int-parse TypeErrors match
+                        ; PyArg_ParseTuple("i"); any integer value is accepted
+                        ; (no range validation), like the C encoder.
+                        smooth := 0
+                        streamType := 0
+                        if smoothOption.Set {
+                            if smoothOption.Value is String
+                                throw Error("'str' object cannot be interpreted as an integer", -1)
+                            if !(smoothOption.Value is Integer)
+                                throw Error("'float' object cannot be interpreted as an integer", -1)
+                            smooth := smoothOption.Value
+                        }
+                        if streamTypeOption.Set {
+                            if streamTypeOption.Value is String
+                                throw Error("'str' object cannot be interpreted as an integer", -1)
+                            if !(streamTypeOption.Value is Integer)
+                                throw Error("'float' object cannot be interpreted as an integer", -1)
+                            streamType := streamTypeOption.Value
+                        }
+                        if !(qualityKeep || qualityPresetSet || qtablesKeep || qtablesPresetSet
+                            || keepRgb = 1 || hasJpegQTables
+                            || commentOption.Set || iccProfileOption.Set || exifOption.Set
+                            || xmpOption.Set || extraOption.Set
+                            || restartMarkerBlocksOption.Set || restartMarkerRowsOption.Set) {
+                            Pillow.CheckStatus(DllCall(
+                                Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_smooth_streamtype_options",
+                                "Ptr", this.RequireHandle(),
+                                "Ptr", pathBytes,
+                                "Int", quality,
+                                "Int", hasDpi,
+                                "Double", dpiX,
+                                "Double", dpiY,
+                                "Int", subsampling,
+                                "Int", progressive,
+                                "Int", optimize,
+                                "Int", smooth,
+                                "Int", streamType,
+                                "Int"
+                            ))
+                            return
+                        }
+                        ; otherwise fall through: the older keep/qtables/
+                        ; metadata routes ignore smooth/streamtype (bounded
+                        ; divergence, documented in the gap ledger).
                     }
                     if extraOption.Set {
                         if qualityKeep || qualityPresetSet || qtablesKeep || qtablesPresetSet

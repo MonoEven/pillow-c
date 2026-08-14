@@ -169,28 +169,40 @@ int jpeg_append_dqt_table(std::vector<std::uint8_t> &out, int table_id,
                           const int qtable[64]);
 int jpeg_append_luminance_dqt(std::vector<std::uint8_t> &out,
                               const int qtable[64]);
+int jpeg_smooth_fullsize_plane(const std::vector<std::uint8_t> &src,
+                               int width, int height, int block_width,
+                               int smoothing_factor,
+                               std::vector<std::uint8_t> *out);
+int jpeg_smooth_h2v2_plane(const std::vector<std::uint8_t> &src, int width,
+                           int height, int out_width, int smoothing_factor,
+                           std::vector<std::uint8_t> *out);
+int filter_jpeg_streamtype_file(const char *path, int streamtype);
 
 int save_jpeg_l_optimized_huffman(const PillowCImage *image, const char *path,
                                   int quality, bool has_dpi, double dpi_x,
                                   double dpi_y,
                                   const int *custom_qtable = nullptr,
                                   bool optimize_huffman = true,
-                                  int restart_marker_blocks = 0);
+                                  int restart_marker_blocks = 0,
+                                  int smoothing_factor = 0);
 int save_jpeg_l_progressive_huffman(const PillowCImage *image, const char *path,
                                     int quality, bool has_dpi, double dpi_x,
                                     double dpi_y,
                                     const int *custom_qtable = nullptr,
-                                    int restart_marker_blocks = 0);
+                                    int restart_marker_blocks = 0,
+                                    int smoothing_factor = 0);
 int save_jpeg_rgb_progressive_huffman(
     const PillowCImage *image, const char *path, int quality, bool has_dpi,
     double dpi_x, double dpi_y, int subsampling, const int *custom_luma_qtable,
     const int *custom_chroma_qtable, int chroma_qtable_id,
-    int restart_marker_blocks = 0, int restart_marker_rows = 0);
+    int restart_marker_blocks = 0, int restart_marker_rows = 0,
+    int smoothing_factor = 0);
 int save_jpeg_rgb_optimized_huffman(const PillowCImage *image, const char *path,
                                     int quality, bool has_dpi, double dpi_x,
                                     double dpi_y, int subsampling,
                                     bool optimize_huffman = true,
-                                    int restart_marker_blocks = 0);
+                                    int restart_marker_blocks = 0,
+                                    int smoothing_factor = 0);
 int save_jpeg_rgb_qtables_optimized_huffman(
     const PillowCImage *image, const char *path, int quality, bool has_dpi,
     double dpi_x, double dpi_y, const int *qtables, std::size_t qtable_count,
@@ -216,7 +228,8 @@ int save_jpeg_cmyk_baseline(const PillowCImage *image, const char *path,
                             bool optimize = false, bool has_dpi = false,
                             double dpi_x = 0.0, double dpi_y = 0.0,
                             int subsampling = -1,
-                            std::uint16_t restart_interval = 0u);
+                            std::uint16_t restart_interval = 0u,
+                            int smoothing_factor = 0);
 int save_jpeg_cmyk_progressive(const PillowCImage *image, const char *path,
                                int quality, bool has_dpi = false,
                                double dpi_x = 0.0, double dpi_y = 0.0,
@@ -224,6 +237,7 @@ int save_jpeg_cmyk_progressive(const PillowCImage *image, const char *path,
                                std::size_t qtable_count = 0u,
                                int subsampling = -1,
                                std::uint16_t restart_interval = 0u,
-                               std::uint16_t c_ac_restart_interval = 0u);
+                               std::uint16_t c_ac_restart_interval = 0u,
+                               int smoothing_factor = 0);
 
 } // namespace pillow_c_jpeg

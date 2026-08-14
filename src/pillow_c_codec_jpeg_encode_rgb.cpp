@@ -19,6 +19,141 @@ std::uint8_t jpeg_clamp_sample(double value) {
   const int rounded = static_cast<int>(std::round(value));
   return static_cast<std::uint8_t>(std::max(0, std::min(255, rounded)));
 }
+
+// libjpeg-turbo 3.1.1 jcsample.c INPUT_SMOOTHING ports.  The full-size
+// kernel (fullsize_smooth_downsample) applies the 3x3 blend with
+// SF = smoothing_factor / 1024: memberscale = 65536 - sf*512 (the member
+// pixel keeps 1 - 8*SF) and neighscale = sf*64 (each of the eight
+// neighbors contributes SF).  Boundary rows/columns read the duplicated
+// context rows and edge columns exactly like the prep controller plus
+// expand_right_edge.
+int jpeg_smooth_fullsize_plane(const std::vector<std::uint8_t> &src,
+                               int width, int height, int block_width,
+                               int smoothing_factor,
+                               std::vector<std::uint8_t> *out) {
+  if (!out || width <= 0 || height <= 0 || block_width <= 1) {
+    return PILLOW_C_INVALID_ARGUMENT;
+  }
+  if (smoothing_factor == 0) {
+    *out = src;
+    return PILLOW_C_OK;
+  }
+  try {
+    const int memberscale = 65536 - smoothing_factor * 512;
+    const int neighscale = smoothing_factor * 64;
+    const auto at = [&](int row, int col) -> int {
+      const int r = std::max(0, std::min(row, height - 1));
+      const int c = std::max(0, std::min(col, width - 1));
+      return src[static_cast<std::size_t>(r) *
+                     static_cast<std::size_t>(width) +
+                 static_cast<std::size_t>(c)];
+    };
+    std::vector<std::uint8_t> dst(static_cast<std::size_t>(height) *
+                                  static_cast<std::size_t>(block_width));
+    for (int row = 0; row < height; ++row) {
+      std::uint8_t *outptr =
+          dst.data() + static_cast<std::size_t>(row) * block_width;
+      int colsum = at(row - 1, 0) + at(row + 1, 0) + at(row, 0);
+      int membersum = at(row, 0);
+      int nextcolsum = at(row - 1, 1) + at(row + 1, 1) + at(row, 1);
+      int neighsum = colsum + (colsum - membersum) + nextcolsum;
+      outptr[0] = static_cast<std::uint8_t>(
+          (membersum * memberscale + neighsum * neighscale + 32768) >> 16);
+      int lastcolsum = colsum;
+      colsum = nextcolsum;
+      for (int col = 1; col < block_width - 1; ++col) {
+        membersum = at(row, col);
+        nextcolsum = at(row - 1, col + 1) + at(row + 1, col + 1) +
+                     at(row, col + 1);
+        neighsum = lastcolsum + (colsum - membersum) + nextcolsum;
+        outptr[col] = static_cast<std::uint8_t>(
+            (membersum * memberscale + neighsum * neighscale + 32768) >> 16);
+        lastcolsum = colsum;
+        colsum = nextcolsum;
+      }
+      membersum = at(row, block_width - 1);
+      neighsum = lastcolsum + (colsum - membersum) + colsum;
+      outptr[block_width - 1] = static_cast<std::uint8_t>(
+          (membersum * memberscale + neighsum * neighscale + 32768) >> 16);
+    }
+    *out = std::move(dst);
+    return PILLOW_C_OK;
+  } catch (const std::bad_alloc &) {
+    return PILLOW_C_ALLOCATION_FAILED;
+  }
+}
+
+// h2v2_smooth_downsample: the 2x2 fancy downsampler with SF weights
+// memberscale = 16384 - sf*80 (scaled (1-5*SF)/4) and neighscale = sf*16.
+int jpeg_smooth_h2v2_plane(const std::vector<std::uint8_t> &src, int width,
+                           int height, int out_width, int smoothing_factor,
+                           std::vector<std::uint8_t> *out) {
+  if (!out || width <= 0 || height <= 0 || out_width <= 1) {
+    return PILLOW_C_INVALID_ARGUMENT;
+  }
+  try {
+    const int out_height = (height + 1) / 2;
+    const int memberscale = 16384 - smoothing_factor * 80;
+    const int neighscale = smoothing_factor * 16;
+    const auto at = [&](int row, int col) -> int {
+      const int r = std::max(0, std::min(row, height - 1));
+      const int c = std::max(0, std::min(col, width - 1));
+      return src[static_cast<std::size_t>(r) *
+                     static_cast<std::size_t>(width) +
+                 static_cast<std::size_t>(c)];
+    };
+    std::vector<std::uint8_t> dst(static_cast<std::size_t>(out_height) *
+                                  static_cast<std::size_t>(out_width));
+    int inrow = 0;
+    for (int outrow = 0; outrow < out_height; ++outrow) {
+      std::uint8_t *outptr =
+          dst.data() + static_cast<std::size_t>(outrow) * out_width;
+      int membersum = at(inrow, 0) + at(inrow, 1) + at(inrow + 1, 0) +
+                      at(inrow + 1, 1);
+      int neighsum = at(inrow - 1, 0) + at(inrow - 1, 1) + at(inrow + 2, 0) +
+                     at(inrow + 2, 1) + at(inrow, 0) + at(inrow, 2) +
+                     at(inrow + 1, 0) + at(inrow + 1, 2);
+      neighsum += neighsum;
+      neighsum += at(inrow - 1, 0) + at(inrow - 1, 2) + at(inrow + 2, 0) +
+                  at(inrow + 2, 2);
+      outptr[0] = static_cast<std::uint8_t>(
+          (membersum * memberscale + neighsum * neighscale + 32768) >> 16);
+      for (int col = 1; col < out_width - 1; ++col) {
+        const int base = col * 2;
+        membersum = at(inrow, base) + at(inrow, base + 1) +
+                    at(inrow + 1, base) + at(inrow + 1, base + 1);
+        neighsum = at(inrow - 1, base) + at(inrow - 1, base + 1) +
+                   at(inrow + 2, base) + at(inrow + 2, base + 1) +
+                   at(inrow, base - 1) + at(inrow, base + 2) +
+                   at(inrow + 1, base - 1) + at(inrow + 1, base + 2);
+        neighsum += neighsum;
+        neighsum += at(inrow - 1, base - 1) + at(inrow - 1, base + 2) +
+                    at(inrow + 2, base - 1) + at(inrow + 2, base + 2);
+        outptr[col] = static_cast<std::uint8_t>(
+            (membersum * memberscale + neighsum * neighscale + 32768) >> 16);
+      }
+      {
+        const int base = (out_width - 1) * 2;
+        membersum = at(inrow, base) + at(inrow, base + 1) +
+                    at(inrow + 1, base) + at(inrow + 1, base + 1);
+        neighsum = at(inrow - 1, base) + at(inrow - 1, base + 1) +
+                   at(inrow + 2, base) + at(inrow + 2, base + 1) +
+                   at(inrow, base - 1) + at(inrow, base + 1) +
+                   at(inrow + 1, base - 1) + at(inrow + 1, base + 1);
+        neighsum += neighsum;
+        neighsum += at(inrow - 1, base - 1) + at(inrow - 1, base + 1) +
+                    at(inrow + 2, base - 1) + at(inrow + 2, base + 1);
+        outptr[out_width - 1] = static_cast<std::uint8_t>(
+            (membersum * memberscale + neighsum * neighscale + 32768) >> 16);
+      }
+      inrow += 2;
+    }
+    *out = std::move(dst);
+    return PILLOW_C_OK;
+  } catch (const std::bad_alloc &) {
+    return PILLOW_C_ALLOCATION_FAILED;
+  }
+}
 int jpeg_rgb_sampling_from_subsampling(int subsampling, int *out_h,
                                        int *out_v) {
   if (!out_h || !out_v) {
@@ -56,7 +191,8 @@ int jpeg_prepare_rgb_sampled_blocks(const PillowCImage *image, int quality,
                                     int subsampling,
                                     const int *custom_luma_qtable,
                                     const int *custom_chroma_qtable,
-                                    JpegRgbPreparedBlocks *prepared) {
+                                    JpegRgbPreparedBlocks *prepared,
+                                    int smoothing_factor) {
   if (!image || !prepared) {
     return PILLOW_C_NULL_POINTER;
   }
@@ -136,6 +272,48 @@ int jpeg_prepare_rgb_sampled_blocks(const PillowCImage *image, int quality,
                                      static_cast<std::size_t>(chroma_height);
     std::vector<std::uint8_t> cb_plane(chroma_count);
     std::vector<std::uint8_t> cr_plane(chroma_count);
+    if (smoothing_factor != 0) {
+      // libjpeg-turbo's INPUT_SMOOTHING: the full-size Y plane gets the
+      // fullsize kernel, and a 4:2:0 chroma pair gets the smooth 2x2
+      // downsampler (4:2:2 has no smoothing variant, matching libjpeg).
+      std::vector<std::uint8_t> smoothed;
+      status = jpeg_smooth_fullsize_plane(y_plane, image->width, image->height,
+                                          mcu_cols * 8 * h_samp,
+                                          smoothing_factor, &smoothed);
+      if (status != PILLOW_C_OK) {
+        return status;
+      }
+      y_plane = std::move(smoothed);
+      if (h_samp == 2 && v_samp == 2) {
+        status = jpeg_smooth_h2v2_plane(cb_full, image->width, image->height,
+                                        chroma_width, smoothing_factor,
+                                        &cb_plane);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+        status = jpeg_smooth_h2v2_plane(cr_full, image->width, image->height,
+                                        chroma_width, smoothing_factor,
+                                        &cr_plane);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+      } else if (h_samp == 1 && v_samp == 1) {
+        status = jpeg_smooth_fullsize_plane(cb_full, image->width,
+                                            image->height, mcu_cols * 8,
+                                            smoothing_factor, &smoothed);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+        cb_full = std::move(smoothed);
+        status = jpeg_smooth_fullsize_plane(cr_full, image->width,
+                                            image->height, mcu_cols * 8,
+                                            smoothing_factor, &smoothed);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+        cr_full = std::move(smoothed);
+      }
+    }
     for (int cy = 0; cy < chroma_height; ++cy) {
       for (int cx = 0; cx < chroma_width; ++cx) {
         int cb_sum = 0;
@@ -160,6 +338,9 @@ int jpeg_prepare_rgb_sampled_blocks(const PillowCImage *image, int quality,
             static_cast<std::size_t>(cy) *
                 static_cast<std::size_t>(chroma_width) +
             static_cast<std::size_t>(cx);
+        if (smoothing_factor != 0 && h_samp == 2 && v_samp == 2) {
+          continue;
+        }
         cb_plane[dst_index] =
             static_cast<std::uint8_t>((cb_sum + downsample_bias) / divisor);
         cr_plane[dst_index] =
@@ -404,12 +585,13 @@ int save_jpeg_rgb_progressive_huffman(
     const PillowCImage *image, const char *path, int quality, bool has_dpi,
     double dpi_x, double dpi_y, int subsampling, const int *custom_luma_qtable,
     const int *custom_chroma_qtable, int chroma_qtable_id,
-    int restart_marker_blocks, int restart_marker_rows);
+    int restart_marker_blocks, int restart_marker_rows, int smoothing_factor);
 int save_jpeg_rgb_optimized_huffman(const PillowCImage *image, const char *path,
                                     int quality, bool has_dpi, double dpi_x,
                                     double dpi_y, int subsampling,
                                     bool optimize_huffman,
-                                    int restart_marker_blocks) {
+                                    int restart_marker_blocks,
+                                    int smoothing_factor) {
   if (!image || !path) {
     return PILLOW_C_NULL_POINTER;
   }
@@ -481,6 +663,45 @@ int save_jpeg_rgb_optimized_huffman(const PillowCImage *image, const char *path,
                                      static_cast<std::size_t>(chroma_height);
     std::vector<std::uint8_t> cb_plane(chroma_count);
     std::vector<std::uint8_t> cr_plane(chroma_count);
+    if (smoothing_factor != 0) {
+      std::vector<std::uint8_t> smoothed;
+      status = jpeg_smooth_fullsize_plane(y_plane, image->width, image->height,
+                                          mcu_cols * 8 * h_samp,
+                                          smoothing_factor, &smoothed);
+      if (status != PILLOW_C_OK) {
+        return status;
+      }
+      y_plane = std::move(smoothed);
+      if (h_samp == 2 && v_samp == 2) {
+        status = jpeg_smooth_h2v2_plane(cb_full, image->width, image->height,
+                                        chroma_width, smoothing_factor,
+                                        &cb_plane);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+        status = jpeg_smooth_h2v2_plane(cr_full, image->width, image->height,
+                                        chroma_width, smoothing_factor,
+                                        &cr_plane);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+      } else if (h_samp == 1 && v_samp == 1) {
+        status = jpeg_smooth_fullsize_plane(cb_full, image->width,
+                                            image->height, mcu_cols * 8,
+                                            smoothing_factor, &smoothed);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+        cb_full = std::move(smoothed);
+        status = jpeg_smooth_fullsize_plane(cr_full, image->width,
+                                            image->height, mcu_cols * 8,
+                                            smoothing_factor, &smoothed);
+        if (status != PILLOW_C_OK) {
+          return status;
+        }
+        cr_full = std::move(smoothed);
+      }
+    }
     for (int cy = 0; cy < chroma_height; ++cy) {
       for (int cx = 0; cx < chroma_width; ++cx) {
         int cb_sum = 0;
@@ -502,6 +723,9 @@ int save_jpeg_rgb_optimized_huffman(const PillowCImage *image, const char *path,
             static_cast<std::size_t>(cy) *
                 static_cast<std::size_t>(chroma_width) +
             static_cast<std::size_t>(cx);
+        if (smoothing_factor != 0 && h_samp == 2 && v_samp == 2) {
+          continue;
+        }
         cb_plane[dst_index] =
             static_cast<std::uint8_t>((cb_sum + (divisor / 2)) / divisor);
         cr_plane[dst_index] =
@@ -697,13 +921,15 @@ int save_jpeg_cmyk_baseline(const PillowCImage *image, const char *path,
                             int quality, const int *qtables,
                             std::size_t qtable_count, bool optimize,
                             bool has_dpi, double dpi_x, double dpi_y,
-                            int subsampling, std::uint16_t restart_interval);
+                            int subsampling, std::uint16_t restart_interval,
+                            int smoothing_factor);
 int save_jpeg_cmyk_progressive(const PillowCImage *image, const char *path,
                                int quality, bool has_dpi, double dpi_x,
                                double dpi_y, const int *qtables,
                                std::size_t qtable_count, int subsampling,
                                std::uint16_t restart_interval,
-                               std::uint16_t c_ac_restart_interval);
+                               std::uint16_t c_ac_restart_interval,
+                               int smoothing_factor);
 int save_jpeg_rgb_qtables_optimized_huffman(
     const PillowCImage *image, const char *path, int quality, bool has_dpi,
     double dpi_x, double dpi_y, const int *qtables, std::size_t qtable_count,
@@ -827,7 +1053,7 @@ int save_jpeg_rgb_qtables_optimized_huffman(
   try {
     JpegRgbPreparedBlocks prepared;
     int status = jpeg_prepare_rgb_sampled_blocks(
-        image, quality, subsampling, qtables, chroma_qtable, &prepared);
+        image, quality, subsampling, qtables, chroma_qtable, &prepared, 0);
     if (status != PILLOW_C_OK) {
       return status;
     }
@@ -1156,7 +1382,8 @@ int save_jpeg_rgb_progressive_huffman(
     const PillowCImage *image, const char *path, int quality, bool has_dpi,
     double dpi_x, double dpi_y, int subsampling, const int *custom_luma_qtable,
     const int *custom_chroma_qtable, int chroma_qtable_id,
-    int restart_marker_blocks, int restart_marker_rows) {
+    int restart_marker_blocks, int restart_marker_rows,
+    int smoothing_factor) {
   if (!image || !path) {
     return PILLOW_C_NULL_POINTER;
   }
@@ -1186,7 +1413,8 @@ int save_jpeg_rgb_progressive_huffman(
     JpegRgbPreparedBlocks prepared;
     status = jpeg_prepare_rgb_sampled_blocks(image, quality, subsampling,
                                              custom_luma_qtable,
-                                             custom_chroma_qtable, &prepared);
+                                             custom_chroma_qtable, &prepared,
+                                             smoothing_factor);
     if (status != PILLOW_C_OK) {
       return status;
     }
