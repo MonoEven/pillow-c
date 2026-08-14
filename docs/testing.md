@@ -47,8 +47,28 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2797` AHK tests: `1387` raw DLL tests and
-`1410` facade tests.
+This suite currently registers `2799` AHK tests: `1388` raw DLL tests and
+`1411` facade tests.
+
+Latest `API-GRAB-001` verification: the Pillow 11.3.0 oracles (kept
+in `oracle/probe_imagegrab_clip.py` and
+`oracle/probe_imagegrab_dib.py`) pin grab()/grabclipboard() semantics,
+and the ctypes cross-check (kept in
+`oracle/probe_imagegrab_dll_compose.py`) matches Pillow's
+grabclipboard outputs byte-exactly across 24/32/8/1bpp DIBs and the
+empty path (`FAILURES: 0`). The new `pillow_c_grab.cpp` module adds
+`pillow_c_image_grab` and `pillow_c_image_grab_clipboard`, and the
+facade `ImageGrab` class adds Grab/GrabClipboard with Pillow's
+coordinate errors and the None analogue. Raw/facade grab targets pass
+`2/2` in `172ms`; the math filter passes `2/2` in `47ms`; and the
+full directory suite passes `2799/2799` in `21953ms`, with zero
+failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity moves to
+`466/466` (two deliberate new exports) with zero difference; and the
+rebuilt DLL SHA-256 is
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `87% ±5%`.
 
 Latest `API-MATH-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagemath.py`, `oracle/probe_imagemath2.py`, and

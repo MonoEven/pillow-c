@@ -37,6 +37,50 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 API-GRAB-001 ImageGrab Capture Module (GREEN)
+
+`API-GRAB-001` closes the ImageGrab module with a full
+implementation, not a boundary.
+
+The Pillow 11.3.0 oracles (kept in `oracle/probe_imagegrab_clip.py`
+and `oracle/probe_imagegrab_dib.py`) pin grab() and grabclipboard():
+grab returns RGB images (full-screen/bbox/all_screens; off-screen
+bboxes succeed with GDI clipping; `right<left` raises
+`Coordinate 'right' is less than 'left'`; empty bbox yields an empty
+RGB image), and grabclipboard decodes CF_DIB bitmaps (24/32bpp -> RGB
+with bottom-up row flip, BGR->RGB swap, and 32bpp alpha drop; 8bpp ->
+L index grayscale; 1bpp -> packed mode 1; empty/text clipboard ->
+None). The new `src/pillow_c_grab.cpp` module implements
+`pillow_c_image_grab` (GDI BitBlt with CAPTUREBLT when
+include_layered, GetDIBits top-down 24bpp, BGR->RGB swap) and
+`pillow_c_image_grab_clipboard` (OpenClipboard/CF_DIB with palette and
+DWORD-stride row handling); the project now links gdi32/user32. The
+facade `ImageGrab` class adds `Grab`/`GrabClipboard` (AHK
+case-insensitivity serves grab/grabclipboard) with Pillow's
+coordinate errors, the `screen grab failed` OSError mapping, and 0 as
+the None analogue. Export parity moves to `466/466`.
+
+Verification:
+
+- Red evidence: the module was absent (AUDIT-002).
+- ctypes cross-check (`oracle/probe_imagegrab_dll_compose.py`): the
+  DLL's grabclipboard matches Pillow byte-exactly across 24/32/8/1bpp
+  DIBs and the empty path (`FAILURES: 0`).
+- Raw/facade grab targets pass `2/2` in `172ms` (screen/bbox sizes,
+  mode, DIB decode, empty clipboard, coordinate errors, lowercase
+  aliases).
+- Math filter: `2/2` in `47ms`.
+- Full AHK directory suite: `2799/2799` in `21953ms`; zero failures,
+  errors, or skips.
+- Release x64 Rebuild: `0 Warning(s), 0 Error(s)`.
+- Source/DLL export parity: `466/466`, zero difference.
+- DLL SHA-256:
+  `7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+estimate moves to `87% ±5%`. The next bounded child is
+`API-PATH-001`, the ImagePath module.
+
 ## 2026-08-14 API-MATH-001 ImageMath eval/unsafe_eval (GREEN)
 
 `API-MATH-001` closes the bounded `ImageMath` eval/unsafe_eval
@@ -39819,7 +39863,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | BNDRY-001 | Boundaries | covered | Explicit remaining-item boundary ledger completing the coverage definition: dependency-gated formats (WebP/AVIF/JPEG2000/PDF/PSD/DDS/PCX/ICNS/SGI/SUN/EPS/MPO/FLI/DCX/XPM) fail loudly with `Pillow image file format is unsupported`; APNG and true PNG compression strategy stay future families (default-deflate single-frame PNGs only); dither exact parity stays bounded to the FLOYDSTEINBERG slices with libimagequant keeping Pillow's `dependency required by this method was not enabled at compile time` error; qtables beyond two tables, malformed marker streams, and explicit YCCK encoding are not replicated; the META-002 tail stays behind explicit children; and byte-exact whole-file parity is claimed only for the verified bounded packets. The facade boundary test pins the rejections. Facade-only; export parity remains `463/463` and the DLL SHA-256 is unchanged. SUPERSEDED for the newly found gaps by the AUDIT-002 re-audit (rows below). | `PillowTestDependencyGatedFormatBoundaries`, existing NormalizeFileFormat/FormatFromPath rejections, existing LIBIMAGEQUANT guard, ledger boundary rows. |
 | AUDIT-002 | Audit | covered | Independent Pillow 11.3.0 surface re-audit that demotes the estimate to `85% ±5%`: enumerated the real public surface (59 Image.Image names, 69 ImagingCore names, 23 submodules, 30 SAVE / 45 OPEN formats) and diffed it against the facade, finding the unrecorded gaps in the rows below. Evidence in `oracle/audit_pillow_surface.py`, `oracle/pillow_surface.json`, `oracle/audit_report_2026-08-14.md`. | Surface enumerator, facade/native diff, audit report, ledger demotion. |
 | API-MATH-001 | Facade API | covered | Bounded ImageMath eval/unsafe_eval arithmetic: Pillow 11.3.0's safe grammar over L/I/F operands — binary + - * / % & \| ^ << >> and comparisons, unary -/~, abs/min/max/float/int/convert, int/float literals; results mode I (int32, C truncation division and C remainder) or F (float32); RGB -> `unsupported mode: RGB`, unknown names -> `'X' not allowed`, float bitwise -> `bad operand type for 'and'`, constant-only expressions return scalars. The new `pillow_c_image_math_rpn` export evaluates a per-pixel RPN stack machine, and the facade ImageMath class adds the tokenizer/shunting-yard compiler/scalar evaluator with Pillow-shaped errors (Eval/UnsafeEval serve eval/unsafe_eval; variables as a Map). A ctypes cross-check matches 20 expressions byte-exactly (`FAILURES: 0`). Export parity moves to `464/464`. | `oracle/probe_imagemath.py`, `oracle/probe_imagemath2.py`, `oracle/probe_imagemath3.py`, `oracle/probe_imagemath_dll_compose.py`, `pillow_c_image_math_rpn`, facade `ImageMath` class, raw/facade math tests. |
-| API-GRAB-001 | Facade API | not started | ImageGrab grab/grabclipboard screen capture (11 names) — platform/UI integration surface found by AUDIT-002. | Platform capture route or documented boundary. |
+| API-GRAB-001 | Facade API | covered | ImageGrab implemented, not bounded: Pillow 11.3.0 grab() semantics (RGB screen captures via GDI BitBlt with bbox/all_screens/include_layered, GDI clipping for off-screen bboxes, the coordinate errors, empty-bbox empty image) and grabclipboard() CF_DIB decoding (24/32bpp -> RGB with bottom-up flip + BGR swap + 32bpp alpha drop, 8bpp -> L index grayscale, 1bpp -> packed mode 1, empty/text -> None). The new `pillow_c_grab.cpp` module adds `pillow_c_image_grab` and `pillow_c_image_grab_clipboard` (project now links gdi32/user32), and the facade `ImageGrab` class adds Grab/GrabClipboard with Pillow's errors. A ctypes cross-check matches Pillow byte-exactly across all four DIB bit counts and the empty path (`FAILURES: 0`). Export parity moves to `466/466`. | `oracle/probe_imagegrab_clip.py`, `oracle/probe_imagegrab_dib.py`, `oracle/probe_imagegrab_dll_compose.py`, `pillow_c_grab.cpp`, facade `ImageGrab` class, raw/facade grab tests. |
 | API-PATH-001 | Facade API | not started | ImagePath path objects (3 names) for ImageDraw — found by AUDIT-002. | Facade ImagePath or documented boundary. |
 | API-QTTK-001 | Facade API | not started | ImageQt/ImageTk module surfaces (26/10 names) — only the toqimage/toqpixmap boundaries were recorded (API-IMG-001E); the module objects themselves are unrecorded. | Documented boundary or Qt/Tk dependency decision. |
 | API-FILE-001 | Facade API | not started | ImageFile module surface (Parser/ImageFile/StubImageFile/_save base classes, 31 names) — absent as a module; actual decode/encode runs through the native ABI. | Documented boundary (native ABI analogue) or facade module. |

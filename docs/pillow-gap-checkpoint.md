@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 86% (about ±5%) under
+Estimate: AHK-first Pillow-runtime overall completion 87% (about ±5%) under
 the real-workload Pillow replacement-readiness model — measured against
 the FULL Pillow 11.3.0 public surface since the AUDIT-002 re-audit.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
@@ -44,29 +44,26 @@ also COMPLETE), the complete facade API slice (`API-IMG-001D` getim,
 (`MODE-NUM-001CH`/`001CI`/`001CJ`), the complete numeric resize family
 (`MODE-NUM-001CK`/`001CL`/`001CM`/`001CN`), the complete I;16 numeric
 surface (`MODE-NUM-001CO`/`001CP`/`001CQ`), `BNDRY-001` the
-remaining-item boundary ledger (superseded by AUDIT-002 for the newly
-found gaps), and `API-MATH-001` — the ImageMath eval/unsafe_eval
-arithmetic module (bounded safe grammar: + - * / % & | ^ << >>,
-unary -/~, abs/min/max/float/int/convert, comparisons, int/float
-literals; Pillow's L/I/F domain with I/F result modes, C truncation
-division, C remainder, RGB/mode/type error parity) through the new
-`pillow_c_image_math_rpn` per-pixel RPN engine and the facade
-shunting-yard compiler.
+remaining-item boundary ledger, `API-MATH-001` the ImageMath
+eval/unsafe_eval arithmetic module, and `API-GRAB-001` — the
+ImageGrab screen/clipboard capture module (GDI BitBlt screen grabs
+with bbox/all_screens/include_layered, CF_DIB clipboard decoding for
+24/32/8/1bpp with Pillow's row-flip/BGR-swap/index-grayscale
+semantics, and Pillow's coordinate/error parity).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The ImageMath slice was cross-verified
-against Pillow's eval outputs (exact int32/float32 bytes,
-`FAILURES: 0`), the math filter passes `2/2` in `47ms`, the numeric
-filter passes `128/128` in `625ms`, and the full directory suite
-passes `2797/2797` in `21547ms`; source/DLL export parity moves to
-`464/464` (one deliberate new export) with zero difference; and the
+IFD as a writer artifact. The grab slice was cross-verified against
+Pillow's grabclipboard outputs (exact bytes across all four DIB bit
+counts, `FAILURES: 0`), the grab filter passes `2/2` in `172ms`, the
+math filter passes `2/2` in `47ms`, and the full directory suite
+passes `2799/2799` in `21953ms`; source/DLL export parity moves to
+`466/466` (two deliberate new exports) with zero difference; and the
 DLL SHA-256 is
-`E721E4C964B99CE6D12E7E77043847C0DAC578A95A956E36444E154A3BD032BF`.
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is
-`API-GRAB-001`, the ImageGrab screen-capture module (implementation or
-explicit documented boundary).
+`API-PATH-001`, the ImagePath module (path objects for ImageDraw).
 ```
 
 Current work packet:
@@ -409,8 +406,8 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-GRAB-001`, the ImageGrab screen-capture
-  module (implementation or explicit documented boundary).
+- Selected next gap: `API-PATH-001`, the ImagePath module (path objects
+  for ImageDraw).
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -484,6 +481,36 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `API-GRAB-001` is GREEN for the ImageGrab screen/clipboard
+capture module — implemented, not bounded. The Pillow 11.3.0 oracles
+(kept in `oracle/probe_imagegrab_clip.py` and
+`oracle/probe_imagegrab_dib.py`) show grab() returns RGB images
+(full-screen, bbox, all_screens; off-screen bboxes succeed with GDI
+clipping; right<left raises `Coordinate 'right' is less than 'left'`;
+empty bbox yields an empty RGB image) and grabclipboard() decodes
+CF_DIB bitmaps (24/32bpp -> RGB with bottom-up row flip and BGR swap
+plus alpha drop, 8bpp -> L index grayscale, 1bpp -> packed mode 1,
+empty/text clipboard -> None). The new `pillow_c_grab.cpp` module
+implements `pillow_c_image_grab` (GDI BitBlt with CAPTUREBLT for
+layered windows + GetDIBits top-down 24bpp + BGR->RGB swap) and
+`pillow_c_image_grab_clipboard` (OpenClipboard/CF_DIB with palette and
+DWORD-stride handling); the project now links gdi32/user32. The facade
+`ImageGrab` class adds Grab/GrabClipboard with Pillow's coordinate
+errors, the `screen grab failed` mapping, and the None analogue.
+A ctypes cross-check (kept in
+`oracle/probe_imagegrab_dll_compose.py`) matches Pillow's
+grabclipboard outputs byte-exactly across all four DIB bit counts and
+the empty path (`FAILURES: 0`). Raw/facade grab targets pass `2/2` in
+`172ms`; the math filter passes `2/2` in `47ms`; and the full
+directory suite passes `2799/2799` in `21953ms`, with zero failures,
+errors, or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity moves to `466/466` (two deliberate new
+exports) with zero difference; and the rebuilt DLL SHA-256 is
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+estimate moves to `87% ±5%`. The next bounded child is
+`API-PATH-001`, the ImagePath module.
 
 2026-08-14: `API-MATH-001` is GREEN for the bounded `ImageMath`
 eval/unsafe_eval arithmetic module — the first functional gap closed

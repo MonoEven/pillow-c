@@ -23301,6 +23301,112 @@ PillowCTestImageMathRpnSamples(*) {
 
 AhkTest.Test("pillow_c image_math_rpn evaluates per-pixel int32/float32 arithmetic", PillowCTestImageMathRpnSamples)
 
+PillowCTestDibClipboardBytes(width, height, rows) {
+    ; BITMAPINFOHEADER (biSize=40) + rows.
+    buf := Buffer(40 + rows.Length, 0)
+    NumPut("UInt", 40, buf, 0)
+    NumPut("Int", width, buf, 4)
+    NumPut("Int", height, buf, 8)
+    NumPut("UShort", 1, buf, 12)
+    NumPut("UShort", 24, buf, 14)
+    for index, value in rows
+        NumPut("UChar", value, buf, 40 + index - 1)
+    return buf
+}
+
+PillowCTestSetClipboardDib(buf) {
+    hGlobal := DllCall("kernel32\GlobalAlloc", "UInt", 0x42, "UPtr", buf.Size, "Ptr")
+    AhkTest.AssertTrue(hGlobal != 0)
+    ptr := DllCall("kernel32\GlobalLock", "Ptr", hGlobal, "Ptr")
+    AhkTest.AssertTrue(ptr != 0)
+    DllCall("kernel32\RtlMoveMemory", "Ptr", ptr, "Ptr", buf, "UPtr", buf.Size)
+    DllCall("kernel32\GlobalUnlock", "Ptr", hGlobal)
+    AhkTest.AssertTrue(DllCall("user32\OpenClipboard", "Ptr", 0, "Int"))
+    DllCall("user32\EmptyClipboard")
+    AhkTest.AssertTrue(DllCall("user32\SetClipboardData", "UInt", 8, "Ptr", hGlobal, "Ptr") != 0)
+    DllCall("user32\CloseClipboard")
+}
+
+PillowCTestImageGrabScreenAndClipboard(*) {
+    screenWidth := DllCall("user32\GetSystemMetrics", "Int", 0, "Int")
+    screenHeight := DllCall("user32\GetSystemMetrics", "Int", 1, "Int")
+    out := 0
+    try {
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_grab",
+            "Int", 0,
+            "Int", 0,
+            "Int", screenWidth,
+            "Int", screenHeight,
+            "Int", 0,
+            "Int", 0,
+            "Ptr*", &out,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual(3, PillowCImageMode(out))
+        AhkTest.AssertEqual(screenWidth, PillowCImageInt(out, "pillow_c_image_width"))
+        AhkTest.AssertEqual(screenHeight, PillowCImageInt(out, "pillow_c_image_height"))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; bbox grab returns the exact region size.
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_grab",
+            "Int", 100,
+            "Int", 100,
+            "Int", 300,
+            "Int", 200,
+            "Int", 0,
+            "Int", 0,
+            "Ptr*", &out,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual(3, PillowCImageMode(out))
+        AhkTest.AssertEqual(200, PillowCImageInt(out, "pillow_c_image_width"))
+        AhkTest.AssertEqual(100, PillowCImageInt(out, "pillow_c_image_height"))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; 24bpp CF_DIB clipboard: 3x2 bottom-up BGR rows, stride 12.
+        rows := [0, 0, 255, 0, 255, 0, 255, 0, 0, 0, 0, 0,
+                 10, 20, 30, 40, 50, 60, 70, 80, 90, 0, 0, 0]
+        PillowCTestSetClipboardDib(PillowCTestDibClipboardBytes(3, 2, rows))
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_grab_clipboard",
+            "Ptr*", &out,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual(3, PillowCImageMode(out))
+        ; bottom-up flip + BGR->RGB: row0 = [30,20,10, 60,50,40, 90,80,70]
+        AhkTest.AssertEqual(
+            [30, 20, 10, 60, 50, 40, 90, 80, 70,
+             255, 0, 0, 0, 255, 0, 0, 0, 255],
+            PillowCImageToArray(out, 18))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; Empty clipboard -> success with a null handle.
+        DllCall("user32\OpenClipboard", "Ptr", 0)
+        DllCall("user32\EmptyClipboard")
+        DllCall("user32\CloseClipboard")
+        status := DllCall(
+            PillowCDllPath() "\pillow_c_image_grab_clipboard",
+            "Ptr*", &out,
+            "Int"
+        )
+        PillowCAssertStatus(status)
+        AhkTest.AssertEqual(0, out)
+    } finally {
+        if out
+            PillowCFreeImage(out)
+    }
+}
+
+AhkTest.Test("pillow_c image_grab captures the screen and clipboard DIBs", PillowCTestImageGrabScreenAndClipboard)
+
 PillowCTestI32Bytes(values) {
     bytes := []
     for value in values {

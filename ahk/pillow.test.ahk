@@ -1,4 +1,4 @@
-﻿#Requires AutoHotkey v2.0
+#Requires AutoHotkey v2.0
 #Include <stdlib\ahktest>
 #Include "pillow.ahk"
 
@@ -22017,6 +22017,61 @@ PillowTestImageMathEval(*) {
 }
 
 AhkTest.Test("Pillow ImageMath eval/unsafe_eval evaluates per-pixel expressions with Pillow semantics", PillowTestImageMathEval)
+
+PillowTestImageGrab(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    screenWidth := DllCall("user32\GetSystemMetrics", "Int", 0, "Int")
+    screenHeight := DllCall("user32\GetSystemMetrics", "Int", 1, "Int")
+    grabbed := 0
+    try {
+        grabbed := Pillow.ImageGrab.Grab()
+        AhkTest.AssertEqual("RGB", grabbed.Mode)
+        AhkTest.AssertEqual([screenWidth, screenHeight], grabbed.Size)
+        grabbed.Close()
+
+        grabbed := Pillow.ImageGrab.Grab([100, 100, 300, 200])
+        AhkTest.AssertEqual("RGB", grabbed.Mode)
+        AhkTest.AssertEqual([200, 100], grabbed.Size)
+        grabbed.Close()
+
+        ; Pillow 11.3.0 accepts off-screen bboxes (GDI clips).
+        grabbed := Pillow.ImageGrab.Grab([30000, 0, 30100, 100])
+        AhkTest.AssertEqual([100, 100], grabbed.Size)
+        grabbed.Close()
+
+        coordinateError := ""
+        try {
+            Pillow.ImageGrab.Grab([100, 100, 50, 200])
+        } catch Error as err {
+            coordinateError := err.Message
+        }
+        AhkTest.AssertEqual("Coordinate 'right' is less than 'left'", coordinateError)
+
+        coordinateError := ""
+        try {
+            Pillow.ImageGrab.Grab([0, 200, 100, 50])
+        } catch Error as err {
+            coordinateError := err.Message
+        }
+        AhkTest.AssertEqual("Coordinate 'lower' is less than 'upper'", coordinateError)
+
+        ; grabclipboard: empty clipboard -> 0 (Pillow's None analogue).
+        DllCall("user32\OpenClipboard", "Ptr", 0)
+        DllCall("user32\EmptyClipboard")
+        DllCall("user32\CloseClipboard")
+        AhkTest.AssertEqual(0, Pillow.ImageGrab.GrabClipboard())
+
+        ; lowercase aliases resolve via AHK case-insensitivity.
+        grabbed := Pillow.ImageGrab.grab([100, 100, 300, 200])
+        AhkTest.AssertEqual([200, 100], grabbed.Size)
+        grabbed.Close()
+    } finally {
+        if IsObject(grabbed)
+            grabbed.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageGrab grabs the screen and clipboard with Pillow semantics", PillowTestImageGrab)
 
 PillowTestImageDisplayApiBoundaries(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

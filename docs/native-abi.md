@@ -29,8 +29,8 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`464/464`; the full AHK suite is `2797/2797`; and the current DLL SHA-256 is
-`E721E4C964B99CE6D12E7E77043847C0DAC578A95A956E36444E154A3BD032BF`.
+`466/466`; the full AHK suite is `2799/2799`; and the current DLL SHA-256 is
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
@@ -197,6 +197,25 @@ programs, empty stacks, and float bitwise/shift operands return
 `PILLOW_C_MISMATCH`. The facade `ImageMath` class compiles expressions
 to this RPN (tokenizer, shunting-yard, scalar evaluator for
 constant-only expressions) and surfaces Pillow's error messages.
+
+## ImageGrab ABI Behavior
+
+`API-GRAB-001` adds two public exports:
+`pillow_c_image_grab(left, top, right, bottom, all_screens,
+include_layered, out_image)` and
+`pillow_c_image_grab_clipboard(out_image)`. Existing exported names,
+signatures, status codes, image-handle ownership, source-pointer
+lifetimes, and facade routes remain unchanged; the project now links
+gdi32.lib and user32.lib. The grab export BitBlts the screen region
+(CAPTUREBLT when include_layered) into a compatible bitmap, reads it
+as a top-down 24bpp DIB, and stores RGB byte order; empty regions
+return an empty RGB image, GDI failures return
+`PILLOW_C_INVALID_ARGUMENT` (the facade maps to Pillow's
+`screen grab failed`). The clipboard export decodes the CF_DIB global
+with Pillow 11.3.0 semantics: 24/32bpp -> RGB (bottom-up row flip,
+BGR->RGB swap, 32bpp alpha dropped), 8bpp -> L index grayscale, 1bpp
+-> packed mode 1, DWORD-aligned strides; an empty/text clipboard
+returns status `0` with a null handle (the facade's None analogue).
 
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.

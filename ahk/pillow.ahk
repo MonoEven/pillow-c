@@ -513,6 +513,64 @@ class Pillow {
             return { IsFloat: false, Value: 0 }
         }
     }
+    class ImageGrab {
+        ; AHK case-insensitivity serves grab()/grabclipboard().
+        static GrabClipboard() {
+            outHandle := 0
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_grab_clipboard",
+                "Ptr*", &outHandle,
+                "Int"
+            ))
+            return outHandle ? Pillow.WrapImageHandle(outHandle) : 0
+        }
+
+        static Grab(bbox := unset, includeLayeredWindows := false, allScreens := false) {
+            left := 0
+            top := 0
+            right := 0
+            bottom := 0
+            if IsSet(bbox) {
+                if !IsObject(bbox) || bbox.Length != 4
+                    throw Error("Pillow.ImageGrab.grab bbox expects a 4-value rectangle", -1)
+                left := bbox[1]
+                top := bbox[2]
+                right := bbox[3]
+                bottom := bbox[4]
+                if right < left
+                    throw Error("Coordinate 'right' is less than 'left'", -1)
+                if bottom < top
+                    throw Error("Coordinate 'lower' is less than 'upper'", -1)
+            } else if allScreens {
+                left := DllCall("user32\GetSystemMetrics", "Int", 76, "Int")
+                top := DllCall("user32\GetSystemMetrics", "Int", 77, "Int")
+                right := left + DllCall("user32\GetSystemMetrics", "Int", 78, "Int")
+                bottom := top + DllCall("user32\GetSystemMetrics", "Int", 79, "Int")
+            } else {
+                right := DllCall("user32\GetSystemMetrics", "Int", 0, "Int")
+                bottom := DllCall("user32\GetSystemMetrics", "Int", 1, "Int")
+            }
+            outHandle := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_grab",
+                "Int", left,
+                "Int", top,
+                "Int", right,
+                "Int", bottom,
+                "Int", allScreens ? 1 : 0,
+                "Int", includeLayeredWindows ? 1 : 0,
+                "Ptr*", &outHandle,
+                "Int"
+            )
+            if status = -3
+                ; Pillow 11.3.0 raises OSError("screen grab failed") when
+                ; the GDI capture fails (e.g. an off-screen bbox).
+                throw Error("screen grab failed", -1)
+            Pillow.CheckStatus(status)
+            return Pillow.WrapImageHandle(outHandle)
+        }
+    }
+
     class ImageSequence {
         static AllFrames(im, fn := unset) {
             if im is Array {
