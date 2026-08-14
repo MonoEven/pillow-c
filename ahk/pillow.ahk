@@ -7552,12 +7552,20 @@ class Pillow {
             lastStatus := -3
             for format in openFormats {
                 outHandle := 0
-                lastStatus := DllCall(
-                    Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
-                    "Ptr", pathBytes,
-                    "Ptr*", &outHandle,
-                    "Int"
-                )
+                if format = "DIB" {
+                    ; BEHAV-DIB-001: Pillow's DIB is byte-identical to its
+                    ; BMP minus the 14-byte BITMAPFILEHEADER; open rebuilds
+                    ; that header from the BITMAPINFOHEADER and reuses the
+                    ; native BMP decoder.
+                    lastStatus := Pillow.Image.OpenDibHandle(path, &outHandle)
+                } else {
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                }
                 if lastStatus = 0 {
                     image := Pillow.WrapImageHandle(outHandle)
                     try {
@@ -8299,6 +8307,52 @@ class Pillow {
             return Pillow.Image.FormatFromPath(path)
         }
 
+        static OpenDibHandle(path, &outHandle) {
+            ; BEHAV-DIB-001: DIB open = synthetic BITMAPFILEHEADER + native
+            ; BMP decoder. Pillow's DIB has no BITMAPFILEHEADER, so the
+            ; palette size (and the pixel offset) derives from biBitCount
+            ; and biClrUsed in the BITMAPINFOHEADER at offset 0.
+            source := FileOpen(path, "r")
+            if !source
+                throw Error("Pillow.Image.Open DIB failed to open the source file", -1)
+            size := source.Length
+            if size < 40 {
+                source.Close()
+                outHandle := 0
+                return -3
+            }
+            payload := Buffer(size, 0)
+            source.RawRead(payload, size)
+            source.Close()
+            bitCount := NumGet(payload, 14, "UShort")
+            clrUsed := NumGet(payload, 32, "UInt")
+            paletteEntries := clrUsed
+            if paletteEntries = 0 && bitCount <= 8
+                paletteEntries := 1 << bitCount
+            bfh := Buffer(14, 0)
+            NumPut("UShort", 0x4D42, bfh, 0)
+            NumPut("UInt", size + 14, bfh, 2)
+            NumPut("UInt", 54 + paletteEntries * 4, bfh, 10)
+            tempPath := A_Temp "\pillow_c_dib_open_" Random(1, 2147483647) ".bmp"
+            try {
+                temp := FileOpen(tempPath, "w")
+                if !temp
+                    throw Error("Pillow.Image.Open DIB failed to create the temporary BMP", -1)
+                temp.RawWrite(bfh.Ptr, 14)
+                temp.RawWrite(payload.Ptr, size)
+                temp.Close()
+                tempBytes := Pillow.Image.Utf8Buffer(tempPath)
+                return DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_open_bmp",
+                    "Ptr", tempBytes,
+                    "Ptr*", &outHandle,
+                    "Int"
+                )
+            } finally {
+                FileDelete(tempPath)
+            }
+        }
+
         static FrameCountForOpen(pathBytes, format) {
             if !(format = "TIFF" || format = "GIF")
                 return 1
@@ -8315,6 +8369,8 @@ class Pillow {
         static FormatFromPath(path) {
             if RegExMatch(path, "i)\.bmp$")
                 return "BMP"
+            if RegExMatch(path, "i)\.dib$")
+                return "DIB"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -8344,7 +8400,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -8353,6 +8409,7 @@ class Pillow {
             descriptions := Map(
                 "BMP", "Windows Bitmap",
                 "CUR", "Windows Cursor",
+                "DIB", "DIB",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -9845,6 +9902,13 @@ class Pillow {
                 saveOptions := options
 
             resolvedFormat := Pillow.Image.ResolveSaveFormat(path, IsSet(saveFormat) ? saveFormat : unset)
+            if resolvedFormat = "DIB" {
+                ; BEHAV-DIB-001: Pillow's DIB is byte-identical to its BMP
+                ; minus the 14-byte BITMAPFILEHEADER; save reuses the
+                ; byte-matched native BMP encoder and strips that header.
+                this.SaveDib(path)
+                return
+            }
             if IsSet(saveOptions) && resolvedFormat = "CUR" {
                 ; Pillow 11.3.0 registers no CUR save; this is a standards
                 ; extension using the ICO container with hotspot fields.
@@ -11722,6 +11786,41 @@ class Pillow {
                 "Ptr", pathBytes,
                 "Int"
             ))
+        }
+
+        SaveDib(path) {
+            tempPath := A_Temp "\pillow_c_dib_save_" Random(1, 2147483647) ".bmp"
+            try {
+                tempBytes := Pillow.Image.Utf8Buffer(tempPath)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_bmp",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", tempBytes,
+                    "Int"
+                ))
+                source := FileOpen(tempPath, "r")
+                if !source
+                    throw Error("Pillow.Image.Save DIB failed to reopen the temporary BMP", -1)
+                size := source.Length
+                if size < 14 {
+                    source.Close()
+                    throw Error("Pillow.Image.Save DIB temporary BMP is truncated", -1)
+                }
+                source.Pos := 14
+                dib := Buffer(size - 14, 0)
+                source.RawRead(dib, dib.Size)
+                source.Close()
+                target := FileOpen(path, "w")
+                if !target
+                    throw Error("Pillow.Image.Save DIB failed to open the target file", -1)
+                target.RawWrite(dib.Ptr, dib.Size)
+                target.Close()
+            } finally {
+                try {
+                    FileDelete(tempPath)
+                } catch {
+                }
+            }
         }
 
         static ExifFamilyBuffers(exif) {

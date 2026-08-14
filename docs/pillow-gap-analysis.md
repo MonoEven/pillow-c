@@ -37,6 +37,33 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 BEHAV-DIB-001 DIB Format (GREEN)
+
+`BEHAV-DIB-001` implements the DIB format with byte-level behavioral
+parity.
+
+The Pillow 11.3.0 oracle shows DIB is byte-identical to Pillow's own
+BMP minus the 14-byte BITMAPFILEHEADER across 1/L/RGB/RGBA (P-mode
+DIB stays a separate child because the native BMP codec has no P-mode
+palette save yet), with biClrUsed/biClrImportant=2 and a 2-entry
+black/white palette for mode 1; Pillow's DIB open reads the
+BITMAPINFOHEADER directly (format name `DIB`, description `DIB`).
+The facade routes `.dib`/`DIB` through the byte-matched native BMP
+encoder (save = native BMP minus the file header) and decoder (open =
+synthetic BITMAPFILEHEADER rebuilt from biBitCount/biClrUsed plus the
+native BMP decoder), and the native `save_bmp`/`open_bmp` exports gain
+mode-1 branches (1bpp MSB-first packing/unpacking with the exact
+2-entry palette and biClrUsed/biClrImportant=2). The facade DIB
+target passes `1/1` (byte-exact against the embedded Pillow RGB
+fixture, the DIB==BMP[14:] relation, reopen mode/size/pixels for
+RGB/L/RGBA/1) and the new raw mode-1 BMP target passes `1/1`; the
+full directory suite passes `2809/2809` in `19578ms`. Release x64
+Rebuild is clean; source/DLL export parity remains `466/466`; the
+rebuilt DLL SHA-256 is
+`B787C38A4D3064330F8D21C7C98DCD2FF19966812D45F3448F0E2966F42DDE4B`.
+The DIB row left the FMT-UNREC-001 boundary list. The next bounded
+child is `BEHAV-IM-001`, the IM format.
+
 ## 2026-08-14 BEHAV-001 Behavioral-Parity Classification (GREEN)
 
 The user standard: "不只是外观像，实际表现也得一致" — boundaries that
@@ -53,7 +80,7 @@ Classification of every boundary item (treatment applies per packet):
 
 | Item | Pillow local behavior | Treatment |
 |---|---|---|
-| DIB | save L/RGB/RGBA/P all OK; reopen OK | IMPLEMENT (facade over native BMP seams) |
+| DIB | save L/RGB/RGBA/P all OK; reopen OK | DONE — BEHAV-DIB-001 (byte-exact over the native BMP seams + native mode-1 branches; P-mode stays a separate child) |
 | IM | save all modes OK; reopen OK | IMPLEMENT (facade, raw-bytes writer) |
 | MSP | save mode 1 (probe in packet); others `cannot write mode X as MSP` | IMPLEMENT save 1 + match mode errors |
 | PALM | save P OK; others `cannot write mode X as Palm` | IMPLEMENT save P + match mode errors |

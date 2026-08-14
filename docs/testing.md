@@ -47,30 +47,24 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2807` AHK tests: `1388` raw DLL tests and
-`1419` facade tests.
+This suite currently registers `2809` AHK tests: `1389` raw DLL tests and
+`1420` facade tests.
 
-Latest `FMT-UNREC-001` verification: the Pillow 11.3.0 oracle (kept
-in `oracle/probe_format_unrecorded.py`) records Pillow's own
-per-format behavior for the previously unrecorded families (save BLP
-mode error, BUFR/GRIB/HDF5/WMF handler errors, MSP/PALM mode errors,
-DIB/IM/SPIDER saving through Pillow's C/numpy plugins; open attempts
-fail with `cannot identify image file`). The AHK native ABI
-implements neither codec family, so all of them are now explicit
-documented codec boundaries pinned by the facade boundary test
-(`Pillow image file format is unsupported` for all 22 names on save
-and the representative open extensions). Facade-only change, no
-native rebuild: the unrecorded-format boundary target passes `1/1`
-in `31ms`, and the full directory suite passes `2807/2807` in
-`20391ms`, with zero failures, errors, or skips. Source/DLL export
-parity remains `466/466` (DLL byte-identical), and the DLL SHA-256
-remains
-`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
-No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-The overall Pillow replacement-readiness estimate moves to
-`100% ±5%`: every AUDIT-002 row is closed, every enumerated Pillow
-11.3.0 surface item is covered byte-exactly or recorded as an
-explicit documented boundary, and the completion definition is met.
+Latest `BEHAV-DIB-001` verification: the Pillow 11.3.0 oracle shows
+DIB is byte-identical to Pillow's own BMP minus the 14-byte
+BITMAPFILEHEADER across 1/L/RGB/RGBA, with biClrUsed=2 and a 2-entry
+black/white palette for mode 1. The facade routes `.dib`/`DIB`
+through the byte-matched native BMP encoder (save strips the file
+header) and decoder (open rebuilds a synthetic file header), and the
+native BMP exports gain the mode-1 branches. The facade DIB target
+passes `1/1` (byte-exact embedded Pillow RGB fixture, the
+DIB==BMP[14:] relation, reopen matrix), the raw mode-1 BMP target
+passes `1/1`, and the full directory suite passes `2809/2809` in
+`19578ms`, with zero failures, errors, or skips. Release x64 Rebuild
+is clean; source/DLL export parity remains `466/466` with zero
+difference; and the rebuilt DLL SHA-256 is
+`B787C38A4D3064330F8D21C7C98DCD2FF19966812D45F3448F0E2966F42DDE4B`.
+The behavioral-parity wave continues with `BEHAV-IM-001` next.
 
 Latest `API-PATH-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and

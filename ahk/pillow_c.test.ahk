@@ -21017,6 +21017,40 @@ PillowCTestImageSaveAndOpenBmpMatchPillowLAndRgba(*) {
 
 AhkTest.Test("pillow_c image save_bmp and open_bmp match Pillow L and RGBA behavior", PillowCTestImageSaveAndOpenBmpMatchPillowLAndRgba)
 
+PillowCTestImageSaveOpenBmpMode1(*) {
+    ; BEHAV-DIB-001: Pillow 11.3.0 mode-1 BMP byte parity (embedded fixture
+    ; from the 8x2 pattern below: 2-entry black/white palette, biClrUsed=2,
+    ; MSB-first bottom-up rows).
+    image := PillowCCreateImageMode(8, 2, 5)
+    path := PillowCTempBmpPath("save-mode1")
+    loaded := 0
+    try {
+        PillowCImageSetBytes(image, [255, 0, 255, 255, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0])
+        PillowCImageSaveBmp(image, path)
+
+        AhkTest.AssertEqual([
+            66, 77, 70, 0, 0, 0, 0, 0, 0, 0, 62, 0, 0, 0,
+            40, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 1, 0, 1, 0,
+            0, 0, 0, 0, 8, 0, 0, 0, 196, 14, 0, 0, 196, 14, 0, 0,
+            2, 0, 0, 0, 2, 0, 0, 0,
+            0, 0, 0, 0, 255, 255, 255, 0,
+            64, 0, 0, 0,
+            176, 0, 0, 0
+        ], PillowCReadFileBytes(path))
+
+        loaded := PillowCImageOpenBmp(path)
+        AhkTest.AssertEqual(5, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([255, 0, 255, 255, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], PillowCImageToArray(loaded, 16))
+    } finally {
+        if loaded
+            PillowCFreeImage(loaded)
+        PillowCFreeImage(image)
+        PillowCDeleteFile(path)
+    }
+}
+
+AhkTest.Test("pillow_c image save_bmp and open_bmp cover Pillow mode 1", PillowCTestImageSaveOpenBmpMode1)
+
 PillowCTestImageBmpRejectsUnsupportedModesAndInvalidFiles(*) {
     cmyk := PillowCCreateImageMode(1, 1, 7)
     badPath := PillowCTempBmpPath("bad")

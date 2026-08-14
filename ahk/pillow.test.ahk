@@ -21915,8 +21915,9 @@ PillowTestUnrecordedFormatBoundaries(*) {
         ; implements neither codec (Pillow's own 11.3.0 build supports
         ; BLP/DIB/IM/SPIDER via C/numpy plugins and errors per-mode or
         ; per-handler on the rest), so open and save fail loudly with the
-        ; same documented message.
-        for format in ["BLP", "BUFR", "DIB", "GRIB", "HDF5", "IM", "MSP", "PALM", "SPIDER", "WMF", "FITS", "FPX", "FTEX", "GBR", "IMT", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD", "PIXAR", "XVTHUMB"] {
+        ; same documented message. DIB left this list in BEHAV-DIB-001
+        ; (now implemented byte-exactly over the native BMP seams).
+        for format in ["BLP", "BUFR", "GRIB", "HDF5", "IM", "MSP", "PALM", "SPIDER", "WMF", "FITS", "FPX", "FTEX", "GBR", "IMT", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD", "PIXAR", "XVTHUMB"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -21941,6 +21942,124 @@ PillowTestUnrecordedFormatBoundaries(*) {
 }
 
 AhkTest.Test("Pillow unrecorded-format families are documented codec boundaries", PillowTestUnrecordedFormatBoundaries)
+
+PillowTestHexBytes(hex) {
+    values := []
+    loop StrLen(hex) // 2
+        values.Push(Integer("0x" SubStr(hex, (A_Index - 1) * 2 + 1, 2)))
+    return values
+}
+
+PillowTestSliceBytes(values, offset, count) {
+    out := []
+    loop count
+        out.Push(values[offset + A_Index - 1])
+    return out
+}
+
+PillowTestDibFormat(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := StrReplace(PillowTestTempPngPath("dib-rgb"), ".png", ".dib")
+    bmpPath := StrReplace(PillowTestTempPngPath("dib-bmp"), ".png", ".bmp")
+    lPath := StrReplace(PillowTestTempPngPath("dib-l"), ".png", ".dib")
+    rgbaPath := StrReplace(PillowTestTempPngPath("dib-rgba"), ".png", ".dib")
+    onePath := StrReplace(PillowTestTempPngPath("dib-1"), ".png", ".dib")
+    try {
+        ; BEHAV-DIB-001: Pillow 11.3.0's DIB is byte-identical to its BMP
+        ; minus the 14-byte BITMAPFILEHEADER (oracle-verified).
+        rgb := Pillow.Image.New("RGB", [8, 6])
+        try {
+            values := Buffer(144, 0)
+            loop 48 {
+                r := (A_Index - 1) // 8
+                c := Mod(A_Index - 1, 8)
+                NumPut("UChar", r * 31 + c, values, (A_Index - 1) * 3)
+                NumPut("UChar", Mod((r + c) * 17, 256), values, (A_Index - 1) * 3 + 1)
+                NumPut("UChar", Mod(r * 3 + c * 5, 256), values, (A_Index - 1) * 3 + 2)
+            }
+            rgb.FromBytes(values, "raw", "RGB", 0, 1)
+            rgb.Save(path, "DIB")
+            rgb.Save(bmpPath, "BMP")
+        } finally {
+            rgb.Close()
+        }
+        ; byte-exact against Pillow's DIB output for the same pixels
+        expectedDib := PillowTestBuffer(PillowTestHexBytes("280000000800000006000000010018000000000090000000c40e0000c40e000000000000000000000f559b14669c19779d1e889e23999f28aaa02dbba132cca20c447c11557d16667e1b777f2088802599812aaa822fbb8309335d0e445e13555f1866601d77612288622799632caa6406223e0b333f1044401555411a66421f774324884429994503111f0822200d33211244221755231c66242177252688260000000511010a22020f33031444041955051e6606237707"))
+        AhkTest.AssertEqual(PillowTestBufferToArray(expectedDib), PillowTestReadFileBytes(path))
+        ; DIB == BMP minus the 14-byte file header
+        bmpBytes := PillowTestReadFileBytes(bmpPath)
+        dibBytes := PillowTestReadFileBytes(path)
+        AhkTest.AssertEqual(bmpBytes.Length - 14, dibBytes.Length)
+        AhkTest.AssertEqual(PillowTestSliceBytes(bmpBytes, 15, dibBytes.Length), dibBytes)
+        ; open round-trip through the synthetic-header route
+        opened := Pillow.Image.Open(path)
+        try {
+            AhkTest.AssertEqual("DIB", opened.Format)
+            AhkTest.AssertEqual("RGB", opened.Mode)
+            AhkTest.AssertEqual([8, 6], opened.Size)
+            AhkTest.AssertEqual([0, 0, 0], opened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([162, 204, 50], opened.GetPixel([7, 5]))
+        } finally {
+            opened.Close()
+        }
+        ; L-mode DIB: BMP relation plus reopen pixels
+        l := Pillow.Image.New("L", [4, 4])
+        try {
+            lValues := Buffer(16, 0)
+            loop 16
+                NumPut("UChar", Mod((A_Index - 1) * 7, 256), lValues, A_Index - 1)
+            l.FromBytes(lValues, "raw", "L", 0, 1)
+            l.Save(lPath, "DIB")
+        } finally {
+            l.Close()
+        }
+        lOpened := Pillow.Image.Open(lPath)
+        try {
+            AhkTest.AssertEqual("DIB", lOpened.Format)
+            AhkTest.AssertEqual("L", lOpened.Mode)
+            AhkTest.AssertEqual([4, 4], lOpened.Size)
+            AhkTest.AssertEqual(7, lOpened.GetPixel([1, 0]))
+            AhkTest.AssertEqual(105, lOpened.GetPixel([3, 3]))
+        } finally {
+            lOpened.Close()
+        }
+        ; RGBA DIB reopens as RGB (Pillow's BMP machinery drops alpha)
+        rgba := Pillow.Image.FromBytes("RGBA", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60, 70, 80]))
+        try {
+            rgba.Save(rgbaPath, "DIB")
+        } finally {
+            rgba.Close()
+        }
+        rgbaOpened := Pillow.Image.Open(rgbaPath)
+        try {
+            AhkTest.AssertEqual("RGB", rgbaOpened.Mode)
+        } finally {
+            rgbaOpened.Close()
+        }
+        ; mode-1 DIB round-trip
+        one := Pillow.Image.FromBytes("1", [8, 2], PillowTestBuffer([0xB0, 0x40]))
+        try {
+            one.Save(onePath, "DIB")
+        } finally {
+            one.Close()
+        }
+        oneOpened := Pillow.Image.Open(onePath)
+        try {
+            AhkTest.AssertEqual("1", oneOpened.Mode)
+            AhkTest.AssertEqual([8, 2], oneOpened.Size)
+        } finally {
+            oneOpened.Close()
+        }
+    } finally {
+        PillowTestDeleteFile(path)
+        PillowTestDeleteFile(bmpPath)
+        PillowTestDeleteFile(lPath)
+        PillowTestDeleteFile(rgbaPath)
+        PillowTestDeleteFile(onePath)
+    }
+}
+
+AhkTest.Test("Pillow DIB format matches Pillow 11.3.0 bytes and round-trips", PillowTestDibFormat)
 
 PillowTestImageMathEval(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

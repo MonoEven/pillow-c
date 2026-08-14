@@ -523,6 +523,28 @@ Current work packet:
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
 
+2026-08-14: `BEHAV-DIB-001` is GREEN as the DIB format (behavioral
+parity). The Pillow 11.3.0 oracle shows DIB is byte-identical to
+Pillow's own BMP minus the 14-byte BITMAPFILEHEADER across 1/L/RGB/
+RGBA (and P — the native BMP codec's P-mode slice stays a separate
+child), with biClrUsed/biClrImportant=2 and a 2-entry black/white
+palette for mode 1. The facade now routes `.dib`/`DIB` through the
+byte-matched native BMP encoder (save = native BMP minus the file
+header) and decoder (open = synthetic BITMAPFILEHEADER rebuilt from
+biBitCount/biClrUsed + the native BMP decoder); the native
+save_bmp/open_bmp exports gain the mode-1 branches (1bpp rows,
+MSB-first packing/unpacking). The facade DIB target passes `1/1`
+(byte-exact against the embedded Pillow RGB fixture, the
+DIB==BMP[14:] relation, reopen mode/size/pixels for RGB/L/RGBA/1)
+and the new raw mode-1 BMP target passes `1/1`; the full directory
+suite passes `2809/2809` in `19578ms`, with zero failures, errors,
+or skips. Release x64 Rebuild is clean; source/DLL export parity
+remains `466/466` with zero difference; and the rebuilt DLL SHA-256
+is
+`B787C38A4D3064330F8D21C7C98DCD2FF19966812D45F3448F0E2966F42DDE4B`.
+The DIB row left the FMT-UNREC-001 boundary list. The next bounded
+child is `BEHAV-IM-001`, the IM format.
+
 2026-08-14: `BEHAV-001` is GREEN as the behavioral-parity classification
 (the user standard "不只是外观像，实际表现也得一致"). Every boundary
 item was probed against the local Pillow 11.3.0 build (evidence in

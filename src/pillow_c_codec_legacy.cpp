@@ -1579,7 +1579,10 @@ int open_bmp_image(const char* path, PillowCImage** out_image)
 
         int mode = 0;
         int channels = 0;
-        if (bits_per_pixel == 8) {
+        if (bits_per_pixel == 1) {
+            mode = PILLOW_C_MODE_1;
+            channels = 1;
+        } else if (bits_per_pixel == 8) {
             mode = PILLOW_C_MODE_L;
             channels = 1;
         } else if (bits_per_pixel == 24 || bits_per_pixel == 32) {
@@ -1654,7 +1657,12 @@ int open_bmp_image(const char* path, PillowCImage** out_image)
             const std::uint8_t* src_row =
                 data.data() + static_cast<std::size_t>(pixel_offset) + static_cast<std::size_t>(source_y) * source_stride;
             std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
-            if (bits_per_pixel == 8) {
+            if (bits_per_pixel == 1) {
+                for (int x = 0; x < width; ++x) {
+                    const std::uint8_t packed_byte = src_row[static_cast<std::size_t>(x) / 8u];
+                    dst_row[x] = (packed_byte & static_cast<std::uint8_t>(0x80u >> (x & 7))) ? 255 : 0;
+                }
+            } else if (bits_per_pixel == 8) {
                 std::memcpy(dst_row, src_row, static_cast<std::size_t>(width));
             } else if (bits_per_pixel == 24) {
                 for (int x = 0; x < width; ++x) {
@@ -1686,7 +1694,8 @@ int save_bmp_image(const PillowCImage* image, const char* path)
     if (image->width <= 0 || image->height <= 0) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (image->mode != PILLOW_C_MODE_L &&
+    if (image->mode != PILLOW_C_MODE_1 &&
+        image->mode != PILLOW_C_MODE_L &&
         image->mode != PILLOW_C_MODE_RGB &&
         image->mode != PILLOW_C_MODE_RGBA) {
         return PILLOW_C_INVALID_ARGUMENT;
@@ -1696,13 +1705,13 @@ int save_bmp_image(const PillowCImage* image, const char* path)
         return refresh_status;
     }
 
-    const int bits_per_pixel = image->mode == PILLOW_C_MODE_L ? 8 : (image->mode == PILLOW_C_MODE_RGBA ? 32 : 24);
+    const int bits_per_pixel = image->mode == PILLOW_C_MODE_1 ? 1 : (image->mode == PILLOW_C_MODE_L ? 8 : (image->mode == PILLOW_C_MODE_RGBA ? 32 : 24));
     std::size_t row_stride = 0;
     int status = bmp_row_stride(image->width, bits_per_pixel, &row_stride);
     if (status != PILLOW_C_OK) {
         return status;
     }
-    const std::size_t palette_size = image->mode == PILLOW_C_MODE_L ? 256u * 4u : 0u;
+    const std::size_t palette_size = image->mode == PILLOW_C_MODE_L ? 256u * 4u : (image->mode == PILLOW_C_MODE_1 ? 2u * 4u : 0u);
     const std::uint64_t pixel_size_u64 = static_cast<std::uint64_t>(row_stride) * static_cast<std::uint64_t>(image->height);
     const std::uint64_t pixel_offset_u64 = 14u + 40u + palette_size;
     const std::uint64_t file_size_u64 = pixel_offset_u64 + pixel_size_u64;
@@ -1728,14 +1737,22 @@ int save_bmp_image(const PillowCImage* image, const char* path)
         append_le32(out, static_cast<std::uint32_t>(pixel_size_u64));
         append_le32(out, 3780);
         append_le32(out, 3780);
-        append_le32(out, image->mode == PILLOW_C_MODE_L ? 256u : 0u);
-        append_le32(out, image->mode == PILLOW_C_MODE_L ? 256u : 0u);
+        append_le32(out, image->mode == PILLOW_C_MODE_L ? 256u : (image->mode == PILLOW_C_MODE_1 ? 2u : 0u));
+        append_le32(out, image->mode == PILLOW_C_MODE_L ? 256u : (image->mode == PILLOW_C_MODE_1 ? 2u : 0u));
 
         if (image->mode == PILLOW_C_MODE_L) {
             for (int i = 0; i < 256; ++i) {
                 out.push_back(static_cast<std::uint8_t>(i));
                 out.push_back(static_cast<std::uint8_t>(i));
                 out.push_back(static_cast<std::uint8_t>(i));
+                out.push_back(0);
+            }
+        } else if (image->mode == PILLOW_C_MODE_1) {
+            for (int i = 0; i < 2; ++i) {
+                const std::uint8_t value = i == 0 ? 0u : 255u;
+                out.push_back(value);
+                out.push_back(value);
+                out.push_back(value);
                 out.push_back(0);
             }
         }
@@ -1747,6 +1764,12 @@ int save_bmp_image(const PillowCImage* image, const char* path)
             const std::uint8_t* src_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
             if (image->mode == PILLOW_C_MODE_L) {
                 std::memcpy(row.data(), src_row, static_cast<std::size_t>(image->width));
+            } else if (image->mode == PILLOW_C_MODE_1) {
+                for (int x = 0; x < image->width; ++x) {
+                    if (src_row[x] != 0) {
+                        row[static_cast<std::size_t>(x) / 8u] |= static_cast<std::uint8_t>(0x80u >> (x & 7));
+                    }
+                }
             } else if (image->mode == PILLOW_C_MODE_RGB) {
                 for (int x = 0; x < image->width; ++x) {
                     row[static_cast<std::size_t>(x) * bytes_per_pixel + 0u] = src_row[static_cast<std::size_t>(x) * 3u + 2u];
