@@ -37,6 +37,40 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 FMT-UNREC-001 Unrecorded-Format Ledger (GREEN — COMPLETION)
+
+`FMT-UNREC-001` closes the final AUDIT-002 row and meets the
+completion definition (facade-only).
+
+The Pillow 11.3.0 oracle (kept in
+`oracle/probe_format_unrecorded.py`) records what Pillow's own build
+does for the previously unrecorded families: save BLP raises
+`Unsupported BLP image mode`, BUFR/GRIB/HDF5/WMF raise `... save
+handler not installed`, MSP/PALM raise mode errors, and DIB/IM/SPIDER
+save successfully through Pillow's own C/numpy plugins; open attempts
+fail with `cannot identify image file`. The AHK native ABI implements
+neither codec family, so all of them are now explicit documented
+codec boundaries pinned by the facade boundary test (`Pillow image
+file format is unsupported` for all 22 names on save and for the
+representative extensions on open). Facade-only change; no new
+export; parity remains `466/466` and the DLL SHA-256 is unchanged.
+
+Verification:
+
+- Red evidence: the families were neither implemented nor recorded
+  (AUDIT-002).
+- Facade unrecorded-format boundary target passes `1/1` in `31ms`
+  (save boundaries for all 22 format names and open boundaries for
+  `.blp`/`.fits`/`.wmf`).
+- Full AHK directory suite: `2807/2807` in `20391ms`; zero failures,
+  errors, or skips.
+
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `100% ±5%` — every AUDIT-002 row is closed,
+every enumerated Pillow 11.3.0 surface item is covered byte-exactly
+or recorded as an explicit documented boundary, and no further
+bounded child is selected: the completion definition is met.
+
 ## 2026-08-14 API-READONLY-001 Image.readonly Property (GREEN)
 
 `API-READONLY-001` closes the Image.readonly property surface
@@ -40117,7 +40151,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | API-TRANSFORMCLS-001 | Facade API | covered | ImageTransform class objects covered exactly: the base `Transform` class (data storage, `GetData()` shape, `Transform()` routing through the facade `Image.Transform` seam with resample/fillcolor) plus AffineTransform/ExtentTransform/PerspectiveTransform/QuadTransform/MeshTransform carrying the AFFINE/EXTENT/PERSPECTIVE/QUAD/MESH method constants; constructing the module class fails loudly (Pillow's module is not callable, and the base getdata AttributeError is the same missing-method shape). Oracle-verified in `oracle/probe_imagetransform.py` (getdata pairs and byte-equal affine/extent routing). Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imagetransform.py`, facade `ImageTransform` class objects, facade ImageTransform target test. |
 | API-FONTVAR-001 | Facade API | covered | ImageFont variation surface: `TransposedFont` covers orientation storage, the exact getbbox (0, 0, w, h) normalization with the 90/270 width/height swap, getlength delegation, and the 90/270 `text length is undefined for text rotated by 90 or 270 degrees` error (oracle-verified in `oracle/probe_imagefont_var.py`); `Layout` covers BASIC=0/RAQM=1 exactly; getmask is a documented boundary (the runtime rasterizes text through the native draw seam and exposes no mask objects) and Axis is Pillow's type-only TypedDict recorded as a boundary name. Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imagefont_var.py`, facade `ImageFont.TransposedFont`/`Layout`, facade ImageFont variation target test. |
 | API-READONLY-001 | Facade API | covered | `Image.readonly` covered exactly: Pillow 11.3.0's getter is `(im and im.readonly) or _readonly` and the setter stores `_readonly` directly (default 0; the frombuffer core alias flag wins over the facade flag, and setting readonly=False on a frombuffer image does not clear the core flag — oracle-verified in `oracle/probe_image_readonly.py`). The facade `ReadOnly` property adds the setter and OR-semantics; the existing DetachBufferView write-detach model stays the documented replacement for Pillow's `_ensure_mutable` raise. Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_image_readonly.py`, facade `Image.ReadOnly` getter/setter, facade readonly target test. |
-| FMT-UNREC-001 | Formats | not started | Formats neither implemented nor listed in BNDRY-001: save BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF; open FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/XVTHUMB plus the same save-side subset. | Dependency-gated boundary ledger extension or implementation per format. |
+| FMT-UNREC-001 | Formats | covered | The previously unrecorded format families are now explicit documented codec boundaries (the final AUDIT-002 row): save BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF and open FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/XVTHUMB plus the save-side subset all fail loudly with `Pillow image file format is unsupported` (pinned by the facade boundary test for all 22 names and representative open extensions). Pillow's own 11.3.0 build supports BLP/DIB/IM/SPIDER through its C/numpy plugins and errors per-mode/per-handler on the rest (oracle-verified in `oracle/probe_format_unrecorded.py`); the AHK native ABI implements neither codec family. Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_format_unrecorded.py`, facade unrecorded-format boundary test, BNDRY-001 ledger extension. |
 | FMT-WEBP-001 | WebP | boundary | Open/save WebP and animation stay behind an explicit dependency/scope decision; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | FMT-AVIF-001 | AVIF | boundary | Open/save AVIF stays behind dependency and packaging constraints; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | FMT-LONGTAIL-001 | Formats | boundary | PDF, PSD, DDS, PCX, ICNS, SGI, SUN, EPS, MPO, FLI, DCX, XPM, and other registered families stay behind explicit dependency decisions; open/save fail loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |

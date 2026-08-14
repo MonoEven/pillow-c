@@ -276,6 +276,14 @@ Pillow's type-only TypedDict; the DLL SHA-256 is unchanged.
 model stays the documented replacement for Pillow's `_ensure_mutable`
 raise; the DLL SHA-256 is unchanged.
 
+`FMT-UNREC-001` changes no ABI at all either: the previously
+unrecorded format families (save BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/
+SPIDER/WMF and open FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/
+PIXAR/SPIDER/WMF/XVTHUMB) are now explicit documented codec
+boundaries — the native ABI implements neither codec family, so open
+and save fail loudly with the documented unsupported message; the DLL
+SHA-256 is unchanged.
+
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.
 

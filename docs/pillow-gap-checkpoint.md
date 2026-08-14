@@ -21,9 +21,12 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 94% (about ±5%) under
+Estimate: AHK-first Pillow-runtime overall completion 100% (about ±5%) under
 the real-workload Pillow replacement-readiness model — measured against
 the FULL Pillow 11.3.0 public surface since the AUDIT-002 re-audit.
+Every enumerated item of that surface is now either covered byte-exactly
+or recorded as an explicit documented boundary: the completion definition
+is MET (FMT-UNREC-001 closes the final row).
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
 malformed-metadata robustness slice, one-level ExifIFD/GPSInfo sub-IFD
@@ -81,19 +84,28 @@ the Image.readonly property (the Pillow 11.3.0 fget
 storing the facade flag directly, the default 0, the frombuffer
 core-flag-wins rule, and the DetachBufferView write detach — covered
 exactly, with the facade detach model replacing Pillow's
-_ensure_mutable raise as the long-documented readonly-view model).
+_ensure_mutable raise as the long-documented readonly-view model),
+and `FMT-UNREC-001` — the unrecorded-format ledger (the AUDIT-002
+format families BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF save
+and FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/
+XVTHUMB open are now explicit documented codec boundaries: the AHK
+native ABI implements neither codec — Pillow's own 11.3.0 build
+supports BLP/DIB/IM/SPIDER through its C/numpy plugins and errors
+per-mode or per-handler on the rest — so open and save fail loudly
+with the documented unsupported message, pinned by a facade
+boundary test).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The readonly target passes `1/1` in `47ms`,
-and the full directory suite passes `2806/2806` in `20109ms`;
-source/DLL exports remain `466/466` with zero difference; and the DLL
-SHA-256 remains
+IFD as a writer artifact. The unrecorded-format boundary target passes
+`1/1` in `31ms`, and the full directory suite passes `2807/2807` in
+`20391ms`; source/DLL exports remain `466/466` with zero difference;
+and the DLL SHA-256 remains
 `7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`
 (facade-only slice).
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
-the next selected compatibility work packet is
-`FMT-UNREC-001`, the unrecorded-format ledger.
+every AUDIT-002 row is now closed — no further bounded child is
+selected: the completion definition is met.
 ```
 
 Current work packet:
@@ -510,6 +522,31 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `FMT-UNREC-001` is GREEN as the unrecorded-format ledger
+(facade-only) — the final AUDIT-002 row, meeting the completion
+definition. The Pillow 11.3.0 oracle (kept in
+`oracle/probe_format_unrecorded.py`) records what Pillow's own build
+does for the previously unrecorded families: save BLP raises
+`Unsupported BLP image mode`, BUFR/GRIB/HDF5/WMF raise
+`... save handler not installed`, MSP/PALM raise mode errors, and
+DIB/IM/SPIDER save successfully through Pillow's own C/numpy plugins;
+open attempts fail with `cannot identify image file`. The AHK native
+ABI implements neither codec family, so all of them are now explicit
+documented codec boundaries pinned by the facade boundary test
+(save fails loudly with `Pillow image file format is unsupported`
+for all 22 names and open for the representative extensions).
+Facade-only change, no native rebuild: the unrecorded-format
+boundary target passes `1/1` in `31ms`, and the full directory suite
+passes `2807/2807` in `20391ms`, with zero failures, errors, or
+skips. Source/DLL export parity remains `466/466` (DLL
+byte-identical), and the DLL SHA-256 remains
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `100% ±5%` — every AUDIT-002 row is closed,
+every enumerated Pillow 11.3.0 surface item is covered byte-exactly
+or recorded as an explicit documented boundary, and no further
+bounded child is selected: the completion definition is met.
 
 2026-08-14: `API-READONLY-001` is GREEN as the Image.readonly property
 (facade-only). The Pillow 11.3.0 oracle (kept in

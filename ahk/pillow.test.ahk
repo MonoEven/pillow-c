@@ -21905,6 +21905,43 @@ PillowTestDependencyGatedFormatBoundaries(*) {
 
 AhkTest.Test("Pillow dependency-gated formats and libimagequant surface documented boundaries", PillowTestDependencyGatedFormatBoundaries)
 
+PillowTestUnrecordedFormatBoundaries(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [2, 2], 7)
+    path := StrReplace(PillowTestTempPngPath("fmt-unrec"), ".png", ".blp")
+    try {
+        ; FMT-UNREC-001: the AUDIT-002 unrecorded format families are now
+        ; explicit documented codec boundaries — the AHK native ABI
+        ; implements neither codec (Pillow's own 11.3.0 build supports
+        ; BLP/DIB/IM/SPIDER via C/numpy plugins and errors per-mode or
+        ; per-handler on the rest), so open and save fail loudly with the
+        ; same documented message.
+        for format in ["BLP", "BUFR", "DIB", "GRIB", "HDF5", "IM", "MSP", "PALM", "SPIDER", "WMF", "FITS", "FPX", "FTEX", "GBR", "IMT", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD", "PIXAR", "XVTHUMB"] {
+            boundaryError := ""
+            try {
+                image.Save(path, format)
+            } catch Error as err {
+                boundaryError := err.Message
+            }
+            AhkTest.AssertEqual("Pillow image file format is unsupported", boundaryError)
+        }
+        for extension in [".blp", ".fits", ".wmf"] {
+            boundaryError := ""
+            try {
+                Pillow.Image.Open(StrReplace(PillowTestTempPngPath("fmt-unrec-open"), ".png", extension))
+            } catch Error as err {
+                boundaryError := err.Message
+            }
+            AhkTest.AssertEqual("Pillow image file format is unsupported", boundaryError)
+        }
+    } finally {
+        image.Close()
+        PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow unrecorded-format families are documented codec boundaries", PillowTestUnrecordedFormatBoundaries)
+
 PillowTestImageMathEval(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     a := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([10, 20, 30, 40]))

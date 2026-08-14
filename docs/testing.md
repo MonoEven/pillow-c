@@ -47,25 +47,30 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2806` AHK tests: `1388` raw DLL tests and
-`1418` facade tests.
+This suite currently registers `2807` AHK tests: `1388` raw DLL tests and
+`1419` facade tests.
 
-Latest `API-READONLY-001` verification: the Pillow 11.3.0 oracle (kept
-in `oracle/probe_image_readonly.py`) records the getter/setter pair —
-`readonly = (im and im.readonly) or _readonly` with the setter
-storing `_readonly` directly, the default 0, the frombuffer core flag
-winning over the facade flag, and the set-False-not-clearing rule.
-The facade `Image.ReadOnly` adds the setter and the OR-semantics;
-the existing DetachBufferView write-detach model stays the documented
-replacement for Pillow's `_ensure_mutable` raise. Facade-only
-change, no native rebuild: the readonly target passes `1/1` in
-`47ms`, and the full directory suite passes `2806/2806` in
-`20109ms`, with zero failures, errors, or skips. Source/DLL export
+Latest `FMT-UNREC-001` verification: the Pillow 11.3.0 oracle (kept
+in `oracle/probe_format_unrecorded.py`) records Pillow's own
+per-format behavior for the previously unrecorded families (save BLP
+mode error, BUFR/GRIB/HDF5/WMF handler errors, MSP/PALM mode errors,
+DIB/IM/SPIDER saving through Pillow's C/numpy plugins; open attempts
+fail with `cannot identify image file`). The AHK native ABI
+implements neither codec family, so all of them are now explicit
+documented codec boundaries pinned by the facade boundary test
+(`Pillow image file format is unsupported` for all 22 names on save
+and the representative open extensions). Facade-only change, no
+native rebuild: the unrecorded-format boundary target passes `1/1`
+in `31ms`, and the full directory suite passes `2807/2807` in
+`20391ms`, with zero failures, errors, or skips. Source/DLL export
 parity remains `466/466` (DLL byte-identical), and the DLL SHA-256
 remains
 `7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
 No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-The overall Pillow replacement-readiness estimate moves to `94% ±5%`.
+The overall Pillow replacement-readiness estimate moves to
+`100% ±5%`: every AUDIT-002 row is closed, every enumerated Pillow
+11.3.0 surface item is covered byte-exactly or recorded as an
+explicit documented boundary, and the completion definition is met.
 
 Latest `API-PATH-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and
