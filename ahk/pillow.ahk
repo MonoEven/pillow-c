@@ -8294,10 +8294,36 @@ class Pillow {
             this.DisposalMethod := 0
             this.BufferViewSource := 0
             this.JpegDraftApplied := false
+            ; Pillow 11.3.0's mode/size/width/height are plain attributes
+            ; cached on the Python object, so a closed image still returns
+            ; them; seed the same cache from the native handle here.
+            mode := 0
+            Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_mode", "Ptr", handle, "Int*", &mode, "Int"))
+            this._CachedMode := Pillow.ModeName(mode)
+            this._CachedWidth := this.GetInt("pillow_c_image_width")
+            this._CachedHeight := this.GetInt("pillow_c_image_height")
         }
 
         __Delete() {
             this.Close()
+        }
+
+        __Get(name, params) {
+            ; Pillow 11.3.0's AttributeError shape for attributes that are
+            ; only present on opened images (filename, tile, palette, ...).
+            ; AHK reports the property name as accessed, so lowercase it
+            ; to match Pillow's message.
+            throw Error("'Image' object has no attribute '" StrLower(name) "'", -1)
+        }
+
+        Filename {
+            get {
+                ; Pillow sets filename only when the image was OPENED; a
+                ; fresh image raises the exact AttributeError.
+                if this.FramePath != ""
+                    return this.FramePath
+                throw Error("'Image' object has no attribute 'filename'", -1)
+            }
         }
 
         static LinearGradient(modeName) {
@@ -9911,7 +9937,14 @@ class Pillow {
                     normalized.Push(Pillow.Image.NormalizeFileFormat(format))
                 return normalized
             }
-            return [Pillow.Image.FormatFromPath(path)]
+            try {
+                return [Pillow.Image.FormatFromPath(path)]
+            } catch {
+                ; Pillow 11.3.0's open identifies by MAGIC, not extension:
+                ; an unrecognized extension falls through to the exact
+                ; UnidentifiedImageError for existing files.
+                throw Error("cannot identify image file '" path "'", -1)
+            }
         }
 
         static SniffCodecMagic(path, format) {
@@ -11256,7 +11289,9 @@ class Pillow {
                 return "TIFF"
             if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "FLI" || name = "MIC" || name = "PCD" || name = "MPEG" || name = "WMF" || name = "WEBP" || name = "AVIF" || name = "JPEG2000" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
-            throw Error("Pillow image file format is unsupported", -1)
+            ; Pillow's registry lookup raises the exact bare KeyError shape
+            ; with the UPPERCASED format name (SAVE[format.upper()]).
+            throw Error("'" name "'", -1)
         }
 
         static FormatDescription(format) {
@@ -12844,9 +12879,12 @@ class Pillow {
 
         Mode {
             get {
-                mode := 0
-                Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_mode", "Ptr", this.RequireHandle(), "Int*", &mode, "Int"))
-                return Pillow.ModeName(mode)
+                if this.HasOwnProp("Handle") && this.Handle != 0 {
+                    mode := 0
+                    Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_mode", "Ptr", this.RequireHandle(), "Int*", &mode, "Int"))
+                    this._CachedMode := Pillow.ModeName(mode)
+                }
+                return this._CachedMode
             }
         }
 
@@ -12899,11 +12937,19 @@ class Pillow {
         }
 
         Width {
-            get => this.GetInt("pillow_c_image_width")
+            get {
+                if this.HasOwnProp("Handle") && this.Handle != 0
+                    this._CachedWidth := this.GetInt("pillow_c_image_width")
+                return this._CachedWidth
+            }
         }
 
         Height {
-            get => this.GetInt("pillow_c_image_height")
+            get {
+                if this.HasOwnProp("Handle") && this.Handle != 0
+                    this._CachedHeight := this.GetInt("pillow_c_image_height")
+                return this._CachedHeight
+            }
         }
 
         Size {
@@ -12944,6 +12990,8 @@ class Pillow {
                     throw
                 }
                 Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", oldHandle, "Int"))
+                this._CachedWidth := value[1]
+                this._CachedHeight := value[2]
             }
         }
 
@@ -17219,7 +17267,13 @@ class Pillow {
                 throw Error("kmeans must not be negative", -1)
             if this.Mode = "LAB" && (resolvedMethod = Pillow.Quantize.MEDIANCUT || resolvedMethod = Pillow.Quantize.MAXCOVERAGE || resolvedMethod = Pillow.Quantize.FASTOCTREE || resolvedMethod = Pillow.Quantize.LIBIMAGEQUANT) && kmeans is Integer && !IsSet(palette) {
                 if this.Width != 0 && this.Height != 0 {
-                    if !(colors is Integer) || colors < 1 || colors > 256
+                    ; Pillow parses colors as a C int first (the exact
+                    ; TypeErrors), then validates the 1..256 range.
+                    if colors is String
+                        throw Error("'str' object cannot be interpreted as an integer", -1)
+                    if !(colors is Integer)
+                        throw Error("'float' object cannot be interpreted as an integer", -1)
+                    if colors < 1 || colors > 256
                         throw Error("bad number of colors", -1)
                     throw Error("image has wrong mode", -1)
                 }
@@ -18347,6 +18401,8 @@ class Pillow {
             oldHandle := this.Handle
             this.Handle := resized.RequireHandle()
             resized.Handle := 0
+            this._CachedWidth := finalWidth
+            this._CachedHeight := finalHeight
             Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", oldHandle, "Int"))
             return
         }

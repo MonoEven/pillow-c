@@ -83,11 +83,12 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-IMGCLS-002 (the Image class message
-parity wave: Convert matrix source-mode keying, LAB->I;16 rejection,
-Quantize colors TypeErrors and wrong-mode message, Convert() copy,
-Thumbnail zero/negative sizes, and the unknown-extension save error)
-after BEHAV-ERRMSGS-002/
+Latest covered gap tail: BEHAV-IMGCLS-002W2 (the Image class wave 2:
+closed-image cached mode/size/width/height/getbands, the filename
+attribute and Pillow's exact AttributeErrors, the bare KeyError
+format-name shape, and the LAB Quantize colors TypeErrors)
+after BEHAV-IMGCLS-002/
+BEHAV-ERRMSGS-002/
 BEHAV-ERRMSGS-001/
 BEHAV-SAVEOPTS-006/
 BEHAV-SAVEOPTS-005/
@@ -462,11 +463,10 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-IMGCLS-002` remainder (closed-image cached
-  attributes, `filename`/`tile`/`palette` attributes, format-name
-  KeyError shapes, Quantize LAB/dither tails) and `API-CMS-DISPLAY-001`
-  (`ImageCms.get_display_profile` plus the CMS enums), then
-  `API-DRAW-TEXT-001`/`API-OPENINFO-001`.
+- Selected next gap: `API-CMS-DISPLAY-001` (`ImageCms.get_display_profile`
+  plus the Direction/Flags/Intent enums, PyCMSError, versions, and
+  buildProofTransformFromOpenProfiles), then `API-DRAW-TEXT-001` and
+  `API-OPENINFO-001`.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19615,6 +19615,28 @@ target passes `1/1` in `15ms`; the full directory suite passes
 remaining API-IMGCLS-002 items (closed-image cached attributes,
 `filename`/`tile`/`palette` attributes, the format-name KeyError shape)
 plus API-CMS-DISPLAY-001 stay the next packets.
+```
+
+2026-08-15: `BEHAV-IMGCLS-002W2` is GREEN as the Image class wave 2
+(the API-IMGCLS-002 remainder). The Pillow 11.3.0 oracle pins: the
+closed image still returns its cached `mode`/`size`/`width`/`height`
+and `getbands()` (plain Python-object attributes — the facade now seeds
+the cache at construction and refreshes it on the in-place Thumbnail
+handle swap and the ICO Size setter); `filename` only exists on OPENED
+images (the facade exposes the open path) while `filename`/`tile`/
+`palette` on fresh images raise Pillow's exact AttributeError
+`'Image' object has no attribute '<name>'` (the new `__Get` shape,
+lowercased to match Pillow); save format names resolve through
+`SAVE[format.upper()]`, so unregistered names raise the bare KeyError
+shape `'NOPE'` (uppercased, and FPX save now raises `'FPX'` like
+Pillow 11.3.0); an existing file with an unrecognized extension raises
+the UnidentifiedImageError (Pillow identifies by magic, not
+extension); and LAB Quantize parses `colors` as a C int first (the
+exact TypeErrors before `bad number of colors`). All pure facade
+changes; the DLL is unchanged. The facade target passes `1/1` in
+`16ms`; the full directory suite passes `2849/2849` in `21860ms` with
+zero failures, errors, or skips. API-CMS-DISPLAY-001 stays the next
+packet.
 ```
 
 If any line above is no longer true, update this file first, then update

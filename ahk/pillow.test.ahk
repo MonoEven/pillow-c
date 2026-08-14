@@ -20846,7 +20846,7 @@ PillowTestImageOpenSaveBmpRejectsUnsupportedInputs(*) {
             image.Save(badPath, "NO_SUCH_FORMAT")
             AhkTest.Fail("Expected Image.Save to reject unsupported format")
         } catch Error as err {
-            AhkTest.AssertTrue(InStr(err.Message, "unsupported") > 0)
+            AhkTest.AssertEqual("'NO_SUCH_FORMAT'", err.Message)
         }
 
         try {
@@ -21947,7 +21947,7 @@ PillowTestUnrecordedFormatBoundaries(*) {
             } catch Error as err {
                 boundaryError := err.Message
             }
-            AhkTest.AssertEqual("Pillow image file format is unsupported", boundaryError)
+            AhkTest.AssertEqual("'FPX'", boundaryError)
         }
         ; the .wmf open-side boundary left this test with
         ; BEHAV-OPEN-009: a non-WMF .wmf now routes through the WMF
@@ -24420,12 +24420,12 @@ PillowTestOpenSimpleFormats(*) {
         AhkTest.AssertEqual("cannot identify image file '" xvPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvPath, ["XVTHUMB"])))
         PillowTestEpsWriteText(xvPath, "P7 332`n# c`n# d`n")
         AhkTest.AssertEqual("cannot identify image file '" xvPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvPath, ["XVTHUMB"])))
-        ; .xvthumb is not a registered extension (Pillow: identification
-        ; error; the facade keeps its BNDRY-001 unknown-extension message)
+        ; .xvthumb is not a registered extension — Pillow identifies by
+        ; magic, so an existing file raises the UnidentifiedImageError.
         xvExtPath := StrReplace(PillowTestTempPngPath("open-simple-xvext"), ".png", ".xvthumb")
         PillowTestWriteTextAndBytes(xvExtPath, "P7 332`n3 2`n", indices)
         try {
-            AhkTest.AssertEqual("Pillow image file format is unsupported", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvExtPath)))
+            AhkTest.AssertEqual("cannot identify image file '" xvExtPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvExtPath)))
         } finally {
             PillowTestDeleteFile(xvExtPath)
         }
@@ -28649,6 +28649,62 @@ PillowTestImageClassMessageParity(*) {
 }
 
 AhkTest.Test("Pillow Image class messages match Pillow 11.3.0", PillowTestImageClassMessageParity)
+
+PillowTestImageClassClosedAndAttributes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGB", [4, 4], [0, 0, 0])
+    image.Close()
+    ; Pillow's mode/size/width/height are cached attributes that survive
+    ; close(); getbands() follows mode.
+    AhkTest.AssertEqual("RGB", image.Mode)
+    AhkTest.AssertEqual([4, 4], image.Size)
+    AhkTest.AssertEqual(4, image.Width)
+    AhkTest.AssertEqual(4, image.Height)
+    AhkTest.AssertEqual(["R", "G", "B"], image.GetBands())
+
+    fresh := Pillow.Image.New("RGB", [2, 2], [0, 0, 0])
+    try {
+        ; attributes that only exist on opened images raise Pillow's
+        ; exact AttributeError
+        AhkTest.AssertEqual("'Image' object has no attribute 'filename'", PillowTestFormatCaptureError(() => fresh.Filename))
+        AhkTest.AssertEqual("'Image' object has no attribute 'tile'", PillowTestFormatCaptureError(() => fresh.Tile))
+        AhkTest.AssertEqual("'Image' object has no attribute 'palette'", PillowTestFormatCaptureError(() => fresh.Palette))
+        ; save format names raise the exact bare KeyError shape
+        AhkTest.AssertEqual("'NOPE'", PillowTestFormatCaptureError(() => fresh.Save(PillowTestTempPngPath("cls-nope"), "NOPE")))
+        AhkTest.AssertEqual("'NOPE'", PillowTestFormatCaptureError(() => fresh.Save(PillowTestTempPngPath("cls-nope2"), "nope")))
+        ; LAB quantize parses colors as a C int first
+        lab := Pillow.Image.New("LAB", [2, 2], [50, 0, 0])
+        try {
+            AhkTest.AssertEqual("'float' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => lab.Quantize(2.5)))
+            AhkTest.AssertEqual("'str' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => lab.Quantize("abc")))
+        } finally {
+            lab.Close()
+        }
+    } finally {
+        fresh.Close()
+    }
+
+    ; thumbnail updates the cached size in place (visible after close)
+    thumb := Pillow.Image.New("RGB", [8, 8], [0, 0, 0])
+    thumb.Thumbnail([2, 2])
+    thumb.Close()
+    AhkTest.AssertEqual([2, 2], thumb.Size)
+
+    ; opened images expose filename
+    pngPath := PillowTestTempPngPath("cls-opened")
+    opened := Pillow.Image.New("RGB", [2, 2], [0, 0, 0])
+    opened.Save(pngPath, "PNG")
+    opened.Close()
+    reopened := Pillow.Image.Open(pngPath)
+    try {
+        AhkTest.AssertEqual(pngPath, reopened.Filename)
+    } finally {
+        reopened.Close()
+    }
+    PillowTestDeleteFile(pngPath)
+}
+
+AhkTest.Test("Pillow Image closed attributes and attribute errors match Pillow 11.3.0", PillowTestImageClassClosedAndAttributes)
 
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

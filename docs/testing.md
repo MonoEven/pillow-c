@@ -7243,3 +7243,14 @@ Thumbnail zero/negative sizes, and the unknown-extension save error
 against local Pillow 11.3.0. No native code changed: export parity stays
 `513/513` and the DLL SHA-256 stays
 `43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.
+
+2026-08-15 BEHAV-IMGCLS-002W2 verification: the facade
+`Pillow Image closed attributes and attribute errors match Pillow 11.3.0`
+target passes `1/1` in `16ms`; the full directory suite passes
+`2849/2849` in `21860ms` with zero failures, errors, or skips. The
+oracle pins the closed-image cached attributes, the filename/Attribute
+Error surface, the bare KeyError format-name shape (FPX included), the
+magic-based open fallthrough, and the LAB Quantize colors TypeErrors
+against local Pillow 11.3.0. No native code changed: export parity stays
+`513/513` and the DLL SHA-256 stays
+`43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.
