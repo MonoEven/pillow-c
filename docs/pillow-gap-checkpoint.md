@@ -26,9 +26,10 @@ identity with the local Pillow 11.3.0 build is NOT reachable and is
 no longer claimed. The honest split:
 
 - Formats: SAVE 19/30 and OPEN 19/45 byte-exact and test-pinned;
-  ICNS and EPS are DONE (BEHAV-ICNS-001 / BEHAV-EPS-001); the
+  ICNS, EPS, and MPO are DONE (BEHAV-ICNS-001 / BEHAV-EPS-001 /
+  BEHAV-MPO-001); the
   matchable remainder is bounded
-  (2 saves: MPO/PDF; 18
+  (1 save: PDF; 18
   opens: DCX/FITS/FLI/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/
   PSD/SUN/XPM/XVTHUMB + the trivial HDF5/BUFR/GRIB 1x1-F stubs; the
   MPEG header-then-cannot-load error match;
@@ -64,12 +65,14 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-EPS-001 (EPS byte-exact DSC save for
-L/RGB/CMYK with 39-byte hex lines + the Ghostscript load error and
-Pillow's exact open-time header errors) after BEHAV-ICNS-001/
-MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001; the next
-bounded child is BEHAV-MPO-001 (MPO save over the native JPEG
-seams), then PDF, then the AUDIT-003 newly recorded gaps
+Latest covered gap tail: BEHAV-MPO-001 (MPO save over the native
+JPEG seams: plain-JPEG single save, the APP2 MPF index + appended
+frames for append_images, Pillow's exact mode errors, and the
+MPF-marker Format detection on open) after BEHAV-EPS-001/
+BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
+the next bounded child is BEHAV-PDF-001 (PDF save + the
+identification error on open), then the pure-Python open families,
+then the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
 follow as their own packets.
 ```
@@ -488,6 +491,38 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `BEHAV-MPO-001` is GREEN as the MPO format (behavioral
+parity over the native JPEG seams, facade-composed). The Pillow
+11.3.0 oracle (MpoImagePlugin source plus fixtures,
+`oracle/probe_mpo.py` and the Pillow-reopen cross-check in
+`oracle/probe_mpo_compose.py`) pins the
+single-image save as a plain JPEG (no MPF index — it reopens as
+format JPEG), the multi-image save as a first JPEG whose APP2
+`"MPF\0"` marker (right after APP0, length `6 + 66 + 16*n`) carries
+a placeholder MP Index IFD overwritten in place at file offset 28
+(`II*\0` + LE32(8) + the 3-entry ImageFileDirectory_v2 IFD: B000
+"0100", B001 frame count, B002 the 16-byte `<LLLHH` MP entries with
+entry-0 mptype 0x030000 and the 28-offset data_offset math), and
+the appended frames' plain JPEGs; L/RGB/CMYK save, mode 1 is
+JPEG-encoded as grayscale (RAWMODE), and every other mode raises
+`cannot write mode X as JPEG`. Open routes through the JPEG factory:
+a file WITH the MPF index reports format MPO and a plain JPEG in an
+.mpo reports JPEG; the eager facade decodes frame 0 through the
+native JPEG open and MPO n_frames/seek stays a documented child.
+The facade composes the container from native JPEG payloads (the
+extra-marker export for frame 1, plain saves appended, the IFD
+patched at 28 — no pixel loops) and Pillow 11.3.0 reopens the
+facade's file as MPO with 2 frames and seeks frame 1 with matching
+pixels (oracle cross-check). The facade MPO target passes `1/1` in
+`32ms` (structure asserts at every MPF offset, the deterministic
+frame-0 decode, the single/multi/renamed-JPEG format detection, six
+exact mode errors, and the mode-1 grayscale reference); the full
+directory suite passes `2823/2823` in `24375ms` with zero failures,
+errors, or skips. Facade-only change: source/DLL export parity
+remains `482/482` and the DLL SHA-256 remains
+`A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
+The next bounded child is `BEHAV-PDF-001`, the PDF format.
 
 2026-08-14: `BEHAV-EPS-001` is GREEN as the EPS format (byte-exact
 save plus the Ghostscript open error match). The Pillow 11.3.0

@@ -118,10 +118,24 @@ and a valid header raises Pillow's exact `Unable to locate
 Ghostscript on paths` load error at Open (the eager facade's
 open+load analogue; this runtime ships no Ghostscript).
 
+`BEHAV-MPO-001` is facade-only and changes NO ABI: the facade
+composes the MPO container over the existing native JPEG seams
+(`pillow_c_image_save_jpeg` for the appended frames and the
+extra-marker `pillow_c_image_save_jpeg_extra_options` export for
+frame 1, whose APP2 `"MPF\0"` marker placeholder is overwritten in
+place at file offset 28 with the MP Index IFD), and open routes
+`.mpo` through the native `pillow_c_image_open_jpeg` with the
+facade `MpoHasIndex` MPF scan choosing format MPO vs JPEG. The
+facade raises Pillow's exact `cannot write mode X as JPEG` for
+non-L/RGB/CMYK/mode-1 saves; MPO n_frames/seek stays a documented
+child (the eager facade decodes frame 0 only).
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`482/482`; the full AHK suite is `2822/2822`; and the current DLL SHA-256 is
+`482/482`; the full AHK suite is `2823/2823`; and the current DLL SHA-256 is
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`
-(BEHAV-EPS-001 adds the `pillow_c_image_save_eps` export below;
+(BEHAV-MPO-001 changes no ABI — the MPO container is facade-composed
+over the existing JPEG exports;
+BEHAV-EPS-001 adds the `pillow_c_image_save_eps` export below;
 BEHAV-ICNS-001 adds the four ICNS exports below and the internal
 memory-PNG decode seam; MODE-RGBA-RESIZE-001 changes no ABI — the resize
 premultiply roundtrip

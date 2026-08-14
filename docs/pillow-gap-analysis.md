@@ -44,8 +44,10 @@ Everything else IS reachable, and the remaining work is bounded.
 - SAVE (30): 19 byte-exact; ICNS = DONE (BEHAV-ICNS-001 —
   container-byte-exact + pixel-exact reopen, PNG payload bytes use
   our deflate); EPS = DONE (BEHAV-EPS-001 — byte-exact DSC save);
-  MPO/PDF = 2 implementable
-  (pure-Python writers; EPS/PDF saves verified OK locally);
+  MPO = DONE (BEHAV-MPO-001 — facade-composed MPF index over the
+  native JPEG payloads, Pillow-reopen-verified);
+  PDF = 1 implementable
+  (pure-Python writer; the PDF save verified OK locally);
   BUFR/GRIB/HDF5/WMF = 4 exact-error matches (`X save handler not
   installed`); AVIF/JPEG2000/WEBP = 3 unmatchable codecs.
 - OPEN (45): 19 byte-exact; 18 implementable (DCX/FITS/FLI/FTEX/
@@ -270,6 +272,43 @@ Current local constraints:
 - AHK tests should use `ahktest` and captured errors, not modal popups.
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
+
+## 2026-08-14 BEHAV-MPO-001 MPO Format (GREEN)
+
+`BEHAV-MPO-001` implements the MPO (Multi-Picture Object) save with
+behavioral parity over the native JPEG seams, facade-composed.
+
+The Pillow 11.3.0 oracle (MpoImagePlugin source plus fixtures,
+`oracle/probe_mpo.py`, and the Pillow-reopen cross-check in
+`oracle/probe_mpo_compose.py`) shows a
+single-image save writes a plain JPEG (no MPF index — it reopens as
+format JPEG), while a save with append_images writes a first JPEG
+whose APP2 `"MPF\0"` marker (right after APP0, length
+`6 + 66 + 16*n`) carries a placeholder MP Index IFD overwritten in
+place at file offset 28: `II*\0`, LE32(8), and the 3-entry
+ImageFileDirectory_v2 IFD (B000 `"0100"`, B001 the frame count,
+B002 the 16-byte `<LLLHH` MP entries with entry-0 mptype 0x030000
+and the offset-28 data_offset math), followed by the appended
+frames' plain JPEGs; L/RGB/CMYK save, mode 1 is JPEG-encoded as
+grayscale (RAWMODE), and every other mode raises
+`cannot write mode X as JPEG`. Open routes through the JPEG
+factory: a file WITH the MPF index reports format MPO and a plain
+JPEG in an .mpo reports JPEG; the eager facade decodes frame 0 via
+the native JPEG open and MPO n_frames/seek stays a documented
+child. The facade composes the container from native JPEG payloads
+(the extra-marker export for frame 1, plain saves appended, the IFD
+patched at 28 — no pixel loops); Pillow 11.3.0 reopens the facade's
+file as MPO with 2 frames and seeks frame 1 with matching pixels
+(oracle cross-check). The facade MPO target passes `1/1` in `32ms`
+(structure asserts at every MPF offset, the deterministic frame-0
+decode, the single/multi/renamed-JPEG format detection, six exact
+mode errors, and the mode-1 grayscale reference); the full
+directory suite passes `2823/2823` in `24375ms`. Facade-only
+change: source/DLL export parity remains `482/482` and the DLL
+SHA-256 remains
+`A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
+The MPO row left the BNDRY-001 dependency-gated list. The next
+bounded child is `BEHAV-PDF-001`, the PDF format.
 
 ## 2026-08-14 BEHAV-EPS-001 EPS Format (GREEN)
 
@@ -629,7 +668,7 @@ Classification of every boundary item (treatment applies per packet):
 | ICNS | save all modes OK (PNG/JPEG2000 payloads); reopen picks the best size, decodes PNG payloads and legacy 32-bit RGB/mask chunks, and the first tobytes() carries the pre-load RGBA rawmode quirk | DONE — BEHAV-ICNS-001 (container-byte-exact TOC + eight PNG-backed icons over the native PNG seams; mode-preserving reopen incl. L/P/RGB/LA/RGBA, legacy is32/il32/ih32/it32 + masks with the bottom-up verbatim storage and the RLE [N left] error, exact error shapes, info["sizes"], the ToBytes quirk replay; jp2 payloads keep Pillow's no-jp2 message as the dependency-gated boundary) |
 | EPS | save L/RGB OK; RGBA/P `image mode is not supported`; open `Unable to locate Ghostscript on paths` | DONE — BEHAV-EPS-001 (byte-exact DSC header + preamble + 39-byte hex lines for L/RGB/CMYK, the exact mode ValueError, the DSC header replay with Pillow's identification/bbox error shapes, the binary-preview offset, and the Ghostscript load error at the eager facade's Open; native save export) |
 | PDF | save all modes OK (pure-Python writer); open needs Ghostscript | IMPLEMENT save (facade) + match Ghostscript error |
-| MPO | save L/RGB OK; RGBA/P `cannot write mode X as JPEG` | IMPLEMENT (facade/native over native JPEG) |
+| MPO | save L/RGB OK; RGBA/P `cannot write mode X as JPEG` | DONE — BEHAV-MPO-001 (single save = plain JPEG; append_images writes the APP2 MPF index placeholder patched at offset 28 plus the appended frames; L/RGB/CMYK save, mode 1 JPEG-encoded as grayscale, the exact mode errors, and the MPF-marker JPEG/MPO format detection on open; Pillow 11.3.0 reopens the facade's file with 2 seekable frames; n_frames/seek stay a documented child) |
 | XPM/PIXAR/GBR/IMT/IPTC/MCIDAS/MIC/FTEX/XVTHUMB/FLI/DCX/PSD/SUN open, FITS/FPX open | pure-Python open plugins; classify per packet with Pillow-generated/hand-crafted fixtures | IMPLEMENT open where feasible (bounded per format) |
 | FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/XVTHUMB/SUN/FLI/DCX/XPM/PSD save | `KeyError: 'FMT'` (no save handler) | MATCH the exact KeyError message |
 | BUFR/GRIB/HDF5/WMF save | `X save handler not installed` (OSError) | MATCH the exact message |

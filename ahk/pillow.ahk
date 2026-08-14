@@ -7653,6 +7653,20 @@ class Pillow {
                         ; SyntaxError into UnidentifiedImageError.
                         throw Error("cannot identify image file <" path ">", -1)
                     throw Error(epsError, -1)
+                } else if format = "MPO" {
+                    ; BEHAV-MPO-001: Pillow opens MPO through the JPEG
+                    ; factory — a file WITH the MPF index reports format
+                    ; MPO and a plain JPEG in an .mpo reports JPEG; the
+                    ; eager facade decodes frame 0 through the native
+                    ; JPEG open (n_frames/seek stay a documented child).
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_jpeg",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = 0
+                        format := Pillow.Image.MpoHasIndex(path) ? "MPO" : "JPEG"
                 } else {
                     lastStatus := DllCall(
                         Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
@@ -9027,6 +9041,44 @@ class Pillow {
             }
         }
 
+        static ReadAllBytes(path) {
+            file := FileOpen(path, "r")
+            if !file
+                throw Error("Pillow.Image.ReadAllBytes failed to open " path, -1)
+            try {
+                out := Buffer(file.Length, 0)
+                file.RawRead(out, out.Size)
+                return out
+            } finally {
+                file.Close()
+            }
+        }
+
+        static MpoHasIndex(path) {
+            ; BEHAV-MPO-001: Pillow's JPEG factory reports format MPO
+            ; only when the APP2 "MPF\0" index marker is present; a
+            ; plain JPEG saved with an .mpo extension reports JPEG.
+            file := FileOpen(path, "r")
+            if !file
+                return false
+            try {
+                if file.Length < 32
+                    return false
+                data := Buffer(Min(file.Length, 65536), 0)
+                file.RawRead(data, data.Size)
+                loop data.Size - 3 {
+                    if NumGet(data, A_Index - 1, "UChar") = 0x4D
+                        && NumGet(data, A_Index, "UChar") = 0x50
+                        && NumGet(data, A_Index + 1, "UChar") = 0x46
+                        && NumGet(data, A_Index + 2, "UChar") = 0
+                        return true
+                }
+                return false
+            } finally {
+                file.Close()
+            }
+        }
+
         static OpenDibHandle(path, &outHandle) {
             ; BEHAV-DIB-001: DIB open = synthetic BITMAPFILEHEADER + native
             ; BMP decoder. Pillow's DIB has no BITMAPFILEHEADER, so the
@@ -9111,6 +9163,8 @@ class Pillow {
                 return "ICNS"
             if RegExMatch(path, "i)\.(eps|ps)$")
                 return "EPS"
+            if RegExMatch(path, "i)\.mpo$")
+                return "MPO"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -9140,7 +9194,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -9160,6 +9214,7 @@ class Pillow {
                 "DDS", "DirectDraw Surface",
                 "ICNS", "Mac OS icns resource",
                 "EPS", "Encapsulated Postscript",
+                "MPO", "MPO (CIPA DC-007)",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -10888,6 +10943,173 @@ class Pillow {
                 if status = -27
                     throw Error("image mode is not supported", -1)
                 Pillow.CheckStatus(status)
+                return
+            }
+            if resolvedFormat = "MPO" {
+                ; BEHAV-MPO-001: Pillow's MpoImagePlugin writes a plain
+                ; JPEG for a single image; with append_images it writes a
+                ; first JPEG whose APP2 "MPF\0" marker carries a
+                ; placeholder MP Index IFD (overwritten in place at file
+                ; offset 28) plus the appended frames' JPEGs. L/RGB/CMYK
+                ; save (mode 1 is JPEG-encoded as grayscale via Pillow's
+                ; RAWMODE map) and every other mode raises
+                ; "cannot write mode X as JPEG". The facade composes the
+                ; container from native JPEG payloads (no pixel loops).
+                images := [this]
+                if IsSet(saveOptions) {
+                    appendOption := Pillow.Image.SaveOption(saveOptions, "AppendImages", "append_images")
+                    if appendOption.Set {
+                        appendImages := appendOption.Value
+                        if IsObject(appendImages) && appendImages is Pillow.Image {
+                            images.Push(appendImages)
+                        } else if IsObject(appendImages) {
+                            for image in appendImages {
+                                if !(IsObject(image) && image is Pillow.Image)
+                                    throw Error("Pillow.Image.Save append_images expects Pillow.Image values", -1)
+                                images.Push(image)
+                            }
+                        } else {
+                            throw Error("Pillow.Image.Save append_images expects an image or image array", -1)
+                        }
+                    }
+                }
+                converted := []
+                owned := []
+                tempPaths := []
+                try {
+                    for image in images {
+                        if image.Mode = "1" {
+                            gray := image.Convert("L")
+                            owned.Push(gray)
+                            converted.Push(gray)
+                        } else if image.Mode = "L" || image.Mode = "RGB" || image.Mode = "CMYK" {
+                            converted.Push(image)
+                        } else {
+                            throw Error("cannot write mode " image.Mode " as JPEG", -1)
+                        }
+                    }
+                    pathBytes := Pillow.Image.Utf8Buffer(path)
+                    if converted.Length = 1 {
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_jpeg",
+                            "Ptr", converted[1].RequireHandle(),
+                            "Ptr", pathBytes,
+                            "Int"
+                        ))
+                        return
+                    }
+                    total := converted.Length
+                    ifdLength := 66 + 16 * total
+                    extra := Buffer(8 + ifdLength, 0)
+                    NumPut("UChar", 0xFF, extra, 0)
+                    NumPut("UChar", 0xE2, extra, 1)
+                    NumPut("UChar", ((6 + ifdLength) >> 8) & 0xFF, extra, 2)
+                    NumPut("UChar", (6 + ifdLength) & 0xFF, extra, 3)
+                    NumPut("UChar", Ord("M"), extra, 4)
+                    NumPut("UChar", Ord("P"), extra, 5)
+                    NumPut("UChar", Ord("F"), extra, 6)
+                    NumPut("UChar", 0, extra, 7)
+                    loop ifdLength
+                        NumPut("UChar", 32, extra, 7 + A_Index)
+
+                    frameBytes := []
+                    frame1Path := A_Temp "\pillow-ahk-mpo-" A_TickCount "-" Random(1, 1000000) "-0.jpg"
+                    tempPaths.Push(frame1Path)
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_jpeg_extra_options",
+                        "Ptr", converted[1].RequireHandle(),
+                        "Ptr", Pillow.Image.Utf8Buffer(frame1Path),
+                        "Int", 75,
+                        "Int", 0,
+                        "Double", 0.0,
+                        "Double", 0.0,
+                        "Int", -1,
+                        "Int", -1,
+                        "Int", -1,
+                        "Ptr", extra,
+                        "UPtr", extra.Size,
+                        "Int"
+                    ))
+                    frameBytes.Push(Pillow.Image.ReadAllBytes(frame1Path))
+                    loop converted.Length - 1 {
+                        framePath := A_Temp "\pillow-ahk-mpo-" A_TickCount "-" Random(1, 1000000) "-" A_Index ".jpg"
+                        tempPaths.Push(framePath)
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_jpeg",
+                            "Ptr", converted[A_Index + 1].RequireHandle(),
+                            "Ptr", Pillow.Image.Utf8Buffer(framePath),
+                            "Int"
+                        ))
+                        frameBytes.Push(Pillow.Image.ReadAllBytes(framePath))
+                    }
+
+                    ; MP Index IFD (ImageFileDirectory_v2.tobytes(8) layout)
+                    mpentries := Buffer(16 * total, 0)
+                    dataOffset := 0
+                    loop total {
+                        i := A_Index - 1
+                        NumPut("UInt", i = 0 ? 0x030000 : 0, mpentries, i * 16)
+                        NumPut("UInt", frameBytes[A_Index].Size, mpentries, i * 16 + 4)
+                        NumPut("UInt", dataOffset, mpentries, i * 16 + 8)
+                        NumPut("UShort", 0, mpentries, i * 16 + 12)
+                        NumPut("UShort", 0, mpentries, i * 16 + 14)
+                        if i = 0
+                            dataOffset -= 28
+                        dataOffset += frameBytes[A_Index].Size
+                    }
+                    ifd := Buffer(2 + 3 * 12 + 4 + mpentries.Size, 0)
+                    offset := 0
+                    NumPut("UShort", 3, ifd, offset)
+                    offset += 2
+                    NumPut("UShort", 0xB000, ifd, offset)
+                    NumPut("UShort", 4, ifd, offset + 2)
+                    NumPut("UInt", 1, ifd, offset + 4)
+                    NumPut("UChar", Ord("0"), ifd, offset + 8)
+                    NumPut("UChar", Ord("1"), ifd, offset + 9)
+                    NumPut("UChar", Ord("0"), ifd, offset + 10)
+                    NumPut("UChar", Ord("0"), ifd, offset + 11)
+                    offset += 12
+                    NumPut("UShort", 0xB001, ifd, offset)
+                    NumPut("UShort", 4, ifd, offset + 2)
+                    NumPut("UInt", 1, ifd, offset + 4)
+                    NumPut("UInt", total, ifd, offset + 8)
+                    offset += 12
+                    NumPut("UShort", 0xB002, ifd, offset)
+                    NumPut("UShort", 7, ifd, offset + 2)
+                    NumPut("UInt", mpentries.Size, ifd, offset + 4)
+                    NumPut("UInt", 50, ifd, offset + 8)
+                    offset += 12
+                    NumPut("UInt", 0, ifd, offset)
+                    offset += 4
+                    DllCall("msvcrt\memcpy", "Ptr", ifd.Ptr + offset, "Ptr", mpentries.Ptr, "UPtr", mpentries.Size, "CDecl Ptr")
+
+                    totalSize := 0
+                    for frame in frameBytes
+                        totalSize += frame.Size
+                    out := Buffer(totalSize, 0)
+                    offset := 0
+                    for frame in frameBytes {
+                        DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", frame.Ptr, "UPtr", frame.Size, "CDecl Ptr")
+                        offset += frame.Size
+                    }
+                    ; patch the MP Index IFD over the placeholder
+                    NumPut("UChar", 0x49, out, 28)
+                    NumPut("UChar", 0x49, out, 29)
+                    NumPut("UChar", 0x2A, out, 30)
+                    NumPut("UChar", 0, out, 31)
+                    NumPut("UInt", 8, out, 32)
+                    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + 36, "Ptr", ifd.Ptr, "UPtr", ifd.Size, "CDecl Ptr")
+                    file := FileOpen(path, "w")
+                    try
+                        file.RawWrite(out, out.Size)
+                    finally
+                        file.Close()
+                } finally {
+                    for image in owned
+                        image.Close()
+                    for tempPath in tempPaths
+                        FileDelete(tempPath)
+                }
                 return
             }
             if IsSet(saveOptions) && resolvedFormat = "CUR" {

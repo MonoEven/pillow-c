@@ -47,8 +47,36 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2822` AHK tests: `1391` raw DLL tests and
-`1431` facade tests.
+This suite currently registers `2823` AHK tests: `1391` raw DLL tests and
+`1432` facade tests.
+
+Latest `BEHAV-MPO-001` verification: the Pillow 11.3.0 oracle
+(MpoImagePlugin source plus fixtures, `oracle/probe_mpo.py`, and
+the Pillow-reopen cross-check in `oracle/probe_mpo_compose.py`)
+pins the single-image save as a plain JPEG (no MPF index — Pillow
+reopens it as format JPEG), the append_images save as a first JPEG
+whose APP2 `"MPF\0"` marker (length `6 + 66 + 16*n`) carries a
+placeholder MP Index IFD overwritten in place at file offset 28
+(`II*\0`, LE32(8), the 3-entry B000/B001/B002 IFD with the
+16-byte `<LLLHH` MP entries and entry-0 mptype 0x030000), then the
+appended frames' plain JPEGs; L/RGB/CMYK save, mode 1 JPEG-encoded
+as grayscale (RAWMODE), every other mode raising Pillow's exact
+`cannot write mode X as JPEG` ValueError; and the open-side MPF
+detection (a file WITH the index reports format MPO, a plain JPEG
+in an .mpo reports JPEG). The facade composes the container over
+the native JPEG seams (the extra-marker export for frame 1, plain
+saves appended, the IFD patched at 28 — no pixel loops) and
+Pillow 11.3.0 reopens the facade's file as MPO with 2 seekable
+frames and matching frame-1 pixels (oracle cross-check). The
+facade MPO target passes `1/1` in `32ms` (structure asserts at
+every MPF offset, the deterministic frame-0 decode, the
+single/multi/renamed-JPEG format detection, six exact mode errors,
+and the mode-1 grayscale reference); the full directory suite
+passes `2823/2823` in `24375ms` with zero failures, errors, or
+skips. Facade-only change: source/DLL export parity remains
+`482/482` with zero difference and the DLL SHA-256 stays
+`A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
+The behavioral-parity wave continues with `BEHAV-PDF-001` next.
 
 Latest `BEHAV-EPS-001` verification: the Pillow 11.3.0 oracle
 (EpsImagePlugin source plus the EpsEncode.c semantics,

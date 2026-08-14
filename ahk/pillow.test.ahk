@@ -21875,10 +21875,10 @@ PillowTestDependencyGatedFormatBoundaries(*) {
     image := Pillow.Image.New("L", [2, 2], 7)
     path := StrReplace(PillowTestTempPngPath("bndry-dep"), ".png", ".webp")
     try {
-        ; BNDRY-001: dependency-gated formats (WebP/AVIF/PDF/JPEG2000/MPO
+        ; BNDRY-001: dependency-gated formats (WebP/AVIF/PDF/JPEG2000
         ; and the other long-tail families) are explicit documented
-        ; boundaries 鈥?open and save fail loudly with the same error.
-        for format in ["WEBP", "AVIF", "PDF", "JPEG2000", "MPO", "PSD"] {
+        ; boundaries — open and save fail loudly with the same error.
+        for format in ["WEBP", "AVIF", "PDF", "JPEG2000", "PSD"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -23805,6 +23805,170 @@ PillowTestEpsFormat(*) {
 }
 
 AhkTest.Test("Pillow EPS format matches Pillow 11.3.0 save bytes and open error shapes", PillowTestEpsFormat)
+
+PillowTestMpoFormat(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    singlePath := A_Temp "\mpo-single.mpo"
+    multiPath := A_Temp "\mpo-multi.mpo"
+    onePath := A_Temp "\mpo-one.mpo"
+    jpegPath := A_Temp "\mpo-plain.mpo"
+    try {
+        ; --- single image: plain JPEG save (no MPF index) ---
+        l := Pillow.Image.New("L", [4, 2])
+        try {
+            lValues := Buffer(8, 0)
+            loop 8
+                NumPut("UChar", A_Index - 1, lValues, A_Index - 1)
+            l.FromBytes(lValues)
+            l.Save(singlePath, "MPO")
+        } finally {
+            l.Close()
+        }
+        openedSingle := Pillow.Image.Open(singlePath)
+        try {
+            ; Pillow's JPEG factory reports JPEG for a plain JPEG in .mpo
+            AhkTest.AssertEqual("JPEG", openedSingle.Format)
+            AhkTest.AssertEqual("L", openedSingle.Mode)
+            AhkTest.AssertEqual([4, 2], openedSingle.Size)
+            AhkTest.AssertEqual([0, 1, 2, 3, 4, 5, 6, 7], PillowTestBufferToArray(openedSingle.ToBytes()))
+        } finally {
+            openedSingle.Close()
+        }
+
+        ; --- multi-frame save: APP2 MPF index + appended frames ---
+        base := Pillow.Image.New("RGB", [4, 2])
+        frame2 := Pillow.Image.New("RGB", [4, 2])
+        try {
+            baseValues := Buffer(24, 0)
+            frame2Values := Buffer(24, 0)
+            loop 24 {
+                NumPut("UChar", A_Index - 1, baseValues, A_Index - 1)
+                NumPut("UChar", 40 + A_Index - 1, frame2Values, A_Index - 1)
+            }
+            base.FromBytes(baseValues)
+            frame2.FromBytes(frame2Values)
+            base.Save(multiPath, "MPO", { AppendImages: [frame2] })
+        } finally {
+            base.Close()
+            frame2.Close()
+        }
+
+        ; structure checks on the raw bytes
+        raw := PillowTestReadFileBytes(multiPath)
+        AhkTest.AssertEqual([0xFF, 0xD8], [raw[1], raw[2]])
+        AhkTest.AssertEqual([0xFF, 0xE0], [raw[3], raw[4]])
+        AhkTest.AssertEqual([0xFF, 0xE2], [raw[21], raw[22]])
+        markerLen := (raw[23] << 8) | raw[24]
+        AhkTest.AssertEqual(104, markerLen)
+        AhkTest.AssertEqual("MPF", PillowTestByteString(raw, 25, 3))
+        AhkTest.AssertEqual(0, raw[28])
+        AhkTest.AssertEqual("II", PillowTestByteString(raw, 29, 2))
+        AhkTest.AssertEqual(42, raw[31])
+        AhkTest.AssertEqual(0, raw[32])
+        AhkTest.AssertEqual(3, raw[37] | (raw[38] << 8))
+        ; B000/B001/B002 entry tags
+        AhkTest.AssertEqual(0xB000, raw[39] | (raw[40] << 8))
+        AhkTest.AssertEqual(0xB001, raw[51] | (raw[52] << 8))
+        AhkTest.AssertEqual(0xB002, raw[63] | (raw[64] << 8))
+        ; B001 value = 2 frames
+        AhkTest.AssertEqual(2, raw[59] | (raw[60] << 8) | (raw[61] << 16) | (raw[62] << 24))
+        ; mpentries data offset = 50
+        AhkTest.AssertEqual(50, raw[71] | (raw[72] << 8) | (raw[73] << 16) | (raw[74] << 24))
+        ; mpentries: entry 0 mptype 0x030000, size == first JPEG length
+        ; (the second JPEG starts right after the first: SOI at size0)
+        firstSize := raw[83] | (raw[84] << 8) | (raw[85] << 16) | (raw[86] << 24)
+        AhkTest.AssertTrue(firstSize > 0 && firstSize < raw.Length - 10)
+        AhkTest.AssertEqual([0xFF, 0xD8], [raw[firstSize + 1], raw[firstSize + 2]])
+        ; entry 0 mptype = 0x030000 (LE bytes 00 00 03 00)
+        AhkTest.AssertEqual(0x030000, raw[79] | (raw[80] << 8) | (raw[81] << 16) | (raw[82] << 24))
+        ; entry 1 mptype = 0
+        AhkTest.AssertEqual(0, raw[95] | (raw[96] << 8) | (raw[97] << 16) | (raw[98] << 24))
+
+        openedMulti := Pillow.Image.Open(multiPath)
+        try {
+            AhkTest.AssertEqual("MPO", openedMulti.Format)
+            AhkTest.AssertEqual("RGB", openedMulti.Mode)
+            AhkTest.AssertEqual([4, 2], openedMulti.Size)
+            ; JPEG is lossy and frame 1 uses the extra-marker encoder
+            ; route; pin its deterministic decoded pixels (the oracle
+            ; cross-check in oracle/probe_mpo_compose.py additionally
+            ; proves Pillow opens this file as MPO with 2 frames and
+            ; seeks frame 1).
+            AhkTest.AssertEqual([0, 0, 2, 3, 4, 6, 7, 8, 10, 10, 11, 13, 9, 10, 12, 13, 14, 16, 17, 18, 20, 20, 21, 23], PillowTestBufferToArray(openedMulti.ToBytes()))
+        } finally {
+            openedMulti.Close()
+        }
+
+        ; --- mode errors ---
+        for mode in ["RGBA", "P", "I;16", "F", "LA"] {
+            image := Pillow.Image.New(mode, [2, 2])
+            try {
+                AhkTest.AssertEqual("cannot write mode " mode " as JPEG", PillowTestFormatCaptureError(() => image.Save(singlePath, "MPO")), mode)
+            } finally {
+                image.Close()
+            }
+        }
+
+        ; --- mode 1 saves as grayscale (Pillow's RAWMODE map) ---
+        one := Pillow.Image.New("1", [2, 2])
+        try {
+            ; packed bits (byte-padded rows, MSB-first):
+            ; row 0 pixels [0, 1] = 0b01000000, row 1 [1, 0] = 0b10000000
+            oneValues := Buffer(2, 0)
+            NumPut("UChar", 0x40, oneValues, 0)
+            NumPut("UChar", 0x80, oneValues, 1)
+            one.FromBytes(oneValues)
+            one.Save(onePath, "MPO")
+            ; reference: the same converted-L image via the plain JPEG save
+            lRef := one.Convert("L")
+            try
+                lRef.Save(jpegPath, "JPEG")
+            finally
+                lRef.Close()
+        } finally {
+            one.Close()
+        }
+        openedOne := Pillow.Image.Open(onePath)
+        openedRef := Pillow.Image.Open(jpegPath)
+        try {
+            AhkTest.AssertEqual("L", openedOne.Mode)
+            AhkTest.AssertEqual(PillowTestBufferToArray(openedRef.ToBytes()), PillowTestBufferToArray(openedOne.ToBytes()))
+        } finally {
+            openedOne.Close()
+            openedRef.Close()
+        }
+
+        ; --- a plain JPEG renamed to .mpo reports JPEG ---
+        jpeg := Pillow.Image.New("RGB", [4, 2])
+        try {
+            jpeg.Save(jpegPath, "JPEG")
+        } finally {
+            jpeg.Close()
+        }
+        openedJpeg := Pillow.Image.Open(jpegPath)
+        try {
+            AhkTest.AssertEqual("JPEG", openedJpeg.Format)
+        } finally {
+            openedJpeg.Close()
+        }
+
+        AhkTest.AssertEqual("MPO (CIPA DC-007)", Pillow.Image.FormatDescription("MPO"))
+    } finally {
+        PillowTestDeleteFile(singlePath)
+        PillowTestDeleteFile(multiPath)
+        PillowTestDeleteFile(onePath)
+        PillowTestDeleteFile(jpegPath)
+    }
+}
+
+PillowTestByteString(bytes, start, count) {
+    out := ""
+    loop count
+        out .= Chr(bytes[start - 1 + A_Index])
+    return out
+}
+
+AhkTest.Test("Pillow MPO format matches Pillow 11.3.0 structure, reopen parity, and mode errors", PillowTestMpoFormat)
 
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
