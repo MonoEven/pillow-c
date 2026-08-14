@@ -7,9 +7,11 @@
 
 // Shared font-handle layout. Kind 1 is the built-in default bitmap font owned
 // by pillow_c_draw.cpp; kind 2 is a loaded TrueType/OpenType face owned by
-// pillow_c_codec_font.cpp (the `truetype` pointer holds a PillowCTtFont).
+// pillow_c_codec_font.cpp (the `truetype` pointer holds a PillowCTtFont);
+// kind 3 is a loaded PILfont bitmap font (`truetype` holds a PillowCPilFont).
 constexpr int PILLOW_C_FONT_DEFAULT = 1;
 constexpr int PILLOW_C_FONT_TRUETYPE = 2;
+constexpr int PILLOW_C_FONT_PIL = 3;
 
 constexpr int PILLOW_C_FONT_LAYOUT_BASIC = 0;
 constexpr int PILLOW_C_FONT_LAYOUT_RAQM = 1;
@@ -64,6 +66,29 @@ int font_tt_getbbox_anchor(
     int* out_right,
     int* out_bottom);
 int font_tt_getmask(
+    const PillowCFont* font,
+    const char* text,
+    const char* mode,
+    int ink,
+    PillowCImage** out_image);
+
+// Kind-3 (PILfont bitmap font) seams, also implemented by
+// pillow_c_codec_font.cpp.
+int font_pil_load(
+    const std::uint8_t* metrics,
+    std::size_t metrics_size,
+    const PillowCImage* glyph_image,
+    PillowCFont** out_font);
+int font_pil_free(PillowCFont* font);
+int font_pil_getlength(const PillowCFont* font, const char* text, double* out_length);
+int font_pil_getbbox(
+    const PillowCFont* font,
+    const char* text,
+    int* out_left,
+    int* out_top,
+    int* out_right,
+    int* out_bottom);
+int font_pil_getmask(
     const PillowCFont* font,
     const char* text,
     const char* mode,

@@ -12767,3 +12767,23 @@ follow the existing image/font conventions. Glyph metric arithmetic
 (hmtx/kern/name/hhea tables plus the FT_MulFix/PIXEL rounding) is
 byte-exact against Pillow 11.3.0; glyph ink widths and rasterized mask
 pixels are the documented GDI-vs-FreeType divergence.
+
+`BEHAV-FONTFILE-002` adds one deliberate export —
+`pillow_c_font_load_pil(const uint8_t* metrics, size_t metrics_size,
+const PillowCImage* glyph_image, PillowCFont** out_font)` — for the
+PILfont bitmap fonts (kind 3, `PILLOW_C_FONT_PIL`). It requires the
+5120-byte metrics block (256 entries of 10 big-endian int16s
+`[dx, dy, dst_x0, dst_y0, dst_x1, dst_y1, src_x0, src_y0, src_x1,
+src_y1]`) and a mode-1 (byte-per-pixel 0/255) or L glyph image; it
+copies the glyph pixels into the font object (the caller may close the
+image) and computes the pinned font metrics. The shared
+`pillow_c_font_free/getlength/getbbox/getmask` exports dispatch to the
+kind-3 seams: getsize width = sum(dx) and height =
+max(dst_y1) - min(dst_y0); masks mirror the glyph-image mode (packed
+MSB-first mode 1 per the DLL's mode-1 convention, L values verbatim)
+with the 1:1 source-to-destination blit and clipping. A source box
+whose size differs from its destination box returns the local status
+`-64`, which the facade maps to Pillow's exact SystemError message
+`<method 'getmask' of 'ImagingFont' objects> returned a result with an
+exception set`. The generic statuses keep their public meanings; the
+kind-3 handle follows the existing font-handle ownership rules.

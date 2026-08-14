@@ -5094,6 +5094,9 @@ extern "C" __declspec(dllexport) int pillow_c_font_free(PillowCFont* font)
     if (font->kind == PILLOW_C_FONT_TRUETYPE) {
         return font_tt_free(font);
     }
+    if (font->kind == PILLOW_C_FONT_PIL) {
+        return font_pil_free(font);
+    }
     delete font;
     return PILLOW_C_OK;
 }
@@ -5196,6 +5199,9 @@ extern "C" __declspec(dllexport) int pillow_c_font_getlength(
     if (font && font->kind == PILLOW_C_FONT_TRUETYPE) {
         return font_tt_getlength(font, text, out_length);
     }
+    if (font && font->kind == PILLOW_C_FONT_PIL) {
+        return font_pil_getlength(font, text, out_length);
+    }
     int length = 0;
     const int status = font_text_metrics(font, text, &length, nullptr, nullptr, nullptr, nullptr);
     if (status != PILLOW_C_OK) {
@@ -5218,6 +5224,9 @@ extern "C" __declspec(dllexport) int pillow_c_font_getbbox(
     }
     if (font && font->kind == PILLOW_C_FONT_TRUETYPE) {
         return font_tt_getbbox(font, text, out_left, out_top, out_right, out_bottom);
+    }
+    if (font && font->kind == PILLOW_C_FONT_PIL) {
+        return font_pil_getbbox(font, text, out_left, out_top, out_right, out_bottom);
     }
     int length = 0;
     return font_text_metrics(font, text, &length, out_left, out_top, out_right, out_bottom);
@@ -5553,6 +5562,9 @@ extern "C" __declspec(dllexport) int pillow_c_font_getmask(
     *out_image = nullptr;
     if (font->kind == PILLOW_C_FONT_TRUETYPE) {
         return font_tt_getmask(font, text, mode, ink, out_image);
+    }
+    if (font->kind == PILLOW_C_FONT_PIL) {
+        return font_pil_getmask(font, text, mode, ink, out_image);
     }
     if (font->kind != PILLOW_C_FONT_DEFAULT) {
         return PILLOW_C_INVALID_ARGUMENT;

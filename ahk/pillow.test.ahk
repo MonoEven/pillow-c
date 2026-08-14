@@ -27547,6 +27547,176 @@ PillowTestFontFile(*) {
 
 AhkTest.Test("Pillow ImageFont.truetype matches Pillow 11.3.0 metrics, lengths, errors, and TTC faces", PillowTestFontFile)
 
+; BEHAV-FONTFILE-002: ImageFont.load / load_path / load_default_imagefont,
+; the PIL bitmap font loader. The crafted fixture uses the shipped
+; ahk/fonts/pilfont-diag.png glyph image (20x12 mode 1, diagonal) and metrics
+; with big-endian int16 entries; every size and mask byte is pinned to the
+; Pillow 11.3.0 oracle (oracle/probe_pilfont*.py).
+PillowTestPilBeShort(buf, offset, value) {
+    NumPut("UChar", (value & 0xFF00) >> 8, buf, offset)
+    NumPut("UChar", value & 0xFF, buf, offset + 1)
+}
+
+PillowTestPilWriteFont(path, entries) {
+    file := FileOpen(path, "w")
+    try {
+        file.Write("PILfont`n;;;;;;10;`nname=crafted`nDATA`n")
+        metrics := Buffer(5120, 0)
+        i := 0
+        while i < 256 {
+            entry := entries.Has(i) ? entries[i] : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            for j, value in entry
+                PillowTestPilBeShort(metrics, i * 20 + (j - 1) * 2, value)
+            i += 1
+        }
+        file.RawWrite(metrics, metrics.Size)
+    } finally {
+        file.Close()
+    }
+}
+
+PillowTestPilFont(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    stem := A_Temp "\pillow-ahk-pilfont-" A_TickCount "-" Random(1, 1000000)
+    pngPath := stem ".png"
+    pilPath := stem ".pil"
+    SplitPath A_LineFile, , &pilAhkDir
+    FileCopy(pilAhkDir "\fonts\pilfont-diag.png", pngPath, 1)
+    try {
+        ; --- crafted mode-1 fixture: A 6x4 at origin, B 4x4 beside it ---
+        entries := Map()
+        entries[65] := [6, 0, 0, 0, 6, 4, 0, 0, 6, 4]
+        entries[66] := [4, 0, 0, 0, 4, 4, 6, 0, 10, 4]
+        PillowTestPilWriteFont(pilPath, entries)
+        font := Pillow.ImageFont.Load(pilPath)
+        try {
+            AhkTest.AssertEqual(pngPath, font.File)
+            AhkTest.AssertEqual(["name=crafted`n"], font.Info)
+            AhkTest.AssertEqual(6.0, font.GetLength("A"))
+            AhkTest.AssertEqual(10.0, font.GetLength("AB"))
+            AhkTest.AssertEqual([0, 0, 6, 4], font.GetBbox("A"))
+            AhkTest.AssertEqual([0, 0, 10, 4], font.GetBbox("AB"))
+            maskA := font.GetMask("A")
+            AhkTest.AssertEqual("1", maskA.Mode)
+            AhkTest.AssertEqual([6, 4], maskA.Size)
+            AhkTest.AssertEqual([168, 84, 168, 84], PillowTestPaletteBufferUChars(maskA.Tobytes(), 0, 4))
+            maskA.Close()
+            maskAB := font.GetMask("AB")
+            AhkTest.AssertEqual([10, 4], maskAB.Size)
+            AhkTest.AssertEqual([170, 128, 85, 64, 170, 128, 85, 64], PillowTestPaletteBufferUChars(maskAB.Tobytes(), 0, 8))
+            maskAB.Close()
+            maskEmpty := font.GetMask("")
+            AhkTest.AssertEqual([0, 4], maskEmpty.Size)
+            maskEmpty.Close()
+            ; mode "L"/"1" requests are ignored — the mask mirrors the glyph
+            ; image mode (Pillow's bitmap-font behavior)
+            maskL := font.GetMask("A", "L")
+            AhkTest.AssertEqual("1", maskL.Mode)
+            maskL.Close()
+        } finally {
+            font.Close()
+        }
+
+        ; --- L-mode glyph image: values pass through verbatim ---
+        lStem := A_Temp "\pillow-ahk-pilfont-l-" A_TickCount "-" Random(1, 1000000)
+        lPng := lStem ".png"
+        lPil := lStem ".pil"
+        lImage := Pillow.Image.New("L", [20, 12], 0)
+        try {
+            y := 0
+            while y < 12 {
+                x := 0
+                while x < 20 {
+                    lImage.PutPixel([x, y], [0, 64, 128, 200, 255][Mod(x + y, 5) + 1])
+                    x += 1
+                }
+                y += 1
+            }
+            lImage.Save(lPng)
+        } finally {
+            lImage.Close()
+        }
+        lEntries := Map()
+        lEntries[65] := [6, 0, 0, 0, 6, 6, 0, 0, 6, 6]
+        PillowTestPilWriteFont(lPil, lEntries)
+        lFont := Pillow.ImageFont.Load(lPil)
+        try {
+            lMask := lFont.GetMask("A")
+            AhkTest.AssertEqual("L", lMask.Mode)
+            AhkTest.AssertEqual([6, 6], lMask.Size)
+            AhkTest.AssertEqual(
+                [0, 64, 128, 200, 255, 0, 64, 128, 200, 255, 0, 64, 128, 200, 255, 0],
+                PillowTestPaletteBufferUChars(lMask.Tobytes(), 0, 16)
+            )
+            lMask.Close()
+        } finally {
+            lFont.Close()
+        }
+        PillowTestDeleteFile(lPng)
+        PillowTestDeleteFile(lPil)
+
+        ; --- src/dst box-size mismatch keeps Pillow's exact SystemError ---
+        badEntries := Map()
+        badEntries[65] := [4, 0, 0, 0, 2, 2, 0, 0, 6, 6]
+        badPil := stem "-bad.pil"
+        FileCopy(pilAhkDir "\fonts\pilfont-diag.png", stem "-bad.png", 1)
+        PillowTestPilWriteFont(badPil, badEntries)
+        badFont := Pillow.ImageFont.Load(badPil)
+        try {
+            AhkTest.AssertEqual(
+                "<method 'getmask' of 'ImagingFont' objects> returned a result with an exception set",
+                PillowTestFormatCaptureError(() => badFont.GetMask("A"))
+            )
+        } finally {
+            badFont.Close()
+        }
+        PillowTestDeleteFile(badPil)
+        PillowTestDeleteFile(stem "-bad.png")
+
+        ; --- error shapes ---
+        badHdr := stem "-hdr.pil"
+        FileCopy(pilAhkDir "\fonts\pilfont-diag.png", stem "-hdr.png", 1)
+        file := FileOpen(badHdr, "w")
+        try {
+            file.Write("NOTPIL`nDATA`n")
+            file.RawWrite(Buffer(5120, 0), 5120)
+        } finally {
+            file.Close()
+        }
+        AhkTest.AssertEqual("Not a PILfont file", PillowTestFormatCaptureError(() => Pillow.ImageFont.Load(badHdr)))
+        PillowTestDeleteFile(badHdr)
+        PillowTestDeleteFile(stem "-hdr.png")
+        noGlyph := stem "-noglyph.pil"
+        PillowTestPilWriteFont(noGlyph, Map())
+        AhkTest.AssertEqual("cannot find glyph data file " StrReplace(noGlyph, ".pil", "") ".{gif|pbm|png}", PillowTestFormatCaptureError(() => Pillow.ImageFont.Load(noGlyph)))
+        PillowTestDeleteFile(noGlyph)
+        AhkTest.AssertEqual('cannot find font file "no-such-font-xyz" in sys.path', PillowTestFormatCaptureError(() => Pillow.ImageFont.LoadPath("no-such-font-xyz")))
+
+        ; --- load_default_imagefont: Pillow's bundled courB08 bitmap font ---
+        defaultBitmap := Pillow.ImageFont.LoadDefaultImagefont()
+        try {
+            AhkTest.AssertEqual(12.0, defaultBitmap.GetLength("AB"))
+            AhkTest.AssertEqual([0, 0, 6, 11], defaultBitmap.GetBbox("A"))
+            courA := defaultBitmap.GetMask("A")
+            AhkTest.AssertEqual("1", courA.Mode)
+            AhkTest.AssertEqual([6, 11], courA.Size)
+            AhkTest.AssertEqual([0, 0, 0, 240, 112, 80, 248, 216, 220, 0, 0], PillowTestPaletteBufferUChars(courA.Tobytes(), 0, 11))
+            courA.Close()
+            courAB := defaultBitmap.GetMask("AB")
+            AhkTest.AssertEqual([12, 11], courAB.Size)
+            AhkTest.AssertEqual([0, 0, 0, 0, 0, 0, 247, 192, 115, 96, 83, 192, 251, 96, 219, 96, 223, 192, 0, 0, 0, 0], PillowTestPaletteBufferUChars(courAB.Tobytes(), 0, 22))
+            courAB.Close()
+        } finally {
+            defaultBitmap.Close()
+        }
+    } finally {
+        PillowTestDeleteFile(pngPath)
+        PillowTestDeleteFile(pilPath)
+    }
+}
+
+AhkTest.Test("Pillow ImageFont.load/load_path/load_default_imagefont match Pillow 11.3.0 PIL bitmap fonts", PillowTestPilFont)
+
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
 

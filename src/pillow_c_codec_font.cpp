@@ -1534,3 +1534,263 @@ extern "C" __declspec(dllexport) int pillow_c_font_is_variable(
 {
     return font_tt_is_variable(font, out_variable);
 }
+
+// --- PILfont bitmap font (kind 3, BEHAV-FONTFILE-002) ----------------------
+//
+// Pillow 11.3.0's ImageFont.load parses the "PILfont" bitmap format: 256
+// glyph entries of 10 big-endian int16s
+// [dx, dy, dst_x0, dst_y0, dst_x1, dst_y1, src_x0, src_y0, src_x1, src_y1]
+// plus a mode-1 or L glyph image. The pinned semantics (oracle
+// probe_pilfont*.py):
+// - getsize width = sum(dx); the font height = max(dst_y1) - min(dst_y0)
+//   over all 256 glyphs;
+// - each glyph blits its source box 1:1 into the mask at
+//   (x + dst_x0, dst_y0 - min_dst_y0 + (max_dst_y1 - dst_y1)) and the pen
+//   advances by dx (every UTF-8 byte, including \n, is a glyph index);
+// - the mask mirrors the glyph-image mode: mode 1 stays a packed MSB-first
+//   mode-1 image, L stays an L image with the source values verbatim;
+// - a source box whose size differs from the destination box raises the
+//   exact SystemError surface (`<method 'getmask' of 'ImagingFont'
+//   objects> returned a result with an exception set`); out-of-range
+//   coordinates are clipped.
+
+namespace {
+
+constexpr int PILLOW_C_FONT_ERR_PIL_MASK = -64;
+
+std::int16_t pil_read_i16be(const std::uint8_t* p)
+{
+    return static_cast<std::int16_t>((p[0] << 8) | p[1]);
+}
+
+struct PillowCPilGlyph {
+    std::int16_t dx = 0;
+    std::int16_t dy = 0;
+    std::int16_t dst_x0 = 0;
+    std::int16_t dst_y0 = 0;
+    std::int16_t dst_x1 = 0;
+    std::int16_t dst_y1 = 0;
+    std::int16_t src_x0 = 0;
+    std::int16_t src_y0 = 0;
+    std::int16_t src_x1 = 0;
+    std::int16_t src_y1 = 0;
+};
+
+struct PillowCPilFont {
+    PillowCPilGlyph glyphs[256];
+    int font_height = 0;
+    int max_dst_y1 = 0;
+    int min_dst_y0 = 0;
+    int image_mode = PILLOW_C_MODE_L;
+    int image_width = 0;
+    int image_height = 0;
+    std::size_t image_stride = 0;
+    std::vector<std::uint8_t> image;
+};
+
+} // namespace
+
+int font_pil_load(
+    const std::uint8_t* metrics,
+    std::size_t metrics_size,
+    const PillowCImage* glyph_image,
+    PillowCFont** out_font)
+{
+    if (!out_font) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_font = nullptr;
+    if (!metrics || metrics_size < 5120 || !glyph_image) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (glyph_image->mode != PILLOW_C_MODE_1 && glyph_image->mode != PILLOW_C_MODE_L) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    try {
+        std::unique_ptr<PillowCPilFont> font(new PillowCPilFont());
+        font->image_mode = glyph_image->mode;
+        font->image_width = glyph_image->width;
+        font->image_height = glyph_image->height;
+        font->image_stride = glyph_image->stride;
+        font->image = glyph_image->pixels;
+        for (int i = 0; i < 256; ++i) {
+            const std::uint8_t* entry = metrics + static_cast<std::size_t>(i) * 20u;
+            PillowCPilGlyph& glyph = font->glyphs[i];
+            glyph.dx = pil_read_i16be(entry);
+            glyph.dy = pil_read_i16be(entry + 2);
+            glyph.dst_x0 = pil_read_i16be(entry + 4);
+            glyph.dst_y0 = pil_read_i16be(entry + 6);
+            glyph.dst_x1 = pil_read_i16be(entry + 8);
+            glyph.dst_y1 = pil_read_i16be(entry + 10);
+            glyph.src_x0 = pil_read_i16be(entry + 12);
+            glyph.src_y0 = pil_read_i16be(entry + 14);
+            glyph.src_x1 = pil_read_i16be(entry + 16);
+            glyph.src_y1 = pil_read_i16be(entry + 18);
+            font->max_dst_y1 = std::max(font->max_dst_y1, static_cast<int>(glyph.dst_y1));
+            font->min_dst_y0 = std::min(font->min_dst_y0, static_cast<int>(glyph.dst_y0));
+        }
+        font->font_height = font->max_dst_y1 - font->min_dst_y0;
+        if (font->font_height <= 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        *out_font = new PillowCFont{PILLOW_C_FONT_PIL, font.release()};
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int font_pil_free(PillowCFont* font)
+{
+    if (!font) {
+        return PILLOW_C_OK;
+    }
+    delete static_cast<PillowCPilFont*>(font->truetype);
+    delete font;
+    return PILLOW_C_OK;
+}
+
+int font_pil_text_width(const PillowCPilFont& font, const char* text)
+{
+    const std::size_t length = std::strlen(text);
+    int width = 0;
+    for (std::size_t i = 0; i < length; ++i) {
+        width += font.glyphs[static_cast<unsigned char>(text[i])].dx;
+    }
+    return width;
+}
+
+int font_pil_getlength(const PillowCFont* font, const char* text, double* out_length)
+{
+    if (!font || !text || !out_length) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const auto* pil = static_cast<const PillowCPilFont*>(font->truetype);
+    if (!pil) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    *out_length = static_cast<double>(font_pil_text_width(*pil, text));
+    return PILLOW_C_OK;
+}
+
+int font_pil_getbbox(
+    const PillowCFont* font,
+    const char* text,
+    int* out_left,
+    int* out_top,
+    int* out_right,
+    int* out_bottom)
+{
+    if (!font || !text || !out_left || !out_top || !out_right || !out_bottom) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const auto* pil = static_cast<const PillowCPilFont*>(font->truetype);
+    if (!pil) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    *out_left = 0;
+    *out_top = 0;
+    *out_right = font_pil_text_width(*pil, text);
+    *out_bottom = pil->font_height;
+    return PILLOW_C_OK;
+}
+
+int font_pil_getmask(
+    const PillowCFont* font,
+    const char* text,
+    const char* mode,
+    int ink,
+    PillowCImage** out_image)
+{
+    (void)mode;
+    (void)ink;
+    if (!font || !text || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    const auto* pil = static_cast<const PillowCPilFont*>(font->truetype);
+    if (!pil) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int width = font_pil_text_width(*pil, text);
+    const int height = pil->font_height;
+    const bool mode1 = pil->image_mode == PILLOW_C_MODE_1;
+    // Mode-1 images use the DLL's byte-per-pixel storage (0/255); the facade
+    // raw encoder packs them MSB-first for ToBytes.
+    const std::size_t stride = static_cast<std::size_t>(std::max(width, 0));
+    try {
+        auto* image = new PillowCImage{
+            width,
+            height,
+            mode1 ? PILLOW_C_MODE_1 : PILLOW_C_MODE_L,
+            1,
+            stride,
+            std::vector<std::uint8_t>(stride * static_cast<std::size_t>(std::max(height, 0)), 0)};
+        *out_image = image;
+        const std::size_t length = std::strlen(text);
+        int pen = 0;
+        for (std::size_t i = 0; i < length; ++i) {
+            const PillowCPilGlyph& glyph = pil->glyphs[static_cast<unsigned char>(text[i])];
+            const int dst_width = glyph.dst_x1 - glyph.dst_x0;
+            const int dst_height = glyph.dst_y1 - glyph.dst_y0;
+            const int src_width = glyph.src_x1 - glyph.src_x0;
+            const int src_height = glyph.src_y1 - glyph.src_y0;
+            if (src_width != dst_width || src_height != dst_height) {
+                return PILLOW_C_FONT_ERR_PIL_MASK;
+            }
+            const int base_x = pen + glyph.dst_x0;
+            const int base_y = glyph.dst_y0 - pil->min_dst_y0;
+            for (int sy = 0; sy < src_height; ++sy) {
+                const int my = base_y + sy;
+                if (my < 0 || my >= height) {
+                    continue;
+                }
+                for (int sx = 0; sx < src_width; ++sx) {
+                    const int mx = base_x + sx;
+                    if (mx < 0 || mx >= width) {
+                        continue;
+                    }
+                    const int source_x = glyph.src_x0 + sx;
+                    const int source_y = glyph.src_y0 + sy;
+                    if (source_x < 0 || source_y < 0 || source_x >= pil->image_width ||
+                        source_y >= pil->image_height) {
+                        continue;
+                    }
+                    if (!mode1) {
+                        const std::uint8_t value =
+                            pil->image[static_cast<std::size_t>(source_y) * pil->image_stride +
+                                       static_cast<std::size_t>(source_x)];
+                        if (value == 0) {
+                            continue;
+                        }
+                        image->pixels[static_cast<std::size_t>(my) * stride +
+                                      static_cast<std::size_t>(mx)] = value;
+                    } else {
+                        const std::uint8_t source_byte = pil->image[
+                            static_cast<std::size_t>(source_y) * pil->image_stride +
+                            static_cast<std::size_t>(source_x)];
+                        if (source_byte == 0) {
+                            continue;
+                        }
+                        image->pixels[static_cast<std::size_t>(my) * stride +
+                                      static_cast<std::size_t>(mx)] = 255;
+                    }
+                }
+            }
+            pen += glyph.dx;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+// Public export (deliberate addition for BEHAV-FONTFILE-002).
+extern "C" __declspec(dllexport) int pillow_c_font_load_pil(
+    const std::uint8_t* metrics,
+    std::size_t metrics_size,
+    const PillowCImage* glyph_image,
+    PillowCFont** out_font)
+{
+    return font_pil_load(metrics, metrics_size, glyph_image, out_font);
+}

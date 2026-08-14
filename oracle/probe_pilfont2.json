@@ -1,0 +1,318 @@
+{
+ "f1_fullbox_size10": {
+  "getsize": {
+   "ok": [
+    6,
+    10
+   ]
+  },
+  "getbbox": {
+   "ok": [
+    0,
+    0,
+    6,
+    10
+   ]
+  },
+  "getlength": {
+   "ok": 6
+  },
+  "mask_''": [
+   "1",
+   [
+    6,
+    10
+   ],
+   "ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+  ],
+  "mask_'1'": [
+   "1",
+   [
+    6,
+    10
+   ],
+   "ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+  ],
+  "mask_'L'": [
+   "1",
+   [
+    6,
+    10
+   ],
+   "ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+  ]
+ },
+ "f2_fullbox_size20": {
+  "getsize": {
+   "ok": [
+    6,
+    10
+   ]
+  },
+  "getbbox": {
+   "ok": [
+    0,
+    0,
+    6,
+    10
+   ]
+  },
+  "getlength": {
+   "ok": 6
+  },
+  "mask_''": [
+   "1",
+   [
+    6,
+    10
+   ],
+   "ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+  ],
+  "mask_'1'": [
+   "1",
+   [
+    6,
+    10
+   ],
+   "ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+  ],
+  "mask_'L'": [
+   "1",
+   [
+    6,
+    10
+   ],
+   "ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+  ]
+ },
+ "f3_offset": {
+  "getsize": {
+   "ok": [
+    6,
+    8
+   ]
+  },
+  "getbbox": {
+   "ok": [
+    0,
+    0,
+    6,
+    8
+   ]
+  },
+  "getlength": {
+   "ok": 6
+  },
+  "mask_''": [
+   "1",
+   [
+    6,
+    8
+   ],
+   "000000000000000000000000ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+  ],
+  "mask_'1'": [
+   "1",
+   [
+    6,
+    8
+   ],
+   "000000000000000000000000ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+  ],
+  "mask_'L'": [
+   "1",
+   [
+    6,
+    8
+   ],
+   "000000000000000000000000ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+  ]
+ },
+ "f4_scaledown": {
+  "getsize": {
+   "ok": [
+    4,
+    2
+   ]
+  },
+  "getbbox": {
+   "ok": [
+    0,
+    0,
+    4,
+    2
+   ]
+  },
+  "getlength": {
+   "ok": 4
+  },
+  "mask_''": {
+   "err": "SystemError: <method 'getmask' of 'ImagingFont' objects> returned a result with an exception set"
+  },
+  "mask_'1'": {
+   "err": "SystemError: <method 'getmask' of 'ImagingFont' objects> returned a result with an exception set"
+  },
+  "mask_'L'": {
+   "err": "SystemError: <method 'getmask' of 'ImagingFont' objects> returned a result with an exception set"
+  }
+ },
+ "f5_multiline": {
+  "A": {
+   "getsize": {
+    "ok": [
+     6,
+     4
+    ]
+   },
+   "getbbox": {
+    "ok": [
+     0,
+     0,
+     6,
+     4
+    ]
+   },
+   "getlength": {
+    "ok": 6
+   },
+   "mask_''": [
+    "1",
+    [
+     6,
+     4
+    ],
+    "ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+   ],
+   "mask_'1'": [
+    "1",
+    [
+     6,
+     4
+    ],
+    "ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+   ],
+   "mask_'L'": [
+    "1",
+    [
+     6,
+     4
+    ],
+    "ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+   ]
+  },
+  "AB": {
+   "getsize": {
+    "ok": [
+     10,
+     4
+    ]
+   },
+   "getbbox": {
+    "ok": [
+     0,
+     0,
+     10,
+     4
+    ]
+   },
+   "getlength": {
+    "ok": 10
+   },
+   "mask_''": [
+    "1",
+    [
+     10,
+     4
+    ],
+    "ff00ff00ff00ff00ff0000ff00ff00ff00ff00ffff00ff00ff00ff00ff0000ff00ff00ff00ff00ff"
+   ],
+   "mask_'1'": [
+    "1",
+    [
+     10,
+     4
+    ],
+    "ff00ff00ff00ff00ff0000ff00ff00ff00ff00ffff00ff00ff00ff00ff0000ff00ff00ff00ff00ff"
+   ],
+   "mask_'L'": [
+    "1",
+    [
+     10,
+     4
+    ],
+    "ff00ff00ff00ff00ff0000ff00ff00ff00ff00ffff00ff00ff00ff00ff0000ff00ff00ff00ff00ff"
+   ]
+  },
+  "A_newline_B": {
+   "getsize": {
+    "ok": [
+     10,
+     4
+    ]
+   },
+   "getbbox": {
+    "ok": [
+     0,
+     0,
+     10,
+     4
+    ]
+   },
+   "getlength": {
+    "ok": 10
+   },
+   "mask_''": [
+    "1",
+    [
+     10,
+     4
+    ],
+    "ff00ff00ff00ff00ff0000ff00ff00ff00ff00ffff00ff00ff00ff00ff0000ff00ff00ff00ff00ff"
+   ],
+   "mask_'1'": [
+    "1",
+    [
+     10,
+     4
+    ],
+    "ff00ff00ff00ff00ff0000ff00ff00ff00ff00ffff00ff00ff00ff00ff0000ff00ff00ff00ff00ff"
+   ],
+   "mask_'L'": [
+    "1",
+    [
+     10,
+     4
+    ],
+    "ff00ff00ff00ff00ff0000ff00ff00ff00ff00ffff00ff00ff00ff00ff0000ff00ff00ff00ff00ff"
+   ]
+  }
+ },
+ "f6_overlap": {
+  "getsize": {
+   "ok": [
+    8,
+    4
+   ]
+  },
+  "getbbox": {
+   "ok": [
+    0,
+    0,
+    8,
+    4
+   ]
+  },
+  "getlength": {
+   "ok": 8
+  },
+  "mask_''": {
+   "err": "SystemError: <method 'getmask' of 'ImagingFont' objects> returned a result with an exception set"
+  },
+  "mask_'1'": {
+   "err": "SystemError: <method 'getmask' of 'ImagingFont' objects> returned a result with an exception set"
+  },
+  "mask_'L'": {
+   "err": "SystemError: <method 'getmask' of 'ImagingFont' objects> returned a result with an exception set"
+  }
+ }
+}

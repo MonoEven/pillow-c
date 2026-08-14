@@ -298,6 +298,44 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-15 BEHAV-FONTFILE-002 ImageFont.load / PILfont Bitmap Fonts (GREEN)
+
+`BEHAV-FONTFILE-002` implements ImageFont.load/load_path/
+load_default_imagefont and the bitmap `ImageFont.ImageFont` class (one
+deliberate export: `pillow_c_font_load_pil`). The Pillow 11.3.0 oracle
+(`oracle/probe_pilfont.py`, `probe_pilfont2.py`, `probe_pilfont3.py`,
+`probe_pilfont4.py`, and the ctypes DLL cross-check
+`probe_pilfont_dll.py`) pins the PILfont format: 256 glyph entries of
+10 big-endian int16s `[dx, dy, dst_x0, dst_y0, dst_x1, dst_y1, src_x0,
+src_y0, src_x1, src_y1]` plus a mode-1/L glyph image; getsize width =
+sum(dx); the font height = max(dst_y1) - min(dst_y0) over all 256
+glyphs; each glyph blits its source box 1:1 into the mask at
+(x + dst_x0, dst_y0 - min_dst_y0) and the pen advances by dx (every
+UTF-8 byte including \n is a glyph index); the mask mirrors the glyph
+image mode (mode 1 stays a packed mode-1 image, L stays L with the
+source values verbatim); a source box whose size differs from the
+destination box raises Pillow's exact SystemError surface; negative
+dst offsets are clipped. The facade Load reproduces Pillow's exact
+flow (the .png/.gif/.pbm glyph-image search keeping the first 1/L
+image, the PILfont header walk with the descriptor line discarded and
+the info lines kept, the DATA marker, the 5120-byte metrics, the
+exact `[Errno 2]` / `cannot find glyph data file` / `Not a PILfont
+file` errors); load_path searches the script + working directories
+(the AHK sys.path approximation) with Pillow's exact sys.path message
+and did-you-mean hint; load_default_imagefont loads Pillow's bundled
+courB08 bitmap font from `ahk/fonts/courB08.pil/.png` (extracted from
+the local Pillow build) with byte-identical masks (pinned 11-byte A
+and 22-byte AB masks). The facade PIL target passes `1/1` in `62ms`;
+the font filter passes `21/21`; the full directory suite passes
+`2838/2838` in `22172ms`; Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity moves to
+`503/503` (one deliberate new export) with zero difference; and the
+rebuilt DLL SHA-256 is
+`F33F40465287FAFA4F65D69B1972FDB3B614DEFB882F5C0F723B63CDF54A35E1`.
+The next bounded children are the save-option parity
+(API-SAVEOPTS-001/002) and error-message parity (API-ERRMSGS-001)
+packets.
+
 ## 2026-08-15 BEHAV-FONTFILE-001 ImageFont.truetype / FreeTypeFont (GREEN)
 
 `BEHAV-FONTFILE-001` implements the truetype font surface (three
@@ -41393,7 +41431,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-LONGTAIL-001 | Formats | boundary | WEBP, AVIF, and JPEG2000 stay behind explicit dependency decisions; open/save fail loudly with `Pillow image file format is unsupported` (BNDRY-001). ICNS, EPS, MPO, PDF, PCX, SGI, DDS, PIXAR, XVTHUMB, DCX, FTEX, SUN, GBR, FITS, XPM, IPTC, MCIDAS, PSD, FLI, MIC, and PCD left this list via BEHAV-ICNS-001 / BEHAV-EPS-001 / BEHAV-MPO-001 / BEHAV-PDF-001 / BEHAV-PCX-001 / BEHAV-SGI-001 / BEHAV-DDS-001 / BEHAV-OPEN-001 / BEHAV-OPEN-002 / BEHAV-OPEN-003 / BEHAV-OPEN-004 / BEHAV-OPEN-005 / BEHAV-OPEN-006 / BEHAV-OPEN-007. | BNDRY-001 boundary ledger. |
 | AUDIT-003 | Audit | covered | Independent behavioral re-verification (two fresh-eyes red-team auditors + direct probes): the old `100% ±5%` (implemented-or-boundary definition) is superseded. Literal 100% runtime identity is NOT reachable: WEBP/JPEG2000/AVIF (the local Pillow build WORKS with these bundled codecs — oracle-verified round-trips), FPX, ImageQt/ImageTk, ImagePalette.random, and the ImagePath map handler are unmatchable in this runtime (documented boundaries). The matchable remainder is bounded and enumerated; the red teams found unrecorded gaps (rows below) plus runtime-verified divergences in already-claimed areas (MODE-NUM-001CM default-resample claim is WRONG; six error-message mismatches; systemic `pillow_c: invalid argument` for unvalidated paths). Evidence: `oracle/audit3-redteam/*.py`, `oracle/probe_audit3_open.py`, `oracle/probe_audit3_formats.py`. | Red-team probes, runtime facade probes, oracle format matrix. |
 | API-FONTFILE-001 | Facade API | done | `ImageFont.truetype` / `ImageFont.load` / `ImageFont.load_path` / `MAX_STRING_LENGTH` are implemented with BEHAV-FONTFILE-001 (three deliberate native exports; exact table-driven getname/getmetrics/getlength/kern arithmetic, the pinned getsize/bbox/anchor assembly, GDI gray8 masks, Pillow-exact error shapes, TTC face selection, the WINDIR fonts fallback, Buffer sources, font_variant, the non-variable-font variation errors). `load_default` stays the documented default-bitmap-font divergence (Pillow bundles the CC0 Aileron face; `load_default(size)` is accepted-and-ignored); the PILfont bitmap loader (API-FONTFILE-002), variable-font axes, and raqm direction/features/language are the recorded children. | BEHAV-FONTFILE-001 (oracle/probe_fontfile*.py + DLL cross-checks); native export inventory. |
-| API-FONTFILE-002 | Facade API | gap | `ImageFont.load`/`load_path` loading a complete PILfont bitmap font (PILfont header + 256*20-byte metrics + the .pbm/.gif/.png glyph image into the ImageFont bitmap class with getmask/getbbox/getlength/getname) works in Pillow; BEHAV-FONTFILE-001 implements the error shapes (`[Errno 2]...`, `cannot find glyph data file`, `Not a PILfont file`, the sys.path message with the did-you-mean hint) and records the full load as this child. | BEHAV-FONTFILE-001; probe_fontfile.py. |
+| API-FONTFILE-002 | Facade API | done | `ImageFont.load`/`load_path`/`load_default_imagefont` load complete PILfont bitmap fonts with BEHAV-FONTFILE-002 (one deliberate native export; the pinned big-endian 10-int16 metrics, the max(dst_y1)-min(dst_y0) font height, the 1:1 src-to-dst blit with clip, the mode-1/L mask mirroring, the exact src/dst-mismatch SystemError, Pillow's exact load-flow error shapes, and Pillow's own bundled courB08 bitmap font shipped as ahk/fonts fixtures with byte-identical masks). `load_path` searches the script+working directories (the AHK sys.path approximation); the info lines are AHK strings with the LF kept (Pillow keeps raw bytes — a recorded micro-divergence). | BEHAV-FONTFILE-002 (oracle/probe_pilfont*.py + DLL cross-check). |
 | API-CMS-DISPLAY-001 | Facade API | gap | `ImageCms.get_display_profile(handle)` absent (Pillow returns an ImageCmsProfile for the Windows display device, or None); also missing: the `Direction`/`Flags`/`Intent` enums, `PyCMSError`, `versions`, and `buildProofTransformFromOpenProfiles`. | Red-team audit; `ImageCms` source diff. |
 | API-FONTVAR-002 | Facade API | partial | `FreeTypeFont.get_variation_axes/get_variation_names/set_variation_by_axes/set_variation_by_name` are implemented for non-variable fonts with Pillow's exact `invalid argument` OSError (BEHAV-FONTFILE-001); reading real axes/names and applying variation instances on variable fonts stays a documented FreeType-dependent boundary. `getmask/getmask2` are implemented for the default and truetype fonts (GDI rasterization boundary). | BEHAV-FONTFILE-001; FreeTypeFont surface diff. |
 | API-DRAW-TEXT-001 | Facade API | gap | `ImageDraw.text`/`multiline_text` drop the `spacing/align/direction/features/language/embedded_color/font_size` options; `direction`/`features`/`language` are MATCH-ERROR items on this build (Pillow raises the exact libraqm KeyError — matchable trivially), while `spacing`/`align` (incl. multiline `justify` + Pillow's exact align error)/`embedded_color`/`font_size` need real implementation. `ImageDraw.getdraw`, `ImageMath.lambda_eval`/`imagemath_*`, `ImageStat.Global`, and the `ImageFilter` base classes (`Filter`/`BuiltinFilter`/`MultibandFilter`) plus Pillow's exact filter-validation messages (`radius must be >= 0`, `bad filter size`, `bad kernel size`, `not enough coefficients in kernel`, the RankFilter missing-rank TypeError) are absent. | Red-team audit (probe_modules.py, probe_modules2.py, probe_filters2.py). |

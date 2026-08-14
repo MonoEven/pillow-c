@@ -1,0 +1,61 @@
+{
+ "L_glyph": {
+  "mask": {
+   "ok": "<ImagingCore object at 0x00000200288D3CD0>"
+  },
+  "mask_meta": [
+   "L",
+   [
+    6,
+    6
+   ]
+  ],
+  "bytes": "004080c8ff004080c8ff004080c8ff004080c8ff004080c8ff004080c8ff004080c8ff00"
+ },
+ "empty_mask": [
+  "1",
+  [
+   0,
+   6
+  ]
+ ],
+ "empty_getsize": {
+  "ok": [
+   0,
+   6
+  ]
+ },
+ "courB08": {
+  "max_dst_y1": 2,
+  "min_dst_y0": -9,
+  "max_src_x1": 20,
+  "max_dx": 6,
+  "A_be": [
+   6,
+   0,
+   -1,
+   -6,
+   6,
+   0,
+   139,
+   0,
+   146,
+   6
+  ],
+  "g_be": [
+   6,
+   0,
+   0,
+   -5,
+   6,
+   2,
+   353,
+   0,
+   359,
+   7
+  ],
+  "height_rule": {
+   "err": "FileNotFoundError: [Errno 2] No such file or directory: 'oracle/_courB08.pilx'"
+  }
+ }
+}

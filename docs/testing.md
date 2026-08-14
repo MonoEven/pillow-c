@@ -7128,3 +7128,15 @@ faces, and the error shapes against local Pillow 11.3.0. Source/DLL export
 parity is `502/502` (three deliberate new exports) and the rebuilt DLL
 SHA-256 is
 `D5090F10F971FB465F657B8BDD075E726F79A9F6C665D93A34F679CD56D16A1C`.
+
+2026-08-15 BEHAV-FONTFILE-002 PILfont verification: the facade
+`Pillow ImageFont.load/load_path/load_default_imagefont` target passes
+`1/1` in `62ms`; the `font` filter passes `21/21` in `188ms`; and
+the full directory suite passes `2838/2838` in `22172ms` with zero
+failures, errors, or skips. The oracle scripts are `oracle/probe_pilfont.py`
+(+ `_2`/`_3`/`_4`) with the ctypes DLL cross-check
+`oracle/probe_pilfont_dll.py`; they pin the big-endian metric layout, the
+getsize/mask assembly, the SystemError boundary, and the byte-identical
+courB08 masks against local Pillow 11.3.0. Source/DLL export parity is
+`503/503` (one deliberate new export) and the rebuilt DLL SHA-256 is
+`F33F40465287FAFA4F65D69B1972FDB3B614DEFB882F5C0F723B63CDF54A35E1`.

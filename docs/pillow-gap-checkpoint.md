@@ -83,10 +83,13 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-FONTFILE-001 (ImageFont.truetype /
-FreeTypeFont: exact metrics, lengths, kerning, bbox/anchors, GDI
-masks, Pillow-exact errors, TTC faces, WINDIR fallback)
-after BEHAV-FONT-002/
+Latest covered gap tail: BEHAV-FONTFILE-002 (ImageFont.load/load_path/
+load_default_imagefont: the PILfont bitmap loader with the pinned
+big-endian metrics, the src-to-dst blit masks, the exact SystemError
+and load-flow error shapes, and Pillow's bundled courB08 font with
+byte-identical masks)
+after BEHAV-FONTFILE-001/
+BEHAV-FONT-002/
 BEHAV-PARSER-001/
 BEHAV-PALETTE-002/
 BEHAV-OPEN-009/
@@ -103,11 +106,10 @@ BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
 the format-family surface, ImagePalette.load, the Parser, and the
-font mask/TransposedFont are now COMPLETE and the largest
-AUDIT-003 gap (truetype font loading) is GREEN; the next
-bounded children are the API-FONTFILE-002 PILfont bitmap font,
-then the save-option parity (API-SAVEOPTS-001/002) and
-error-message parity (API-ERRMSGS-001) packets.
+font mask/TransposedFont/truetype/PILfont surfaces are now COMPLETE;
+the next
+bounded children are the save-option parity (API-SAVEOPTS-001/002)
+and error-message parity (API-ERRMSGS-001) packets.
 ```
 
 Current work packet:
@@ -450,9 +452,8 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-FONTFILE-002`, the PILfont bitmap font
-  loading (the API-FONTFILE-001 child), then
-  `API-SAVEOPTS-001/002` and `API-ERRMSGS-001`.
+- Selected next gap: `API-SAVEOPTS-001/002`, the save-option parity,
+  then `API-ERRMSGS-001` (exact error messages).
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19308,6 +19309,33 @@ SHA-256 is
 `D5090F10F971FB465F657B8BDD075E726F79A9F6C665D93A34F679CD56D16A1C`.
 The next bounded children are API-FONTFILE-002 (PILfont), then the
 save-option and error-message parity packets.
+
+2026-08-15: `BEHAV-FONTFILE-002` is GREEN as ImageFont.load/load_path/
+load_default_imagefont and the PIL bitmap font. The Pillow 11.3.0 oracle
+(`oracle/probe_pilfont.py`/`probe_pilfont2.py`/`probe_pilfont3.py`/
+`probe_pilfont4.py` and the ctypes cross-check `probe_pilfont_dll.py`)
+pins the PILfont format (256 entries of 10 big-endian int16s
+[dx, dy, dst_x0, dst_y0, dst_x1, dst_y1, src_x0, src_y0, src_x1, src_y1]
+plus a mode-1/L glyph image), getsize (width = sum(dx), height =
+max(dst_y1) - min(dst_y0)), the mask blit (1:1 src-to-dst at
+(x + dst_x0, dst_y0 - min_dst_y0) with clipping, the mask mirroring the
+glyph image mode, and the exact src/dst-mismatch SystemError). The facade
+reproduces Pillow's exact load flow and error shapes (the .png/.gif/.pbm
+glyph-image search, the header/info/DATA walk, `[Errno 2]`,
+`cannot find glyph data file`, `Not a PILfont file`, the sys.path
+message with the did-you-mean hint), and load_default_imagefont loads
+Pillow's bundled courB08 bitmap font from `ahk/fonts/courB08.pil/.png`
+with byte-identical masks (the pinned 11-byte A and 22-byte AB masks). One
+deliberate native export (`pillow_c_font_load_pil`) implements the
+kind-3 font surface; no AHK pixel loop was added. The facade PIL target
+passes `1/1` in `62ms`; the font filter passes `21/21`; the full
+directory suite passes `2838/2838` in `22172ms` with zero failures,
+errors, or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity moves to `503/503` with zero difference; and the
+rebuilt DLL SHA-256 is
+`F33F40465287FAFA4F65D69B1972FDB3B614DEFB882F5C0F723B63CDF54A35E1`.
+The next bounded children are the save-option parity (API-SAVEOPTS-001/002)
+and error-message parity (API-ERRMSGS-001) packets.
 ```
 
 If any line above is no longer true, update this file first, then update

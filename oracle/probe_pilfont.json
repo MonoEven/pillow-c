@@ -1,0 +1,217 @@
+{
+ "props": {
+  "file": "C:\\Users\\78442\\AppData\\Local\\Temp\\pilfont_probe_8w1zdax9\\crafted.png",
+  "info": [
+   "b'name=crafted\\n'"
+  ],
+  "repr": "<PIL.ImageFont.ImageFont object at 0x000001B483D38C40>"
+ },
+ "getsize_'A'": {
+  "ok": [
+   1024,
+   272
+  ]
+ },
+ "getbbox_'A'": {
+  "ok": [
+   0,
+   0,
+   1024,
+   272
+  ]
+ },
+ "getlength_'A'": {
+  "ok": 1024
+ },
+ "getlength_bytes_'A'": {
+  "ok": 1024
+ },
+ "getsize_'AB'": {
+  "ok": [
+   1792,
+   272
+  ]
+ },
+ "getbbox_'AB'": {
+  "ok": [
+   0,
+   0,
+   1792,
+   272
+  ]
+ },
+ "getlength_'AB'": {
+  "ok": 1792
+ },
+ "getlength_bytes_'AB'": {
+  "ok": 1792
+ },
+ "getsize_'B'": {
+  "ok": [
+   768,
+   272
+  ]
+ },
+ "getbbox_'B'": {
+  "ok": [
+   0,
+   0,
+   768,
+   272
+  ]
+ },
+ "getlength_'B'": {
+  "ok": 768
+ },
+ "getlength_bytes_'B'": {
+  "ok": 768
+ },
+ "getsize_' '": {
+  "ok": [
+   256,
+   272
+  ]
+ },
+ "getbbox_' '": {
+  "ok": [
+   0,
+   0,
+   256,
+   272
+  ]
+ },
+ "getlength_' '": {
+  "ok": 256
+ },
+ "getlength_bytes_' '": {
+  "ok": 256
+ },
+ "getsize_''": {
+  "ok": [
+   0,
+   272
+  ]
+ },
+ "getbbox_''": {
+  "ok": [
+   0,
+   0,
+   0,
+   272
+  ]
+ },
+ "getlength_''": {
+  "ok": 0
+ },
+ "getlength_bytes_''": {
+  "ok": 0
+ },
+ "mask_A_mode_''": [
+  "1",
+  [
+   1024,
+   272
+  ],
+  "ff00ff00ff00ff0000ff0000ff0000ff00000000000000000000000000000000"
+ ],
+ "mask_A_mode_'1'": [
+  "1",
+  [
+   1024,
+   272
+  ],
+  "ff00ff00ff00ff0000ff0000ff0000ff00000000000000000000000000000000"
+ ],
+ "mask_A_mode_'L'": [
+  "1",
+  [
+   1024,
+   272
+  ],
+  "ff00ff00ff00ff0000ff0000ff0000ff00000000000000000000000000000000"
+ ],
+ "mask_A_mode_'XX'": [
+  "1",
+  [
+   1024,
+   272
+  ],
+  "ff00ff00ff00ff0000ff0000ff0000ff00000000000000000000000000000000"
+ ],
+ "mask_AB": {
+  "err": "SystemError: <method 'getmask' of 'ImagingFont' objects> returned a result with an exception set"
+ },
+ "err_bad_header": {
+  "err": "NameError: name '_make_bad_header' is not defined"
+ },
+ "err_bad_mode": {
+  "err": "NameError: name '_make_rgb_image' is not defined"
+ },
+ "err_missing_glyph": {
+  "err": "FileNotFoundError: [Errno 2] No such file or directory: 'C:\\\\Users\\\\78442\\\\AppData\\\\Local\\\\Temp\\\\pilfont_probe_8w1zdax9\\\\no-glyph-xyz.pil'"
+ },
+ "default_getsize_'A'": {
+  "ok": [
+   6,
+   11
+  ]
+ },
+ "default_getlength_'A'": {
+  "ok": 6
+ },
+ "default_getsize_'AB'": {
+  "ok": [
+   12,
+   11
+  ]
+ },
+ "default_getlength_'AB'": {
+  "ok": 12
+ },
+ "default_getsize_'i'": {
+  "ok": [
+   6,
+   11
+  ]
+ },
+ "default_getlength_'i'": {
+  "ok": 6
+ },
+ "default_getsize_''": {
+  "ok": [
+   0,
+   11
+  ]
+ },
+ "default_getlength_''": {
+  "ok": 0
+ },
+ "default_mask_AB": [
+  "1",
+  [
+   12,
+   11
+  ],
+  "000000000000000000000000000000000000000000000000000000000000000000000000ffffffff00ffffffffff0000"
+ ],
+ "default_mask_A_1": [
+  "1",
+  [
+   6,
+   11
+  ],
+  "000000000000000000000000000000000000ffffffff000000ffffff000000ff"
+ ],
+ "courB08_blobs": [
+  7042,
+  1746,
+  17344
+ ],
+ "courB08_sizes": [
+  1273,
+  12676
+ ],
+ "courB08_reload": {
+  "err": "OSError: cannot find glyph data file C:\\Users\\78442\\AppData\\Local\\Temp\\pilfont_probe_8w1zdax9\\courB08.{gif|pbm|png}"
+ }
+}

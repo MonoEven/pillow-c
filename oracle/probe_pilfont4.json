@@ -1,0 +1,59 @@
+{
+ "dst_x0_-1": [
+  "1",
+  [
+   6,
+   6
+  ],
+  "00ff00000000ff00ff00000000ff00000000ff00ff000000"
+ ],
+ "dst_x0_-2": [
+  "1",
+  [
+   6,
+   6
+  ],
+  "ff000000000000ff00000000ff000000000000ff00000000"
+ ],
+ "dst_x0_-3": [
+  "1",
+  [
+   6,
+   6
+  ],
+  "000000000000ff0000000000000000000000ff0000000000"
+ ],
+ "src_w_big": {
+  "err": "SystemError: <method 'getmask' of 'ImagingFont' objects> returned a result with an exception set"
+ },
+ "src_h_big": {
+  "err": "SystemError: <method 'getmask' of 'ImagingFont' objects> returned a result with an exception set"
+ },
+ "src_w_small": {
+  "err": "SystemError: <method 'getmask' of 'ImagingFont' objects> returned a result with an exception set"
+ },
+ "dst_y0_neg": [
+  "1",
+  [
+   6,
+   6
+  ],
+  "ff00ff00ff0000ff00ff00ffff00ff00ff0000ff00ff00ff"
+ ],
+ "src_out_of_image": [
+  "1",
+  [
+   6,
+   6
+  ],
+  "00ff00ff0000ff00ff00ff0000ff00ff0000ff00ff00ff00"
+ ],
+ "tiny_image": [
+  "1",
+  [
+   6,
+   6
+  ],
+  "00000000000000ff00000000000000000000000000000000"
+ ]
+}
