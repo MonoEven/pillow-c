@@ -298,6 +298,47 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-15 BEHAV-FONTVAR-002 Variable-Font Variation (GREEN)
+
+`BEHAV-FONTVAR-002` closes API-FONTVAR-002 (six deliberate native
+exports plus the facade surface). The Pillow 11.3.0 oracle (fresh
+pins with bahnschrift.ttf) pins:
+
+- `get_variation_axes()` returns the fvar axis dicts —
+  `minimum`/`default`/`maximum` ints plus the `name` bytes (Pillow
+  11.3.0 has no `tag` key); `get_variation_names()` returns the fvar
+  named-instance bytes.
+- `set_variation_by_axes` accepts any coordinate count (empty is a
+  no-op, extras are dropped, missing ones fall back to the axis
+  defaults, values clamp to the axis range) and raises the exact
+  `argument must be a list` TypeError for non-lists.
+- `set_variation_by_name` raises the exact `b'<name>' is not in
+  list` ValueError for unknown names (strings encode to ASCII).
+- Non-variable fonts keep the exact `invalid argument` OSError on
+  all four methods.
+
+The native engine parses fvar (axes + instances with the name
+table), avar (the normalized-coordinate segment maps), and the HVAR
+item variation store: the format 0/1 layouts, FreeType's
+`(entryFormat & 0xF) + 1` inner bit count, the DeltaSetIndexMap,
+plain-font-unit word/byte deltas, and FreeType's exact region
+scalars (the `(0,0,0)`-axis skip plus the degenerate
+`peak >= end`/`peak <= start` ones) — then applies the per-glyph
+advance deltas through the pinned round-half-away 26.6 arithmetic.
+The bahnschrift pins match Pillow exactly (`Hi` = 22.328125 at the
+default, 14.96875 at width 75 under weights 400 and 700, and the
+named `Light`/`Bold Condensed` instances). Glyph outlines and bbox
+ink edges keep the documented GDI rasterization boundary (gvar is
+not applied — the existing boundary class).
+
+The facade target passes `1/1` in `140ms`; the full directory suite
+passes `2854/2854`; Release x64 Rebuild has `0 Warning(s),
+0 Error(s)`; source/DLL export parity moves to `524/524`; and the
+rebuilt DLL SHA-256 is
+`4081D23C7C3B5089908323CBA280857D72FD007F7965680F3D9794C87D3362BB`.
+API-FONTVAR-002 is now DONE; the API-DRAWFONT-001/API-FONTANCHOR-001
+native follow-ups stay the next packets.
+
 ## 2026-08-15 BEHAV-OPENINFO-001 Open-Side Info Attributes (GREEN)
 
 `BEHAV-OPENINFO-001` closes API-OPENINFO-001 (four deliberate native
@@ -42070,7 +42111,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | API-FONTFILE-001 | Facade API | done | `ImageFont.truetype` / `ImageFont.load` / `ImageFont.load_path` / `MAX_STRING_LENGTH` are implemented with BEHAV-FONTFILE-001 (three deliberate native exports; exact table-driven getname/getmetrics/getlength/kern arithmetic, the pinned getsize/bbox/anchor assembly, GDI gray8 masks, Pillow-exact error shapes, TTC face selection, the WINDIR fonts fallback, Buffer sources, font_variant, the non-variable-font variation errors). `load_default` stays the documented default-bitmap-font divergence (Pillow bundles the CC0 Aileron face; `load_default(size)` is accepted-and-ignored); the PILfont bitmap loader (API-FONTFILE-002), variable-font axes, and raqm direction/features/language are the recorded children. | BEHAV-FONTFILE-001 (oracle/probe_fontfile*.py + DLL cross-checks); native export inventory. |
 | API-FONTFILE-002 | Facade API | done | `ImageFont.load`/`load_path`/`load_default_imagefont` load complete PILfont bitmap fonts with BEHAV-FONTFILE-002 (one deliberate native export; the pinned big-endian 10-int16 metrics, the max(dst_y1)-min(dst_y0) font height, the 1:1 src-to-dst blit with clip, the mode-1/L mask mirroring, the exact src/dst-mismatch SystemError, Pillow's exact load-flow error shapes, and Pillow's own bundled courB08 bitmap font shipped as ahk/fonts fixtures with byte-identical masks). `load_path` searches the script+working directories (the AHK sys.path approximation); the info lines are AHK strings with the LF kept (Pillow keeps raw bytes — a recorded micro-divergence). | BEHAV-FONTFILE-002 (oracle/probe_pilfont*.py + DLL cross-check). |
 | API-CMS-DISPLAY-001 | Facade API | done | `ImageCms.get_display_profile(handle)` is implemented with BEHAV-CMSDISP-001 (one deliberate native export): handle 0 loads the Windows display ICM profile through GetDC/GetICMProfileW + `cmsOpenProfileFromMem` and returns a live CmsProfile (or 0/None when the session has none or the HWND is invalid — Pillow returns None with no error). Also delivered: the `Direction`/`Flags`/`Intent` enums with Pillow's exact values (incl. the `GRIDPOINTS(n)` `n<<16` helper), the `PyCMSError` exception shape, `versions()` = `["1.0.0 pil", "2.17", "3.10.11", "11.3.0"]`, `buildProofTransformFromOpenProfiles` (Pillow's alias of buildProofTransform), and the exact PyCMSError intent/flags validations (`renderingIntent must be an integer between 0 and 3`, `flags must be an integer between 0 and 100663295`) on buildTransform/buildProofTransform. | BEHAV-CMSDISP-001 (oracle pins against ImageCms source); `pillow_c_cms_display_profile` export; facade `ImageCms` enums/PyCMSError/versions/alias + display-profile target test. |
-| API-FONTVAR-002 | Facade API | partial | `FreeTypeFont.get_variation_axes/get_variation_names/set_variation_by_axes/set_variation_by_name` are implemented for non-variable fonts with Pillow's exact `invalid argument` OSError (BEHAV-FONTFILE-001); reading real axes/names and applying variation instances on variable fonts stays a documented FreeType-dependent boundary. `getmask/getmask2` are implemented for the default and truetype fonts (GDI rasterization boundary). | BEHAV-FONTFILE-001; FreeTypeFont surface diff. |
+| API-FONTVAR-002 | Facade API | done | `FreeTypeFont.get_variation_axes/get_variation_names/set_variation_by_axes/set_variation_by_name` are implemented with BEHAV-FONTVAR-002 (six deliberate native exports): the fvar axes (`minimum`/`default`/`maximum` ints + name bytes) and named instances, the avar segment maps, the HVAR item variation store (format 0/1, FreeType's `(entryFormat & 0xF) + 1` inner bits, plain-font-unit deltas, FreeType's exact region scalars), and the per-glyph advance-delta application through the pinned 26.6 arithmetic — bahnschrift pins match Pillow exactly. The exact error shapes (`argument must be a list`, `b'<name>' is not in list`, the non-variable `invalid argument` OSError) match. Glyph outlines/bbox ink keep the documented GDI rasterization boundary (gvar is not applied). | BEHAV-FONTVAR-002 (bahnnschrift oracle pins); `pillow_c_font_variation_*` exports. |
 | API-DRAW-TEXT-001 | Facade API | done | BEHAV-DRAWTEXT-001 (text/multiline_text) and BEHAV-MODSURF-001 (module surface) are done: `direction`/`features`/`language` raise the exact no-libraqm KeyError shape (BASIC-layout fonts; the RAQM-layout dependency boundary is documented), `embedded_color` raises Pillow's exact mode ValueError and draws normally on RGB/RGBA, `textlength` rejects multiline text with the exact message, `text`/`textbbox` delegate `\n` to the multiline layout, and `multiline_text`/`multiline_textbbox` replicate `_prepare_multiline_text` exactly (anchor validation order, float spacing with Pillow's exact TypeErrors, left/center/right/justify incl. the word spread, the `m`/`d` anchor adjustments, float bbox addition); `font_size` routes through the documented `load_default(size)` boundary. `ImageDraw.getdraw` + the full ImageDraw2 pendulum (Pen/Brush/Font/Draw/settransform), `ImageStat.Global`, the `ImageFilter` base classes (Filter/MultibandFilter abstract TypeErrors, BuiltinFilter AttributeErrors, Kernel.filterargs/name, the MinFilter/MedianFilter/MaxFilter subclasses) plus Pillow's exact filter-validation messages (missing-arg TypeErrors, `bad filter size`, `bad kernel size`, `not enough coefficients in kernel`, `bad rank value`, `cannot filter palette images`, the string/float TypeErrors, the C parse errors, the `(0,0)` copy paths, and the class-instantiation path), and `ImageMath.lambda_eval`/`imagemath_*` (Pillow's ops dict + the documented AHK arithmetic extension because this AHK build does not dispatch operator meta-functions; the Eval compiler gained plain grouping parentheses) are all implemented. Recorded micro-divergences: the RPN seam's convert-to-L reports mode I, and Draw2 text drawing stays the API-DRAWFONT-001 native seam. | BEHAV-DRAWTEXT-001 (oracle/probe_drawtext_options.py, probe_drawtext_order.py, probe_multiline_expected.py), BEHAV-MODSURF-001 (ImageDraw2/ImageStat/ImageFilter/ImageMath source pins); `ImageDraw.py` source pins. |
 | API-DRAWFONT-001 | Facade API | gap | Drawing text with a TRUETYPE font through `ImageDraw.Text`/`MultilineText` fails with `pillow_c: invalid argument` — the native `draw_text_*_font` seams accept only the built-in default font handle (`font->kind == PILLOW_C_FONT_DEFAULT`), while Pillow draws any FreeTypeFont (getmask2 + bitmap paste). Found during BEHAV-DRAWTEXT-001 (the layout/bbox/length pins with arial.ttf are unaffected). | BEHAV-DRAWTEXT-001 test runs; `pillow_c_draw.cpp` `draw_text_image_font` kind gate. |
 | API-FONTANCHOR-001 | Facade API | gap | The native font anchor seam approximates Pillow's `_imagingft.c` anchor math: Pillow anchors `m`/`a`/`d` vertically on the em-box (`ascender`/`descender`) and `m`/`r` horizontally on the advance (`PIXEL(position)`) while the native seam's values diverge (verified for `m`/`d` vertical and `r` horizontal on arial.ttf 16; `a`/`l`/`la`/`rs`/`ls` pins pass). | BEHAV-DRAWTEXT-001 multiline anchor pins vs `_imagingft.c` `getbbox` anchor switch. |

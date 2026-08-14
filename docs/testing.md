@@ -7323,3 +7323,18 @@ compression names (raw/tiff_lzw/deflate code 8), and the TGA
 deliberate native exports: source/DLL export parity moves to
 `518/518` and the rebuilt DLL SHA-256 is
 `EF03A7684225AF7ACEAB0C3AD8E9842F27E1CBC0818D065FA4604E034434AE41`.
+
+2026-08-15 BEHAV-FONTVAR-002 verification: the facade
+`Pillow ImageFont variable-font variation surface matches Pillow
+11.3.0` target passes `1/1` in `140ms`; the full directory suite
+passes `2854/2854` in `23344ms` with zero failures, errors, or
+skips. The oracle pins (bahnschrift.ttf) cover the fvar axis dicts
+and the 15 named instances, the four coordinate sets
+(`Hi` = 22.328125 default and 14.96875 at width 75 under weights
+400/700), the `Light`/`Bold Condensed` named instances, and the
+exact error shapes (`argument must be a list`,
+`b'Bogus' is not in list`, the non-variable `invalid argument`
+OSError) against local Pillow 11.3.0. Six deliberate native exports:
+source/DLL export parity moves to `524/524` and the rebuilt DLL
+SHA-256 is
+`4081D23C7C3B5089908323CBA280857D72FD007F7965680F3D9794C87D3362BB`.

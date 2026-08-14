@@ -60016,6 +60016,67 @@ PillowTestImageOpenInfoAttributes(*) {
 
 AhkTest.Test("Pillow open-side info attributes match Pillow 11.3.0", PillowTestImageOpenInfoAttributes)
 
+; BEHAV-FONTVAR-002: the variable-font variation surface (fvar axes/named
+; instances + the HVAR advance-delta engine) against Pillow 11.3.0 with
+; bahnschrift.ttf.
+PillowTestImageFontVariationSurface(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    bahnschrift := "C:\Windows\Fonts\bahnschrift.ttf"
+    if !FileExist(bahnschrift) {
+        AhkTest.Log("bahnschrift.ttf missing; skipping the variation matrix")
+        return
+    }
+    font := Pillow.ImageFont.Truetype(bahnschrift, 24)
+    try {
+        AhkTest.AssertTrue(font.IsVariable())
+        axes := font.GetVariationAxes()
+        AhkTest.AssertEqual(2, axes.Length)
+        AhkTest.AssertEqual([300, 400, 700], [axes[1]["minimum"], axes[1]["default"], axes[1]["maximum"]])
+        AhkTest.AssertEqual("Weight", Pillow.Image.Utf8StringFromBytes(axes[1]["name"], axes[1]["name"].Size, "axis name"))
+        AhkTest.AssertEqual([75, 100, 100], [axes[2]["minimum"], axes[2]["default"], axes[2]["maximum"]])
+        AhkTest.AssertEqual("Width", Pillow.Image.Utf8StringFromBytes(axes[2]["name"], axes[2]["name"].Size, "axis name"))
+        names := font.GetVariationNames()
+        AhkTest.AssertEqual(15, names.Length)
+        AhkTest.AssertEqual("Light", Pillow.Image.Utf8StringFromBytes(names[1], names[1].Size, "instance name"))
+        AhkTest.AssertEqual("Bold Condensed", Pillow.Image.Utf8StringFromBytes(names[15], names[15].Size, "instance name"))
+        ; the default advance and the HVAR width-axis deltas (Pillow pins)
+        AhkTest.AssertEqual(22.328125, font.GetLength("Hi"))
+        font.SetVariationByAxes([400, 75])
+        AhkTest.AssertEqual(14.96875, font.GetLength("Hi"))
+        font.SetVariationByAxes([700, 75])
+        AhkTest.AssertEqual(14.96875, font.GetLength("Hi"))
+        font.SetVariationByAxes([700, 100])
+        AhkTest.AssertEqual(22.328125, font.GetLength("Hi"))
+        ; any coordinate count is accepted (empty is a no-op, extras drop)
+        font.SetVariationByAxes([])
+        AhkTest.AssertEqual(22.328125, font.GetLength("Hi"))
+        font.SetVariationByAxes([400, 100, 999])
+        AhkTest.AssertEqual(22.328125, font.GetLength("Hi"))
+        ; exact error shapes
+        AhkTest.AssertEqual("argument must be a list", PillowTestFormatCaptureError(() => font.SetVariationByAxes("x")))
+        ; named instances
+        font.SetVariationByName("Light")
+        AhkTest.AssertEqual(22.328125, font.GetLength("Hi"))
+        font.SetVariationByName("Bold Condensed")
+        AhkTest.AssertEqual(14.96875, font.GetLength("Hi"))
+        AhkTest.AssertEqual("b'Bogus' is not in list", PillowTestFormatCaptureError(() => font.SetVariationByName("Bogus")))
+        ; non-variable fonts keep Pillow's exact invalid-argument OSError
+        arial := Pillow.ImageFont.Truetype("C:\Windows\Fonts\arial.ttf", 16)
+        try {
+            AhkTest.AssertEqual("invalid argument", PillowTestFormatCaptureError(() => arial.GetVariationAxes()))
+            AhkTest.AssertEqual("invalid argument", PillowTestFormatCaptureError(() => arial.GetVariationNames()))
+            AhkTest.AssertEqual("invalid argument", PillowTestFormatCaptureError(() => arial.SetVariationByAxes([100])))
+            AhkTest.AssertEqual("invalid argument", PillowTestFormatCaptureError(() => arial.SetVariationByName("Light")))
+        } finally {
+            arial.Close()
+        }
+    } finally {
+        font.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFont variable-font variation surface matches Pillow 11.3.0", PillowTestImageFontVariationSurface)
+
 PillowTestImageFontLoadDefaultExposesMetadataAndVariant(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [17, 16])

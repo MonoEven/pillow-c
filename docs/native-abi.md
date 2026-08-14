@@ -3805,6 +3805,37 @@ returns invalid argument. Release x64 builds with zero warnings/errors;
 source/DLL exports are `426/426`, zero difference; SHA-256 is
 `8578C4AB19C614E11359F6295928FC1F1E217BA70EEA174F30E5B2384EB9363D`.
 
+`BEHAV-FONTVAR-002` adds the variable-font variation seams (six
+exports):
+
+```text
+pillow_c_font_variation_axes_count(font, out_count)
+pillow_c_font_variation_axes(
+    font, index, out_minimum, out_default, out_maximum,
+    out_name, name_size, out_name_required)
+pillow_c_font_variation_names_count(font, out_count)
+pillow_c_font_variation_names(font, index, out_name, name_size,
+                              out_name_required)
+pillow_c_font_set_variation_axes(font, coords, count)
+pillow_c_font_set_variation_name(font, name, name_size)
+```
+
+The axes/names queries report the fvar axes (minimum/default/maximum
+doubles plus the name-table UTF-8 name) and the named instances for
+variable fonts; non-variable fonts return `-3`. Setting axes accepts
+any coordinate count (zero is a no-op, extras drop, missing ones
+fall back to the axis defaults, values clamp to the axis range) and
+applies the HVAR advance deltas: the native parses the item
+variation store (format 0/1 layouts, FreeType's
+`(entryFormat & 0xF) + 1` inner bit count, the DeltaSetIndexMap,
+plain-font-unit word/byte deltas) plus the avar segment maps, and
+computes FreeType's exact region scalars (the `(0,0,0)`-axis skip
+and the degenerate peak cases). Setting by name looks the name up in
+the fvar instances and returns `-3` when absent. Release x64 builds
+with zero warnings/errors; source/DLL exports are `524/524` with
+zero set difference, and DLL SHA-256 is
+`4081D23C7C3B5089908323CBA280857D72FD007F7965680F3D9794C87D3362BB`.
+
 `META-003DZ` adds:
 
 ```text
@@ -3827,7 +3858,7 @@ the DLL with `cmsXYZ2xyY`. Release x64 builds with zero warnings/errors;
 source/DLL exports are `425/425`, zero difference; SHA-256 is
 `62C3DB2C5B6180784F31AC57735E36B6F5D7F07DC63ADC960D7B5F2C4DADC99D`.
 
-`META-003DZ` adds:
+`META-003E` adds:
 
 ```text
 pillow_c_cms_display_profile(hwnd, out_profile)

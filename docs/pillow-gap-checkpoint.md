@@ -84,7 +84,10 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-OPENINFO-001 (the open-side info
+Latest covered gap tail: BEHAV-FONTVAR-002 (the variable-font
+variation surface: fvar axes/named instances, the avar + HVAR
+advance-delta engine, and the exact set-variation error shapes)
+after BEHAV-OPENINFO-001 (the open-side info
 attributes: JPEG quantization/progressive/adobe, GIF
 version/extension, TIFF compression, TGA compression/orientation)
 after BEHAV-MODSURF-001 (the ImageDraw module
@@ -478,10 +481,8 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: the `API-FONTVAR-002` FreeType-dependent
-  variable-font boundary, then the `API-DRAWFONT-001` (truetype draw
-  seams) and `API-FONTANCHOR-001` (em-box anchor math) native
-  follow-ups.
+- Selected next gap: the `API-DRAWFONT-001` (truetype draw seams)
+  and `API-FONTANCHOR-001` (em-box anchor math) native follow-ups.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19805,6 +19806,45 @@ skips. API-OPENINFO-001 is now
 DONE; the API-FONTVAR-002 FreeType-dependent boundary stays the
 next packet, then the API-DRAWFONT-001/API-FONTANCHOR-001 native
 follow-ups.
+```
+
+2026-08-15: `BEHAV-FONTVAR-002` is GREEN as the variable-font
+variation wave (API-FONTVAR-002). The Pillow 11.3.0 oracle (fresh
+pins with bahnschrift.ttf) pins: `get_variation_axes()` returns the
+fvar axis dicts (`minimum`/`default`/`maximum` ints + the `name`
+bytes; no `tag` key in Pillow 11.3.0), `get_variation_names()`
+returns the fvar named-instance bytes, `set_variation_by_axes`
+accepts any coordinate count (empty is a no-op, extras are dropped,
+missing ones fall back to the axis defaults) and raises the exact
+`argument must be a list` TypeError for non-lists,
+`set_variation_by_name` raises the exact `b'<name>' is not in list`
+ValueError for unknown names, and non-variable fonts keep the exact
+`invalid argument` OSError on all four methods. The native engine
+parses fvar (axes + instances with the name table), avar (the
+normalized-coordinate segment maps), and the HVAR item variation
+store (format 0/1 layouts, FreeType's `(entryFormat & 0xF) + 1`
+inner bit count, the DeltaSetIndexMap, plain-font-unit word/byte
+deltas, and FreeType's exact region scalars including the
+`(0,0,0)`-axis skip and the degenerate peak>=end/peak<=start ones),
+then applies the per-glyph advance deltas through the pinned
+round-half-away 26.6 arithmetic — the bahnschrift pins match
+Pillow exactly (`Hi` = 22.328125 default, 14.96875 at width 75
+under weights 400 and 700, the named `Light`/`Bold Condensed`
+instances). Glyph outlines and bbox ink edges keep the documented
+GDI rasterization boundary (gvar is not applied). Six deliberate
+native exports (`pillow_c_font_variation_axes_count`,
+`pillow_c_font_variation_axes`, `pillow_c_font_variation_names_count`,
+`pillow_c_font_variation_names`, `pillow_c_font_set_variation_axes`,
+`pillow_c_font_set_variation_name`); Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity moves to
+`524/524` with zero difference; and the rebuilt DLL SHA-256 is
+`4081D23C7C3B5089908323CBA280857D72FD007F7965680F3D9794C87D3362BB`.
+The facade target passes `1/1` in `140ms`; the full directory suite
+passes `2854/2854` in `23344ms` with zero failures, errors, or
+skips. API-FONTVAR-002 is now
+DONE; the API-DRAWFONT-001 (truetype draw seams) and
+API-FONTANCHOR-001 (em-box anchor math) native follow-ups stay the
+next packets.
 ```
 
 If any line above is no longer true, update this file first, then update

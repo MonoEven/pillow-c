@@ -71,6 +71,26 @@ int font_tt_getmask(
     const char* mode,
     int ink,
     PillowCImage** out_image);
+// API-FONTVAR-002 variation seams.
+int font_tt_variation_axes_count(const PillowCFont* font, std::size_t* out_count);
+int font_tt_variation_axes(
+    const PillowCFont* font,
+    std::size_t index,
+    double* out_minimum,
+    double* out_default,
+    double* out_maximum,
+    char* out_name,
+    std::size_t name_size,
+    std::size_t* out_name_required);
+int font_tt_variation_names_count(const PillowCFont* font, std::size_t* out_count);
+int font_tt_variation_names(
+    const PillowCFont* font,
+    std::size_t index,
+    char* out_name,
+    std::size_t name_size,
+    std::size_t* out_name_required);
+int font_tt_set_variation_axes(PillowCFont* font, const double* coords, std::size_t count);
+int font_tt_set_variation_name(PillowCFont* font, const char* name, std::size_t name_size);
 
 // Kind-3 (PILfont bitmap font) seams, also implemented by
 // pillow_c_codec_font.cpp.

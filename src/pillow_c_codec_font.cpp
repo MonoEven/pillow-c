@@ -147,6 +147,43 @@ struct PillowCTtFont {
     std::vector<std::uint16_t> hmtx;
     std::unordered_map<std::uint32_t, std::int16_t> kern;
 
+    // API-FONTVAR-002: the fvar/avar/HVAR variation state. Axes and named
+    // instances come from fvar (+ the name table); HVAR supplies per-glyph
+    // advance deltas through an item variation store; avar remaps the
+    // normalized coordinates like FreeType's tt_hvar path.
+    struct VariationAxis {
+        std::uint32_t tag = 0;
+        double min_value = 0.0;
+        double default_value = 0.0;
+        double max_value = 0.0;
+        std::string name;
+    };
+    struct VariationInstance {
+        std::string name;
+        std::vector<double> coords;
+    };
+    std::vector<VariationAxis> variation_axes;
+    std::vector<VariationInstance> variation_instances;
+    std::vector<std::vector<std::pair<double, double>>> avar_maps;
+    struct HvarRegion {
+        std::vector<std::array<double, 3>> tuples;
+    };
+    std::vector<HvarRegion> hvar_regions;
+    struct HvarItemData {
+        std::uint16_t word_delta_count = 0;
+        std::vector<std::uint16_t> region_indices;
+        std::vector<std::int32_t> deltas; // 16.16
+    };
+    std::vector<HvarItemData> hvar_item_data;
+    std::vector<std::uint32_t> hvar_advance_map;
+    std::uint8_t hvar_inner_bits = 0;
+    bool has_hvar = false;
+
+    bool variation_active = false;
+    std::vector<double> variation_coords;
+    std::vector<double> variation_scalars;
+    std::vector<std::int32_t> variation_advance_deltas; // per glyph, 16.16
+
     HANDLE font_resource = nullptr;
     HDC hdc = nullptr;
     HBITMAP bitmap = nullptr;
@@ -748,6 +785,461 @@ bool parse_kern_table(
     return true;
 }
 
+// --- variation parsing (API-FONTVAR-002) ---------------------------------
+
+double fixed16_16(std::int32_t value)
+{
+    return static_cast<double>(value) / 65536.0;
+}
+
+double fixed2_14(std::int16_t value)
+{
+    return static_cast<double>(value) / 16384.0;
+}
+
+bool name_table_string(const FontReader& reader, const FontTableRef& name_table,
+                       std::uint16_t name_id, std::string* out)
+{
+    // Windows platform (3), en-US preferred, UTF-16BE records -- the same
+    // preference order FreeType uses for the style/family names.
+    if (!reader.has(name_table.offset, name_table.length) || name_table.length < 6) {
+        return false;
+    }
+    const std::uint16_t count = reader.u16be(name_table.offset + 2);
+    const std::size_t storage_offset =
+        name_table.offset + reader.u16be(name_table.offset + 4);
+    const std::uint16_t* best = nullptr;
+    std::size_t best_length = 0;
+    std::size_t best_storage = 0;
+    for (std::uint16_t i = 0; i < count; ++i) {
+        const std::size_t record = name_table.offset + 6 + static_cast<std::size_t>(i) * 12;
+        if (!reader.has(record, 12)) {
+            return false;
+        }
+        const std::uint16_t platform = reader.u16be(record);
+        const std::uint16_t encoding = reader.u16be(record + 2);
+        const std::uint16_t language = reader.u16be(record + 4);
+        const std::uint16_t name = reader.u16be(record + 6);
+        const std::uint16_t length = reader.u16be(record + 8);
+        const std::uint16_t offset = reader.u16be(record + 10);
+        if (name != name_id) {
+            continue;
+        }
+        if (platform == 3u && encoding <= 1u) {
+            if (language == 0x0409u || !best) {
+                best = &name;
+                best_length = length;
+                best_storage = static_cast<std::size_t>(offset);
+            }
+        }
+    }
+    if (!best || best_length == 0 ||
+        !reader.has(storage_offset + best_storage, best_length)) {
+        return false;
+    }
+    const std::uint8_t* start = reader.base + storage_offset + best_storage;
+    const std::size_t utf16_length = best_length / 2u;
+    std::wstring wide;
+    wide.reserve(utf16_length);
+    for (std::size_t i = 0; i < utf16_length; ++i) {
+        wide.push_back(static_cast<wchar_t>(read_u16be(start + i * 2u)));
+    }
+    const int needed = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(),
+                                           static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
+    if (needed <= 0) {
+        return false;
+    }
+    out->resize(static_cast<std::size_t>(needed));
+    WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()),
+                        &(*out)[0], needed, nullptr, nullptr);
+    return true;
+}
+
+void parse_fvar_table(const FontReader& reader, const FontTableRef& fvar,
+                      const FontTableRef& name_table, PillowCTtFont* font)
+{
+    if (!reader.has(fvar.offset, fvar.length) || fvar.length < 16) {
+        return;
+    }
+    const std::uint16_t axes_offset = reader.u16be(fvar.offset + 4);
+    const std::uint16_t axis_count = reader.u16be(fvar.offset + 8);
+    const std::uint16_t axis_size = reader.u16be(fvar.offset + 10);
+    const std::uint16_t instance_count = reader.u16be(fvar.offset + 12);
+    const std::uint16_t instance_size = reader.u16be(fvar.offset + 14);
+    if (axis_count == 0 || axis_size < 20 ||
+        !reader.has(fvar.offset + axes_offset,
+                    static_cast<std::size_t>(axis_count) * axis_size)) {
+        return;
+    }
+    for (std::uint16_t i = 0; i < axis_count; ++i) {
+        const std::size_t record = fvar.offset + axes_offset + static_cast<std::size_t>(i) * axis_size;
+        PillowCTtFont::VariationAxis axis;
+        axis.tag = reader.u32be(record);
+        axis.min_value = fixed16_16(static_cast<std::int32_t>(reader.u32be(record + 4)));
+        axis.default_value = fixed16_16(static_cast<std::int32_t>(reader.u32be(record + 8)));
+        axis.max_value = fixed16_16(static_cast<std::int32_t>(reader.u32be(record + 12)));
+        const std::uint16_t name_id = reader.u16be(record + 18);
+        name_table_string(reader, name_table, name_id, &axis.name);
+        font->variation_axes.push_back(std::move(axis));
+    }
+    const std::size_t instances_offset = fvar.offset + axes_offset +
+        static_cast<std::size_t>(axis_count) * axis_size;
+    if (instance_count > 0 &&
+        reader.has(instances_offset, static_cast<std::size_t>(instance_count) * instance_size)) {
+        for (std::uint16_t i = 0; i < instance_count; ++i) {
+            const std::size_t record = instances_offset + static_cast<std::size_t>(i) * instance_size;
+            PillowCTtFont::VariationInstance instance;
+            const std::uint16_t name_id = reader.u16be(record);
+            name_table_string(reader, name_table, name_id, &instance.name);
+            instance.coords.resize(font->variation_axes.size());
+            for (std::size_t a = 0; a < font->variation_axes.size(); ++a) {
+                instance.coords[a] =
+                    fixed16_16(static_cast<std::int32_t>(reader.u32be(record + 4 + a * 4)));
+            }
+            font->variation_instances.push_back(std::move(instance));
+        }
+    }
+}
+
+void parse_avar_table(const FontReader& reader, const FontTableRef& avar, PillowCTtFont* font)
+{
+    if (!reader.has(avar.offset, avar.length) || avar.length < 8) {
+        return;
+    }
+    const std::uint16_t axis_count = reader.u16be(avar.offset + 6);
+    std::size_t cursor = avar.offset + 8;
+    for (std::uint16_t a = 0; a < axis_count; ++a) {
+        if (!reader.has(cursor, 2)) {
+            return;
+        }
+        const std::uint16_t map_count = reader.u16be(cursor);
+        cursor += 2;
+        if (!reader.has(cursor, static_cast<std::size_t>(map_count) * 4)) {
+            return;
+        }
+        std::vector<std::pair<double, double>> segments;
+        for (std::uint16_t m = 0; m < map_count; ++m) {
+            const double from = fixed2_14(static_cast<std::int16_t>(reader.u16be(cursor + m * 4)));
+            const double to = fixed2_14(static_cast<std::int16_t>(reader.u16be(cursor + m * 4 + 2)));
+            segments.push_back({from, to});
+        }
+        cursor += static_cast<std::size_t>(map_count) * 4;
+        font->avar_maps.push_back(std::move(segments));
+    }
+}
+
+bool parse_hvar_table(const FontReader& reader, const FontTableRef& hvar, PillowCTtFont* font)
+{
+    if (!reader.has(hvar.offset, hvar.length) || hvar.length < 20) {
+        return false;
+    }
+    const std::uint32_t store_offset =
+        static_cast<std::uint32_t>(hvar.offset) + reader.u32be(hvar.offset + 4);
+    const std::uint32_t advance_map_offset =
+        static_cast<std::uint32_t>(hvar.offset) + reader.u32be(hvar.offset + 8);
+    if (!reader.has(store_offset, 8)) {
+        return false;
+    }
+    const std::uint16_t store_format = reader.u16be(store_offset);
+    // Format 1 stores the variation region list offset as a uint32 right
+    // after the format field; format 0 uses a uint16.
+    const std::uint32_t region_list_offset =
+        store_format == 1 ? reader.u32be(store_offset + 2)
+                          : reader.u16be(store_offset + 2);
+    const std::uint16_t item_count =
+        store_format == 1 ? reader.u16be(store_offset + 6)
+                          : reader.u16be(store_offset + 4);
+    const std::size_t region_list = store_offset + region_list_offset;
+    const std::size_t offsets_at = store_offset + (store_format == 1 ? 8u : 6u);
+    if (!reader.has(region_list, 4)) {
+        return false;
+    }
+    const std::uint16_t axis_count = reader.u16be(region_list);
+    const std::uint16_t region_count = reader.u16be(region_list + 2);
+    const std::size_t regions_start = region_list + 4;
+    if (!reader.has(regions_start,
+                    static_cast<std::size_t>(region_count) * axis_count * 6)) {
+        return false;
+    }
+    for (std::uint16_t r = 0; r < region_count; ++r) {
+        PillowCTtFont::HvarRegion region;
+        for (std::uint16_t a = 0; a < axis_count; ++a) {
+            const std::size_t at = regions_start +
+                (static_cast<std::size_t>(r) * axis_count + a) * 6;
+            region.tuples.push_back(
+                {fixed2_14(static_cast<std::int16_t>(reader.u16be(at))),
+                 fixed2_14(static_cast<std::int16_t>(reader.u16be(at + 2))),
+                 fixed2_14(static_cast<std::int16_t>(reader.u16be(at + 4)))});
+        }
+        font->hvar_regions.push_back(std::move(region));
+    }
+    if (!reader.has(offsets_at, static_cast<std::size_t>(item_count) * 4)) {
+        return false;
+    }
+    for (std::uint16_t i = 0; i < item_count; ++i) {
+        const std::uint32_t data_offset =
+            store_offset + reader.u32be(offsets_at + static_cast<std::size_t>(i) * 4);
+        if (!reader.has(data_offset, 6)) {
+            return false;
+        }
+        PillowCTtFont::HvarItemData data;
+        const std::uint16_t inner_count = reader.u16be(data_offset);
+        data.word_delta_count = reader.u16be(data_offset + 2);
+        const std::uint16_t region_index_count = reader.u16be(data_offset + 4);
+        if (!reader.has(data_offset + 6,
+                        static_cast<std::size_t>(region_index_count) * 2)) {
+            return false;
+        }
+        for (std::uint16_t r = 0; r < region_index_count; ++r) {
+            data.region_indices.push_back(reader.u16be(data_offset + 6 + r * 2));
+        }
+        const std::size_t delta_bytes = static_cast<std::size_t>(data.word_delta_count) * 2 +
+            static_cast<std::size_t>(region_index_count - data.word_delta_count);
+        if (!reader.has(data_offset + 6 + static_cast<std::size_t>(region_index_count) * 2,
+                        static_cast<std::size_t>(inner_count) * delta_bytes)) {
+            return false;
+        }
+        const std::uint8_t* deltas = reader.base + data_offset + 6 +
+            static_cast<std::size_t>(region_index_count) * 2;
+        for (std::uint16_t item = 0; item < inner_count; ++item) {
+            const std::uint8_t* row = deltas + static_cast<std::size_t>(item) * delta_bytes;
+            for (std::uint16_t r = 0; r < region_index_count; ++r) {
+                if (r < data.word_delta_count) {
+                    data.deltas.push_back(static_cast<std::int32_t>(read_i16be(row + r * 2)));
+                } else {
+                    data.deltas.push_back(
+                        static_cast<std::int32_t>(static_cast<std::int8_t>(row[r])));
+                }
+            }
+        }
+        font->hvar_item_data.push_back(std::move(data));
+    }
+    if (reader.u32be(hvar.offset + 8) != 0 && reader.has(advance_map_offset, 6)) {
+        const std::uint8_t entry_format = reader.base[advance_map_offset + 1];
+        // FreeType reads the inner index bit count as (entryFormat & 0xF) + 1.
+        const std::uint8_t inner_bits = (entry_format & 0x0fu) + 1u;
+        const std::uint8_t entry_size = 1u << ((entry_format >> 4) & 0x03u);
+        const std::uint32_t map_count =
+            reader.base[advance_map_offset] == 0
+                ? reader.u16be(advance_map_offset + 2)
+                : reader.u32be(advance_map_offset + 2);
+        font->hvar_inner_bits = inner_bits;
+        const std::size_t map_start = advance_map_offset + (reader.base[advance_map_offset] == 0 ? 4 : 6);
+        if (reader.has(map_start, static_cast<std::size_t>(map_count) * entry_size)) {
+            font->hvar_advance_map.resize(font->glyph_count, 0xffffffffu);
+            for (std::uint32_t m = 0; m < map_count; ++m) {
+                const std::uint8_t* entry = reader.base + map_start + static_cast<std::size_t>(m) * entry_size;
+                std::uint32_t value = 0;
+                for (std::uint8_t b = 0; b < entry_size; ++b) {
+                    value = (value << 8) | entry[b];
+                }
+                if (m < font->glyph_count) {
+                    font->hvar_advance_map[m] = value;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+// --- variation math (API-FONTVAR-002) ------------------------------------
+
+double clamp01(double value)
+{
+    return value < 0.0 ? 0.0 : (value > 1.0 ? 1.0 : value);
+}
+
+double avar_map_coord(const std::vector<std::pair<double, double>>& segments, double coord)
+{
+    if (segments.empty()) {
+        return coord;
+    }
+    if (coord <= segments.front().first) {
+        return segments.front().second;
+    }
+    if (coord >= segments.back().first) {
+        return segments.back().second;
+    }
+    for (std::size_t i = 0; i + 1 < segments.size(); ++i) {
+        const double from = segments[i].first;
+        const double to = segments[i + 1].first;
+        if (coord >= from && coord <= to) {
+            const double t = to == from ? 0.0 : (coord - from) / (to - from);
+            return segments[i].second + t * (segments[i + 1].second - segments[i].second);
+        }
+    }
+    return coord;
+}
+
+double normalize_variation_coord(double coord, const PillowCTtFont::VariationAxis& axis)
+{
+    if (coord == axis.default_value) {
+        return 0.0;
+    }
+    if (coord < axis.default_value) {
+        const double denom = axis.default_value - axis.min_value;
+        return denom > 0.0 ? (coord - axis.default_value) / denom : -1.0;
+    }
+    const double denom = axis.max_value - axis.default_value;
+    return denom > 0.0 ? (coord - axis.default_value) / denom : 1.0;
+}
+
+double region_scalar(const std::vector<double>& coords, const PillowCTtFont::HvarRegion& region)
+{
+    double scalar = 1.0;
+    for (std::size_t a = 0; a < coords.size() && a < region.tuples.size(); ++a) {
+        const double coord = coords[a];
+        const std::array<double, 3>& t = region.tuples[a];
+        // FreeType's tt_hvar_blend_scalar: axes whose region tuple is
+        // (0, 0, 0) do not contribute (the scalar stays 1).
+        if (t[0] == 0.0 && t[1] == 0.0) {
+            continue;
+        }
+        double s = 0.0;
+        if (coord == t[1]) {
+            s = 1.0;
+        } else if (coord < t[1]) {
+            if (t[1] <= t[0]) {
+                s = 1.0;
+            } else if (coord <= t[0]) {
+                s = 0.0;
+            } else {
+                s = clamp01((coord - t[0]) / (t[1] - t[0]));
+            }
+        } else if (t[1] >= t[2]) {
+            s = 1.0;
+        } else if (coord >= t[2]) {
+            s = 0.0;
+        } else {
+            s = clamp01((t[2] - coord) / (t[2] - t[1]));
+        }
+        scalar *= s;
+        if (scalar == 0.0) {
+            break;
+        }
+    }
+    return scalar;
+}
+
+std::int64_t mul_fix_round(double scalar, std::int32_t delta16_16)
+{
+    const double product = scalar * static_cast<double>(delta16_16);
+    return static_cast<std::int64_t>(product >= 0.0 ? product + 0.5 : product - 0.5);
+}
+
+// Applies the stored variation coordinates: normalize, remap through avar,
+// compute the region scalars, then the per-glyph HVAR advance deltas.
+void apply_variation_state(PillowCTtFont* font)
+{
+    font->variation_scalars.clear();
+    font->variation_advance_deltas.assign(font->glyph_count, 0);
+    if (font->variation_coords.empty() || font->variation_axes.empty()) {
+        return;
+    }
+    std::vector<double> normalized;
+    for (std::size_t a = 0; a < font->variation_axes.size(); ++a) {
+        double coord = a < font->variation_coords.size()
+                           ? font->variation_coords[a]
+                           : font->variation_axes[a].default_value;
+        // clamp to the axis range like FreeType
+        coord = std::max(font->variation_axes[a].min_value,
+                         std::min(font->variation_axes[a].max_value, coord));
+        double n = normalize_variation_coord(coord, font->variation_axes[a]);
+        if (a < font->avar_maps.size()) {
+            n = avar_map_coord(font->avar_maps[a], n);
+        }
+        normalized.push_back(n);
+    }
+    font->variation_scalars.resize(font->hvar_regions.size(), 0.0);
+    for (std::size_t r = 0; r < font->hvar_regions.size(); ++r) {
+        font->variation_scalars[r] = region_scalar(normalized, font->hvar_regions[r]);
+    }
+    if (font->hvar_item_data.empty()) {
+        return;
+    }
+    const std::uint32_t inner_mask =
+        font->hvar_inner_bits >= 16 ? 0xffffu : ((1u << font->hvar_inner_bits) - 1u);
+    for (std::uint16_t glyph = 0; glyph < font->glyph_count; ++glyph) {
+        std::uint32_t outer = 0;
+        std::uint32_t inner = glyph;
+        if (!font->hvar_advance_map.empty()) {
+            const std::uint32_t index = glyph < font->hvar_advance_map.size()
+                                            ? font->hvar_advance_map[glyph]
+                                            : 0xffffffffu;
+            if (index == 0xffffffffu) {
+                continue;
+            }
+            outer = index >> font->hvar_inner_bits;
+            inner = index & inner_mask;
+        }
+        if (outer >= font->hvar_item_data.size()) {
+            continue;
+        }
+        const auto& data = font->hvar_item_data[outer];
+        if (data.region_indices.empty() ||
+            inner >= data.deltas.size() / data.region_indices.size()) {
+            continue;
+        }
+        std::int64_t delta = 0;
+        for (std::size_t r = 0; r < data.region_indices.size(); ++r) {
+            const std::uint16_t region = data.region_indices[r];
+            if (region >= font->variation_scalars.size()) {
+                continue;
+            }
+            delta += mul_fix_round(font->variation_scalars[region],
+                                   data.deltas[inner * data.region_indices.size() + r]);
+        }
+        // The item deltas are plain font units; the stored 16.16 advance is
+        // (hmtx + delta) << 16.
+        font->variation_advance_deltas[glyph] = static_cast<std::int32_t>(delta) << 16;
+    }
+}
+
+int tt_set_variation_axes(PillowCFont* font, const double* coords, std::size_t count)
+{
+    if (!font) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    auto* tt = static_cast<PillowCTtFont*>(font->truetype);
+    if (!tt || !tt->has_fvar) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    // Pillow/FreeType accept any coordinate count (zero is a no-op) and
+    // ignore extras.
+    if (count == 0) {
+        return PILLOW_C_OK;
+    }
+    tt->variation_coords.assign(coords, coords + count);
+    tt->variation_coords.resize(tt->variation_axes.size(), 0.0);
+    for (std::size_t a = 0; a < tt->variation_coords.size(); ++a) {
+        if (a >= count) {
+            tt->variation_coords[a] = tt->variation_axes[a].default_value;
+        }
+    }
+    tt->variation_active = true;
+    apply_variation_state(tt);
+    return PILLOW_C_OK;
+}
+
+int tt_set_variation_name(PillowCFont* font, const char* name, std::size_t name_size)
+{
+    if (!font || !name) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    auto* tt = static_cast<PillowCTtFont*>(font->truetype);
+    if (!tt || !tt->has_fvar) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::string wanted(name, name_size);
+    for (const auto& instance : tt->variation_instances) {
+        if (instance.name == wanted) {
+            return tt_set_variation_axes(
+                font, instance.coords.data(), instance.coords.size());
+        }
+    }
+    return PILLOW_C_INVALID_ARGUMENT;
+}
+
 // --- GDI glyph metrics ---------------------------------------------------
 
 struct GdiGlyphMetrics {
@@ -793,7 +1285,22 @@ bool build_glyph_run(
         const std::uint16_t advance_units =
             glyph < font.hmtx.size() ? font.hmtx[glyph] : (font.hmtx.empty() ? 0 : font.hmtx.back());
         std::int64_t advance_26_6 = 0;
-        if (font.layout_engine == PILLOW_C_FONT_LAYOUT_BASIC) {
+        if (font.variation_active) {
+            const std::int32_t delta =
+                glyph < font.variation_advance_deltas.size()
+                    ? font.variation_advance_deltas[glyph]
+                    : 0;
+            if (font.layout_engine == PILLOW_C_FONT_LAYOUT_BASIC) {
+                advance_26_6 = ft_mul_fix(
+                    (static_cast<std::int64_t>(advance_units) << 16) + delta,
+                    scale_16_16);
+            } else {
+                advance_26_6 = round_half_away(
+                    (static_cast<double>((static_cast<std::int64_t>(advance_units) << 16) + delta) *
+                     static_cast<double>(size_26_6)) /
+                    (static_cast<double>(font.upem) * 65536.0));
+            }
+        } else if (font.layout_engine == PILLOW_C_FONT_LAYOUT_BASIC) {
             advance_26_6 = ft_mul_fix(advance_units, scale_16_16);
         } else {
             advance_26_6 = raqm_scale_26_6(advance_units, size_26_6, font.upem);
@@ -1117,6 +1624,17 @@ int font_tt_load_common(
             parse_kern_table(reader, *kern_table, &font->kern);
         }
         font->has_fvar = fvar != nullptr;
+        if (fvar) {
+            parse_fvar_table(reader, *fvar, *name_table, font.get());
+            const FontTableRef* avar = find_table(tables, 0x61766172u); // 'avar'
+            const FontTableRef* hvar = find_table(tables, 0x48564152u); // 'HVAR'
+            if (avar) {
+                parse_avar_table(reader, *avar, font.get());
+            }
+            if (hvar) {
+                font->has_hvar = parse_hvar_table(reader, *hvar, font.get());
+            }
+        }
 
         // GDI registration. TTC faces use the extracted standalone sfnt;
         // AddFontMemResourceEx does not copy, so resource_bytes stays alive
@@ -1353,6 +1871,107 @@ int font_tt_getname(
     return PILLOW_C_OK;
 }
 
+int font_tt_set_variation_axes(PillowCFont* font, const double* coords, std::size_t count)
+{
+    return tt_set_variation_axes(font, coords, count);
+}
+
+int font_tt_set_variation_name(PillowCFont* font, const char* name, std::size_t name_size)
+{
+    return tt_set_variation_name(font, name, name_size);
+}
+
+int font_tt_variation_axes_count(const PillowCFont* font, std::size_t* out_count)
+{
+    if (!font || !out_count) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const auto* tt = static_cast<const PillowCTtFont*>(font->truetype);
+    if (!tt || !tt->has_fvar) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    *out_count = tt->variation_axes.size();
+    return PILLOW_C_OK;
+}
+
+int font_tt_variation_axes(
+    const PillowCFont* font,
+    std::size_t index,
+    double* out_minimum,
+    double* out_default,
+    double* out_maximum,
+    char* out_name,
+    std::size_t name_size,
+    std::size_t* out_name_required)
+{
+    if (!font || !out_minimum || !out_default || !out_maximum || !out_name_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const auto* tt = static_cast<const PillowCTtFont*>(font->truetype);
+    if (!tt || !tt->has_fvar) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (index >= tt->variation_axes.size()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const auto& axis = tt->variation_axes[index];
+    *out_minimum = axis.min_value;
+    *out_default = axis.default_value;
+    *out_maximum = axis.max_value;
+    const std::size_t required = axis.name.size() + 1;
+    *out_name_required = required;
+    if (!out_name) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (name_size < required) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    std::memcpy(out_name, axis.name.c_str(), required);
+    return PILLOW_C_OK;
+}
+
+int font_tt_variation_names_count(const PillowCFont* font, std::size_t* out_count)
+{
+    if (!font || !out_count) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const auto* tt = static_cast<const PillowCTtFont*>(font->truetype);
+    if (!tt || !tt->has_fvar) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    *out_count = tt->variation_instances.size();
+    return PILLOW_C_OK;
+}
+
+int font_tt_variation_names(
+    const PillowCFont* font,
+    std::size_t index,
+    char* out_name,
+    std::size_t name_size,
+    std::size_t* out_name_required)
+{
+    if (!font || !out_name_required) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    const auto* tt = static_cast<const PillowCTtFont*>(font->truetype);
+    if (!tt || !tt->has_fvar) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (index >= tt->variation_instances.size()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t required = tt->variation_instances[index].name.size() + 1;
+    *out_name_required = required;
+    if (!out_name) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (name_size < required) {
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    std::memcpy(out_name, tt->variation_instances[index].name.c_str(), required);
+    return PILLOW_C_OK;
+}
+
 int font_tt_getbbox_impl(
     const PillowCTtFont& font,
     const char* text,
@@ -1533,6 +2152,62 @@ extern "C" __declspec(dllexport) int pillow_c_font_is_variable(
     int* out_variable)
 {
     return font_tt_is_variable(font, out_variable);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_font_variation_axes_count(
+    const PillowCFont* font,
+    std::size_t* out_count)
+{
+    return font_tt_variation_axes_count(font, out_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_font_variation_axes(
+    const PillowCFont* font,
+    std::size_t index,
+    double* out_minimum,
+    double* out_default,
+    double* out_maximum,
+    char* out_name,
+    std::size_t name_size,
+    std::size_t* out_name_required)
+{
+    return font_tt_variation_axes(font, index, out_minimum, out_default,
+                                  out_maximum, out_name, name_size,
+                                  out_name_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_font_variation_names_count(
+    const PillowCFont* font,
+    std::size_t* out_count)
+{
+    return font_tt_variation_names_count(font, out_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_font_variation_names(
+    const PillowCFont* font,
+    std::size_t index,
+    char* out_name,
+    std::size_t name_size,
+    std::size_t* out_name_required)
+{
+    return font_tt_variation_names(font, index, out_name, name_size,
+                                   out_name_required);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_font_set_variation_axes(
+    PillowCFont* font,
+    const double* coords,
+    std::size_t count)
+{
+    return font_tt_set_variation_axes(font, coords, count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_font_set_variation_name(
+    PillowCFont* font,
+    const char* name,
+    std::size_t name_size)
+{
+    return font_tt_set_variation_name(font, name, name_size);
 }
 
 // --- PILfont bitmap font (kind 3, BEHAV-FONTFILE-002) ----------------------

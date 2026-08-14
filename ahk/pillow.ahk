@@ -5681,14 +5681,61 @@ class Pillow {
                 return variable != 0
             }
 
-            ; BEHAV-FONTFILE-001: the variation surface. Non-variable fonts
-            ; keep Pillow's exact OSError("invalid argument"); variable-font
-            ; axes are the documented boundary (Pillow works there through
-            ; FreeType).
+            ; BEHAV-FONTVAR-002: the variation surface. Non-variable fonts
+            ; keep Pillow's exact OSError("invalid argument"); variable fonts
+            ; expose the fvar axes/instances natively and apply HVAR advance
+            ; deltas through the table-driven engine (glyph outlines keep
+            ; the GDI rasterization boundary).
             GetVariationAxes() {
                 if !this.IsVariable()
                     throw Error("invalid argument", -1)
-                throw Error("variable font axes are not supported by this runtime", -1)
+                count := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_variation_axes_count",
+                    "Ptr", this.RequireHandle(),
+                    "UPtr*", &count,
+                    "Int"
+                ))
+                axes := []
+                loop count {
+                    minimum := 0.0
+                    defaultValue := 0.0
+                    maximum := 0.0
+                    required := 0
+                    status := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_font_variation_axes",
+                        "Ptr", this.RequireHandle(),
+                        "UPtr", A_Index - 1,
+                        "Double*", &minimum,
+                        "Double*", &defaultValue,
+                        "Double*", &maximum,
+                        "Ptr", 0,
+                        "UPtr", 0,
+                        "UPtr*", &required,
+                        "Int"
+                    )
+                    if status != -1
+                        Pillow.CheckStatus(status)
+                    nameBuf := Buffer(required, 0)
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_font_variation_axes",
+                        "Ptr", this.RequireHandle(),
+                        "UPtr", A_Index - 1,
+                        "Double*", &minimum,
+                        "Double*", &defaultValue,
+                        "Double*", &maximum,
+                        "Ptr", nameBuf,
+                        "UPtr", nameBuf.Size,
+                        "UPtr*", &required,
+                        "Int"
+                    ))
+                    axes.Push(Map(
+                        "minimum", Integer(minimum),
+                        "default", Integer(defaultValue),
+                        "maximum", Integer(maximum),
+                        "name", Pillow.Image.BufferWithoutNul(nameBuf, required - 1)))
+                }
+                return axes
             }
 
             get_variation_axes() {
@@ -5698,7 +5745,40 @@ class Pillow {
             GetVariationNames() {
                 if !this.IsVariable()
                     throw Error("invalid argument", -1)
-                throw Error("variable font names are not supported by this runtime", -1)
+                count := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_variation_names_count",
+                    "Ptr", this.RequireHandle(),
+                    "UPtr*", &count,
+                    "Int"
+                ))
+                names := []
+                loop count {
+                    required := 0
+                    status := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_font_variation_names",
+                        "Ptr", this.RequireHandle(),
+                        "UPtr", A_Index - 1,
+                        "Ptr", 0,
+                        "UPtr", 0,
+                        "UPtr*", &required,
+                        "Int"
+                    )
+                    if status != -1
+                        Pillow.CheckStatus(status)
+                    nameBuf := Buffer(required, 0)
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_font_variation_names",
+                        "Ptr", this.RequireHandle(),
+                        "UPtr", A_Index - 1,
+                        "Ptr", nameBuf,
+                        "UPtr", nameBuf.Size,
+                        "UPtr*", &required,
+                        "Int"
+                    ))
+                    names.Push(Pillow.Image.BufferWithoutNul(nameBuf, required - 1))
+                }
+                return names
             }
 
             get_variation_names() {
@@ -5706,9 +5786,27 @@ class Pillow {
             }
 
             SetVariationByAxes(axes) {
+                ; Pillow's FreeTypeFont.set_variation_by_axes: a non-list
+                ; raises the exact TypeError; non-variable fonts raise the
+                ; OSError; any coordinate count is accepted (extras are
+                ; ignored, missing ones fall back to the axis defaults).
+                if !(IsObject(axes) && axes is Array)
+                    throw TypeError("argument must be a list", -1)
                 if !this.IsVariable()
                     throw Error("invalid argument", -1)
-                throw Error("variable font axes are not supported by this runtime", -1)
+                coords := Buffer(axes.Length * 8, 0)
+                for index, value in axes {
+                    if !(value is Number)
+                        throw Error("Pillow.ImageFont.SetVariationByAxes coordinates must be numeric", -1)
+                    NumPut("Double", value, coords, (index - 1) * 8)
+                }
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_set_variation_axes",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", coords,
+                    "UPtr", axes.Length,
+                    "Int"
+                ))
             }
 
             set_variation_by_axes(axes) {
@@ -5716,9 +5814,30 @@ class Pillow {
             }
 
             SetVariationByName(name) {
+                if !(name is String)
+                    throw Error("Pillow.ImageFont.SetVariationByName name expects a string", -1)
                 if !this.IsVariable()
                     throw Error("invalid argument", -1)
-                throw Error("variable font names are not supported by this runtime", -1)
+                ; Pillow encodes strings to ASCII bytes, then the exact
+                ; ValueError {name!r} is not in list for unknown names.
+                names := this.GetVariationNames()
+                found := false
+                for candidate in names {
+                    if Pillow.Image.BufferEqualsAscii(candidate, name) {
+                        found := true
+                        break
+                    }
+                }
+                if !found
+                    throw Error("b'" name "' is not in list", -1)
+                nameBytes := Pillow.Image.Utf8Buffer(name)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_set_variation_name",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", nameBytes,
+                    "UPtr", nameBytes.Size - 1,
+                    "Int"
+                ))
             }
 
             set_variation_by_name(name) {
@@ -10155,6 +10274,23 @@ class Pillow {
                 text .= Chr(codepoint)
             }
             return text
+        }
+
+        static BufferWithoutNul(buf, byteCount) {
+            out := Buffer(byteCount, 0)
+            DllCall("msvcrt\memcpy", "Ptr", out, "Ptr", buf, "UPtr", byteCount, "CDecl")
+            return out
+        }
+
+        static BufferEqualsAscii(buf, text) {
+            length := StrLen(text)
+            if buf.Size != length
+                return false
+            loop length {
+                if NumGet(buf, A_Index - 1, "UChar") != Ord(SubStr(text, A_Index, 1))
+                    return false
+            }
+            return true
         }
 
         static Latin1Buffer(value, operationName) {
