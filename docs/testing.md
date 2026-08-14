@@ -50,6 +50,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Tar
 This suite currently registers `2795` AHK tests: `1386` raw DLL tests and
 `1409` facade tests.
 
+Latest `AUDIT-002` verification (independent re-audit): the surface
+enumerator (`oracle/audit_pillow_surface.py` →
+`oracle/pillow_surface.json`) measured Pillow 11.3.0's real public
+surface — 59 `Image.Image` names, 69 `ImagingCore` names, 23
+submodules, 30 SAVE and 45 OPEN formats — and the diff against the
+facade found unrecorded gaps (ImageMath/ImageGrab/ImagePath/
+ImageQt/ImageTk/ImageFile/ImagePalette module surfaces, ImageTransform
+class objects, ImageFont variation fonts, `Image.readonly`, and the
+unrecorded BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF save plus
+FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/
+XVTHUMB open formats). The estimate is demoted to `85% ±5%` and the
+gaps are recorded as not-started rows (`oracle/audit_report_2026-08-14.md`).
+No native change: the suite stays `2795/2795`, exports `463/463`, and
+the DLL SHA-256 stays
+`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
+The next bounded child is `API-MATH-001`.
+
 Latest `BNDRY-001` verification: the explicit remaining-item boundary
 ledger completes the coverage definition. The dependency-gated formats
 (WebP/AVIF/JPEG2000/PDF/PSD/DDS/PCX/ICNS/SGI/SUN/EPS/MPO/FLI/DCX/XPM)

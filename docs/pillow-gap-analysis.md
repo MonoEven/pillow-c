@@ -37,6 +37,53 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 AUDIT-002 Independent Surface Re-Audit (DEMOTION)
+
+`AUDIT-002` is an independent re-audit against the real installed
+Pillow 11.3.0 surface, prompted by the user. It enumerated the full
+public API (see `oracle/audit_pillow_surface.py` and
+`oracle/pillow_surface.json`: 59 `Image.Image` names, 69
+`ImagingCore` names, 23 submodules, 30 SAVE / 45 OPEN formats) and
+diffed it against the facade and the 463 `pillow_c_*` exports.
+
+Verdict: the previously recorded 100% measured only the ledger's own
+bounded coverage definition, not full Pillow parity. Whole modules
+were neither implemented nor recorded as boundaries. The estimate is
+demoted to `85% ±5%` and the following not-started rows record the
+gaps honestly:
+
+- `API-MATH-001` — ImageMath eval/unsafe_eval (18 names) absent.
+- `API-GRAB-001` — ImageGrab grab/grabclipboard (11 names) absent.
+- `API-PATH-001` — ImagePath (3 names) absent.
+- `API-QTTK-001` — ImageQt/ImageTk module surfaces (26/10 names)
+  absent; only the toqimage/toqpixmap boundaries were recorded.
+- `API-FILE-001` — ImageFile module surface (Parser/ImageFile/
+  StubImageFile/_save, 31 names) absent as a module.
+- `API-PALETTE-001` — ImagePalette module (wedge/sepia/random/raw/
+  negative/make_*_lut, 18 names) absent; the facade `Palette` class is
+  only the WEB/ADAPTIVE constants.
+- `API-TRANSFORMCLS-001` — ImageTransform class objects
+  (AffineTransform etc.) absent (constants and methods exist).
+- `API-FONTVAR-001` — ImageFont variation surface (TransposedFont/
+  Axis/Layout) absent.
+- `API-READONLY-001` — `Image.readonly` property name absent (behavior
+  partially covered through DetachBufferView).
+- `FMT-UNREC-001` — formats neither implemented nor listed in
+  BNDRY-001: save BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF; open
+  FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/
+  XVTHUMB plus the same save-side subset.
+
+The genuinely covered surface (verified byte-exact in this session)
+remains: 58/59 `Image.Image` names, the mainstream 12 codecs, the
+complete numeric mode families, ImageChops, ImageEnhance, ImageStat,
+ImageSequence, mainstream ImageFilter, ImageDraw core, ImageCms
+breadth, and ImageFont FreeTypeFont + load_default.
+
+No native change in this packet; the suite stays `2795/2795`, exports
+`463/463`, DLL SHA-256
+`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
+The next bounded child is `API-MATH-001`.
+
 ## 2026-08-13 BNDRY-001 Remaining-Item Boundary Ledger (GREEN)
 
 `BNDRY-001` records every remaining item as an explicit documented
@@ -39714,7 +39761,18 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | MODE-NUM-001CQ | Modes | covered | Bounded I;16 entropy/getcolors/ImageStat boundaries: Pillow 11.3.0 raises `image has wrong mode` for I;16/I;16B `getcolors()`, while its C entropy returns layout-dependent byte-misread values (`log2(6)` for six misread-distinct samples) and `ImageStat.Stat` derives from that same misread histogram. The native entropy and getcolors entry points return `PILLOW_C_INVALID_ARGUMENT` for I;16/I;16B, the facade surfaces Pillow's `image has wrong mode` for `GetColors`, a documented boundary error for `Entropy`, and inherits the histogram boundary through `ImageStat.Stat`. Export parity remains `463/463`. | `oracle/probe_mode_i16_stats2.py`, native entropy/getcolors I;16 rejections, facade GetColors/Entropy boundaries, ImageStat histogram inheritance, raw/facade boundary tests. |
 | API-IMG-001F | Facade API | covered | Bounded low-level `im` accessor boundary completing the named `PIL.Image.Image` object-model list: Pillow 11.3.0's `im` is the per-image `ImagingCore` C object, whose AHK analogue is the native image handle (the `pillow_c_*` ABI covers the ImagingCore method surface). The facade adds the `Im` property returning the same handle as `GetIm()` (AHK case-insensitivity serves `im`) with the Pillow-shaped closed-image error. Facade-only; export parity remains `463/463` and the DLL SHA-256 is unchanged. | Facade `Image.Im` property, facade im-accessor boundary test. |
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
-| BNDRY-001 | Boundaries | covered | Explicit remaining-item boundary ledger completing the coverage definition: dependency-gated formats (WebP/AVIF/JPEG2000/PDF/PSD/DDS/PCX/ICNS/SGI/SUN/EPS/MPO/FLI/DCX/XPM) fail loudly with `Pillow image file format is unsupported`; APNG and true PNG compression strategy stay future families (default-deflate single-frame PNGs only); dither exact parity stays bounded to the FLOYDSTEINBERG slices with libimagequant keeping Pillow's `dependency required by this method was not enabled at compile time` error; qtables beyond two tables, malformed marker streams, and explicit YCCK encoding are not replicated; the META-002 tail stays behind explicit children; and byte-exact whole-file parity is claimed only for the verified bounded packets. The facade boundary test pins the rejections. Facade-only; export parity remains `463/463` and the DLL SHA-256 is unchanged. | `PillowTestDependencyGatedFormatBoundaries`, existing NormalizeFileFormat/FormatFromPath rejections, existing LIBIMAGEQUANT guard, ledger boundary rows. |
+| BNDRY-001 | Boundaries | covered | Explicit remaining-item boundary ledger completing the coverage definition: dependency-gated formats (WebP/AVIF/JPEG2000/PDF/PSD/DDS/PCX/ICNS/SGI/SUN/EPS/MPO/FLI/DCX/XPM) fail loudly with `Pillow image file format is unsupported`; APNG and true PNG compression strategy stay future families (default-deflate single-frame PNGs only); dither exact parity stays bounded to the FLOYDSTEINBERG slices with libimagequant keeping Pillow's `dependency required by this method was not enabled at compile time` error; qtables beyond two tables, malformed marker streams, and explicit YCCK encoding are not replicated; the META-002 tail stays behind explicit children; and byte-exact whole-file parity is claimed only for the verified bounded packets. The facade boundary test pins the rejections. Facade-only; export parity remains `463/463` and the DLL SHA-256 is unchanged. SUPERSEDED for the newly found gaps by the AUDIT-002 re-audit (rows below). | `PillowTestDependencyGatedFormatBoundaries`, existing NormalizeFileFormat/FormatFromPath rejections, existing LIBIMAGEQUANT guard, ledger boundary rows. |
+| AUDIT-002 | Audit | covered | Independent Pillow 11.3.0 surface re-audit that demotes the estimate to `85% ±5%`: enumerated the real public surface (59 Image.Image names, 69 ImagingCore names, 23 submodules, 30 SAVE / 45 OPEN formats) and diffed it against the facade, finding the unrecorded gaps in the rows below. Evidence in `oracle/audit_pillow_surface.py`, `oracle/pillow_surface.json`, `oracle/audit_report_2026-08-14.md`. | Surface enumerator, facade/native diff, audit report, ledger demotion. |
+| API-MATH-001 | Facade API | not started | ImageMath `eval`/`unsafe_eval` arithmetic over images (18 names: + - * / & \| ^ abs negate min max convert log sin cos, constants e/pi) — the largest unrecorded functional module found by AUDIT-002. | Native per-pixel arithmetic route, facade ImageMath.eval parser, raw/facade tests. |
+| API-GRAB-001 | Facade API | not started | ImageGrab grab/grabclipboard screen capture (11 names) — platform/UI integration surface found by AUDIT-002. | Platform capture route or documented boundary. |
+| API-PATH-001 | Facade API | not started | ImagePath path objects (3 names) for ImageDraw — found by AUDIT-002. | Facade ImagePath or documented boundary. |
+| API-QTTK-001 | Facade API | not started | ImageQt/ImageTk module surfaces (26/10 names) — only the toqimage/toqpixmap boundaries were recorded (API-IMG-001E); the module objects themselves are unrecorded. | Documented boundary or Qt/Tk dependency decision. |
+| API-FILE-001 | Facade API | not started | ImageFile module surface (Parser/ImageFile/StubImageFile/_save base classes, 31 names) — absent as a module; actual decode/encode runs through the native ABI. | Documented boundary (native ABI analogue) or facade module. |
+| API-PALETTE-001 | Facade API | not started | ImagePalette module (ImagePalette/PaletteFile/GimpPaletteFile/GimpGradientFile, wedge/sepia/random/raw/negative/make_gamma_lut/make_linear_lut, 18 names) — the facade `Palette` class is only WEB/ADAPTIVE constants. | Facade ImagePalette or documented boundary. |
+| API-TRANSFORMCLS-001 | Facade API | not started | ImageTransform class objects (TransformHandler/AffineTransform/etc., 10 names) — constants and Transform methods exist, the class objects do not. | Facade classes or documented boundary. |
+| API-FONTVAR-001 | Facade API | not started | ImageFont variation surface (TransposedFont/Axis/Layout) — FreeTypeFont and load_default exist. | Facade variation API or documented boundary. |
+| API-READONLY-001 | Facade API | not started | `Image.readonly` property name (behavior partially covered through DetachBufferView). | Facade Readonly property. |
+| FMT-UNREC-001 | Formats | not started | Formats neither implemented nor listed in BNDRY-001: save BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF; open FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/XVTHUMB plus the same save-side subset. | Dependency-gated boundary ledger extension or implementation per format. |
 | FMT-WEBP-001 | WebP | boundary | Open/save WebP and animation stay behind an explicit dependency/scope decision; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | FMT-AVIF-001 | AVIF | boundary | Open/save AVIF stays behind dependency and packaging constraints; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | FMT-LONGTAIL-001 | Formats | boundary | PDF, PSD, DDS, PCX, ICNS, SGI, SUN, EPS, MPO, FLI, DCX, XPM, and other registered families stay behind explicit dependency decisions; open/save fail loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |

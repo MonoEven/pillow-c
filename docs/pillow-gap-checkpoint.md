@@ -21,10 +21,19 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 100% (about ±4%) under
-the real-workload Pillow replacement-readiness model — every remaining
-item is either covered by a GREEN packet or recorded as an explicit
-documented boundary.
+Estimate: AHK-first Pillow-runtime overall completion 85% (about ±5%) under
+the real-workload Pillow replacement-readiness model — DEMOTED from the
+recorded 100% by the 2026-08-14 independent Pillow 11.3.0 surface
+re-audit (see `oracle/audit_report_2026-08-14.md` and the AUDIT-002
+ledger section). The previous 100% measured only the ledger's own
+bounded coverage definition; the re-audit found whole modules and
+formats that were neither implemented nor recorded as boundaries
+(ImageMath, ImageGrab, ImagePath, ImageQt/ImageTk module surfaces,
+ImageFile module surface, ImagePalette, ImageTransform class objects,
+ImageFont variation fonts, the Image.readonly property, and the
+unrecorded BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF save formats
+plus FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/
+XVTHUMB/BLP/BUFR/DIB/GRIB/HDF5/MSP open formats).
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
 malformed-metadata robustness slice, one-level ExifIFD/GPSInfo sub-IFD
@@ -44,26 +53,22 @@ also COMPLETE), the complete facade API slice (`API-IMG-001D` getim,
 `MODE-F-001B`), the complete numeric transform family
 (`MODE-NUM-001CH`/`001CI`/`001CJ`), the complete numeric resize family
 (`MODE-NUM-001CK`/`001CL`/`001CM`/`001CN`), the complete I;16 numeric
-surface (`MODE-NUM-001CO` fill packing, `MODE-NUM-001CP`
-statistics/conversion, `MODE-NUM-001CQ` entropy/getcolors/ImageStat
-boundaries), and `BNDRY-001` — the explicit remaining-item boundary
-ledger that records the dependency-gated formats (WebP/AVIF/JPEG2000/
-PDF/PSD/DDS/PCX/ICNS/SGI/SUN/EPS/MPO/FLI/DCX/XPM), APNG and true PNG
-compression strategy, dither exact parity and libimagequant, qtables
-beyond two tables, malformed marker streams, explicit YCCK encoding,
-the META-002 tail, and the whole-file parity policy as documented
-boundaries.
+surface (`MODE-NUM-001CO`/`001CP`/`001CQ`), and `BNDRY-001` — the
+remaining-item boundary ledger (superseded by the AUDIT-002
+re-audit for the newly found gaps).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The BNDRY-001 boundary target passes `1/1`
-in `31ms`, and the final full directory suite passes `2795/2795` in
-`18437ms`; source/DLL exports remain `463/463` with zero difference;
+IFD as a writer artifact. The current full directory suite passes
+`2795/2795`; source/DLL exports remain `463/463` with zero difference;
 and the DLL SHA-256 remains
 `8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`
-(facade-only slice).
-`ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets.
-No further bounded child is selected: the completion definition is met.
+(no native change since the AUDIT-002 demotion).
+`ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
+the next selected compatibility work packet is
+`API-MATH-001`, the bounded `ImageMath` eval/unsafe_eval arithmetic
+implementation (the largest unrecorded functional module found by the
+re-audit). The other AUDIT-002 gaps stay not-started until selected.
 ```
 
 Current work packet:
@@ -406,9 +411,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: NONE — `BNDRY-001` closed the ledger; the
-  completion definition is met (every remaining item is covered or an
-  explicit documented boundary).
+- Selected next gap: `API-MATH-001`, the bounded `ImageMath`
+  eval/unsafe_eval arithmetic implementation (largest unrecorded
+  functional module found by the AUDIT-002 re-audit).
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -482,6 +487,29 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: AUDIT-002 (independent Pillow 11.3.0 surface re-audit) is
+GREEN and DEMOTES the estimate to `85% ±5%`. The re-audit (evidence in
+`oracle/audit_pillow_surface.py`, `oracle/pillow_surface.json`, and
+`oracle/audit_report_2026-08-14.md`) enumerated Pillow's real public
+surface — 59 `Image.Image` names, 69 `ImagingCore` names, 23
+submodules, 30 SAVE and 45 OPEN formats — and diffed it against the
+facade. The verdict: the recorded 100% measured only the ledger's own
+bounded definition; whole modules were neither implemented nor
+recorded as boundaries — ImageMath, ImageGrab, ImagePath, the
+ImageQt/ImageTk module surfaces, the ImageFile module surface,
+ImagePalette, ImageTransform class objects, the ImageFont variation
+surface, the `Image.readonly` property, and the unrecorded formats
+(BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF save; FITS/FPX/FTEX/
+GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/XVTHUMB plus the
+same save-side subset open). Those gaps are now recorded as
+not-started rows (API-MATH-001, API-GRAB-001, API-PATH-001,
+API-QTTK-001, API-FILE-001, API-PALETTE-001, API-TRANSFORMCLS-001,
+API-FONTVAR-001, API-READONLY-001, FMT-UNREC-001). No native change;
+the suite stays `2795/2795`, exports `463/463`, DLL SHA-256
+`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
+The next bounded child is `API-MATH-001`, the bounded `ImageMath`
+eval/unsafe_eval arithmetic implementation.
 
 2026-08-13: `BNDRY-001` is GREEN — the explicit remaining-item boundary
 ledger completes the coverage definition. Every remaining item is now
