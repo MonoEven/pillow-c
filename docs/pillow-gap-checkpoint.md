@@ -523,6 +523,39 @@ Current work packet:
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
 
+2026-08-14: `BEHAV-DDS-001` is GREEN as the DDS format (behavioral
+parity). The Pillow 11.3.0 oracle (DdsImagePlugin source plus the
+BcnEncode/BcnDecode C semantics, probed block by block against the
+installed wheel) shows DDS saves L/LA/RGB/RGBA as raw writes
+(128-byte header with the L/LA mask quirks, BGR and ABGR byte
+orders) and L/RGB/RGBA as BCN blocks (DXT1/3/5 plus BC2/BC3/BC5
+with the DX10 header; BC5 requires RGB); other modes raise
+`cannot write mode X as DDS` and other pixel formats raise
+`cannot write pixel format X`. The reopen decodes the raw mask
+families (dds_rgb bitmask scaling with Python's float division),
+L8/LA16/P8, the BCN decoders BC1-5 and BC7 (the mode-bit scan
+leaves the data fields at bit mode+1), the BC5S b-channel 128
+memset quirk, and the exact error shapes (`Unsupported header size
+N`, `Incomplete header: N bytes`, `Unknown pixel format flags N`,
+`Unimplemented pixel format N`, `Unsupported bitcount N for M`,
+`Unimplemented DXGI format N`, the truncated BCN/raw messages with
+their leftover counts, and the zero-mask `division by zero`). The
+new native `pillow_c_image_open_dds`/`save_dds` exports plus the
+facade `.dds`/`DDS` routing (with the pixel_format option) reproduce
+all of it. BC6H/BC6HS open stays a documented deferred child (the
+installed wheel's BC6 bit packing diverges from the tag sources;
+Pillow's own encoder cannot write those formats). The facade DDS
+target passes `1/1` in `125ms` (byte-exact embedded raw and BCN
+save fixtures, the reopen matrix including a crafted BC7 block,
+ten exact save/open error shapes); the full directory suite passes
+`2819/2819` in `20813ms`, with zero failures, errors, or skips.
+Release x64 Rebuild is clean; source/DLL export parity moves to
+`477/477` (two deliberate new exports) with zero difference; and
+the rebuilt DLL SHA-256 is
+`494D4A5F26550004D127E860433B728F3B4B06B48D7406B83919769457373897`.
+The DDS row left the BNDRY-001 dependency-gated list. The next
+bounded child is `BEHAV-ICNS-001`, the ICNS format.
+
 2026-08-14: `BEHAV-SGI-001` is GREEN as the SGI format (behavioral
 parity). The Pillow 11.3.0 oracle (SgiImagePlugin source plus
 SgiRleDecode.c semantics and fixtures) shows SGI saves L/RGB/RGBA

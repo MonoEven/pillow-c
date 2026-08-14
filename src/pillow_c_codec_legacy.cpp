@@ -2809,6 +2809,1184 @@ int open_sgi_image(const char* path, PillowCImage** out_image)
     }
 }
 
+// BEHAV-DDS-001: DDS status codes local to the DDS open route; the
+// facade maps them to Pillow 11.3.0's exact error messages.
+constexpr int PILLOW_C_DDS_HDR_SIZE = -9;
+constexpr int PILLOW_C_DDS_HDR_SHORT = -10;
+constexpr int PILLOW_C_DDS_PFFLAGS = -11;
+constexpr int PILLOW_C_DDS_FOURCC = -12;
+constexpr int PILLOW_C_DDS_BITCOUNT = -13;
+constexpr int PILLOW_C_DDS_DXGI = -14;
+constexpr int PILLOW_C_DDS_TRUNC8 = -15;
+constexpr int PILLOW_C_DDS_TRUNC_RAW = -16;
+constexpr int PILLOW_C_DDS_ZERO_MASK = -17;
+constexpr int PILLOW_C_DDS_TRUNC16 = -18;
+
+namespace {
+struct dds_rgba {
+    std::uint8_t c[4];
+};
+
+std::uint16_t dds_encode_565(const std::uint8_t* c)
+{
+    const std::uint8_t r = c[0] >> (8 - 5);
+    const std::uint8_t g = c[1] >> (8 - 6);
+    const std::uint8_t b = c[2] >> (8 - 5);
+    return static_cast<std::uint16_t>((r << (5 + 6)) | (g << 5) | b);
+}
+
+void dds_decode_565(std::uint16_t x, std::uint8_t* out)
+{
+    int r = (x & 0xf800) >> 8;
+    r |= r >> 5;
+    int g = (x & 0x7e0) >> 3;
+    g |= g >> 6;
+    int b = (x & 0x1f) << 3;
+    b |= b >> 5;
+    out[0] = static_cast<std::uint8_t>(r);
+    out[1] = static_cast<std::uint8_t>(g);
+    out[2] = static_cast<std::uint8_t>(b);
+}
+
+// Port of Pillow's encode_bc1_color (BcnEncode.c), including the
+// integer-division weighting and the transparency endpoint swap.
+void dds_encode_bc1_block(
+    const PillowCImage* im,
+    int block_x,
+    int block_y,
+    std::uint8_t* dst,
+    bool separate_alpha)
+{
+    std::uint16_t color_min = 0;
+    std::uint16_t color_max = 0;
+    std::uint8_t color_min_rgb[3] = {0, 0, 0};
+    std::uint8_t color_max_rgb[3] = {0, 0, 0};
+    std::uint8_t block[16][4] = {{0}};
+    int first = 1;
+    int transparency = 0;
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            std::uint8_t* current = block[i + j * 4];
+            const int x = block_x + i;
+            const int y = block_y + j;
+            if (x >= im->width || y >= im->height) {
+                for (int k = 0; k < 3; k++) {
+                    current[k] = 0;
+                }
+                continue;
+            }
+            const std::uint8_t* px =
+                im->pixels.data() + static_cast<std::size_t>(y) * im->stride +
+                static_cast<std::size_t>(x) * static_cast<std::size_t>(im->channels);
+            for (int k = 0; k < 3; k++) {
+                current[k] = px[im->channels == 1 ? 0 : k];
+            }
+            if (separate_alpha) {
+                if (px[3] == 0) {
+                    current[3] = 0;
+                    transparency = 1;
+                    continue;
+                }
+                current[3] = 1;
+            }
+            const std::uint16_t color = dds_encode_565(current);
+            if (first || color < color_min) {
+                color_min = color;
+            }
+            if (first || color > color_max) {
+                color_max = color;
+            }
+            first = 0;
+        }
+    }
+
+    if (transparency) {
+        *dst++ = static_cast<std::uint8_t>(color_min);
+        *dst++ = static_cast<std::uint8_t>(color_min >> 8);
+    }
+    *dst++ = static_cast<std::uint8_t>(color_max);
+    *dst++ = static_cast<std::uint8_t>(color_max >> 8);
+    if (!transparency) {
+        *dst++ = static_cast<std::uint8_t>(color_min);
+        *dst++ = static_cast<std::uint8_t>(color_min >> 8);
+    }
+
+    dds_decode_565(color_min, color_min_rgb);
+    dds_decode_565(color_max, color_max_rgb);
+    for (int i = 0; i < 4; i++) {
+        std::uint8_t l = 0;
+        for (int j = 3; j > -1; j--) {
+            const std::uint8_t* current = block[i * 4 + j];
+            if (transparency && !current[3]) {
+                l |= 3 << (j * 2);
+                continue;
+            }
+            float distance = 0;
+            int total = 0;
+            for (int k = 0; k < 3; k++) {
+                const float denom =
+                    static_cast<float>(std::abs(color_max_rgb[k] - color_min_rgb[k]));
+                if (denom != 0) {
+                    distance += std::abs(static_cast<int>(current[k]) - static_cast<int>(color_min_rgb[k])) /
+                        denom;
+                    total += 1;
+                }
+            }
+            if (total == 0) {
+                continue;
+            }
+            if (transparency) {
+                distance *= 4 / total;
+                if (distance < 1) {
+                    // color_max
+                } else if (distance < 3) {
+                    l |= 2 << (j * 2);
+                } else {
+                    l |= 1 << (j * 2);
+                }
+            } else {
+                distance *= 6 / total;
+                if (distance < 1) {
+                    l |= 1 << (j * 2);
+                } else if (distance < 3) {
+                    l |= 3 << (j * 2);
+                } else if (distance < 5) {
+                    l |= 2 << (j * 2);
+                } else {
+                    // color_max
+                }
+            }
+        }
+        *dst++ = l;
+    }
+}
+
+// Port of Pillow's encode_bc2_block (BcnEncode.c).
+void dds_encode_bc2_block(const PillowCImage* im, int block_x, int block_y, std::uint8_t* dst)
+{
+    std::uint8_t block[16] = {0};
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            const int x = block_x + i;
+            const int y = block_y + j;
+            if (x >= im->width || y >= im->height) {
+                block[i + j * 4] = 0;
+                continue;
+            }
+            block[i + j * 4] = im->pixels[static_cast<std::size_t>(y) * im->stride +
+                                         static_cast<std::size_t>(x) * static_cast<std::size_t>(im->channels) + 3u];
+        }
+    }
+    for (int i = 0; i < 4; i++) {
+        std::uint16_t l = 0;
+        for (int j = 3; j > -1; j--) {
+            l |= static_cast<std::uint16_t>(block[i * 4 + j]) << (j * 4);
+        }
+        *dst++ = static_cast<std::uint8_t>(l);
+        *dst++ = static_cast<std::uint8_t>(l >> 8);
+    }
+}
+
+// Port of Pillow's encode_bc3_alpha (BcnEncode.c).
+void dds_encode_bc3_alpha(
+    const PillowCImage* im,
+    int block_x,
+    int block_y,
+    std::uint8_t* dst,
+    int channel)
+{
+    std::uint8_t alpha_min = 0;
+    std::uint8_t alpha_max = 0;
+    std::uint8_t block[16] = {0};
+    int first = 1;
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            const int x = block_x + i;
+            const int y = block_y + j;
+            if (x >= im->width || y >= im->height) {
+                block[i + j * 4] = 0;
+                continue;
+            }
+            const std::uint8_t current =
+                im->pixels[static_cast<std::size_t>(y) * im->stride +
+                           static_cast<std::size_t>(x) * static_cast<std::size_t>(im->channels) +
+                           static_cast<std::size_t>(channel)];
+            block[i + j * 4] = current;
+            if (first || current < alpha_min) {
+                alpha_min = current;
+            }
+            if (first || current > alpha_max) {
+                alpha_max = current;
+            }
+            first = 0;
+        }
+    }
+    *dst++ = alpha_min;
+    *dst++ = alpha_max;
+    const float denom = static_cast<float>(std::abs(static_cast<int>(alpha_max) - static_cast<int>(alpha_min)));
+    for (int i = 0; i < 2; i++) {
+        std::uint32_t l = 0;
+        for (int j = 7; j > -1; j--) {
+            const std::uint8_t current = block[i * 8 + j];
+            if (!current) {
+                l |= 6u << (j * 3);
+                continue;
+            }
+            if (current == 255) {
+                l |= 7u << (j * 3);
+                continue;
+            }
+            const float distance =
+                denom == 0 ? 0 : std::abs(static_cast<int>(current) - static_cast<int>(alpha_min)) / denom * 10;
+            if (distance < 3) {
+                l |= 2u << (j * 3);
+            } else if (distance < 5) {
+                l |= 3u << (j * 3);
+            } else if (distance < 7) {
+                l |= 4u << (j * 3);
+            } else {
+                l |= 5u << (j * 3);
+            }
+        }
+        *dst++ = static_cast<std::uint8_t>(l);
+        *dst++ = static_cast<std::uint8_t>(l >> 8);
+        *dst++ = static_cast<std::uint8_t>(l >> 16);
+    }
+}
+
+// ---- BCN decode (port of Pillow's BcnDecode.c) ----
+
+void dds_decode_bc1_color(dds_rgba* dst, const std::uint8_t* src, int separate_alpha)
+{
+    const std::uint16_t c0 = static_cast<std::uint16_t>(src[0] | (src[1] << 8));
+    const std::uint16_t c1 = static_cast<std::uint16_t>(src[2] | (src[3] << 8));
+    dds_rgba p[4];
+    p[0] = dds_rgba{{0, 0, 0, 0}};
+    p[1] = dds_rgba{{0, 0, 0, 0}};
+    p[2] = dds_rgba{{0, 0, 0, 0}};
+    p[3] = dds_rgba{{0, 0, 0, 0}};
+    dds_decode_565(c0, p[0].c);
+    p[0].c[3] = 0xff;
+    const std::uint16_t r0 = p[0].c[0];
+    const std::uint16_t g0 = p[0].c[1];
+    const std::uint16_t b0 = p[0].c[2];
+    dds_decode_565(c1, p[1].c);
+    p[1].c[3] = 0xff;
+    const std::uint16_t r1 = p[1].c[0];
+    const std::uint16_t g1 = p[1].c[1];
+    const std::uint16_t b1 = p[1].c[2];
+    if (c0 > c1 || separate_alpha) {
+        p[2].c[0] = static_cast<std::uint8_t>((2 * r0 + 1 * r1) / 3);
+        p[2].c[1] = static_cast<std::uint8_t>((2 * g0 + 1 * g1) / 3);
+        p[2].c[2] = static_cast<std::uint8_t>((2 * b0 + 1 * b1) / 3);
+        p[2].c[3] = 0xff;
+        p[3].c[0] = static_cast<std::uint8_t>((1 * r0 + 2 * r1) / 3);
+        p[3].c[1] = static_cast<std::uint8_t>((1 * g0 + 2 * g1) / 3);
+        p[3].c[2] = static_cast<std::uint8_t>((1 * b0 + 2 * b1) / 3);
+        p[3].c[3] = 0xff;
+    } else {
+        p[2].c[0] = static_cast<std::uint8_t>((r0 + r1) / 2);
+        p[2].c[1] = static_cast<std::uint8_t>((g0 + g1) / 2);
+        p[2].c[2] = static_cast<std::uint8_t>((b0 + b1) / 2);
+        p[2].c[3] = 0xff;
+        p[3].c[0] = 0;
+        p[3].c[1] = 0;
+        p[3].c[2] = 0;
+        p[3].c[3] = 0;
+    }
+    for (int n = 0; n < 4; n++) {
+        for (int o = 0; o < 4; o++) {
+            const int cw = 3 & (src[4 + n] >> (2 * o));
+            dst[n * 4 + o] = p[cw];
+        }
+    }
+}
+
+void dds_decode_bc3_alpha(std::uint8_t* dst, const std::uint8_t* src, int stride, int o, int sign)
+{
+    std::uint16_t a0;
+    std::uint16_t a1;
+    std::uint8_t a[8];
+    std::uint32_t lut1;
+    std::uint32_t lut2;
+    if (sign == 1) {
+        a0 = static_cast<std::uint16_t>(static_cast<int8_t>(src[0]) + 128);
+        a1 = static_cast<std::uint16_t>(static_cast<int8_t>(src[1]) + 128);
+    } else {
+        a0 = src[0];
+        a1 = src[1];
+    }
+    lut1 = src[2] | (src[3] << 8) | (src[4] << 16);
+    lut2 = src[5] | (src[6] << 8) | (src[7] << 16);
+    a[0] = static_cast<std::uint8_t>(a0);
+    a[1] = static_cast<std::uint8_t>(a1);
+    if (a0 > a1) {
+        a[2] = static_cast<std::uint8_t>((6 * a0 + 1 * a1) / 7);
+        a[3] = static_cast<std::uint8_t>((5 * a0 + 2 * a1) / 7);
+        a[4] = static_cast<std::uint8_t>((4 * a0 + 3 * a1) / 7);
+        a[5] = static_cast<std::uint8_t>((3 * a0 + 4 * a1) / 7);
+        a[6] = static_cast<std::uint8_t>((2 * a0 + 5 * a1) / 7);
+        a[7] = static_cast<std::uint8_t>((1 * a0 + 6 * a1) / 7);
+    } else {
+        a[2] = static_cast<std::uint8_t>((4 * a0 + 1 * a1) / 5);
+        a[3] = static_cast<std::uint8_t>((3 * a0 + 2 * a1) / 5);
+        a[4] = static_cast<std::uint8_t>((2 * a0 + 3 * a1) / 5);
+        a[5] = static_cast<std::uint8_t>((1 * a0 + 4 * a1) / 5);
+        a[6] = 0;
+        a[7] = 0xff;
+    }
+    for (int n = 0; n < 8; n++) {
+        const int aw = 7 & (lut1 >> (3 * n));
+        dst[stride * n + o] = a[aw];
+    }
+    for (int n = 0; n < 8; n++) {
+        const int aw = 7 & (lut2 >> (3 * n));
+        dst[stride * (8 + n) + o] = a[aw];
+    }
+}
+
+void dds_decode_bc2_block(dds_rgba* col, const std::uint8_t* src)
+{
+    dds_decode_bc1_color(col, src + 8, 1);
+    for (int n = 0; n < 16; n++) {
+        const int bit_i = n * 4;
+        const int by_i = bit_i >> 3;
+        int av = 0xf & (src[by_i] >> (bit_i & 7));
+        av = (av << 4) | av;
+        col[n].c[3] = static_cast<std::uint8_t>(av);
+    }
+}
+
+void dds_decode_bc3_block(dds_rgba* col, const std::uint8_t* src)
+{
+    dds_decode_bc1_color(col, src + 8, 1);
+    dds_decode_bc3_alpha(
+        reinterpret_cast<std::uint8_t*>(col), src, static_cast<int>(sizeof(col[0])), 3, 0);
+}
+
+void dds_decode_bc4_block(std::uint8_t* col, const std::uint8_t* src)
+{
+    dds_decode_bc3_alpha(col, src, 1, 0, 0);
+}
+
+void dds_decode_bc5_block(dds_rgba* col, const std::uint8_t* src, int sign)
+{
+    dds_decode_bc3_alpha(
+        reinterpret_cast<std::uint8_t*>(col), src, static_cast<int>(sizeof(col[0])), 0, sign);
+    dds_decode_bc3_alpha(
+        reinterpret_cast<std::uint8_t*>(col), src + 8, static_cast<int>(sizeof(col[0])), 1, sign);
+}
+
+// ---- BC6/BC7 decode (port of Pillow's BcnDecode.c) ----
+
+std::uint8_t dds_get_bit(const std::uint8_t* src, int bit, std::size_t size)
+{
+    const int by = bit >> 3;
+    bit &= 7;
+    if (static_cast<std::size_t>(by) >= size) {
+        return 0;
+    }
+    return static_cast<std::uint8_t>((src[by] >> bit) & 1);
+}
+
+std::uint8_t dds_get_bits(const std::uint8_t* src, int bit, int count, std::size_t size)
+{
+    if (!count) {
+        return 0;
+    }
+    const int by = bit >> 3;
+    bit &= 7;
+    if (static_cast<std::size_t>(by) >= size) {
+        return 0;
+    }
+    if (bit + count <= 8) {
+        return static_cast<std::uint8_t>((src[by] >> bit) & ((1 << count) - 1));
+    }
+    std::uint16_t x = src[by];
+    if (static_cast<std::size_t>(by + 1) < size) {
+        x |= static_cast<std::uint16_t>(src[by + 1]) << 8;
+    }
+    return static_cast<std::uint8_t>((x >> bit) & ((1 << count) - 1));
+}
+
+struct dds_bc7_mode_info {
+    char ns;
+    char pb;
+    char rb;
+    char isb;
+    char cb;
+    char ab;
+    char epb;
+    char spb;
+    char ib;
+    char ib2;
+};
+
+const dds_bc7_mode_info dds_bc7_modes[] = {
+    {3, 4, 0, 0, 4, 0, 1, 0, 3, 0},
+    {2, 6, 0, 0, 6, 0, 0, 1, 3, 0},
+    {3, 6, 0, 0, 5, 0, 0, 0, 2, 0},
+    {2, 6, 0, 0, 7, 0, 1, 0, 2, 0},
+    {1, 0, 2, 1, 5, 6, 0, 0, 2, 3},
+    {1, 0, 2, 0, 7, 8, 0, 0, 2, 2},
+    {1, 0, 0, 0, 7, 7, 1, 0, 4, 0},
+    {2, 6, 0, 0, 5, 5, 1, 0, 2, 0}};
+
+const std::uint16_t dds_bc7_si2[] = {
+    0xcccc, 0x8888, 0xeeee, 0xecc8, 0xc880, 0xfeec, 0xfec8, 0xec80, 0xc800, 0xffec,
+    0xfe80, 0xe800, 0xffe8, 0xff00, 0xfff0, 0xf000, 0xf710, 0x008e, 0x7100, 0x08ce,
+    0x008c, 0x7310, 0x3100, 0x8cce, 0x088c, 0x3110, 0x6666, 0x366c, 0x17e8, 0x0ff0,
+    0x718e, 0x399c, 0xaaaa, 0xf0f0, 0x5a5a, 0x33cc, 0x3c3c, 0x55aa, 0x9696, 0xa55a,
+    0x73ce, 0x13c8, 0x324c, 0x3bdc, 0x6996, 0xc33c, 0x9966, 0x0660, 0x0272, 0x04e4,
+    0x4e40, 0x2720, 0xc936, 0x936c, 0x39c6, 0x639c, 0x9336, 0x9cc6, 0x817e, 0xe718,
+    0xccf0, 0x0fcc, 0x7744, 0xee22};
+
+const std::uint32_t dds_bc7_si3[] = {
+    0xaa685050, 0x6a5a5040, 0x5a5a4200, 0x5450a0a8, 0xa5a50000, 0xa0a05050, 0x5555a0a0,
+    0x5a5a5050, 0xaa550000, 0xaa555500, 0xaaaa5500, 0x90909090, 0x94949494, 0xa4a4a4a4,
+    0xa9a59450, 0x2a0a4250, 0xa5945040, 0x0a425054, 0xa5a5a500, 0x55a0a0a0, 0xa8a85454,
+    0x6a6a4040, 0xa4a45000, 0x1a1a0500, 0x0050a4a4, 0xaaa59090, 0x14696914, 0x69691400,
+    0xa08585a0, 0xaa821414, 0x50a4a450, 0x6a5a0200, 0xa9a58000, 0x5090a0a8, 0xa8a09050,
+    0x24242424, 0x00aa5500, 0x24924924, 0x24499224, 0x50a50a50, 0x500aa550, 0xaaaa4444,
+    0x66660000, 0xa5a0a5a0, 0x50a050a0, 0x69286928, 0x44aaaa44, 0x66666600, 0xaa444444,
+    0x54a854a8, 0x95809580, 0x96969600, 0xa85454a8, 0x80959580, 0xaa141414, 0x96960000,
+    0xaaaa1414, 0xa05050a0, 0xa0a5a5a0, 0x96000000, 0x40804080, 0xa9a8a9a8, 0xaaaaaa44,
+    0x2a4a5254};
+
+const char dds_bc7_ai0[] = {15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+                            15, 15, 15, 15, 2,  8,  2,  2,  8,  8,  15, 2,  8,
+                            2,  2,  8,  8,  2,  2,  15, 15, 6,  8,  2,  8,  15,
+                            15, 2,  8,  2,  2,  2,  15, 15, 6,  6,  2,  6,  8,
+                            15, 15, 2,  2,  15, 15, 15, 15, 15, 2,  2,  15};
+
+const char dds_bc7_ai1[] = {3,  3,  15, 15, 8,  3,  15, 15, 8,  8,  6,  6,  6,
+                            5,  3,  3,  3,  3,  8,  15, 3,  3,  6,  10, 5,  8,
+                            8,  6,  8,  5,  15, 15, 8,  15, 3,  5,  6,  10, 8,
+                            15, 15, 3,  15, 5,  15, 15, 15, 15, 3,  15, 5,  5,
+                            5,  8,  5,  10, 5,  10, 8,  13, 15, 12, 3,  3};
+
+const char dds_bc7_ai2[] = {15, 8,  8,  3,  15, 15, 3,  8,  15, 15, 15, 15, 15,
+                            15, 15, 8,  15, 8,  15, 3,  15, 8,  15, 8,  3,  15,
+                            6,  10, 15, 15, 10, 8,  15, 3,  15, 10, 10, 8,  9,
+                            10, 6,  15, 8,  15, 3,  6,  6,  8,  15, 3,  15, 15,
+                            15, 15, 15, 15, 15, 15, 15, 15, 3,  15, 15, 8};
+
+const char dds_bc7_weights2[] = {0, 21, 43, 64};
+const char dds_bc7_weights3[] = {0, 9, 18, 27, 37, 46, 55, 64};
+const char dds_bc7_weights4[] = {
+    0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64};
+
+const char* dds_bc7_get_weights(int n)
+{
+    if (n == 2) {
+        return dds_bc7_weights2;
+    }
+    if (n == 3) {
+        return dds_bc7_weights3;
+    }
+    return dds_bc7_weights4;
+}
+
+int dds_bc7_get_subset(int ns, int partition, int n)
+{
+    if (ns == 2) {
+        return 1 & (dds_bc7_si2[partition] >> n);
+    }
+    if (ns == 3) {
+        return 3 & (dds_bc7_si3[partition] >> (2 * n));
+    }
+    return 0;
+}
+
+std::uint8_t dds_expand_quantized(std::uint8_t v, int bits)
+{
+    v = static_cast<std::uint8_t>(v << (8 - bits));
+    return static_cast<std::uint8_t>(v | (v >> bits));
+}
+
+void dds_bc7_lerp(dds_rgba* dst, const dds_rgba* e, int s0, int s1)
+{
+    const int t0 = 64 - s0;
+    const int t1 = 64 - s1;
+    dst->c[0] = static_cast<std::uint8_t>((t0 * e[0].c[0] + s0 * e[1].c[0] + 32) >> 6);
+    dst->c[1] = static_cast<std::uint8_t>((t0 * e[0].c[1] + s0 * e[1].c[1] + 32) >> 6);
+    dst->c[2] = static_cast<std::uint8_t>((t0 * e[0].c[2] + s0 * e[1].c[2] + 32) >> 6);
+    dst->c[3] = static_cast<std::uint8_t>((t1 * e[0].c[3] + s1 * e[1].c[3] + 32) >> 6);
+}
+
+void dds_decode_bc7_block(dds_rgba* col, const std::uint8_t* src, std::size_t size)
+{
+    dds_rgba endpoints[6];
+    int bit = 0;
+    int cibit;
+    int aibit;
+    const int mode0 = src[0];
+    if (!mode0) {
+        for (int i = 0; i < 16; i++) {
+            col[i].c[0] = col[i].c[1] = col[i].c[2] = 0;
+            col[i].c[3] = 255;
+        }
+        return;
+    }
+    while (!(mode0 & (1 << bit))) {
+        bit++;
+    }
+    const int mode = bit;
+    bit = mode + 1;  // the C post-increment leaves the fields after the mode bits
+    const dds_bc7_mode_info* info = &dds_bc7_modes[mode];
+    const int cb = info->cb;
+    const int ab = info->ab;
+    const char* cw = dds_bc7_get_weights(info->ib);
+    const char* aw = dds_bc7_get_weights((ab && info->ib2) ? info->ib2 : info->ib);
+    const int pb = info->pb;
+    const int rb = info->rb;
+    const int isb = info->isb;
+    int partition = 0;
+    int rotation = 0;
+    int index_sel = 0;
+    if (pb) {
+        partition = dds_get_bits(src, bit, pb, size);
+        bit += pb;
+    }
+    if (rb) {
+        rotation = dds_get_bits(src, bit, rb, size);
+        bit += rb;
+    }
+    if (isb) {
+        index_sel = dds_get_bits(src, bit, isb, size);
+        bit += isb;
+    }
+    const int numep = info->ns << 1;
+    for (int i = 0; i < numep; i++) {
+        endpoints[i].c[0] = dds_get_bits(src, bit, cb, size);
+        bit += cb;
+    }
+    for (int i = 0; i < numep; i++) {
+        endpoints[i].c[1] = dds_get_bits(src, bit, cb, size);
+        bit += cb;
+    }
+    for (int i = 0; i < numep; i++) {
+        endpoints[i].c[2] = dds_get_bits(src, bit, cb, size);
+        bit += cb;
+    }
+    for (int i = 0; i < numep; i++) {
+        endpoints[i].c[3] = ab ? dds_get_bits(src, bit, ab, size) : 255;
+        if (ab) {
+            bit += ab;
+        }
+    }
+    if (info->epb) {
+        for (int i = 0; i < numep; i++) {
+            const std::uint8_t val = dds_get_bit(src, bit, size);
+            bit += 1;
+            endpoints[i].c[0] = static_cast<std::uint8_t>((endpoints[i].c[0] << 1) | val);
+            endpoints[i].c[1] = static_cast<std::uint8_t>((endpoints[i].c[1] << 1) | val);
+            endpoints[i].c[2] = static_cast<std::uint8_t>((endpoints[i].c[2] << 1) | val);
+            if (ab) {
+                endpoints[i].c[3] = static_cast<std::uint8_t>((endpoints[i].c[3] << 1) | val);
+            }
+        }
+    }
+    if (info->spb) {
+        for (int i = 0; i < numep; i += 2) {
+            const std::uint8_t val = dds_get_bit(src, bit, size);
+            bit += 1;
+            for (int j = 0; j < 2; j++) {
+                endpoints[i + j].c[0] = static_cast<std::uint8_t>((endpoints[i + j].c[0] << 1) | val);
+                endpoints[i + j].c[1] = static_cast<std::uint8_t>((endpoints[i + j].c[1] << 1) | val);
+                endpoints[i + j].c[2] = static_cast<std::uint8_t>((endpoints[i + j].c[2] << 1) | val);
+                if (ab) {
+                    endpoints[i + j].c[3] = static_cast<std::uint8_t>((endpoints[i + j].c[3] << 1) | val);
+                }
+            }
+        }
+    }
+    const int ecb = cb + (info->epb ? 1 : 0) + (info->spb ? 1 : 0);
+    const int eab = ab + (info->epb ? 1 : 0) + (info->spb ? 1 : 0);
+    for (int i = 0; i < numep; i++) {
+        endpoints[i].c[0] = dds_expand_quantized(endpoints[i].c[0], ecb);
+        endpoints[i].c[1] = dds_expand_quantized(endpoints[i].c[1], ecb);
+        endpoints[i].c[2] = dds_expand_quantized(endpoints[i].c[2], ecb);
+        if (ab) {
+            endpoints[i].c[3] = dds_expand_quantized(endpoints[i].c[3], eab);
+        }
+    }
+    cibit = bit;
+    aibit = cibit + 16 * info->ib - info->ns;
+    for (int i = 0; i < 16; i++) {
+        const int s = dds_bc7_get_subset(info->ns, partition, i) << 1;
+        int ib = info->ib;
+        if (i == 0) {
+            ib--;
+        } else if (info->ns == 2) {
+            if (i == dds_bc7_ai0[partition]) {
+                ib--;
+            }
+        } else if (info->ns == 3) {
+            if (i == dds_bc7_ai1[partition]) {
+                ib--;
+            } else if (i == dds_bc7_ai2[partition]) {
+                ib--;
+            }
+        }
+        const int i0 = dds_get_bits(src, cibit, ib, size);
+        cibit += ib;
+        if (ab && info->ib2) {
+            int ib2 = info->ib2;
+            if (ib2 && i == 0) {
+                ib2--;
+            }
+            const int i1 = dds_get_bits(src, aibit, ib2, size);
+            aibit += ib2;
+            if (index_sel) {
+                dds_bc7_lerp(&col[i], &endpoints[s], aw[i1], cw[i0]);
+            } else {
+                dds_bc7_lerp(&col[i], &endpoints[s], cw[i0], aw[i1]);
+            }
+        } else {
+            dds_bc7_lerp(&col[i], &endpoints[s], cw[i0], cw[i0]);
+        }
+        if (rotation == 1) {
+            std::swap(col[i].c[0], col[i].c[3]);
+        } else if (rotation == 2) {
+            std::swap(col[i].c[1], col[i].c[3]);
+        } else if (rotation == 3) {
+            std::swap(col[i].c[2], col[i].c[3]);
+        }
+    }
+}
+void dds_bcn_put_block(
+    PillowCImage* image,
+    int block_x,
+    int block_y,
+    const dds_rgba* col,
+    int channels)
+{
+    for (int j = 0; j < 4; j++) {
+        const int y = block_y + j;
+        if (y >= image->height) {
+            continue;
+        }
+        std::uint8_t* dst_row =
+            image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+        for (int i = 0; i < 4; i++) {
+            const int x = block_x + i;
+            if (x >= image->width) {
+                continue;
+            }
+            const dds_rgba& px = col[j * 4 + i];
+            std::uint8_t* dst =
+                dst_row + static_cast<std::size_t>(x) * static_cast<std::size_t>(channels);
+            for (int c = 0; c < channels; c++) {
+                dst[c] = px.c[c];
+            }
+        }
+    }
+}
+}  // namespace
+
+int save_dds_image(const PillowCImage* image, const char* path, const char* pixel_format)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    int channels = 0;
+    if (image->mode == PILLOW_C_MODE_L && image->channels == 1) {
+        channels = 1;
+    } else if (image->mode == PILLOW_C_MODE_LA && image->channels == 2) {
+        channels = 2;
+    } else if (image->mode == PILLOW_C_MODE_RGB && image->channels == 3) {
+        channels = 3;
+    } else if (image->mode == PILLOW_C_MODE_RGBA && image->channels == 4) {
+        channels = 4;
+    } else {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = pillow_c_refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+    const char* fmt = pixel_format ? pixel_format : "";
+    int n = 0;
+    std::uint32_t fourcc = 0;
+    bool dx10 = false;
+    std::uint32_t dxgi = 0;
+    if (fmt[0] == 0) {
+        // raw
+    } else if (std::strcmp(fmt, "DXT1") == 0) {
+        fourcc = 0x31545844;
+        n = 1;
+    } else if (std::strcmp(fmt, "DXT3") == 0) {
+        fourcc = 0x33545844;
+        n = 2;
+    } else if (std::strcmp(fmt, "DXT5") == 0) {
+        fourcc = 0x35545844;
+        n = 3;
+    } else if (std::strcmp(fmt, "BC2") == 0) {
+        fourcc = 0x30315844;
+        dx10 = true;
+        dxgi = 73;
+        n = 2;
+    } else if (std::strcmp(fmt, "BC3") == 0) {
+        fourcc = 0x30315844;
+        dx10 = true;
+        dxgi = 76;
+        n = 3;
+    } else if (std::strcmp(fmt, "BC5") == 0) {
+        fourcc = 0x30315844;
+        dx10 = true;
+        dxgi = 82;
+        n = 5;
+    } else {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        const std::uint32_t bitcount = static_cast<std::uint32_t>(channels) * 8u;
+        std::uint32_t flags = 0x1u | 0x2u | 0x4u | 0x1000u;
+        std::uint32_t pitch = 0;
+        std::uint32_t pfflags = 0;
+        std::uint32_t masks[4] = {0, 0, 0, 0};
+        const bool alpha = image->mode == PILLOW_C_MODE_RGBA || image->mode == PILLOW_C_MODE_LA;
+        if (fmt[0] == 0) {
+            flags |= 0x8u;
+            pitch = (static_cast<std::uint32_t>(image->width) * bitcount + 7u) / 8u;
+            if (image->mode == PILLOW_C_MODE_L || image->mode == PILLOW_C_MODE_LA) {
+                pfflags = 0x20000u;
+                masks[0] = masks[1] = masks[2] = alpha ? 0xFFu : 0xFF000000u;
+            } else {
+                pfflags = 0x40u;
+                masks[0] = 0x00FF0000u;
+                masks[1] = 0x0000FF00u;
+                masks[2] = 0x000000FFu;
+            }
+            if (alpha) {
+                pfflags |= 0x1u;
+            }
+            masks[3] = alpha ? 0xFF000000u : 0u;
+        } else {
+            flags |= 0x80000u;
+            pitch = (static_cast<std::uint32_t>(image->width) + 3u) * 4u;
+            pfflags = 0x4u;
+        }
+
+        std::vector<std::uint8_t> out;
+        const std::size_t payload_bytes = fmt[0] == 0
+            ? static_cast<std::size_t>(pitch) * static_cast<std::size_t>(image->height)
+            : static_cast<std::size_t>((image->width + 3) / 4) *
+                static_cast<std::size_t>((image->height + 3) / 4) *
+                (n == 1 ? 8u : 16u);
+        out.reserve(148u + payload_bytes);
+        append_le32(out, 0x20534444u);
+        append_le32(out, 124u);
+        append_le32(out, flags);
+        append_le32(out, static_cast<std::uint32_t>(image->height));
+        append_le32(out, static_cast<std::uint32_t>(image->width));
+        append_le32(out, pitch);
+        append_le32(out, 0u);
+        append_le32(out, 0u);
+        for (int i = 0; i < 11; ++i) {
+            append_le32(out, 0u);
+        }
+        append_le32(out, 32u);
+        append_le32(out, pfflags);
+        append_le32(out, fourcc);
+        append_le32(out, bitcount);
+        for (int i = 0; i < 4; ++i) {
+            append_le32(out, masks[i]);
+        }
+        append_le32(out, 0x1000u);
+        for (int i = 0; i < 4; ++i) {
+            append_le32(out, 0u);
+        }
+        if (dx10) {
+            append_le32(out, dxgi);
+            append_le32(out, 3u);
+            append_le32(out, 0u);
+            append_le32(out, 0u);
+            append_le32(out, 1u);
+        }
+
+        if (fmt[0] == 0) {
+            for (int y = 0; y < image->height; ++y) {
+                const std::uint8_t* src_row =
+                    image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+                for (int x = 0; x < image->width; ++x) {
+                    const std::uint8_t* px =
+                        src_row + static_cast<std::size_t>(x) * static_cast<std::size_t>(channels);
+                    if (channels == 1) {
+                        out.push_back(px[0]);
+                    } else if (channels == 2) {
+                        out.push_back(px[0]);
+                        out.push_back(px[1]);
+                    } else if (channels == 3) {
+                        out.push_back(px[2]);
+                        out.push_back(px[1]);
+                        out.push_back(px[0]);
+                    } else {
+                        // Pillow merges (a, r, g, b) bands and the raw
+                        // encoder reverses them: B, G, R, A per pixel.
+                        out.push_back(px[2]);
+                        out.push_back(px[1]);
+                        out.push_back(px[0]);
+                        out.push_back(px[3]);
+                    }
+                }
+            }
+        } else {
+            const bool has_alpha = channels == 4 || channels == 2;
+            for (int by = 0; by < image->height; by += 4) {
+                for (int bx = 0; bx < image->width; bx += 4) {
+                    if (n == 5) {
+                        std::uint8_t block[16];
+                        dds_encode_bc3_alpha(image, bx, by, block, 0);
+                        dds_encode_bc3_alpha(image, bx, by, block + 8, 1);
+                        out.insert(out.end(), block, block + 16);
+                    } else {
+                        if (n == 2 || n == 3) {
+                            if (has_alpha) {
+                                std::uint8_t block[8];
+                                if (n == 2) {
+                                    dds_encode_bc2_block(image, bx, by, block);
+                                } else {
+                                    dds_encode_bc3_alpha(image, bx, by, block, 3);
+                                }
+                                out.insert(out.end(), block, block + 8);
+                            } else {
+                                for (int i = 0; i < 8; i++) {
+                                    out.push_back(0xff);
+                                }
+                            }
+                        }
+                        std::uint8_t block[8];
+                        dds_encode_bc1_block(image, bx, by, block, n == 1 && has_alpha);
+                        out.insert(out.end(), block, block + 8);
+                    }
+                }
+            }
+        }
+
+        if (!write_binary_file(path, out)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int open_dds_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() < 8u || std::memcmp(data.data(), "DDS ", 4) != 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::uint32_t header_size = read_le32(data.data() + 4u);
+        if (header_size != 124u) {
+            return PILLOW_C_DDS_HDR_SIZE;
+        }
+        if (data.size() < 128u) {
+            return PILLOW_C_DDS_HDR_SHORT;
+        }
+        const int height = static_cast<int>(read_le32(data.data() + 12u));
+        const int width = static_cast<int>(read_le32(data.data() + 16u));
+        const std::uint32_t pfflags = read_le32(data.data() + 80u);
+        const std::uint32_t fourcc = read_le32(data.data() + 84u);
+        const std::uint32_t bitcount = read_le32(data.data() + 88u);
+        if (width <= 0 || height <= 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        int mode = 0;
+        int channels = 0;
+        int n = 0;
+        int sign = 0;
+        std::size_t data_offset = 128u;
+        int kind = 0;  // 0 raw, 1 masks, 2 p8, 3 bcn
+        std::uint32_t masks[4] = {0, 0, 0, 0};
+        if ((pfflags & 0x40u) != 0u) {
+            kind = 1;
+            const int mask_count = (pfflags & 0x1u) != 0u ? 4 : 3;
+            channels = mask_count;
+            mode = mask_count == 4 ? PILLOW_C_MODE_RGBA : PILLOW_C_MODE_RGB;
+            for (int i = 0; i < mask_count; ++i) {
+                masks[i] = read_le32(data.data() + 92u + static_cast<std::size_t>(i) * 4u);
+            }
+        } else if ((pfflags & 0x20000u) != 0u) {
+            kind = 0;
+            if (bitcount == 8u) {
+                mode = PILLOW_C_MODE_L;
+                channels = 1;
+            } else if (bitcount == 16u && (pfflags & 0x1u) != 0u) {
+                mode = PILLOW_C_MODE_LA;
+                channels = 2;
+            } else {
+                return PILLOW_C_DDS_BITCOUNT;
+            }
+        } else if ((pfflags & 0x20u) != 0u) {
+            kind = 2;
+            mode = PILLOW_C_MODE_P;
+            channels = 1;
+        } else if ((pfflags & 0x4u) != 0u) {
+            kind = 3;
+            if (fourcc == 0x31545844u) {
+                mode = PILLOW_C_MODE_RGBA;
+                channels = 4;
+                n = 1;
+            } else if (fourcc == 0x33545844u) {
+                mode = PILLOW_C_MODE_RGBA;
+                channels = 4;
+                n = 2;
+            } else if (fourcc == 0x35545844u) {
+                mode = PILLOW_C_MODE_RGBA;
+                channels = 4;
+                n = 3;
+            } else if (fourcc == 0x55344342u || fourcc == 0x31495441u) {
+                mode = PILLOW_C_MODE_L;
+                channels = 1;
+                n = 4;
+            } else if (fourcc == 0x53354342u) {
+                mode = PILLOW_C_MODE_RGB;
+                channels = 3;
+                n = 5;
+                sign = 1;
+            } else if (fourcc == 0x55354342u || fourcc == 0x32495441u) {
+                mode = PILLOW_C_MODE_RGB;
+                channels = 3;
+                n = 5;
+            } else if (fourcc == 0x30315844u) {
+                data_offset = 148u;
+                if (data.size() < 148u) {
+                    return PILLOW_C_DDS_TRUNC16;
+                }
+                const std::uint32_t dxgi = read_le32(data.data() + 128u);
+                if (dxgi == 70u || dxgi == 71u) {
+                    mode = PILLOW_C_MODE_RGBA;
+                    channels = 4;
+                    n = 1;
+                } else if (dxgi == 73u || dxgi == 74u) {
+                    mode = PILLOW_C_MODE_RGBA;
+                    channels = 4;
+                    n = 2;
+                } else if (dxgi == 76u || dxgi == 77u) {
+                    mode = PILLOW_C_MODE_RGBA;
+                    channels = 4;
+                    n = 3;
+                } else if (dxgi == 79u || dxgi == 80u) {
+                    mode = PILLOW_C_MODE_L;
+                    channels = 1;
+                    n = 4;
+                } else if (dxgi == 82u || dxgi == 83u) {
+                    mode = PILLOW_C_MODE_RGB;
+                    channels = 3;
+                    n = 5;
+                } else if (dxgi == 84u) {
+                    mode = PILLOW_C_MODE_RGB;
+                    channels = 3;
+                    n = 5;
+                    sign = 1;
+                } else if (dxgi == 97u || dxgi == 98u || dxgi == 99u) {
+                    mode = PILLOW_C_MODE_RGBA;
+                    channels = 4;
+                    n = 7;
+                } else if (dxgi == 27u || dxgi == 28u || dxgi == 29u) {
+                    kind = 0;
+                    mode = PILLOW_C_MODE_RGBA;
+                    channels = 4;
+                } else {
+                    return PILLOW_C_DDS_DXGI;
+                }
+            } else {
+                return PILLOW_C_DDS_FOURCC;
+            }
+        } else {
+            return PILLOW_C_DDS_PFFLAGS;
+        }
+
+        std::size_t image_stride = 0;
+        std::size_t image_size = 0;
+        if (!checked_image_size(width, height, channels, &image_stride, &image_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        auto* image = new PillowCImage{
+            width,
+            height,
+            mode,
+            channels,
+            image_stride,
+            std::vector<std::uint8_t>(image_size)};
+
+        if (kind == 1) {
+            // dds_rgb mask decode: bitcount/8 bytes per pixel (LE), mask
+            // offset/total scaling with Python's float division then int().
+            for (int i = 0; i < channels; ++i) {
+                std::uint64_t m = masks[i];
+                int offset = 0;
+                while (m != 0u && ((m >> (offset + 1)) << (offset + 1)) == m) {
+                    ++offset;
+                }
+                const std::uint64_t total = m >> offset;
+                if (total == 0u) {
+                    delete image;
+                    return PILLOW_C_DDS_ZERO_MASK;
+                }
+            }
+            const std::size_t bytecount = bitcount / 8u;
+            std::size_t pos = data_offset;
+            const std::size_t pixel_count =
+                static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+            std::vector<std::uint8_t> scaled;
+            scaled.reserve(pixel_count * static_cast<std::size_t>(channels));
+            while (scaled.size() < pixel_count * static_cast<std::size_t>(channels)) {
+                std::uint64_t value = 0;
+                for (std::size_t b = 0; b < bytecount; ++b) {
+                    if (pos < data.size()) {
+                        value |= static_cast<std::uint64_t>(data[pos]) << (8u * b);
+                        ++pos;
+                    }
+                }
+                for (int i = 0; i < channels; ++i) {
+                    std::uint64_t m = masks[i];
+                    int offset = 0;
+                    while (m != 0u && ((m >> (offset + 1)) << (offset + 1)) == m) {
+                        ++offset;
+                    }
+                    const std::uint64_t total = m >> offset;
+                    const std::uint64_t masked = value & m;
+                    const double scaled_value =
+                        (static_cast<double>(masked >> offset) / static_cast<double>(total)) * 255.0;
+                    scaled.push_back(static_cast<std::uint8_t>(static_cast<int>(scaled_value)));
+                }
+            }
+            std::memcpy(image->pixels.data(), scaled.data(), scaled.size());
+        } else if (kind == 2) {
+            // P8: 1024-byte RGBA palette then 8-bit indices.
+            const std::size_t palette_need = data_offset + 1024u;
+            image->palette_rgb.assign(256u * 3u, std::uint8_t{0});
+            image->palette_alpha.assign(256u, std::uint8_t{0});
+            image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_RGBA;
+            for (int i = 0; i < 256; ++i) {
+                const std::size_t off = data_offset + static_cast<std::size_t>(i) * 4u;
+                if (off + 3u < data.size()) {
+                    image->palette_rgb[static_cast<std::size_t>(i) * 3u + 0u] = data[off];
+                    image->palette_rgb[static_cast<std::size_t>(i) * 3u + 1u] = data[off + 1u];
+                    image->palette_rgb[static_cast<std::size_t>(i) * 3u + 2u] = data[off + 2u];
+                    image->palette_alpha[static_cast<std::size_t>(i)] = data[off + 3u];
+                }
+            }
+            const std::size_t payload_offset = palette_need;
+            const std::size_t need = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+            if (data.size() < payload_offset + need) {
+                delete image;
+                return PILLOW_C_DDS_TRUNC_RAW;
+            }
+            std::memcpy(image->pixels.data(), data.data() + payload_offset, need);
+        } else if (kind == 3) {
+            const std::size_t blocksize = (n == 1 || n == 4) ? 8u : 16u;
+            const std::size_t block_xs = (static_cast<std::size_t>(width) + 3u) / 4u;
+            const std::size_t block_ys = (static_cast<std::size_t>(height) + 3u) / 4u;
+            const std::size_t need = block_xs * block_ys * blocksize;
+            if (data.size() < data_offset + need) {
+                delete image;
+                return blocksize == 8u ? PILLOW_C_DDS_TRUNC8 : PILLOW_C_DDS_TRUNC16;
+            }
+            const std::uint8_t* ptr = data.data() + data_offset;
+            const std::size_t payload_size = data.size() - data_offset;
+            int block_index = 0;
+            for (int by = 0; by < height; by += 4) {
+                for (int bx = 0; bx < width; bx += 4) {
+                    const std::size_t off = static_cast<std::size_t>(block_index) * blocksize;
+                    dds_rgba col[16];
+                    std::memset(col, n == 5 && sign ? 128 : 0, sizeof(col));
+                    switch (n) {
+                        case 1:
+                            dds_decode_bc1_color(col, ptr + off, 0);
+                            break;
+                        case 2:
+                            dds_decode_bc2_block(col, ptr + off);
+                            break;
+                        case 3:
+                            dds_decode_bc3_block(col, ptr + off);
+                            break;
+                        case 4:
+                            for (int i = 0; i < 16; ++i) {
+                                col[i].c[0] = 0;
+                                col[i].c[1] = 0;
+                                col[i].c[2] = 0;
+                                col[i].c[3] = 0;
+                            }
+                            {
+                                std::uint8_t lum[16];
+                                dds_decode_bc4_block(lum, ptr + off);
+                                for (int i = 0; i < 16; ++i) {
+                                    col[i].c[0] = lum[i];
+                                    col[i].c[1] = 0;
+                                    col[i].c[2] = 0;
+                                }
+                            }
+                            break;
+                        case 5:
+                            dds_decode_bc5_block(col, ptr + off, sign);
+                            break;
+                        case 7:
+                            dds_decode_bc7_block(col, ptr + off, payload_size - off);
+                            break;
+                        default:
+                            delete image;
+                            return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                    // BC4 col carries the luminance in c[0].
+                    if (n != 4) {
+                        dds_bcn_put_block(image, bx, by, col, channels);
+                    } else {
+                        for (int j = 0; j < 4; ++j) {
+                            const int y = by + j;
+                            if (y >= height) {
+                                continue;
+                            }
+                            std::uint8_t* dst_row =
+                                image->pixels.data() + static_cast<std::size_t>(y) * image_stride;
+                            for (int i = 0; i < 4; ++i) {
+                                const int x = bx + i;
+                                if (x >= width) {
+                                    continue;
+                                }
+                                dst_row[x] = col[j * 4 + i].c[0];
+                            }
+                        }
+                    }
+                    ++block_index;
+                }
+            }
+        } else {
+            // raw L/LA/RGBA tile, tight top-down rows.
+            const std::size_t need = static_cast<std::size_t>(width) *
+                static_cast<std::size_t>(height) * static_cast<std::size_t>(channels);
+            if (data.size() < data_offset + need) {
+                delete image;
+                return PILLOW_C_DDS_TRUNC_RAW;
+            }
+            std::memcpy(image->pixels.data(), data.data() + data_offset, need);
+        }
+
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 struct IcoDirectoryEntryInfo {
     std::uint8_t width_byte = 0;
     std::uint8_t height_byte = 0;
@@ -4208,6 +5386,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_sgi(
     int bpc)
 {
     return save_sgi_image(image, path, bpc);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_dds(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_dds_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_dds(
+    const PillowCImage* image,
+    const char* path,
+    const char* pixel_format)
+{
+    return save_dds_image(image, path, pixel_format);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_ppm(

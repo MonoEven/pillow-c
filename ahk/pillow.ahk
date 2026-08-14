@@ -7595,6 +7595,20 @@ class Pillow {
                         throw Error("image file is truncated (" Pillow.Image.SgiTruncatedCount(path) " bytes not processed)", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "DDS" {
+                    ; BEHAV-DDS-001: the native DDS decoder returns local
+                    ; status codes for Pillow's distinct error shapes;
+                    ; rebuild the exact messages from the file header.
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_dds",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus < -8
+                        throw Error(Pillow.Image.DdsOpenError(lastStatus, path), -1)
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
                 } else {
                     lastStatus := DllCall(
                         Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
@@ -8626,6 +8640,54 @@ class Pillow {
             }
         }
 
+        static DdsOpenError(status, path) {
+            ; BEHAV-DDS-001: rebuild Pillow's exact DDS open error
+            ; messages from the file header (the native decoder returns
+            ; local status codes for each shape).
+            file := FileOpen(path, "r")
+            if !file
+                return "pillow_c: status " status
+            try {
+                header := Buffer(148, 0)
+                file.RawRead(header, Min(file.Length, 148))
+                total := file.Length
+                pfflags := NumGet(header, 80, "UInt")
+                fourcc := NumGet(header, 84, "UInt")
+                bitcount := NumGet(header, 88, "UInt")
+                if status = -9
+                    return "Unsupported header size " NumGet(header, 4, "UInt")
+                if status = -10
+                    return "Incomplete header: " (total - 8) " bytes"
+                if status = -11
+                    return "Unknown pixel format flags " pfflags
+                if status = -12
+                    return "Unimplemented pixel format " fourcc
+                if status = -13
+                    return "Unsupported bitcount " bitcount " for " pfflags
+                if status = -14
+                    return "Unimplemented DXGI format " NumGet(header, 128, "UInt")
+                if status = -15 || status = -18 {
+                    blocksize := status = -15 ? 8 : 16
+                    offset := fourcc = 0x30315844 ? 148 : 128
+                    return "image file is truncated (" Mod(total - offset, blocksize) " bytes not processed)"
+                }
+                if status = -16 {
+                    xsize := NumGet(header, 16, "UInt")
+                    channels := 1
+                    if (pfflags & 0x1) && bitcount = 16
+                        channels := 2
+                    if (pfflags & 0x4) && fourcc = 0x30315844
+                        channels := 4
+                    return "image file is truncated (" Mod(total - 128, xsize * channels) " bytes not processed)"
+                }
+                if status = -17
+                    return "division by zero"
+                return "pillow_c: status " status
+            } finally {
+                file.Close()
+            }
+        }
+
         static OpenDibHandle(path, &outHandle) {
             ; BEHAV-DIB-001: DIB open = synthetic BITMAPFILEHEADER + native
             ; BMP decoder. Pillow's DIB has no BITMAPFILEHEADER, so the
@@ -8704,6 +8766,8 @@ class Pillow {
                 return "PCX"
             if RegExMatch(path, "i)\.(sgi|bw|rgb|rgba)$")
                 return "SGI"
+            if RegExMatch(path, "i)\.dds$")
+                return "DDS"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -8733,7 +8797,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -8750,6 +8814,7 @@ class Pillow {
                 "SPIDER", "The Spider image format",
                 "PCX", "PCX",
                 "SGI", "SGI Image File Format",
+                "DDS", "DirectDraw Surface",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -10348,6 +10413,35 @@ class Pillow {
                     "Ptr", this.RequireHandle(),
                     "Ptr", pathBytes,
                     "Int", bpc,
+                    "Int"
+                ))
+                return
+            }
+            if resolvedFormat = "DDS" {
+                ; BEHAV-DDS-001: Pillow's DDS covers L/LA/RGB/RGBA raw
+                ; writes and DXT1/3/5 plus BC2/BC3/BC5 BCN writes; other
+                ; modes and pixel formats raise the exact OSError
+                ; messages (the native codec writes the exact header and
+                ; BCN blocks).
+                if !(this.Mode = "L" || this.Mode = "LA" || this.Mode = "RGB" || this.Mode = "RGBA")
+                    throw Error("cannot write mode " this.Mode " as DDS", -1)
+                pixelFormat := ""
+                if IsSet(saveOptions) {
+                    option := Pillow.Image.SaveOption(saveOptions, "pixel_format", "PixelFormat")
+                    if option.Set
+                        pixelFormat := option.Value
+                }
+                if pixelFormat != "" && !(pixelFormat = "DXT1" || pixelFormat = "DXT3" || pixelFormat = "DXT5" || pixelFormat = "BC2" || pixelFormat = "BC3" || pixelFormat = "BC5")
+                    throw Error("cannot write pixel format " pixelFormat, -1)
+                if pixelFormat = "BC5" && this.Mode != "RGB"
+                    throw Error("only RGB mode can be written as BC5", -1)
+                pathBytes := Pillow.Image.Utf8Buffer(path)
+                fmtBytes := pixelFormat = "" ? 0 : Pillow.Image.Utf8Buffer(pixelFormat)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_dds",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", pathBytes,
+                    "Ptr", fmtBytes,
                     "Int"
                 ))
                 return

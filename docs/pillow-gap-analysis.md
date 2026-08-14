@@ -37,6 +37,36 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 BEHAV-DDS-001 DDS Format (GREEN)
+
+`BEHAV-DDS-001` implements the DDS format with byte-level behavioral
+parity.
+
+The Pillow 11.3.0 oracle (DdsImagePlugin source plus the
+BcnEncode/BcnDecode C semantics, probed block by block against the
+installed wheel in `oracle/probe_dds.py`..`oracle/probe_dds10.py`)
+shows DDS saves L/LA/RGB/RGBA as raw writes (the 128-byte header
+with the L/LA mask quirks and the BGR/ABGR byte orders from
+Pillow's band merge plus rawmode reversal) and L/RGB/RGBA as BCN
+blocks (DXT1/3/5 plus BC2/BC3/BC5 with the DX10 header; BC5
+requires RGB); other modes raise `cannot write mode X as DDS` and
+other pixel formats raise `cannot write pixel format X`. The reopen
+decodes the raw mask families (the dds_rgb decoder's per-mask
+trailing-zero/total scaling with Python's float division), the
+L8/LA16/P8 families, the BCN decoders BC1-5 and BC7 (the mode-bit
+scan leaves the data fields at bit mode+1, verified against the
+wheel), the BC5S b-channel 128 memset quirk, and the exact error
+shapes. The new native `pillow_c_image_open_dds`/`save_dds` exports
+plus the facade `.dds`/`DDS` routing reproduce all of it; BC6H/BC6HS
+open stays a documented deferred child (the wheel's BC6 bit packing
+diverges from the tag sources). The facade DDS target passes `1/1`
+in `125ms`; the full directory suite passes `2819/2819` in
+`20813ms`. Release x64 Rebuild is clean; source/DLL export parity
+moves to `477/477`; the rebuilt DLL SHA-256 is
+`494D4A5F26550004D127E860433B728F3B4B06B48D7406B83919769457373897`.
+The DDS row left the BNDRY-001 dependency-gated list. The next
+bounded child is `BEHAV-ICNS-001`, the ICNS format.
+
 ## 2026-08-14 BEHAV-SGI-001 SGI Format (GREEN)
 
 `BEHAV-SGI-001` implements the SGI format with byte-level behavioral
@@ -278,7 +308,7 @@ Classification of every boundary item (treatment applies per packet):
 | SPIDER | save L/RGB/RGBA/P OK (numpy); reopen as F | DONE — BEHAV-SPIDER-001 (byte-exact float header + F;32NF payload + F reopen; facade-only) |
 | PCX | save L/RGB/P/1 OK; others `Cannot save X images as PCX` | DONE — BEHAV-PCX-001 (byte-exact 128-byte header + RLE + zero-padded LUT trailers + LUT L-to-P promotion + the odd-width RGB;L reopen misread; native open/save exports) |
 | SGI | save L/RGB/RGBA OK; P `Unsupported SGI image mode` | DONE — BEHAV-SGI-001 (byte-exact 512-byte header + band-major bottom-up payload at bpc 1/2 + the RLE decoder with its quirk semantics + exact mode/bpc/truncation/overrun/compression errors; native open/save exports) |
-| DDS | save L/RGB/RGBA OK; P `cannot write mode P as DDS` | IMPLEMENT (native DXT packet) |
+| DDS | save L/RGB/RGBA OK; P `cannot write mode P as DDS` | DONE — BEHAV-DDS-001 (byte-exact raw L/LA/RGB/RGBA + DXT1/3/5 + BC2/BC3/BC5 BCN writes, the mask/luminance/P8/BC1-5/BC7 reopen matrix, and the exact error shapes; BC6H/BC6HS open stays a deferred child; native open/save exports) |
 | ICNS | save all modes OK (PNG/JPEG2000 payloads) | IMPLEMENT (facade over native PNG) |
 | EPS | save L/RGB OK; RGBA/P `image mode is not supported`; open `Unable to locate Ghostscript on paths` | IMPLEMENT save (facade PS writer) + match Ghostscript error |
 | PDF | save all modes OK (pure-Python writer); open needs Ghostscript | IMPLEMENT save (facade) + match Ghostscript error |

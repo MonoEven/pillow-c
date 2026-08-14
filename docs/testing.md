@@ -47,8 +47,29 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2818` AHK tests: `1391` raw DLL tests and
-`1427` facade tests.
+This suite currently registers `2819` AHK tests: `1391` raw DLL tests and
+`1428` facade tests.
+
+Latest `BEHAV-DDS-001` verification: the Pillow 11.3.0 oracle
+(DdsImagePlugin source plus the BcnEncode/BcnDecode C semantics,
+probed block by block against the installed wheel) pins the raw
+L/LA/RGB/RGBA saves (BGR/ABGR byte orders, mask quirks), the
+DXT1/3/5 and BC2/BC3/BC5 BCN saves, the mask/luminance/P8/BC1-5/BC7
+reopen matrix (including the BC7 mode-bit-scan field offset and the
+BC5S 128 memset quirk), and the exact error shapes. The new native
+`pillow_c_image_open_dds`/`save_dds` exports plus the facade
+`.dds`/`DDS` routing reproduce all of it; BC6H/BC6HS open stays a
+documented deferred child (the wheel's BC6 bit packing diverges
+from the tag sources). The facade DDS target passes `1/1` in
+`125ms` (byte-exact embedded raw and BCN save fixtures, the reopen
+matrix including a crafted BC7 block, ten exact save/open error
+shapes), and the full directory suite passes `2819/2819` in
+`20813ms`, with zero failures, errors, or skips. Release x64
+Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity
+moves to `477/477` (two deliberate new exports) with zero
+difference; and the rebuilt DLL SHA-256 is
+`494D4A5F26550004D127E860433B728F3B4B06B48D7406B83919769457373897`.
+The behavioral-parity wave continues with `BEHAV-ICNS-001` next.
 
 Latest `BEHAV-SGI-001` verification: the Pillow 11.3.0 oracle
 (SgiImagePlugin source plus the SgiRleDecode.c semantics and the
@@ -74,7 +95,8 @@ Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
 export parity moves to `475/475` (two deliberate new exports) with
 zero difference; and the rebuilt DLL SHA-256 is
 `17FA17E58BBC1A8B9B3DCEE964DE361FDC15E1C385156B28CC4787AA8F96978A`.
-The behavioral-parity wave continues with `BEHAV-DDS-001` next.
+The behavioral-parity wave continues with `BEHAV-ICNS-001` after
+`BEHAV-DDS-001`.
 
 Latest `BEHAV-PCX-001` verification: the Pillow 11.3.0 oracle
 (PcxImagePlugin source plus fixtures) pins the 128-byte PCX header

@@ -65,10 +65,22 @@ the facade maps to Pillow's exact `image file is truncated (N bytes
 not processed)` / `not enough image data` / `cannot load this
 image` messages; the generic statuses keep their public meanings.
 
+`BEHAV-DDS-001` adds two deliberate exports —
+`pillow_c_image_open_dds` and `pillow_c_image_save_dds` (with the
+pixel-format string) — that implement Pillow's exact DDS raw writes
+(L/LA/RGB/RGBA headers and byte orders), the BCN block encoders
+(DXT1/3/5, BC2/BC3/BC5), the mask/luminance/P8 reopen families, and
+the BCN decoders BC1-5 and BC7 with Pillow's quirk semantics. The
+DDS open route returns local status codes outside the public table
+(`-9`..`-18`) which the facade maps to Pillow's exact header,
+pixel-format, truncation, and division-by-zero messages; the
+generic statuses keep their public meanings.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`475/475`; the full AHK suite is `2818/2818`; and the current DLL SHA-256 is
-`17FA17E58BBC1A8B9B3DCEE964DE361FDC15E1C385156B28CC4787AA8F96978A`
-(BEHAV-SGI-001 adds the two SGI exports above over the PCX slice:
+`477/477`; the full AHK suite is `2819/2819`; and the current DLL SHA-256 is
+`494D4A5F26550004D127E860433B728F3B4B06B48D7406B83919769457373897`
+(BEHAV-DDS-001 adds the two DDS exports above over the SGI slice:
+BEHAV-SGI-001 adds the two SGI exports over the PCX slice:
 BEHAV-PCX-001 adds the two PCX exports over the BLP slice:
 BEHAV-BLP-001 adds two deliberate exports — `pillow_c_image_open_blp`
 and `pillow_c_image_save_blp` (with the BLP1 flag), the exact

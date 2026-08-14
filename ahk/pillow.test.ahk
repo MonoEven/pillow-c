@@ -22809,6 +22809,351 @@ PillowTestSgiFormat(*) {
 
 AhkTest.Test("Pillow SGI format matches Pillow 11.3.0 bytes and round-trips", PillowTestSgiFormat)
 
+PillowTestDdsFormat(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    rgbRawPath := A_Temp "\dds-rgb-raw.dds"
+    rgbaRawPath := A_Temp "\dds-rgba-raw.dds"
+    lRawPath := A_Temp "\dds-l-raw.dds"
+    laRawPath := A_Temp "\dds-la-raw.dds"
+    rgbDxt1Path := A_Temp "\dds-rgb-dxt1.dds"
+    rgbaDxt1Path := A_Temp "\dds-rgba-dxt1.dds"
+    lDxt1Path := A_Temp "\dds-l-dxt1.dds"
+    rgbDxt3Path := A_Temp "\dds-rgb-dxt3.dds"
+    rgbaDxt3Path := A_Temp "\dds-rgba-dxt3.dds"
+    rgbDxt5Path := A_Temp "\dds-rgb-dxt5.dds"
+    rgbaDxt5Path := A_Temp "\dds-rgba-dxt5.dds"
+    rgbaTDxt1Path := A_Temp "\dds-rgba-t-dxt1.dds"
+    smallDxt1Path := A_Temp "\dds-small-dxt1.dds"
+    rgbaBc2Path := A_Temp "\dds-rgba-bc2.dds"
+    rgbaBc3Path := A_Temp "\dds-rgba-bc3.dds"
+    rgbBc5Path := A_Temp "\dds-rgb-bc5.dds"
+    openPath := A_Temp "\dds-open.dds"
+    try {
+        ; BEHAV-DDS-001: raw L/LA/RGB/RGBA saves are byte-exact (BGR and
+        ; ABGR byte orders, the L/LA mask quirks) and reopen exactly.
+        rgb := Pillow.Image.New("RGB", [2, 2])
+        try {
+            rgb.FromBytes(PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]))
+            rgb.Save(rgbRawPath, "DDS")
+        } finally {
+            rgb.Close()
+        }
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000f10000002000000020000000600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000004000000000000000180000000000ff0000ff0000ff0000000000000000100000000000000000000000000000000000000302010605040908070c0b0a"), PillowTestReadFileBytes(rgbRawPath))
+        rgbOpened := Pillow.Image.Open(rgbRawPath)
+        try {
+            AhkTest.AssertEqual("RGB", rgbOpened.Mode)
+            AhkTest.AssertEqual([1, 2, 3], rgbOpened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([10, 11, 12], rgbOpened.GetPixel([1, 1]))
+        } finally {
+            rgbOpened.Close()
+        }
+
+        rgba := Pillow.Image.New("RGBA", [2, 2])
+        try {
+            rgba.FromBytes(PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]))
+            rgba.Save(rgbaRawPath, "DDS")
+        } finally {
+            rgba.Close()
+        }
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000f10000002000000020000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000004100000000000000200000000000ff0000ff0000ff000000000000ff001000000000000000000000000000000000000003020104070605080b0a090c0f0e0d10"), PillowTestReadFileBytes(rgbaRawPath))
+        rgbaOpened := Pillow.Image.Open(rgbaRawPath)
+        try {
+            AhkTest.AssertEqual("RGBA", rgbaOpened.Mode)
+            AhkTest.AssertEqual([1, 2, 3, 4], rgbaOpened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([13, 14, 15, 16], rgbaOpened.GetPixel([1, 1]))
+        } finally {
+            rgbaOpened.Close()
+        }
+
+        l := Pillow.Image.New("L", [2, 2])
+        try {
+            l.FromBytes(PillowTestBuffer([10, 20, 30, 40]))
+            l.Save(lRawPath, "DDS")
+        } finally {
+            l.Close()
+        }
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000f1000000200000002000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000002000000000008000000000000ff000000ff000000ff0000000000100000000000000000000000000000000000000a141e28"), PillowTestReadFileBytes(lRawPath))
+        lOpened := Pillow.Image.Open(lRawPath)
+        try {
+            AhkTest.AssertEqual("L", lOpened.Mode)
+            AhkTest.AssertEqual(10, lOpened.GetPixel([0, 0]))
+            AhkTest.AssertEqual(40, lOpened.GetPixel([1, 1]))
+        } finally {
+            lOpened.Close()
+        }
+
+        la := Pillow.Image.New("LA", [2, 2])
+        try {
+            la.FromBytes(PillowTestBuffer([10, 4, 20, 5, 30, 6, 40, 7]))
+            la.Save(laRawPath, "DDS")
+        } finally {
+            la.Close()
+        }
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000f1000000200000002000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000010002000000000010000000ff000000ff000000ff000000000000ff00100000000000000000000000000000000000000a0414051e062807"), PillowTestReadFileBytes(laRawPath))
+        laOpened := Pillow.Image.Open(laRawPath)
+        try {
+            AhkTest.AssertEqual("LA", laOpened.Mode)
+            AhkTest.AssertEqual([10, 4], laOpened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([40, 7], laOpened.GetPixel([1, 1]))
+        } finally {
+            laOpened.Close()
+        }
+
+        ; BEHAV-DDS-001: BCN saves (DXT1/3/5, BC2/BC3/BC5) are byte-exact
+        ; and reopen through the ported C decoders.
+        rgb4 := Pillow.Image.New("RGB", [4, 4])
+        rgba4 := Pillow.Image.New("RGBA", [4, 4])
+        l4 := Pillow.Image.New("L", [4, 4])
+        try {
+            rgb4.FromBytes(PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48]))
+            rgba4.FromBytes(PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64]))
+            l4.FromBytes(PillowTestBuffer([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]))
+            rgb4.Save(rgbDxt1Path, "DDS", Map("pixel_format", "DXT1"))
+            rgba4.Save(rgbaDxt1Path, "DDS", Map("pixel_format", "DXT1"))
+            l4.Save(lDxt1Path, "DDS", Map("pixel_format", "DXT1"))
+            rgb4.Save(rgbDxt3Path, "DDS", Map("pixel_format", "DXT3"))
+            rgba4.Save(rgbaDxt3Path, "DDS", Map("pixel_format", "DXT3"))
+            rgb4.Save(rgbDxt5Path, "DDS", Map("pixel_format", "DXT5"))
+            rgba4.Save(rgbaDxt5Path, "DDS", Map("pixel_format", "DXT5"))
+            rgba4.Save(rgbaBc2Path, "DDS", Map("pixel_format", "BC2"))
+            rgba4.Save(rgbaBc3Path, "DDS", Map("pixel_format", "BC3"))
+            rgb4.Save(rgbBc5Path, "DDS", Map("pixel_format", "BC5"))
+        } finally {
+            rgb4.Close()
+            rgba4.Close()
+            l4.Close()
+        }
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000710080004000000040000001c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000004000000445854311800000000000000000000000000000000000000001000000000000000000000000000000000000066290000f5bfaa00"), PillowTestReadFileBytes(rgbDxt1Path))
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000710080004000000040000001c0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000040000004458543120000000000000000000000000000000000000000010000000000000000000000000000000000000e7390000f5bfaa00"), PillowTestReadFileBytes(rgbaDxt1Path))
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000710080004000000040000001c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000004000000445854310800000000000000000000000000000000000000001000000000000000000000000000000000000061080000f5ab0000"), PillowTestReadFileBytes(lDxt1Path))
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000710080004000000040000001c0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000040000004458543318000000000000000000000000000000000000000010000000000000000000000000000000000000ffffffffffffffff66290000f5bfaa00"), PillowTestReadFileBytes(rgbDxt3Path))
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000710080004000000040000001c0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000040000004458543320000000000000000000000000000000000000000010000000000000000000000000000000000000840c941da42eb43fe7390000f5bfaa00"), PillowTestReadFileBytes(rgbaDxt3Path))
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000710080004000000040000001c0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000040000004458543518000000000000000000000000000000000000000010000000000000000000000000000000000000ffffffffffffffff66290000f5bfaa00"), PillowTestReadFileBytes(rgbDxt5Path))
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000710080004000000040000001c0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000040000004458543520000000000000000000000000000000000000000010000000000000000000000000000000000000044092a46d24dbb6e7390000f5bfaa00"), PillowTestReadFileBytes(rgbaDxt5Path))
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000710080004000000040000001c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000400000044583130200000000000000000000000000000000000000000100000000000000000000000000000000000004900000003000000000000000000000001000000840c941da42eb43fe7390000f5bfaa00"), PillowTestReadFileBytes(rgbaBc2Path))
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000710080004000000040000001c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000400000044583130200000000000000000000000000000000000000000100000000000000000000000000000000000004c00000003000000000000000000000001000000044092a46d24dbb6e7390000f5bfaa00"), PillowTestReadFileBytes(rgbaBc3Path))
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000710080004000000040000001c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000400000044583130180000000000000000000000000000000000000000100000000000000000000000000000000000005200000003000000000000000000000001000000012e92a46d24dbb6022f92a46d24dbb6"), PillowTestReadFileBytes(rgbBc5Path))
+
+        rgbDxt1Opened := Pillow.Image.Open(rgbDxt1Path)
+        try {
+            AhkTest.AssertEqual("RGBA", rgbDxt1Opened.Mode)
+            AhkTest.AssertEqual([13, 14, 16, 255], rgbDxt1Opened.GetPixel([0, 1]))
+            AhkTest.AssertEqual([41, 44, 49, 255], rgbDxt1Opened.GetPixel([3, 3]))
+        } finally {
+            rgbDxt1Opened.Close()
+        }
+        rgbaDxt3Opened := Pillow.Image.Open(rgbaDxt3Path)
+        try {
+            AhkTest.AssertEqual("RGBA", rgbaDxt3Opened.Mode)
+            AhkTest.AssertEqual([0, 0, 0, 68], rgbaDxt3Opened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([57, 60, 57, 51], rgbaDxt3Opened.GetPixel([3, 3]))
+        } finally {
+            rgbaDxt3Opened.Close()
+        }
+        rgbaDxt5Opened := Pillow.Image.Open(rgbaDxt5Path)
+        try {
+            AhkTest.AssertEqual("RGBA", rgbaDxt5Opened.Mode)
+            AhkTest.AssertEqual([0, 0, 0, 16], rgbaDxt5Opened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([57, 60, 57, 52], rgbaDxt5Opened.GetPixel([3, 3]))
+        } finally {
+            rgbaDxt5Opened.Close()
+        }
+        lDxt1Opened := Pillow.Image.Open(lDxt1Path)
+        try {
+            AhkTest.AssertEqual("RGBA", lDxt1Opened.Mode)
+            AhkTest.AssertEqual([2, 4, 2, 255], lDxt1Opened.GetPixel([0, 1]))
+            AhkTest.AssertEqual([8, 12, 8, 255], lDxt1Opened.GetPixel([3, 3]))
+        } finally {
+            lDxt1Opened.Close()
+        }
+        rgbBc5Opened := Pillow.Image.Open(rgbBc5Path)
+        try {
+            AhkTest.AssertEqual("RGB", rgbBc5Opened.Mode)
+            AhkTest.AssertEqual([10, 11, 0], rgbBc5Opened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([37, 38, 0], rgbBc5Opened.GetPixel([3, 2]))
+        } finally {
+            rgbBc5Opened.Close()
+        }
+
+        ; DXT1 RGBA transparency swaps the endpoints; Pillow's reopen
+        ; restores the transparent pixels with alpha 0.
+        rgbaT := Pillow.Image.New("RGBA", [4, 4])
+        try {
+            rgbaT.FromBytes(PillowTestBuffer([10, 20, 30, 0, 10, 20, 30, 255, 10, 20, 30, 0, 10, 20, 30, 255, 10, 20, 30, 0, 10, 20, 30, 255, 10, 20, 30, 0, 10, 20, 30, 255, 10, 20, 30, 0, 10, 20, 30, 255, 10, 20, 30, 0, 10, 20, 30, 255, 10, 20, 30, 0, 10, 20, 30, 255, 10, 20, 30, 0, 10, 20, 30, 255]))
+            rgbaT.Save(rgbaTDxt1Path, "DDS", Map("pixel_format", "DXT1"))
+        } finally {
+            rgbaT.Close()
+        }
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c0000000710080004000000040000001c0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000040000004458543120000000000000000000000000000000000000000010000000000000000000000000000000000000a308a30833333333"), PillowTestReadFileBytes(rgbaTDxt1Path))
+        rgbaTOpened := Pillow.Image.Open(rgbaTDxt1Path)
+        try {
+            AhkTest.AssertEqual([0, 0, 0, 0], rgbaTOpened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([8, 20, 24, 255], rgbaTOpened.GetPixel([1, 0]))
+        } finally {
+            rgbaTOpened.Close()
+        }
+
+        ; Partial 4x4 blocks clip on reopen.
+        small := Pillow.Image.New("RGB", [3, 2])
+        try {
+            small.FromBytes(PillowTestBuffer([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]))
+            small.Save(smallDxt1Path, "DDS", Map("pixel_format", "DXT1"))
+        } finally {
+            small.Close()
+        }
+        AhkTest.AssertEqual(PillowTestHexBytes("444453207c000000071008000200000003000000180000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000040000004458543118000000000000000000000000000000000000000010000000000000000000000000000000000000821000006d425555"), PillowTestReadFileBytes(smallDxt1Path))
+        smallOpened := Pillow.Image.Open(smallDxt1Path)
+        try {
+            AhkTest.AssertEqual("RGBA", smallOpened.Mode)
+            AhkTest.AssertEqual([0, 0, 0, 255], smallOpened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([16, 16, 16, 255], smallOpened.GetPixel([2, 1]))
+        } finally {
+            smallOpened.Close()
+        }
+
+        ; BEHAV-DDS-001: crafted open fixtures (masks, luminance, P8,
+        ; BC4/BC5S/BC6H/BC7) decode exactly like Pillow.
+        PillowTestWriteFileBytes(openPath, PillowTestHexBytes("444453207c00000007100000020000000200000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000040000000000000001000000000f80000e00700001f00000000000000001000000000000000000000000000000000000000f8e0071f00ffff"))
+        rgb565Opened := Pillow.Image.Open(openPath)
+        try {
+            AhkTest.AssertEqual("RGB", rgb565Opened.Mode)
+            AhkTest.AssertEqual([255, 0, 0], rgb565Opened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([255, 255, 255], rgb565Opened.GetPixel([1, 1]))
+        } finally {
+            rgb565Opened.Close()
+        }
+        PillowTestWriteFileBytes(openPath, PillowTestHexBytes("444453207c0000000f1000000200000002000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000002000000000008000000000000ff000000ff000000ff0000000000100000000000000000000000000000000000000a141e28"))
+        l8Opened := Pillow.Image.Open(openPath)
+        try {
+            AhkTest.AssertEqual("L", l8Opened.Mode)
+            AhkTest.AssertEqual(10, l8Opened.GetPixel([0, 0]))
+            AhkTest.AssertEqual(40, l8Opened.GetPixel([1, 1]))
+        } finally {
+            l8Opened.Close()
+        }
+        PillowTestWriteFileBytes(openPath, PillowTestHexBytes("444453207c0000000f1000000200000002000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000010002000000000010000000ff000000ff000000ff000000000000ff00100000000000000000000000000000000000000a0414051e062807"))
+        la16Opened := Pillow.Image.Open(openPath)
+        try {
+            AhkTest.AssertEqual("LA", la16Opened.Mode)
+            AhkTest.AssertEqual([10, 4], la16Opened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([40, 7], la16Opened.GetPixel([1, 1]))
+        } finally {
+            la16Opened.Close()
+        }
+        PillowTestWriteFileBytes(openPath, PillowTestHexBytes("444453207c000000071000000200000002000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000200000000000000008000000000000000000000000000000000000000010000000000000000000000000000000000000000000ff010101ff020202ff030303ff040404ff050505ff060606ff070707ff080808ff090909ff0a0a0aff0b0b0bff0c0c0cff0d0d0dff0e0e0eff0f0f0fff101010ff111111ff121212ff131313ff141414ff151515ff161616ff171717ff181818ff191919ff1a1a1aff1b1b1bff1c1c1cff1d1d1dff1e1e1eff1f1f1fff202020ff212121ff222222ff232323ff242424ff252525ff262626ff272727ff282828ff292929ff2a2a2aff2b2b2bff2c2c2cff2d2d2dff2e2e2eff2f2f2fff303030ff313131ff323232ff333333ff343434ff353535ff363636ff373737ff383838ff393939ff3a3a3aff3b3b3bff3c3c3cff3d3d3dff3e3e3eff3f3f3fff404040ff414141ff424242ff434343ff444444ff454545ff464646ff474747ff484848ff494949ff4a4a4aff4b4b4bff4c4c4cff4d4d4dff4e4e4eff4f4f4fff505050ff515151ff525252ff535353ff545454ff555555ff565656ff575757ff585858ff595959ff5a5a5aff5b5b5bff5c5c5cff5d5d5dff5e5e5eff5f5f5fff606060ff616161ff626262ff636363ff646464ff656565ff666666ff676767ff686868ff696969ff6a6a6aff6b6b6bff6c6c6cff6d6d6dff6e6e6eff6f6f6fff707070ff717171ff727272ff737373ff747474ff757575ff767676ff777777ff787878ff797979ff7a7a7aff7b7b7bff7c7c7cff7d7d7dff7e7e7eff7f7f7fff808080ff818181ff828282ff838383ff848484ff858585ff868686ff878787ff888888ff898989ff8a8a8aff8b8b8bff8c8c8cff8d8d8dff8e8e8eff8f8f8fff909090ff919191ff929292ff939393ff949494ff959595ff969696ff979797ff989898ff999999ff9a9a9aff9b9b9bff9c9c9cff9d9d9dff9e9e9eff9f9f9fffa0a0a0ffa1a1a1ffa2a2a2ffa3a3a3ffa4a4a4ffa5a5a5ffa6a6a6ffa7a7a7ffa8a8a8ffa9a9a9ffaaaaaaffabababffacacacffadadadffaeaeaeffafafafffb0b0b0ffb1b1b1ffb2b2b2ffb3b3b3ffb4b4b4ffb5b5b5ffb6b6b6ffb7b7b7ffb8b8b8ffb9b9b9ffbababaffbbbbbbffbcbcbcffbdbdbdffbebebeffbfbfbfffc0c0c0ffc1c1c1ffc2c2c2ffc3c3c3ffc4c4c4ffc5c5c5ffc6c6c6ffc7c7c7ffc8c8c8ffc9c9c9ffcacacaffcbcbcbffccccccffcdcdcdffcececeffcfcfcfffd0d0d0ffd1d1d1ffd2d2d2ffd3d3d3ffd4d4d4ffd5d5d5ffd6d6d6ffd7d7d7ffd8d8d8ffd9d9d9ffdadadaffdbdbdbffdcdcdcffddddddffdededeffdfdfdfffe0e0e0ffe1e1e1ffe2e2e2ffe3e3e3ffe4e4e4ffe5e5e5ffe6e6e6ffe7e7e7ffe8e8e8ffe9e9e9ffeaeaeaffebebebffecececffedededffeeeeeeffefefeffff0f0f0fff1f1f1fff2f2f2fff3f3f3fff4f4f4fff5f5f5fff6f6f6fff7f7f7fff8f8f8fff9f9f9fffafafafffbfbfbfffcfcfcfffdfdfdfffefefeffffffffff00010203"))
+        p8Opened := Pillow.Image.Open(openPath)
+        try {
+            AhkTest.AssertEqual("P", p8Opened.Mode)
+            AhkTest.AssertEqual(0, p8Opened.GetPixel([0, 0]))
+            AhkTest.AssertEqual(3, p8Opened.GetPixel([1, 1]))
+            AhkTest.AssertEqual([1, 1, 1, 255], PillowTestSliceBytes(p8Opened.GetPalette("RGBA"), 5, 4))
+        } finally {
+            p8Opened.Close()
+        }
+        PillowTestWriteFileBytes(openPath, PillowTestHexBytes("444453207c00000007100800040000000400000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000004000000424334550800000000000000000000000000000000000000001000000000000000000000000000000000000010f0499224240949"))
+        bc4Opened := Pillow.Image.Open(openPath)
+        try {
+            AhkTest.AssertEqual("L", bc4Opened.Mode)
+            AhkTest.AssertEqual(240, bc4Opened.GetPixel([0, 0]))
+            AhkTest.AssertEqual(60, bc4Opened.GetPixel([3, 3]))
+        } finally {
+            bc4Opened.Close()
+        }
+        PillowTestWriteFileBytes(openPath, PillowTestHexBytes("444453207c000000071008000400000004000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000040000004243355318000000000000000000000000000000000000000010000000000000000000000000000000000000c8644992244992248040000000000000"))
+        bc5sOpened := Pillow.Image.Open(openPath)
+        try {
+            AhkTest.AssertEqual("RGB", bc5sOpened.Mode)
+            AhkTest.AssertEqual([228, 0, 128], bc5sOpened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([228, 0, 128], bc5sOpened.GetPixel([3, 3]))
+        } finally {
+            bc5sOpened.Close()
+        }
+        PillowTestWriteFileBytes(openPath, PillowTestHexBytes("444453207c000000071008000400000004000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000040000004458313020000000000000000000000000000000000000000010000000000000000000000000000000000000620000000300000000000000000000000100000020f0001ec0f30f212727276f6c6c6c00"))
+        bc7Opened := Pillow.Image.Open(openPath)
+        try {
+            AhkTest.AssertEqual("RGBA", bc7Opened.Mode)
+            AhkTest.AssertEqual([152, 162, 164, 67], bc7Opened.GetPixel([0, 0]))
+            AhkTest.AssertEqual([225, 241, 120, 67], bc7Opened.GetPixel([3, 3]))
+        } finally {
+            bc7Opened.Close()
+        }
+
+        ; BEHAV-DDS-001: Pillow's exact open and save error shapes.
+        for item in [["P"], ["1"], ["F"], ["CMYK"], ["I"]] {
+            bad := Pillow.Image.New(item[1], [2, 2])
+            try {
+                saveError := ""
+                try {
+                    bad.Save(rgbRawPath, "DDS")
+                } catch Error as err {
+                    saveError := err.Message
+                }
+                AhkTest.AssertEqual("cannot write mode " item[1] " as DDS", saveError)
+            } finally {
+                bad.Close()
+            }
+        }
+        okL := Pillow.Image.New("L", [2, 2])
+        try {
+            bc5Error := ""
+            try {
+                okL.Save(rgbRawPath, "DDS", Map("pixel_format", "BC5"))
+            } catch Error as err {
+                bc5Error := err.Message
+            }
+            AhkTest.AssertEqual("only RGB mode can be written as BC5", bc5Error)
+            pfError := ""
+            try {
+                okL.Save(rgbRawPath, "DDS", Map("pixel_format", "BC9"))
+            } catch Error as err {
+                pfError := err.Message
+            }
+            AhkTest.AssertEqual("cannot write pixel format BC9", pfError)
+        } finally {
+            okL.Close()
+        }
+
+        for item in [["4444532064000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "Unsupported header size 100"], ["444453207c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "Incomplete header: 100 bytes"], ["444453207c000000071000000200000002000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000", "Unknown pixel format flags 0"], ["444453207c000000071000000200000002000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000040000004458543920000000000000000000000000000000000000000010000000000000000000000000000000000000", "Unimplemented pixel format 961828932"], ["444453207c000000071000000200000002000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000002000000000018000000000000000000000000000000000000000010000000000000000000000000000000000000", "Unsupported bitcount 24 for 131072"], ["444453207c000000071000000200000002000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000040000004458313020000000000000000000000000000000000000000010000000000000000000000000000000000000e703000003000000000000000000000001000000", "Unimplemented DXGI format 999"], ["444453207c0000000710000004000000040000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000400000044583130200000000000000000000000000000000000000000100000000000000000000000000000000000005f0000000300000000000000000000000100000000000000000000000000000000000000", "Unimplemented DXGI format 95"], ["444453207c0000000710080008000000040000001c0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000040000004458543120000000000000000000000000000000000000000010000000000000000000000000000000000000000102030405060708090a0b", "image file is truncated (4 bytes not processed)"], ["444453207c0000000f1000000200000002000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000002000000000008000000000000ff000000ff000000ff0000000000100000000000000000000000000000000000000a14", "image file is truncated (0 bytes not processed)"], ["444453207c00000007100000020000000200000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000041000000000000001000000000000000000f0000f00000000f00000000100000000000000000000000000000000000000000000000000000", "division by zero"]] {
+            PillowTestWriteFileBytes(openPath, PillowTestHexBytes(item[1]))
+            openError := ""
+            try {
+                Pillow.Image.Open(openPath)
+            } catch Error as err {
+                openError := err.Message
+            }
+            AhkTest.AssertEqual(item[2], openError)
+        }
+        PillowTestWriteFileBytes(openPath, PillowTestHexBytes("5858585800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
+        badmagicError := ""
+        try {
+            Pillow.Image.Open(openPath)
+        } catch Error as err {
+            badmagicError := err.Message
+        }
+        AhkTest.AssertEqual("cannot identify image file <" openPath ">", badmagicError)
+    } finally {
+        PillowTestDeleteFile(rgbRawPath)
+        PillowTestDeleteFile(rgbaRawPath)
+        PillowTestDeleteFile(lRawPath)
+        PillowTestDeleteFile(laRawPath)
+        PillowTestDeleteFile(rgbDxt1Path)
+        PillowTestDeleteFile(rgbaDxt1Path)
+        PillowTestDeleteFile(lDxt1Path)
+        PillowTestDeleteFile(rgbDxt3Path)
+        PillowTestDeleteFile(rgbaDxt3Path)
+        PillowTestDeleteFile(rgbDxt5Path)
+        PillowTestDeleteFile(rgbaDxt5Path)
+        PillowTestDeleteFile(rgbaTDxt1Path)
+        PillowTestDeleteFile(smallDxt1Path)
+        PillowTestDeleteFile(rgbaBc2Path)
+        PillowTestDeleteFile(rgbaBc3Path)
+        PillowTestDeleteFile(rgbBc5Path)
+        PillowTestDeleteFile(openPath)
+    }
+}
+
+AhkTest.Test("Pillow DDS format matches Pillow 11.3.0 bytes and round-trips", PillowTestDdsFormat)
+
 
 PillowTestImageMathEval(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
