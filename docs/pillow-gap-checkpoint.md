@@ -21,91 +21,52 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 100% (about ±5%) under
-the real-workload Pillow replacement-readiness model — measured against
-the FULL Pillow 11.3.0 public surface since the AUDIT-002 re-audit.
-Every enumerated item of that surface is now either covered byte-exactly
-or recorded as an explicit documented boundary: the completion definition
-is MET (FMT-UNREC-001 closes the final row).
-Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
-BigTIFF common-EXIF family matrix, its big-endian counterpart, the
-malformed-metadata robustness slice, one-level ExifIFD/GPSInfo sub-IFD
-traversal on both routes, the classic-route TIFF save `exif=` option with
-its array families, compression/option composition, raw-bytes form, the
-BigTIFF save matrix with compression, the two-frame BigTIFF save, the
-Pillow multi-frame layout lock-in, the numeric BigTIFF strip save/open
-family (I16/I16B/I/F/CMYK), the BigTIFF save metadata composition, the
-BigTIFF save `exif=` family, the BigTIFF save_all composition lock-in,
-the BigTIFF save palette (P) mode, the BigTIFF save bilevel (1) mode,
-and the mixed-size BigTIFF frames lock-in (the bounded BigTIFF save
-family is COMPLETE), plus the bounded ICO/CUR family (`FMT-ICO-001B`,
-`FMT-ICO-001C`, and `FMT-ICO-002G` CUR save with hotspot exposure —
-also COMPLETE), the complete facade API slice (`API-IMG-001D` getim,
-`API-IMG-001E` show/toqimage/toqpixmap boundaries, `API-IMG-001F` the
-`im` accessor boundary), the numeric point() slice (`MODE-I-001B` and
-`MODE-F-001B`), the complete numeric transform family
-(`MODE-NUM-001CH`/`001CI`/`001CJ`), the complete numeric resize family
-(`MODE-NUM-001CK`/`001CL`/`001CM`/`001CN`), the complete I;16 numeric
-surface (`MODE-NUM-001CO`/`001CP`/`001CQ`), `BNDRY-001` the
-remaining-item boundary ledger, `API-MATH-001` the ImageMath module,
-`API-GRAB-001` the ImageGrab capture module, `API-PATH-001` the
-ImagePath.Path object, `API-QTTK-001` — the ImageQt/ImageTk
-module-surface boundaries (the AHK runtime ships no Qt binding and no
-Tk interpreter, so the ImageQt surface raises Pillow's
-`Qt bindings are not installed` and the ImageTk surface raises
-Pillow's no-root `Too early to create image: no default root window`,
-both recorded as explicit documented boundaries), and
-`API-FILE-001` — the ImageFile module surface (MAXBLOCK/SAFEBLOCK and
-the ERRORS table covered exactly, the LOAD_TRUNCATED_IMAGES default
-False with True a documented fail-loud boundary, PyCodecState covered
-exactly, and the incremental/plugin protocol — ImageFile/Parser/
-StubImageFile/StubHandler/PyCodec/PyDecoder/PyEncoder/raise_oserror —
-an explicit documented boundary that fails loudly on construction with
-Pillow-shaped messages), `API-PALETTE-001` — the ImagePalette
-module surface (the ImagePalette class with palette/colors/getcolor/
-getdata/tobytes/tostring/copy/save covered exactly, plus raw/negative/
-sepia/wedge/make_linear_lut/make_gamma_lut covered exactly; random()
-shares Pillow's shape with the RNG stream a documented boundary, and
-load() with the GimpPaletteFile/GimpGradientFile/PaletteFile parser
-classes a documented fail-loud boundary), `API-TRANSFORMCLS-001` —
-the ImageTransform class objects (the base Transform data storage/
-getdata-shape/transform routing plus AffineTransform/ExtentTransform/
-PerspectiveTransform/QuadTransform/MeshTransform method constants,
-all covered exactly; the module itself fails loudly as not callable),
-and `API-FONTVAR-001` — the ImageFont variation surface
-(TransposedFont orientation storage and the exact getbbox width/
-height normalization with the 90/270 swap and the rotate getlength
-ValueError, Layout's BASIC/RAQM IntEnum values covered exactly;
-getmask is a documented boundary because the runtime rasterizes text
-through the native draw seam, and Axis is Pillow's type-only
-TypedDict recorded as a boundary name), and `API-READONLY-001` —
-the Image.readonly property (the Pillow 11.3.0 fget
-`(im and im.readonly) or _readonly` OR-semantics with the setter
-storing the facade flag directly, the default 0, the frombuffer
-core-flag-wins rule, and the DetachBufferView write detach — covered
-exactly, with the facade detach model replacing Pillow's
-_ensure_mutable raise as the long-documented readonly-view model),
-and `FMT-UNREC-001` — the unrecorded-format ledger (the AUDIT-002
-format families BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF save
-and FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/
-XVTHUMB open are now explicit documented codec boundaries: the AHK
-native ABI implements neither codec — Pillow's own 11.3.0 build
-supports BLP/DIB/IM/SPIDER through its C/numpy plugins and errors
-per-mode or per-handler on the rest — so open and save fail loudly
-with the documented unsupported message, pinned by a facade
-boundary test).
-`003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
-(classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
-jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The unrecorded-format boundary target passes
-`1/1` in `31ms`, and the full directory suite passes `2807/2807` in
-`20391ms`; source/DLL exports remain `466/466` with zero difference;
-and the DLL SHA-256 remains
-`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`
-(facade-only slice).
-`ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
-every AUDIT-002 row is now closed — no further bounded child is
-selected: the completion definition is met.
+Estimate (AUDIT-003, the behavioral standard): literal 100% runtime
+identity with the local Pillow 11.3.0 build is NOT reachable and is
+no longer claimed. The honest split:
+
+- Formats: SAVE 19/30 and OPEN 19/45 byte-exact and test-pinned;
+  the matchable remainder is bounded (4 saves: EPS/ICNS/MPO/PDF; 19
+  opens: DCX/FITS/FLI/FTEX/GBR/ICNS/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/
+  PSD/SUN/XPM/XVTHUMB + the trivial HDF5/BUFR/GRIB 1x1-F stubs; the
+  EPS Ghostscript and MPEG header-then-cannot-load error matches;
+  PDF open is unregistered in 11.3.0 -> identification error; WMF
+  open via native GDI; plus 4 exact save-error matches for
+  BUFR/GRIB/HDF5/WMF).
+- UNMATCHABLE BY NATURE (7, documented as boundaries): WEBP /
+  JPEG2000 / AVIF (real codecs the local Pillow build WORKS with —
+  oracle-verified round-trips — that this runtime does not ship),
+  FPX (deprecated olefile plugin), ImageQt/ImageTk (no Qt/Tk in the
+  AHK runtime), ImagePalette.random (Python MT global state),
+  ImagePath map handler.
+- The red-team re-audits found UNRECORDED gaps the old 100% never
+  counted: ImageFont.truetype/load/load_path entirely absent (no
+  TTF/OTF loading — only the default bitmap font),
+  ImageCms.get_display_profile, FreeTypeFont variation axes/masks,
+  ImageDraw.getdraw, ImageMath.lambda_eval/imagemath_*, ImageStat.
+  Global, ImageFilter base classes; silent save-option drops (PNG
+  compress_type/dictionary/bits, JPEG smooth/streamtype, TIFF
+  strip_size/quality/named-tag kwargs, QOI colorspace, TGA
+  id_section/orientation, GIF palette/interlace); TIFF jpeg/group3/
+  group4 compression rejected though local libtiff supports it; six
+  runtime-verified error-message mismatches (PNG compress_level,
+  JPEG quality/subsampling, TIFF quality, ICO sizes); and the
+  I;16-resize default-resample divergence (Pillow uses BICUBIC for
+  non-BGR modes; the facade uses NEAREST for any ';' mode — ledger
+  row MODE-NUM-001CM's "exact" claim is WRONG); plus systemic
+  `pillow_c: invalid argument` where Pillow raises its specific
+  ValueError/IndexError messages (resize resample, inverted crop,
+  getpixel OOB, reduce(0), transpose(99) — runtime-verified).
+- Completion of the matchable surface: roughly 60-65% today. The
+  old `100% ±5%` (implemented-or-documented-boundary definition) is
+  SUPERSEDED by AUDIT-003; the detailed section lives at the top of
+  docs/pillow-gap-analysis.md with the red-team probes preserved in
+  oracle/audit3-redteam/.
+Latest covered gap tail: BEHAV-DDS-001 (DDS byte-exact raw + BCN)
+after BEHAV-SGI-001/PCX-001; the next bounded child is
+BEHAV-ICNS-001, then the AUDIT-003 newly recorded gaps (truetype
+font loading, save-option parity, error-message parity) follow as
+their own packets.
 ```
 
 Current work packet:

@@ -9,6 +9,168 @@ use this file as the detailed ledger.
 
 Last updated: 2026-08-14
 
+## 2026-08-14 AUDIT-003 Behavioral Re-Verification (DEMOTION — VERDICT RECORDED)
+
+`AUDIT-003` is the independent re-verification the user demanded:
+"是不是真的能够达到100%" — can true 100% really be reached. Two
+fresh-eyes red-team auditors plus a direct re-probe of every
+remaining format against the local Pillow 11.3.0 build found that
+the snapshot's `100% ±5%` does NOT hold under the behavioral
+standard ("不只是外观像，实际表现也得一致"). Findings:
+
+### Verdict: literal 100% runtime identity is NOT reachable
+
+Seven items are unmatchable BY NATURE in this runtime — the local
+Pillow build performs them through components this runtime does not
+ship, and no error message exists to match:
+
+1. WEBP save/open, JPEG2000 save/open, AVIF save/open — real codecs
+   (libwebp/OpenJPEG/libavif); the local Pillow build WORKS for all
+   of them (oracle-verified: `WEBP OK`, `JPEG2000 OK`, `AVIF OK`
+   round-trips in `oracle/probe_audit3_formats.py`). No
+   "dependency not enabled" message exists to match.
+2. FPX open — deprecated olefile-based plugin.
+3. ImageQt/ImageTk — the AHK runtime can never create QImage/Tk
+   objects (documented environment boundary; Pillow's exact
+   no-binding/no-root messages are the honest shape).
+4. ImagePalette.random — Python Mersenne-Twister global state
+   (shape/range match only).
+5. ImagePath map ImagingTransformHandler — C-level handler object.
+
+Everything else IS reachable, and the remaining work is bounded.
+
+### Freshly probed remaining-format reality (oracle-verified)
+
+- SAVE (30): 19 byte-exact; EPS/ICNS/MPO/PDF = 4 implementable
+  (pure-Python writers; EPS/PDF saves verified OK locally);
+  BUFR/GRIB/HDF5/WMF = 4 exact-error matches (`X save handler not
+  installed`); AVIF/JPEG2000/WEBP = 3 unmatchable codecs.
+- OPEN (45): 19 byte-exact; 19 implementable (DCX/FITS/FLI/FTEX/
+  GBR/ICNS/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/PSD/SUN/XPM/XVTHUMB
+  pure-Python plus the HDF5/BUFR/GRIB stub opens, which are trivial:
+  F(1,1) stub + `cannot find loader for this X file` on load —
+  oracle-verified in `oracle/probe_audit3_formats.py`); 2
+  exact-error matches (EPS open `Unable to locate Ghostscript on
+  paths`, MPEG open parses the header bits into RGB size then
+  `cannot load this image` — oracle-verified); PDF open is NOT
+  REGISTERED in 11.3.0 (identification error, trivially matched);
+  AVIF/FPX/JPEG2000/WEBP = 4 unmatchable; WMF open = 1 real native
+  task (GDI `drawwmf`, oracle-verified working locally: a minimal
+  placeable WMF opens as RGB 75x75 at 72 dpi).
+- FITS open works pure-Python without astropy (oracle-verified with
+  a crafted FITS file: L (4,2), bottom-up rows).
+
+### Unrecorded gaps found by the fresh diff (never in the ledger)
+
+- `ImageFont.truetype` / `ImageFont.load` / `ImageFont.load_path`:
+  ENTIRELY ABSENT — the facade can only use the default bitmap font
+  (native exports have `pillow_c_font_load_default` but no
+  font-file loader). No TTF/OTF loading at all.
+- `ImageCms.get_display_profile(handle)` absent.
+- `FreeTypeFont.get_variation_axes/get_variation_names/
+  set_variation_by_axes/set_variation_by_name/getmask/getmask2`
+  absent (only getmask was boundary-recorded).
+- `ImageDraw.getdraw`, `ImageMath.lambda_eval`/`imagemath_*`,
+  `ImageStat.Global`, `ImageFilter` base classes absent.
+- ImageDraw.text/multiline_text drop `spacing/align/direction/
+  features/language/embedded_color/font_size` options.
+
+### Red-team save-option divergences (oracle + runtime verified)
+
+Pillow-honored options the facade silently drops or mishandles
+(evidence: `oracle/audit3-redteam/probe_save_options.py` plus a
+temporary runtime probe of the facade):
+
+- PNG `compress_type`/`dictionary` silently ignored; P-mode `bits`
+  ignored; invalid `compress_level` range raises `pillow_c: invalid
+  argument` vs Pillow's OSError `codec configuration error when
+  writing image file`; string `compress_level` raises
+  `Pillow.Image.Save compress_level must be an integer` vs Pillow's
+  TypeError `'str' object cannot be interpreted as an integer`.
+- JPEG `smooth`/`streamtype` dropped; `quality='bogus'` raises
+  `Pillow.Image.Save quality must be an integer, 'keep', or a
+  Pillow JPEG quality preset` vs Pillow's ValueError `Invalid
+  quality setting`; invalid `subsampling` message mismatch.
+- TIFF `strip_size`, `quality`, and the named tags
+  (`description`/`software`/`artist`/`copyright`/`date_time`/
+  `resolution`/`resolution_unit`) dropped as direct kwargs (the
+  tags stay reachable through the `tiffinfo` Map); compression
+  `jpeg`/`group3`/`group4` REJECTED with
+  `Pillow.Image.Save TIFF compression is not supported` while the
+  installed libtiff saves them fine (oracle-verified); invalid
+  `quality` message mismatch.
+- QOI `colorspace`, TGA `id_section`/`orientation`, GIF
+  `palette`/`interlace` dropped; ICO invalid `sizes` message
+  mismatch.
+
+### Red-team open-info gaps
+
+JPEG `quantization`/`progressive`/`progression`/`adobe`/
+`adobe_transform`, GIF `version`/`extension`, TIFF `compression`,
+TGA `compression`/`orientation` info keys are not exposed and not
+recorded as boundaries.
+
+### Solid areas (red-team verified, no divergence found)
+
+ImageOps (all 18 functions), ImageChops (all 21), ImageEnhance,
+ImageSequence, ImagePath, ImageTransform, the 10 ImageFilter
+builtin class attributes, and the deep PNG/JPEG metadata save
+routing. The 19 implemented formats' core byte paths stay
+test-pinned by the `2819/2819` suite.
+
+### Red-team Image-core divergences (oracle + runtime verified)
+
+Evidence: `oracle/audit3-redteam/probe1.py`..`probe4.py` plus direct
+runtime probes of the facade (temporary scripts, results quoted
+below).
+
+1. [HIGH] `Resize` default resample on `I;16`/`I;16L`/`I;16B`/`I;16N`:
+   Pillow 11.3.0's rule is `NEAREST if mode.startswith("BGR;") else
+   BICUBIC` (verified from `Image.resize` source AND byte-level:
+   default `I;16` resize equals BICUBIC `[59, 241, 59, 241]`, not
+   NEAREST `[100, 300, 100, 300]`). The facade defaults NEAREST for
+   ANY mode containing `;` (`InStr(this.Mode, ";")` at pillow.ahk
+   line 14579). Ledger row `MODE-NUM-001CM` claims this "matches
+   Pillow exactly" — WRONG; it needs a red test and a fix.
+2. [HIGH] Systemic error-message gap: the native status table has
+   only six generic strings, so every facade path that lacks local
+   validation emits `pillow_c: invalid argument` instead of Pillow's
+   exact message. Runtime-verified: `resize(resample=-99)` →
+   `pillow_c: invalid argument` (Pillow: `Unknown resampling filter
+   (-99). Use Image.Resampling.NEAREST (0), ...`); inverted crop →
+   `pillow_c: invalid argument` (Pillow: `Coordinate 'right' is less
+   than 'left'`); getpixel OOB → `pillow_c: invalid argument`
+   (Pillow: `IndexError: image index out of range`); `reduce(0)`
+   and `transpose(99)` → same generic string.
+3. [MEDIUM] `Convert` matrix handling keys on the TARGET mode and
+   enforces 4/12 length, while Pillow keys on the SOURCE mode and
+   accepts both 4 and 12 for RGB sources; the LAB→`I;16`/`I;16B`
+   conversion rejection is missing; `Quantize` error messages
+   diverge (including a wrong-parameter bug); closed-image
+   `mode`/`size`/`width`/`height`/`getbands` throw in the facade
+   while Pillow returns values for a closed image.
+4. The facade `Resize`/`Reduce`/`Transpose`/`GetPixel`/`Crop`
+   validation gaps above are all local-message fixes (facade-side),
+   except `resample='bogus'` which surfaces as an AHK type error
+   (`Expected a Number but got a String.`) instead of Pillow's
+   TypeError.
+
+### Corrected estimate
+
+The honest completion split under the behavioral standard:
+
+- SAVE 19/30 byte-exact, OPEN 19/45 byte-exact.
+- Matchable remainder: 4 saves + 19 opens + 3 module items (Parser,
+  ImagePalette.load, TransposedFont.GetMask) + WMF-GDI open + the
+  newly found API gaps (truetype family, get_display_profile,
+  draw-text options, etc.) ≈ 30 bounded packets.
+- Unmatchable-by-nature: the 7 items above.
+
+Completion of the matchable surface is roughly 60–65% today; the
+100% ±5% snapshot claim is SUPERSEDED. The wave continues with
+`BEHAV-ICNS-001`; the newly found gaps get ledger rows as the
+next-wave packets.
+
 ## Read This First
 
 Before changing Pillow behavior in this repository:
@@ -40449,6 +40611,17 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-WEBP-001 | WebP | boundary | Open/save WebP and animation stay behind an explicit dependency/scope decision; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | FMT-AVIF-001 | AVIF | boundary | Open/save AVIF stays behind dependency and packaging constraints; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | FMT-LONGTAIL-001 | Formats | boundary | PDF, PSD, DDS, PCX, ICNS, SGI, SUN, EPS, MPO, FLI, DCX, XPM, and other registered families stay behind explicit dependency decisions; open/save fail loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
+| AUDIT-003 | Audit | covered | Independent behavioral re-verification (two fresh-eyes red-team auditors + direct probes): the old `100% ±5%` (implemented-or-boundary definition) is superseded. Literal 100% runtime identity is NOT reachable: WEBP/JPEG2000/AVIF (the local Pillow build WORKS with these bundled codecs — oracle-verified round-trips), FPX, ImageQt/ImageTk, ImagePalette.random, and the ImagePath map handler are unmatchable in this runtime (documented boundaries). The matchable remainder is bounded and enumerated; the red teams found unrecorded gaps (rows below) plus runtime-verified divergences in already-claimed areas (MODE-NUM-001CM default-resample claim is WRONG; six error-message mismatches; systemic `pillow_c: invalid argument` for unvalidated paths). Evidence: `oracle/audit3-redteam/*.py`, `oracle/probe_audit3_open.py`, `oracle/probe_audit3_formats.py`. | Red-team probes, runtime facade probes, oracle format matrix. |
+| API-FONTFILE-001 | Facade API | gap | `ImageFont.truetype` / `ImageFont.load` / `ImageFont.load_path` are ENTIRELY ABSENT: no TTF/OTF file loading exists (native has only `pillow_c_font_load_default`). Every real-font use case (truetype + Draw.text with a font, FreeTypeFont getmask, TransposedFont.GetMask) is unserved. | Red-team audit (probe_modules.py); native export inventory. |
+| API-CMS-DISPLAY-001 | Facade API | gap | `ImageCms.get_display_profile(handle)` absent; Pillow returns an ImageCmsProfile for the Windows display device (or None). | Red-team audit; `ImageCms` source diff. |
+| API-FONTVAR-002 | Facade API | gap | `FreeTypeFont.get_variation_axes/get_variation_names/set_variation_by_axes/set_variation_by_name/getmask/getmask2` absent (only getmask was boundary-recorded). | Red-team audit; FreeTypeFont surface diff. |
+| API-DRAW-TEXT-001 | Facade API | gap | `ImageDraw.text`/`multiline_text` drop the `spacing/align/direction/features/language/embedded_color/font_size` options Pillow honors; `ImageDraw.getdraw`, `ImageMath.lambda_eval`/`imagemath_*`, `ImageStat.Global`, and the `ImageFilter` base classes are absent. | Red-team audit (probe_modules.py, probe_modules2.py). |
+| API-SAVEOPTS-001 | Facade API | gap | Silent save-option drops: PNG `compress_type`/`dictionary`/P-mode `bits`, JPEG `smooth`/`streamtype`, TIFF `strip_size`/`quality`/named-tag kwargs (`description`/`software`/`artist`/`copyright`/`date_time`/`resolution`/`resolution_unit`; tags stay reachable via `tiffinfo`), QOI `colorspace`, TGA `id_section`/`orientation`, GIF `palette`/`interlace`. TIFF compression `jpeg`/`group3`/`group4` REJECTED (`Pillow.Image.Save TIFF compression is not supported`) while local libtiff saves them. | Red-team audit (probe_save_options.py); runtime facade probe. |
+| API-SAVEOPTS-002 | Facade API | gap | Error-message mismatches: PNG `compress_level` range (`pillow_c: invalid argument` vs OSError `codec configuration error when writing image file`) and type (`Pillow.Image.Save compress_level must be an integer` vs TypeError `'str' object cannot be interpreted as an integer`); JPEG `quality='bogus'` (`Pillow.Image.Save quality must be an integer, 'keep', or a Pillow JPEG quality preset` vs ValueError `Invalid quality setting`); JPEG `subsampling`, TIFF `quality`, ICO `sizes` messages. | Red-team audit; runtime facade probe. |
+| API-OPENINFO-001 | Facade API | gap | Unexposed open-side info: JPEG `quantization`/`progressive`/`progression`/`adobe`/`adobe_transform`, GIF `version`/`extension`, TIFF `compression`, TGA `compression`/`orientation` — not exposed and not boundary-recorded. | Red-team audit (probe_open_info.py). |
+| MODE-NUM-001CM-CORR | Modes | gap | CORRECTION: the `MODE-NUM-001CM` claim that the default I;16 resize "matches Pillow exactly" is FALSE. Pillow 11.3.0's rule is `NEAREST if mode.startswith("BGR;") else BICUBIC`; the facade uses NEAREST for any mode containing `;` (pillow.ahk line 14579). Oracle: default `I;16` resize == BICUBIC `[59,241,59,241]` != NEAREST `[100,300,100,300]`. Needs a red test + fix. | Red-team audit (probe2.py); `Image.resize` source. |
+| API-ERRMSGS-001 | Facade API | gap | Systemic error-message gap: unvalidated facade paths emit `pillow_c: invalid argument` instead of Pillow's exact messages — runtime-verified for `resize(resample=-99)` (`Unknown resampling filter (-99). Use Image.Resampling.NEAREST (0), ...`), inverted crop (`Coordinate 'right' is less than 'left'`), getpixel OOB (`IndexError: image index out of range`), `reduce(0)`, `transpose(99)`; `resample='bogus'` surfaces an AHK type error. Each path needs a local facade validation emitting Pillow's message. | Red-team audit; runtime facade probe. |
+| API-IMGCLS-002 | Facade API | gap | `Convert` matrix handling keys on the target mode and enforces 4/12 length (Pillow keys on the source mode, accepts 4 and 12 for RGB sources); LAB→`I;16`/`I;16B` rejection missing; `Quantize` error messages diverge; closed-image `mode`/`size`/`width`/`height`/`getbands` throw while Pillow returns values. | Red-team audit (probe1.py, probe3.py, probe4.py). |
 | API-IMG-001 | Facade API | covered | Direct `PIL.Image.Image` object-name parity after common methods. `API-IMG-001A` covers `format_description`, `API-IMG-001B` covers `has_transparency_data`, `API-IMG-001C` covers `get_child_images()` empty-list parity for implemented image handles, `META-002A` covers the public `getxmp()` method for bounded PNG/JPEG XMP packets, `META-002B` covers explicit JPEG `xmp=` save round-trip, `META-002C` covers explicit JPEG `qtables + xmp` save, `META-002D` covers explicit JPEG `keep_rgb + xmp` save, and `META-002E` covers explicit JPEG `qtables + keep_rgb + xmp` save through that same public route. `API-IMG-001D` covers `getim()` (the native-handle capsule analogue), `API-IMG-001E` covers `show`/`toqimage`/`toqpixmap` as explicit documented boundaries, and `API-IMG-001F` covers the low-level `im` accessor (the `Im` property returning the native handle as the ImagingCore analogue boundary), completing the named object-model list. | `ahk/pillow.ahk` facade properties/methods, direct Pillow 11.3.0 probes, facade API tests. |
 | API-IMG-001A | Facade API | covered | `Image.FormatDescription` and `Image.format_description` expose Pillow 11.3.0 format descriptions for opened native formats, with `""` as the AHK-side `None` analogue for images with no format. | `Pillow.Image.FormatDescription`, `Image.Format`, facade format-description test. |
 | API-IMG-001B | Facade API | covered | `Image.HasTransparencyData` and `Image.has_transparency_data` match Pillow 11.3.0 for implemented alpha and transparency-info surfaces: `RGBA`/`LA`/future `PA` report true, and non-alpha modes report true when `Info["transparency"]` is present. | Facade `Image.Mode`, `Image.Info`, local Pillow probe, facade has-transparency-data test. |
