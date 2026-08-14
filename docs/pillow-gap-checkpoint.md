@@ -26,8 +26,9 @@ identity with the local Pillow 11.3.0 build is NOT reachable and is
 no longer claimed. The honest split:
 
 - Formats: SAVE 19/30 and OPEN 19/45 byte-exact and test-pinned;
-  the matchable remainder is bounded (4 saves: EPS/ICNS/MPO/PDF; 19
-  opens: DCX/FITS/FLI/FTEX/GBR/ICNS/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/
+  ICNS is DONE (BEHAV-ICNS-001); the matchable remainder is bounded
+  (3 saves: EPS/MPO/PDF; 18
+  opens: DCX/FITS/FLI/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/
   PSD/SUN/XPM/XVTHUMB + the trivial HDF5/BUFR/GRIB 1x1-F stubs; the
   EPS Ghostscript and MPEG header-then-cannot-load error matches;
   PDF open is unregistered in 11.3.0 -> identification error; WMF
@@ -62,12 +63,14 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: MODE-RGBA-RESIZE-001 (RGBA/LA premultiplied
-resize roundtrip, I;16 default = BICUBIC, I;16B non-NEAREST boundary
-restored) after BEHAV-DDS-001/SGI-001/PCX-001; the next bounded child
-is BEHAV-ICNS-001, then the AUDIT-003 newly recorded gaps (truetype
-font loading, save-option parity, error-message parity) follow as
-their own packets.
+Latest covered gap tail: BEHAV-ICNS-001 (ICNS save/open over the
+native PNG seams: container-byte-exact TOC + mode-preserving reopen
+incl. legacy 32-bit RGB/mask chunks and the ToBytes rawmode quirk)
+after MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001; the next
+bounded child is BEHAV-EPS-001 (EPS save + the Ghostscript open
+error match), then MPO/PDF and the AUDIT-003 newly recorded gaps
+(truetype font loading, save-option parity, error-message parity)
+follow as their own packets.
 ```
 
 Current work packet:
@@ -484,6 +487,41 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `BEHAV-ICNS-001` is GREEN as the ICNS format (behavioral
+parity over the native PNG seams). The Pillow 11.3.0 oracle
+(IcnsImagePlugin source plus fixtures, `oracle/probe_icns.py` and
+`oracle/probe_icns_dll.py`) pins the big-endian `icns` header, the
+`TOC ` chunk (8 + 8x8), the eight PNG-backed icons ic07..ic14 in
+order (per-size payloads from width-matched append_images entries or
+a default-resample resize), the SIZES-ordered `info["sizes"]`, the
+lexicographic best-size pick, the mode-preserving PNG reopen
+(L/P/RGB/LA/RGBA), the legacy 32-bit RGB chunks (is32/il32/ih32/
+it32 with the mandatory 0x00000000 header, verbatim or RLE) plus
+masks (s8mk/l8mk/h8mk/t8mk) stored bottom-up verbatim, and every
+exact error shape (container errors collapse to `cannot identify
+image file <...>`; `Unsupported icon subimage format`, the jpeg2000
+rebuild-PIL variant, `Unknown signature, expecting 0x00000000`,
+`Error reading channel [N left]`, `image file is truncated`). It
+also pins Pillow's first-tobytes rawmode quirk: the plugin's pre-load
+mode is RGBA, so the first no-args tobytes() on a non-RGBA best icon
+raises `No packer found from {mode} to RGBA` while RGB packs RGBA —
+the facade replays it via `IcnsQuirkPending` (cleared by pixel
+access). New native exports `pillow_c_image_open_icns`,
+`pillow_c_image_save_icns`, `pillow_c_image_save_icns_frames`, and
+`pillow_c_image_icns_sizes` plus the internal memory-PNG decode seam
+`pillow_c_png_decode_memory` (WIC, mode-preserving) implement it;
+PNG payload bytes use our deflate (container byte-exact, reopen
+pixels byte-exact). Mode 1/CMYK/I/I;16 saves and bit-depth-1/16 PNG
+payload opens are documented children. The facade ICNS target passes
+`1/1` in `563ms`; the ctypes cross-check passes `FAILURES: 0`; the
+full directory suite passes `2821/2821` in `22844ms` with zero
+failures, errors, or skips. Release x64 Rebuild is clean; source/DLL
+export parity moves to `481/481` (four deliberate new exports); the
+rebuilt DLL SHA-256 is
+`9EF071F74786F59BCBF74C25BA456262EB5A703CB3626C66EFF159A49ED317C6`.
+The next bounded child is `BEHAV-EPS-001`, the EPS save plus the
+Ghostscript open error match.
 
 2026-08-14: `MODE-RGBA-RESIZE-001` is GREEN as the RGBA/LA premultiplied
 resize and default-resample packet (behavioral parity). The Pillow

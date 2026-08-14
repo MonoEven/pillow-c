@@ -355,6 +355,11 @@ int pillow_c_png_encode_custom_image(
     const char* text_value = nullptr,
     bool optimize = false);
 
+int pillow_c_png_decode_memory(
+    const std::uint8_t* data,
+    std::size_t size,
+    PillowCImage** out_image);
+
 int copy_metadata_blob(
     const std::vector<std::uint8_t>& data,
     int* out_has_blob,

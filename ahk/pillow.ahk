@@ -7609,6 +7609,32 @@ class Pillow {
                         throw Error(Pillow.Image.DdsOpenError(lastStatus, path), -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "ICNS" {
+                    ; BEHAV-ICNS-001: the native ICNS decoder returns local
+                    ; status codes for Pillow's load-time error shapes;
+                    ; container-level failures collapse to Pillow's
+                    ; identification error (Image.open wraps the plugin's
+                    ; SyntaxError in UnidentifiedImageError).
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_icns",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -20
+                        throw Error("Unsupported icon subimage format (rebuild PIL with JPEG 2000 support to fix this)", -1)
+                    if lastStatus = -21
+                        throw Error("Unsupported icon subimage format", -1)
+                    if lastStatus = -22
+                        throw Error("Unknown signature, expecting 0x00000000", -1)
+                    if lastStatus = -23
+                        throw Error("Error reading channel [" Pillow.Image.IcnsRleLeftover(path) " left]", -1)
+                    if lastStatus = -24
+                        throw Error("Pillow.Image.Open ICNS PNG payload uses an unsupported bit depth or color type", -1)
+                    if lastStatus = -25
+                        throw Error("image file is truncated", -1)
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
                 } else {
                     lastStatus := DllCall(
                         Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
@@ -7627,6 +7653,20 @@ class Pillow {
                         image.FrameCount := Pillow.Image.FrameCountForOpen(pathBytes, format)
                         image.ApplyNativeMetadata()
                         image.ApplyFrameMetadata()
+                        if format = "ICNS" {
+                            ; BEHAV-ICNS-001: expose info["sizes"] like
+                            ; Pillow's IcnsImageFile, and remember the
+                            ; pre-load rawmode quirk: Pillow's tobytes()
+                            ; snapshots self.mode (RGBA) BEFORE load(), so
+                            ; the first tobytes() on a non-RGBA best icon
+                            ; raises "No packer found from {mode} to RGBA"
+                            ; while RGB packs to RGBA. The eager facade
+                            ; replays that on the next ToBytes() call; any
+                            ; other handle-touching access clears it.
+                            image.Info["sizes"] := Pillow.Image.IcnsSizes(path)
+                            if image.Mode != "RGBA"
+                                image.IcnsQuirkPending := true
+                        }
                     } catch {
                         image.Close()
                         throw
@@ -8688,6 +8728,132 @@ class Pillow {
             }
         }
 
+        static IcnsSizes(path) {
+            ; BEHAV-ICNS-001: Pillow's info["sizes"] is the (w, h, scale)
+            ; list for every present icon slot in the plugin's SIZES order.
+            sizes := Buffer(96, 0)
+            count := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_icns_sizes",
+                "Ptr", Pillow.Image.Utf8Buffer(String(path)),
+                "Ptr", sizes,
+                "Int", 32,
+                "Int*", &count,
+                "Int"
+            )
+            if status != 0 || count <= 0
+                return []
+            out := []
+            index := 0
+            loop count / 3 {
+                out.Push([NumGet(sizes, index * 4, "Int"), NumGet(sizes, (index + 1) * 4, "Int"), NumGet(sizes, (index + 2) * 4, "Int")])
+                index += 3
+            }
+            return out
+        }
+
+        static IcnsRleLeftover(path) {
+            ; BEHAV-ICNS-001: Pillow's read_32 reports the remaining pixel
+            ; count of the first short RLE band as "Error reading channel
+            ; [N left]". Re-derive N by replaying the best slot's RGB32
+            ; chunk decode (uncompressed payloads never hit this error).
+            file := FileOpen(path, "r")
+            if !file
+                return 0
+            try {
+                size := file.Length
+                header := Buffer(8, 0)
+                file.RawRead(header, 8)
+                if size < 8 || StrGet(header, 4, "UTF-8") != "icns"
+                    return 0
+                fileLength := (NumGet(header, 4, "UChar") << 24) | (NumGet(header, 5, "UChar") << 16) | (NumGet(header, 6, "UChar") << 8) | NumGet(header, 7, "UChar")
+                slots := [
+                    [512, 512, 2, ["ic10"], ""],
+                    [512, 512, 1, ["ic09"], ""],
+                    [256, 256, 2, ["ic14"], ""],
+                    [256, 256, 1, ["ic08"], ""],
+                    [128, 128, 2, ["ic13"], ""],
+                    [128, 128, 1, ["ic07", "it32", "t8mk"], "it32"],
+                    [64, 64, 1, ["icp6"], ""],
+                    [32, 32, 2, ["ic12"], ""],
+                    [48, 48, 1, ["ih32", "h8mk"], "ih32"],
+                    [32, 32, 1, ["icp5", "il32", "l8mk"], "il32"],
+                    [16, 16, 2, ["ic11"], ""],
+                    [16, 16, 1, ["icp4", "is32", "s8mk"], "is32"],
+                ]
+                chunks := Map()
+                offset := 8
+                while offset < fileLength {
+                    chunkHeader := Buffer(8, 0)
+                    file.RawRead(chunkHeader, 8)
+                    if file.Pos < offset + 8
+                        break
+                    blockSize := (NumGet(chunkHeader, 4, "UChar") << 24) | (NumGet(chunkHeader, 5, "UChar") << 16) | (NumGet(chunkHeader, 6, "UChar") << 8) | NumGet(chunkHeader, 7, "UChar")
+                    if blockSize < 8
+                        break
+                    chunks[StrGet(chunkHeader, 4, "UTF-8")] := offset
+                    offset += 8 + blockSize - 8
+                    file.Seek(offset)
+                }
+                best := unset
+                for s in slots {
+                    present := false
+                    for key in s[4]
+                        present := present || chunks.Has(key)
+                    if !present
+                        continue
+                    if !IsSet(best) || s[1] > best[1] || (s[1] = best[1] && s[2] > best[2]) || (s[1] = best[1] && s[2] = best[2] && s[3] > best[3])
+                        best := s
+                }
+                if !IsSet(best)
+                    return 0
+                rgbKey := best[5]
+                if rgbKey = "" || !chunks.Has(rgbKey)
+                    return 0
+                file.Seek(chunks[rgbKey])
+                chunkHeader := Buffer(8, 0)
+                file.RawRead(chunkHeader, 8)
+                payloadSize := ((NumGet(chunkHeader, 4, "UChar") << 24) | (NumGet(chunkHeader, 5, "UChar") << 16) | (NumGet(chunkHeader, 6, "UChar") << 8) | NumGet(chunkHeader, 7, "UChar")) - 8
+                if rgbKey = "it32" {
+                    skip := Buffer(4, 0)
+                    file.RawRead(skip, 4)
+                    payloadSize -= 4
+                }
+                sizesq := best[1] * best[2]
+                if payloadSize = sizesq * 3
+                    return 0
+                data := Buffer(payloadSize, 0)
+                file.RawRead(data, payloadSize)
+                pos := 0
+                loop 3 {
+                    bytesLeft := sizesq
+                    while bytesLeft > 0 {
+                        if pos >= payloadSize
+                            break
+                        byteValue := NumGet(data, pos, "UChar")
+                        pos += 1
+                        if byteValue & 0x80 {
+                            blockSize := byteValue - 125
+                            if pos < payloadSize
+                                pos += 1
+                            bytesLeft -= blockSize
+                        } else {
+                            blockSize := byteValue + 1
+                            pos += Min(blockSize, payloadSize - pos)
+                            bytesLeft -= blockSize
+                        }
+                        if bytesLeft <= 0
+                            break
+                    }
+                    if bytesLeft != 0
+                        return bytesLeft
+                }
+                return 0
+            } finally {
+                file.Close()
+            }
+        }
+
         static OpenDibHandle(path, &outHandle) {
             ; BEHAV-DIB-001: DIB open = synthetic BITMAPFILEHEADER + native
             ; BMP decoder. Pillow's DIB has no BITMAPFILEHEADER, so the
@@ -8768,6 +8934,8 @@ class Pillow {
                 return "SGI"
             if RegExMatch(path, "i)\.dds$")
                 return "DDS"
+            if RegExMatch(path, "i)\.icns$")
+                return "ICNS"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -8797,7 +8965,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -8815,6 +8983,7 @@ class Pillow {
                 "PCX", "PCX",
                 "SGI", "SGI Image File Format",
                 "DDS", "DirectDraw Surface",
+                "ICNS", "Mac OS icns resource",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -9469,6 +9638,9 @@ class Pillow {
         }
 
         Load() {
+            ; BEHAV-ICNS-001: pixel access resolves the pre-load rawmode
+            ; quirk state like Pillow's load().
+            this.IcnsQuirkPending := false
             this.RequireHandle()
             return Pillow.Image.PixelAccess(this)
         }
@@ -10099,6 +10271,12 @@ class Pillow {
 
         _ReadOnly := 0
 
+        ; BEHAV-ICNS-001: True while an ICNS-opened image has not had its
+        ; first pixel access; the first no-args ToBytes() then replays
+        ; Pillow's pre-load rawmode quirk (RGB packs to RGBA, other
+        ; non-RGBA modes raise "No packer found from {mode} to RGBA").
+        IcnsQuirkPending := false
+
         ReadOnly {
             get {
                 ; Pillow 11.3.0: (self._im and self._im.readonly) or
@@ -10211,6 +10389,23 @@ class Pillow {
         }
 
         ToBytes(encoder := unset, rawmode := unset, orientation := 1) {
+            if this.IcnsQuirkPending && !IsSet(encoder) && !IsSet(rawmode) {
+                ; BEHAV-ICNS-001: Pillow's tobytes() snapshots self.mode
+                ; ("RGBA", the plugin's pre-load value) BEFORE load(), so
+                ; the first no-args tobytes() on an ICNS whose best icon
+                ; loads as RGB packs RGBA (opaque alpha), and any other
+                ; non-RGBA mode raises "No packer found from {mode} to
+                ; RGBA". Explicit rawmode/encoder calls skip the quirk.
+                this.IcnsQuirkPending := false
+                if this.Mode = "RGB" {
+                    converted := this.Convert("RGBA")
+                    try
+                        return converted.ToBytes()
+                    finally
+                        converted.Close()
+                }
+                throw Error("No packer found from " this.Mode " to RGBA", -1)
+            }
             this.RefreshBufferView()
             if IsSet(encoder) {
                 if encoder != "raw"
@@ -10444,6 +10639,62 @@ class Pillow {
                     "Ptr", fmtBytes,
                     "Int"
                 ))
+                return
+            }
+            if resolvedFormat = "ICNS" {
+                ; BEHAV-ICNS-001: Pillow writes the 8-byte "icns" header,
+                ; a TOC chunk, and eight PNG-backed icon entries
+                ; (ic07..ic14); per-size payloads come from width-matched
+                ; append_images entries or a default-resample resize of
+                ; the base image (the native codec writes the container
+                ; and PNG payloads in the DLL).
+                images := [this]
+                if IsSet(saveOptions) {
+                    appendOption := Pillow.Image.SaveOption(saveOptions, "AppendImages", "append_images")
+                    if appendOption.Set {
+                        appendImages := appendOption.Value
+                        if IsObject(appendImages) && appendImages is Pillow.Image {
+                            images.Push(appendImages)
+                        } else if IsObject(appendImages) {
+                            for image in appendImages {
+                                if !(IsObject(image) && image is Pillow.Image)
+                                    throw Error("Pillow.Image.Save append_images expects Pillow.Image values", -1)
+                                images.Push(image)
+                            }
+                        } else {
+                            throw Error("Pillow.Image.Save append_images expects an image or image array", -1)
+                        }
+                    }
+                }
+                pathBytes := Pillow.Image.Utf8Buffer(path)
+                status := 0
+                if images.Length = 1 {
+                    status := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_icns",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Int"
+                    )
+                } else {
+                    handles := Pillow.Image.HandleArray(images)
+                    status := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_icns_frames",
+                        "Ptr", handles,
+                        "Int", images.Length,
+                        "Ptr", pathBytes,
+                        "Int"
+                    )
+                }
+                if status = -26 {
+                    ; Pillow's PNG encoder rejects F with this exact
+                    ; message; the remaining unsupported modes (1/CMYK/
+                    ; I/I;16) are documented boundary children because
+                    ; our PNG payload encoder covers L/P/RGB/LA/RGBA.
+                    if this.Mode = "F"
+                        throw Error("cannot write mode F as PNG", -1)
+                    throw Error("Pillow.Image.Save ICNS mode " this.Mode " is not supported", -1)
+                }
+                Pillow.CheckStatus(status)
                 return
             }
             if IsSet(saveOptions) && resolvedFormat = "CUR" {
@@ -13430,6 +13681,7 @@ class Pillow {
         }
 
         GetData(band := unset) {
+            this.IcnsQuirkPending := false
             if this.Mode = "I" || this.Mode = "F" {
                 if IsSet(band)
                     throw Error("image has wrong mode", -1)
@@ -13809,6 +14061,7 @@ class Pillow {
         GetPixel(xy) {
             if !IsObject(xy) || xy.Length != 2
                 throw Error("Pillow.Image.GetPixel expects xy [x, y]", -1)
+            this.IcnsQuirkPending := false
             out := Buffer(this.Channels, 0)
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_getpixel",
@@ -13824,6 +14077,7 @@ class Pillow {
 
         PutPixel(xy, value) {
             this.DetachBufferView()
+            this.IcnsQuirkPending := false
             if !IsObject(xy) || xy.Length != 2
                 throw Error("Pillow.Image.PutPixel expects xy [x, y]", -1)
             color := this.PixelValueBuffer(value)
@@ -14549,6 +14803,7 @@ class Pillow {
         Crop(box := unset) {
             if !IsSet(box)
                 return this.Copy()
+            this.IcnsQuirkPending := false
             if !IsObject(box) || box.Length != 4
                 throw Error("Pillow.Image.Crop expects box [left, top, right, bottom]", -1)
             cropBox := []
@@ -14575,6 +14830,7 @@ class Pillow {
         Resize(size, resample := unset, box := unset, reducingGap := unset) {
             if size.Length != 2
                 throw Error("Pillow.Image.Resize expects size [width, height]", -1)
+            this.IcnsQuirkPending := false
             if !IsSet(resample)
                 ; Pillow 11.3.0: NEAREST only for BGR;-prefixed modes,
                 ; BICUBIC otherwise; the native layer forces NEAREST for
@@ -15125,6 +15381,7 @@ class Pillow {
         }
 
         Convert(modeName, matrixOrDither := unset, dither := unset, palette := unset, colors := unset) {
+            this.IcnsQuirkPending := false
             targetMode := Pillow.ModeId(modeName)
             if IsSet(matrixOrDither) && IsObject(matrixOrDither) {
                 if !(targetMode = 1 || targetMode = 3)

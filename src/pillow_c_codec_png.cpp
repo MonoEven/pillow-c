@@ -1609,6 +1609,235 @@ int open_png_image(const char* path, PillowCImage** out_image)
     }
 }
 
+bool read_png_header_info_memory(const std::uint8_t* data, std::size_t size, PngHeaderInfo* info)
+{
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (!data || !info || size < 33u ||
+        std::memcmp(data, signature, sizeof(signature)) != 0 ||
+        read_be32(data + 8) != 13u || std::memcmp(data + 12, "IHDR", 4) != 0) {
+        return false;
+    }
+    info->bit_depth = data[24];
+    info->color_type = data[25];
+    return true;
+}
+
+bool read_png_palette_transparency_memory(
+    const std::uint8_t* data,
+    std::size_t size,
+    std::vector<std::uint8_t>* out_palette_rgb,
+    std::vector<std::uint8_t>* out_palette_alpha,
+    std::vector<std::uint8_t>* out_transparency_table,
+    int* out_transparency)
+{
+    if (!data || !out_palette_rgb || !out_palette_alpha || !out_transparency_table || !out_transparency) {
+        return false;
+    }
+    out_palette_rgb->clear();
+    out_palette_alpha->clear();
+    out_transparency_table->clear();
+    *out_transparency = -1;
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (size < sizeof(signature) || std::memcmp(data, signature, sizeof(signature)) != 0) {
+        return false;
+    }
+
+    std::vector<std::uint8_t> palette_rgb;
+    std::vector<std::uint8_t> transparency;
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= size) {
+        const std::uint32_t length = read_be32(data + pos);
+        if (length > size - pos - 12u) {
+            return false;
+        }
+        const std::uint8_t* type = data + pos + 4u;
+        const std::uint8_t* payload = data + pos + 8u;
+        if (std::memcmp(type, "PLTE", 4u) == 0) {
+            if (length == 0u || length % 3u != 0u || length > 768u) {
+                return false;
+            }
+            palette_rgb.assign(payload, payload + length);
+        } else if (std::memcmp(type, "tRNS", 4u) == 0) {
+            if (length == 0u || length > 256u) {
+                return false;
+            }
+            transparency.assign(payload, payload + length);
+        } else if (std::memcmp(type, "IEND", 4u) == 0) {
+            break;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    if (palette_rgb.empty() || transparency.empty()) {
+        return false;
+    }
+
+    const std::size_t entries = palette_rgb.size() / 3u;
+    out_palette_rgb->assign(palette_rgb.begin(), palette_rgb.end());
+    out_palette_alpha->assign(entries, std::uint8_t{255});
+    const std::size_t alpha_count = std::min(entries, transparency.size());
+    for (std::size_t index = 0; index < alpha_count; ++index) {
+        (*out_palette_alpha)[index] = transparency[index];
+    }
+    int zero_index = -1;
+    int zero_count = 0;
+    bool has_partial_alpha = false;
+    for (std::size_t index = 0; index < alpha_count; ++index) {
+        if (transparency[index] == 0u) {
+            zero_index = static_cast<int>(index);
+            ++zero_count;
+        } else if (transparency[index] != 255u) {
+            has_partial_alpha = true;
+        }
+    }
+    if (zero_count == 1 && !has_partial_alpha) {
+        *out_transparency = zero_index;
+    } else {
+        out_transparency_table->assign(transparency.begin(), transparency.begin() + static_cast<std::ptrdiff_t>(alpha_count));
+    }
+    return true;
+}
+
+bool read_png_rgb_transparency_memory(const std::uint8_t* data, std::size_t size, std::uint8_t out_rgb[3])
+{
+    if (!data || !out_rgb) {
+        return false;
+    }
+    out_rgb[0] = 0;
+    out_rgb[1] = 0;
+    out_rgb[2] = 0;
+    PngHeaderInfo header_info{};
+    if (!read_png_header_info_memory(data, size, &header_info) ||
+        header_info.bit_depth != 8 ||
+        header_info.color_type != 2) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (size < sizeof(signature) || std::memcmp(data, signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= size) {
+        const std::uint32_t length = read_be32(data + pos);
+        if (length > size - pos - 12u) {
+            return false;
+        }
+        const std::uint8_t* type = data + pos + 4u;
+        const std::uint8_t* payload = data + pos + 8u;
+        if (std::memcmp(type, "tRNS", 4u) == 0) {
+            if (length != 6u) {
+                return false;
+            }
+            for (int channel = 0; channel < 3; ++channel) {
+                const std::uint16_t value = static_cast<std::uint16_t>(
+                    (static_cast<std::uint16_t>(payload[channel * 2]) << 8) |
+                    static_cast<std::uint16_t>(payload[channel * 2 + 1]));
+                if (value > 255u) {
+                    return false;
+                }
+                out_rgb[channel] = static_cast<std::uint8_t>(value);
+            }
+            return true;
+        }
+        if (std::memcmp(type, "IDAT", 4u) == 0 || std::memcmp(type, "IEND", 4u) == 0) {
+            return false;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    return false;
+}
+
+bool read_png_grayscale_transparency_memory(const std::uint8_t* data, std::size_t size, std::uint8_t* out_value)
+{
+    if (!data || !out_value) {
+        return false;
+    }
+    *out_value = 0;
+    PngHeaderInfo header_info{};
+    if (!read_png_header_info_memory(data, size, &header_info) ||
+        header_info.bit_depth != 8 ||
+        header_info.color_type != 0) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (size < sizeof(signature) || std::memcmp(data, signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= size) {
+        const std::uint32_t length = read_be32(data + pos);
+        if (length > size - pos - 12u) {
+            return false;
+        }
+        const std::uint8_t* type = data + pos + 4u;
+        const std::uint8_t* payload = data + pos + 8u;
+        if (std::memcmp(type, "tRNS", 4u) == 0) {
+            if (length != 2u) {
+                return false;
+            }
+            const std::uint16_t value = static_cast<std::uint16_t>(
+                (static_cast<std::uint16_t>(payload[0]) << 8) |
+                static_cast<std::uint16_t>(payload[1]));
+            if (value > 255u) {
+                return false;
+            }
+            *out_value = static_cast<std::uint8_t>(value);
+            return true;
+        }
+        if (std::memcmp(type, "IDAT", 4u) == 0 || std::memcmp(type, "IEND", 4u) == 0) {
+            return false;
+        }
+        pos += 12u + static_cast<std::size_t>(length);
+    }
+    return false;
+}
+
+bool copy_png_without_wic_sensitive_chunks_memory(
+    const std::uint8_t* data,
+    std::size_t size,
+    bool remove_trns,
+    bool remove_compressed_text,
+    std::vector<std::uint8_t>* out_png)
+{
+    if (!data || !out_png) {
+        return false;
+    }
+    static constexpr std::uint8_t signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (size < sizeof(signature) || std::memcmp(data, signature, sizeof(signature)) != 0) {
+        return false;
+    }
+    std::vector<std::uint8_t> copy;
+    copy.insert(copy.end(), signature, signature + sizeof(signature));
+    bool removed_chunk = false;
+    std::size_t pos = sizeof(signature);
+    while (pos + 12u <= size) {
+        const std::uint32_t length = read_be32(data + pos);
+        if (length > size - pos - 12u) {
+            return false;
+        }
+        const std::uint8_t* type = data + pos + 4u;
+        const std::uint8_t* payload = data + pos + 8u;
+        const std::size_t chunk_size = 12u + static_cast<std::size_t>(length);
+        if ((remove_trns && std::memcmp(type, "tRNS", 4u) == 0) ||
+            (remove_compressed_text && png_chunk_is_compressed_text_for_wic(type, payload, length))) {
+            removed_chunk = true;
+        } else {
+            copy.insert(
+                copy.end(),
+                data + static_cast<std::ptrdiff_t>(pos),
+                data + static_cast<std::ptrdiff_t>(pos + chunk_size));
+        }
+        pos += chunk_size;
+        if (std::memcmp(type, "IEND", 4u) == 0) {
+            break;
+        }
+    }
+    if (!removed_chunk) {
+        return false;
+    }
+    *out_png = std::move(copy);
+    return true;
+}
+
 int png_mode_format(const PillowCImage* image, WICPixelFormatGUID* format)
 {
     if (!image || !format) {
@@ -5554,6 +5783,296 @@ int save_png_image_with_icc_exif_options(
 }
 
 } // namespace
+
+int pillow_c_png_decode_memory(
+    const std::uint8_t* data,
+    std::size_t size,
+    PillowCImage** out_image)
+{
+    if (!data || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        PngHeaderInfo header_info = {};
+        if (!read_png_header_info_memory(data, size, &header_info)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ComInitScope com;
+        if (!com.usable()) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        ComPtr<IWICImagingFactory> factory;
+        int status = create_wic_factory(&factory);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+
+        std::uint8_t png_grayscale_transparency = 0;
+        const bool has_grayscale_transparency =
+            header_info.color_type == 0 &&
+            read_png_grayscale_transparency_memory(data, size, &png_grayscale_transparency);
+        std::vector<std::uint8_t> png_decode_bytes;
+        ComPtr<IWICBitmapDecoder> decoder;
+        ComPtr<IWICStream> decoder_stream;
+        HRESULT hr = S_OK;
+        if (copy_png_without_wic_sensitive_chunks_memory(
+                data, size, has_grayscale_transparency, true, &png_decode_bytes)) {
+            if (png_decode_bytes.size() > static_cast<std::size_t>(UINT_MAX)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            hr = factory->CreateStream(decoder_stream.put());
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            hr = decoder_stream->InitializeFromMemory(
+                png_decode_bytes.data(),
+                static_cast<DWORD>(png_decode_bytes.size()));
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            hr = factory->CreateDecoderFromStream(
+                decoder_stream.get(),
+                nullptr,
+                WICDecodeMetadataCacheOnDemand,
+                decoder.put());
+        } else {
+            if (size > static_cast<std::size_t>(UINT_MAX)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            hr = factory->CreateStream(decoder_stream.put());
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            hr = decoder_stream->InitializeFromMemory(
+                static_cast<WICInProcPointer>(const_cast<std::uint8_t*>(data)),
+                static_cast<DWORD>(size));
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            hr = factory->CreateDecoderFromStream(
+                decoder_stream.get(),
+                nullptr,
+                WICDecodeMetadataCacheOnDemand,
+                decoder.put());
+        }
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        GUID container = {};
+        if (FAILED(decoder->GetContainerFormat(&container)) || !IsEqualGUID(container, GUID_ContainerFormatPng)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        ComPtr<IWICBitmapFrameDecode> frame;
+        hr = decoder->GetFrame(0, frame.put());
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        UINT width_u = 0;
+        UINT height_u = 0;
+        hr = frame->GetSize(&width_u, &height_u);
+        if (FAILED(hr) || width_u > static_cast<UINT>(std::numeric_limits<int>::max()) ||
+            height_u > static_cast<UINT>(std::numeric_limits<int>::max())) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const int width = static_cast<int>(width_u);
+        const int height = static_cast<int>(height_u);
+        if (width <= 0 || height <= 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        WICPixelFormatGUID source_format = {};
+        hr = frame->GetPixelFormat(&source_format);
+        if (FAILED(hr)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        int mode = 0;
+        int channels = 0;
+        int decoded_channels = 0;
+        WICPixelFormatGUID target_format = {};
+        std::vector<std::uint8_t> png_palette_rgb;
+        std::vector<std::uint8_t> png_palette_alpha;
+        std::vector<std::uint8_t> png_transparency_table;
+        int png_transparency = -1;
+        const bool has_palette_transparency =
+            header_info.color_type == 3 &&
+            read_png_palette_transparency_memory(
+                data,
+                size,
+                &png_palette_rgb,
+                &png_palette_alpha,
+                &png_transparency_table,
+                &png_transparency);
+        std::uint8_t png_rgb_transparency[3] = {0, 0, 0};
+        const bool has_rgb_transparency =
+            header_info.color_type == 2 &&
+            read_png_rgb_transparency_memory(data, size, png_rgb_transparency);
+        if (header_info.color_type == 0 && header_info.bit_depth == 8) {
+            mode = PILLOW_C_MODE_L;
+            channels = 1;
+            decoded_channels = 1;
+            target_format = GUID_WICPixelFormat8bppGray;
+        } else if (header_info.color_type == 4 && header_info.bit_depth == 8) {
+            mode = PILLOW_C_MODE_LA;
+            channels = 2;
+            decoded_channels = 4;
+            target_format = GUID_WICPixelFormat32bppRGBA;
+        } else if (header_info.color_type == 2 && header_info.bit_depth == 8) {
+            mode = PILLOW_C_MODE_RGB;
+            channels = 3;
+            decoded_channels = 3;
+            target_format = GUID_WICPixelFormat24bppRGB;
+        } else if (header_info.color_type == 3 && header_info.bit_depth <= 8) {
+            mode = PILLOW_C_MODE_P;
+            channels = 1;
+            decoded_channels = has_palette_transparency ? 4 : 1;
+            target_format = has_palette_transparency ? GUID_WICPixelFormat32bppRGBA : GUID_WICPixelFormat8bppIndexed;
+        } else {
+            status = wic_format_to_mode(source_format, &mode, &channels, &target_format);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            decoded_channels = channels;
+        }
+
+        std::size_t stride = 0;
+        std::size_t storage_size = 0;
+        if (!checked_image_size(width, height, channels, &stride, &storage_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::size_t decoded_stride = 0;
+        std::size_t decoded_size = 0;
+        if (!checked_image_size(width, height, decoded_channels, &decoded_stride, &decoded_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::vector<std::uint8_t> palette_rgb;
+        ComPtr<IWICPalette> source_palette;
+        IWICPalette* converter_palette = nullptr;
+        if (mode == PILLOW_C_MODE_P) {
+            status = copy_wic_palette_rgb(frame.get(), factory.get(), &palette_rgb);
+            if (status != PILLOW_C_OK) {
+                return status;
+            }
+            if (has_palette_transparency) {
+                palette_rgb = png_palette_rgb;
+            }
+            HRESULT palette_hr = factory->CreatePalette(source_palette.put());
+            if (FAILED(palette_hr) || FAILED(frame->CopyPalette(source_palette.get()))) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            converter_palette = source_palette.get();
+        }
+
+        ComPtr<IWICBitmapSource> source;
+        if (IsEqualGUID(source_format, target_format)) {
+            source.reset(frame.get());
+            source.get()->AddRef();
+        } else {
+            ComPtr<IWICFormatConverter> converter;
+            hr = factory->CreateFormatConverter(converter.put());
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            hr = converter->Initialize(
+                frame.get(),
+                target_format,
+                WICBitmapDitherTypeNone,
+                converter_palette,
+                0.0,
+                mode == PILLOW_C_MODE_P ? WICBitmapPaletteTypeCustom : WICBitmapPaletteTypeMedianCut);
+            if (FAILED(hr)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            source.reset(converter.get());
+            source.get()->AddRef();
+        }
+
+        auto* image = new PillowCImage{
+            width,
+            height,
+            mode,
+            channels,
+            stride,
+            std::vector<std::uint8_t>(storage_size)};
+        std::vector<std::uint8_t> decoded;
+        std::uint8_t* copy_target = image->pixels.data();
+        UINT copy_stride = static_cast<UINT>(stride);
+        UINT copy_size = static_cast<UINT>(image->pixels.size());
+        if (decoded_channels != channels) {
+            decoded.assign(decoded_size, std::uint8_t{0});
+            copy_target = decoded.data();
+            copy_stride = static_cast<UINT>(decoded_stride);
+            copy_size = static_cast<UINT>(decoded.size());
+        }
+        hr = source->CopyPixels(
+            nullptr,
+            copy_stride,
+            copy_size,
+            copy_target);
+        if (FAILED(hr)) {
+            delete image;
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (mode == PILLOW_C_MODE_LA) {
+            for (int y = 0; y < height; ++y) {
+                const std::uint8_t* src_row = decoded.data() + static_cast<std::size_t>(y) * decoded_stride;
+                std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+                for (int x = 0; x < width; ++x) {
+                    const std::size_t src = static_cast<std::size_t>(x) * 4u;
+                    const std::size_t dst = static_cast<std::size_t>(x) * 2u;
+                    dst_row[dst + 0u] = src_row[src + 0u];
+                    dst_row[dst + 1u] = src_row[src + 3u];
+                }
+            }
+        } else if (mode == PILLOW_C_MODE_P && has_palette_transparency) {
+            status = remap_png_rgba_to_palette_indices(
+                decoded,
+                width,
+                height,
+                decoded_stride,
+                png_palette_rgb,
+                png_palette_alpha,
+                image);
+            if (status != PILLOW_C_OK) {
+                delete image;
+                return status;
+            }
+        }
+        if (mode == PILLOW_C_MODE_P) {
+            image->palette_rgb = std::move(palette_rgb);
+            if (has_palette_transparency) {
+                image->palette_alpha = std::move(png_palette_alpha);
+                image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_RGBA;
+                if (png_transparency >= 0) {
+                    image->has_png_transparency = true;
+                    image->png_transparency = png_transparency;
+                } else if (!png_transparency_table.empty()) {
+                    image->png_transparency_table = std::move(png_transparency_table);
+                }
+            } else {
+                image->palette_alpha.clear();
+                image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+            }
+        }
+        if (has_rgb_transparency) {
+            image->has_png_rgb_transparency = true;
+            image->png_rgb_transparency[0] = png_rgb_transparency[0];
+            image->png_rgb_transparency[1] = png_rgb_transparency[1];
+            image->png_rgb_transparency[2] = png_rgb_transparency[2];
+        }
+        if (has_grayscale_transparency) {
+            image->has_png_transparency = true;
+            image->png_transparency = png_grayscale_transparency;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
 
 bool pillow_c_inflate_zlib_deflate(
     const std::uint8_t* data,

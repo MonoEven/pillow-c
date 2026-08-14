@@ -24,6 +24,8 @@
 
 namespace {
 constexpr int PILLOW_C_LEGACY_RESAMPLE_LANCZOS = 1;
+constexpr int PILLOW_C_LEGACY_RESAMPLE_NEAREST = 0;
+constexpr int PILLOW_C_LEGACY_RESAMPLE_BICUBIC = 3;
 
 bool ppm_is_space(std::uint8_t value)
 {
@@ -5312,6 +5314,602 @@ int save_cur_image_with_hotspot(
     }
 }
 
+// ---------------------------------------------------------------------------
+// BEHAV-ICNS-001: Apple Icon Image format over the native PNG seams.
+//
+// Pillow 11.3.0's IcnsImagePlugin writes the 8-byte "icns" header, a TOC
+// chunk, and eight PNG-backed icon entries (ic07..ic14), and its open picks
+// the lexicographically largest (width, height, scale) resource. Container
+// parse failures surface as Pillow's generic identification error because
+// Image.open wraps the plugin's SyntaxError, so this layer reports
+// PILLOW_C_INVALID_ARGUMENT for those; payload-level failures keep distinct
+// local statuses (-20..-26).
+// ---------------------------------------------------------------------------
+
+constexpr int PILLOW_C_ICNS_JP2K = -20;
+constexpr int PILLOW_C_ICNS_SUBIMAGE = -21;
+constexpr int PILLOW_C_ICNS_IT32_SIG = -22;
+constexpr int PILLOW_C_ICNS_RLE = -23;
+constexpr int PILLOW_C_ICNS_PNG_MODE = -24;
+constexpr int PILLOW_C_ICNS_PNG_BAD = -25;
+constexpr int PILLOW_C_ICNS_SAVE_MODE = -26;
+
+constexpr int ICNS_READER_PNG_JP2 = 0;
+constexpr int ICNS_READER_RGB32 = 1;
+constexpr int ICNS_READER_RGB32T = 2;
+constexpr int ICNS_READER_MASK = 3;
+
+struct IcnsSlotReader {
+    const char* type;
+    int kind;
+};
+
+struct IcnsSlot {
+    int width;
+    int height;
+    int scale;
+    const IcnsSlotReader* readers;
+    std::size_t reader_count;
+};
+
+const IcnsSlotReader ICNS_SLOT_IC10[] = {{"ic10", ICNS_READER_PNG_JP2}};
+const IcnsSlotReader ICNS_SLOT_IC09[] = {{"ic09", ICNS_READER_PNG_JP2}};
+const IcnsSlotReader ICNS_SLOT_IC14[] = {{"ic14", ICNS_READER_PNG_JP2}};
+const IcnsSlotReader ICNS_SLOT_IC08[] = {{"ic08", ICNS_READER_PNG_JP2}};
+const IcnsSlotReader ICNS_SLOT_IC13[] = {{"ic13", ICNS_READER_PNG_JP2}};
+const IcnsSlotReader ICNS_SLOT_IC07[] = {
+    {"ic07", ICNS_READER_PNG_JP2},
+    {"it32", ICNS_READER_RGB32T},
+    {"t8mk", ICNS_READER_MASK},
+};
+const IcnsSlotReader ICNS_SLOT_ICP6[] = {{"icp6", ICNS_READER_PNG_JP2}};
+const IcnsSlotReader ICNS_SLOT_IC12[] = {{"ic12", ICNS_READER_PNG_JP2}};
+const IcnsSlotReader ICNS_SLOT_IH32[] = {
+    {"ih32", ICNS_READER_RGB32},
+    {"h8mk", ICNS_READER_MASK},
+};
+const IcnsSlotReader ICNS_SLOT_ICP5[] = {
+    {"icp5", ICNS_READER_PNG_JP2},
+    {"il32", ICNS_READER_RGB32},
+    {"l8mk", ICNS_READER_MASK},
+};
+const IcnsSlotReader ICNS_SLOT_IC11[] = {{"ic11", ICNS_READER_PNG_JP2}};
+const IcnsSlotReader ICNS_SLOT_ICP4[] = {
+    {"icp4", ICNS_READER_PNG_JP2},
+    {"is32", ICNS_READER_RGB32},
+    {"s8mk", ICNS_READER_MASK},
+};
+
+const IcnsSlot ICNS_SLOTS[] = {
+    {512, 512, 2, ICNS_SLOT_IC10, 1},
+    {512, 512, 1, ICNS_SLOT_IC09, 1},
+    {256, 256, 2, ICNS_SLOT_IC14, 1},
+    {256, 256, 1, ICNS_SLOT_IC08, 1},
+    {128, 128, 2, ICNS_SLOT_IC13, 1},
+    {128, 128, 1, ICNS_SLOT_IC07, 3},
+    {64, 64, 1, ICNS_SLOT_ICP6, 1},
+    {32, 32, 2, ICNS_SLOT_IC12, 1},
+    {48, 48, 1, ICNS_SLOT_IH32, 2},
+    {32, 32, 1, ICNS_SLOT_ICP5, 3},
+    {16, 16, 2, ICNS_SLOT_IC11, 1},
+    {16, 16, 1, ICNS_SLOT_ICP4, 3},
+};
+
+struct IcnsChunk {
+    std::string type;
+    std::vector<std::uint8_t> payload;
+};
+
+const IcnsChunk* find_icns_chunk(const std::vector<IcnsChunk>& chunks, const char type[4])
+{
+    for (const IcnsChunk& chunk : chunks) {
+        if (chunk.type.size() == 4u && std::memcmp(chunk.type.data(), type, 4u) == 0) {
+            return &chunk;
+        }
+    }
+    return nullptr;
+}
+
+int parse_icns_chunks(const std::vector<std::uint8_t>& data, std::vector<IcnsChunk>* out_chunks)
+{
+    if (!out_chunks) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    out_chunks->clear();
+    if (data.size() < 8u || std::memcmp(data.data(), "icns", 4u) != 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::uint32_t file_length = read_be32(data.data() + 4u);
+    std::size_t index = 8u;
+    while (index < file_length) {
+        if (index + 8u > data.size()) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::uint32_t block_size = read_be32(data.data() + index + 4u);
+        if (block_size <= 0u || block_size < 8u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        IcnsChunk chunk;
+        chunk.type.assign(
+            reinterpret_cast<const char*>(data.data() + index),
+            reinterpret_cast<const char*>(data.data() + index + 4u));
+        const std::size_t payload_size = static_cast<std::size_t>(block_size) - 8u;
+        const std::size_t available = data.size() >= index + 8u ? data.size() - index - 8u : 0u;
+        chunk.payload.assign(
+            data.begin() + static_cast<std::ptrdiff_t>(index + 8u),
+            data.begin() + static_cast<std::ptrdiff_t>(index + 8u + std::min(payload_size, available)));
+        out_chunks->push_back(std::move(chunk));
+        index += 8u + payload_size;
+    }
+    return PILLOW_C_OK;
+}
+
+bool icns_slot_present(const std::vector<IcnsChunk>& chunks, const IcnsSlot& slot)
+{
+    for (std::size_t reader_index = 0; reader_index < slot.reader_count; ++reader_index) {
+        if (find_icns_chunk(chunks, slot.readers[reader_index].type)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int icns_sizes_for_chunks(
+    const std::vector<IcnsChunk>& chunks,
+    std::vector<int>* out_sizes,
+    bool* out_found,
+    const IcnsSlot** out_best_slot)
+{
+    if (!out_sizes || !out_found || !out_best_slot) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    out_sizes->clear();
+    *out_found = false;
+    *out_best_slot = nullptr;
+    int best_width = -1;
+    int best_height = -1;
+    int best_scale = -1;
+    for (const IcnsSlot& slot : ICNS_SLOTS) {
+        if (!icns_slot_present(chunks, slot)) {
+            continue;
+        }
+        out_sizes->push_back(slot.width);
+        out_sizes->push_back(slot.height);
+        out_sizes->push_back(slot.scale);
+        *out_found = true;
+        if (slot.width > best_width ||
+            (slot.width == best_width && slot.height > best_height) ||
+            (slot.width == best_width && slot.height == best_height && slot.scale > best_scale)) {
+            best_width = slot.width;
+            best_height = slot.height;
+            best_scale = slot.scale;
+            *out_best_slot = &slot;
+        }
+    }
+    return PILLOW_C_OK;
+}
+
+bool icns_payload_is_jpeg2000(const std::vector<std::uint8_t>& payload)
+{
+    static constexpr std::uint8_t jp2_a[4] = {0xff, 0x4f, 0xff, 0x51};
+    static constexpr std::uint8_t jp2_b[4] = {0x0d, 0x0a, 0x87, 0x0a};
+    static constexpr std::uint8_t jp2_c[12] = {0x00, 0x00, 0x00, 0x0c, 0x6a, 0x50, 0x20, 0x20, 0x0d, 0x0a, 0x87, 0x0a};
+    if (payload.size() >= 4u &&
+        (std::memcmp(payload.data(), jp2_a, 4u) == 0 || std::memcmp(payload.data(), jp2_b, 4u) == 0)) {
+        return true;
+    }
+    return payload.size() >= 12u && std::memcmp(payload.data(), jp2_c, 12u) == 0;
+}
+
+bool icns_payload_is_png(const std::vector<std::uint8_t>& payload)
+{
+    static constexpr std::uint8_t png_signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    return payload.size() >= 8u && std::memcmp(payload.data(), png_signature, 8u) == 0;
+}
+
+bool icns_png_payload_mode_supported(const std::vector<std::uint8_t>& payload)
+{
+    if (payload.size() < 33u) {
+        return false;
+    }
+    const int bit_depth = payload[24];
+    const int color_type = payload[25];
+    if ((color_type == 0 || color_type == 2 || color_type == 4 || color_type == 6) && bit_depth == 8) {
+        return true;
+    }
+    if (color_type == 3 && bit_depth <= 8) {
+        return true;
+    }
+    return false;
+}
+
+int decode_icns_rgb32_payload(
+    const std::uint8_t* data,
+    std::size_t size,
+    int width,
+    int height,
+    bool expect_32t_header,
+    PillowCImage** out_image,
+    int* out_rle_leftover)
+{
+    if (!data || !out_image || !out_rle_leftover) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    *out_rle_leftover = -1;
+    if (expect_32t_header) {
+        if (size < 4u || data[0] != 0u || data[1] != 0u || data[2] != 0u || data[3] != 0u) {
+            return PILLOW_C_ICNS_IT32_SIG;
+        }
+        data += 4;
+        size -= 4u;
+    }
+    const std::int64_t sizesq = static_cast<std::int64_t>(width) * static_cast<std::int64_t>(height);
+    if (sizesq <= 0 || sizesq > static_cast<std::int64_t>(std::numeric_limits<int>::max())) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t pixel_count = static_cast<std::size_t>(sizesq);
+
+    std::size_t stride = 0;
+    std::size_t storage_size = 0;
+    if (!checked_image_size(width, height, 3, &stride, &storage_size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        auto* image = new PillowCImage{
+            width,
+            height,
+            PILLOW_C_MODE_RGB,
+            3,
+            stride,
+            std::vector<std::uint8_t>(storage_size)};
+        if (size == pixel_count * 3u) {
+            std::memcpy(image->pixels.data(), data, size);
+            *out_image = image;
+            return PILLOW_C_OK;
+        }
+
+        // RLE variant: per-band run/copy chunks with the second-byte flags.
+        std::vector<std::uint8_t> bands[3];
+        std::size_t pos = 0u;
+        for (int band_index = 0; band_index < 3; ++band_index) {
+            std::vector<std::uint8_t>& band = bands[band_index];
+            std::int64_t bytes_left = sizesq;
+            while (bytes_left > 0) {
+                if (pos >= size) {
+                    break;
+                }
+                const std::uint8_t byte_value = data[pos++];
+                if (byte_value & 0x80u) {
+                    const std::int64_t block_size = static_cast<std::int64_t>(byte_value) - 125;
+                    const std::uint8_t fill = pos < size ? data[pos++] : 0;
+                    for (std::int64_t repeat = 0; repeat < block_size; ++repeat) {
+                        band.push_back(fill);
+                    }
+                    bytes_left -= block_size;
+                } else {
+                    const std::int64_t block_size = static_cast<std::int64_t>(byte_value) + 1;
+                    const std::size_t copy_count = static_cast<std::size_t>(std::min<std::int64_t>(block_size, static_cast<std::int64_t>(size - pos)));
+                    band.insert(band.end(), data + pos, data + pos + copy_count);
+                    pos += copy_count;
+                    bytes_left -= block_size;
+                }
+                if (bytes_left <= 0) {
+                    break;
+                }
+            }
+            if (bytes_left != 0) {
+                *out_rle_leftover = static_cast<int>(bytes_left);
+                delete image;
+                return PILLOW_C_ICNS_RLE;
+            }
+        }
+
+        std::size_t pixel_index = 0u;
+        for (std::size_t index = 0; index < pixel_count && index < bands[0].size(); ++index) {
+            image->pixels[index * 3u + 0u] = bands[0][index];
+            image->pixels[index * 3u + 1u] = bands[1][index];
+            image->pixels[index * 3u + 2u] = bands[2][index];
+            ++pixel_index;
+        }
+        if (pixel_index != pixel_count) {
+            delete image;
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int open_icns_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<IcnsChunk> chunks;
+    int status = parse_icns_chunks(data, &chunks);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+
+    std::vector<int> sizes;
+    bool found = false;
+    const IcnsSlot* best_slot = nullptr;
+    status = icns_sizes_for_chunks(chunks, &sizes, &found, &best_slot);
+    if (status != PILLOW_C_OK || !found || !best_slot) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    // Decode the best slot's channels: RGBA wins, else RGB plus optional A.
+    PillowCImage* rgba_image = nullptr;
+    PillowCImage* rgb_image = nullptr;
+    PillowCImage* mask_image = nullptr;
+    try {
+        for (std::size_t reader_index = 0; reader_index < best_slot->reader_count; ++reader_index) {
+            const IcnsSlotReader& reader = best_slot->readers[reader_index];
+            const IcnsChunk* chunk = find_icns_chunk(chunks, reader.type);
+            if (!chunk) {
+                continue;
+            }
+            if (reader.kind == ICNS_READER_PNG_JP2) {
+                if (icns_payload_is_png(chunk->payload)) {
+                    if (!icns_png_payload_mode_supported(chunk->payload)) {
+                        return PILLOW_C_ICNS_PNG_MODE;
+                    }
+                    status = pillow_c_png_decode_memory(
+                        chunk->payload.data(),
+                        chunk->payload.size(),
+                        &rgba_image);
+                    if (status != PILLOW_C_OK) {
+                        return PILLOW_C_ICNS_PNG_BAD;
+                    }
+                } else if (icns_payload_is_jpeg2000(chunk->payload)) {
+                    return PILLOW_C_ICNS_JP2K;
+                } else {
+                    return PILLOW_C_ICNS_SUBIMAGE;
+                }
+            } else if (reader.kind == ICNS_READER_RGB32 || reader.kind == ICNS_READER_RGB32T) {
+                int rle_leftover = -1;
+                status = decode_icns_rgb32_payload(
+                    chunk->payload.data(),
+                    chunk->payload.size(),
+                    best_slot->width,
+                    best_slot->height,
+                    reader.kind == ICNS_READER_RGB32T,
+                    &rgb_image,
+                    &rle_leftover);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+            } else if (reader.kind == ICNS_READER_MASK) {
+                const std::int64_t sizesq = static_cast<std::int64_t>(best_slot->width) * static_cast<std::int64_t>(best_slot->height);
+                if (sizesq <= 0 || chunk->payload.size() != static_cast<std::size_t>(sizesq)) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                std::size_t stride = 0;
+                std::size_t storage_size = 0;
+                if (!checked_image_size(best_slot->width, best_slot->height, 1, &stride, &storage_size)) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                auto* mask = new PillowCImage{
+                    best_slot->width,
+                    best_slot->height,
+                    PILLOW_C_MODE_L,
+                    1,
+                    stride,
+                    std::vector<std::uint8_t>(chunk->payload.begin(), chunk->payload.end())};
+                mask_image = mask;
+            }
+        }
+
+        if (rgba_image) {
+            delete rgb_image;
+            delete mask_image;
+            *out_image = rgba_image;
+            return PILLOW_C_OK;
+        }
+        if (!rgb_image) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (mask_image) {
+            // RGB + 1-bit/mask alpha -> RGBA in Pillow's getimage().
+            std::size_t stride = 0;
+            std::size_t storage_size = 0;
+            if (!checked_image_size(best_slot->width, best_slot->height, 4, &stride, &storage_size)) {
+                delete rgb_image;
+                delete mask_image;
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            auto* composed = new PillowCImage{
+                best_slot->width,
+                best_slot->height,
+                PILLOW_C_MODE_RGBA,
+                4,
+                stride,
+                std::vector<std::uint8_t>(storage_size)};
+            const std::size_t pixel_count = static_cast<std::size_t>(best_slot->width) * static_cast<std::size_t>(best_slot->height);
+            for (std::size_t index = 0; index < pixel_count; ++index) {
+                composed->pixels[index * 4u + 0u] = rgb_image->pixels[index * 3u + 0u];
+                composed->pixels[index * 4u + 1u] = rgb_image->pixels[index * 3u + 1u];
+                composed->pixels[index * 4u + 2u] = rgb_image->pixels[index * 3u + 2u];
+                composed->pixels[index * 4u + 3u] = mask_image->pixels[index];
+            }
+            delete rgb_image;
+            delete mask_image;
+            *out_image = composed;
+            return PILLOW_C_OK;
+        }
+        *out_image = rgb_image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        delete rgba_image;
+        delete rgb_image;
+        delete mask_image;
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int icns_sizes_for_path(const char* path, int* out_sizes, int capacity, int* out_count)
+{
+    if (!path || !out_sizes || !out_count) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_count = 0;
+    std::vector<std::uint8_t> data;
+    if (!read_binary_file(path, &data)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<IcnsChunk> chunks;
+    int status = parse_icns_chunks(data, &chunks);
+    if (status != PILLOW_C_OK) {
+        return status;
+    }
+    std::vector<int> sizes;
+    bool found = false;
+    const IcnsSlot* best_slot = nullptr;
+    status = icns_sizes_for_chunks(chunks, &sizes, &found, &best_slot);
+    if (status != PILLOW_C_OK || !found) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (capacity < 0 || sizes.size() > static_cast<std::size_t>(capacity)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    for (std::size_t index = 0; index < sizes.size(); ++index) {
+        out_sizes[index] = sizes[index];
+    }
+    *out_count = static_cast<int>(sizes.size());
+    return PILLOW_C_OK;
+}
+
+int save_icns_images(const PillowCImage* const* images, std::size_t image_count, const char* path)
+{
+    if (!images || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image_count == 0 || !images[0]) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const PillowCImage* source = images[0];
+    if (source->width <= 0 || source->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    for (std::size_t index = 1; index < image_count; ++index) {
+        if (!images[index]) {
+            return PILLOW_C_NULL_POINTER;
+        }
+    }
+    int color_type = 0;
+    int payload_channels = 0;
+    int status = pillow_c_png_custom_mode_spec(source, &color_type, &payload_channels);
+    if (status != PILLOW_C_OK) {
+        return PILLOW_C_ICNS_SAVE_MODE;
+    }
+    for (std::size_t index = 0; index < image_count; ++index) {
+        status = pillow_c_refresh_const_buffer_view_image(images[index]);
+        if (status != PILLOW_C_OK) {
+            return status;
+        }
+    }
+
+    static constexpr struct {
+        const char* type;
+        int size;
+    } ICNS_SAVE_SIZES[] = {
+        {"ic07", 128},
+        {"ic08", 256},
+        {"ic09", 512},
+        {"ic10", 1024},
+        {"ic11", 32},
+        {"ic12", 64},
+        {"ic13", 256},
+        {"ic14", 512},
+    };
+
+    try {
+        const int resample =
+            source->mode == PILLOW_C_MODE_P || source->mode == PILLOW_C_MODE_1
+                ? PILLOW_C_LEGACY_RESAMPLE_NEAREST
+                : PILLOW_C_LEGACY_RESAMPLE_BICUBIC;
+
+        std::vector<std::pair<std::string, std::vector<std::uint8_t>>> entries;
+        entries.reserve(8);
+        for (const auto& save_size : ICNS_SAVE_SIZES) {
+            const PillowCImage* provided = nullptr;
+            for (std::size_t index = 0; index < image_count; ++index) {
+                if (images[index]->width == save_size.size) {
+                    provided = images[index];
+                    break;
+                }
+            }
+            const PillowCImage* frame = provided ? provided : source;
+            PillowCImage resized{};
+            if (!provided && (frame->width != save_size.size || frame->height != save_size.size)) {
+                std::size_t stride = 0;
+                std::size_t storage_size = 0;
+                if (!checked_image_size(save_size.size, save_size.size, frame->channels, &stride, &storage_size)) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                resized = PillowCImage{
+                    save_size.size,
+                    save_size.size,
+                    frame->mode,
+                    frame->channels,
+                    stride,
+                    std::vector<std::uint8_t>(storage_size)};
+                status = pillow_c_resize_image_into(frame, save_size.size, save_size.size, resample, &resized);
+                if (status != PILLOW_C_OK) {
+                    return status;
+                }
+                pillow_c_copy_palette_if_same_mode(frame, &resized);
+                frame = &resized;
+            }
+            std::vector<std::uint8_t> payload;
+            status = pillow_c_png_encode_custom_image(frame, false, 0.0, 0.0, false, 0, false, 0, 0, 0, &payload);
+            if (status != PILLOW_C_OK) {
+                return PILLOW_C_ICNS_SAVE_MODE;
+            }
+            entries.emplace_back(save_size.type, std::move(payload));
+        }
+
+        std::uint64_t file_length = 8u + (8u + 8u * entries.size());
+        for (const auto& entry : entries) {
+            file_length += 8u + static_cast<std::uint64_t>(entry.second.size());
+            if (file_length > static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()) ||
+                entry.second.size() > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) - 8u) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+        }
+
+        std::vector<std::uint8_t> icns;
+        icns.reserve(static_cast<std::size_t>(file_length));
+        icns.insert(icns.end(), {'i', 'c', 'n', 's'});
+        append_be32(icns, static_cast<std::uint32_t>(file_length));
+        const std::uint32_t toc_length = static_cast<std::uint32_t>(8u + entries.size() * 8u);
+        icns.insert(icns.end(), {'T', 'O', 'C', ' '});
+        append_be32(icns, toc_length);
+        for (const auto& entry : entries) {
+            icns.insert(icns.end(), entry.first.begin(), entry.first.end());
+            append_be32(icns, static_cast<std::uint32_t>(8u + entry.second.size()));
+        }
+        for (const auto& entry : entries) {
+            icns.insert(icns.end(), entry.first.begin(), entry.first.end());
+            append_be32(icns, static_cast<std::uint32_t>(8u + entry.second.size()));
+            icns.insert(icns.end(), entry.second.begin(), entry.second.end());
+        }
+        return write_binary_file(path, icns) ? PILLOW_C_OK : PILLOW_C_INVALID_ARGUMENT;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
 
 
 } // namespace
@@ -5401,6 +5999,40 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_dds(
     const char* pixel_format)
 {
     return save_dds_image(image, path, pixel_format);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_icns(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_icns_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_icns(
+    const PillowCImage* image,
+    const char* path)
+{
+    return save_icns_images(&image, 1u, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_icns_frames(
+    const PillowCImage* const* images,
+    int image_count,
+    const char* path)
+{
+    if (image_count <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return save_icns_images(images, static_cast<std::size_t>(image_count), path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_icns_sizes(
+    const char* path,
+    int* out_sizes,
+    int capacity,
+    int* out_count)
+{
+    return icns_sizes_for_path(path, out_sizes, capacity, out_count);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_ppm(

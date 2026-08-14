@@ -76,10 +76,38 @@ DDS open route returns local status codes outside the public table
 pixel-format, truncation, and division-by-zero messages; the
 generic statuses keep their public meanings.
 
+`BEHAV-ICNS-001` adds four deliberate exports —
+`pillow_c_image_open_icns`, `pillow_c_image_save_icns`,
+`pillow_c_image_save_icns_frames` (append_images), and
+`pillow_c_image_icns_sizes` — that implement Pillow's exact ICNS
+container (the big-endian `icns` header, the `TOC ` chunk, and the
+eight PNG-backed icons ic07..ic14 written through the existing
+`pillow_c_png_encode_custom_image` seam) and its open side (chunk
+table, SIZES-ordered presence list, the lexicographic best-size
+pick, mode-preserving PNG payload decode through the new internal
+seam `pillow_c_png_decode_memory` — a WIC-based memory variant of
+the file PNG open covering L/P/RGB/LA/RGBA plus palette/tRNS —
+and the legacy 32-bit RGB/mask chunk decoders with Pillow's
+bottom-up verbatim storage and RLE semantics). The open route
+returns local status codes outside the public table (`-20` jpeg2000
+payload, `-21` unsupported subimage, `-22` it32 signature, `-23`
+RLE channel leftover (the facade re-derives N via
+`IcnsRleLeftover`), `-24` unsupported PNG bit depth/color type,
+`-25` PNG decode failure, `-26` unsupported save mode) which the
+facade maps to Pillow's exact messages; container-level failures
+return `PILLOW_C_INVALID_ARGUMENT` and surface as Pillow's generic
+identification error. The facade also replays Pillow's pre-load
+tobytes rawmode quirk through the `IcnsQuirkPending` instance flag
+(consumed by the first no-args ToBytes call and cleared by pixel
+access). PNG payload bytes use this DLL's deflate; the container
+structure is byte-exact and reopen pixels are byte-exact.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`477/477`; the full AHK suite is `2820/2820`; and the current DLL SHA-256 is
-`6FB517FE788BA01A1EEF079AC2396C8BA3DF2A2DE15840C1D7C115385A462E70`
-(MODE-RGBA-RESIZE-001 changes no ABI — the resize premultiply roundtrip
+`481/481`; the full AHK suite is `2821/2821`; and the current DLL SHA-256 is
+`9EF071F74786F59BCBF74C25BA456262EB5A703CB3626C66EFF159A49ED317C6`
+(BEHAV-ICNS-001 adds the four ICNS exports below and the internal
+memory-PNG decode seam; MODE-RGBA-RESIZE-001 changes no ABI — the resize
+premultiply roundtrip
 and default-resample rules below replace the old +128/a==0-zero behavior;
 BEHAV-DDS-001 adds the two DDS exports above over the SGI slice:
 BEHAV-SGI-001 adds the two SGI exports over the PCX slice:

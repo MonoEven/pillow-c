@@ -41,15 +41,18 @@ Everything else IS reachable, and the remaining work is bounded.
 
 ### Freshly probed remaining-format reality (oracle-verified)
 
-- SAVE (30): 19 byte-exact; EPS/ICNS/MPO/PDF = 4 implementable
+- SAVE (30): 19 byte-exact; ICNS = DONE (BEHAV-ICNS-001 —
+  container-byte-exact + pixel-exact reopen, PNG payload bytes use
+  our deflate); EPS/MPO/PDF = 3 implementable
   (pure-Python writers; EPS/PDF saves verified OK locally);
   BUFR/GRIB/HDF5/WMF = 4 exact-error matches (`X save handler not
   installed`); AVIF/JPEG2000/WEBP = 3 unmatchable codecs.
-- OPEN (45): 19 byte-exact; 19 implementable (DCX/FITS/FLI/FTEX/
-  GBR/ICNS/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/PSD/SUN/XPM/XVTHUMB
+- OPEN (45): 19 byte-exact; 18 implementable (DCX/FITS/FLI/FTEX/
+  GBR/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/PSD/SUN/XPM/XVTHUMB
   pure-Python plus the HDF5/BUFR/GRIB stub opens, which are trivial:
   F(1,1) stub + `cannot find loader for this X file` on load —
-  oracle-verified in `oracle/probe_audit3_formats.py`); 2
+  oracle-verified in `oracle/probe_audit3_formats.py`; ICNS is DONE
+  — BEHAV-ICNS-001); 2
   exact-error matches (EPS open `Unable to locate Ghostscript on
   paths`, MPEG open parses the header bits into RGB size then
   `cannot load this image` — oracle-verified); PDF open is NOT
@@ -266,6 +269,51 @@ Current local constraints:
 - AHK tests should use `ahktest` and captured errors, not modal popups.
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
+
+## 2026-08-14 BEHAV-ICNS-001 ICNS Format (GREEN)
+
+`BEHAV-ICNS-001` implements the ICNS (Apple Icon Image) format over
+the native PNG seams with behavioral parity.
+
+The Pillow 11.3.0 oracle (IcnsImagePlugin source plus fixtures,
+`oracle/probe_icns.py`/`oracle/probe_icns_dll.py`) shows save writes
+the 8-byte `icns` header (big-endian total length), a `TOC ` chunk
+(8 + 8×8 bytes) plus eight PNG-backed icons in the order
+ic07(128)/ic08(256)/ic09(512)/ic10(1024)/ic11(32)/ic12(64)/
+ic13(256)/ic14(512) — per-size payloads come from width-matched
+`append_images` entries or a default-resample resize of the base
+image, and any Pillow-PNG-able mode saves. Open walks the chunk
+table, exposes `info["sizes"]` in the plugin's SIZES order, picks
+the lexicographically largest (w, h, scale) resource, decodes PNG
+payloads mode-preservingly (L/P/RGB/LA/RGBA), falls back to the
+legacy 32-bit RGB chunks (is32/il32/ih32/it32 — the it32 payload
+carries a mandatory 0x00000000 header — verbatim or RLE) plus masks
+(s8mk/l8mk/h8mk/t8mk) stored bottom-up as-is, and composes RGB+mask
+into RGBA; every container-level SyntaxError is wrapped into
+`cannot identify image file <...>` while the load-time errors keep
+their shapes (`Unsupported icon subimage format`, the jpeg2000
+`rebuild PIL with JPEG 2000 support` variant, `Unknown signature,
+expecting 0x00000000`, `Error reading channel [N left]`, `image
+file is truncated`). Pillow's first no-args `tobytes()` on an ICNS
+whose best icon is NOT RGBA raises the pre-load rawmode quirk
+(`No packer found from {mode} to RGBA`; RGB packs RGBA instead) —
+the facade replays it through `IcnsQuirkPending`, cleared by pixel
+access. New native exports `pillow_c_image_open_icns`,
+`pillow_c_image_save_icns`, `pillow_c_image_save_icns_frames`, and
+`pillow_c_image_icns_sizes` plus the internal memory-PNG decode seam
+`pillow_c_png_decode_memory` (WIC-based, mode-preserving) implement
+it; PNG payload bytes use our deflate (container structure is
+byte-exact, reopen pixels are byte-exact). Mode 1/CMYK/I/I;16 saves
+and bit-depth-1/16 PNG payload opens are documented children. The
+facade ICNS target passes `1/1` in `563ms`; the ctypes cross-check
+passes `FAILURES: 0`; the full directory suite passes `2821/2821`
+in `22844ms`. Release x64 Rebuild is clean; source/DLL export
+parity moves to `481/481` (four deliberate new exports); the rebuilt
+DLL SHA-256 is
+`9EF071F74786F59BCBF74C25BA456262EB5A703CB3626C66EFF159A49ED317C6`.
+The ICNS rows left the BNDRY-001/FMT-LONGTAIL-001 lists. The next
+bounded child is `BEHAV-EPS-001`, the EPS save plus the Ghostscript
+open error match.
 
 ## 2026-08-14 BEHAV-DDS-001 DDS Format (GREEN)
 
@@ -539,7 +587,7 @@ Classification of every boundary item (treatment applies per packet):
 | PCX | save L/RGB/P/1 OK; others `Cannot save X images as PCX` | DONE — BEHAV-PCX-001 (byte-exact 128-byte header + RLE + zero-padded LUT trailers + LUT L-to-P promotion + the odd-width RGB;L reopen misread; native open/save exports) |
 | SGI | save L/RGB/RGBA OK; P `Unsupported SGI image mode` | DONE — BEHAV-SGI-001 (byte-exact 512-byte header + band-major bottom-up payload at bpc 1/2 + the RLE decoder with its quirk semantics + exact mode/bpc/truncation/overrun/compression errors; native open/save exports) |
 | DDS | save L/RGB/RGBA OK; P `cannot write mode P as DDS` | DONE — BEHAV-DDS-001 (byte-exact raw L/LA/RGB/RGBA + DXT1/3/5 + BC2/BC3/BC5 BCN writes, the mask/luminance/P8/BC1-5/BC7 reopen matrix, and the exact error shapes; BC6H/BC6HS open stays a deferred child; native open/save exports) |
-| ICNS | save all modes OK (PNG/JPEG2000 payloads) | IMPLEMENT (facade over native PNG) |
+| ICNS | save all modes OK (PNG/JPEG2000 payloads); reopen picks the best size, decodes PNG payloads and legacy 32-bit RGB/mask chunks, and the first tobytes() carries the pre-load RGBA rawmode quirk | DONE — BEHAV-ICNS-001 (container-byte-exact TOC + eight PNG-backed icons over the native PNG seams; mode-preserving reopen incl. L/P/RGB/LA/RGBA, legacy is32/il32/ih32/it32 + masks with the bottom-up verbatim storage and the RLE [N left] error, exact error shapes, info["sizes"], the ToBytes quirk replay; jp2 payloads keep Pillow's no-jp2 message as the dependency-gated boundary) |
 | EPS | save L/RGB OK; RGBA/P `image mode is not supported`; open `Unable to locate Ghostscript on paths` | IMPLEMENT save (facade PS writer) + match Ghostscript error |
 | PDF | save all modes OK (pure-Python writer); open needs Ghostscript | IMPLEMENT save (facade) + match Ghostscript error |
 | MPO | save L/RGB OK; RGBA/P `cannot write mode X as JPEG` | IMPLEMENT (facade/native over native JPEG) |
@@ -40678,7 +40726,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-UNREC-001 | Formats | covered | The previously unrecorded format families are now explicit documented codec boundaries (the final AUDIT-002 row): save BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF and open FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/XVTHUMB plus the save-side subset all fail loudly with `Pillow image file format is unsupported` (pinned by the facade boundary test for all 22 names and representative open extensions). Pillow's own 11.3.0 build supports BLP/DIB/IM/SPIDER through its C/numpy plugins and errors per-mode/per-handler on the rest (oracle-verified in `oracle/probe_format_unrecorded.py`); the AHK native ABI implements neither codec family. Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_format_unrecorded.py`, facade unrecorded-format boundary test, BNDRY-001 ledger extension. |
 | FMT-WEBP-001 | WebP | boundary | Open/save WebP and animation stay behind an explicit dependency/scope decision; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | FMT-AVIF-001 | AVIF | boundary | Open/save AVIF stays behind dependency and packaging constraints; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
-| FMT-LONGTAIL-001 | Formats | boundary | PDF, PSD, DDS, PCX, ICNS, SGI, SUN, EPS, MPO, FLI, DCX, XPM, and other registered families stay behind explicit dependency decisions; open/save fail loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
+| FMT-LONGTAIL-001 | Formats | boundary | PDF, PSD, DDS, PCX, SGI, SUN, EPS, MPO, FLI, DCX, XPM, and other registered families stay behind explicit dependency decisions; open/save fail loudly with `Pillow image file format is unsupported` (BNDRY-001). ICNS left this list via BEHAV-ICNS-001. | BNDRY-001 boundary ledger. |
 | AUDIT-003 | Audit | covered | Independent behavioral re-verification (two fresh-eyes red-team auditors + direct probes): the old `100% ±5%` (implemented-or-boundary definition) is superseded. Literal 100% runtime identity is NOT reachable: WEBP/JPEG2000/AVIF (the local Pillow build WORKS with these bundled codecs — oracle-verified round-trips), FPX, ImageQt/ImageTk, ImagePalette.random, and the ImagePath map handler are unmatchable in this runtime (documented boundaries). The matchable remainder is bounded and enumerated; the red teams found unrecorded gaps (rows below) plus runtime-verified divergences in already-claimed areas (MODE-NUM-001CM default-resample claim is WRONG; six error-message mismatches; systemic `pillow_c: invalid argument` for unvalidated paths). Evidence: `oracle/audit3-redteam/*.py`, `oracle/probe_audit3_open.py`, `oracle/probe_audit3_formats.py`. | Red-team probes, runtime facade probes, oracle format matrix. |
 | API-FONTFILE-001 | Facade API | gap | `ImageFont.truetype` / `ImageFont.load` / `ImageFont.load_path` / `load_default_imagefont` / `features` / `MAX_STRING_LENGTH` are ENTIRELY ABSENT: no TTF/OTF file loading exists (native has only `pillow_c_font_load_default`). Every real-font use case (truetype + Draw.text with a font, FreeTypeFont getmask, TransposedFont.GetMask) is unserved. | Red-team audit (probe_modules.py); native export inventory. |
 | API-CMS-DISPLAY-001 | Facade API | gap | `ImageCms.get_display_profile(handle)` absent (Pillow returns an ImageCmsProfile for the Windows display device, or None); also missing: the `Direction`/`Flags`/`Intent` enums, `PyCMSError`, `versions`, and `buildProofTransformFromOpenProfiles`. | Red-team audit; `ImageCms` source diff. |

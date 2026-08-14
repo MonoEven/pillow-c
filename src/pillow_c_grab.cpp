@@ -63,6 +63,7 @@ int grab_screen_into(
     int include_layered,
     PillowCImage* target)
 {
+    (void)all_screens; // virtual-screen bboxes are normalized by the caller
     if (width <= 0 || height <= 0) {
         return PILLOW_C_OK;
     }
@@ -160,7 +161,7 @@ int decode_clipboard_dib(const std::uint8_t* dib, std::size_t dib_size, PillowCI
     }
 
     const std::size_t palette_entries = header.biBitCount <= 8
-        ? (header.biClrUsed != 0 ? static_cast<std::size_t>(header.biClrUsed) : (1u << header.biBitCount))
+        ? (header.biClrUsed != 0 ? static_cast<std::size_t>(header.biClrUsed) : (std::size_t{1} << header.biBitCount))
         : 0u;
     const std::size_t palette_bytes = palette_entries * 4u;
     const std::size_t header_size = static_cast<std::size_t>(header.biSize);

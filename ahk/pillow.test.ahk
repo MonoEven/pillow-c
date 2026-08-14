@@ -23161,6 +23161,446 @@ PillowTestDdsFormat(*) {
 
 AhkTest.Test("Pillow DDS format matches Pillow 11.3.0 bytes and round-trips", PillowTestDdsFormat)
 
+PillowTestIcnsBe32(buf, offset) {
+    return (NumGet(buf, offset, "UChar") << 24) | (NumGet(buf, offset + 1, "UChar") << 16) | (NumGet(buf, offset + 2, "UChar") << 8) | NumGet(buf, offset + 3, "UChar")
+}
+
+PillowTestIcnsPutBe32(buf, offset, value) {
+    NumPut("UChar", (value >> 24) & 0xFF, buf, offset)
+    NumPut("UChar", (value >> 16) & 0xFF, buf, offset + 1)
+    NumPut("UChar", (value >> 8) & 0xFF, buf, offset + 2)
+    NumPut("UChar", value & 0xFF, buf, offset + 3)
+}
+
+PillowTestIcnsPutType(buf, offset, type) {
+    NumPut("UChar", Ord(SubStr(type, 1, 1)), buf, offset)
+    NumPut("UChar", Ord(SubStr(type, 2, 1)), buf, offset + 1)
+    NumPut("UChar", Ord(SubStr(type, 3, 1)), buf, offset + 2)
+    NumPut("UChar", Ord(SubStr(type, 4, 1)), buf, offset + 3)
+}
+
+PillowTestIcnsBuildBuffer(entries) {
+    ; entries: array of [ignored, type, payloadBuffer]; builds Pillow's
+    ; 8-byte header + TOC + data chunk container layout.
+    total := 8 + (8 + 8 * entries.Length)
+    for entry in entries
+        total += 8 + entry[3].Size
+    out := Buffer(total, 0)
+    PillowTestIcnsPutType(out, 0, "icns")
+    PillowTestIcnsPutBe32(out, 4, total)
+    PillowTestIcnsPutType(out, 8, "TOC ")
+    PillowTestIcnsPutBe32(out, 12, 8 + entries.Length * 8)
+    offset := 16
+    for entry in entries {
+        PillowTestIcnsPutType(out, offset, entry[2])
+        PillowTestIcnsPutBe32(out, offset + 4, 8 + entry[3].Size)
+        offset += 8
+    }
+    for entry in entries {
+        PillowTestIcnsPutType(out, offset, entry[2])
+        PillowTestIcnsPutBe32(out, offset + 4, 8 + entry[3].Size)
+        DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset + 8, "Ptr", entry[3].Ptr, "UPtr", entry[3].Size, "CDecl Ptr")
+        offset += 8 + entry[3].Size
+    }
+    return out
+}
+
+PillowTestIcnsEntryPayload(file, type, &outSize) {
+    ; Returns the payload Buffer of the first chunk with the given type.
+    file.Seek(0)
+    header := Buffer(8, 0)
+    file.RawRead(header, 8)
+    fileLength := PillowTestIcnsBe32(header, 4)
+    offset := 8
+    while offset < fileLength {
+        chunkHeader := Buffer(8, 0)
+        file.RawRead(chunkHeader, 8)
+        blockSize := PillowTestIcnsBe32(chunkHeader, 4)
+        if StrGet(chunkHeader, 4, "UTF-8") = type {
+            payload := Buffer(blockSize - 8, 0)
+            file.RawRead(payload, blockSize - 8)
+            outSize := blockSize - 8
+            return payload
+        }
+        file.Seek(blockSize - 8, 1)
+        offset += 8 + blockSize - 8
+    }
+    outSize := 0
+    return Buffer(0, 0)
+}
+
+PillowTestIcnsCaptureError(callable) {
+    try {
+        callable.Call()
+    } catch Error as err {
+        return err.Message
+    }
+    return ""
+}
+
+PillowTestIcnsWrite(path, bytes) {
+    file := FileOpen(path, "w")
+    try {
+        file.RawWrite(bytes, bytes.Size)
+    } finally {
+        file.Close()
+    }
+}
+
+PillowTestIcnsFormat(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    savePath := A_Temp "\icns-l.icns"
+    rgbPath := A_Temp "\icns-rgb.icns"
+    pPath := A_Temp "\icns-p.icns"
+    laPath := A_Temp "\icns-la.icns"
+    appendPath := A_Temp "\icns-append.icns"
+    legacyPath := A_Temp "\icns-legacy.icns"
+    legacyRgbPath := A_Temp "\icns-legacy-rgb.icns"
+    badMagicPath := A_Temp "\icns-badmagic.icns"
+    garbagePath := A_Temp "\icns-garbage.icns"
+    jp2Path := A_Temp "\icns-jp2.icns"
+    it32BadPath := A_Temp "\icns-it32bad.icns"
+    rlePath := A_Temp "\icns-rle.icns"
+    pngTruncPath := A_Temp "\icns-pngtrunc.icns"
+    png16Path := A_Temp "\icns-png16.icns"
+    try {
+        ; --- save L 20x10: container structure + reopen parity ---
+        l := Pillow.Image.New("L", [20, 10])
+        try {
+            values := PillowTestBufferFromU16([])
+            lValues := Buffer(200, 0)
+            index := 0
+            loop 10 {
+                y := A_Index - 1
+                loop 20 {
+                    x := A_Index - 1
+                    NumPut("UChar", (x * 13 + y * 37) & 0xFF, lValues, index)
+                    index += 1
+                }
+            }
+            l.FromBytes(lValues)
+            l.Save(savePath, "ICNS")
+        } finally {
+            l.Close()
+        }
+
+        file := FileOpen(savePath, "r")
+        try {
+            size := file.Length
+            header := Buffer(8, 0)
+            file.RawRead(header, 8)
+            AhkTest.AssertEqual("icns", StrGet(header, 4, "UTF-8"))
+            AhkTest.AssertEqual(size, PillowTestIcnsBe32(header, 4))
+            toc := Buffer(8, 0)
+            file.RawRead(toc, 8)
+            AhkTest.AssertEqual("TOC ", StrGet(toc, 4, "UTF-8"))
+            AhkTest.AssertEqual(72, PillowTestIcnsBe32(toc, 4))
+            expectedTypes := ["ic07", "ic08", "ic09", "ic10", "ic11", "ic12", "ic13", "ic14"]
+            entryTypes := []
+            entrySizes := []
+            loop 8 {
+                entryHeader := Buffer(8, 0)
+                file.RawRead(entryHeader, 8)
+                entryTypes.Push(StrGet(entryHeader, 4, "UTF-8"))
+                entrySizes.Push(PillowTestIcnsBe32(entryHeader, 4))
+            }
+            AhkTest.AssertEqual(expectedTypes, entryTypes)
+            payloadTotal := 0
+            loop 8 {
+                entryHeader := Buffer(8, 0)
+                file.RawRead(entryHeader, 8)
+                AhkTest.AssertEqual(expectedTypes[A_Index], StrGet(entryHeader, 4, "UTF-8"))
+                AhkTest.AssertEqual(entrySizes[A_Index], PillowTestIcnsBe32(entryHeader, 4))
+                sig := Buffer(8, 0)
+                file.RawRead(sig, 8)
+                AhkTest.AssertEqual(PillowTestHexBytes("89504e470d0a1a0a"), PillowTestBufferToArray(sig))
+                file.Seek(entrySizes[A_Index] - 16, 1)
+                payloadTotal += entrySizes[A_Index]
+            }
+            AhkTest.AssertEqual(size, 8 + 72 + payloadTotal)
+        } finally {
+            file.Close()
+        }
+
+        opened := Pillow.Image.Open(savePath)
+        try {
+            AhkTest.AssertEqual("ICNS", opened.Format)
+            AhkTest.AssertEqual("L", opened.Mode)
+            AhkTest.AssertEqual([1024, 1024], opened.Size)
+            AhkTest.AssertEqual([[512, 512, 2], [512, 512, 1], [256, 256, 2], [256, 256, 1], [128, 128, 2], [128, 128, 1], [32, 32, 2], [16, 16, 2]], opened.Info["sizes"])
+            ; Pillow's first no-args tobytes() on a non-RGBA best icon
+            ; raises the pre-load rawmode quirk.
+            quirk := ""
+            try {
+                opened.ToBytes()
+            } catch Error as err {
+                quirk := err.Message
+            }
+            AhkTest.AssertEqual("No packer found from L to RGBA", quirk)
+            bytes := opened.ToBytes()
+            AhkTest.AssertEqual(1024 * 1024, bytes.Size)
+            head := Buffer(64, 0)
+            DllCall("msvcrt\memcpy", "Ptr", head.Ptr, "Ptr", bytes.Ptr, "UPtr", 64, "CDecl Ptr")
+            AhkTest.AssertEqual(PillowTestHexBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010101020202030303030404"), PillowTestBufferToArray(head))
+        } finally {
+            opened.Close()
+        }
+        PillowTestDeleteFile(savePath)
+
+        ; --- save RGB: first ToBytes packs RGBA with opaque alpha ---
+        rgb := Pillow.Image.New("RGB", [20, 10])
+        try {
+            rgbValues := Buffer(600, 0)
+            index := 0
+            loop 10 {
+                y := A_Index - 1
+                loop 20 {
+                    x := A_Index - 1
+                    NumPut("UChar", (x * 13 + y) & 0xFF, rgbValues, index)
+                    NumPut("UChar", (x * 7 + y * 31) & 0xFF, rgbValues, index + 1)
+                    NumPut("UChar", (x * 3 + y * 53) & 0xFF, rgbValues, index + 2)
+                    index += 3
+                }
+            }
+            rgb.FromBytes(rgbValues)
+            rgb.Save(rgbPath, "ICNS")
+        } finally {
+            rgb.Close()
+        }
+        openedRgb := Pillow.Image.Open(rgbPath)
+        try {
+            AhkTest.AssertEqual("RGB", openedRgb.Mode)
+            rgbaBytes := openedRgb.ToBytes()
+            AhkTest.AssertEqual(1024 * 1024 * 4, rgbaBytes.Size)
+            AhkTest.AssertEqual(255, NumGet(rgbaBytes, 3, "UChar"))
+            AhkTest.AssertEqual(255, NumGet(rgbaBytes, 10003, "UChar"))
+            ; subsequent calls return the loaded RGB bytes
+            rgbBytes := openedRgb.ToBytes()
+            AhkTest.AssertEqual(1024 * 1024 * 3, rgbBytes.Size)
+        } finally {
+            openedRgb.Close()
+        }
+        PillowTestDeleteFile(rgbPath)
+
+        ; --- P and LA reopen keep their PNG modes ---
+        p := Pillow.Image.New("P", [20, 10])
+        try {
+            pValues := Buffer(200, 0)
+            loop 200
+                NumPut("UChar", Mod(A_Index - 1, 256), pValues, A_Index - 1)
+            p.FromBytes(pValues)
+            p.Save(pPath, "ICNS")
+        } finally {
+            p.Close()
+        }
+        openedP := Pillow.Image.Open(pPath)
+        try {
+            AhkTest.AssertEqual("P", openedP.Mode)
+            AhkTest.AssertEqual([1024, 1024], openedP.Size)
+        } finally {
+            openedP.Close()
+        }
+        PillowTestDeleteFile(pPath)
+
+        la := Pillow.Image.New("LA", [20, 10])
+        try {
+            laValues := Buffer(400, 0)
+            index := 0
+            loop 10 {
+                y := A_Index - 1
+                loop 20 {
+                    x := A_Index - 1
+                    NumPut("UChar", (x * 13 + y * 37) & 0xFF, laValues, index)
+                    NumPut("UChar", (x * 29 + y * 7) & 0xFF, laValues, index + 1)
+                    index += 2
+                }
+            }
+            la.FromBytes(laValues)
+            la.Save(laPath, "ICNS")
+        } finally {
+            la.Close()
+        }
+        openedLa := Pillow.Image.Open(laPath)
+        try {
+            AhkTest.AssertEqual("LA", openedLa.Mode)
+        } finally {
+            openedLa.Close()
+        }
+        PillowTestDeleteFile(laPath)
+
+        ; --- append_images: width-matched provided images win ---
+        base := Pillow.Image.New("RGB", [20, 10])
+        provided := Pillow.Image.New("RGB", [32, 32], [255, 0, 0])
+        try {
+            base.Save(appendPath, "ICNS", { AppendImages: [provided] })
+        } finally {
+            base.Close()
+            provided.Close()
+        }
+        solo := Pillow.Image.New("RGB", [32, 32], [255, 0, 0])
+        try {
+            solo.Save(pPath, "ICNS")
+        } finally {
+            solo.Close()
+        }
+        ; the ic11 (32) entry must equal the 32x32 solo save's ic11 entry
+        fileAppend := FileOpen(appendPath, "r")
+        fileSolo := FileOpen(pPath, "r")
+        try {
+            ic11AppendSize := 0
+            ic11SoloSize := 0
+            ic11AppendPayload := PillowTestIcnsEntryPayload(fileAppend, "ic11", &ic11AppendSize)
+            ic11SoloPayload := PillowTestIcnsEntryPayload(fileSolo, "ic11", &ic11SoloSize)
+            AhkTest.AssertEqual(ic11SoloSize, ic11AppendSize)
+            AhkTest.AssertEqual(PillowTestBufferToArray(ic11SoloPayload), PillowTestBufferToArray(ic11AppendPayload))
+        } finally {
+            fileAppend.Close()
+            fileSolo.Close()
+        }
+        PillowTestDeleteFile(appendPath)
+        PillowTestDeleteFile(pPath)
+
+        ; --- legacy 32-bit RGB + mask (byte-exact vs Pillow) ---
+        legacyRgb := Buffer(16 * 16 * 3, 0)
+        legacyMask := Buffer(16 * 16, 0)
+        index := 0
+        loop 16 {
+            row := A_Index - 1
+            y := 15 - row
+            loop 16 {
+                x := A_Index - 1
+                NumPut("UChar", (x * 13 + y) & 0xFF, legacyRgb, index)
+                NumPut("UChar", (x * 7 + y * 31) & 0xFF, legacyRgb, index + 1)
+                NumPut("UChar", (x * 3 + y * 53) & 0xFF, legacyRgb, index + 2)
+                NumPut("UChar", (x * 29 + y * 7) & 0xFF, legacyMask, x + row * 16)
+                index += 3
+            }
+        }
+        PillowTestIcnsWrite(legacyPath, PillowTestIcnsBuildBuffer([
+            ["dummy", "is32", legacyRgb],
+            ["dummy", "s8mk", legacyMask],
+        ]))
+        openedLegacy := Pillow.Image.Open(legacyPath)
+        try {
+            AhkTest.AssertEqual("RGBA", openedLegacy.Mode)
+            AhkTest.AssertEqual([16, 16], openedLegacy.Size)
+            bytes := openedLegacy.ToBytes()
+            head := Buffer(64, 0)
+            DllCall("msvcrt\memcpy", "Ptr", head.Ptr, "Ptr", bytes.Ptr, "UPtr", 64, "CDecl Ptr")
+            AhkTest.AssertEqual(PillowTestHexBytes("0fd11b691cd81e8629df21a336e624c043ed27dd50f42afa5dfb2d176a023034770933518410366e9117398b9e1e3ca8ab253fc5b82c42e2c53345ffd23a481c"), PillowTestBufferToArray(head))
+        } finally {
+            openedLegacy.Close()
+        }
+        PillowTestDeleteFile(legacyPath)
+
+        ; --- legacy RGB only: mode RGB, first ToBytes packs RGBA ---
+        PillowTestIcnsWrite(legacyRgbPath, PillowTestIcnsBuildBuffer([
+            ["dummy", "is32", legacyRgb],
+        ]))
+        openedLegacyRgb := Pillow.Image.Open(legacyRgbPath)
+        try {
+            AhkTest.AssertEqual("RGB", openedLegacyRgb.Mode)
+            rgbaBytes := openedLegacyRgb.ToBytes()
+            AhkTest.AssertEqual(16 * 16 * 4, rgbaBytes.Size)
+            AhkTest.AssertEqual(255, NumGet(rgbaBytes, 3, "UChar"))
+            AhkTest.AssertEqual(15, NumGet(rgbaBytes, 0, "UChar"))
+        } finally {
+            openedLegacyRgb.Close()
+        }
+        PillowTestDeleteFile(legacyRgbPath)
+
+        ; --- error shapes ---
+        badMagic := Buffer(8, 0)
+        PillowTestIcnsPutType(badMagic, 0, "noti")
+        PillowTestIcnsPutBe32(badMagic, 4, 8)
+        PillowTestIcnsWrite(badMagicPath, badMagic)
+        AhkTest.AssertEqual("cannot identify image file <" badMagicPath ">", PillowTestIcnsCaptureError(() => Pillow.Image.Open(badMagicPath)))
+        PillowTestDeleteFile(badMagicPath)
+
+        garbage := Buffer(96, 0)
+        loop 96
+            NumPut("UChar", 65 + Mod(A_Index - 1, 26), garbage, A_Index - 1)
+        PillowTestIcnsWrite(garbagePath, PillowTestIcnsBuildBuffer([["dummy", "ic07", garbage]]))
+        AhkTest.AssertEqual("Unsupported icon subimage format", PillowTestIcnsCaptureError(() => Pillow.Image.Open(garbagePath)))
+        PillowTestDeleteFile(garbagePath)
+
+        ; jp2 signature in an icp4 chunk (our runtime ships no jpeg2000)
+        jp2Payload := Buffer(12, 0)
+        jp2Sig := [0, 0, 0, 12, 106, 80, 32, 32, 13, 10, 135, 10]
+        for index, value in jp2Sig
+            NumPut("UChar", value, jp2Payload, index - 1)
+        PillowTestIcnsWrite(jp2Path, PillowTestIcnsBuildBuffer([["dummy", "icp4", jp2Payload]]))
+        AhkTest.AssertEqual("Unsupported icon subimage format (rebuild PIL with JPEG 2000 support to fix this)", PillowTestIcnsCaptureError(() => Pillow.Image.Open(jp2Path)))
+        PillowTestDeleteFile(jp2Path)
+
+        it32Bad := Buffer(16 * 16 * 3 + 4, 0)
+        NumPut("UChar", 1, it32Bad, 0)
+        PillowTestIcnsWrite(it32BadPath, PillowTestIcnsBuildBuffer([["dummy", "it32", it32Bad]]))
+        AhkTest.AssertEqual("Unknown signature, expecting 0x00000000", PillowTestIcnsCaptureError(() => Pillow.Image.Open(it32BadPath)))
+        PillowTestDeleteFile(it32BadPath)
+
+        ; RLE with only band 0: Pillow reports [256 left]
+        rlePayload := Buffer(258, 0)
+        ; 16x16 band 0 has 256 values; craft two 128-literal runs
+        ; (byte 127 = 128 literal bytes) covering band 0, then nothing:
+        ; band 1 starts past EOF so its leftover is the full 256.
+        NumPut("UChar", 127, rlePayload, 0)
+        NumPut("UChar", 127, rlePayload, 129)
+        PillowTestIcnsWrite(rlePath, PillowTestIcnsBuildBuffer([["dummy", "is32", rlePayload]]))
+        AhkTest.AssertEqual("Error reading channel [256 left]", PillowTestIcnsCaptureError(() => Pillow.Image.Open(rlePath)))
+        PillowTestDeleteFile(rlePath)
+
+        ; truncated PNG payload: valid signature + IHDR, no image data
+        pngPayload := Buffer(33, 0)
+        pngSig := [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 16, 0, 0, 0, 16, 8, 6, 0, 0, 0, 0, 0, 0, 0]
+        for index, value in pngSig
+            NumPut("UChar", value, pngPayload, index - 1)
+        PillowTestIcnsWrite(pngTruncPath, PillowTestIcnsBuildBuffer([["dummy", "ic07", pngPayload]]))
+        AhkTest.AssertEqual("image file is truncated", PillowTestIcnsCaptureError(() => Pillow.Image.Open(pngTruncPath)))
+        PillowTestDeleteFile(pngTruncPath)
+
+        ; 16-bit grayscale PNG payload (mode unsupported by our decoder)
+        png16Payload := Buffer(33, 0)
+        png16Sig := [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 16, 0, 0, 0, 16, 16, 0, 0, 0, 0, 0, 0, 0, 0]
+        for index, value in png16Sig
+            NumPut("UChar", value, png16Payload, index - 1)
+        PillowTestIcnsWrite(png16Path, PillowTestIcnsBuildBuffer([["dummy", "ic07", png16Payload]]))
+        AhkTest.AssertEqual("Pillow.Image.Open ICNS PNG payload uses an unsupported bit depth or color type", PillowTestIcnsCaptureError(() => Pillow.Image.Open(png16Path)))
+        PillowTestDeleteFile(png16Path)
+
+        ; --- save mode errors ---
+        f := Pillow.Image.New("F", [8, 8])
+        try {
+            AhkTest.AssertEqual("cannot write mode F as PNG", PillowTestIcnsCaptureError(() => f.Save(pPath, "ICNS")))
+        } finally {
+            f.Close()
+        }
+        one := Pillow.Image.New("1", [8, 8])
+        try {
+            AhkTest.AssertEqual("Pillow.Image.Save ICNS mode 1 is not supported", PillowTestIcnsCaptureError(() => one.Save(pPath, "ICNS")))
+        } finally {
+            one.Close()
+        }
+    } finally {
+        PillowTestDeleteFile(savePath)
+        PillowTestDeleteFile(rgbPath)
+        PillowTestDeleteFile(pPath)
+        PillowTestDeleteFile(laPath)
+        PillowTestDeleteFile(appendPath)
+        PillowTestDeleteFile(legacyPath)
+        PillowTestDeleteFile(legacyRgbPath)
+        PillowTestDeleteFile(badMagicPath)
+        PillowTestDeleteFile(garbagePath)
+        PillowTestDeleteFile(jp2Path)
+        PillowTestDeleteFile(it32BadPath)
+        PillowTestDeleteFile(rlePath)
+        PillowTestDeleteFile(pngTruncPath)
+        PillowTestDeleteFile(png16Path)
+    }
+}
+
+AhkTest.Test("Pillow ICNS format matches Pillow 11.3.0 structure, reopen parity, and error shapes", PillowTestIcnsFormat)
+
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     try {

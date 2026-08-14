@@ -47,8 +47,30 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2820` AHK tests: `1391` raw DLL tests and
-`1429` facade tests.
+This suite currently registers `2821` AHK tests: `1391` raw DLL tests and
+`1430` facade tests.
+
+Latest `BEHAV-ICNS-001` verification: the Pillow 11.3.0 oracle
+(IcnsImagePlugin source plus fixtures, `oracle/probe_icns.py` and
+the `FAILURES: 0` ctypes cross-check in `oracle/probe_icns_dll.py`)
+pins the big-endian container (header/TOC/eight ic07..ic14 PNG
+payloads), the SIZES-ordered `info["sizes"]`, the lexicographic
+best-size pick, the mode-preserving reopen (L/P/RGB/LA/RGBA), the
+legacy 32-bit RGB/mask chunks (verbatim bottom-up storage, the it32
+header check, the RLE channel decode), and every exact error shape
+including Pillow's first-tobytes pre-load rawmode quirk (RGB packs
+RGBA; other non-RGBA modes raise `No packer found from {mode} to
+RGBA`). The facade ICNS target passes `1/1` in `563ms`
+(container-structure asserts, L/RGB/P/LA reopen modes, the quirk
+sequence, append_images width-matching via the ic11 payload
+equality, byte-exact legacy heads, ten exact error shapes, and the
+F/1 save-mode messages); the full directory suite passes
+`2821/2821` in `22844ms` with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity moves to `481/481` (four deliberate new exports) with
+zero difference; and the rebuilt DLL SHA-256 is
+`9EF071F74786F59BCBF74C25BA456262EB5A703CB3626C66EFF159A49ED317C6`.
+The behavioral-parity wave continues with `BEHAV-EPS-001` next.
 
 Latest `MODE-RGBA-RESIZE-001` verification: the Pillow 11.3.0 oracle
 (Image.py resize plus the convert-based RGBa/La roundtrip, probed
