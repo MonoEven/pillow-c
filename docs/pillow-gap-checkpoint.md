@@ -83,12 +83,13 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-SAVEOPTS-006 (save-option parity
-wave 6: the TIFF tiffinfo arbitrary tags — Pillow's
-ImageFileDirectory_v2 type inference for unknown tags, the
-registered-tag rules, sequence semantics, and the exact error
-shapes, patched into IFD0 after the plain save)
-after BEHAV-SAVEOPTS-005/
+Latest covered gap tail: BEHAV-ERRMSGS-001 (the runtime error-message
+parity wave: resize resample/size, crop box order, getpixel
+coordinates, reduce scale, transpose method, histogram/entropy
+masks, point LUT, filter argument, and PNG dictionary — Pillow's
+exact ValueError/TypeError/IndexError shapes)
+after BEHAV-SAVEOPTS-006/
+BEHAV-SAVEOPTS-005/
 BEHAV-SAVEOPTS-004/
 BEHAV-SAVEOPTS-003/
 BEHAV-SAVEOPTS-002/
@@ -115,8 +116,9 @@ the format-family surface, ImagePalette.load, the Parser, and the
 font mask/TransposedFont/truetype/PILfont surfaces are now COMPLETE
 and the save-option error messages plus the PNG/GIF/QOI/TGA/TIFF/JPEG
 option containers are Pillow-exact; the next
-bounded children are the remaining API-SAVEOPTS-001 option
-implementations (PNG dictionary), then API-ERRMSGS-001.
+bounded children are the remaining API-ERRMSGS-001 items (the
+dependency-gated format error shapes) and the BNDRY-001/FMT-UNREC-001
+format-plugin children.
 ```
 
 Current work packet:
@@ -459,8 +461,10 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-SAVEOPTS-001` remainder (PNG dictionary — the
-  documented no-compressor boundary), then `API-ERRMSGS-001`.
+- Selected next gap: `API-ERRMSGS-001` remainder (the dependency-gated
+  format error shapes: BUFR/GRIB/HDF5/WMF-save, FITS/MPEG open,
+  WebP/AVIF/JPEG2000/PDF), then the BNDRY-001/FMT-UNREC-001
+  format-plugin children.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19531,6 +19535,39 @@ legacy route; and exotic registered-tag type tables beyond the covered
 set stay undocumented. The remaining API-SAVEOPTS-001 child (PNG
 dictionary — the documented no-compressor boundary) stays the next
 packet.
+```
+
+2026-08-15: `BEHAV-ERRMSGS-001` is GREEN as the runtime error-message
+parity wave (the API-ERRMSGS-001 facade items). The Pillow 11.3.0 oracle
+(fresh pins plus the `_imaging.c`/`Image.py` source) pins the exact
+shapes: `resize(resample=...)` with an unknown filter raises the
+ValueError `Unknown resampling filter (<value>). Use
+Image.Resampling.NEAREST (0), ... HAMMING (5)` (the value rendered
+verbatim — numbers and strings), `resize` size elements parse as C ints
+(the exact str/float TypeErrors), `crop` validates box order before the
+C call (`Coordinate 'right' is less than 'left'` for right < left,
+`Coordinate 'lower' is less than 'upper'` for lower < upper, both strict
+comparisons), `getpixel` parses coordinates as C ints (strings raise
+`an integer is required`, floats truncate), wraps negative coordinates
+ONCE, and raises `image index out of range` for remaining OOB;
+`reduce` raises `scale must be > 0` for non-positive scales and the
+exact int-parse TypeErrors; `transpose` raises `No such transpose
+operation` for unknown methods and the exact int-parse TypeErrors;
+histogram/entropy masks must be mode 1/L (`bad transparency mask`) and
+image-sized (`images do not match`); `point` LUTs raise `wrong number
+of lut entries` and strings raise `type str doesn't define __round__
+method`; `filter` raises `filter argument should be ImageFilter.Filter
+instance or class`; and PNG `dictionary` takes bytes-like objects (the
+exact `a bytes-like object is required, not 'str'` TypeError) and is
+accepted-and-ignored for bytes (the DLL writes stored deflate blocks —
+the documented no-compressor boundary, now also pinned for the
+40000-byte dictionary case). All are pure facade validations; no native
+code changed and the DLL SHA-256 stays
+`43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.
+The facade target passes `1/1` in `0ms`; the full directory suite
+passes `2846/2846` in `22782ms` with zero failures, errors, or skips.
+The remaining API-ERRMSGS-001 items (the dependency-gated format error
+shapes) stay the next packet.
 ```
 
 If any line above is no longer true, update this file first, then update

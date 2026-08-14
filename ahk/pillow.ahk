@@ -13974,7 +13974,8 @@ class Pillow {
                 interlaceOption := Pillow.Image.SaveOption(saveOptions, "Interlace", "interlace")
                 gammaOption := Pillow.Image.SaveOption(saveOptions, "Gamma", "gamma")
                 optimizeOption := Pillow.Image.SaveOption(saveOptions, "Optimize", "optimize")
-                if compressLevelOption.Set || compressTypeOption.Set || bitsOption.Set || dpiOption.Set || transparencyOption.Set || pngInfoOption.Set || iccProfileOption.Set || exifOption.Set || interlaceOption.Set || gammaOption.Set || optimizeOption.Set {
+                dictionaryOption := Pillow.Image.SaveOption(saveOptions, "Dictionary", "dictionary")
+                if compressLevelOption.Set || compressTypeOption.Set || bitsOption.Set || dpiOption.Set || transparencyOption.Set || pngInfoOption.Set || iccProfileOption.Set || exifOption.Set || interlaceOption.Set || gammaOption.Set || optimizeOption.Set || dictionaryOption.Set {
                     ; Pillow's C encoder parses compress_type the same way
                     ; (the exact TypeError) and only the 0-4 range is
                     ; accepted-and-ignored; 5+ fails with the zlib codec
@@ -13984,6 +13985,15 @@ class Pillow {
                             throw Error("'str' object cannot be interpreted as an integer", -1)
                         if compressTypeOption.Value < 0 || compressTypeOption.Value > 4
                             throw Error("codec configuration error when writing image file", -1)
+                    }
+                    if dictionaryOption.Set {
+                        ; Pillow's zlib preset dictionary takes bytes-like
+                        ; objects (the exact TypeError for str); the DLL
+                        ; writes stored deflate blocks, so a dictionary is
+                        ; accepted-and-ignored with no observable payload
+                        ; effect (the documented no-compressor boundary).
+                        if dictionaryOption.Value is String
+                            throw Error("a bytes-like object is required, not 'str'", -1)
                     }
                     ; Pillow's bits override uses colors = min(1 << bits, 256)
                     ; with the exact shift errors, then picks 1/2/4/8 depth.
@@ -17325,13 +17335,31 @@ class Pillow {
         GetPixel(xy) {
             if !IsObject(xy) || xy.Length != 2
                 throw Error("Pillow.Image.GetPixel expects xy [x, y]", -1)
+            ; Pillow 11.3.0's C getpixel parses the coordinates as C ints
+            ; (strings raise "an integer is required", floats truncate),
+            ; wraps negative coordinates once, and raises the exact
+            ; IndexError for out-of-range pixels.
+            x := xy[1]
+            y := xy[2]
+            if x is String || y is String
+                throw Error("an integer is required", -1)
+            if !(x is Number) || !(y is Number)
+                throw Error("an integer is required", -1)
+            x := Integer(x)
+            y := Integer(y)
+            if x < 0
+                x += this.Width
+            if y < 0
+                y += this.Height
+            if x < 0 || x >= this.Width || y < 0 || y >= this.Height
+                throw Error("image index out of range", -1)
             this.IcnsQuirkPending := false
             out := Buffer(this.Channels, 0)
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_getpixel",
                 "Ptr", this.RequireHandle(),
-                "Int", xy[1],
-                "Int", xy[2],
+                "Int", x,
+                "Int", y,
                 "Ptr", out,
                 "UPtr", out.Size,
                 "Int"
@@ -17688,11 +17716,15 @@ class Pillow {
         }
 
         LutBuffer(lut) {
-            if !IsObject(lut)
+            if !IsObject(lut) {
+                if lut is String
+                    ; Pillow's C point tries to round a non-sequence LUT
+                    throw Error("type str doesn't define __round__ method", -1)
                 throw Error("Pillow.Image.Point expects an array LUT", -1)
+            }
             expected := this.Channels * 256
             if lut.Length != expected
-                throw Error("Pillow.Image.Point LUT length must be " expected, -1)
+                throw Error("wrong number of lut entries", -1)
             buf := Buffer(expected, 0)
             for index, value in lut
                 NumPut("UChar", value, buf, index - 1)
@@ -17723,6 +17755,10 @@ class Pillow {
             if IsSet(mask) {
                 if !(IsObject(mask) && mask is Pillow.Image)
                     throw Error("Pillow.Image.Histogram mask expects a Pillow.Image", -1)
+                if !(mask.Mode = "1" || mask.Mode = "L")
+                    throw Error("bad transparency mask", -1)
+                if mask.Width != this.Width || mask.Height != this.Height
+                    throw Error("images do not match", -1)
                 Pillow.CheckStatus(DllCall(
                     Pillow.RequireDllPath() "\pillow_c_image_histogram_masked",
                     "Ptr", this.RequireHandle(),
@@ -17757,6 +17793,10 @@ class Pillow {
             if IsSet(mask) {
                 if !(IsObject(mask) && mask is Pillow.Image)
                     throw Error("Pillow.Image.Entropy mask expects a Pillow.Image", -1)
+                if !(mask.Mode = "1" || mask.Mode = "L")
+                    throw Error("bad transparency mask", -1)
+                if mask.Width != this.Width || mask.Height != this.Height
+                    throw Error("images do not match", -1)
                 maskHandle := mask.RequireHandle()
             }
             status := DllCall(
@@ -18076,6 +18116,12 @@ class Pillow {
                     throw Error("Pillow.Image.Crop box coordinates must be numeric", -1)
                 cropBox.Push(Pillow.Image.RoundHalfEven(value))
             }
+            ; Pillow 11.3.0 validates the box before the C crop (the exact
+            ; ValueErrors; right == left is the 'right' message).
+            if cropBox[3] < cropBox[1]
+                throw Error("Coordinate 'right' is less than 'left'", -1)
+            if cropBox[4] < cropBox[2]
+                throw Error("Coordinate 'lower' is less than 'upper'", -1)
 
             outHandle := 0
             Pillow.CheckStatus(DllCall(
@@ -18092,14 +18138,27 @@ class Pillow {
         }
 
         Resize(size, resample := unset, box := unset, reducingGap := unset) {
-            if size.Length != 2
+            if !IsObject(size) || size.Length != 2
                 throw Error("Pillow.Image.Resize expects size [width, height]", -1)
+            ; Pillow 11.3.0's C resize parses each size element as a C int
+            ; (the exact TypeErrors) and rejects unknown resample filters
+            ; with the exact ValueError naming the value.
+            for value in size {
+                if value is String
+                    throw Error("'str' object cannot be interpreted as an integer", -1)
+                if !(value is Integer)
+                    throw Error("'float' object cannot be interpreted as an integer", -1)
+            }
             this.IcnsQuirkPending := false
             if !IsSet(resample)
                 ; Pillow 11.3.0: NEAREST only for BGR;-prefixed modes,
                 ; BICUBIC otherwise; the native layer forces NEAREST for
                 ; mode 1/P and applies the RGBA/LA premultiply roundtrip.
                 resample := Pillow.Resampling.BICUBIC
+            if !(resample is Integer) || resample < -1 || resample > 5 {
+                resampleText := resample is String ? resample : String(resample)
+                throw Error("Unknown resampling filter (" resampleText "). Use Image.Resampling.NEAREST (0), Image.Resampling.LANCZOS (1), Image.Resampling.BILINEAR (2), Image.Resampling.BICUBIC (3), Image.Resampling.BOX (4) or Image.Resampling.HAMMING (5)", -1)
+            }
             if this.Mode = "I;16B" && resample != Pillow.Resampling.NEAREST
                 ; Pillow 11.3.0 accepts I;16B non-NEAREST resize but garbles
                 ; every sample through its endian handling; replicating that
@@ -18251,8 +18310,22 @@ class Pillow {
             if IsObject(factor) {
                 if factor.Length != 2
                     throw Error("Pillow.Image.Reduce factor must be an integer or [x, y]", -1)
+                for value in factor {
+                    if value is String
+                        throw Error("'str' object cannot be interpreted as an integer", -1)
+                    if !(value is Integer)
+                        throw Error("'float' object cannot be interpreted as an integer", -1)
+                    if value <= 0
+                        throw Error("scale must be > 0", -1)
+                }
                 return [factor[1], factor[2]]
             }
+            if factor is String
+                throw Error("'str' object cannot be interpreted as an integer", -1)
+            if !(factor is Integer)
+                throw Error("'float' object cannot be interpreted as an integer", -1)
+            if factor <= 0
+                throw Error("scale must be > 0", -1)
             return [factor, factor]
         }
 
@@ -18269,7 +18342,7 @@ class Pillow {
                     image.Info := Pillow.Image.CopyInfo(this.Info)
                 return image
             }
-            throw Error("Pillow.Image.Filter expects an ImageFilter object", -1)
+            throw Error("filter argument should be ImageFilter.Filter instance or class", -1)
         }
 
         Transform(size, method, data, resample := unset, fillcolor := unset) {
@@ -18615,6 +18688,15 @@ class Pillow {
         }
 
         Transpose(method) {
+            ; Pillow 11.3.0's transpose parses the method as a C int (the
+            ; exact TypeErrors) and rejects unknown operations with the
+            ; exact ValueError.
+            if method is String
+                throw Error("'str' object cannot be interpreted as an integer", -1)
+            if !(method is Integer)
+                throw Error("'float' object cannot be interpreted as an integer", -1)
+            if method < 0 || method > 6
+                throw Error("No such transpose operation", -1)
             outHandle := 0
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_transpose",

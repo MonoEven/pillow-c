@@ -28463,6 +28463,68 @@ PillowTestSaveOptionTiffInfo(*) {
 
 AhkTest.Test("Pillow Image.Save TIFF tiffinfo arbitrary tags match Pillow 11.3.0", PillowTestSaveOptionTiffInfo)
 
+PillowTestErrorMessageParity(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGB", [16, 16], [0, 0, 0])
+    try {
+        ; resize resample/size: Pillow's exact ValueErrors/TypeErrors
+        AhkTest.AssertEqual("Unknown resampling filter (-99). Use Image.Resampling.NEAREST (0), Image.Resampling.LANCZOS (1), Image.Resampling.BILINEAR (2), Image.Resampling.BICUBIC (3), Image.Resampling.BOX (4) or Image.Resampling.HAMMING (5)", PillowTestFormatCaptureError(() => image.Resize([8, 8], -99)))
+        AhkTest.AssertEqual("Unknown resampling filter (bogus). Use Image.Resampling.NEAREST (0), Image.Resampling.LANCZOS (1), Image.Resampling.BILINEAR (2), Image.Resampling.BICUBIC (3), Image.Resampling.BOX (4) or Image.Resampling.HAMMING (5)", PillowTestFormatCaptureError(() => image.Resize([8, 8], "bogus")))
+        AhkTest.AssertEqual("'str' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Resize(["x", 8])))
+        AhkTest.AssertEqual("'float' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Resize([8.5, 8])))
+
+        ; crop inverted box
+        AhkTest.AssertEqual("Coordinate 'right' is less than 'left'", PillowTestFormatCaptureError(() => image.Crop([10, 10, 2, 2])))
+
+        ; getpixel: OOB IndexError, non-integer coordinates
+        AhkTest.AssertEqual("image index out of range", PillowTestFormatCaptureError(() => image.GetPixel([99, 99])))
+        AhkTest.AssertEqual("an integer is required", PillowTestFormatCaptureError(() => image.GetPixel(["x", 0])))
+
+        ; reduce: scale validation and int-parse TypeErrors
+        AhkTest.AssertEqual("scale must be > 0", PillowTestFormatCaptureError(() => image.Reduce(0)))
+        AhkTest.AssertEqual("'str' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Reduce("x")))
+        AhkTest.AssertEqual("'float' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Reduce(2.5)))
+
+        ; transpose: unknown operation and int-parse TypeErrors
+        AhkTest.AssertEqual("No such transpose operation", PillowTestFormatCaptureError(() => image.Transpose(99)))
+        AhkTest.AssertEqual("'str' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Transpose("bogus")))
+
+        ; histogram/entropy masks: mode and size validation
+        badMask := Pillow.Image.New("RGB", [16, 16], [0, 0, 0])
+        try {
+            AhkTest.AssertEqual("bad transparency mask", PillowTestFormatCaptureError(() => image.Histogram(badMask)))
+            AhkTest.AssertEqual("bad transparency mask", PillowTestFormatCaptureError(() => image.Entropy(badMask)))
+        } finally {
+            badMask.Close()
+        }
+        wrongMask := Pillow.Image.New("L", [8, 8], 0)
+        try {
+            AhkTest.AssertEqual("images do not match", PillowTestFormatCaptureError(() => image.Histogram(wrongMask)))
+            AhkTest.AssertEqual("images do not match", PillowTestFormatCaptureError(() => image.Entropy(wrongMask)))
+        } finally {
+            wrongMask.Close()
+        }
+
+        ; point LUT: length and non-sequence errors
+        AhkTest.AssertEqual("wrong number of lut entries", PillowTestFormatCaptureError(() => image.Point([1, 2, 3])))
+        AhkTest.AssertEqual("type str doesn't define __round__ method", PillowTestFormatCaptureError(() => image.Point("abc")))
+
+        ; filter argument
+        AhkTest.AssertEqual("filter argument should be ImageFilter.Filter instance or class", PillowTestFormatCaptureError(() => image.Filter("bogus")))
+        AhkTest.AssertEqual("filter argument should be ImageFilter.Filter instance or class", PillowTestFormatCaptureError(() => image.Filter(5)))
+
+        ; PNG dictionary: the exact bytes-like TypeError; bytes accepted
+        pngPath := PillowTestTempPngPath("errmsg-dict")
+        AhkTest.AssertEqual("a bytes-like object is required, not 'str'", PillowTestFormatCaptureError(() => image.Save(pngPath, "PNG", { dictionary: "hello" })))
+        AhkTest.AssertEqual("", PillowTestFormatCaptureError(() => image.Save(pngPath, "PNG", { dictionary: PillowTestBuffer([104, 101]) })))
+        PillowTestDeleteFile(pngPath)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image error messages match Pillow 11.3.0", PillowTestErrorMessageParity)
+
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
 

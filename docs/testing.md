@@ -7212,3 +7212,13 @@ rules, the empty-sequence RATIONAL count-0 shape, and the truncation
 semantics) tag-identical to local Pillow 11.3.0. Source/DLL export parity
 is `513/513` (two deliberate new exports) and the rebuilt DLL SHA-256 is
 `43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.
+
+2026-08-15 BEHAV-ERRMSGS-001 verification: the facade
+`Pillow Image error messages match Pillow 11.3.0` target passes `1/1` in
+`0ms`; the full directory suite passes `2846/2846` in `22782ms` with
+zero failures, errors, or skips. The oracle pins (fresh probe runs plus
+the `_imaging.c`/`Image.py` source) cover the exact resize/crop/
+getpixel/reduce/transpose/mask/point/filter/dictionary message shapes
+against local Pillow 11.3.0. No native code changed: export parity stays
+`513/513` and the DLL SHA-256 stays
+`43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.
