@@ -7538,60 +7538,18 @@ int build_tiff_patch_exif_entries(
     }
 }
 
-int patch_tiff_ifd0_exif_entries(
+// Shared IFD0 entry-list rewrite for the classic little-endian single-frame
+// TIFF save layout: reads the file, parses IFD0, drops new entries whose
+// tag is already present (Pillow's standard tags overwrite tiffinfo values
+// anyway, so keeping the file's entry matches), merges the rest sorted by
+// tag, shifts the out-of-line value offsets, and rewrites the file.
+int rewrite_tiff_ifd0_entries(
     const char* path,
-    const int* ascii_tags,
-    const std::uint8_t* const* ascii_values,
-    const std::size_t* ascii_sizes,
-    std::size_t ascii_count,
-    const int* uint_tags,
-    const std::uint32_t* uint_values,
-    const int* uint_types,
-    std::size_t uint_count,
-    const int* rational_tags,
-    const std::uint32_t* rational_numerators,
-    const std::uint32_t* rational_denominators,
-    std::size_t rational_count,
-    const int* rational_array_tags,
-    const std::uint32_t* rational_array_numerators,
-    const std::uint32_t* rational_array_denominators,
-    std::size_t rational_array_value_count,
-    const std::size_t* rational_array_offsets,
-    const std::size_t* rational_array_counts,
-    std::size_t rational_array_count,
-    const int* short_array_tags,
-    const std::uint32_t* short_array_values,
-    std::size_t short_array_value_count,
-    const std::size_t* short_array_offsets,
-    const std::size_t* short_array_counts,
-    std::size_t short_array_count,
-    const int* byte_array_tags,
-    const std::uint8_t* byte_array_values,
-    std::size_t byte_array_value_count,
-    const std::size_t* byte_array_offsets,
-    const std::size_t* byte_array_counts,
-    std::size_t byte_array_count,
-    const int* uint_array_tags,
-    const std::uint32_t* uint_array_values,
-    std::size_t uint_array_value_count,
-    const std::size_t* uint_array_offsets,
-    const std::size_t* uint_array_counts,
-    std::size_t uint_array_count,
-    const int* signed_rational_tags,
-    const std::int32_t* signed_rational_numerators,
-    const std::int32_t* signed_rational_denominators,
-    std::size_t signed_rational_count,
-    const int* undefined_tags,
-    const std::uint8_t* undefined_values,
-    std::size_t undefined_value_count,
-    const std::size_t* undefined_offsets,
-    const std::size_t* undefined_counts,
-    std::size_t undefined_count)
+    std::vector<TiffPatchExifEntry>& new_entries)
 {
     if (!path) {
         return PILLOW_C_NULL_POINTER;
     }
-
     std::vector<std::uint8_t> data;
     if (!read_binary_file(path, &data) || data.size() < 8u) {
         return PILLOW_C_INVALID_ARGUMENT;
@@ -7613,7 +7571,6 @@ int patch_tiff_ifd0_exif_entries(
         // Bounded: patch only the single-frame save layout.
         return PILLOW_C_INVALID_ARGUMENT;
     }
-
     struct OldEntry
     {
         std::uint16_t tag;
@@ -7632,6 +7589,21 @@ int patch_tiff_ifd0_exif_entries(
         parsed.value = read_le32(entry + 8u);
         old_entries.push_back(parsed);
     }
+    std::vector<TiffPatchExifEntry> filtered;
+    filtered.reserve(new_entries.size());
+    for (TiffPatchExifEntry& entry : new_entries) {
+        bool present = false;
+        for (const OldEntry& old : old_entries) {
+            if (old.tag == entry.tag) {
+                present = true;
+                break;
+            }
+        }
+        if (!present) {
+            filtered.push_back(std::move(entry));
+        }
+    }
+    new_entries = std::move(filtered);
     const auto old_type_size = [](std::uint16_t type) -> std::size_t {
         switch (type) {
         case 1u:
@@ -7639,8 +7611,11 @@ int patch_tiff_ifd0_exif_entries(
         case 7u:
             return 1u;
         case 3u:
+        case 8u:
+        case 6u:
             return 2u;
         case 4u:
+        case 9u:
         case 11u:
             return 4u;
         case 5u:
@@ -7652,68 +7627,6 @@ int patch_tiff_ifd0_exif_entries(
             return 0u;
         }
     };
-
-    std::vector<std::uint16_t> old_tags;
-    old_tags.reserve(old_entries.size());
-    for (const OldEntry& entry : old_entries) {
-        old_tags.push_back(entry.tag);
-    }
-
-    std::vector<TiffPatchExifEntry> new_entries;
-    const int build_status = build_tiff_patch_exif_entries(
-        ascii_tags,
-        ascii_values,
-        ascii_sizes,
-        ascii_count,
-        uint_tags,
-        uint_values,
-        uint_types,
-        uint_count,
-        rational_tags,
-        rational_numerators,
-        rational_denominators,
-        rational_count,
-        rational_array_tags,
-        rational_array_numerators,
-        rational_array_denominators,
-        rational_array_value_count,
-        rational_array_offsets,
-        rational_array_counts,
-        rational_array_count,
-        short_array_tags,
-        short_array_values,
-        short_array_value_count,
-        short_array_offsets,
-        short_array_counts,
-        short_array_count,
-        byte_array_tags,
-        byte_array_values,
-        byte_array_value_count,
-        byte_array_offsets,
-        byte_array_counts,
-        byte_array_count,
-        uint_array_tags,
-        uint_array_values,
-        uint_array_value_count,
-        uint_array_offsets,
-        uint_array_counts,
-        uint_array_count,
-        signed_rational_tags,
-        signed_rational_numerators,
-        signed_rational_denominators,
-        signed_rational_count,
-        undefined_tags,
-        undefined_values,
-        undefined_value_count,
-        undefined_offsets,
-        undefined_counts,
-        undefined_count,
-        4u,
-        &old_tags,
-        &new_entries);
-    if (build_status != PILLOW_C_OK) {
-        return build_status;
-    }
 
     try {
         const std::size_t total_count = static_cast<std::size_t>(old_count) + new_entries.size();
@@ -7800,6 +7713,114 @@ int patch_tiff_ifd0_exif_entries(
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+int patch_tiff_ifd0_exif_entries(
+    const char* path,
+    const int* ascii_tags,
+    const std::uint8_t* const* ascii_values,
+    const std::size_t* ascii_sizes,
+    std::size_t ascii_count,
+    const int* uint_tags,
+    const std::uint32_t* uint_values,
+    const int* uint_types,
+    std::size_t uint_count,
+    const int* rational_tags,
+    const std::uint32_t* rational_numerators,
+    const std::uint32_t* rational_denominators,
+    std::size_t rational_count,
+    const int* rational_array_tags,
+    const std::uint32_t* rational_array_numerators,
+    const std::uint32_t* rational_array_denominators,
+    std::size_t rational_array_value_count,
+    const std::size_t* rational_array_offsets,
+    const std::size_t* rational_array_counts,
+    std::size_t rational_array_count,
+    const int* short_array_tags,
+    const std::uint32_t* short_array_values,
+    std::size_t short_array_value_count,
+    const std::size_t* short_array_offsets,
+    const std::size_t* short_array_counts,
+    std::size_t short_array_count,
+    const int* byte_array_tags,
+    const std::uint8_t* byte_array_values,
+    std::size_t byte_array_value_count,
+    const std::size_t* byte_array_offsets,
+    const std::size_t* byte_array_counts,
+    std::size_t byte_array_count,
+    const int* uint_array_tags,
+    const std::uint32_t* uint_array_values,
+    std::size_t uint_array_value_count,
+    const std::size_t* uint_array_offsets,
+    const std::size_t* uint_array_counts,
+    std::size_t uint_array_count,
+    const int* signed_rational_tags,
+    const std::int32_t* signed_rational_numerators,
+    const std::int32_t* signed_rational_denominators,
+    std::size_t signed_rational_count,
+    const int* undefined_tags,
+    const std::uint8_t* undefined_values,
+    std::size_t undefined_value_count,
+    const std::size_t* undefined_offsets,
+    const std::size_t* undefined_counts,
+    std::size_t undefined_count)
+{
+    std::vector<TiffPatchExifEntry> new_entries;
+    const int build_status = build_tiff_patch_exif_entries(
+        ascii_tags,
+        ascii_values,
+        ascii_sizes,
+        ascii_count,
+        uint_tags,
+        uint_values,
+        uint_types,
+        uint_count,
+        rational_tags,
+        rational_numerators,
+        rational_denominators,
+        rational_count,
+        rational_array_tags,
+        rational_array_numerators,
+        rational_array_denominators,
+        rational_array_value_count,
+        rational_array_offsets,
+        rational_array_counts,
+        rational_array_count,
+        short_array_tags,
+        short_array_values,
+        short_array_value_count,
+        short_array_offsets,
+        short_array_counts,
+        short_array_count,
+        byte_array_tags,
+        byte_array_values,
+        byte_array_value_count,
+        byte_array_offsets,
+        byte_array_counts,
+        byte_array_count,
+        uint_array_tags,
+        uint_array_values,
+        uint_array_value_count,
+        uint_array_offsets,
+        uint_array_counts,
+        uint_array_count,
+        signed_rational_tags,
+        signed_rational_numerators,
+        signed_rational_denominators,
+        signed_rational_count,
+        undefined_tags,
+        undefined_values,
+        undefined_value_count,
+        undefined_offsets,
+        undefined_counts,
+        undefined_count,
+        4u,
+        nullptr,
+        &new_entries);
+    if (build_status != PILLOW_C_OK) {
+        return build_status;
+    }
+    return rewrite_tiff_ifd0_entries(path, new_entries);
 }
 
 struct TiffPatchExifBlobFamilies
@@ -9375,6 +9396,24 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_resolution_options
         has_unit != 0);
 }
 
+// BEHAV-SAVEOPTS-006 helper: exposes Pillow's float->RATIONAL conversion
+// for the facade's tiffinfo classification of tags 282/283.
+extern "C" __declspec(dllexport) int pillow_c_tiff_rational_from_double(
+    double value,
+    std::uint32_t* out_num,
+    std::uint32_t* out_den)
+{
+    if (!out_num || !out_den) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!std::isfinite(value) || value < 0.0 ||
+        value > static_cast<double>(std::numeric_limits<std::uint32_t>::max())) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return tiff_float_to_rational(value, out_num, out_den) ? PILLOW_C_OK
+                                                           : PILLOW_C_INVALID_ARGUMENT;
+}
+
 // BEHAV-SAVEOPTS-004: Pillow's TIFF named-tag kwargs (description ->
 // ImageDescription 270, software -> Software 305, date_time -> DateTime 306,
 // artist -> Artist 315, copyright -> Copyright 33432) composed with the
@@ -9726,6 +9765,80 @@ extern "C" __declspec(dllexport) int pillow_c_image_patch_tiff_exif_bytes(
     std::size_t exif_size)
 {
     return patch_tiff_ifd0_exif_blob(path, exif_bytes, exif_size);
+}
+
+// BEHAV-SAVEOPTS-006: Pillow's tiffinfo arbitrary tags.  The facade
+// classifies each value with Pillow's ImageFileDirectory_v2 type inference
+// (SHORT/LONG/SIGNED_SHORT/SIGNED_LONG/DOUBLE/ASCII/BYTE/RATIONAL, arrays,
+// and the empty-list RATIONAL count-0 shape) and encodes the little-endian
+// value bytes; the DLL merges the typed entries into IFD0, skipping tags
+// the file already writes (Pillow's standard tags overwrite tiffinfo
+// values, so the file's entry is the final value).
+extern "C" __declspec(dllexport) int pillow_c_image_patch_tiff_raw_entries(
+    const char* path,
+    const int* tags,
+    const int* types,
+    const std::uint32_t* counts,
+    const std::size_t* value_offsets,
+    const std::uint8_t* values,
+    std::size_t value_count,
+    std::size_t entry_count)
+{
+    if (!path || (entry_count > 0u && (!tags || !types || !counts || !value_offsets))) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (entry_count > 0u && value_count > 0u && !values) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    try {
+        std::vector<TiffPatchExifEntry> entries;
+        entries.reserve(entry_count);
+        for (std::size_t index = 0u; index < entry_count; ++index) {
+            const int tag = tags[index];
+            const int type = types[index];
+            if (tag < 0 || tag > 0xFFFF) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            std::size_t type_size = 0u;
+            switch (type) {
+            case 1: case 2: case 7: type_size = 1u; break;
+            case 3: case 6: case 8: type_size = 2u; break;
+            case 4: case 9: case 11: type_size = 4u; break;
+            case 5: case 10: case 12: case 16: type_size = 8u; break;
+            default: return PILLOW_C_INVALID_ARGUMENT;
+            }
+            const std::uint64_t count = counts[index];
+            if (count > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max() / type_size)) {
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            const std::size_t byte_count = static_cast<std::size_t>(count) * type_size;
+            const std::size_t offset = value_offsets[index];
+            if (offset > value_count || byte_count > value_count - offset) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            TiffPatchExifEntry entry;
+            entry.tag = static_cast<std::uint16_t>(tag);
+            entry.type = static_cast<std::uint16_t>(type);
+            entry.count = count;
+            entry.value = 0u;
+            if (byte_count == 0u) {
+                entry.has_blob = false;
+            } else if (byte_count <= 4u) {
+                for (std::size_t byte_index = 0u; byte_index < byte_count; ++byte_index) {
+                    entry.value |= static_cast<std::uint64_t>(values[offset + byte_index])
+                        << (byte_index * 8u);
+                }
+                entry.has_blob = false;
+            } else {
+                entry.has_blob = true;
+                entry.blob.assign(values + offset, values + offset + byte_count);
+            }
+            entries.push_back(std::move(entry));
+        }
+        return rewrite_tiff_ifd0_entries(path, entries);
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_patch_tiff_bigtiff_exif_entries(

@@ -942,6 +942,36 @@ entries are skipped. The facade `Image.Save` accepts a Buffer for
 bytes-form IFD0 parsing. Existing save exports, handle ownership, and
 synchronous path lifetime contracts remain unchanged.
 
+## TIFF Save tiffinfo= ABI Behavior
+
+`BEHAV-SAVEOPTS-006` adds two public exports,
+`pillow_c_image_patch_tiff_raw_entries` and
+`pillow_c_tiff_rational_from_double`, raising source/DLL export parity
+from `511/511` to `513/513` with zero difference.
+`pillow_c_tiff_rational_from_double` exposes Pillow's float->RATIONAL
+conversion (the round-3 `IFDRational(...).limit_rational(2**32-1)`
+rule) as `(value, *out_num, *out_den)`, rejecting non-finite, negative,
+and above-2**32-1 values with `PILLOW_C_INVALID_ARGUMENT`.
+`pillow_c_image_patch_tiff_raw_entries` takes a saved classic
+single-frame TIFF path plus `entry_count` typed entries as
+`(tags, types, counts, value_offsets, values, value_count)`; each entry
+carries its little-endian value bytes (types 1/2/3/4/5/6/7/8/9/10/11/12
+with their TIFF sizes, count 0 allowed for the empty-sequence RATIONAL
+shape), values <= 4 bytes are stored inline and larger ones as blobs
+after the grown IFD0. Entries whose tag already exists in IFD0 are
+dropped (Pillow's standard tags overwrite tiffinfo values, so the
+file's entry is the final value); the remaining entries merge in
+ascending tag order, out-of-line offsets (including the inline
+273/strip offset) shift by the growth delta, and malformed layouts
+return `PILLOW_C_INVALID_ARGUMENT`. The shared IFD0 rewrite was
+extracted from the exif patch path, so the exif exports keep their
+exact behavior. The facade `Image.Save` classifies each `tiffinfo`
+value with Pillow's ImageFileDirectory_v2 inference (SHORT/LONG/
+SIGNED_SHORT/SIGNED_LONG/DOUBLE/ASCII/BYTE, the 282/283 RATIONAL and
+named-ASCII registered-tag rules, sequence semantics, and the exact
+error messages), saves the plain TIFF, and patches IFD0 through this
+export.
+
 ## TIFF Classic ExifIFD/GPSInfo Sub-IFD ABI Behavior
 
 `FMT-TIFF-003AT` changes no exported name or signature. Existing

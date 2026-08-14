@@ -28344,6 +28344,125 @@ PillowTestSaveOptionJpegSmoothStreamtype(*) {
 
 AhkTest.Test("Pillow Image.Save JPEG smooth and streamtype match Pillow 11.3.0", PillowTestSaveOptionJpegSmoothStreamtype)
 
+PillowTestReadTiffRawEntry(path, tag) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0Entries(bytes)
+    if !entries.Has(tag)
+        return [0, 0, []]
+    entry := entries[tag]
+    size := entry.Type = 3 || entry.Type = 8 ? 2
+        : entry.Type = 4 || entry.Type = 9 || entry.Type = 11 ? 4
+        : entry.Type = 5 || entry.Type = 10 || entry.Type = 12 ? 8
+        : 1
+    total := entry.Count * size
+    raw := []
+    if total <= 4 {
+        i := 0
+        while i < total {
+            raw.Push((entry.Value >> (i * 8)) & 0xFF)
+            i += 1
+        }
+    } else {
+        i := 0
+        while i < total {
+            raw.Push(bytes[entry.Value + i + 1])
+            i += 1
+        }
+    }
+    return [entry.Type, entry.Count, raw]
+}
+
+PillowTestSaveOptionTiffInfo(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGB", [8, 8], [0, 0, 0])
+    try {
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-int")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, 300) })
+        AhkTest.AssertEqual([3, 1, [44, 1]], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-long")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, 70000) })
+        AhkTest.AssertEqual([4, 1, [0x70, 0x11, 1, 0]], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-neg")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, -5) })
+        AhkTest.AssertEqual([8, 1, [0xFB, 0xFF]], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-neglong")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, -70000) })
+        AhkTest.AssertEqual([9, 1, [0x90, 0xEE, 0xFE, 0xFF]], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-float")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, 1.5) })
+        AhkTest.AssertEqual([12, 1, [0, 0, 0, 0, 0, 0, 0xF8, 0x3F]], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-str")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, "hello") })
+        AhkTest.AssertEqual([2, 6, [104, 101, 108, 108, 111, 0]], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-bytes")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, PillowTestBuffer([97, 98, 99])) })
+        AhkTest.AssertEqual([1, 3, [97, 98, 99]], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-iarr")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, [1, 2, 3]) })
+        AhkTest.AssertEqual([3, 3, [1, 0, 2, 0, 3, 0]], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-larr")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, [70000, 2]) })
+        AhkTest.AssertEqual([4, 2, [0x70, 0x11, 1, 0, 2, 0, 0, 0]], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-mixed")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, [70000, -5]) })
+        AhkTest.AssertEqual([9, 2, [0x70, 0x11, 1, 0, 0xFB, 0xFF, 0xFF, 0xFF]], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-sarr")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, [300, -5]) })
+        AhkTest.AssertEqual([8, 2, [0x2C, 1, 0xFB, 0xFF]], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-farr")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, [1.5, 2.5]) })
+        AhkTest.AssertEqual([12, 2, [0, 0, 0, 0, 0, 0, 0xF8, 0x3F, 0, 0, 0, 0, 0, 0, 0x04, 0x40]], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-rat")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(282, 145.5) })
+        AhkTest.AssertEqual([5, 1, [0x23, 1, 0, 0, 2, 0, 0, 0]], PillowTestReadTiffRawEntry(tiffPath, 282))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-ratint")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(282, 300) })
+        AhkTest.AssertEqual([5, 1, [0x2C, 1, 0, 0, 1, 0, 0, 0]], PillowTestReadTiffRawEntry(tiffPath, 282))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-unit")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(296, 3) })
+        AhkTest.AssertEqual([3, 1, [3, 0]], PillowTestReadTiffRawEntry(tiffPath, 296))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-270")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(270, "hello") })
+        AhkTest.AssertEqual([2, 6, [104, 101, 108, 108, 111, 0]], PillowTestReadTiffRawEntry(tiffPath, 270))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-empty")
+        image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, []) })
+        AhkTest.AssertEqual([5, 0, []], PillowTestReadTiffRawEntry(tiffPath, 65000))
+        PillowTestDeleteFile(tiffPath)
+
+        ; Pillow's exact error shapes
+        tiffPath := PillowTestTempTiffPath("saveopt-ti-err")
+        AhkTest.AssertEqual("ushort format requires 0 <= number <= 0xffff", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { tiffinfo: Map(70000, 300) })))
+        AhkTest.AssertEqual("ImageFileDirectory_v2.write_undefined() takes 2 positional arguments but 3 were given", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, [1, "two"]) })))
+        AhkTest.AssertEqual("ImageFileDirectory_v2.write_string() takes 2 positional arguments but 3 were given", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, ["a", "b"]) })))
+        AhkTest.AssertEqual("required argument is not an integer", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { tiffinfo: Map(296, "x") })))
+        AhkTest.AssertEqual("ushort format requires 0 <= number <= 0xffff", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { tiffinfo: Map(296, -1) })))
+        AhkTest.AssertEqual("bad operand type for abs(): 'str'", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { tiffinfo: Map(282, "x") })))
+        AhkTest.AssertEqual("argument out of range", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { tiffinfo: Map(282, -300) })))
+        AhkTest.AssertEqual("argument out of range", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { tiffinfo: Map(65000, 4294967296) })))
+        PillowTestDeleteFile(tiffPath)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF tiffinfo arbitrary tags match Pillow 11.3.0", PillowTestSaveOptionTiffInfo)
+
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
 

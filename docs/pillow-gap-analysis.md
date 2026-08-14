@@ -298,6 +298,59 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-15 BEHAV-SAVEOPTS-006 Save-Option Parity Wave 6 (GREEN)
+
+`BEHAV-SAVEOPTS-006` delivers the TIFF `tiffinfo` arbitrary tags (two
+deliberate exports: `pillow_c_image_patch_tiff_raw_entries` and
+`pillow_c_tiff_rational_from_double`). The Pillow 11.3.0 oracle (fresh
+pins plus the ctypes cross-check `oracle/probe_tiffinfo_dll.py`):
+
+- The inference surface of `ImageFileDirectory_v2.__setitem__` for
+  unknown tags: ints -> SHORT (0..65535), LONG (65536..2**32-1),
+  SIGNED_SHORT (-32768..-1), SIGNED_LONG (below -32768); floats ->
+  DOUBLE; strings -> ASCII (ascii-replace plus NUL); bytes -> BYTE;
+  sequences reuse the same elementwise rules; the empty sequence
+  writes a RATIONAL count-0 entry; a bytes sequence truncates to its
+  first value (the "too many entries" warning); a string sequence
+  raises the exact
+  `ImageFileDirectory_v2.write_string() takes 2 positional arguments
+  but N were given` TypeError; a mixed sequence raises the exact
+  `write_undefined` TypeError; out-of-range values raise
+  `argument out of range`; and tag numbers above 65535 raise
+  `ushort format requires 0 <= number <= 0xffff` (libtiff packs the
+  tag field as a ushort).
+- Registered tags keep their types: 282/283 RATIONAL (ints write
+  n/1, floats run the round-3 float->RATIONAL conversion, sequences
+  truncate to the first value), the named ASCII tags (270/305/306/
+  315/33432) run write_string's conversions, and 296 stays SHORT with
+  the exact `required argument is not an integer`/ushort errors.
+- Native: the IFD0 entry-list rewrite from the exif patch was
+  extracted into `rewrite_tiff_ifd0_entries` (read, parse, drop
+  new entries whose tag the file already writes — Pillow's standard
+  tags overwrite tiffinfo values anyway, so the file's entry is the
+  final value — merge sorted by tag, shift out-of-line offsets,
+  rewrite), and the new `pillow_c_image_patch_tiff_raw_entries`
+  export builds typed entries from (tag, type, count, little-endian
+  value bytes) triplets produced by the facade.
+- Facade: `SaveTiffInfoEntries` classifies each tiffinfo value with
+  the exact rules above, encodes the value bytes, saves the plain
+  TIFF, and patches IFD0.  All 25 cross-check cases are tag-identical
+  to Pillow.
+
+The facade target passes `1/1` in `31ms`; the full directory suite
+passes `2845/2845` in `22266ms`; Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity moves to `513/513`
+(two deliberate new exports) with zero difference; and the rebuilt DLL
+SHA-256 is
+`43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.
+Bounded divergences kept: composition with icc/dpi/exif/big_tiff/
+resolution/named kwargs still routes through the older paths which
+ignore the arbitrary tags; a 700-only map without icc/dpi keeps the
+legacy route; and exotic registered-tag type tables beyond the covered
+set stay undocumented. The remaining API-SAVEOPTS-001 child (PNG
+dictionary — the documented no-compressor boundary) stays the next
+packet.
+
 ## 2026-08-15 BEHAV-SAVEOPTS-005 Save-Option Parity Wave 5 (GREEN)
 
 `BEHAV-SAVEOPTS-005` delivers the JPEG `smooth`/`streamtype` options
@@ -41681,7 +41734,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | API-CMS-DISPLAY-001 | Facade API | gap | `ImageCms.get_display_profile(handle)` absent (Pillow returns an ImageCmsProfile for the Windows display device, or None); also missing: the `Direction`/`Flags`/`Intent` enums, `PyCMSError`, `versions`, and `buildProofTransformFromOpenProfiles`. | Red-team audit; `ImageCms` source diff. |
 | API-FONTVAR-002 | Facade API | partial | `FreeTypeFont.get_variation_axes/get_variation_names/set_variation_by_axes/set_variation_by_name` are implemented for non-variable fonts with Pillow's exact `invalid argument` OSError (BEHAV-FONTFILE-001); reading real axes/names and applying variation instances on variable fonts stays a documented FreeType-dependent boundary. `getmask/getmask2` are implemented for the default and truetype fonts (GDI rasterization boundary). | BEHAV-FONTFILE-001; FreeTypeFont surface diff. |
 | API-DRAW-TEXT-001 | Facade API | gap | `ImageDraw.text`/`multiline_text` drop the `spacing/align/direction/features/language/embedded_color/font_size` options; `direction`/`features`/`language` are MATCH-ERROR items on this build (Pillow raises the exact libraqm KeyError — matchable trivially), while `spacing`/`align` (incl. multiline `justify` + Pillow's exact align error)/`embedded_color`/`font_size` need real implementation. `ImageDraw.getdraw`, `ImageMath.lambda_eval`/`imagemath_*`, `ImageStat.Global`, and the `ImageFilter` base classes (`Filter`/`BuiltinFilter`/`MultibandFilter`) plus Pillow's exact filter-validation messages (`radius must be >= 0`, `bad filter size`, `bad kernel size`, `not enough coefficients in kernel`, the RankFilter missing-rank TypeError) are absent. | Red-team audit (probe_modules.py, probe_modules2.py, probe_filters2.py). |
-| API-SAVEOPTS-001 | Facade API | partial | Waves 1-5 (BEHAV-SAVEOPTS-001 through 005) are done: QOI `colorspace`, TGA `id_section`/`orientation`, TIFF unknown-compression-ignored + `quality` validation, JPEG integer `subsampling` breadth, PNG `compress_type` (0-4 accepted, the exact 5+ OSError) and P-mode `bits` (auto-minimized depths + the override chain with the exact shift errors), GIF `interlace` (the interlaced default with the @PIL153 workaround) and `palette` (the exact-match remap), TIFF `resolution`/`resolution_unit` (Pillow's exact float->RATIONAL continued-fraction conversion, the pair-truncation warning, unit-only tag 296, verbatim unit values, and the exact TypeError/struct.error messages; `strip_size` is accepted-and-ignored like Pillow 11.3.0), TIFF named-tag kwargs `description`/`software`/`date_time`/`artist`/`copyright` (write_string's exact conversions plus the per-axis `x_resolution`/`y_resolution` surface and the resolution/x/y/dpi precedence chain), JPEG `smooth`/`streamtype` (libjpeg-turbo's input smoothing kernels ported into the native L/RGB/CMYK encoders and the abbreviated tables-only/image-only stream modes with Pillow's exact marker structures, reopen errors, and the PyArg_ParseTuple TypeErrors). Remaining children: PNG `dictionary` (needs a real zlib compressor — the DLL writes stored deflate blocks), TIFF `tiffinfo` breadth (arbitrary tags beyond 270/305/306/315/33432/700); TIFF jpeg/group3/group4 compression stays the documented rejection boundary. | Red-team audit (probe_save_options.py); BEHAV-SAVEOPTS-001/002/003/004/005 (oracle/probe_saveopts_dll.py, probe_pngbits_dll.py, probe_gifopts2_dll.py, probe_tiffres_dll.py, probe_tiffnamed_dll.py, probe_jpegsmooth_dll.py). |
+| API-SAVEOPTS-001 | Facade API | partial | Waves 1-6 (BEHAV-SAVEOPTS-001 through 006) are done: QOI `colorspace`, TGA `id_section`/`orientation`, TIFF unknown-compression-ignored + `quality` validation, JPEG integer `subsampling` breadth, PNG `compress_type` (0-4 accepted, the exact 5+ OSError) and P-mode `bits` (auto-minimized depths + the override chain with the exact shift errors), GIF `interlace` (the interlaced default with the @PIL153 workaround) and `palette` (the exact-match remap), TIFF `resolution`/`resolution_unit` (Pillow's exact float->RATIONAL continued-fraction conversion, the pair-truncation warning, unit-only tag 296, verbatim unit values, and the exact TypeError/struct.error messages; `strip_size` is accepted-and-ignored like Pillow 11.3.0), TIFF named-tag kwargs `description`/`software`/`date_time`/`artist`/`copyright` (write_string's exact conversions plus the per-axis `x_resolution`/`y_resolution` surface and the resolution/x/y/dpi precedence chain), JPEG `smooth`/`streamtype` (libjpeg-turbo's input smoothing kernels ported into the native L/RGB/CMYK encoders and the abbreviated tables-only/image-only stream modes with Pillow's exact marker structures, reopen errors, and the PyArg_ParseTuple TypeErrors), TIFF `tiffinfo` arbitrary tags (ImageFileDirectory_v2's full type inference for unknown tags plus the registered-tag rules and the exact error shapes, patched into IFD0 after the plain save). Remaining child: PNG `dictionary` (needs a real zlib compressor — the DLL writes stored deflate blocks, so the dictionary is accepted but has no observable effect on the payload); TIFF jpeg/group3/group4 compression stays the documented rejection boundary. | Red-team audit (probe_save_options.py); BEHAV-SAVEOPTS-001/002/003/004/005/006 (oracle/probe_saveopts_dll.py, probe_pngbits_dll.py, probe_gifopts2_dll.py, probe_tiffres_dll.py, probe_tiffnamed_dll.py, probe_jpegsmooth_dll.py, probe_tiffinfo_dll.py). |
 | API-SAVEOPTS-002 | Facade API | done | All six runtime-verified error-message mismatches are Pillow-exact with BEHAV-SAVEOPTS-001: PNG `compress_level` type (`'str' object cannot be interpreted as an integer`) and range (`codec configuration error when writing image file`), JPEG `quality` bogus (`Invalid quality setting`; the non-Pillow preset aliases are removed), JPEG `subsampling` (`'str' object cannot be interpreted as an integer`), TIFF `quality` (`Invalid quality setting` on the jpeg route), ICO `sizes` (`'>' not supported between instances of 'str' and 'int'`). | Red-team audit; BEHAV-SAVEOPTS-001. |
 | API-OPENINFO-001 | Facade API | gap | Unexposed open-side info: JPEG `quantization`/`progressive`/`progression`/`adobe`/`adobe_transform`, GIF `version`/`extension`, TIFF `compression`, TGA `compression`/`orientation` — not exposed and not boundary-recorded. | Red-team audit (probe_open_info.py). |
 | MODE-NUM-001CM-CORR | Modes | covered | CORRECTION of the `MODE-NUM-001CM` default-resample claim, closed by MODE-RGBA-RESIZE-001: Pillow 11.3.0's rule is `NEAREST if mode.startswith("BGR;") else BICUBIC`; the facade now defaults to BICUBIC (the old NEAREST-for-any-`;`-mode rule at pillow.ahk line 14579 is gone). Oracle: default `I;16` resize == BICUBIC `[59,241,59,241]` (facade/native byte-exact); the I;16B non-NEAREST facade error stays a documented boundary (Pillow accepts and garbles via the endian bug; replicating the corruption is declined). Red test added in `PillowTestResizeRgbaPremultiply` plus the regenerated I;16 default fixture in `PillowTestImageResizeTransformI16`. | Red-team audit (probe2.py); `Image.resize` source; MODE-RGBA-RESIZE-001 packet. |

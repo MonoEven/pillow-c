@@ -11360,6 +11360,235 @@ class Pillow {
             throw Error("'float' object has no attribute 'encode'", -1)
         }
 
+        static SaveTiffInfoEntries(tiffInfo) {
+            ; Pillow 11.3.0's tiffinfo arbitrary tags follow
+            ; ImageFileDirectory_v2.__setitem__: registered tags keep their
+            ; type (282/283 RATIONAL via the exact float conversion, the
+            ; named ASCII tags via write_string, 296 SHORT), unknown tags
+            ; infer SHORT/LONG/SIGNED_SHORT/SIGNED_LONG/DOUBLE/ASCII/BYTE by
+            ; value shape, sequences reuse the same rules, the empty
+            ; sequence writes a RATIONAL count-0 entry, and mixed sequences
+            ; hit the exact write_string/write_undefined TypeErrors.
+            records := []
+            valuesSize := 0
+            for tag, value in tiffInfo {
+                if !(tag is Integer)
+                    throw Error("Pillow.Image.Save tiffinfo keys must be integers", -1)
+                if tag < 0 || tag > 65535
+                    throw Error("ushort format requires 0 <= number <= 0xffff", -1)
+                recordType := 0
+                recordCount := 1
+                recordBytes := 0
+                if tag = 282 || tag = 283 {
+                    first := IsObject(value) ? value[1] : value
+                    num := 0
+                    den := 1
+                    if first is Integer {
+                        if first < 0
+                            throw Error("argument out of range", -1)
+                        num := first
+                    } else if first is Float {
+                        if first < 0
+                            throw Error("argument out of range", -1)
+                        numBuf := Buffer(8, 0)
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_tiff_rational_from_double",
+                            "Double", first + 0.0,
+                            "Ptr", numBuf,
+                            "Ptr", numBuf.Ptr + 4,
+                            "Int"
+                        ))
+                        num := NumGet(numBuf, 0, "UInt")
+                        den := NumGet(numBuf, 4, "UInt")
+                    } else {
+                        throw Error("bad operand type for abs(): 'str'", -1)
+                    }
+                    recordType := 5
+                    recordBytes := Buffer(8, 0)
+                    NumPut("UInt", num, recordBytes, 0)
+                    NumPut("UInt", den, recordBytes, 4)
+                } else if tag = 270 || tag = 305 || tag = 306 || tag = 315 || tag = 33432 {
+                    recordType := 2
+                    recordBytes := Pillow.Image.SaveTiffAsciiNamedValue(value)
+                    recordCount := recordBytes.Size
+                } else if tag = 296 {
+                    if !(value is Integer)
+                        throw Error("required argument is not an integer", -1)
+                    if value < 0 || value > 65535
+                        throw Error("ushort format requires 0 <= number <= 0xffff", -1)
+                    recordType := 3
+                    recordBytes := Buffer(2, 0)
+                    NumPut("UShort", value, recordBytes, 0)
+                } else {
+                    seq := IsObject(value) && Type(value) != "Buffer" ? value : 0
+                    if IsObject(seq) {
+                        if seq.Length = 0 {
+                            ; Pillow writes the empty sequence as RATIONAL count 0
+                            recordType := 5
+                            recordCount := 0
+                            recordBytes := Buffer(0)
+                        } else {
+                            allInt := true
+                            allFloat := true
+                            allStr := true
+                            allBytes := true
+                            for item in seq {
+                                if !(item is Integer)
+                                    allInt := false
+                                if !(item is Float)
+                                    allFloat := false
+                                if !(item is String)
+                                    allStr := false
+                                if Type(item) != "Buffer"
+                                    allBytes := false
+                            }
+                            if allStr
+                                throw Error("ImageFileDirectory_v2.write_string() takes 2 positional arguments but " seq.Length + 1 " were given", -1)
+                            if allBytes {
+                                ; Pillow truncates a bytes sequence to its first value
+                                value := seq[1]
+                                seq := 0
+                            } else if !allInt && !allFloat {
+                                throw Error("ImageFileDirectory_v2.write_undefined() takes 2 positional arguments but " seq.Length + 1 " were given", -1)
+                            }
+                        }
+                    }
+                    if recordType = 0 && IsObject(seq) {
+                        if allFloat && !allInt {
+                            ; float sequence -> DOUBLE
+                            recordType := 12
+                            recordCount := seq.Length
+                            recordBytes := Buffer(seq.Length * 8, 0)
+                            idx := 0
+                            for item in seq {
+                                NumPut("Double", item + 0.0, recordBytes, idx * 8)
+                                idx += 1
+                            }
+                        } else {
+                            ; homogeneous numeric sequence
+                            shortOk := true
+                            signedShortOk := true
+                            longOk := true
+                            for item in seq {
+                                if !(item is Integer) || item < -2147483648 || item > 4294967295
+                                    throw Error("argument out of range", -1)
+                                if item < 0 || item >= 65536
+                                    shortOk := false
+                                if item <= -32768 || item >= 32768
+                                    signedShortOk := false
+                                if item < 0
+                                    longOk := false
+                            }
+                            if shortOk
+                                recordType := 3
+                            else if signedShortOk
+                                recordType := 8
+                            else if longOk
+                                recordType := 4
+                            else
+                                recordType := 9
+                            recordCount := seq.Length
+                            recordBytes := Buffer(seq.Length * (recordType = 3 || recordType = 8 ? 2 : 4), 0)
+                            idx := 0
+                            for item in seq {
+                                if recordType = 3
+                                    NumPut("UShort", item, recordBytes, idx * 2)
+                                else if recordType = 8
+                                    NumPut("Short", item, recordBytes, idx * 2)
+                                else if recordType = 4
+                                    NumPut("UInt", item, recordBytes, idx * 4)
+                                else
+                                    NumPut("Int", item, recordBytes, idx * 4)
+                                idx += 1
+                            }
+                        }
+                    }
+                    if recordType = 0 {
+                        ; scalar
+                        if value is Integer {
+                            shortOk := true
+                            signedShortOk := true
+                            longOk := true
+                            if value < -2147483648 || value > 4294967295
+                                throw Error("argument out of range", -1)
+                            if value < 0 || value >= 65536
+                                shortOk := false
+                            if value <= -32768 || value >= 32768
+                                signedShortOk := false
+                            if value < 0
+                                longOk := false
+                            if shortOk {
+                                recordType := 3
+                                recordBytes := Buffer(2, 0)
+                                NumPut("UShort", value, recordBytes, 0)
+                            } else if signedShortOk {
+                                recordType := 8
+                                recordBytes := Buffer(2, 0)
+                                NumPut("Short", value, recordBytes, 0)
+                            } else {
+                                recordType := longOk ? 4 : 9
+                                recordBytes := Buffer(4, 0)
+                                if longOk
+                                    NumPut("UInt", value, recordBytes, 0)
+                                else
+                                    NumPut("Int", value, recordBytes, 0)
+                            }
+                        } else if value is Float {
+                            recordType := 12
+                            recordBytes := Buffer(8, 0)
+                            NumPut("Double", value + 0.0, recordBytes, 0)
+                        } else if value is String {
+                            recordType := 2
+                            recordBytes := Pillow.Image.Utf8Buffer(RegExReplace(value, "[^\x00-\x7F]", "?"))
+                            recordCount := recordBytes.Size
+                        } else if value is Buffer {
+                            recordType := 1
+                            recordCount := value.Size
+                            recordBytes := Buffer(value.Size, 0)
+                            offset := 0
+                            while offset < value.Size {
+                                NumPut("UChar", NumGet(value, offset, "UChar"), recordBytes, offset)
+                                offset += 1
+                            }
+                        } else {
+                            throw Error("Pillow.Image.Save tiffinfo value type is not supported", -1)
+                        }
+                    }
+                }
+                records.Push({ Tag: tag, Type: recordType, Count: recordCount, Bytes: recordBytes })
+                valuesSize += recordBytes.Size
+            }
+            tagsBuf := Buffer(records.Length * 4, 0)
+            typesBuf := Buffer(records.Length * 4, 0)
+            countsBuf := Buffer(records.Length * 4, 0)
+            offsetsBuf := Buffer(records.Length * A_PtrSize, 0)
+            valuesBuf := Buffer(valuesSize, 0)
+            cursor := 0
+            idx := 0
+            for record in records {
+                NumPut("Int", record.Tag, tagsBuf, idx * 4)
+                NumPut("Int", record.Type, typesBuf, idx * 4)
+                NumPut("UInt", record.Count, countsBuf, idx * 4)
+                NumPut("UPtr", cursor, offsetsBuf, idx * A_PtrSize)
+                offset := 0
+                while offset < record.Bytes.Size {
+                    NumPut("UChar", NumGet(record.Bytes, offset, "UChar"), valuesBuf, cursor + offset)
+                    offset += 1
+                }
+                cursor += record.Bytes.Size
+                idx += 1
+            }
+            return {
+                Tags: tagsBuf,
+                Types: typesBuf,
+                Counts: countsBuf,
+                Offsets: offsetsBuf,
+                Values: valuesBuf,
+                ValuesSize: valuesSize,
+                EntryCount: records.Length,
+            }
+        }
+
         static SaveJpegSubsampling(value) {
             if value is Integer {
                 ; Pillow passes any integer to the encoder: values below 0
@@ -13452,6 +13681,53 @@ class Pillow {
                 dateTimeOption := Pillow.Image.SaveOption(saveOptions, "DateTime", "date_time")
                 xResolutionOption := Pillow.Image.SaveOption(saveOptions, "XResolution", "x_resolution")
                 yResolutionOption := Pillow.Image.SaveOption(saveOptions, "YResolution", "y_resolution")
+                iccProfileOption := Pillow.Image.SaveOption(saveOptions, "IccProfile", "icc_profile")
+                exifOption := Pillow.Image.SaveOption(saveOptions, "Exif", "exif")
+                tiffInfoOption := Pillow.Image.SaveOption(saveOptions, "TiffInfo", "tiffinfo")
+                if tiffInfoOption.Set && tiffInfoOption.Value is Map {
+                    ; BEHAV-SAVEOPTS-006: Pillow's tiffinfo arbitrary tags.
+                    ; Tags outside the legacy 700 surface (including the
+                    ; 270/315 ASCII tags) are classified with
+                    ; ImageFileDirectory_v2's type inference and patched
+                    ; into IFD0 after the plain save.  Bounded:
+                    ; composition with icc/dpi/exif/big_tiff/resolution/
+                    ; named kwargs still routes through the older paths,
+                    ; which ignore the arbitrary tags, and a 700-only map
+                    ; without icc/dpi keeps the legacy route.
+                    hasNonXmpTags := false
+                    for tag in tiffInfoOption.Value {
+                        if tag != 700
+                            hasNonXmpTags := true
+                    }
+                    if hasNonXmpTags
+                        && !iccProfileOption.Set && !dpiOption.Set && !exifOption.Set
+                        && !compressionOption.Set && !resolutionOption.Set && !resolutionUnitOption.Set
+                        && !descriptionOption.Set && !softwareOption.Set && !artistOption.Set
+                        && !copyrightOption.Set && !dateTimeOption.Set
+                        && !xResolutionOption.Set && !yResolutionOption.Set
+                        && !Pillow.Image.SaveOptionBool(saveOptions, false, "BigTiff", "big_tiff") {
+                        entries := Pillow.Image.SaveTiffInfoEntries(tiffInfoOption.Value)
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_save_tiff",
+                            "Ptr", this.RequireHandle(),
+                            "Ptr", pathBytes,
+                            "Int"
+                        ))
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_patch_tiff_raw_entries",
+                            "Ptr", pathBytes,
+                            "Ptr", entries.Tags,
+                            "Ptr", entries.Types,
+                            "Ptr", entries.Counts,
+                            "Ptr", entries.Offsets,
+                            "Ptr", entries.Values,
+                            "UPtr", entries.ValuesSize,
+                            "UPtr", entries.EntryCount,
+                            "Int"
+                        ))
+                        return
+                    }
+                }
                 if descriptionOption.Set || softwareOption.Set || artistOption.Set || copyrightOption.Set
                     || dateTimeOption.Set || xResolutionOption.Set || yResolutionOption.Set {
                     ; Pillow 11.3.0 TiffImagePlugin._save: the named ASCII

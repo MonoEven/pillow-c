@@ -7200,3 +7200,15 @@ concatenation decoding to the same size/mode as the plain save. Source/DLL
 export parity is `511/511` (two deliberate new exports) and the rebuilt
 DLL SHA-256 is
 `1D90A06E26EB53534E2D123A987D3F3816E7BE9033C5CC10BADC712617200C4B`.
+
+2026-08-15 BEHAV-SAVEOPTS-006 verification: the facade
+`Pillow Image.Save TIFF tiffinfo arbitrary tags` target passes `1/1` in
+`31ms`; the full directory suite passes `2845/2845` in `22266ms` with
+zero failures, errors, or skips. The ctypes cross-check
+`oracle/probe_tiffinfo_dll.py` pins the ImageFileDirectory_v2 inference
+surface (25 cases: scalar/sequence SHORT/LONG/SIGNED_SHORT/SIGNED_LONG/
+DOUBLE/ASCII/BYTE, the 282/283 RATIONAL and named-ASCII registered-tag
+rules, the empty-sequence RATIONAL count-0 shape, and the truncation
+semantics) tag-identical to local Pillow 11.3.0. Source/DLL export parity
+is `513/513` (two deliberate new exports) and the rebuilt DLL SHA-256 is
+`43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.

@@ -83,12 +83,13 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-SAVEOPTS-005 (save-option parity
-wave 5: the JPEG smooth/streamtype options — libjpeg-turbo's input
-smoothing kernels ported into the native encoder and the abbreviated
-tables-only/image-only stream modes with Pillow's exact marker
-structures)
-after BEHAV-SAVEOPTS-004/
+Latest covered gap tail: BEHAV-SAVEOPTS-006 (save-option parity
+wave 6: the TIFF tiffinfo arbitrary tags — Pillow's
+ImageFileDirectory_v2 type inference for unknown tags, the
+registered-tag rules, sequence semantics, and the exact error
+shapes, patched into IFD0 after the plain save)
+after BEHAV-SAVEOPTS-005/
+BEHAV-SAVEOPTS-004/
 BEHAV-SAVEOPTS-003/
 BEHAV-SAVEOPTS-002/
 BEHAV-SAVEOPTS-001/
@@ -115,8 +116,7 @@ font mask/TransposedFont/truetype/PILfont surfaces are now COMPLETE
 and the save-option error messages plus the PNG/GIF/QOI/TGA/TIFF/JPEG
 option containers are Pillow-exact; the next
 bounded children are the remaining API-SAVEOPTS-001 option
-implementations (PNG dictionary, TIFF tiffinfo breadth), then
-API-ERRMSGS-001.
+implementations (PNG dictionary), then API-ERRMSGS-001.
 ```
 
 Current work packet:
@@ -459,9 +459,8 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-SAVEOPTS-001` remainder, the save-option
-  implementations (PNG dictionary, TIFF tiffinfo breadth), then
-  `API-ERRMSGS-001`.
+- Selected next gap: `API-SAVEOPTS-001` remainder (PNG dictionary — the
+  documented no-compressor boundary), then `API-ERRMSGS-001`.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19497,6 +19496,41 @@ ignore the two options; and the EXIF/COM retention in streamtype 2 is
 covered structurally (the DLL export takes no metadata). The remaining
 API-SAVEOPTS-001 children (PNG dictionary, TIFF tiffinfo breadth) stay
 the next packets.
+```
+
+2026-08-15: `BEHAV-SAVEOPTS-006` is GREEN as the save-option parity wave 6
+(the TIFF `tiffinfo` arbitrary tags). The Pillow 11.3.0 oracle (fresh pins
+plus the ctypes cross-check `oracle/probe_tiffinfo_dll.py`) pins
+ImageFileDirectory_v2's full inference surface: unknown tags infer SHORT
+(0..65535), LONG (65536..2**32-1), SIGNED_SHORT (-32768..-1), SIGNED_LONG
+(below), DOUBLE for floats, ASCII for strings (ascii-replace + NUL), BYTE
+for bytes, the same rules elementwise for sequences, the empty sequence
+as a RATIONAL count-0 entry, bytes sequences truncated to their first
+value, string sequences failing with the exact
+`write_string() takes 2 positional arguments but N were given` TypeError,
+mixed sequences with the exact write_undefined TypeError, out-of-range
+values with `argument out of range`, and tag numbers above 65535 with
+`ushort format requires 0 <= number <= 0xffff`. Registered tags keep
+their types: 282/283 RATIONAL (int -> n/1, float -> the round-3
+float->RATIONAL conversion, sequences truncated to the first value), the
+named ASCII tags via write_string, and 296 SHORT with the exact errors.
+The facade classifies each tiffinfo value and encodes the little-endian
+value bytes; the new `pillow_c_image_patch_tiff_raw_entries` export
+merges the typed entries into IFD0 after the plain save (skipping tags
+the writer already emits, which matches Pillow's standard-tags-override
+order), with the shared IFD0 rewrite extracted from the exif patch. The
+facade target passes `1/1` in `31ms`; the full directory suite passes
+`2845/2845` in `22266ms` with zero failures, errors, or skips. Release
+x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity
+moves to `513/513` with zero difference; and the rebuilt DLL SHA-256 is
+`43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.
+Bounded divergences kept: composition with icc/dpi/exif/big_tiff/
+resolution/named kwargs still routes through the older paths which
+ignore the arbitrary tags; a 700-only map without icc/dpi keeps the
+legacy route; and exotic registered-tag type tables beyond the covered
+set stay undocumented. The remaining API-SAVEOPTS-001 child (PNG
+dictionary — the documented no-compressor boundary) stays the next
+packet.
 ```
 
 If any line above is no longer true, update this file first, then update
