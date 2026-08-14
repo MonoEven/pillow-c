@@ -37,6 +37,43 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 BEHAV-SGI-001 SGI Format (GREEN)
+
+`BEHAV-SGI-001` implements the SGI format with byte-level behavioral
+parity.
+
+The Pillow 11.3.0 oracle (SgiImagePlugin source plus the
+`SgiRleDecode.c` decoder semantics and fixtures in
+`oracle/probe_sgi.py`..`oracle/probe_sgi4.py`) shows SGI saves
+L/RGB/RGBA through a 512-byte header (magic 474, rle 0, bpc 1/2,
+dimension 3 — or 1/2 for L when ysize is 1 — x/y/z, pinmin 0,
+pinmax 255, the path-basename-minus-extension name field ASCII-only
+and 79-truncated, colormap 0) followed by band-major bottom-up rows
+with 16-bit samples packed as v<<8; every other mode raises
+`Unsupported SGI image mode` and bpc outside (1, 2) raises
+`Unsupported number of bytes per pixel`. The reopen decodes
+verbatim bpc 1/2 (16-bit samples back through v>>8) and the C RLE
+decoder: channel-major per-row start/length u32 tables, run/copy
+chunks (the 16-bit specifier carries flags/count in its SECOND
+byte), bottom-up rows, the quirk that a row whose final chunk has a
+nonzero specifier is discarded and decoding stops, the persistent
+row buffer's stale bytes for short rows, and Pillow's exact error
+shapes — `Unsupported SGI image mode` for unknown (bpc, dimension,
+zsize) keys, `buffer overrun when reading image file` for bad RLE
+tables/offsets/chunks, `image file is truncated (N bytes not
+processed)` with N = leftover % xsize for short verbatim bands,
+`not enough image data` for short 16-bit bands, `cannot load this
+image` for the tile-less compression values, and the identification
+error for bad magic. The new native `pillow_c_image_open_sgi`/
+`save_sgi` exports plus the facade `.sgi`/`.bw`/`.rgb`/`.rgba`
+routing (with the bpc save option) reproduce all of it. The facade
+SGI target passes `1/1` in `62ms`; the full directory suite passes
+`2818/2818` in `41515ms`. Release x64 Rebuild is clean; source/DLL export parity
+moves to `475/475`; the rebuilt DLL SHA-256 is
+`17FA17E58BBC1A8B9B3DCEE964DE361FDC15E1C385156B28CC4787AA8F96978A`.
+The SGI row left the BNDRY-001 dependency-gated list. The next
+bounded child is `BEHAV-DDS-001`, the DDS format.
+
 ## 2026-08-14 BEHAV-PCX-001 PCX Format (GREEN)
 
 `BEHAV-PCX-001` implements the PCX format with byte-level behavioral
@@ -240,7 +277,7 @@ Classification of every boundary item (treatment applies per packet):
 | BLP | save P OK; L/RGB/RGBA `Unsupported BLP image mode` | DONE — BEHAV-BLP-001 (byte-exact BLP1/BLP2 headers + 1172-offset quirk + linear palette walk + decode; RGBA-palette alpha and DXT stay children) |
 | SPIDER | save L/RGB/RGBA/P OK (numpy); reopen as F | DONE — BEHAV-SPIDER-001 (byte-exact float header + F;32NF payload + F reopen; facade-only) |
 | PCX | save L/RGB/P/1 OK; others `Cannot save X images as PCX` | DONE — BEHAV-PCX-001 (byte-exact 128-byte header + RLE + zero-padded LUT trailers + LUT L-to-P promotion + the odd-width RGB;L reopen misread; native open/save exports) |
-| SGI | save L/RGB/RGBA OK; P `Unsupported SGI image mode` | IMPLEMENT (native RLE packet) |
+| SGI | save L/RGB/RGBA OK; P `Unsupported SGI image mode` | DONE — BEHAV-SGI-001 (byte-exact 512-byte header + band-major bottom-up payload at bpc 1/2 + the RLE decoder with its quirk semantics + exact mode/bpc/truncation/overrun/compression errors; native open/save exports) |
 | DDS | save L/RGB/RGBA OK; P `cannot write mode P as DDS` | IMPLEMENT (native DXT packet) |
 | ICNS | save all modes OK (PNG/JPEG2000 payloads) | IMPLEMENT (facade over native PNG) |
 | EPS | save L/RGB OK; RGBA/P `image mode is not supported`; open `Unable to locate Ghostscript on paths` | IMPLEMENT save (facade PS writer) + match Ghostscript error |

@@ -52,10 +52,24 @@ codec exports (`0` success, `-1` null pointer, `-2` invalid length,
 codes, image-handle ownership, and source-pointer lifetimes remain
 unchanged.
 
+`BEHAV-SGI-001` adds two deliberate exports —
+`pillow_c_image_open_sgi` and `pillow_c_image_save_sgi` (with the
+bpc parameter) — that implement Pillow's exact 512-byte SGI header
+and band-major bottom-up payload for L/RGB/RGBA saves at bpc 1/2
+(16-bit samples packed as v<<8), the verbatim reopen (v>>8), and
+the C RLE decoder's channel-major per-row start/length tables with
+Pillow's quirk semantics. The SGI open route returns three local
+status codes outside the public table — `-6` short verbatim bands,
+`-7` short 16-bit bands, `-8` tile-less compression values — which
+the facade maps to Pillow's exact `image file is truncated (N bytes
+not processed)` / `not enough image data` / `cannot load this
+image` messages; the generic statuses keep their public meanings.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`473/473`; the full AHK suite is `2817/2817`; and the current DLL SHA-256 is
-`04B6417EC453638E97F4FBA2D1DB6212DA2A817AA9CE2C0BA9436710E47E779A`
-(BEHAV-PCX-001 adds the two PCX exports above over the BLP slice:
+`475/475`; the full AHK suite is `2818/2818`; and the current DLL SHA-256 is
+`17FA17E58BBC1A8B9B3DCEE964DE361FDC15E1C385156B28CC4787AA8F96978A`
+(BEHAV-SGI-001 adds the two SGI exports above over the PCX slice:
+BEHAV-PCX-001 adds the two PCX exports over the BLP slice:
 BEHAV-BLP-001 adds two deliberate exports — `pillow_c_image_open_blp`
 and `pillow_c_image_save_blp` (with the BLP1 flag), the exact
 BLP1/BLP2 headers, the 1172-offset preamble quirk, the linear-walk

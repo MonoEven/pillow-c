@@ -523,6 +523,42 @@ Current work packet:
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
 
+2026-08-14: `BEHAV-SGI-001` is GREEN as the SGI format (behavioral
+parity). The Pillow 11.3.0 oracle (SgiImagePlugin source plus
+SgiRleDecode.c semantics and fixtures) shows SGI saves L/RGB/RGBA
+through a 512-byte header (magic 474, rle 0, bpc 1/2, dimension 3 —
+or 1/2 for L when ysize is 1 — x/y/z, pinmin 0/pinmax 255, the
+path-basename-minus-extension name field (ASCII, 79-truncated),
+colormap 0) followed by band-major bottom-up rows with 16-bit
+samples packed as v<<8; every other mode raises
+`Unsupported SGI image mode` and other bpc values raise
+`Unsupported number of bytes per pixel`. The reopen decodes
+verbatim bpc 1/2 (16-bit back through v>>8) and the C RLE decoder
+(channel-major per-row start/length tables, run/copy chunks whose
+16-bit specifiers carry flags in the SECOND byte, bottom-up rows,
+the final-chunk-nonzero row-discard stop quirk, and the persistent
+row buffer's stale bytes), with Pillow's exact error shapes:
+`Unsupported SGI image mode` for unknown (bpc, dimension, zsize)
+keys, `buffer overrun when reading image file` for bad RLE tables/
+offsets, `image file is truncated (N bytes not processed)` with
+N = leftover % xsize for short verbatim bands, `not enough image
+data` for short 16-bit bands, `cannot load this image` for the
+tile-less compression values, and the identification error for bad
+magic. The new native `pillow_c_image_open_sgi`/`save_sgi` exports
+plus the facade `.sgi`/`.bw`/`.rgb`/`.rgba` routing (with the bpc
+save option) reproduce all of it. The facade SGI target passes
+`1/1` in `62ms` (byte-exact embedded L/RGB/RGBA fixtures at bpc 1
+and 2 including the name field and the 1-row dimension quirk, the
+reopen matrix, three crafted RLE fixtures including a 16-bit one,
+six exact save errors, and six exact open error shapes); the full
+directory suite passes `2818/2818` in `41515ms`, with zero
+failures, errors, or skips. Release x64 Rebuild is clean;
+source/DLL export parity moves to `475/475` (two deliberate new
+exports) with zero difference; and the rebuilt DLL SHA-256 is
+`17FA17E58BBC1A8B9B3DCEE964DE361FDC15E1C385156B28CC4787AA8F96978A`.
+The SGI row left the BNDRY-001 dependency-gated list. The next
+bounded child is `BEHAV-DDS-001`, the DDS format.
+
 2026-08-14: `BEHAV-PCX-001` is GREEN as the PCX format (behavioral
 parity). The Pillow 11.3.0 oracle (PcxImagePlugin source plus
 fixtures) shows PCX saves 1 (v2/b1/p1), L (v5/b8/p1 plus the

@@ -7570,6 +7570,31 @@ class Pillow {
                     ; BEHAV-SPIDER-001: parse the float header records and
                     ; feed the native float32 samples into an F image.
                     lastStatus := Pillow.Image.OpenSpiderHandle(path, &outHandle)
+                } else if format = "SGI" {
+                    ; BEHAV-SGI-001: the native SGI decoder returns local
+                    ; status codes for Pillow's distinct error shapes
+                    ; (bad magic, unsupported (bpc, dimension, zsize)
+                    ; keys, RLE table overruns, verbatim truncation with
+                    ; Pillow's per-tile leftover-byte count, short 16-bit
+                    ; bands, and the tile-less compression values).
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_sgi",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -5
+                        throw Error("Unsupported SGI image mode", -1)
+                    if lastStatus = -2
+                        throw Error("buffer overrun when reading image file", -1)
+                    if lastStatus = -7
+                        throw Error("not enough image data", -1)
+                    if lastStatus = -8
+                        throw Error("cannot load this image", -1)
+                    if lastStatus = -6
+                        throw Error("image file is truncated (" Pillow.Image.SgiTruncatedCount(path) " bytes not processed)", -1)
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
                 } else {
                     lastStatus := DllCall(
                         Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
@@ -8573,6 +8598,34 @@ class Pillow {
             return Pillow.Image.FormatFromPath(path)
         }
 
+        static SgiTruncatedCount(path) {
+            ; BEHAV-SGI-001: Pillow's raw decoder reports the leftover
+            ; bytes of the failing band tile modulo the row width
+            ; (probed: remaining % xsize for the first short band).
+            file := FileOpen(path, "r")
+            if !file
+                return 0
+            try {
+                header := Buffer(12, 0)
+                file.RawRead(header, 12)
+                xsize := (NumGet(header, 6, "UChar") << 8) | NumGet(header, 7, "UChar")
+                ysize := (NumGet(header, 8, "UChar") << 8) | NumGet(header, 9, "UChar")
+                zsize := (NumGet(header, 10, "UChar") << 8) | NumGet(header, 11, "UChar")
+                payload := file.Length - 512
+                pagesize := xsize * ysize
+                tile := 0
+                while tile < zsize {
+                    remaining := payload - tile * pagesize
+                    if remaining < pagesize
+                        return Mod(remaining, xsize)
+                    tile += 1
+                }
+                return 0
+            } finally {
+                file.Close()
+            }
+        }
+
         static OpenDibHandle(path, &outHandle) {
             ; BEHAV-DIB-001: DIB open = synthetic BITMAPFILEHEADER + native
             ; BMP decoder. Pillow's DIB has no BITMAPFILEHEADER, so the
@@ -8649,6 +8702,8 @@ class Pillow {
                 return "SPIDER"
             if RegExMatch(path, "i)\.pcx$")
                 return "PCX"
+            if RegExMatch(path, "i)\.(sgi|bw|rgb|rgba)$")
+                return "SGI"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -8678,7 +8733,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -8694,6 +8749,7 @@ class Pillow {
                 "BLP", "Blizzard Mipmap Format",
                 "SPIDER", "The Spider image format",
                 "PCX", "PCX",
+                "SGI", "SGI Image File Format",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -10265,6 +10321,33 @@ class Pillow {
                     Pillow.RequireDllPath() "\pillow_c_image_save_pcx",
                     "Ptr", this.RequireHandle(),
                     "Ptr", pathBytes,
+                    "Int"
+                ))
+                return
+            }
+            if resolvedFormat = "SGI" {
+                ; BEHAV-SGI-001: Pillow's SGI save covers L/RGB/RGBA with
+                ; the bpc option (1/2); the native codec writes the exact
+                ; 512-byte header (path-basename name field) and the
+                ; band-major bottom-up payload (v<<8 samples for bpc 2).
+                ; Other modes and bpc values raise Pillow's exact
+                ; ValueError messages.
+                if !(this.Mode = "L" || this.Mode = "RGB" || this.Mode = "RGBA")
+                    throw Error("Unsupported SGI image mode", -1)
+                bpc := 1
+                if IsSet(saveOptions) {
+                    option := Pillow.Image.SaveOption(saveOptions, "bpc", "Bpc")
+                    if option.Set
+                        bpc := option.Value
+                }
+                if !(bpc = 1 || bpc = 2)
+                    throw Error("Unsupported number of bytes per pixel", -1)
+                pathBytes := Pillow.Image.Utf8Buffer(path)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_sgi",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", pathBytes,
+                    "Int", bpc,
                     "Int"
                 ))
                 return

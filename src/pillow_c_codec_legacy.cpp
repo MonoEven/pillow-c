@@ -2433,6 +2433,382 @@ int open_pcx_image(const char* path, PillowCImage** out_image)
     }
 }
 
+// BEHAV-SGI-001: SGI status codes local to the SGI open route. The
+// facade maps each one to Pillow 11.3.0's exact error message; the
+// generic status table does not carry these shapes.
+constexpr int PILLOW_C_SGI_TRUNCATED = -6;
+constexpr int PILLOW_C_SGI_16BIT_SHORT = -7;
+constexpr int PILLOW_C_SGI_BAD_COMPRESSION = -8;
+
+int save_sgi_image(const PillowCImage* image, const char* path, int bpc)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    int channels = 0;
+    if (image->mode == PILLOW_C_MODE_L && image->channels == 1) {
+        channels = 1;
+    } else if (image->mode == PILLOW_C_MODE_RGB && image->channels == 3) {
+        channels = 3;
+    } else if (image->mode == PILLOW_C_MODE_RGBA && image->channels == 4) {
+        channels = 4;
+    } else {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (bpc != 1 && bpc != 2) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = pillow_c_refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+
+    try {
+        std::vector<std::uint8_t> out;
+        out.reserve(
+            512u + static_cast<std::size_t>(image->width) *
+                       static_cast<std::size_t>(image->height) *
+                       static_cast<std::size_t>(channels) * static_cast<std::size_t>(bpc));
+        append_be16(out, 474);
+        out.push_back(0);  // rle: verbatim (Pillow's save never compresses)
+        out.push_back(static_cast<std::uint8_t>(bpc));
+        const int dimension = image->mode == PILLOW_C_MODE_L
+            ? (image->height == 1 ? 1 : 2)
+            : 3;
+        append_be16(out, static_cast<std::uint16_t>(dimension));
+        append_be16(out, static_cast<std::uint16_t>(image->width));
+        append_be16(out, static_cast<std::uint16_t>(image->height));
+        append_be16(out, static_cast<std::uint16_t>(channels));
+        append_be32(out, 0);    // pinmin
+        append_be32(out, 255);  // pinmax
+        for (int i = 0; i < 4; ++i) {
+            out.push_back(0);  // dummy
+        }
+        // Pillow writes the path basename minus its extension, ASCII
+        // only (non-ASCII chars dropped), truncated to 79 bytes, then
+        // a NUL byte.
+        {
+            const char* last_slash = std::max(strrchr(path, '\\'), strrchr(path, '/'));
+            std::string candidate = last_slash ? last_slash + 1 : path;
+            const std::size_t dot = candidate.rfind('.');
+            if (dot != std::string::npos && dot > 0u) {
+                candidate.resize(dot);
+            }
+            std::string base;
+            for (unsigned char c : candidate) {
+                if (c < 0x80u) {
+                    base.push_back(static_cast<char>(c));
+                }
+            }
+            if (base.size() > 79u) {
+                base.resize(79u);
+            }
+            out.insert(out.end(), base.begin(), base.end());
+            while (out.size() < 24u + 79u) {
+                out.push_back(0);
+            }
+            out.push_back(0);  // NUL after the 79-byte name field
+        }
+        append_be32(out, 0);  // colormap
+        for (int i = 0; i < 404; ++i) {
+            out.push_back(0);  // dummy
+        }
+
+        // Band-major, bottom-up rows; 16-bit samples pack as v << 8.
+        for (int ch = 0; ch < channels; ++ch) {
+            for (int y = image->height - 1; y >= 0; --y) {
+                const std::uint8_t* src_row =
+                    image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+                for (int x = 0; x < image->width; ++x) {
+                    const std::uint8_t sample =
+                        src_row[static_cast<std::size_t>(x) * static_cast<std::size_t>(channels) +
+                                static_cast<std::size_t>(ch)];
+                    if (bpc == 1) {
+                        out.push_back(sample);
+                    } else {
+                        out.push_back(sample);
+                        out.push_back(0);
+                    }
+                }
+            }
+        }
+
+        if (!write_binary_file(path, out)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int open_sgi_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() < 512u || read_be16(data.data()) != 474u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const int compression = data[2];
+        const int bpc = data[3];
+        const int dimension = read_be16(data.data() + 4u);
+        const int xsize = read_be16(data.data() + 6u);
+        const int ysize = read_be16(data.data() + 8u);
+        const int zsize = read_be16(data.data() + 10u);
+
+        // Pillow's MODES table keys (bpc, dimension, zsize).
+        int mode = 0;
+        int channels = 0;
+        if ((bpc == 1 || bpc == 2) && (dimension == 1 || dimension == 2) && zsize == 1) {
+            mode = PILLOW_C_MODE_L;
+            channels = 1;
+        } else if ((bpc == 1 || bpc == 2) && dimension == 3 && zsize == 3) {
+            mode = PILLOW_C_MODE_RGB;
+            channels = 3;
+        } else if ((bpc == 1 || bpc == 2) && dimension == 3 && zsize == 4) {
+            mode = PILLOW_C_MODE_RGBA;
+            channels = 4;
+        } else {
+            return PILLOW_C_MISMATCH;
+        }
+        if (xsize <= 0 || ysize <= 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        std::size_t image_stride = 0;
+        std::size_t image_size = 0;
+        if (!checked_image_size(xsize, ysize, channels, &image_stride, &image_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        auto* image = new PillowCImage{
+            xsize,
+            ysize,
+            mode,
+            channels,
+            image_stride,
+            std::vector<std::uint8_t>(image_size)};
+
+        if (compression == 0) {
+            const std::size_t pagesize = static_cast<std::size_t>(xsize) *
+                                         static_cast<std::size_t>(ysize) *
+                                         static_cast<std::size_t>(bpc);
+            const std::size_t need = 512u + static_cast<std::size_t>(zsize) * pagesize;
+            if (data.size() < need) {
+                delete image;
+                return bpc == 2 ? PILLOW_C_SGI_16BIT_SHORT : PILLOW_C_SGI_TRUNCATED;
+            }
+            const std::uint8_t* payload = data.data() + 512u;
+            for (int ch = 0; ch < channels; ++ch) {
+                const std::uint8_t* band = payload + static_cast<std::size_t>(ch) * pagesize;
+                for (int y = 0; y < ysize; ++y) {
+                    const std::uint8_t* src_row = band +
+                        static_cast<std::size_t>(y) * static_cast<std::size_t>(xsize) *
+                            static_cast<std::size_t>(bpc);
+                    std::uint8_t* dst_row = image->pixels.data() +
+                        static_cast<std::size_t>(ysize - 1 - y) * image_stride;
+                    if (bpc == 1) {
+                        for (int x = 0; x < xsize; ++x) {
+                            dst_row[static_cast<std::size_t>(x) * static_cast<std::size_t>(channels) +
+                                    static_cast<std::size_t>(ch)] = src_row[static_cast<std::size_t>(x)];
+                        }
+                    } else {
+                        for (int x = 0; x < xsize; ++x) {
+                            const std::uint16_t v = static_cast<std::uint16_t>(
+                                (src_row[static_cast<std::size_t>(x) * 2u] << 8) |
+                                src_row[static_cast<std::size_t>(x) * 2u + 1u]);
+                            dst_row[static_cast<std::size_t>(x) * static_cast<std::size_t>(channels) +
+                                    static_cast<std::size_t>(ch)] = static_cast<std::uint8_t>(v >> 8);
+                        }
+                    }
+                }
+            }
+        } else if (compression == 1) {
+            // Pillow's ImagingSgiRleDecode: channel-major per-row
+            // start/length tables, run/copy chunks, bottom-up rows,
+            // and the exact quirk semantics (a row whose final chunk
+            // carries a nonzero specifier is discarded and decoding
+            // stops; short rows keep the persistent buffer's stale
+            // bytes; malformed tables/data raise the overrun error).
+            const std::size_t bufsize = data.size() - 512u;
+            const std::size_t tablen =
+                static_cast<std::size_t>(zsize) * static_cast<std::size_t>(ysize);
+            if (bufsize < 8u * tablen) {
+                delete image;
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            const std::uint8_t* ptr = data.data() + 512u;
+            const std::uint8_t* end = data.data() + data.size() - 1u;
+            std::vector<std::uint32_t> starttab(tablen, 0u);
+            std::vector<std::uint32_t> lengthtab(tablen, 0u);
+            for (std::size_t i = 0; i < tablen; ++i) {
+                starttab[i] = read_be32(ptr + i * 4u);
+                lengthtab[i] = read_be32(ptr + (tablen + i) * 4u);
+            }
+            std::vector<std::uint8_t> rowbuf(
+                static_cast<std::size_t>(xsize) * static_cast<std::size_t>(channels) * 2u,
+                std::uint8_t{0});
+            bool stop = false;
+            for (int rowno = 0; rowno < ysize && !stop; ++rowno) {
+                for (int channo = 0; channo < channels && !stop; ++channo) {
+                    const std::size_t tab_index =
+                        static_cast<std::size_t>(rowno) + static_cast<std::size_t>(channo) * static_cast<std::size_t>(ysize);
+                    const std::uint32_t rleoffset = starttab[tab_index];
+                    const std::uint32_t rlelength = lengthtab[tab_index];
+                    if (rleoffset < 512u) {
+                        delete image;
+                        return PILLOW_C_INVALID_LENGTH;
+                    }
+                    const std::uint8_t* src = ptr + (rleoffset - 512u);
+                    int status = 0;
+                    std::uint32_t n = rlelength;
+                    std::size_t x = 0;
+                    for (; n > 0u; --n) {
+                        const std::size_t x_start = x;
+                        if (bpc == 1) {
+                            if (src > end) {
+                                status = -1;
+                                break;
+                            }
+                            const std::uint8_t pixel = *src++;
+                            if (n == 1u && pixel != 0u) {
+                                stop = true;
+                                break;
+                            }
+                            const std::uint8_t count = pixel & 0x7Fu;
+                            if (count == 0u) {
+                                break;
+                            }
+                            if (x + count > static_cast<std::size_t>(xsize)) {
+                                status = -1;
+                                break;
+                            }
+                            x += count;
+                            const std::size_t dest_base =
+                                x_start * static_cast<std::size_t>(channels) + static_cast<std::size_t>(channo);
+                            if ((pixel & 0x80u) != 0u) {
+                                if (src + count > end) {
+                                    status = -1;
+                                    break;
+                                }
+                                for (std::uint8_t i = 0; i < count; ++i, ++src) {
+                                    rowbuf[dest_base + static_cast<std::size_t>(i) * static_cast<std::size_t>(channels)] = *src;
+                                }
+                            } else {
+                                if (src > end) {
+                                    status = -1;
+                                    break;
+                                }
+                                const std::uint8_t value = *src++;
+                                for (std::uint8_t i = 0; i < count; ++i) {
+                                    rowbuf[dest_base + static_cast<std::size_t>(i) * static_cast<std::size_t>(channels)] = value;
+                                }
+                            }
+                        } else {
+                            if (src + 1 > end) {
+                                status = -1;
+                                break;
+                            }
+                            const std::uint8_t pixel = src[1];
+                            src += 2;
+                            if (n == 1u && pixel != 0u) {
+                                stop = true;
+                                break;
+                            }
+                            const std::uint8_t count = pixel & 0x7Fu;
+                            if (count == 0u) {
+                                break;
+                            }
+                            if (x + count > static_cast<std::size_t>(xsize)) {
+                                status = -1;
+                                break;
+                            }
+                            x += count;
+                            std::size_t dest =
+                                (x_start * static_cast<std::size_t>(channels) + static_cast<std::size_t>(channo)) * 2u;
+                            if ((pixel & 0x80u) != 0u) {
+                                if (src + 2u * count > end) {
+                                    status = -1;
+                                    break;
+                                }
+                                for (std::uint8_t i = 0; i < count; ++i) {
+                                    rowbuf[dest + 0u] = src[0];
+                                    rowbuf[dest + 1u] = src[1];
+                                    src += 2;
+                                    dest += static_cast<std::size_t>(channels) * 2u;
+                                }
+                            } else {
+                                if (src + 2 > end) {
+                                    status = -1;
+                                    break;
+                                }
+                                for (std::uint8_t i = 0; i < count; ++i) {
+                                    rowbuf[dest + 0u] = src[0];
+                                    rowbuf[dest + 1u] = src[1];
+                                    dest += static_cast<std::size_t>(channels) * 2u;
+                                }
+                                src += 2;
+                            }
+                        }
+                    }
+                    if (status == -1) {
+                        delete image;
+                        return PILLOW_C_INVALID_LENGTH;
+                    }
+                    if (stop) {
+                        break;
+                    }
+                }
+                if (stop) {
+                    break;
+                }
+                std::uint8_t* dst_row = image->pixels.data() +
+                    static_cast<std::size_t>(ysize - 1 - rowno) * image_stride;
+                if (bpc == 1) {
+                    for (int x = 0; x < xsize; ++x) {
+                        for (int ch = 0; ch < channels; ++ch) {
+                            dst_row[static_cast<std::size_t>(x) * static_cast<std::size_t>(channels) +
+                                    static_cast<std::size_t>(ch)] =
+                                rowbuf[static_cast<std::size_t>(x) * static_cast<std::size_t>(channels) +
+                                       static_cast<std::size_t>(ch)];
+                        }
+                    }
+                } else {
+                    for (int x = 0; x < xsize; ++x) {
+                        for (int ch = 0; ch < channels; ++ch) {
+                            const std::size_t off =
+                                (static_cast<std::size_t>(x) * static_cast<std::size_t>(channels) +
+                                 static_cast<std::size_t>(ch)) * 2u;
+                            const std::uint16_t v = static_cast<std::uint16_t>(
+                                (rowbuf[off] << 8) | rowbuf[off + 1u]);
+                            dst_row[static_cast<std::size_t>(x) * static_cast<std::size_t>(channels) +
+                                    static_cast<std::size_t>(ch)] = static_cast<std::uint8_t>(v >> 8);
+                        }
+                    }
+                }
+            }
+        } else {
+            delete image;
+            return PILLOW_C_SGI_BAD_COMPRESSION;
+        }
+
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 struct IcoDirectoryEntryInfo {
     std::uint8_t width_byte = 0;
     std::uint8_t height_byte = 0;
@@ -3817,6 +4193,21 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_pcx(
     const char* path)
 {
     return save_pcx_image(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_sgi(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_sgi_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_sgi(
+    const PillowCImage* image,
+    const char* path,
+    int bpc)
+{
+    return save_sgi_image(image, path, bpc);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_ppm(

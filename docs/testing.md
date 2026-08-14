@@ -47,8 +47,34 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2817` AHK tests: `1391` raw DLL tests and
-`1426` facade tests.
+This suite currently registers `2818` AHK tests: `1391` raw DLL tests and
+`1427` facade tests.
+
+Latest `BEHAV-SGI-001` verification: the Pillow 11.3.0 oracle
+(SgiImagePlugin source plus the SgiRleDecode.c semantics and the
+probe fixtures) pins the 512-byte SGI header (magic 474, bpc
+1/2, the L-mode dimension rule, the path-basename name field),
+the band-major bottom-up payload (v<<8 16-bit samples), the C RLE
+decoder (channel-major per-row tables, run/copy chunks with the
+second-byte 16-bit flags, the final-chunk stop quirk), and the
+exact error shapes (`Unsupported SGI image mode`,
+`Unsupported number of bytes per pixel`,
+`buffer overrun when reading image file`,
+`image file is truncated (N bytes not processed)` with
+N = leftover % xsize, `not enough image data`,
+`cannot load this image`, and the identification error). The new
+native `pillow_c_image_open_sgi`/`save_sgi` exports plus the facade
+`.sgi`/`.bw`/`.rgb`/`.rgba` routing reproduce all of it. The facade
+SGI target passes `1/1` in `62ms` (byte-exact embedded L/RGB/RGBA
+fixtures at bpc 1 and 2, the reopen matrix, three crafted RLE
+fixtures including a 16-bit one, six exact save errors, and six
+exact open error shapes), and the full directory suite passes
+`2818/2818` in `41515ms`, with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity moves to `475/475` (two deliberate new exports) with
+zero difference; and the rebuilt DLL SHA-256 is
+`17FA17E58BBC1A8B9B3DCEE964DE361FDC15E1C385156B28CC4787AA8F96978A`.
+The behavioral-parity wave continues with `BEHAV-DDS-001` next.
 
 Latest `BEHAV-PCX-001` verification: the Pillow 11.3.0 oracle
 (PcxImagePlugin source plus fixtures) pins the 128-byte PCX header
