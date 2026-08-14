@@ -47,27 +47,26 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2810` AHK tests: `1389` raw DLL tests and
-`1421` facade tests.
+This suite currently registers `2812` AHK tests: `1390` raw DLL tests and
+`1422` facade tests.
 
-Latest `BEHAV-IM-001` verification: the Pillow 11.3.0 oracle
-(ImImagePlugin source plus path-based fixtures) shows IM is a
-512-byte ASCII header (type/Name/size/frames lines, optional
-`Lut: 1`, NUL padding + ^Z) plus an optional 768-byte plane LUT and
-raw pixels written with orientation -1 and Pillow's per-row planar
-`;L` raw modes; the P-mode open promotes to P only for non-greyscale
-LUTs, and unsupported modes raise `Cannot save X images as IM`.
-The native raw codec gains `;L` planar encode/decode and the
-oriented `pillow_c_image_get_raw_bytes_oriented` export, and the
-facade routes `.im`/`IM` through `SaveIm`/`OpenImHandle`. The facade
-IM target passes `1/1` in `63ms` (byte-exact embedded Pillow
-fixtures for L/RGB/RGBA/1, the P-mode header/LUT/payload matrix, the
-reopen matrix, and the LAB-mode error), and the full directory suite
-passes `2810/2810` in `18266ms`, with zero failures, errors, or
-skips. Release x64 Rebuild is clean; source/DLL export parity moves
-to `467/467` with zero difference; and the rebuilt DLL SHA-256 is
-`6604522ED0B4458DF25B5A4BE213E0D3959327A4AECF884AB240AD09E7E6C898`.
-The behavioral-parity wave continues with `BEHAV-MSP-001` next.
+Latest `BEHAV-MSP-001` verification: the Pillow 11.3.0 oracle
+(MspImagePlugin source plus fixtures) shows MSP is mode-1 only — a
+32-byte XOR-checksummed header plus MSB-first packed rows (DanM),
+with LinS files carrying a per-row u16 length map and the
+0-runtype/count+value RLE — and non-mode-1 saves raise
+`cannot write mode X as MSP`. The new native
+`pillow_c_image_open_msp`/`save_msp` exports implement the exact
+header/checksum/rows/RLE, and the facade routes `.msp`/`MSP` with
+Pillow's exact mode errors. The facade MSP target passes `1/1`
+(byte-exact DanM fixture, reopen matrix, all four mode errors, the
+Pillow-verified LinS fixture) and the raw MSP target passes `1/1`;
+the full directory suite passes `2812/2812` in `20860ms`, with zero
+failures, errors, or skips. Release x64 Rebuild is clean;
+source/DLL export parity moves to `469/469` with zero difference;
+and the rebuilt DLL SHA-256 is
+`6D4D2F8378AD163017C1DDA0EF8F3A8C71014143A3B212FEBF9EE617F9A0A2CA`.
+The behavioral-parity wave continues with `BEHAV-PALM-001` next.
 
 Latest `API-PATH-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and

@@ -8568,6 +8568,8 @@ class Pillow {
                 return "DIB"
             if RegExMatch(path, "i)\.im$")
                 return "IM"
+            if RegExMatch(path, "i)\.msp$")
+                return "MSP"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -8597,7 +8599,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -8608,6 +8610,7 @@ class Pillow {
                 "CUR", "Windows Cursor",
                 "DIB", "DIB",
                 "IM", "IM",
+                "MSP", "Windows Paint",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -10114,6 +10117,20 @@ class Pillow {
                 ; (with an optional 768-byte palette LUT for P) plus raw
                 ; pixel bytes; save composes it over the raw encoder.
                 this.SaveIm(path)
+                return
+            }
+            if resolvedFormat = "MSP" {
+                ; BEHAV-MSP-001: Pillow's MSP is mode-1 only ("DanM"
+                ; uncompressed); the native codec writes the exact header.
+                if this.Mode != "1"
+                    throw Error("cannot write mode " this.Mode " as MSP", -1)
+                pathBytes := Pillow.Image.Utf8Buffer(path)
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_save_msp",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", pathBytes,
+                    "Int"
+                ))
                 return
             }
             if IsSet(saveOptions) && resolvedFormat = "CUR" {

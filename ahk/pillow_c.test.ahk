@@ -11181,6 +11181,31 @@ PillowCImageSaveBmp(handle, path) {
     PillowCAssertStatus(status)
 }
 
+PillowCImageOpenMsp(path) {
+    handle := 0
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_open_msp",
+        "Ptr", pathBytes,
+        "Ptr*", &handle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(handle != 0)
+    return handle
+}
+
+PillowCImageSaveMsp(handle, path) {
+    pathBytes := PillowCUtf8Buffer(path)
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_save_msp",
+        "Ptr", handle,
+        "Ptr", pathBytes,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+}
+
 PillowCImageOpenPpm(path) {
     handle := 0
     pathBytes := PillowCUtf8Buffer(path)
@@ -21050,6 +21075,49 @@ PillowCTestImageSaveOpenBmpMode1(*) {
 }
 
 AhkTest.Test("pillow_c image save_bmp and open_bmp cover Pillow mode 1", PillowCTestImageSaveOpenBmpMode1)
+
+PillowCTestImageSaveOpenMsp(*) {
+    ; BEHAV-MSP-001: Pillow 11.3.0 DanM byte parity (embedded fixture:
+    ; 32-byte XOR-checksummed header plus MSB-first mode-1 rows) and a
+    ; hand-crafted LinS RLE fixture (Pillow-verified open).
+    image := PillowCCreateImageMode(8, 2, 5)
+    path := PillowCTempBmpPath("save-msp")
+    linsPath := PillowCTempBmpPath("lins-msp")
+    loaded := 0
+    lins := 0
+    try {
+        PillowCImageSetBytes(image, [255, 0, 255, 255, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0])
+        PillowCImageSaveMsp(image, path)
+
+        AhkTest.AssertEqual([
+            68, 97, 110, 77, 8, 0, 2, 0, 1, 0, 1, 0, 1, 0, 1, 0,
+            8, 0, 2, 0, 0, 0, 0, 0, 42, 44, 0, 0, 0, 0, 0, 0,
+            176, 64
+        ], PillowCReadFileBytes(path))
+
+        loaded := PillowCImageOpenMsp(path)
+        AhkTest.AssertEqual(5, PillowCImageMode(loaded))
+        AhkTest.AssertEqual([255, 0, 255, 255, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], PillowCImageToArray(loaded, 16))
+
+        PillowCWriteFileBytes(linsPath, [
+            76, 105, 110, 83, 8, 0, 2, 0, 1, 0, 1, 0, 1, 0, 1, 0,
+            8, 0, 2, 0, 0, 0, 0, 0, 34, 58, 0, 0, 0, 0, 0, 0,
+            3, 0, 3, 0, 0, 1, 176, 0, 1, 64
+        ])
+        lins := PillowCImageOpenMsp(linsPath)
+        AhkTest.AssertEqual(5, PillowCImageMode(lins))
+        AhkTest.AssertEqual([255, 0, 255, 255, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0], PillowCImageToArray(lins, 16))
+    } finally {
+        for handle in [lins, loaded, image] {
+            if handle
+                PillowCFreeImage(handle)
+        }
+        PillowCDeleteFile(path)
+        PillowCDeleteFile(linsPath)
+    }
+}
+
+AhkTest.Test("pillow_c image save_msp and open_msp cover Pillow DanM and LinS", PillowCTestImageSaveOpenMsp)
 
 PillowCTestImageBmpRejectsUnsupportedModesAndInvalidFiles(*) {
     cmyk := PillowCCreateImageMode(1, 1, 7)

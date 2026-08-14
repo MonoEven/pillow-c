@@ -29,14 +29,13 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`467/467`; the full AHK suite is `2810/2810`; and the current DLL SHA-256 is
-`6604522ED0B4458DF25B5A4BE213E0D3959327A4AECF884AB240AD09E7E6C898`
-(BEHAV-IM-001: the raw codec gains the per-row planar `;L` modes
-(RGB;L/RGBA;L/LA;L/CMYK;L) on encode and decode, `I;32S`, and one
-deliberate new export `pillow_c_image_get_raw_bytes_oriented` —
-the existing `pillow_c_image_get_raw_bytes` keeps orientation 1 —
-so the facade IM route can write Pillow's bottom-up planar
-payloads; the DIB packet's mode-1 BMP branches ride the same slice).
+`469/469`; the full AHK suite is `2812/2812`; and the current DLL SHA-256 is
+`6D4D2F8378AD163017C1DDA0EF8F3A8C71014143A3B212FEBF9EE617F9A0A2CA`
+(BEHAV-MSP-001 adds two deliberate exports — `pillow_c_image_open_msp`
+and `pillow_c_image_save_msp`, the exact DanM header/checksum/rows
+and the LinS RLE decode — over the BEHAV-IM-001 raw slice, which
+added `pillow_c_image_get_raw_bytes_oriented` and the per-row planar
+`;L` raw modes).
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.

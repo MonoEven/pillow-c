@@ -37,6 +37,30 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 BEHAV-MSP-001 MSP Format (GREEN)
+
+`BEHAV-MSP-001` implements the MSP format with byte-level behavioral
+parity.
+
+The Pillow 11.3.0 oracle (MspImagePlugin source plus fixtures) shows
+MSP is mode-1 only: a 32-byte little-endian header ("DanM", width/
+height at words 2/3 and 8/9, ones at 4-7, the XOR checksum at word
+12) followed by MSB-first packed rows ("DanM" uncompressed), with
+"LinS" files carrying a per-row u16 length map plus the
+0-runtype/1-byte-count+value RLE; non-mode-1 saves raise
+`cannot write mode X as MSP`. The new native
+`pillow_c_image_open_msp`/`save_msp` exports implement the exact
+header, checksum, DanM rows, and the LinS RLE decode, and the facade
+routes `.msp`/`MSP` with Pillow's exact mode errors. The facade MSP
+target passes `1/1` (byte-exact DanM fixture, reopen matrix, all
+four mode errors, the Pillow-verified LinS fixture) and the raw MSP
+target passes `1/1`; the full directory suite passes `2812/2812` in
+`20860ms`. Release x64 Rebuild is clean; source/DLL export parity
+moves to `469/469`; the rebuilt DLL SHA-256 is
+`6D4D2F8378AD163017C1DDA0EF8F3A8C71014143A3B212FEBF9EE617F9A0A2CA`.
+The MSP row left the FMT-UNREC-001 boundary list. The next bounded
+child is `BEHAV-PALM-001`, the PALM format.
+
 ## 2026-08-14 BEHAV-IM-001 IM Format (GREEN)
 
 `BEHAV-IM-001` implements the IM format with byte-level behavioral
@@ -110,7 +134,7 @@ Classification of every boundary item (treatment applies per packet):
 |---|---|---|
 | DIB | save L/RGB/RGBA/P all OK; reopen OK | DONE — BEHAV-DIB-001 (byte-exact over the native BMP seams + native mode-1 branches; P-mode stays a separate child) |
 | IM | save all modes OK; reopen OK | DONE — BEHAV-IM-001 (byte-exact 512-byte header + bottom-up ;L planar raw payloads; greyscale-LUT lut attribute recorded as a boundary note) |
-| MSP | save mode 1 (probe in packet); others `cannot write mode X as MSP` | IMPLEMENT save 1 + match mode errors |
+| MSP | save mode 1 (probe in packet); others `cannot write mode X as MSP` | DONE — BEHAV-MSP-001 (byte-exact DanM header/rows + LinS RLE decode + exact mode errors) |
 | PALM | save P OK; others `cannot write mode X as Palm` | IMPLEMENT save P + match mode errors |
 | BLP | save P OK; L/RGB/RGBA `Unsupported BLP image mode` | IMPLEMENT save P + match mode errors |
 | SPIDER | save L/RGB/RGBA/P OK (numpy); reopen as F | IMPLEMENT (facade float rows) |

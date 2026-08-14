@@ -1796,6 +1796,195 @@ int save_bmp_image(const PillowCImage* image, const char* path)
     }
 }
 
+int save_msp_image(const PillowCImage* image, const char* path)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (image->width <= 0 || image->height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (image->mode != PILLOW_C_MODE_1 || image->channels != 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const int refresh_status = pillow_c_refresh_const_buffer_view_image(image);
+    if (refresh_status != PILLOW_C_OK) {
+        return refresh_status;
+    }
+
+    try {
+        std::vector<std::uint8_t> out;
+        out.reserve(32u + static_cast<std::size_t>(image->width / 8u + 1u) * static_cast<std::size_t>(image->height));
+        std::uint16_t words[16] = {0};
+        words[0] = 0x6144u; // "Da" little-endian
+        words[1] = 0x4D6Eu; // "nM"
+        words[2] = static_cast<std::uint16_t>(image->width);
+        words[3] = static_cast<std::uint16_t>(image->height);
+        words[4] = 1;
+        words[5] = 1;
+        words[6] = 1;
+        words[7] = 1;
+        words[8] = static_cast<std::uint16_t>(image->width);
+        words[9] = static_cast<std::uint16_t>(image->height);
+        std::uint16_t checksum = 0;
+        for (int i = 0; i < 16; ++i) {
+            checksum ^= words[i];
+        }
+        words[12] = checksum;
+        for (int i = 0; i < 16; ++i) {
+            append_le16(out, words[i]);
+        }
+        const std::size_t row_bytes = (static_cast<std::size_t>(image->width) + 7u) / 8u;
+        std::vector<std::uint8_t> row(row_bytes, std::uint8_t{0});
+        for (int y = 0; y < image->height; ++y) {
+            std::fill(row.begin(), row.end(), std::uint8_t{0});
+            const std::uint8_t* src_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+            for (int x = 0; x < image->width; ++x) {
+                if (src_row[x] != 0) {
+                    row[static_cast<std::size_t>(x) / 8u] |= static_cast<std::uint8_t>(0x80u >> (x & 7));
+                }
+            }
+            out.insert(out.end(), row.begin(), row.end());
+        }
+        if (!write_binary_file(path, out)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int open_msp_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() < 32) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const bool is_danm = data[0] == 'D' && data[1] == 'a' && data[2] == 'n' && data[3] == 'M';
+        const bool is_lins = data[0] == 'L' && data[1] == 'i' && data[2] == 'n' && data[3] == 'S';
+        if (!is_danm && !is_lins) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::uint16_t words[16];
+        std::uint16_t checksum = 0;
+        for (int i = 0; i < 16; ++i) {
+            words[i] = read_le16(data.data() + static_cast<std::size_t>(i) * 2u);
+            checksum ^= words[i];
+        }
+        if (checksum != 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const int width = words[2];
+        const int height = words[3];
+        if (width <= 0 || height <= 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::size_t stride = 0;
+        std::size_t size = 0;
+        if (!checked_image_size(width, height, 1, &stride, &size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        auto* image = new PillowCImage{
+            width,
+            height,
+            PILLOW_C_MODE_1,
+            1,
+            stride,
+            std::vector<std::uint8_t>(size)};
+
+        const std::size_t row_bytes = (static_cast<std::size_t>(width) + 7u) / 8u;
+        std::vector<std::uint8_t> packed(row_bytes * static_cast<std::size_t>(height), std::uint8_t{0});
+        if (is_danm) {
+            const std::size_t required = 32u + packed.size();
+            if (required > data.size()) {
+                delete image;
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            std::memcpy(packed.data(), data.data() + 32u, packed.size());
+        } else {
+            if (32u + static_cast<std::size_t>(height) * 2u > data.size()) {
+                delete image;
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            std::size_t data_pos = 32u + static_cast<std::size_t>(height) * 2u;
+            std::size_t packed_pos = 0;
+            for (int y = 0; y < height; ++y) {
+                const std::uint16_t rowlen = read_le16(data.data() + 32u + static_cast<std::size_t>(y) * 2u);
+                if (rowlen == 0) {
+                    std::fill(packed.begin() + static_cast<std::ptrdiff_t>(packed_pos),
+                              packed.begin() + static_cast<std::ptrdiff_t>(packed_pos + row_bytes),
+                              std::uint8_t{0xFFu});
+                    packed_pos += row_bytes;
+                    continue;
+                }
+                if (data_pos + rowlen > data.size()) {
+                    delete image;
+                    return PILLOW_C_INVALID_LENGTH;
+                }
+                std::size_t idx = 0;
+                while (idx < rowlen) {
+                    const std::uint8_t runtype = data[data_pos + idx];
+                    ++idx;
+                    if (runtype == 0) {
+                        if (idx + 2u > rowlen) {
+                            delete image;
+                            return PILLOW_C_INVALID_LENGTH;
+                        }
+                        const std::uint8_t runcount = data[data_pos + idx];
+                        const std::uint8_t runval = data[data_pos + idx + 1u];
+                        idx += 2u;
+                        if (packed_pos + runcount > packed.size()) {
+                            delete image;
+                            return PILLOW_C_INVALID_LENGTH;
+                        }
+                        std::fill(packed.begin() + static_cast<std::ptrdiff_t>(packed_pos),
+                                  packed.begin() + static_cast<std::ptrdiff_t>(packed_pos + runcount),
+                                  runval);
+                        packed_pos += runcount;
+                    } else {
+                        const std::uint8_t runcount = runtype;
+                        if (idx + runcount > rowlen || packed_pos + runcount > packed.size()) {
+                            delete image;
+                            return PILLOW_C_INVALID_LENGTH;
+                        }
+                        std::memcpy(packed.data() + packed_pos, data.data() + data_pos + idx, runcount);
+                        idx += runcount;
+                        packed_pos += runcount;
+                    }
+                }
+                data_pos += rowlen;
+                if (packed_pos % row_bytes != 0) {
+                    delete image;
+                    return PILLOW_C_INVALID_LENGTH;
+                }
+            }
+        }
+        for (int y = 0; y < height; ++y) {
+            const std::uint8_t* src_row = packed.data() + static_cast<std::size_t>(y) * row_bytes;
+            std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * stride;
+            for (int x = 0; x < width; ++x) {
+                const std::uint8_t packed_byte = src_row[static_cast<std::size_t>(x) / 8u];
+                dst_row[x] = (packed_byte & static_cast<std::uint8_t>(0x80u >> (x & 7))) ? 255 : 0;
+            }
+        }
+
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 struct IcoDirectoryEntryInfo {
     std::uint8_t width_byte = 0;
     std::uint8_t height_byte = 0;
@@ -3137,6 +3326,20 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_bmp(
     const char* path)
 {
     return save_bmp_image(image, path);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_msp(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_msp_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_msp(
+    const PillowCImage* image,
+    const char* path)
+{
+    return save_msp_image(image, path);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_ppm(

@@ -523,6 +523,27 @@ Current work packet:
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
 
+2026-08-14: `BEHAV-MSP-001` is GREEN as the MSP format (behavioral
+parity). The Pillow 11.3.0 oracle (MspImagePlugin source plus
+fixtures) shows MSP is mode-1 only: a 32-byte little-endian header
+("DanM", width/height at words 2/3 and 8/9, ones at 4-7, the XOR
+checksum at word 12) followed by MSB-first packed rows ("DanM"
+uncompressed), with "LinS" files carrying a per-row u16 length map
+plus the 0-runtype/1-byte-count+value RLE; non-mode-1 saves raise
+`cannot write mode X as MSP`. The new native
+`pillow_c_image_open_msp`/`save_msp` exports implement the exact
+header, checksum, DanM rows, and the LinS RLE decode, and the facade
+routes `.msp`/`MSP` with Pillow's exact mode errors. The facade MSP
+target passes `1/1` (byte-exact DanM fixture, reopen matrix, all
+four mode errors, the LinS fixture) and the raw MSP target passes
+`1/1`; the full directory suite passes `2812/2812` in `20860ms`,
+with zero failures, errors, or skips. Release x64 Rebuild is clean;
+source/DLL export parity moves to `469/469` (two deliberate new
+exports) with zero difference; and the rebuilt DLL SHA-256 is
+`6D4D2F8378AD163017C1DDA0EF8F3A8C71014143A3B212FEBF9EE617F9A0A2CA`.
+The MSP row left the FMT-UNREC-001 boundary list. The next bounded
+child is `BEHAV-PALM-001`, the PALM format.
+
 2026-08-14: `BEHAV-IM-001` is GREEN as the IM format (behavioral
 parity). The Pillow 11.3.0 oracle (ImImagePlugin source plus
 path-based fixtures) shows IM is a 512-byte ASCII header (Image type/

@@ -21915,9 +21915,10 @@ PillowTestUnrecordedFormatBoundaries(*) {
         ; implements neither codec (Pillow's own 11.3.0 build supports
         ; BLP/DIB/IM/SPIDER via C/numpy plugins and errors per-mode or
         ; per-handler on the rest), so open and save fail loudly with the
-        ; same documented message. DIB left this list in BEHAV-DIB-001 and
-        ; IM in BEHAV-IM-001 (both now implemented byte-exactly).
-        for format in ["BLP", "BUFR", "GRIB", "HDF5", "MSP", "PALM", "SPIDER", "WMF", "FITS", "FPX", "FTEX", "GBR", "IMT", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD", "PIXAR", "XVTHUMB"] {
+        ; same documented message. DIB left this list in BEHAV-DIB-001,
+        ; IM in BEHAV-IM-001, and MSP in BEHAV-MSP-001 (all now
+        ; implemented with Pillow's exact mode errors).
+        for format in ["BLP", "BUFR", "GRIB", "HDF5", "PALM", "SPIDER", "WMF", "FITS", "FPX", "FTEX", "GBR", "IMT", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD", "PIXAR", "XVTHUMB"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -22181,6 +22182,68 @@ PillowTestImFormat(*) {
 }
 
 AhkTest.Test("Pillow IM format matches Pillow 11.3.0 bytes and round-trips", PillowTestImFormat)
+
+PillowTestMspFormat(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := A_Temp "\msp-1.msp"
+    linsPath := A_Temp "\msp-lins.msp"
+    try {
+        ; BEHAV-MSP-001: mode-1 DanM save is byte-exact against Pillow
+        ; (32-byte header with the XOR checksum plus MSB-first rows).
+        one := Pillow.Image.New("1", [8, 2])
+        try {
+            one.FromBytes(PillowTestBuffer([0xB0, 0x40]))
+            one.Save(path, "MSP")
+        } finally {
+            one.Close()
+        }
+        AhkTest.AssertEqual(PillowTestBufferToArray(PillowTestBuffer(PillowTestHexBytes("44616e4d08000200010001000100010008000200000000002a2c000000000000b040"))), PillowTestReadFileBytes(path))
+        opened := Pillow.Image.Open(path)
+        try {
+            AhkTest.AssertEqual("MSP", opened.Format)
+            AhkTest.AssertEqual("1", opened.Mode)
+            AhkTest.AssertEqual([8, 2], opened.Size)
+            AhkTest.AssertEqual(255, opened.GetPixel([0, 0]))
+            AhkTest.AssertEqual(0, opened.GetPixel([1, 0]))
+            AhkTest.AssertEqual(255, opened.GetPixel([1, 1]))
+        } finally {
+            opened.Close()
+        }
+        ; non-mode-1 saves raise Pillow's exact mode errors.
+        for item in [["L", "cannot write mode L as MSP"], ["RGB", "cannot write mode RGB as MSP"], ["RGBA", "cannot write mode RGBA as MSP"], ["P", "cannot write mode P as MSP"]] {
+            bad := Pillow.Image.New(item[1], [2, 2])
+            try {
+                saveError := ""
+                try {
+                    bad.Save(path, "MSP")
+                } catch Error as err {
+                    saveError := err.Message
+                }
+                AhkTest.AssertEqual(item[2], saveError)
+            } finally {
+                bad.Close()
+            }
+        }
+        ; LinS (RLE) files open like Pillow.
+        PillowTestWriteFileBytes(linsPath, PillowTestHexBytes("4c696e530800020001000100010001000800020000000000223a000000000000030003000001b0000140"))
+        lins := Pillow.Image.Open(linsPath)
+        try {
+            AhkTest.AssertEqual("MSP", lins.Format)
+            AhkTest.AssertEqual("1", lins.Mode)
+            AhkTest.AssertEqual([8, 2], lins.Size)
+            AhkTest.AssertEqual(255, lins.GetPixel([0, 0]))
+            AhkTest.AssertEqual(0, lins.GetPixel([1, 0]))
+            AhkTest.AssertEqual(255, lins.GetPixel([1, 1]))
+        } finally {
+            lins.Close()
+        }
+    } finally {
+        PillowTestDeleteFile(path)
+        PillowTestDeleteFile(linsPath)
+    }
+}
+
+AhkTest.Test("Pillow MSP format matches Pillow 11.3.0 bytes and round-trips", PillowTestMspFormat)
 
 
 PillowTestImageMathEval(*) {
