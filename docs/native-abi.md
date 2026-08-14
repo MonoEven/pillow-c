@@ -3827,6 +3827,27 @@ the DLL with `cmsXYZ2xyY`. Release x64 builds with zero warnings/errors;
 source/DLL exports are `425/425`, zero difference; SHA-256 is
 `62C3DB2C5B6180784F31AC57735E36B6F5D7F07DC63ADC960D7B5F2C4DADC99D`.
 
+`META-003DZ` adds:
+
+```text
+pillow_c_cms_display_profile(hwnd, out_profile)
+```
+
+`hwnd` is a `uint64` window handle (0 = the screen device); `out_profile`
+receives an owned `CmsProfile`-compatible pointer or null. It mirrors Pillow
+11.3.0's display.c `getdisplayprofile`: the window DC (or the screen DC for
+handle 0) supplies the ICM profile path through `GetICMProfileW`; the DC is
+released before the file opens. The DLL reads the bounded profile file with
+`_wfopen_s` and creates an independent LittleCMS profile through
+`cmsOpenProfileFromMem` (the same ownership the established open-memory seam
+uses), so the returned profile stays live independently of the source file.
+A null `out_profile` returns `-1`; a GetDC/GetICMProfileW/file/read/profile
+failure returns `-3`; zero/oversized files return `-2`; allocation failure
+returns `-4`. A missing display profile or an invalid window maps to the
+facade's None (0). Release x64 builds with zero warnings/errors; source/DLL
+exports are `514/514` with zero set difference, and DLL SHA-256 is
+`5787FE4F5D322204C0845136B13FD7B09326C78230A7DDF68E4BF42EB6B3CABF`.
+
 `META-003DY` adds:
 
 ```text

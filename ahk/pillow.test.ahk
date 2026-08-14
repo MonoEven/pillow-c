@@ -28706,6 +28706,51 @@ PillowTestImageClassClosedAndAttributes(*) {
 
 AhkTest.Test("Pillow Image closed attributes and attribute errors match Pillow 11.3.0", PillowTestImageClassClosedAndAttributes)
 
+PillowTestImageCmsDisplaySurface(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    ; the lcms enums with Pillow's exact values
+    AhkTest.AssertEqual(0, Pillow.ImageCms.Direction.INPUT)
+    AhkTest.AssertEqual(1, Pillow.ImageCms.Direction.OUTPUT)
+    AhkTest.AssertEqual(2, Pillow.ImageCms.Direction.PROOF)
+    AhkTest.AssertEqual(0, Pillow.ImageCms.Intent.PERCEPTUAL)
+    AhkTest.AssertEqual(1, Pillow.ImageCms.Intent.RELATIVE_COLORIMETRIC)
+    AhkTest.AssertEqual(2, Pillow.ImageCms.Intent.SATURATION)
+    AhkTest.AssertEqual(3, Pillow.ImageCms.Intent.ABSOLUTE_COLORIMETRIC)
+    AhkTest.AssertEqual(0, Pillow.ImageCms.Flags.NONE)
+    AhkTest.AssertEqual(16384, Pillow.ImageCms.Flags.SOFTPROOFING)
+    AhkTest.AssertEqual(8192, Pillow.ImageCms.Flags.BLACKPOINTCOMPENSATION)
+    AhkTest.AssertEqual(67108864, Pillow.ImageCms.Flags.COPY_ALPHA)
+    AhkTest.AssertEqual(0x10000, Pillow.ImageCms.Flags.GRIDPOINTS(1))
+    ; versions() reports Pillow 11.3.0's exact tuple
+    AhkTest.AssertEqual(["1.0.0 pil", "2.17", "3.10.11", "11.3.0"], Pillow.ImageCms.versions())
+
+    ; get_display_profile: handle 0 loads the display ICM profile (or 0
+    ; when the session has none); an invalid window returns 0 (None)
+    profile := Pillow.ImageCms.get_display_profile(0)
+    if IsObject(profile) {
+        try {
+            AhkTest.AssertTrue(profile is Pillow.ImageCms.CmsProfile)
+        } finally {
+            profile.Close()
+        }
+    }
+    AhkTest.AssertEqual(0, Pillow.ImageCms.get_display_profile(12345))
+
+    ; buildTransform validates intent/flags with the exact PyCMSError
+    ; messages before touching the profiles
+    srgb := Pillow.ImageCms.CreateProfile("sRGB")
+    try {
+        AhkTest.AssertEqual("renderingIntent must be an integer between 0 and 3", PillowTestFormatCaptureError(() => Pillow.ImageCms.buildTransform(srgb, srgb, "RGB", "RGB", 99)))
+        AhkTest.AssertEqual("flags must be an integer between 0 and 100663295", PillowTestFormatCaptureError(() => Pillow.ImageCms.buildTransform(srgb, srgb, "RGB", "RGB", Pillow.ImageCms.Intent.PERCEPTUAL, 1 << 60)))
+        ; buildProofTransformFromOpenProfiles is Pillow's alias
+        AhkTest.AssertEqual("renderingIntent must be an integer between 0 and 3", PillowTestFormatCaptureError(() => Pillow.ImageCms.buildProofTransformFromOpenProfiles(srgb, srgb, srgb, "RGB", "RGB", 9)))
+    } finally {
+        srgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageCms display profile and enums match Pillow 11.3.0", PillowTestImageCmsDisplaySurface)
+
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
 

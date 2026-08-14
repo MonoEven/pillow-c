@@ -4,7 +4,7 @@ This is the short resume layer for Pillow work in this repository. Read this
 file first, then open `docs/pillow-gap-analysis.md` only for the selected gap
 card or broader evidence.
 
-Last updated: 2026-08-14
+Last updated: 2026-08-15
 
 ## Required Resume Order
 
@@ -52,7 +52,8 @@ no longer claimed. The honest split:
   AHK runtime), ImagePalette.random (Python MT global state),
   ImagePath map handler.
 - The red-team re-audits found UNRECORDED gaps the old 100% never
-  counted: ImageCms.get_display_profile, FreeTypeFont variation
+  counted: ImageCms.get_display_profile (now CLOSED by
+  BEHAV-CMSDISP-001), FreeTypeFont variation
   axes/masks, ImageDraw.getdraw, ImageMath.lambda_eval/imagemath_*,
   ImageStat.Global, ImageFilter base classes; silent save-option
   drops (PNG compress_type/dictionary/bits, JPEG smooth/streamtype,
@@ -83,7 +84,11 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-IMGCLS-002W2 (the Image class wave 2:
+Latest covered gap tail: BEHAV-CMSDISP-001 (the ImageCms display
+surface: the exact lcms Direction/Flags/Intent enums, PyCMSError,
+versions, buildProofTransformFromOpenProfiles, and the native
+get_display_profile GDI/ICM load)
+after BEHAV-IMGCLS-002W2 (the Image class wave 2:
 closed-image cached mode/size/width/height/getbands, the filename
 attribute and Pillow's exact AttributeErrors, the bare KeyError
 format-name shape, and the LAB Quantize colors TypeErrors)
@@ -117,10 +122,12 @@ BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
 the format-family surface, ImagePalette.load, the Parser, and the
 font mask/TransposedFont/truetype/PILfont surfaces are now COMPLETE
 and the save-option error messages plus the PNG/GIF/QOI/TGA/TIFF/JPEG
-option containers are Pillow-exact; the next
-bounded children are the remaining API-ERRMSGS-001 items (the
-dependency-gated format error shapes) and the BNDRY-001/FMT-UNREC-001
-format-plugin children.
+option containers are Pillow-exact; the ImageCms display surface and
+the lcms enum/exception shapes are now Pillow-exact too. The next
+bounded packets are API-DRAW-TEXT-001 (draw text options + the
+filter/ImageDraw/ImageMath/ImageStat base surface), API-OPENINFO-001
+(open-side JPEG/GIF/TIFF/TGA info attributes), and the
+API-FONTVAR-002 FreeType-dependent variable-font boundary.
 ```
 
 Current work packet:
@@ -463,10 +470,14 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-CMS-DISPLAY-001` (`ImageCms.get_display_profile`
-  plus the Direction/Flags/Intent enums, PyCMSError, versions, and
-  buildProofTransformFromOpenProfiles), then `API-DRAW-TEXT-001` and
-  `API-OPENINFO-001`.
+- Selected next gap: `API-DRAW-TEXT-001` (draw text/multiline_text
+  spacing/align/embedded_color/font_size plus the RAQM KeyError
+  direction/features/language shapes, ImageDraw.getdraw,
+  ImageMath.lambda_eval/imagemath_*, ImageStat.Global, the ImageFilter
+  base classes, and the exact filter-validation messages), then
+  `API-OPENINFO-001` (open-side JPEG quantization/progressive/adobe,
+  GIF version/extension, TIFF compression, TGA compression/orientation)
+  and the `API-FONTVAR-002` FreeType-dependent variable-font boundary.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19637,6 +19648,37 @@ changes; the DLL is unchanged. The facade target passes `1/1` in
 `16ms`; the full directory suite passes `2849/2849` in `21860ms` with
 zero failures, errors, or skips. API-CMS-DISPLAY-001 stays the next
 packet.
+```
+
+2026-08-15: `BEHAV-CMSDISP-001` is GREEN as the ImageCms display
+surface wave (API-CMS-DISPLAY-001). The Pillow 11.3.0 oracle pins the
+full surface: the `Direction` (INPUT=0/OUTPUT=1/PROOF=2), `Flags`
+(all 20 values incl. `GRIDPOINTS(1)` = 0x10000), and `Intent` enums
+with Pillow's exact numbers; `PyCMSError` as an Exception-shaped
+class; `versions()` = the exact
+`["1.0.0 pil", "2.17", "3.10.11", "11.3.0"]` tuple; and
+`get_display_profile(handle)` — handle 0 loads the display ICM
+profile through the new native
+`pillow_c_cms_display_profile` export (GetDC/GetICMProfileW + the
+real littlecms `cmsOpenProfileFromMem`, returned as a live
+CmsProfile; missing profile or invalid HWND returns 0, Pillow's
+None). `buildProofTransformFromOpenProfiles` is Pillow's alias of
+`buildProofTransform` (ImageCms.py:719) and
+`buildTransform`/`buildProofTransform` validate intent/flags first
+with the exact PyCMSError messages
+(`renderingIntent must be an integer between 0 and 3`,
+`flags must be an integer between 0 and 100663295` — Pillow's
+`_MAX_FLAG` check). AHK member names are case-insensitive, so the
+facade keeps exactly one `versions` and one `get_display_profile`
+method. The facade target passes `1/1` in `187ms`; the full
+directory suite passes `2850/2850` in `23328ms` with zero failures,
+errors, or skips. Release x64 Rebuild has `0 Warning(s),
+0 Error(s)`; source/DLL export parity moves to `514/514` with zero
+difference (the one deliberate export); and the rebuilt DLL SHA-256
+is
+`5787FE4F5D322204C0845136B13FD7B09326C78230A7DDF68E4BF42EB6B3CABF`.
+API-DRAW-TEXT-001 stays the next packet, then API-OPENINFO-001 and
+the API-FONTVAR-002 FreeType-dependent boundary.
 ```
 
 If any line above is no longer true, update this file first, then update

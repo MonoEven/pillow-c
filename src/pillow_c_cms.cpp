@@ -3,12 +3,18 @@
 #include <cmath>
 #include <cstdint>
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <new>
 #include <string>
 #include <utility>
 #include <vector>
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 
 #include "pillow_c_internal.h"
 
@@ -1968,4 +1974,72 @@ extern "C" __declspec(dllexport) int pillow_c_cms_profile_retain(
     }
     profile->references.fetch_add(1, std::memory_order_relaxed);
     return PILLOW_C_OK;
+}
+
+// API-CMS-DISPLAY-001: Pillow's ImageCms.get_display_profile(handle).
+// Mirrors Pillow 11.3.0's display.c getdisplayprofile: the window DC (or
+// the screen DC for handle 0) supplies the ICM profile path; a missing
+// profile or an invalid window maps to the facade's None.
+extern "C" __declspec(dllexport) int pillow_c_cms_display_profile(
+    std::uint64_t hwnd,
+    PillowCCmsProfile** out_profile)
+{
+    if (!out_profile) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_profile = nullptr;
+    const HWND window = reinterpret_cast<HWND>(hwnd);
+    HDC dc = window ? GetDC(window) : GetDC(nullptr);
+    if (!dc) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    wchar_t path[MAX_PATH + 1] = {};
+    DWORD path_size = MAX_PATH + 1;
+    const BOOL ok = GetICMProfileW(dc, &path_size, path);
+    if (window) {
+        ReleaseDC(window, dc);
+    } else {
+        ReleaseDC(nullptr, dc);
+    }
+    if (!ok || path_size == 0 || path_size > MAX_PATH + 1) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::FILE* file = nullptr;
+    if (_wfopen_s(&file, path, L"rb") != 0 || !file) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    if (_fseeki64(file, 0, SEEK_END) != 0) {
+        std::fclose(file);
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const __int64 file_size = _ftelli64(file);
+    if (file_size <= 0 ||
+        static_cast<unsigned __int64>(file_size) >
+            static_cast<unsigned __int64>(std::numeric_limits<cmsUInt32Number>::max())) {
+        std::fclose(file);
+        return PILLOW_C_INVALID_LENGTH;
+    }
+    if (_fseeki64(file, 0, SEEK_SET) != 0) {
+        std::fclose(file);
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    std::vector<std::uint8_t> data;
+    try {
+        data.resize(static_cast<std::size_t>(file_size));
+    } catch (const std::bad_alloc&) {
+        std::fclose(file);
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+    const std::size_t read = std::fread(data.data(), 1, data.size(), file);
+    std::fclose(file);
+    if (read != data.size()) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    cmsHPROFILE handle = cmsOpenProfileFromMem(
+        data.data(),
+        static_cast<cmsUInt32Number>(data.size()));
+    if (!handle) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    return own_cms_profile(handle, out_profile);
 }

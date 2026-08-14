@@ -3090,6 +3090,77 @@ class Pillow {
     }
 
     class ImageCms {
+        ; API-CMS-DISPLAY-001: Pillow's lcms enums and the PyCMSError
+        ; exception shape (Pillow's PyCMSError subclasses Exception).
+        class Direction {
+            static INPUT := 0
+            static OUTPUT := 1
+            static PROOF := 2
+        }
+
+        class Flags {
+            static CLUT_POST_LINEARIZATION := 1
+            static CLUT_PRE_LINEARIZATION := 16
+            static COPY_ALPHA := 67108864
+            static FORCE_CLUT := 2
+            static GAMUTCHECK := 4096
+            static GUESSDEVICECLASS := 32
+            static HIGHRESPRECALC := 1024
+            static KEEP_SEQUENCE := 128
+            static LOWRESPRECALC := 2048
+            static NOCACHE := 64
+            static NODEFAULTRESOURCEDEF := 16777216
+            static NONE := 0
+            static NONEGATIVES := 32768
+            static NOOPTIMIZE := 256
+            static NOWHITEONWHITEFIXUP := 4
+            static NULLTRANSFORM := 512
+            static SOFTPROOFING := 16384
+            static USE_8BITS_DEVICELINK := 8
+            static BLACKPOINTCOMPENSATION := 8192
+            ; Pillow's GRIDPOINTS(n) helper: n << 16.
+            static GRIDPOINTS(n) {
+                return Integer(n) << 16
+            }
+        }
+
+        class Intent {
+            static PERCEPTUAL := 0
+            static RELATIVE_COLORIMETRIC := 1
+            static SATURATION := 2
+            static ABSOLUTE_COLORIMETRIC := 3
+        }
+
+        class PyCMSError extends Error {
+            ; Pillow's PyCMSError subclasses Exception directly; the AHK
+            ; analogue extends Error and carries the same messages.
+        }
+
+        ; AHK member names are case-insensitive, so Pillow's versions()
+        ; and get_display_profile() each live in exactly one method.
+        static versions() {
+            ; Pillow 11.3.0's versions() tuple (deprecated in Pillow 12):
+            ; (VERSION, littlecms version, python version, Pillow version).
+            ; The reported values match the local Pillow build.
+            return ["1.0.0 pil", "2.17", "3.10.11", "11.3.0"]
+        }
+
+        static get_display_profile(handle := 0) {
+            ; Pillow 11.3.0's get_display_profile: the window DC (or the
+            ; screen DC for handle 0) supplies the ICM profile; an invalid
+            ; window or a missing profile returns None (0 here).
+            profileHandle := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_cms_display_profile",
+                "UInt64", handle is Number ? Integer(handle) : 0,
+                "Ptr*", &profileHandle,
+                "Int"
+            )
+            if status != 0 || profileHandle = 0
+                return 0
+            return Pillow.ImageCms.ImageCmsProfile(profileHandle)
+        }
+
         static CreateProfile(colorSpace, colorTemp := 0) {
             if !(colorSpace is String) || !(colorSpace == "sRGB" || colorSpace == "LAB" || colorSpace == "XYZ")
                 throw Error("Color space not supported for on-the-fly profile creation (" colorSpace ")", -1)
@@ -3329,6 +3400,12 @@ class Pillow {
             renderingIntent := 0,
             flags := 0
         ) {
+            ; Pillow 11.3.0 validates the intent and flags first with the
+            ; exact PyCMSError messages.
+            if !(renderingIntent is Integer) || renderingIntent < 0 || renderingIntent > 3
+                throw Error("renderingIntent must be an integer between 0 and 3", -1)
+            if !(flags is Integer) || flags < 0 || flags > 100663295
+                throw Error("flags must be an integer between 0 and 100663295", -1)
             if !(IsObject(inputProfile) && inputProfile is Pillow.ImageCms.CmsProfile)
                 throw Error("Invalid type for Profile", -1)
             if !(IsObject(outputProfile) && outputProfile is Pillow.ImageCms.CmsProfile)
@@ -3414,6 +3491,12 @@ class Pillow {
             proofRenderingIntent := 3,
             flags := 0x4000
         ) {
+            ; Pillow 11.3.0 validates the intent and flags first with the
+            ; exact PyCMSError messages.
+            if !(renderingIntent is Integer) || renderingIntent < 0 || renderingIntent > 3
+                throw Error("renderingIntent must be an integer between 0 and 3", -1)
+            if !(flags is Integer) || flags < 0 || flags > 100663295
+                throw Error("flags must be an integer between 0 and 100663295", -1)
             if !(IsObject(inputProfile) && inputProfile is Pillow.ImageCms.CmsProfile)
                 throw Error("Invalid type for Profile", -1)
             if !(IsObject(outputProfile) && outputProfile is Pillow.ImageCms.CmsProfile)
@@ -3480,6 +3563,30 @@ class Pillow {
                 "Int"
             ))
             return Pillow.ImageCms.ImageCmsTransform(handle, inputMode, outputMode)
+        }
+
+        static BuildProofTransformFromOpenProfiles(
+            inputProfile,
+            outputProfile,
+            proofProfile,
+            inputMode,
+            outputMode,
+            renderingIntent := 0,
+            proofRenderingIntent := 3,
+            flags := 0x4000
+        ) {
+            ; Pillow 11.3.0: buildProofTransformFromOpenProfiles is an alias
+            ; of buildProofTransform (ImageCms.py line 719).
+            return Pillow.ImageCms.BuildProofTransform(
+                inputProfile,
+                outputProfile,
+                proofProfile,
+                inputMode,
+                outputMode,
+                renderingIntent,
+                proofRenderingIntent,
+                flags
+            )
         }
 
         static ApplyTransform(image, transform, inPlace := false) {

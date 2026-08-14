@@ -7254,3 +7254,19 @@ magic-based open fallthrough, and the LAB Quantize colors TypeErrors
 against local Pillow 11.3.0. No native code changed: export parity stays
 `513/513` and the DLL SHA-256 stays
 `43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.
+
+2026-08-15 BEHAV-CMSDISP-001 verification: the facade
+`Pillow ImageCms display profile and enums match Pillow 11.3.0` target
+passes `1/1` in `187ms`; the full directory suite passes `2850/2850` in
+`23328ms` with zero failures, errors, or skips. The oracle pins the
+lcms enum values (Direction INPUT/OUTPUT/PROOF, Intent, Flags incl.
+GRIDPOINTS(1)=0x10000), the `versions()` tuple, the
+`get_display_profile` surface (handle 0 -> the display ICM profile or
+`0`, invalid HWND -> `0` — matching Pillow's None), the exact
+PyCMSError messages (`renderingIntent must be an integer between 0 and
+3`, `flags must be an integer between 0 and 100663295`) on both
+`buildTransform` and the `buildProofTransformFromOpenProfiles` alias,
+and the native `pillow_c_cms_display_profile` GDI/GetICMProfileW load
+against local Pillow 11.3.0. One deliberate native export: source/DLL
+export parity moves to `514/514` and the rebuilt DLL SHA-256 is
+`5787FE4F5D322204C0845136B13FD7B09326C78230A7DDF68E4BF42EB6B3CABF`.
