@@ -52,13 +52,11 @@ no longer claimed. The honest split:
   AHK runtime), ImagePalette.random (Python MT global state),
   ImagePath map handler.
 - The red-team re-audits found UNRECORDED gaps the old 100% never
-  counted: ImageFont.truetype/load/load_path entirely absent (no
-  TTF/OTF loading — only the default bitmap font),
-  ImageCms.get_display_profile, FreeTypeFont variation axes/masks,
-  ImageDraw.getdraw, ImageMath.lambda_eval/imagemath_*, ImageStat.
-  Global, ImageFilter base classes; silent save-option drops (PNG
-  compress_type/dictionary/bits, JPEG smooth/streamtype, TIFF
-  strip_size/quality/named-tag kwargs, QOI colorspace, TGA
+  counted: ImageCms.get_display_profile, FreeTypeFont variation
+  axes/masks, ImageDraw.getdraw, ImageMath.lambda_eval/imagemath_*,
+  ImageStat.Global, ImageFilter base classes; silent save-option
+  drops (PNG compress_type/dictionary/bits, JPEG smooth/streamtype,
+  TIFF strip_size/quality/named-tag kwargs, QOI colorspace, TGA
   id_section/orientation, GIF palette/interlace); TIFF jpeg/group3/
   group4 compression rejected though local libtiff supports it; six
   runtime-verified error-message mismatches (PNG compress_level,
@@ -69,15 +67,27 @@ no longer claimed. The honest split:
   `pillow_c: invalid argument` where Pillow raises its specific
   ValueError/IndexError messages (resize resample, inverted crop,
   getpixel OOB, reduce(0), transpose(99) — runtime-verified).
+  The truetype gap (the largest of them) is now CLOSED by
+  BEHAV-FONTFILE-001: ImageFont.truetype/load/load_path with exact
+  table-driven getname/getmetrics/getlength (hmtx+kern
+  round-half-away 26.6 arithmetic, 16 pinned vectors exact), the
+  pinned getsize/bbox/anchor assembly (pen-driven edges and y-axis
+  exact; glyph ink widths use GDI gray8 metrics — the documented
+  rasterizer divergence), GDI antialiased getmask/getmask2,
+  Pillow-exact error shapes, TTC face extraction, the WINDIR fonts
+  fallback, Buffer sources, font_variant, and the non-variable-font
+  variation `invalid argument` errors. The PILfont bitmap loader
+  stays the API-FONTFILE-002 child.
 - Completion of the matchable surface: roughly 60-65% today. The
   old `100% ±5%` (implemented-or-documented-boundary definition) is
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-FONT-002 (default-font GetMask and
-TransposedFont: the native glyph-coverage masks, the mode-"1"
-packing, and the exact transpose/bbox/length surface)
-after BEHAV-PARSER-001/
+Latest covered gap tail: BEHAV-FONTFILE-001 (ImageFont.truetype /
+FreeTypeFont: exact metrics, lengths, kerning, bbox/anchors, GDI
+masks, Pillow-exact errors, TTC faces, WINDIR fallback)
+after BEHAV-FONT-002/
+BEHAV-PARSER-001/
 BEHAV-PALETTE-002/
 BEHAV-OPEN-009/
 BEHAV-OPEN-008/
@@ -93,12 +103,11 @@ BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
 the format-family surface, ImagePalette.load, the Parser, and the
-font mask/TransposedFont are now COMPLETE; the next
-bounded child is the API-FONTFILE-001 truetype font loading
-(the largest AUDIT-003 gap), then
-the AUDIT-003 newly recorded gaps
-(truetype font loading, save-option parity, error-message parity)
-follow as their own packets.
+font mask/TransposedFont are now COMPLETE and the largest
+AUDIT-003 gap (truetype font loading) is GREEN; the next
+bounded children are the API-FONTFILE-002 PILfont bitmap font,
+then the save-option parity (API-SAVEOPTS-001/002) and
+error-message parity (API-ERRMSGS-001) packets.
 ```
 
 Current work packet:
@@ -441,7 +450,9 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-FILE-001`, the ImageFile module surface.
+- Selected next gap: `API-FONTFILE-002`, the PILfont bitmap font
+  loading (the API-FONTFILE-001 child), then
+  `API-SAVEOPTS-001/002` and `API-ERRMSGS-001`.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19262,6 +19273,41 @@ This architecture packet does not change the `59% ±4%` compatibility estimate.
   robustness findings now have `FMT-TIFF-004`, `FMT-TIFF-005`, and
   `ROBUST-001` / `ROBUST-002` covered. Do not re-run a broad audit to
   rediscover them.
+
+2026-08-15: `BEHAV-FONTFILE-001` is GREEN as ImageFont.truetype and the
+FreeTypeFont surface. The Pillow 11.3.0 oracle (`oracle/probe_fontfile.py` /
+`probe_fontfile_arith.py` / `probe_fontfile_surface.py` /
+`probe_fontfile_verify.py`, the GDI cross-check `probe_fontfile_gdi.py`,
+and the ctypes DLL cross-checks `probe_fontfile_dll.py` /
+`probe_fontfile_mask.py`) pins the exact surfaces: the name table
+(("Arial", "Regular"), TTC faces ("Cambria", "Regular") / ("Cambria Math",
+"Regular")), the FT_MulFix/PIXEL(x)=(x+63)>>6 getmetrics ((22,6)@24, (10,3)@10,
+(23,6)@24.5), the RAQM-default getlength (hmtx advances + horizontal
+kern-format-0 pairs, round-half-away 26.6 scaling — 16 pinned vectors exact
+including the kerned " A" 21.359375 and To 25.34375), the getsize/bbox
+assembly (26.6 ink extents with pen tracking; pen-driven edges and y-axis
+exact; the anchored l/m/r x a/t/m/s/b shifts and the `bad anchor specified`
+ValueError exact), the GDI gray8 getmask/getmask2 (L masks, RGBA with the
+ink-scaled alpha, 65-level glyphs scaled by 4), the exact error shapes
+(`cannot open resource` after the %WINDIR%\fonts fallback, `unknown file
+format`, `font size must be greater than 0, not N`, `invalid argument`
+for index/encoding/variations, `too many characters in string`), TTC face
+extraction for GDI, Buffer (file-like) sources, font_variant overrides, and
+ImageFont.load/load_path error shapes (the PILfont bitmap loader stays the
+API-FONTFILE-002 child). Three deliberate native exports
+(`pillow_c_font_load_file`, `pillow_c_font_load_bytes`,
+`pillow_c_font_is_variable`) and the getmask ink parameter implement it;
+glyph ink widths and rasterized pixels are the documented GDI-vs-FreeType
+divergence ("A" inks 16px vs Pillow's 17; everything else in the pinned
+matrix matches). The facade truetype target passes `1/1` in `47ms`; the
+font filter passes `20/20`; the full directory suite passes `2837/2837`
+in `22094ms` with zero failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity moves to `502/502`
+(three deliberate new exports) with zero difference; and the rebuilt DLL
+SHA-256 is
+`D5090F10F971FB465F657B8BDD075E726F79A9F6C665D93A34F679CD56D16A1C`.
+The next bounded children are API-FONTFILE-002 (PILfont), then the
+save-option and error-message parity packets.
 ```
 
 If any line above is no longer true, update this file first, then update

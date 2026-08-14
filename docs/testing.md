@@ -7115,3 +7115,16 @@ restart/qtables/CMYK/YCCK/Huffman/DHT/JPEG passed `60/60`, `48/48`,
 `8/8`, `22/22`, and `311/311`. Full passed `1784/1784` in `14906ms`.
 Exports remain `389/389`; the unchanged DLL SHA-256 is
 `9F5A8CB8FF8606FA2E0DDD6B2B554CE1FD2D4843AAC4FB2FE0300AE6400C8C98`.
+
+2026-08-15 BEHAV-FONTFILE-001 truetype verification: the facade
+`Pillow ImageFont.truetype` target passes `1/1` in `47ms`; the `font`
+filter passes `20/20` in `203ms`; and the full directory suite passes
+`2837/2837` in `22094ms` with zero failures, errors, or skips. The oracle
+scripts are `oracle/probe_fontfile.py` (+ `_arith`, `_surface`,
+`_verify`, `_gdi` for the GDI cross-check) and the ctypes DLL cross-checks
+`oracle/probe_fontfile_dll.py` / `probe_fontfile_mask.py`; they pin the
+16 exact getlength vectors, the getmetrics sizes, the bbox/anchors, the TTC
+faces, and the error shapes against local Pillow 11.3.0. Source/DLL export
+parity is `502/502` (three deliberate new exports) and the rebuilt DLL
+SHA-256 is
+`D5090F10F971FB465F657B8BDD075E726F79A9F6C665D93A34F679CD56D16A1C`.

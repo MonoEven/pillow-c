@@ -1,0 +1,166 @@
+{
+ "tables": {
+  "upem": 2048,
+  "hhea_ascender": 1854,
+  "hhea_descender": -434,
+  "hhea_linegap": 67,
+  "os2_typo_asc": 1491,
+  "os2_typo_desc": -431,
+  "os2_win_asc": 1854,
+  "os2_win_desc": 434,
+  "os2_cap_height": 1467,
+  "os2_x_height": 1062,
+  "glyph_names": {
+   "A": "A",
+   "B": "B",
+   "C": "C"
+  },
+  "advances": {
+   "A": 1366,
+   "B": 1366,
+   "C": 1479
+  },
+  "kern_pairs": {}
+ },
+ "size_10": {
+  "size": 10,
+  "layout_engine": 1,
+  "family": "Arial",
+  "style": "Regular",
+  "ascent": 10,
+  "descent": 3,
+  "x_height": null,
+  "cap_height": null,
+  "getmetrics": [
+   10,
+   3
+  ],
+  "len_A": 6.671875,
+  "len_B": 6.671875,
+  "len_C": 7.21875,
+  "len_AB": 13.34375,
+  "len_BC": 13.890625,
+  "len_ABC": 20.5625,
+  "len_AV": 12.609375,
+  "bbox_A": [
+   -1,
+   3,
+   7,
+   10
+  ],
+  "bbox_AB": [
+   -1,
+   3,
+   14,
+   10
+  ],
+  "bbox_ABC": [
+   -1,
+   3,
+   21,
+   10
+  ],
+  "bbox_empty": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "len_empty": 0.0
+ },
+ "size_24": {
+  "size": 24,
+  "layout_engine": 1,
+  "family": "Arial",
+  "style": "Regular",
+  "ascent": 22,
+  "descent": 6,
+  "x_height": null,
+  "cap_height": null,
+  "getmetrics": [
+   22,
+   6
+  ],
+  "len_A": 16.015625,
+  "len_B": 16.015625,
+  "len_C": 17.328125,
+  "len_AB": 32.03125,
+  "len_BC": 33.34375,
+  "len_ABC": 49.359375,
+  "len_AV": 30.25,
+  "bbox_A": [
+   -1,
+   5,
+   17,
+   22
+  ],
+  "bbox_AB": [
+   -1,
+   5,
+   32,
+   22
+  ],
+  "bbox_ABC": [
+   -1,
+   5,
+   49,
+   22
+  ],
+  "bbox_empty": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "len_empty": 0.0
+ },
+ "core26_6": {
+  "len_A": 1025,
+  "len_AB": 2050,
+  "len_ABC": 3159,
+  "getsize_A": [
+   [
+    18,
+    17
+   ],
+   [
+    -1,
+    5
+   ]
+  ],
+  "getsize_ABC": [
+   [
+    50,
+    17
+   ],
+   [
+    -1,
+    5
+   ]
+  ]
+ },
+ "basic": {
+  "len_A": 16.0,
+  "len_AB": 32.0,
+  "len_ABC": 49.0,
+  "len_AV": 31.96875,
+  "bbox_A": [
+   -1,
+   5,
+   17,
+   22
+  ],
+  "bbox_AB": [
+   -1,
+   5,
+   32,
+   22
+  ],
+  "bbox_ABC": [
+   -1,
+   5,
+   49,
+   22
+  ]
+ }
+}

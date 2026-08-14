@@ -27327,6 +27327,226 @@ PillowTestFontMask(*) {
 
 AhkTest.Test("Pillow default-font GetMask and TransposedFont match Pillow 11.3.0 mask/bbox/length semantics", PillowTestFontMask)
 
+; BEHAV-FONTFILE-001: ImageFont.truetype against C:\Windows\Fonts\arial.ttf.
+; The exact surfaces (getname, getmetrics, getlength with the hmtx/kern
+; round-half-away arithmetic, the pen-driven bbox edges, the anchor math, the
+; error messages, TTC face selection, the WINDIR fallback, and the Buffer
+; source) are pinned to the Pillow 11.3.0 oracle. Glyph ink widths and mask
+; pixels use GDI metrics instead of FreeType (the documented rasterizer
+; divergence): "A" inks 16px wide here vs Pillow's 17, everything else in the
+; pinned matrix matches.
+PillowTestFontFile(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    arial := "C:\Windows\Fonts\arial.ttf"
+    if !FileExist(arial) {
+        AhkTest.Log("arial.ttf missing; skipping the truetype matrix")
+        return
+    }
+
+    font := Pillow.ImageFont.Truetype(arial, 24)
+    try {
+        ; --- name / metrics / properties ---
+        AhkTest.AssertEqual(["Arial", "Regular"], font.GetName())
+        AhkTest.AssertEqual([22, 6], font.GetMetrics())
+        AhkTest.AssertEqual(arial, font.Path)
+        AhkTest.AssertEqual(24, font.Size)
+        AhkTest.AssertEqual(0, font.Index)
+        AhkTest.AssertEqual("", font.Encoding)
+        AhkTest.AssertEqual(1, font.LayoutEngine)
+
+        ; --- exact getlength vectors (Pillow 11.3.0 oracle values) ---
+        AssertFontLength := (text, expected) => AhkTest.AssertTrue(Abs(expected - font.GetLength(text)) < 0.0000001)
+        AssertFontLength("A", 16.015625)
+        AssertFontLength("B", 16.015625)
+        AssertFontLength("C", 17.328125)
+        AssertFontLength("AB", 32.03125)
+        AssertFontLength("ABC", 49.359375)
+        AssertFontLength("AV", 30.25)
+        AssertFontLength("VA", 30.25)
+        AssertFontLength(" A", 21.359375)
+        AssertFontLength("A ", 21.359375)
+        AssertFontLength("To", 25.34375)
+        AssertFontLength("A`nB", 50.03125)
+        AssertFontLength("`n", 18.0)
+        AssertFontLength("  ", 13.34375)
+        AssertFontLength("gy", 25.34375)
+        AssertFontLength("g", 13.34375)
+        AssertFontLength("Ag", 29.359375)
+        AssertFontLength("", 0.0)
+
+        ; --- bbox: pen-driven edges are exact; the "A" ink width is the
+        ; documented GDI divergence (16 here vs Pillow's 17) ---
+        AhkTest.AssertEqual([-1, 5, 16, 22], font.GetBbox("A"))
+        AhkTest.AssertEqual([-1, 5, 49, 22], font.GetBbox("ABC"))
+        AhkTest.AssertEqual([0, 5, 21, 22], font.GetBbox(" A")) ; Pillow right 22
+        AhkTest.AssertEqual([-1, 5, 21, 22], font.GetBbox("A "))
+        AhkTest.AssertEqual([0, 5, 25, 22], font.GetBbox("To"))
+        AhkTest.AssertEqual([-1, 5, 50, 22], font.GetBbox("A`nB"))
+        AhkTest.AssertEqual([0, 6, 18, 22], font.GetBbox("`n"))
+        AhkTest.AssertEqual([0, 22, 13, 22], font.GetBbox("  "))
+        AhkTest.AssertEqual([0, 9, 25, 27], font.GetBbox("gy"))
+        AhkTest.AssertEqual([0, 9, 13, 27], font.GetBbox("g"))
+        AhkTest.AssertEqual([-1, 5, 29, 27], font.GetBbox("Ag"))
+        AhkTest.AssertEqual([-1, 5, 32, 22], font.GetBbox("AB"))
+        AhkTest.AssertEqual([-1, 5, 30, 22], font.GetBbox("AV"))
+        AhkTest.AssertEqual([0, 0, 0, 0], font.GetBbox(""))
+
+        ; --- anchors (exact Pillow values) ---
+        AhkTest.AssertEqual([-1, 5, 32, 22], font.GetBbox("AB", "la"))
+        AhkTest.AssertEqual([-17, -9, 16, 8], font.GetBbox("AB", "mm"))
+        AhkTest.AssertEqual([-33, -17, 0, 0], font.GetBbox("AB", "rs"))
+        AhkTest.AssertEqual([-1, -17, 32, 0], font.GetBbox("AB", "ls"))
+        AhkTest.AssertEqual("bad anchor specified: ts", PillowTestFormatCaptureError(() => font.GetBbox("AB", "ts")))
+
+        ; --- stroke width expansion (Pillow's getbbox math; right edge
+        ; carries the documented 1px A-ink divergence) ---
+        AhkTest.AssertEqual([-3, 3, 18, 24], font.GetBbox("A", unset, , , , , 2))
+
+        ; --- masks ---
+        maskA := font.GetMask("A")
+        AhkTest.AssertEqual("L", maskA.Mode)
+        AhkTest.AssertEqual([17, 17], maskA.Size) ; Pillow 18x17 (GDI ink width)
+        maskA.Close()
+        maskAB := font.GetMask("AB")
+        AhkTest.AssertEqual([33, 17], maskAB.Size) ; exact vs Pillow
+        AhkTest.AssertEqual(0, maskAB.GetPixel([0, 0]))
+        maskAB.Close()
+        maskSpaces := font.GetMask("  ")
+        AhkTest.AssertEqual([13, 0], maskSpaces.Size) ; exact vs Pillow
+        maskSpaces.Close()
+        maskEmpty := font.GetMask("")
+        AhkTest.AssertEqual([0, 0], maskEmpty.Size)
+        maskEmpty.Close()
+        rgba := font.GetMask("A", "RGBA", 255)
+        AhkTest.AssertEqual("RGBA", rgba.Mode)
+        AhkTest.AssertEqual([17, 17], rgba.Size)
+        rgba.Close()
+        rgbaInk0 := font.GetMask("A", "RGBA", 0)
+        AhkTest.AssertEqual([0, 0, 0, 0], rgbaInk0.GetPixel([8, 8])) ; ink 0 -> transparent
+        rgbaInk0.Close()
+        mode1 := font.GetMask("A", "1")
+        AhkTest.AssertEqual("L", mode1.Mode) ; truetype mode "1" is an L mask
+        mode1.Close()
+
+        ; --- getmask2 (mask + getsize offset) ---
+        mask2 := font.GetMask2("A")
+        AhkTest.AssertEqual([17, 17], mask2[1].Size)
+        AhkTest.AssertEqual([-1, 5], mask2[2])
+        mask2[1].Close()
+
+        ; --- font_variant ---
+        variant := font.FontVariant(, 12)
+        try {
+            AhkTest.AssertEqual(12, variant.Size)
+            AhkTest.AssertEqual(8.0, variant.GetLength("A"))
+            AhkTest.AssertEqual(["Arial", "Regular"], variant.GetName())
+        } finally {
+            variant.Close()
+        }
+
+        ; --- variation surface: non-variable fonts keep Pillow's exact
+        ; OSError("invalid argument") ---
+        AhkTest.AssertEqual("invalid argument", PillowTestFormatCaptureError(() => font.GetVariationAxes()))
+        AhkTest.AssertEqual("invalid argument", PillowTestFormatCaptureError(() => font.GetVariationNames()))
+        AhkTest.AssertEqual("invalid argument", PillowTestFormatCaptureError(() => font.SetVariationByAxes([100])))
+        AhkTest.AssertEqual("invalid argument", PillowTestFormatCaptureError(() => font.SetVariationByName("Bold")))
+
+        ; --- string length check ---
+        tooLong := "A"
+        while StrLen(tooLong) < 1000001
+            tooLong .= tooLong
+        tooLong := SubStr(tooLong, 1, 1000001)
+        AhkTest.AssertEqual("too many characters in string", PillowTestFormatCaptureError(() => font.GetLength(tooLong)))
+    } finally {
+        font.Close()
+    }
+
+    ; --- other sizes (exact) ---
+    font10 := Pillow.ImageFont.Truetype(arial, 10)
+    try {
+        AhkTest.AssertEqual([10, 3], font10.GetMetrics())
+        AhkTest.AssertTrue(Abs(6.671875 - font10.GetLength("A")) < 0.0000001)
+    } finally {
+        font10.Close()
+    }
+    font245 := Pillow.ImageFont.Truetype(arial, 24.5)
+    try {
+        AhkTest.AssertEqual([23, 6], font245.GetMetrics())
+        AhkTest.AssertTrue(Abs(16.34375 - font245.GetLength("A")) < 0.0000001)
+    } finally {
+        font245.Close()
+    }
+
+    ; --- the Windows font-repository fallback (bare file name) ---
+    fallback := Pillow.ImageFont.Truetype("arial.ttf", 24)
+    try {
+        AhkTest.AssertEqual(["Arial", "Regular"], fallback.GetName())
+    } finally {
+        fallback.Close()
+    }
+
+    ; --- file-like (Buffer) source ---
+    fontFile := FileOpen(arial, "r")
+    fileBytes := Buffer(fontFile.Length, 0)
+    fontFile.RawRead(fileBytes, fontFile.Length)
+    fontFile.Close()
+    bufferFont := Pillow.ImageFont.Truetype(fileBytes, 24)
+    try {
+        AhkTest.AssertEqual(["Arial", "Regular"], bufferFont.GetName())
+        AhkTest.AssertTrue(Abs(16.015625 - bufferFont.GetLength("A")) < 0.0000001)
+    } finally {
+        bufferFont.Close()
+    }
+
+    ; --- TTC collection faces ---
+    cambria := "C:\Windows\Fonts\cambria.ttc"
+    if FileExist(cambria) {
+        face0 := Pillow.ImageFont.Truetype(cambria, 24, 0)
+        try {
+            AhkTest.AssertEqual(["Cambria", "Regular"], face0.GetName())
+        } finally {
+            face0.Close()
+        }
+        face1 := Pillow.ImageFont.Truetype(cambria, 24, 1)
+        try {
+            AhkTest.AssertEqual(["Cambria Math", "Regular"], face1.GetName())
+        } finally {
+            face1.Close()
+        }
+        AhkTest.AssertEqual("invalid argument", PillowTestFormatCaptureError(() => Pillow.ImageFont.Truetype(cambria, 24, 99)))
+    }
+    AhkTest.AssertEqual("invalid argument", PillowTestFormatCaptureError(() => Pillow.ImageFont.Truetype(arial, 24, 1)))
+
+    ; --- error shapes ---
+    AhkTest.AssertEqual("cannot open resource", PillowTestFormatCaptureError(() => Pillow.ImageFont.Truetype("C:\Windows\Fonts\no-such-font-xyz.ttf", 24)))
+    garbage := Buffer(16, 0)
+    StrPut("not a font", garbage, "UTF-8")
+    NumPut("UChar", 0, garbage, 0)
+    NumPut("UChar", 1, garbage, 1)
+    NumPut("UChar", 2, garbage, 2)
+    AhkTest.AssertEqual("unknown file format", PillowTestFormatCaptureError(() => Pillow.ImageFont.Truetype(garbage, 24)))
+    AhkTest.AssertEqual("font size must be greater than 0, not 0", PillowTestFormatCaptureError(() => Pillow.ImageFont.Truetype(arial, 0)))
+    AhkTest.AssertEqual("font size must be greater than 0, not -5", PillowTestFormatCaptureError(() => Pillow.ImageFont.Truetype(arial, -5)))
+    AhkTest.AssertEqual("invalid argument", PillowTestFormatCaptureError(() => Pillow.ImageFont.Truetype(arial, 24, 0, "junk")))
+
+    ; --- ImageFont.load / load_path error shapes (the PILfont bitmap font
+    ; itself is the API-FONTFILE-002 boundary) ---
+    AhkTest.AssertEqual("cannot find glyph data file C:\Windows\Fonts\arial.{gif|pbm|png}", PillowTestFormatCaptureError(() => Pillow.ImageFont.Load(arial)))
+    AhkTest.AssertEqual("[Errno 2] No such file or directory: 'C:\Windows\Fonts\no-such-font-xyz.ttf'", PillowTestFormatCaptureError(() => Pillow.ImageFont.Load("C:\Windows\Fonts\no-such-font-xyz.ttf")))
+    AhkTest.AssertEqual("cannot find font file `"no-such-font-xyz`" in sys.path", PillowTestFormatCaptureError(() => Pillow.ImageFont.LoadPath("no-such-font-xyz")))
+
+    ; --- load_default ---
+    defaultFont := Pillow.ImageFont.LoadDefault()
+    try {
+        AhkTest.AssertEqual(["Aileron", "Regular"], defaultFont.GetName())
+        AhkTest.AssertEqual([10, 3], defaultFont.GetMetrics())
+    } finally {
+        defaultFont.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFont.truetype matches Pillow 11.3.0 metrics, lengths, errors, and TTC faces", PillowTestFontFile)
+
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
 

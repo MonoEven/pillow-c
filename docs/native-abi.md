@@ -12730,3 +12730,40 @@ facade calls. Once loaded, `Pillow.Configure({DllPath: ...})` rejects attempts
 to switch to a different DLL path in the same process; use a separate AHK
 process for testing another DLL build. This is a facade lifetime rule only and
 does not add, remove, or change any exported ABI symbol.
+
+## Truetype Font Surface (BEHAV-FONTFILE-001)
+
+`BEHAV-FONTFILE-001` adds three deliberate exports and extends one:
+
+- `pillow_c_font_load_file(const char* path, double size, int index,
+  const char* encoding, int layout_engine, PillowCFont** out_font)` —
+  loads a TrueType/OpenType face (or a TTC face, extracted into a
+  standalone sfnt buffer because GDI rejects collections) and registers
+  it with GDI through AddFontMemResourceEx. `encoding` accepts `""` and
+  `"unic"`; `layout_engine` is `0` (BASIC) or `1` (RAQM default).
+- `pillow_c_font_load_bytes(const uint8_t* data, size_t length, ...)` —
+  the in-memory (file-like) source; the bytes are copied and stay alive
+  inside the handle for the GDI resource lifetime.
+- `pillow_c_font_is_variable(const PillowCFont* font, int* out)` —
+  reports the `fvar` presence; the facade maps the non-variable case to
+  Pillow's exact `invalid argument` variation errors.
+- `pillow_c_font_getmask` gains an `int ink` parameter between `mode`
+  and `out_image` (the RGBA ink value; ignored by the default font).
+  The single facade call site was updated in the same packet.
+
+The local load statuses outside the public table are `-60` cannot open
+resource, `-61` unknown file format, `-62` invalid face index, and
+`-63` invalid encoding; the facade maps them to Pillow's exact
+`cannot open resource` / `unknown file format` / `invalid argument`
+messages (after reproducing Pillow's %WINDIR%\fonts basename fallback
+for the file path form). The shared `PillowCFont` handle now carries a
+`void* truetype` payload for kind 2 (`pillow_c_font_internal.h` owns the
+struct and the kind-2 seams); the existing
+`pillow_c_font_free/getmetrics/getname/getlength/getbbox/
+getbbox_anchor/getmask/font_variant` exports dispatch on the kind with
+unchanged signatures except the getmask ink parameter. The mask L/RGBA
+image handles, the handle-ownership rules, and the pointer lifetimes
+follow the existing image/font conventions. Glyph metric arithmetic
+(hmtx/kern/name/hhea tables plus the FT_MulFix/PIXEL rounding) is
+byte-exact against Pillow 11.3.0; glyph ink widths and rasterized mask
+pixels are the documented GDI-vs-FreeType divergence.

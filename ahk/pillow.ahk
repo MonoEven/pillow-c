@@ -4562,6 +4562,15 @@ class Pillow {
     }
 
     class ImageFont {
+        static MAX_STRING_LENGTH := 1000000
+
+        static CheckStringLength(text) {
+            ; Pillow's _string_length_check: more than 1,000,000 characters
+            ; raises ValueError("too many characters in string").
+            if Pillow.ImageFont.MAX_STRING_LENGTH != "" && StrLen(text) > Pillow.ImageFont.MAX_STRING_LENGTH
+                throw Error("too many characters in string", -1)
+        }
+
         static LoadDefault() {
             handle := 0
             Pillow.CheckStatus(DllCall(
@@ -4576,11 +4585,203 @@ class Pillow {
             return Pillow.ImageFont.LoadDefault()
         }
 
+        ; BEHAV-FONTFILE-001: ImageFont.truetype / load / load_path.
+        ; truetype loads a TrueType/OpenType face from a path or an in-memory
+        ; Buffer and returns a FreeTypeFont; the native layer parses the sfnt
+        ; tables (exact hmtx/kern/name/hhea arithmetic, pinned against Pillow
+        ; 11.3.0) and renders glyphs through GDI. Pillow's Windows-fallback
+        ; search of %WINDIR%\fonts is reproduced here (basename match with an
+        ; extension, stem match preferring .ttf otherwise); the facade maps
+        ; the native statuses to Pillow's exact error messages.
+        static Truetype(font, size := 10, index := 0, encoding := "", layoutEngine := unset) {
+            if !(size is Number)
+                throw Error("Pillow.ImageFont.Truetype size expects a number", -1)
+            if size <= 0
+                throw Error("font size must be greater than 0, not " size, -1)
+            if encoding != "" && encoding != "unic"
+                throw Error("invalid argument", -1)
+            engine := (IsSet(layoutEngine) && layoutEngine = 0) ? 0 : 1
+            encodingBytes := Pillow.Image.Utf8Buffer(encoding)
+
+            handle := 0
+            if font is String {
+                pathBytes := Pillow.Image.Utf8Buffer(font)
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_load_file",
+                    "Ptr", pathBytes,
+                    "Double", size,
+                    "Int", index,
+                    "Ptr", encodingBytes,
+                    "Int", engine,
+                    "Ptr*", &handle,
+                    "Int"
+                )
+                if status = -60 {
+                    ; Pillow's truetype() retries in the Windows font
+                    ; repository when the direct open raises OSError.
+                    resolved := Pillow.ImageFont.ResolveWindowsFont(font)
+                    if resolved != "" {
+                        resolvedBytes := Pillow.Image.Utf8Buffer(resolved)
+                        status := DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_font_load_file",
+                            "Ptr", resolvedBytes,
+                            "Double", size,
+                            "Int", index,
+                            "Ptr", encodingBytes,
+                            "Int", engine,
+                            "Ptr*", &handle,
+                            "Int"
+                        )
+                    }
+                }
+            } else if font is Buffer {
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_load_bytes",
+                    "Ptr", font,
+                    "UPtr", font.Size,
+                    "Double", size,
+                    "Int", index,
+                    "Ptr", encodingBytes,
+                    "Int", engine,
+                    "Ptr*", &handle,
+                    "Int"
+                )
+            } else {
+                throw Error("Pillow.ImageFont.Truetype font expects a path or Buffer", -1)
+            }
+            if status = -60
+                throw Error("cannot open resource", -1)
+            if status = -61
+                throw Error("unknown file format", -1)
+            if status = -62
+                throw Error("invalid argument", -1)
+            if status = -63
+                throw Error("invalid argument", -1)
+            Pillow.CheckStatus(status)
+            return Pillow.ImageFont.FreeTypeFont(handle, {
+                Path: font,
+                Size: size,
+                Index: index,
+                Encoding: encoding,
+                LayoutEngine: engine,
+            })
+        }
+        ; AHK method names are case-insensitive, so Pillow's snake_case
+        ; truetype() resolves to Truetype above without a duplicate
+        ; declaration.
+
+        ; Pillow's Windows fallback: with an extension only exact basenames
+        ; are tried; without one the stem is matched and a .ttf match wins.
+        static ResolveWindowsFont(fontPath) {
+            SplitPath(fontPath, &base)
+            if base = ""
+                return ""
+            ext := ""
+            stem := base
+            dot := InStr(base, ".")
+            if dot {
+                stem := SubStr(base, 1, dot - 1)
+                ext := SubStr(base, dot)
+            }
+            fontDir := EnvGet("WINDIR") "\fonts"
+            if !DirExist(fontDir)
+                return ""
+            firstOther := ""
+            matches := []
+            Loop Files, fontDir "\*", "R" {
+                if !(A_LoopFileName ~= "i)\.(ttf|otf)$")
+                    continue
+                if ext != "" {
+                    if A_LoopFileName = base
+                        matches.Push(A_LoopFileFullPath)
+                } else {
+                    if SubStr(A_LoopFileName, 1, StrLen(stem)) = stem && SubStr(A_LoopFileName, StrLen(stem) + 1, 1) = "." {
+                        if A_LoopFileExt = "ttf"
+                            matches.Push(A_LoopFileFullPath)
+                        else if firstOther = ""
+                            firstOther := A_LoopFileFullPath
+                    }
+                }
+            }
+            if matches.Length > 0
+                return matches[1]
+            return firstOther
+        }
+
+        ; ImageFont.load: the PIL bitmap font loader. The glyph-image search
+        ; and its exact OSError shape are reproduced; loading a complete
+        ; PILfont (PILfont header + 256*20-byte metrics + the glyph image
+        ; into an ImageFont bitmap font) stays the API-FONTFILE-002 boundary.
+        static Load(filename) {
+            if !(filename is String)
+                throw Error("Pillow.ImageFont.Load filename expects a string", -1)
+            if !FileExist(filename)
+                throw Error("[Errno 2] No such file or directory: '" filename "'", -1)
+            root := filename
+            dot := InStr(root, ".")
+            if dot
+                root := SubStr(root, 1, dot - 1)
+            glyphImage := ""
+            glyphPath := ""
+            for ext in [".png", ".gif", ".pbm"] {
+                candidate := root ext
+                if !FileExist(candidate)
+                    continue
+                try {
+                    opened := Pillow.Open(candidate)
+                    if opened.Mode = "1" || opened.Mode = "L" {
+                        glyphImage := opened
+                        glyphPath := candidate
+                        break
+                    }
+                } catch {
+                }
+            }
+            if glyphImage = ""
+                throw Error("cannot find glyph data file " root ".{gif|pbm|png}", -1)
+            file := FileOpen(filename, "r")
+            firstLine := ""
+            try
+                firstLine := file.ReadLine()
+            finally
+                file.Close()
+            if firstLine != "PILfont`n"
+                throw Error("Not a PILfont file", -1)
+            throw Error("PILfont bitmap font loading is a documented boundary", -1)
+        }
+        ; Pillow's load() resolves to Load above (AHK names are
+        ; case-insensitive).
+
+        ; ImageFont.load_path: searches for the bitmap font along sys.path;
+        ; the AHK runtime has no sys.path equivalent, so every miss keeps
+        ; Pillow's exact OSError shape (with the same did-you-mean hint when
+        ; the file exists in the working directory).
+        static LoadPath(filename) {
+            name := filename is String ? filename : StrGet(filename.Ptr, "UTF-8")
+            if FileExist(name)
+                throw Error('cannot find font file "' name '" in sys.path, did you mean ImageFont.load("' name '") instead?', -1)
+            throw Error('cannot find font file "' name '" in sys.path', -1)
+        }
+
+        static load_path(filename) {
+            return Pillow.ImageFont.LoadPath(filename)
+        }
+
         class FreeTypeFont {
-            __New(handle) {
+            __New(handle, meta := unset) {
                 if handle = 0
                     throw Error("pillow_c returned a null font handle", -2)
                 this.Handle := handle
+                if IsSet(meta) {
+                    ; BEHAV-FONTFILE-001: the truetype source metadata for
+                    ; FontVariant re-loads (Pillow keeps path/size/index/
+                    ; encoding/layout_engine on the FreeTypeFont object).
+                    this.Path := meta.Path
+                    this.Size := meta.Size
+                    this.Index := meta.Index
+                    this.Encoding := meta.Encoding
+                    this.LayoutEngine := meta.LayoutEngine
+                }
             }
 
             __Delete() {
@@ -4601,9 +4802,13 @@ class Pillow {
                 return this.Handle
             }
 
-            GetLength(text) {
+            GetLength(text, mode := "", direction := unset, features := unset, language := unset) {
+                ; mode/direction/features/language require libraqm; this
+                ; runtime implements the default ltr path and accepts them
+                ; (a documented boundary, like a raqm-less Pillow build).
                 if !(text is String)
                     throw Error("Pillow.ImageFont.GetLength text expects a string", -1)
+                Pillow.ImageFont.CheckStringLength(text)
                 textBytes := Pillow.Image.Utf8Buffer(text)
                 length := 0.0
                 Pillow.CheckStatus(DllCall(
@@ -4616,16 +4821,18 @@ class Pillow {
                 return length
             }
 
-            GetMask(text, mode := "") {
-                ; BEHAV-FONT-002: the default-font glyph coverage mask.
-                ; mode "1" packs the threshold-128 coverage into MSB-first
-                ; bytes (Pillow's mode-"1" packing); every other mode
-                ; returns the L alpha image. The glyph shapes are this
-                ; runtime's classic bitmap font (the FreeType default-font
-                ; shapes stay the API-FONTFILE-001 truetype gap; the
-                ; metrics are pinned to Pillow's).
+            GetMask(text, mode := "", ink := 0, direction := unset, features := unset, language := unset, strokeWidth := 0, anchor := unset, start := unset) {
+                ; BEHAV-FONT-002: the default-font glyph coverage mask; and
+                ; BEHAV-FONTFILE-001: the GDI-rendered truetype grayscale
+                ; mask. For truetype fonts Pillow renders mode ""/"L"/"1"/any
+                ; unknown mode as an L image (mode "1" with mono-rounded
+                ; metrics) and "RGBA" as an RGBA image whose alpha scales
+                ; with ink; the GDI pixel values are the documented
+                ; rasterizer divergence. strokeWidth/anchor/start are
+                ; accepted-and-ignored (libraqm/FreeType-stroke boundaries).
                 if !(text is String)
                     throw Error("Pillow.ImageFont.GetMask text expects a string", -1)
+                Pillow.ImageFont.CheckStringLength(text)
                 textBytes := Pillow.Image.Utf8Buffer(text)
                 modeBytes := Pillow.Image.Utf8Buffer(mode)
                 outHandle := 0
@@ -4634,15 +4841,30 @@ class Pillow {
                     "Ptr", this.RequireHandle(),
                     "Ptr", textBytes,
                     "Ptr", modeBytes,
+                    "Int", ink,
                     "Ptr*", &outHandle,
                     "Int"
                 ))
                 return Pillow.WrapImageHandle(outHandle)
             }
 
-            GetBbox(text, anchor := unset) {
+            GetMask2(text, mode := "", ink := 0, args*) {
+                ; Pillow's getmask2 returns (mask, offset) with the offset
+                ; from font.getsize (the bbox top-left corner).
+                mask := this.GetMask(text, mode, ink)
+                bbox := this.GetBbox(text)
+                return [mask, [bbox[1], bbox[2]]]
+            }
+
+            GetBbox(text, anchor := unset, mode := "", direction := unset, features := unset, language := unset, strokeWidth := 0) {
+                ; The anchor is Pillow's second-to-last parameter but the
+                ; facade keeps it positional-second for compatibility with
+                ; the pre-truetype callers. mode/direction/features/language
+                ; are accepted-and-ignored; strokeWidth expands the box like
+                ; Pillow's getbbox.
                 if !(text is String)
                     throw Error("Pillow.ImageFont.GetBbox text expects a string", -1)
+                Pillow.ImageFont.CheckStringLength(text)
                 textBytes := Pillow.Image.Utf8Buffer(text)
                 anchorBytes := 0
                 if IsSet(anchor) {
@@ -4655,7 +4877,7 @@ class Pillow {
                 right := 0
                 bottom := 0
                 if IsSet(anchor) {
-                    Pillow.CheckStatus(DllCall(
+                    status := DllCall(
                         Pillow.RequireDllPath() "\pillow_c_font_getbbox_anchor",
                         "Ptr", this.RequireHandle(),
                         "Ptr", textBytes,
@@ -4665,7 +4887,10 @@ class Pillow {
                         "Int*", &right,
                         "Int*", &bottom,
                         "Int"
-                    ))
+                    )
+                    if status = -3
+                        throw Error("bad anchor specified: " anchor, -1)
+                    Pillow.CheckStatus(status)
                 } else {
                     Pillow.CheckStatus(DllCall(
                         Pillow.RequireDllPath() "\pillow_c_font_getbbox",
@@ -4678,6 +4903,8 @@ class Pillow {
                         "Int"
                     ))
                 }
+                if strokeWidth > 0
+                    return [left - strokeWidth, top - strokeWidth, right + strokeWidth, bottom + strokeWidth]
                 return [left, top, right, bottom]
             }
 
@@ -4730,7 +4957,23 @@ class Pillow {
                 ]
             }
 
-            FontVariant() {
+            FontVariant(font := unset, size := unset, index := unset, encoding := unset, layoutEngine := unset) {
+                ; BEHAV-FONTFILE-001: Pillow's font_variant re-opens the
+                ; source with the overrides (layout_engine falls back to the
+                ; current engine when 0/unset, mirroring `layout_engine or
+                ; self.layout_engine`). The default bitmap font keeps the
+                ; native handle duplication.
+                if !this.HasOwnProp("Path")
+                    return this.DuplicateHandle()
+                newFont := IsSet(font) ? font : this.Path
+                newSize := IsSet(size) ? size : this.Size
+                newIndex := IsSet(index) ? index : this.Index
+                newEncoding := IsSet(encoding) ? encoding : this.Encoding
+                newEngine := (IsSet(layoutEngine) && layoutEngine != 0) ? layoutEngine : this.LayoutEngine
+                return Pillow.ImageFont.Truetype(newFont, newSize, newIndex, newEncoding, newEngine)
+            }
+
+            DuplicateHandle() {
                 handle := 0
                 Pillow.CheckStatus(DllCall(
                     Pillow.RequireDllPath() "\pillow_c_font_variant",
@@ -4741,8 +4984,65 @@ class Pillow {
                 return Pillow.ImageFont.FreeTypeFont(handle)
             }
 
-            font_variant() {
+            font_variant(font := unset, size := unset, index := unset, encoding := unset, layoutEngine := unset) {
+                if IsSet(font) || IsSet(size) || IsSet(index) || IsSet(encoding) || IsSet(layoutEngine)
+                    return this.FontVariant(font, size, index, encoding, layoutEngine)
                 return this.FontVariant()
+            }
+
+            IsVariable() {
+                variable := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_is_variable",
+                    "Ptr", this.RequireHandle(),
+                    "Int*", &variable,
+                    "Int"
+                ))
+                return variable != 0
+            }
+
+            ; BEHAV-FONTFILE-001: the variation surface. Non-variable fonts
+            ; keep Pillow's exact OSError("invalid argument"); variable-font
+            ; axes are the documented boundary (Pillow works there through
+            ; FreeType).
+            GetVariationAxes() {
+                if !this.IsVariable()
+                    throw Error("invalid argument", -1)
+                throw Error("variable font axes are not supported by this runtime", -1)
+            }
+
+            get_variation_axes() {
+                return this.GetVariationAxes()
+            }
+
+            GetVariationNames() {
+                if !this.IsVariable()
+                    throw Error("invalid argument", -1)
+                throw Error("variable font names are not supported by this runtime", -1)
+            }
+
+            get_variation_names() {
+                return this.GetVariationNames()
+            }
+
+            SetVariationByAxes(axes) {
+                if !this.IsVariable()
+                    throw Error("invalid argument", -1)
+                throw Error("variable font axes are not supported by this runtime", -1)
+            }
+
+            set_variation_by_axes(axes) {
+                this.SetVariationByAxes(axes)
+            }
+
+            SetVariationByName(name) {
+                if !this.IsVariable()
+                    throw Error("invalid argument", -1)
+                throw Error("variable font names are not supported by this runtime", -1)
+            }
+
+            set_variation_by_name(name) {
+                this.SetVariationByName(name)
             }
         }
 

@@ -1,0 +1,1444 @@
+{
+ "tables": {
+  "sfnt_version": "\u0000\u0001\u0000\u0000",
+  "has_GPOS": true,
+  "has_kern": true,
+  "kern_formats": [
+   0
+  ],
+  "has_gvar": false,
+  "advances": {
+   "A": 1366,
+   "B": 1366,
+   "C": 1479,
+   "V": 1366,
+   "g": 1139,
+   "y": 1024,
+   " ": 569
+  },
+  "glyph_bbox": {
+   "A": [
+    -3,
+    0,
+    1369,
+    1466
+   ],
+   "B": [
+    150,
+    0,
+    1257,
+    1466
+   ],
+   "C": [
+    102,
+    -25,
+    1398,
+    1491
+   ],
+   "V": [
+    9,
+    0,
+    1350,
+    1466
+   ],
+   "g": [
+    66,
+    -431,
+    1002,
+    1086
+   ],
+   "y": [
+    33,
+    -431,
+    1006,
+    1062
+   ]
+  },
+  "kern_pairs": {
+   "spaceA": -113,
+   "spaceT": -37,
+   "spaceY": -37,
+   "spaceAlphatonos": -113,
+   "spaceAlpha": -113,
+   "spaceuni0394": -113,
+   "spaceLambda": -113,
+   "spaceTau": -37,
+   "spaceUpsilon": -37,
+   "spaceUpsilondieresis": -37,
+   "oneone": -152,
+   "Aspace": -113,
+   "AT": -152,
+   "AV": -152,
+   "AW": -76,
+   "AY": -152,
+   "Av": -37,
+   "Aw": -37,
+   "Ay": -37,
+   "Aquoteright": -152,
+   "Fcomma": -227,
+   "Fperiod": -227,
+   "FA": -113,
+   "Lspace": -76,
+   "LT": -152,
+   "LV": -152,
+   "LW": -152,
+   "LY": -152,
+   "Ly": -76,
+   "Lquoteright": -113,
+   "Pspace": -37,
+   "Pcomma": -264,
+   "Pperiod": -264,
+   "PA": -152,
+   "RT": -37,
+   "RV": -37,
+   "RW": -37,
+   "RY": -37,
+   "Tspace": -37,
+   "Tcomma": -227,
+   "Thyphen": -113,
+   "Tperiod": -227,
+   "Tcolon": -227,
+   "Tsemicolon": -227,
+   "TA": -152,
+   "TO": -37,
+   "Ta": -227,
+   "Tc": -227,
+   "Te": -227,
+   "Ti": -76,
+   "To": -227,
+   "Tr": -76,
+   "Ts": -227,
+   "Tu": -76,
+   "Tw": -113,
+   "Ty": -113,
+   "Vcomma": -188,
+   "Vhyphen": -113,
+   "Vperiod": -188,
+   "Vcolon": -76,
+   "Vsemicolon": -76,
+   "VA": -152,
+   "Va": -152,
+   "Ve": -113,
+   "Vi": -37,
+   "Vo": -113,
+   "Vr": -76,
+   "Vu": -76,
+   "Vy": -76,
+   "Wcomma": -113,
+   "Whyphen": -37,
+   "Wperiod": -113,
+   "Wcolon": -37,
+   "Wsemicolon": -37,
+   "WA": -76,
+   "Wa": -76,
+   "We": -37,
+   "Wi": 0,
+   "Wo": -37,
+   "Wr": -37,
+   "Wu": -37,
+   "Wy": -18,
+   "Yspace": -37,
+   "Ycomma": -264,
+   "Yhyphen": -188,
+   "Yperiod": -264,
+   "Ycolon": -113,
+   "Ysemicolon": -133,
+   "YA": -152,
+   "Ya": -152,
+   "Ye": -188,
+   "Yi": -76,
+   "Yo": -188,
+   "Yp": -152,
+   "Yq": -188,
+   "Yu": -113,
+   "Yv": -113,
+   "ff": -37,
+   "fquoteright": 37,
+   "rcomma": -113,
+   "rperiod": -113,
+   "rquoteright": 76,
+   "vcomma": -152,
+   "vperiod": -152,
+   "wcomma": -113,
+   "wperiod": -113,
+   "ycomma": -152,
+   "yperiod": -152,
+   "quoteleftquoteleft": -37,
+   "quoterightspace": -76,
+   "quoterights": -37,
+   "quoterightquoteright": -37,
+   "quotedblbaseuni0402": -160,
+   "quotedblbaseuni040B": -160,
+   "quotedblbaseuni0422": -160,
+   "quotedblbaseuni0427": -68,
+   "quotedblbaseuni042A": -68,
+   "Gammacomma": -225,
+   "Gammaperiod": -225,
+   "Gammaiotadieresistonos": 164,
+   "GammaAlpha": -188,
+   "Gammauni0394": -188,
+   "GammaLambda": -188,
+   "Gammaiota": -88,
+   "Gammaiotadieresis": 88,
+   "ThetaAlpha": -37,
+   "Thetauni0394": -37,
+   "ThetaLambda": -37,
+   "ThetaUpsilon": -66,
+   "ThetaUpsilondieresis": -66,
+   "PhiAlpha": -59,
+   "PhiUpsilon": -66,
+   "PhiUpsilondieresis": -66,
+   "deltatau": -29,
+   "deltalambda": -39,
+   "deltachi": -55,
+   "deltapi": -29,
+   "taualpha": -29,
+   "taudelta": -29,
+   "tausigma": -29,
+   "tauphi": -29,
+   "taualphatonos": -29,
+   "tauzeta": -29,
+   "tauomicron": -29,
+   "tausigma1": -29,
+   "tauomega": -29,
+   "tauomegatonos": -29,
+   "phitau": -29,
+   "philambda": -39,
+   "phichi": -55,
+   "phipi": -29,
+   "AlphatonosTheta": -43,
+   "AlphatonosPhi": -59,
+   "AlphatonosOmicron": -43,
+   "AlphatonosTau": -152,
+   "AlphatonosUpsilon": -152,
+   "AlphatonosUpsilondieresis": -152,
+   "Alphatonosgamma": -37,
+   "Alphatonosnu": -37,
+   "Alphatonoschi": -37,
+   "OmicrontonosUpsilon": -66,
+   "UpsilontonosTheta": -115,
+   "UpsilontonosPhi": -115,
+   "Upsilontonosalpha": -186,
+   "Upsilontonossigma": -186,
+   "Upsilontonosphi": -186,
+   "Upsilontonosiotadieresistonos": 170,
+   "UpsilontonosAlpha": -152,
+   "Upsilontonosuni0394": -152,
+   "UpsilontonosLambda": -152,
+   "UpsilontonosOmicron": -115,
+   "Upsilontonosuni03A9": -98,
+   "Upsilontonosetatonos": -152,
+   "Upsilontonosiotatonos": -76,
+   "Upsilontonoseta": -152,
+   "Upsilontonosiota": -76,
+   "Upsilontonoskappa": -152,
+   "Upsilontonosuni03BC": -152,
+   "Upsilontonosomicron": -186,
+   "Upsilontonosiotadieresis": 98,
+   "Upsilontonosomicrontonos": -186,
+   "OmegatonosUpsilon": -47,
+   "OmegatonosUpsilondieresis": -47,
+   "Alphaspace": -113,
+   "Alphaquoteright": -152,
+   "AlphaTheta": -43,
+   "AlphaPhi": -59,
+   "AlphaOmicron": -43,
+   "AlphaTau": -152,
+   "AlphaUpsilon": -152,
+   "AlphaUpsilondieresis": -152,
+   "Alphagamma": -37,
+   "Alphanu": -37,
+   "Alphachi": -37,
+   "uni0394space": -113,
+   "uni0394Theta": -43,
+   "uni0394Omicron": -43,
+   "uni0394Tau": -119,
+   "uni0394Upsilon": -152,
+   "uni0394Upsilondieresis": -152,
+   "KappaTheta": -63,
+   "KappaPhi": -113,
+   "Kappaalpha": -25,
+   "Kappadelta": -25,
+   "Kappasigma": -25,
+   "Kappaphi": -25,
+   "KappaOmicron": -63,
+   "Kappaalphatonos": -25,
+   "Kappazeta": -25,
+   "Kappatheta": -25,
+   "Kappaxi": -25,
+   "Kappaomicron": -25,
+   "Kappaomega": -25,
+   "Kappaomicrontonos": -25,
+   "Kappaomegatonos": -25,
+   "Lambdaspace": -113,
+   "LambdaTheta": -43,
+   "LambdaOmicron": -43,
+   "LambdaTau": -152,
+   "LambdaUpsilon": -152,
+   "LambdaUpsilondieresis": -152,
+   "OmicronAlpha": -37,
+   "Omicronuni0394": -43,
+   "OmicronLambda": -37,
+   "OmicronUpsilon": -66,
+   "OmicronUpsilondieresis": -66,
+   "Rhospace": -37,
+   "Rhocomma": -262,
+   "Rhoperiod": -262,
+   "RhoAlpha": -152,
+   "Rhouni0394": -152,
+   "RhoLambda": -152,
+   "Sigmatau": -98,
+   "Sigmapi": -98,
+   "Tauspace": -37,
+   "Taucomma": -225,
+   "Tauperiod": -225,
+   "Taucolon": -225,
+   "Tausemicolon": -225,
+   "TauTheta": -37,
+   "TauPhi": -37,
+   "Taualpha": -225,
+   "Tauepsilon": -225,
+   "Tausigma": -225,
+   "Tauphi": -225,
+   "Tauiotadieresistonos": 188,
+   "TauAlpha": -152,
+   "Tauuni0394": -152,
+   "TauLambda": -152,
+   "TauOmicron": -37,
+   "Tauuni03A9": -37,
+   "Taualphatonos": -225,
+   "Tauepsilontonos": -225,
+   "Tauupsilondieresistonos": -178,
+   "Taugamma": -178,
+   "Taueta": -150,
+   "Tauiota": -76,
+   "Tauuni03BC": -150,
+   "Taunu": -113,
+   "Tauomicron": -225,
+   "Tauupsilon": -176,
+   "Tauchi": -113,
+   "Taupsi": -150,
+   "Tauiotadieresis": 188,
+   "Tauupsilondieresis": -178,
+   "Tauomicrontonos": -225,
+   "Tauupsilontonos": -178,
+   "Upsilonspace": -37,
+   "Upsiloncomma": -262,
+   "Upsilonhyphen": -186,
+   "Upsilonperiod": -262,
+   "Upsiloncolon": -113,
+   "Upsilonsemicolon": -113,
+   "UpsilonTheta": -115,
+   "UpsilonPhi": -115,
+   "Upsilonalpha": -186,
+   "Upsilonsigma": -186,
+   "Upsilonphi": -186,
+   "Upsiloniotadieresistonos": 188,
+   "UpsilonAlpha": -152,
+   "Upsilonuni0394": -152,
+   "UpsilonLambda": -152,
+   "UpsilonOmicron": -115,
+   "Upsilonuni03A9": -98,
+   "Upsilonetatonos": -152,
+   "Upsiloniotatonos": -76,
+   "Upsilongamma": -98,
+   "Upsiloneta": -152,
+   "Upsiloniota": -76,
+   "Upsilonkappa": -152,
+   "Upsilonuni03BC": -152,
+   "Upsilonomicron": -186,
+   "Upsiloniotadieresis": 121,
+   "Upsilonomicrontonos": -186,
+   "Psialpha": -78,
+   "Psidelta": -78,
+   "Psisigma": -78,
+   "Psiphi": -78,
+   "Psialphatonos": -78,
+   "Psitheta": -39,
+   "Psiomicron": -78,
+   "Psiomega": -78,
+   "Psiomicrontonos": -78,
+   "Psiomegatonos": -78,
+   "uni03A9Upsilon": -47,
+   "uni03A9Upsilondieresis": -47,
+   "Upsilondieresisspace": -37,
+   "UpsilondieresisTheta": -115,
+   "UpsilondieresisPhi": -115,
+   "Upsilondieresisalpha": -186,
+   "Upsilondieresissigma": -186,
+   "Upsilondieresisphi": -186,
+   "Upsilondieresisiotadieresistonos": 170,
+   "UpsilondieresisAlpha": -152,
+   "Upsilondieresisuni0394": -152,
+   "UpsilondieresisLambda": -152,
+   "UpsilondieresisOmicron": -115,
+   "Upsilondieresisuni03A9": -98,
+   "Upsilondieresisetatonos": -152,
+   "Upsilondieresisiotatonos": -76,
+   "Upsilondieresiseta": -152,
+   "Upsilondieresisiota": -76,
+   "Upsilondieresiskappa": -152,
+   "Upsilondieresisuni03BC": -152,
+   "Upsilondieresisomicron": -186,
+   "Upsilondieresisiotadieresis": 98,
+   "Upsilondieresisomicrontonos": -186,
+   "zetaalpha": -137,
+   "zetadelta": -76,
+   "zetasigma": -137,
+   "zetatau": -86,
+   "zetaphi": -137,
+   "zetaalphatonos": -137,
+   "zetaetatonos": -37,
+   "zetagamma": -86,
+   "zetaeta": -37,
+   "zetatheta": -98,
+   "zetaiota": -37,
+   "zetakappa": -37,
+   "zetanu": -86,
+   "zetaomicron": -137,
+   "zetaomega": -137,
+   "zetaomicrontonos": -137,
+   "zetaomegatonos": -137,
+   "zetapi": -86,
+   "thetalambda": -39,
+   "kappaalpha": -25,
+   "kappadelta": -25,
+   "kappasigma": -25,
+   "kappaphi": -25,
+   "kappaalphatonos": -25,
+   "kappazeta": -25,
+   "kappatheta": -25,
+   "kappaxi": -25,
+   "kappaomicron": -25,
+   "kappasigma1": -25,
+   "kappaomega": -25,
+   "kappaomicrontonos": -25,
+   "kappaomegatonos": -25,
+   "lambdaalpha": -31,
+   "lambdadelta": -31,
+   "lambdasigma": -31,
+   "lambdaphi": -37,
+   "lambdaalphatonos": -31,
+   "lambdaxi": -31,
+   "lambdaomicron": -31,
+   "lambdasigma1": -47,
+   "lambdaupsilon": -49,
+   "lambdaomega": -31,
+   "lambdaomicrontonos": -31,
+   "lambdaupsilontonos": -49,
+   "lambdaomegatonos": -31,
+   "xialpha": -55,
+   "xidelta": -55,
+   "xisigma": -55,
+   "xiphi": -55,
+   "xialphatonos": -55,
+   "xizeta": -55,
+   "xixi": -55,
+   "xiomicron": -55,
+   "xisigma1": -55,
+   "xiomicrontonos": -55,
+   "omicrontau": -29,
+   "omicronlambda": -39,
+   "omicronchi": -55,
+   "omicronpi": -29,
+   "rhotau": -29,
+   "rholambda": -39,
+   "rhopi": -29,
+   "chialpha": -55,
+   "chidelta": -55,
+   "chisigma": -55,
+   "chiphi": -55,
+   "chialphatonos": -55,
+   "chizeta": -55,
+   "chiomicron": -55,
+   "chisigma1": -55,
+   "chiomega": -55,
+   "chiomicrontonos": -55,
+   "chiomegatonos": -55,
+   "omegatau": -29,
+   "omegalambda": -39,
+   "omegachi": -55,
+   "omegapi": -29,
+   "omicrontonostau": -29,
+   "omicrontonoslambda": -39,
+   "omicrontonoschi": -55,
+   "omicrontonospi": -29,
+   "omegatonostau": -29,
+   "omegatonoslambda": -39,
+   "omegatonoschi": -55,
+   "omegatonospi": -29,
+   "uni0403comma": -250,
+   "uni0403period": -250,
+   "uni0403guillemotleft": -137,
+   "uni0403guillemotright": -137,
+   "uni0403emdash": -45,
+   "uni0409quoteright": -160,
+   "uni040Aquoteright": -137,
+   "uni0410quoteright": -115,
+   "uni0410uni0414": 68,
+   "uni0410uni0417": -23,
+   "uni0410uni041B": 45,
+   "uni0410uni041E": -45,
+   "uni0410uni041F": -23,
+   "uni0410uni0421": -45,
+   "uni0410uni0422": -160,
+   "uni0410uni0423": -90,
+   "uni0410uni0424": -68,
+   "uni0410uni0427": -160,
+   "uni0410uni042D": -45,
+   "uni0410uni0430": 23,
+   "uni0410uni0442": -45,
+   "uni0410uni0443": -23,
+   "uni0410uni0444": 23,
+   "uni0410uni044D": 45,
+   "uni0411uni0410": -45,
+   "uni0411uni0417": -23,
+   "uni0411uni041E": -23,
+   "uni0411uni0421": -23,
+   "uni0411uni0422": -92,
+   "uni0411uni0423": -47,
+   "uni0411uni0424": -23,
+   "uni0411uni0425": -45,
+   "uni0411uni0427": -92,
+   "uni0411uni042A": -68,
+   "uni0411uni042D": -23,
+   "uni0411uni042F": -23,
+   "uni0411uni043B": -23,
+   "uni0411uni0443": -45,
+   "uni0412uni0410": -68,
+   "uni0412uni0414": -45,
+   "uni0412uni0416": -45,
+   "uni0412uni0417": -68,
+   "uni0412uni041B": -23,
+   "uni0412uni041E": -68,
+   "uni0412uni0421": -68,
+   "uni0412uni0422": -137,
+   "uni0412uni0423": -68,
+   "uni0412uni0424": -68,
+   "uni0412uni0425": -90,
+   "uni0412uni0427": -92,
+   "uni0412uni042A": -115,
+   "uni0412uni042F": -68,
+   "uni0412uni0434": -23,
+   "uni0412uni043C": -23,
+   "uni0412uni0442": -68,
+   "uni0412uni0443": -23,
+   "uni0412uni0445": -23,
+   "uni0412uni0447": -68,
+   "uni0412uni044F": -23,
+   "uni0413comma": -250,
+   "uni0413period": -250,
+   "uni0413guillemotleft": -137,
+   "uni0413guillemotright": -137,
+   "uni0413emdash": -45,
+   "uni0413uni0410": -137,
+   "uni0413uni0414": -137,
+   "uni0413uni0417": -45,
+   "uni0413uni041B": -115,
+   "uni0413uni041C": -47,
+   "uni0413uni041E": -115,
+   "uni0413uni0421": -92,
+   "uni0413uni042F": -68,
+   "uni0413uni0430": -115,
+   "uni0413uni0432": -115,
+   "uni0413uni0434": -137,
+   "uni0413uni0435": -137,
+   "uni0413uni0438": -115,
+   "uni0413uni043B": -115,
+   "uni0413uni043C": -115,
+   "uni0413uni043D": -115,
+   "uni0413uni043E": -137,
+   "uni0413uni0440": -115,
+   "uni0413uni0443": -137,
+   "uni0413uni044B": -115,
+   "uni0413uni044C": -115,
+   "uni0413uni044E": -115,
+   "uni0413uni044F": -137,
+   "uni0414uni0423": 23,
+   "uni0414uni0424": -45,
+   "uni0414uni0427": -70,
+   "uni0414uni0437": 68,
+   "uni0414uni043E": 23,
+   "uni0414uni0443": 45,
+   "uni0415uni0417": -45,
+   "uni0415uni0441": -23,
+   "uni0416uni0417": -23,
+   "uni0416uni041E": -45,
+   "uni0416uni0421": -23,
+   "uni0416uni0422": 23,
+   "uni0416uni0423": 45,
+   "uni0416uni042A": 45,
+   "uni0416uni0430": 23,
+   "uni0416uni0435": -25,
+   "uni0416uni043E": -23,
+   "uni0416uni0443": -23,
+   "uni0417uni041B": -23,
+   "uni0417uni041E": -23,
+   "uni0417uni0421": -23,
+   "uni0417uni0422": -45,
+   "uni0417uni0423": -23,
+   "uni0417uni0424": -23,
+   "uni0417uni0427": -45,
+   "uni0417uni042F": -23,
+   "uni041Auni0417": -23,
+   "uni041Auni041E": -23,
+   "uni041Auni0421": -23,
+   "uni041Auni0423": 23,
+   "uni041Auni0424": -70,
+   "uni041Buni0424": -23,
+   "uni041Buni0431": 23,
+   "uni041Buni0443": 23,
+   "uni041Cuni0424": -23,
+   "uni041Cuni0427": -23,
+   "uni041Cuni0430": 23,
+   "uni041Cuni0435": 23,
+   "uni041Cuni043E": 23,
+   "uni041Cuni0441": 23,
+   "uni041Cuni0443": 23,
+   "uni041Cuni0447": -23,
+   "uni041Cuni044D": 23,
+   "uni041Euni0410": -45,
+   "uni041Euni0414": -45,
+   "uni041Euni0416": -45,
+   "uni041Euni041B": -23,
+   "uni041Euni0423": -45,
+   "uni041Euni0425": -92,
+   "uni041Euni0427": -45,
+   "uni041Euni042F": -45,
+   "uni041Euni0434": -45,
+   "uni041Euni043B": -23,
+   "uni041Euni0445": -23,
+   "uni0420comma": -387,
+   "uni0420period": -387,
+   "uni0420colon": -45,
+   "uni0420semicolon": -45,
+   "uni0420guillemotright": -115,
+   "uni0420uni0410": -137,
+   "uni0420uni0414": -137,
+   "uni0420uni0416": -23,
+   "uni0420uni0417": -45,
+   "uni0420uni041B": -115,
+   "uni0420uni041C": -23,
+   "uni0420uni041E": -45,
+   "uni0420uni0421": -23,
+   "uni0420uni0422": -92,
+   "uni0420uni0423": -45,
+   "uni0420uni0424": -23,
+   "uni0420uni0425": -92,
+   "uni0420uni042F": -45,
+   "uni0420uni0430": -68,
+   "uni0420uni0434": -160,
+   "uni0420uni0435": -90,
+   "uni0420uni043E": -90,
+   "uni0420uni044D": -45,
+   "uni0420uni044F": -68,
+   "uni0421uni0410": -45,
+   "uni0421uni0414": -45,
+   "uni0421uni0417": -23,
+   "uni0421uni041B": -68,
+   "uni0421uni041C": -23,
+   "uni0421uni041E": -45,
+   "uni0421uni0422": -68,
+   "uni0421uni0423": -68,
+   "uni0421uni0425": -115,
+   "uni0421uni0427": -68,
+   "uni0421uni042A": -70,
+   "uni0421uni042D": -23,
+   "uni0421uni0430": 23,
+   "uni0421uni0436": 45,
+   "uni0421uni0447": -23,
+   "uni0422comma": -227,
+   "uni0422period": -227,
+   "uni0422guillemotleft": -90,
+   "uni0422guillemotright": -90,
+   "uni0422emdash": -45,
+   "uni0422uni0410": -68,
+   "uni0422uni0414": -68,
+   "uni0422uni0416": 23,
+   "uni0422uni0417": -23,
+   "uni0422uni041B": -45,
+   "uni0422uni041E": -92,
+   "uni0422uni0424": -68,
+   "uni0422uni042F": -45,
+   "uni0422uni0430": -92,
+   "uni0422uni0432": -90,
+   "uni0422uni0435": -115,
+   "uni0422uni0438": -90,
+   "uni0422uni043A": -90,
+   "uni0422uni043B": -92,
+   "uni0422uni043C": -90,
+   "uni0422uni043E": -160,
+   "uni0422uni043F": -90,
+   "uni0422uni0440": -115,
+   "uni0422uni0441": -115,
+   "uni0422uni0443": -115,
+   "uni0422uni0445": -90,
+   "uni0422uni0449": -90,
+   "uni0422uni044B": -90,
+   "uni0422uni044C": -90,
+   "uni0422uni044E": -90,
+   "uni0422uni044F": -115,
+   "uni0423comma": -272,
+   "uni0423period": -272,
+   "uni0423colon": -45,
+   "uni0423semicolon": -45,
+   "uni0423guillemotleft": -90,
+   "uni0423guillemotright": -92,
+   "uni0423emdash": -23,
+   "uni0423uni0410": -137,
+   "uni0423uni0414": -92,
+   "uni0423uni0417": -45,
+   "uni0423uni041B": -68,
+   "uni0423uni041E": -68,
+   "uni0423uni0424": -68,
+   "uni0423uni042D": -45,
+   "uni0423uni042F": -45,
+   "uni0423uni0431": -45,
+   "uni0423uni0432": -115,
+   "uni0423uni0433": -92,
+   "uni0423uni0434": -160,
+   "uni0423uni0435": -137,
+   "uni0423uni0436": -68,
+   "uni0423uni0437": -115,
+   "uni0423uni0438": -92,
+   "uni0423uni0439": -68,
+   "uni0423uni043A": -92,
+   "uni0423uni043B": -137,
+   "uni0423uni043C": -92,
+   "uni0423uni043D": -92,
+   "uni0423uni043E": -137,
+   "uni0423uni043F": -92,
+   "uni0423uni0440": -92,
+   "uni0423uni0441": -137,
+   "uni0423uni0445": -92,
+   "uni0423uni0446": -92,
+   "uni0423uni0448": -92,
+   "uni0423uni0449": -92,
+   "uni0423uni044E": -92,
+   "uni0423uni044F": -137,
+   "uni0424uni0410": -45,
+   "uni0424uni0414": -68,
+   "uni0424uni041B": -68,
+   "uni0424uni0422": -115,
+   "uni0424uni0423": -92,
+   "uni0424uni0427": -45,
+   "uni0424uni042F": -70,
+   "uni0424uni043B": -68,
+   "uni0425uni0417": -45,
+   "uni0425uni041E": -68,
+   "uni0425uni0421": -68,
+   "uni0425uni0424": -68,
+   "uni0425uni042D": -70,
+   "uni0425uni043E": -23,
+   "uni0425uni0443": -45,
+   "uni0426uni041E": -45,
+   "uni0426uni0430": 45,
+   "uni0429uni0430": 23,
+   "uni0429uni0443": 45,
+   "uni042Aquoteright": -137,
+   "uni042Auni042F": -68,
+   "uni042Cquoteright": -160,
+   "uni042Cuni0410": -45,
+   "uni042Cuni0414": -45,
+   "uni042Cuni0416": -68,
+   "uni042Cuni0417": -23,
+   "uni042Cuni041B": -70,
+   "uni042Cuni041C": -45,
+   "uni042Cuni041E": -45,
+   "uni042Cuni0421": -45,
+   "uni042Cuni0422": -205,
+   "uni042Cuni0425": -92,
+   "uni042Cuni0427": -160,
+   "uni042Cuni042D": -23,
+   "uni042Cuni042F": -92,
+   "uni042Duni0414": -68,
+   "uni042Duni0416": -25,
+   "uni042Duni0417": -23,
+   "uni042Duni041B": -68,
+   "uni042Duni0425": -70,
+   "uni042Duni042F": -45,
+   "uni042Duni0434": -68,
+   "uni042Duni0436": 23,
+   "uni042Duni043B": -68,
+   "uni042Duni043C": -23,
+   "uni042Duni044F": -23,
+   "uni042Euni0410": -68,
+   "uni042Euni0414": -90,
+   "uni042Euni0416": -45,
+   "uni042Euni041B": -92,
+   "uni042Euni041E": -23,
+   "uni042Euni0421": -23,
+   "uni042Euni0422": -115,
+   "uni042Euni0425": -92,
+   "uni042Euni0427": -68,
+   "uni042Euni0434": -92,
+   "uni042Euni043B": -92,
+   "uni042Euni043C": -23,
+   "uni0430uni0437": -23,
+   "uni0430uni0442": -45,
+   "uni0430uni0443": -23,
+   "uni0430uni0447": -45,
+   "uni0431uni0430": -47,
+   "uni0431uni0434": -92,
+   "uni0431uni0435": -23,
+   "uni0431uni0436": -23,
+   "uni0431uni0437": -45,
+   "uni0431uni043B": -92,
+   "uni0431uni043C": -45,
+   "uni0431uni0441": -23,
+   "uni0431uni0443": -45,
+   "uni0431uni0444": -23,
+   "uni0431uni0445": -68,
+   "uni0431uni0447": -68,
+   "uni0431uni044A": -68,
+   "uni0431uni044D": -23,
+   "uni0431uni044F": -45,
+   "uni0432uni0430": -23,
+   "uni0432uni0431": -23,
+   "uni0432uni0434": -23,
+   "uni0432uni0435": -23,
+   "uni0432uni0436": -23,
+   "uni0432uni0437": -23,
+   "uni0432uni043B": -47,
+   "uni0432uni043C": -23,
+   "uni0432uni043E": -23,
+   "uni0432uni0441": -23,
+   "uni0432uni0442": -45,
+   "uni0432uni0443": -45,
+   "uni0432uni0444": -23,
+   "uni0432uni0447": -92,
+   "uni0432uni044A": -68,
+   "uni0432uni044F": -23,
+   "uni0433comma": -250,
+   "uni0433period": -250,
+   "uni0433uni0430": -45,
+   "uni0433uni0434": -92,
+   "uni0433uni0435": -45,
+   "uni0433uni0437": -23,
+   "uni0433uni043B": -45,
+   "uni0433uni043E": -45,
+   "uni0433uni0441": -45,
+   "uni0433uni044F": -23,
+   "uni0434uni044A": -45,
+   "uni0434uni044D": 23,
+   "uni0435uni0431": -23,
+   "uni0435uni0434": -45,
+   "uni0435uni0436": -23,
+   "uni0435uni0437": -45,
+   "uni0435uni043B": -68,
+   "uni0435uni0442": -68,
+   "uni0435uni0443": -23,
+   "uni0435uni0445": -45,
+   "uni0435uni0447": -68,
+   "uni0436uni0431": 23,
+   "uni0436uni0443": 23,
+   "uni0436uni0447": -23,
+   "uni0436uni044A": 45,
+   "uni0437uni0431": -23,
+   "uni0437uni0434": -45,
+   "uni0437uni0435": -23,
+   "uni0437uni0437": -23,
+   "uni0437uni043B": -23,
+   "uni0437uni043E": -23,
+   "uni0437uni0441": -23,
+   "uni0437uni0443": -23,
+   "uni0437uni0444": -23,
+   "uni0437uni0447": -68,
+   "uni0437uni044A": -45,
+   "uni043Auni0430": 45,
+   "uni043Auni0431": 45,
+   "uni043Auni0435": 23,
+   "uni043Auni0437": 23,
+   "uni043Auni043B": 23,
+   "uni043Auni043E": 23,
+   "uni043Auni0441": 23,
+   "uni043Auni0442": 23,
+   "uni043Auni0443": 23,
+   "uni043Auni044D": 23,
+   "uni043Buni043E": 23,
+   "uni043Buni0447": -45,
+   "uni043Cuni0431": -23,
+   "uni043Cuni0437": -23,
+   "uni043Cuni0443": 23,
+   "uni043Euni0434": -45,
+   "uni043Euni0436": -23,
+   "uni043Euni0437": -23,
+   "uni043Euni043B": -45,
+   "uni043Euni0442": -45,
+   "uni043Euni0443": -23,
+   "uni043Euni0445": -23,
+   "uni043Euni0447": -45,
+   "uni0440uni0434": -47,
+   "uni0440uni0437": -23,
+   "uni0440uni043B": -70,
+   "uni0440uni0442": -45,
+   "uni0440uni0443": -23,
+   "uni0440uni0445": -23,
+   "uni0440uni0447": -45,
+   "uni0440uni044F": -23,
+   "uni0441uni0436": 23,
+   "uni0441uni043E": 23,
+   "uni0441uni0447": -23,
+   "uni0441uni044D": 23,
+   "uni0442comma": -227,
+   "uni0442period": -227,
+   "uni0442uni0430": -23,
+   "uni0442uni0434": -68,
+   "uni0442uni0435": -23,
+   "uni0442uni0436": 68,
+   "uni0442uni043B": -45,
+   "uni0442uni043E": -23,
+   "uni0442uni0441": -23,
+   "uni0442uni0443": 23,
+   "uni0443comma": -205,
+   "uni0443period": -205,
+   "uni0443guillemotright": 23,
+   "uni0443uni0430": -23,
+   "uni0443uni0431": 23,
+   "uni0443uni0434": -68,
+   "uni0443uni0435": -23,
+   "uni0443uni0436": 23,
+   "uni0443uni043B": -45,
+   "uni0443uni043C": -23,
+   "uni0443uni043E": -25,
+   "uni0443uni0440": -23,
+   "uni0443uni0441": -23,
+   "uni0443uni0444": -23,
+   "uni0443uni044D": -23,
+   "uni0443uni044F": -23,
+   "uni0444uni0431": -23,
+   "uni0444uni0434": -45,
+   "uni0444uni043B": -45,
+   "uni0444uni0442": -45,
+   "uni0444uni0443": -23,
+   "uni0444uni0447": -45,
+   "uni0444uni044F": -23,
+   "uni0445uni0430": -23,
+   "uni0445uni0431": -23,
+   "uni0445uni0435": -23,
+   "uni0445uni0437": -23,
+   "uni0445uni043E": -23,
+   "uni0445uni0441": -23,
+   "uni0445uni0442": -23,
+   "uni0445uni0444": -23,
+   "uni0445uni0447": -45,
+   "uni0446uni0435": -23,
+   "uni0446uni0437": -23,
+   "uni0446uni043E": -23,
+   "uni0446uni0441": -23,
+   "uni0449uni0435": -23,
+   "uni0449uni043E": -23,
+   "uni0449uni0443": 23,
+   "uni044Cuni0442": -160,
+   "uni044Cuni0447": -137,
+   "uni044Duni0434": -45,
+   "uni044Duni0435": 23,
+   "uni044Duni0437": -23,
+   "uni044Duni043B": -45,
+   "uni044Duni043E": 23,
+   "uni044Duni0442": -45,
+   "uni044Duni0445": -23,
+   "uni044Duni044F": -23,
+   "uni044Euni0434": -45,
+   "uni044Euni0436": -23,
+   "uni044Euni043B": -45,
+   "uni044Euni043C": -23,
+   "uni044Euni0442": -45,
+   "uni044Euni0445": -23,
+   "uni044Euni0447": -45,
+   "uni045Ecomma": -205,
+   "uni045Eperiod": -205,
+   "uni0490comma": -250,
+   "uni0490period": -250,
+   "uni0490colon": -45,
+   "uni0490semicolon": -45,
+   "uni0490guillemotleft": -160,
+   "uni0490guillemotright": -160,
+   "uni0490emdash": -45,
+   "pialpha": -29,
+   "pisigma": -29,
+   "piphi": -29,
+   "pialphatonos": -29,
+   "pizeta": -29,
+   "piomicron": -29,
+   "pisigma1": -29,
+   "piomega": -29,
+   "piomegatonos": -29
+  }
+ },
+ "len_raqm": {
+  "A": 16.015625,
+  "B": 16.015625,
+  "C": 17.328125,
+  "V": 16.015625,
+  "g": 13.34375,
+  "y": 12.0,
+  " ": 6.671875,
+  "pairs": {
+   "AB": 32.03125,
+   "AV": 30.25,
+   "VA": 30.25,
+   "AV_-kern": 32.03125,
+   "AV_kern": 30.25,
+   "AV_rtl": 30.25,
+   "AV_ttb": 45.03125,
+   "AV_lang": 30.25
+  }
+ },
+ "len_basic": {
+  "A": 16.0,
+  "B": 16.0,
+  "C": 17.0,
+  "V": 16.0,
+  "g": 13.0,
+  "y": 12.0,
+  " ": 7.0,
+  "pairs": {
+   "AB": 32.0,
+   "AV": 31.96875,
+   "VA": 31.96875,
+   "AV_-kern": null
+  }
+ },
+ "bboxes": {
+  "'g'": {
+   "bbox": {
+    "ok": [
+     0,
+     9,
+     13,
+     27
+    ]
+   },
+   "getsize": {
+    "ok": [
+     [
+      13,
+      18
+     ],
+     [
+      0,
+      9
+     ]
+    ]
+   },
+   "mask_size": {
+    "ok": [
+     13,
+     18
+    ]
+   },
+   "len": {
+    "ok": 13.34375
+   }
+  },
+  "'Ag'": {
+   "bbox": {
+    "ok": [
+     -1,
+     5,
+     29,
+     27
+    ]
+   },
+   "getsize": {
+    "ok": [
+     [
+      30,
+      22
+     ],
+     [
+      -1,
+      5
+     ]
+    ]
+   },
+   "mask_size": {
+    "ok": [
+     30,
+     22
+    ]
+   },
+   "len": {
+    "ok": 29.359375
+   }
+  },
+  "'gy'": {
+   "bbox": {
+    "ok": [
+     0,
+     9,
+     25,
+     27
+    ]
+   },
+   "getsize": {
+    "ok": [
+     [
+      25,
+      18
+     ],
+     [
+      0,
+      9
+     ]
+    ]
+   },
+   "mask_size": {
+    "ok": [
+     25,
+     18
+    ]
+   },
+   "len": {
+    "ok": 25.34375
+   }
+  },
+  "'A\\nB'": {
+   "bbox": {
+    "ok": [
+     -1,
+     5,
+     50,
+     22
+    ]
+   },
+   "getsize": {
+    "ok": [
+     [
+      51,
+      17
+     ],
+     [
+      -1,
+      5
+     ]
+    ]
+   },
+   "mask_size": {
+    "ok": [
+     51,
+     17
+    ]
+   },
+   "len": {
+    "ok": 50.03125
+   }
+  },
+  "'\\nA'": {
+   "bbox": {
+    "ok": [
+     0,
+     5,
+     35,
+     22
+    ]
+   },
+   "getsize": {
+    "ok": [
+     [
+      35,
+      17
+     ],
+     [
+      0,
+      5
+     ]
+    ]
+   },
+   "mask_size": {
+    "ok": [
+     35,
+     17
+    ]
+   },
+   "len": {
+    "ok": 34.015625
+   }
+  },
+  "'  '": {
+   "bbox": {
+    "ok": [
+     0,
+     22,
+     13,
+     22
+    ]
+   },
+   "getsize": {
+    "ok": [
+     [
+      13,
+      0
+     ],
+     [
+      0,
+      22
+     ]
+    ]
+   },
+   "mask_size": {
+    "ok": [
+     13,
+     0
+    ]
+   },
+   "len": {
+    "ok": 13.34375
+   }
+  },
+  "''": {
+   "bbox": {
+    "ok": [
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "getsize": {
+    "ok": [
+     [
+      0,
+      0
+     ],
+     [
+      0,
+      0
+     ]
+    ]
+   },
+   "mask_size": {
+    "ok": [
+     0,
+     0
+    ]
+   },
+   "len": {
+    "ok": 0.0
+   }
+  }
+ },
+ "mask_modes": {
+  "": [
+   "L",
+   [
+    18,
+    17
+   ],
+   ""
+  ],
+  "1": [
+   "L",
+   [
+    17,
+    17
+   ],
+   ""
+  ],
+  "L": [
+   "L",
+   [
+    18,
+    17
+   ],
+   ""
+  ],
+  "RGBA": [
+   "RGBA",
+   [
+    18,
+    17
+   ],
+   ""
+  ],
+  "RGB": [
+   "L",
+   [
+    18,
+    17
+   ],
+   ""
+  ],
+  "XX": [
+   "L",
+   [
+    18,
+    17
+   ],
+   ""
+  ]
+ },
+ "mask2": {
+  "ok": [
+   [
+    18,
+    17
+   ],
+   [
+    -1,
+    5
+   ]
+  ]
+ },
+ "mask_empty": {
+  "ok": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    0
+   ]
+  ]
+ },
+ "mask_start": {
+  "ok": [
+   [
+    19,
+    18
+   ],
+   [
+    -1,
+    5
+   ]
+  ]
+ },
+ "bbox_stroke": {
+  "ok": [
+   -3,
+   3,
+   19,
+   24
+  ]
+ },
+ "mask_stroke": {
+  "ok": [
+   [
+    22,
+    21
+   ]
+  ]
+ },
+ "size_24_5": {
+  "len_A": {
+   "ok": 16.34375
+  },
+  "metrics": {
+   "ok": [
+    23,
+    6
+   ]
+  },
+  "bbox_A": {
+   "ok": [
+    -1,
+    5,
+    17,
+    23
+   ]
+  }
+ },
+ "ttc": {
+  "face0": {
+   "ok": [
+    "Cambria",
+    "Regular"
+   ]
+  },
+  "face1": {
+   "ok": [
+    "Cambria Math",
+    "Regular"
+   ]
+  },
+  "face99": {
+   "err": "OSError: invalid argument"
+  },
+  "ttc_ttf_index1": {
+   "err": "OSError: invalid argument"
+  }
+ },
+ "bytesio": {
+  "name": {
+   "ok": [
+    "Arial",
+    "Regular"
+   ]
+  },
+  "len_A": {
+   "ok": 16.015625
+  }
+ },
+ "encoding_unic": {
+  "ok": 16.015625
+ },
+ "encoding_junk": {
+  "err": "OSError: invalid argument"
+ },
+ "load_ttf": {
+  "err": "OSError: cannot find glyph data file C:\\Windows\\Fonts\\arial.{gif|pbm|png}"
+ },
+ "load_garbage": {
+  "err": "OSError: cannot find glyph data file C:\\Users\\78442\\AppData\\Local\\Temp\\font_garbage.{gif|pbm|png}"
+ },
+ "load_path_missing": {
+  "err": "OSError: cannot find font file \"no-such-font-xyz\" in sys.path"
+ },
+ "load_path_arial": {
+  "err": "OSError: cannot find font file \"arial.ttf\" in sys.path"
+ },
+ "load_default_size16": {
+  "ok": [
+   16,
+   [
+    "Aileron",
+    "Regular"
+   ]
+  ]
+ },
+ "load_default_metrics": {
+  "ok": [
+   10,
+   3
+  ]
+ },
+ "too_long": {
+  "err": "ValueError: too many characters in string"
+ },
+ "too_long_mask": {
+  "err": "ValueError: too many characters in string"
+ },
+ "props": {
+  "path": "C:\\Windows\\Fonts\\arial.ttf",
+  "size": 24,
+  "index": 0,
+  "encoding": "",
+  "layout_engine": 1,
+  "repr": "<PIL.ImageFont.FreeTypeFont object at 0x0000024EE50D4310>"
+ },
+ "variant": {
+  "name": {
+   "ok": [
+    "Arial",
+    "Regular"
+   ]
+  },
+  "len": {
+   "ok": 8.0
+  },
+  "variant_size": {
+   "ok": 12
+  }
+ },
+ "multi_line_mask": {
+  "ok": [
+   [
+    51,
+    17
+   ],
+   50.03125
+  ]
+ }
+}

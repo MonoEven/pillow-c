@@ -1,3 +1,4 @@
+#include "pillow_c_font_internal.h"
 #include "pillow_c_internal.h"
 
 #include <algorithm>
@@ -11,17 +12,12 @@
 
 namespace {
 constexpr double PILLOW_C_PI = 3.1415926535897932384626433832795;
-constexpr int PILLOW_C_FONT_DEFAULT = 1;
 constexpr int PILLOW_C_TEXT_ALIGN_LEFT = 0;
 constexpr int PILLOW_C_TEXT_ALIGN_CENTER = 1;
 constexpr int PILLOW_C_TEXT_ALIGN_RIGHT = 2;
 constexpr int PILLOW_C_TEXT_ALIGN_JUSTIFY = 3;
 constexpr int PILLOW_C_DEFAULT_FONT_ASCENT = 10;
 constexpr int PILLOW_C_DEFAULT_FONT_DESCENT = 3;
-
-struct PillowCFont {
-    int kind;
-};
 
 struct PolygonEdge {
     int x0;
@@ -5082,7 +5078,7 @@ extern "C" __declspec(dllexport) int pillow_c_font_load_default(PillowCFont** ou
         return PILLOW_C_NULL_POINTER;
     }
     try {
-        *out_font = new PillowCFont{PILLOW_C_FONT_DEFAULT};
+        *out_font = new PillowCFont{PILLOW_C_FONT_DEFAULT, nullptr};
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
         *out_font = nullptr;
@@ -5092,6 +5088,12 @@ extern "C" __declspec(dllexport) int pillow_c_font_load_default(PillowCFont** ou
 
 extern "C" __declspec(dllexport) int pillow_c_font_free(PillowCFont* font)
 {
+    if (!font) {
+        return PILLOW_C_OK;
+    }
+    if (font->kind == PILLOW_C_FONT_TRUETYPE) {
+        return font_tt_free(font);
+    }
     delete font;
     return PILLOW_C_OK;
 }
@@ -5103,6 +5105,9 @@ extern "C" __declspec(dllexport) int pillow_c_font_getmetrics(
 {
     if (!font || !out_ascent || !out_descent) {
         return PILLOW_C_NULL_POINTER;
+    }
+    if (font->kind == PILLOW_C_FONT_TRUETYPE) {
+        return font_tt_getmetrics(font, out_ascent, out_descent);
     }
     if (font->kind != PILLOW_C_FONT_DEFAULT) {
         return PILLOW_C_INVALID_ARGUMENT;
@@ -5123,6 +5128,16 @@ extern "C" __declspec(dllexport) int pillow_c_font_getname(
 {
     if (!font || !out_family_required || !out_style_required) {
         return PILLOW_C_NULL_POINTER;
+    }
+    if (font->kind == PILLOW_C_FONT_TRUETYPE) {
+        return font_tt_getname(
+            font,
+            out_family,
+            family_size,
+            out_family_required,
+            out_style,
+            style_size,
+            out_style_required);
     }
     if (font->kind != PILLOW_C_FONT_DEFAULT) {
         *out_family_required = 0;
@@ -5156,11 +5171,14 @@ extern "C" __declspec(dllexport) int pillow_c_font_variant(
         return PILLOW_C_NULL_POINTER;
     }
     *out_font = nullptr;
+    if (font->kind == PILLOW_C_FONT_TRUETYPE) {
+        return font_tt_variant(font, out_font);
+    }
     if (font->kind != PILLOW_C_FONT_DEFAULT) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
     try {
-        *out_font = new PillowCFont{font->kind};
+        *out_font = new PillowCFont{font->kind, nullptr};
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
@@ -5174,6 +5192,9 @@ extern "C" __declspec(dllexport) int pillow_c_font_getlength(
 {
     if (!out_length) {
         return PILLOW_C_NULL_POINTER;
+    }
+    if (font && font->kind == PILLOW_C_FONT_TRUETYPE) {
+        return font_tt_getlength(font, text, out_length);
     }
     int length = 0;
     const int status = font_text_metrics(font, text, &length, nullptr, nullptr, nullptr, nullptr);
@@ -5195,6 +5216,9 @@ extern "C" __declspec(dllexport) int pillow_c_font_getbbox(
     if (!out_left || !out_top || !out_right || !out_bottom) {
         return PILLOW_C_NULL_POINTER;
     }
+    if (font && font->kind == PILLOW_C_FONT_TRUETYPE) {
+        return font_tt_getbbox(font, text, out_left, out_top, out_right, out_bottom);
+    }
     int length = 0;
     return font_text_metrics(font, text, &length, out_left, out_top, out_right, out_bottom);
 }
@@ -5208,6 +5232,9 @@ extern "C" __declspec(dllexport) int pillow_c_font_getbbox_anchor(
     int* out_right,
     int* out_bottom)
 {
+    if (font && font->kind == PILLOW_C_FONT_TRUETYPE) {
+        return font_tt_getbbox_anchor(font, text, anchor, out_left, out_top, out_right, out_bottom);
+    }
     return default_font_textbbox_font_anchor(0, 0, text, font, anchor, out_left, out_top, out_right, out_bottom);
 }
 
@@ -5511,17 +5538,22 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_text_font(
 // mode-"1" mask packing); every other mode returns the L alpha image. The
 // glyph shapes are this runtime's classic bitmap font (the FreeType
 // default-font shapes stay the API-FONTFILE-001 truetype gap; the metrics
-// are pinned to Pillow's).
+// are pinned to Pillow's). The ink parameter is the BEHAV-FONTFILE-001 RGBA
+// ink value and is ignored by the default font.
 extern "C" __declspec(dllexport) int pillow_c_font_getmask(
     const PillowCFont* font,
     const char* text,
     const char* mode,
+    int ink,
     PillowCImage** out_image)
 {
     if (!font || !text || !mode || !out_image) {
         return PILLOW_C_NULL_POINTER;
     }
     *out_image = nullptr;
+    if (font->kind == PILLOW_C_FONT_TRUETYPE) {
+        return font_tt_getmask(font, text, mode, ink, out_image);
+    }
     if (font->kind != PILLOW_C_FONT_DEFAULT) {
         return PILLOW_C_INVALID_ARGUMENT;
     }

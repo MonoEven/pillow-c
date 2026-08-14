@@ -298,6 +298,78 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-15 BEHAV-FONTFILE-001 ImageFont.truetype / FreeTypeFont (GREEN)
+
+`BEHAV-FONTFILE-001` implements the truetype font surface (three
+deliberate exports: `pillow_c_font_load_file`,
+`pillow_c_font_load_bytes`, `pillow_c_font_is_variable`, plus the
+`pillow_c_font_getmask` signature gaining the RGBA ink parameter).
+The Pillow 11.3.0 oracle
+(`oracle/probe_fontfile.py`, `probe_fontfile_arith.py`,
+`probe_fontfile_surface.py`, `probe_fontfile_verify.py`, the GDI
+cross-check `probe_fontfile_gdi.py`, and the ctypes DLL cross-checks
+`probe_fontfile_dll.py`/`probe_fontfile_mask.py`, all with JSON
+outputs) pins ImageFont.truetype and the FreeTypeFont surface:
+
+- getname reads the sfnt name table (Windows platform en-US
+  preferred, Apple Roman fallback): ("Arial", "Regular"), TTC face 0/1
+  = ("Cambria", "Regular")/("Cambria Math", "Regular") — exact.
+- getmetrics replicates FreeType exactly: FT_MulFix 16.16 rounding on
+  the hhea ascender/descender with PIXEL(x) = (x+63)>>6; (22,6)@24,
+  (10,3)@10, (23,6)@24.5 — exact.
+- getlength (the RAQM-default engine) sums hmtx advances plus the
+  horizontal kern-format-0 pair table, each scaled to 26.6 with
+  round-half-away; 16 pinned vectors are exact
+  (A 16.015625, AV/VA 30.25, " A" 21.359375 with the -85 kern, To
+  25.34375 with the -170 kern, "A\nB" 50.03125 where \n shapes as the
+  notdef glyph, spaces 13.34375). The BASIC engine uses the FreeType
+  unhinted FT_MulFix advance (Pillow's hinted BASIC advances are a
+  documented divergence), and direction/features/language are
+  accepted-and-ignored like a raqm-less Pillow build.
+- getbbox implements the pinned getsize assembly (26.6 ink extents
+  with the pen tracked across empty glyphs, width = (x_max-x_min)>>6,
+  offset.x = PIXEL(x_min), offset.y = ascent - PIXEL(y_top)); the
+  pen-driven edges, the y-axis, the anchor math (l/m/r x a/t/m/s/b
+  with the w/2, w-1 and +offset.y, +ceil(h/2), +offset.y+h shifts and
+  the exact `bad anchor specified: X` ValueError), and the empty-text
+  (0,0,0,0) are exact; glyph ink widths use GDI gray8 metrics (the
+  documented rasterizer divergence: "A" inks 16px vs Pillow's 17).
+- getmask/getmask2 render real antialiased glyphs through GDI
+  (AddFontMemResourceEx + GetGlyphOutline GGO_GRAY8_BITMAP, 65 levels
+  scaled by 4); mode ""/"L"/"1"/unknown return an L image and "RGBA"
+  an RGBA image whose alpha scales with the ink parameter (ink 0 is
+  fully transparent, matching Pillow); mask sizes follow the bbox
+  assembly; the rasterized pixel values are the documented GDI-vs-
+  FreeType boundary (same class as the default-font glyph shapes).
+- Errors are Pillow-exact: missing file -> `cannot open resource`
+  (after Pillow's %WINDIR%\fonts basename fallback, reproduced
+  facade-side), garbage -> `unknown file format`, size <= 0 ->
+  `font size must be greater than 0, not N`, index out of range (TTC
+  or single-face) -> `invalid argument`, unknown encoding ->
+  `invalid argument`, over-long text ->
+  `too many characters in string`, non-variable-font
+  get_variation_axes/names/set_variation_by_axes/name -> `invalid
+  argument`. TTC faces are extracted into a standalone sfnt buffer for
+  GDI; BytesIO-style Buffer sources work; font_variant re-opens with
+  overrides (the `or`-engine fallback included); Path/Size/Index/
+  Encoding/LayoutEngine are exposed on the font object.
+- ImageFont.load/load_path reproduce Pillow's error shapes
+  (`[Errno 2] No such file or directory: '...'`, `cannot find glyph
+  data file {root}.{gif|pbm|png}`, `Not a PILfont file`, `cannot find
+  font file "X" in sys.path` with the did-you-mean hint); loading a
+  complete PILfont bitmap font stays the API-FONTFILE-002 child, and
+  variable-font axes/names and raqm direction/features/language are
+  documented boundaries.
+
+The facade truetype target passes `1/1` in `47ms`; the font filter
+passes `20/20`; the full directory suite passes `2837/2837` in
+`22094ms`; Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity moves to `502/502` (three deliberate new
+exports) with zero difference; and the rebuilt DLL SHA-256 is
+`D5090F10F971FB465F657B8BDD075E726F79A9F6C665D93A34F679CD56D16A1C`.
+The next bounded child is the API-FONTFILE-002 PILfont bitmap-font
+loading, then the save-option and error-message parity packets.
+
 ## 2026-08-14 BEHAV-OPEN-004 PSD Opener (GREEN)
 
 `BEHAV-OPEN-004` implements the PSD opener (one deliberate export,
@@ -41320,9 +41392,10 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-AVIF-001 | AVIF | boundary | Open/save AVIF stays behind dependency and packaging constraints; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | FMT-LONGTAIL-001 | Formats | boundary | WEBP, AVIF, and JPEG2000 stay behind explicit dependency decisions; open/save fail loudly with `Pillow image file format is unsupported` (BNDRY-001). ICNS, EPS, MPO, PDF, PCX, SGI, DDS, PIXAR, XVTHUMB, DCX, FTEX, SUN, GBR, FITS, XPM, IPTC, MCIDAS, PSD, FLI, MIC, and PCD left this list via BEHAV-ICNS-001 / BEHAV-EPS-001 / BEHAV-MPO-001 / BEHAV-PDF-001 / BEHAV-PCX-001 / BEHAV-SGI-001 / BEHAV-DDS-001 / BEHAV-OPEN-001 / BEHAV-OPEN-002 / BEHAV-OPEN-003 / BEHAV-OPEN-004 / BEHAV-OPEN-005 / BEHAV-OPEN-006 / BEHAV-OPEN-007. | BNDRY-001 boundary ledger. |
 | AUDIT-003 | Audit | covered | Independent behavioral re-verification (two fresh-eyes red-team auditors + direct probes): the old `100% ±5%` (implemented-or-boundary definition) is superseded. Literal 100% runtime identity is NOT reachable: WEBP/JPEG2000/AVIF (the local Pillow build WORKS with these bundled codecs — oracle-verified round-trips), FPX, ImageQt/ImageTk, ImagePalette.random, and the ImagePath map handler are unmatchable in this runtime (documented boundaries). The matchable remainder is bounded and enumerated; the red teams found unrecorded gaps (rows below) plus runtime-verified divergences in already-claimed areas (MODE-NUM-001CM default-resample claim is WRONG; six error-message mismatches; systemic `pillow_c: invalid argument` for unvalidated paths). Evidence: `oracle/audit3-redteam/*.py`, `oracle/probe_audit3_open.py`, `oracle/probe_audit3_formats.py`. | Red-team probes, runtime facade probes, oracle format matrix. |
-| API-FONTFILE-001 | Facade API | gap | `ImageFont.truetype` / `ImageFont.load` / `ImageFont.load_path` / `load_default_imagefont` / `features` / `MAX_STRING_LENGTH` are ENTIRELY ABSENT: no TTF/OTF file loading exists (native has only `pillow_c_font_load_default`). Every real-font use case (truetype + Draw.text with a font, FreeTypeFont getmask, TransposedFont.GetMask) is unserved. | Red-team audit (probe_modules.py); native export inventory. |
+| API-FONTFILE-001 | Facade API | done | `ImageFont.truetype` / `ImageFont.load` / `ImageFont.load_path` / `MAX_STRING_LENGTH` are implemented with BEHAV-FONTFILE-001 (three deliberate native exports; exact table-driven getname/getmetrics/getlength/kern arithmetic, the pinned getsize/bbox/anchor assembly, GDI gray8 masks, Pillow-exact error shapes, TTC face selection, the WINDIR fonts fallback, Buffer sources, font_variant, the non-variable-font variation errors). `load_default` stays the documented default-bitmap-font divergence (Pillow bundles the CC0 Aileron face; `load_default(size)` is accepted-and-ignored); the PILfont bitmap loader (API-FONTFILE-002), variable-font axes, and raqm direction/features/language are the recorded children. | BEHAV-FONTFILE-001 (oracle/probe_fontfile*.py + DLL cross-checks); native export inventory. |
+| API-FONTFILE-002 | Facade API | gap | `ImageFont.load`/`load_path` loading a complete PILfont bitmap font (PILfont header + 256*20-byte metrics + the .pbm/.gif/.png glyph image into the ImageFont bitmap class with getmask/getbbox/getlength/getname) works in Pillow; BEHAV-FONTFILE-001 implements the error shapes (`[Errno 2]...`, `cannot find glyph data file`, `Not a PILfont file`, the sys.path message with the did-you-mean hint) and records the full load as this child. | BEHAV-FONTFILE-001; probe_fontfile.py. |
 | API-CMS-DISPLAY-001 | Facade API | gap | `ImageCms.get_display_profile(handle)` absent (Pillow returns an ImageCmsProfile for the Windows display device, or None); also missing: the `Direction`/`Flags`/`Intent` enums, `PyCMSError`, `versions`, and `buildProofTransformFromOpenProfiles`. | Red-team audit; `ImageCms` source diff. |
-| API-FONTVAR-002 | Facade API | gap | `FreeTypeFont.get_variation_axes/get_variation_names/set_variation_by_axes/set_variation_by_name/getmask/getmask2` absent (only getmask was boundary-recorded). | Red-team audit; FreeTypeFont surface diff. |
+| API-FONTVAR-002 | Facade API | partial | `FreeTypeFont.get_variation_axes/get_variation_names/set_variation_by_axes/set_variation_by_name` are implemented for non-variable fonts with Pillow's exact `invalid argument` OSError (BEHAV-FONTFILE-001); reading real axes/names and applying variation instances on variable fonts stays a documented FreeType-dependent boundary. `getmask/getmask2` are implemented for the default and truetype fonts (GDI rasterization boundary). | BEHAV-FONTFILE-001; FreeTypeFont surface diff. |
 | API-DRAW-TEXT-001 | Facade API | gap | `ImageDraw.text`/`multiline_text` drop the `spacing/align/direction/features/language/embedded_color/font_size` options; `direction`/`features`/`language` are MATCH-ERROR items on this build (Pillow raises the exact libraqm KeyError — matchable trivially), while `spacing`/`align` (incl. multiline `justify` + Pillow's exact align error)/`embedded_color`/`font_size` need real implementation. `ImageDraw.getdraw`, `ImageMath.lambda_eval`/`imagemath_*`, `ImageStat.Global`, and the `ImageFilter` base classes (`Filter`/`BuiltinFilter`/`MultibandFilter`) plus Pillow's exact filter-validation messages (`radius must be >= 0`, `bad filter size`, `bad kernel size`, `not enough coefficients in kernel`, the RankFilter missing-rank TypeError) are absent. | Red-team audit (probe_modules.py, probe_modules2.py, probe_filters2.py). |
 | API-SAVEOPTS-001 | Facade API | gap | Silent save-option drops: PNG `compress_type`/`dictionary`/P-mode `bits`, JPEG `smooth`/`streamtype`, TIFF `strip_size`/`quality`/named-tag kwargs (`description`/`software`/`artist`/`copyright`/`date_time`/`resolution`/`resolution_unit`; tags stay reachable via `tiffinfo`), QOI `colorspace`, TGA `id_section`/`orientation`, GIF `palette`/`interlace`. TIFF compression `jpeg`/`group3`/`group4` REJECTED (`Pillow.Image.Save TIFF compression is not supported`) while local libtiff saves them. REVERSE divergence: the facade honors `interlace`/`gamma` as PNG options (writing a gAMA chunk) while Pillow 11.3.0 ignores those two kwargs. The facade also restricts TIFF `tiffinfo` to tags 270/315/700 while Pillow writes ANY tag. | Red-team audit (probe_save_options.py); runtime facade probe. |
 | API-SAVEOPTS-002 | Facade API | gap | Error-message mismatches: PNG `compress_level` range (`pillow_c: invalid argument` vs OSError `codec configuration error when writing image file`) and type (`Pillow.Image.Save compress_level must be an integer` vs TypeError `'str' object cannot be interpreted as an integer`); JPEG `quality='bogus'` (`Pillow.Image.Save quality must be an integer, 'keep', or a Pillow JPEG quality preset` vs ValueError `Invalid quality setting`); JPEG `subsampling`, TIFF `quality`, ICO `sizes` messages. | Red-team audit; runtime facade probe. |

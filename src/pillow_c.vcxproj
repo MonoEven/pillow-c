@@ -98,6 +98,7 @@
     <ClCompile Include="pillow_c_codec_pdf.cpp" />
     <ClCompile Include="pillow_c_codec_pcd.cpp" />
     <ClCompile Include="pillow_c_codec_wmf.cpp" />
+    <ClCompile Include="pillow_c_codec_font.cpp" />
     <ClCompile Include="pillow_c_codec_legacy.cpp" />
     <ClCompile Include="pillow_c_codec_gif.cpp" />
     <ClCompile Include="pillow_c_ops.cpp" />
