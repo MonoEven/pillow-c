@@ -8531,6 +8531,44 @@ extern "C" __declspec(dllexport) int pillow_c_image_open_tga(
     return open_tga_image(path, out_image);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_tga_open_info(
+    const char* path,
+    int* out_has_rle,
+    int* out_orientation)
+{
+    if (!path || !out_has_rle || !out_orientation) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_has_rle = 0;
+    *out_orientation = -1;
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() < 18u) {
+            return PILLOW_C_INVALID_LENGTH;
+        }
+        // API-OPENINFO-001: Pillow's TGA info -- compression is "tga_rle"
+        // when the image type carries the RLE bit; orientation is 1 for the
+        // 0x20/0x30 descriptor flags and -1 for 0/0x10 (anything else is
+        // Pillow's SyntaxError).
+        const std::uint8_t image_type = data[2];
+        const std::uint8_t flags = data[17] & 0x30u;
+        if (flags == 0x20u || flags == 0x30u) {
+            *out_orientation = 1;
+        } else if (flags == 0u || flags == 0x10u) {
+            *out_orientation = -1;
+        } else {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        *out_has_rle = (image_type & 8u) != 0u ? 1 : 0;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_save_tga(
     const PillowCImage* image,
     const char* path)

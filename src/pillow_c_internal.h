@@ -85,6 +85,10 @@ struct PillowCImage {
     std::vector<int> jpeg_qtables;
     std::size_t jpeg_qtable_count = 0;
     int jpeg_subsampling = -1;
+    bool jpeg_progressive = false;
+    bool jpeg_has_adobe = false;
+    int jpeg_adobe = 0;
+    int jpeg_adobe_transform = -1;
     bool has_png_transparency = false;
     int png_transparency = -1;
     std::vector<std::uint8_t> png_transparency_table;

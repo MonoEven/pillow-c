@@ -7307,3 +7307,19 @@ against local Pillow 11.3.0. The AHK operator-dispatch limitation
 are recorded. No native code changed: export parity stays `514/514`
 and the DLL SHA-256 stays
 `5787FE4F5D322204C0845136B13FD7B09326C78230A7DDF68E4BF42EB6B3CABF`.
+
+2026-08-15 BEHAV-OPENINFO-001 verification: the facade
+`Pillow open-side info attributes match Pillow 11.3.0` target passes
+`1/1` in `31ms`; the full directory suite passes `2853/2853` in
+`23047ms` with zero failures, errors, or skips. The oracle pins
+(`oracle/probe_open_info.py`, `oracle/probe_open_info2.py` plus the
+JpegImagePlugin/GifImagePlugin/TiffImagePlugin/TgaImagePlugin
+sources) cover the JPEG-only `quantization` dict + the exact
+AttributeError, `progressive`/`progression`/`adobe`/
+`adobe_transform`, the GIF `version` bytes and the frame-0
+`extension` `(NETSCAPE2.0 label, 39)` tuple, the TIFF tag-259
+compression names (raw/tiff_lzw/deflate code 8), and the TGA
+`tga_rle`/orientation surface against local Pillow 11.3.0. Four
+deliberate native exports: source/DLL export parity moves to
+`518/518` and the rebuilt DLL SHA-256 is
+`EF03A7684225AF7ACEAB0C3AD8E9842F27E1CBC0818D065FA4604E034434AE41`.

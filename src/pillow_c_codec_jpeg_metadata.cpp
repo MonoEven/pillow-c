@@ -125,3 +125,18 @@ pillow_c_image_metadata_jpeg_subsampling(const PillowCImage *image,
   *out_subsampling = image->jpeg_subsampling;
   return PILLOW_C_OK;
 }
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_jpeg_open_info(
+    const PillowCImage *image, int *out_progressive, int *out_has_adobe,
+    int *out_adobe, int *out_adobe_transform) {
+  if (!image || !out_progressive || !out_has_adobe || !out_adobe ||
+      !out_adobe_transform) {
+    return PILLOW_C_NULL_POINTER;
+  }
+  // API-OPENINFO-001: Pillow's progressive/progression info keys and the
+  // adobe/adobe_transform APP14 values for opened JPEGs.
+  *out_progressive = image->jpeg_progressive ? 1 : 0;
+  *out_has_adobe = image->jpeg_has_adobe ? 1 : 0;
+  *out_adobe = image->jpeg_adobe;
+  *out_adobe_transform = image->jpeg_adobe_transform;
+  return PILLOW_C_OK;
+}

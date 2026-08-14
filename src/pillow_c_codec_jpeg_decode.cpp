@@ -50,6 +50,10 @@ struct JpegMetadata {
   std::vector<int> qtables;
   std::size_t qtable_count = 0;
   int subsampling = -1;
+  bool progressive = false;
+  bool has_adobe = false;
+  int adobe = 0;
+  int adobe_transform = -1;
 };
 constexpr int JPEG_DECODE_ZIGZAG[64] = {
     0,  1,  8,  16, 9,  2,  3,  10, 17, 24, 32, 25, 18, 11, 4,  5,
@@ -82,6 +86,19 @@ void apply_jpeg_jfif_metadata(const std::uint8_t *payload,
     metadata->dpi_x = static_cast<double>(metadata->jfif_density_x) * 2.54;
     metadata->dpi_y = static_cast<double>(metadata->jfif_density_y) * 2.54;
   }
+}
+void apply_jpeg_adobe_metadata(const std::uint8_t *payload,
+                               std::size_t payload_size,
+                               JpegMetadata *metadata) {
+  // Pillow's JpegImagePlugin APP14 handling: s[:5] == b"Adobe" ->
+  // adobe = i16(s, 5) and adobe_transform = i8(s, 11).
+  if (!payload || !metadata || payload_size < 12u ||
+      std::memcmp(payload, "Adobe", 5u) != 0) {
+    return;
+  }
+  metadata->has_adobe = true;
+  metadata->adobe = read_be16(payload + 5u);
+  metadata->adobe_transform = static_cast<int>(payload[11]);
 }
 bool jpeg_payload_starts_with(const std::uint8_t *payload,
                               std::size_t payload_size, const char *prefix,
@@ -362,6 +379,13 @@ bool read_jpeg_metadata(const char *path, JpegMetadata *metadata) {
     if (marker == 0xedu) {
       apply_jpeg_photoshop_metadata(segment_payload, segment_payload_size,
                                     metadata);
+    }
+    if (marker == 0xeeu) {
+      apply_jpeg_adobe_metadata(segment_payload, segment_payload_size,
+                                metadata);
+    }
+    if (marker == 0xc2u) {
+      metadata->progressive = true;
     }
     if (marker == 0xfeu) {
       metadata->comment.assign(segment_payload,
@@ -740,6 +764,10 @@ int open_jpeg_image_impl(const char *path, int draft_target_width,
     image->jpeg_qtables = std::move(metadata.qtables);
     image->jpeg_qtable_count = metadata.qtable_count;
     image->jpeg_subsampling = metadata.subsampling;
+    image->jpeg_progressive = metadata.progressive;
+    image->jpeg_has_adobe = metadata.has_adobe;
+    image->jpeg_adobe = metadata.adobe;
+    image->jpeg_adobe_transform = metadata.adobe_transform;
     if (draft_scale == 1 && !draft_planar) {
       hr = source->CopyPixels(nullptr, static_cast<UINT>(stride),
                               static_cast<UINT>(image->pixels.size()),

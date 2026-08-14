@@ -59850,6 +59850,172 @@ PillowTestImageDrawModuleSurface(*) {
 
 AhkTest.Test("Pillow ImageDraw module surface matches Pillow 11.3.0", PillowTestImageDrawModuleSurface)
 
+; BEHAV-OPENINFO-001: the open-side info attributes — JPEG quantization
+; (the JPEG-only attribute) + progressive/progression/adobe/adobe_transform,
+; GIF version/extension, TIFF compression, TGA compression/orientation.
+PillowTestImageOpenInfoAttributes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+
+    ; --- quantization is a JPEG-only attribute ---
+    fresh := Pillow.Image.New("RGB", [2, 2], [0, 0, 0])
+    AhkTest.AssertEqual("'Image' object has no attribute 'quantization'", PillowTestFormatCaptureError(() => fresh.Quantization))
+    fresh.Close()
+
+    jpegPath := A_Temp "\pillow-openinfo-" A_TickCount ".jpg"
+    rgb := Pillow.Image.New("RGB", [8, 8], [1, 2, 3])
+    try {
+        rgb.Save(jpegPath, "JPEG")
+    } finally {
+        rgb.Close()
+    }
+    opened := Pillow.Image.Open(jpegPath)
+    try {
+        AhkTest.AssertEqual("JPEG", opened.Format)
+        q := opened.Quantization
+        AhkTest.AssertTrue(q is Map)
+        AhkTest.AssertEqual(2, q.Count)
+        AhkTest.AssertEqual(64, q[0].Length)
+        ; the facade's encoder scales its own DQT tables (the documented
+        ; libjpeg payload divergence), so the values are structural pins.
+        AhkTest.AssertEqual([3, 2, 2, 3], [q[0][1], q[0][2], q[0][3], q[0][4]])
+        AhkTest.AssertEqual(257, opened.Info["jfif"])
+        AhkTest.AssertEqual([1, 1], opened.Info["jfif_version"])
+        AhkTest.AssertTrue(!opened.Info.Has("progressive"))
+        AhkTest.AssertTrue(!opened.Info.Has("adobe"))
+    } finally {
+        opened.Close()
+    }
+    PillowTestDeleteFile(jpegPath)
+
+    ; --- progressive JPEG: progressive/progression = 1 ---
+    progPath := A_Temp "\pillow-openinfo-" A_TickCount ".jpg"
+    rgb2 := Pillow.Image.New("RGB", [8, 8], [1, 2, 3])
+    try {
+        rgb2.Save(progPath, "JPEG", { Progressive: true })
+    } finally {
+        rgb2.Close()
+    }
+    opened2 := Pillow.Image.Open(progPath)
+    try {
+        AhkTest.AssertEqual(1, opened2.Info["progressive"])
+        AhkTest.AssertEqual(1, opened2.Info["progression"])
+    } finally {
+        opened2.Close()
+    }
+    PillowTestDeleteFile(progPath)
+
+    ; --- CMYK JPEG: adobe = 100, adobe_transform = 0 ---
+    cmykPath := A_Temp "\pillow-openinfo-" A_TickCount ".jpg"
+    cmyk := Pillow.Image.New("CMYK", [8, 8], [1, 2, 3, 4])
+    try {
+        cmyk.Save(cmykPath, "JPEG")
+    } finally {
+        cmyk.Close()
+    }
+    openedC := Pillow.Image.Open(cmykPath)
+    try {
+        AhkTest.AssertEqual(100, openedC.Info["adobe"])
+        AhkTest.AssertEqual(0, openedC.Info["adobe_transform"])
+    } finally {
+        openedC.Close()
+    }
+    PillowTestDeleteFile(cmykPath)
+
+    ; --- GIF version bytes + the frame-0 extension tuple ---
+    gifPath := A_Temp "\pillow-openinfo-" A_TickCount ".gif"
+    frame0 := Pillow.Image.FromBytes("P", [4, 4], PillowTestBuffer([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+    frame1 := Pillow.Image.FromBytes("P", [4, 4], PillowTestBuffer([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]))
+    gifPalette := [0, 0, 0, 10, 20, 30]
+    try {
+        frame0.PutPalette(gifPalette)
+        frame1.PutPalette(gifPalette)
+        frame0.Save(gifPath, "GIF", { SaveAll: true, AppendImages: [frame1], Duration: [10, 20], Loop: 3 })
+    } finally {
+        frame1.Close()
+        frame0.Close()
+    }
+    gifImage := Pillow.Image.Open(gifPath)
+    try {
+        AhkTest.AssertEqual([71, 73, 70, 56, 57, 97], PillowTestBufferToArray(gifImage.Info["version"]))
+        ext := gifImage.Info["extension"]
+        AhkTest.AssertTrue(IsObject(ext) && ext.Length = 2)
+        AhkTest.AssertEqual(39, ext[2])
+        AhkTest.AssertEqual([78, 69, 84, 83, 67, 65, 80, 69, 50, 46, 48], PillowTestBufferToArray(ext[1]))
+        gifImage.Seek(1)
+        AhkTest.AssertTrue(!gifImage.Info.Has("extension"))
+        AhkTest.AssertEqual([71, 73, 70, 56, 57, 97], PillowTestBufferToArray(gifImage.Info["version"]))
+    } finally {
+        gifImage.Close()
+    }
+    PillowTestDeleteFile(gifPath)
+
+    ; --- TIFF compression names ---
+    tiffPath := A_Temp "\pillow-openinfo-" A_TickCount ".tiff"
+    t := Pillow.Image.New("L", [8, 8], 100)
+    try {
+        t.Save(tiffPath, "TIFF")
+    } finally {
+        t.Close()
+    }
+    to := Pillow.Image.Open(tiffPath)
+    try {
+        AhkTest.AssertEqual("raw", to.Info["compression"])
+    } finally {
+        to.Close()
+    }
+    PillowTestDeleteFile(tiffPath)
+
+    tiffLzwPath := A_Temp "\pillow-openinfo-" A_TickCount ".tiff"
+    t2 := Pillow.Image.New("L", [8, 8], 100)
+    try {
+        t2.Save(tiffLzwPath, "TIFF", { Compression: "tiff_lzw" })
+    } finally {
+        t2.Close()
+    }
+    to2 := Pillow.Image.Open(tiffLzwPath)
+    try {
+        AhkTest.AssertEqual("tiff_lzw", to2.Info["compression"])
+    } finally {
+        to2.Close()
+    }
+    PillowTestDeleteFile(tiffLzwPath)
+
+    ; --- TGA orientation/compression ---
+    tgaPath := A_Temp "\pillow-openinfo-" A_TickCount ".tga"
+    tg := Pillow.Image.New("RGB", [4, 4], [1, 2, 3])
+    try {
+        tg.Save(tgaPath, "TGA")
+    } finally {
+        tg.Close()
+    }
+    tgo := Pillow.Image.Open(tgaPath)
+    try {
+        AhkTest.AssertEqual(-1, tgo.Info["orientation"])
+        AhkTest.AssertTrue(!tgo.Info.Has("compression"))
+    } finally {
+        tgo.Close()
+    }
+    PillowTestDeleteFile(tgaPath)
+
+    tgaRlePath := A_Temp "\pillow-openinfo-" A_TickCount ".tga"
+    tg2 := Pillow.Image.New("RGB", [4, 4], [1, 2, 3])
+    try {
+        tg2.Save(tgaRlePath, "TGA", { Rle: true, Orientation: 1 })
+    } finally {
+        tg2.Close()
+    }
+    tgo2 := Pillow.Image.Open(tgaRlePath)
+    try {
+        AhkTest.AssertEqual("tga_rle", tgo2.Info["compression"])
+        AhkTest.AssertEqual(1, tgo2.Info["orientation"])
+    } finally {
+        tgo2.Close()
+    }
+    PillowTestDeleteFile(tgaRlePath)
+}
+
+AhkTest.Test("Pillow open-side info attributes match Pillow 11.3.0", PillowTestImageOpenInfoAttributes)
+
 PillowTestImageFontLoadDefaultExposesMetadataAndVariant(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [17, 16])

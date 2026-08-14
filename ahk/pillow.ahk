@@ -13145,6 +13145,40 @@ class Pillow {
                     this.Info["photoshop"] := photoshop
                 else if this.Info.Has("photoshop")
                     this.Info.Delete("photoshop")
+
+                ; API-OPENINFO-001: progressive/progression and the APP14
+                ; adobe/adobe_transform info keys.
+                jpegProgressive := 0
+                jpegHasAdobe := 0
+                jpegAdobe := 0
+                jpegAdobeTransform := -1
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_metadata_jpeg_open_info",
+                    "Ptr", this.RequireHandle(),
+                    "Int*", &jpegProgressive,
+                    "Int*", &jpegHasAdobe,
+                    "Int*", &jpegAdobe,
+                    "Int*", &jpegAdobeTransform,
+                    "Int"
+                ))
+                if jpegProgressive {
+                    this.Info["progressive"] := 1
+                    this.Info["progression"] := 1
+                } else {
+                    if this.Info.Has("progressive")
+                        this.Info.Delete("progressive")
+                    if this.Info.Has("progression")
+                        this.Info.Delete("progression")
+                }
+                if jpegHasAdobe {
+                    this.Info["adobe"] := jpegAdobe
+                    this.Info["adobe_transform"] := jpegAdobeTransform
+                } else {
+                    if this.Info.Has("adobe")
+                        this.Info.Delete("adobe")
+                    if this.Info.Has("adobe_transform")
+                        this.Info.Delete("adobe_transform")
+                }
             }
 
             if this.Format = "TIFF" {
@@ -13153,6 +13187,38 @@ class Pillow {
                     this.Info["icc_profile"] := tiffIccProfile
                 else if this.Info.Has("icc_profile")
                     this.Info.Delete("icc_profile")
+                ; API-OPENINFO-001: the IFD0 tag-259 compression name (unknown
+                ; values raise Pillow's bare KeyError shape).
+                tiffCompression := 0
+                tiffCompressionStatus := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_metadata_tiff_compression",
+                    "Ptr", Pillow.Image.Utf8Buffer(this.FramePath),
+                    "UInt*", &tiffCompression,
+                    "Int"
+                )
+                if tiffCompressionStatus = 0
+                    this.Info["compression"] := Pillow.Image.TiffCompressionName(tiffCompression)
+                else if this.Info.Has("compression") && this.Format = "TIFF"
+                    this.Info.Delete("compression")
+            }
+
+            if this.Format = "TGA" {
+                ; API-OPENINFO-001: compression is "tga_rle" only when the
+                ; image type carries the RLE bit; orientation is 1/-1.
+                tgaHasRle := 0
+                tgaOrientation := -1
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_tga_open_info",
+                    "Ptr", Pillow.Image.Utf8Buffer(this.FramePath),
+                    "Int*", &tgaHasRle,
+                    "Int*", &tgaOrientation,
+                    "Int"
+                ))
+                if tgaHasRle
+                    this.Info["compression"] := "tga_rle"
+                else if this.Info.Has("compression") && this.Format = "TGA"
+                    this.Info.Delete("compression")
+                this.Info["orientation"] := tgaOrientation
             }
 
             hasPngTransparency := 0
@@ -13228,6 +13294,34 @@ class Pillow {
             } else if this.Info.Has("comment") {
                 this.Info.Delete("comment")
             }
+            ; API-OPENINFO-001: the GIF87a/GIF89a version bytes and Pillow's
+            ; extension tuple (label bytes, offset after the label) — the
+            ; extension exists on the first frame only.
+            gifIs87a := 0
+            gifHasExtension := 0
+            gifExtensionOffset := 0
+            gifLabel := Buffer(11, 0)
+            Pillow.CheckStatus(DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_gif_open_info",
+                "Ptr", pathBytes,
+                "Int", this.FrameIndex,
+                "Int*", &gifIs87a,
+                "Int*", &gifHasExtension,
+                "Ptr", gifLabel,
+                "UPtr", gifLabel.Size,
+                "UPtr*", &gifExtensionOffset,
+                "Int"
+            ))
+            versionBytes := gifIs87a ? "GIF87a" : "GIF89a"
+            versionBuffer := Buffer(6, 0)
+            loop 6
+                NumPut("UChar", Ord(SubStr(versionBytes, A_Index, 1)), versionBuffer, A_Index - 1)
+            this.Info["version"] := versionBuffer
+            if gifHasExtension {
+                this.Info["extension"] := [gifLabel, gifExtensionOffset]
+            } else if this.Info.Has("extension") {
+                this.Info.Delete("extension")
+            }
             if this.Mode = "P" {
                 Pillow.Image.SetOptionalInfo(this.Info, "transparency", transparency)
             } else if this.Info.Has("transparency") {
@@ -13241,6 +13335,23 @@ class Pillow {
                 info[key] := value
             } else if info.Has(key) {
                 info.Delete(key)
+            }
+        }
+
+        static TiffCompressionName(value) {
+            ; Pillow 11.3.0's COMPRESSION_INFO dict lookup; unknown values
+            ; raise the bare KeyError shape (the integer rendered as the key).
+            switch value {
+                case 1: return "raw"
+                case 2: return "tiff_ccitt"
+                case 3: return "group3"
+                case 4: return "group4"
+                case 5: return "tiff_lzw"
+                case 6, 7: return "jpeg"
+                case 8: return "tiff_adobe_deflate"
+                case 32773: return "packbits"
+                case 32946: return "tiff_adobe_deflate"
+                default: throw Error("'" value "'", -1)
             }
         }
 
@@ -13399,6 +13510,41 @@ class Pillow {
                     this._CachedMode := Pillow.ModeName(mode)
                 }
                 return this._CachedMode
+            }
+        }
+
+        ; API-OPENINFO-001: Pillow's JPEG-only quantization attribute — a
+        ; dict {table_index: [64 values]}; other images raise the exact
+        ; AttributeError.
+        Quantization {
+            get {
+                if this.Format != "JPEG"
+                    throw Error("'Image' object has no attribute 'quantization'", -1)
+                this.RequireHandle()
+                qtableCount := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_metadata_jpeg_qtable_count",
+                    "Ptr", this.RequireHandle(),
+                    "UPtr*", &qtableCount,
+                    "Int"
+                ))
+                tables := Map()
+                loop qtableCount {
+                    table := Buffer(64 * 4, 0)
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_metadata_jpeg_qtable",
+                        "Ptr", this.RequireHandle(),
+                        "UPtr", A_Index - 1,
+                        "Ptr", table,
+                        "UPtr", 64,
+                        "Int"
+                    ))
+                    values := []
+                    loop 64
+                        values.Push(NumGet(table, (A_Index - 1) * 4, "Int"))
+                    tables[A_Index - 1] := values
+                }
+                return tables
             }
         }
 

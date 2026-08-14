@@ -298,6 +298,48 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-15 BEHAV-OPENINFO-001 Open-Side Info Attributes (GREEN)
+
+`BEHAV-OPENINFO-001` closes API-OPENINFO-001 (four deliberate native
+exports plus the facade info plumbing). The Pillow 11.3.0 oracle
+(fresh pins plus the JpegImagePlugin/GifImagePlugin/TiffImagePlugin/
+TgaImagePlugin sources) pins:
+
+- `Image.quantization`: a JPEG-only attribute — a dict
+  `{table_index: [64 values]}` from the DQT tables. The facade's
+  encoder scales its own DQT tables (the documented libjpeg payload
+  divergence), so the values are structural pins; every other image
+  raises Pillow's exact AttributeError
+  `'Image' object has no attribute 'quantization'`.
+- Opened JPEGs fill `progressive`/`progression` = 1 for SOF2
+  streams and `adobe` = 100 / `adobe_transform` = 0 from the CMYK
+  APP14 `Adobe` marker (absent otherwise), via the new
+  `pillow_c_image_metadata_jpeg_open_info` export (the decode
+  metadata now records SOF2 and APP14).
+- GIFs fill `version` with the `GIF87a`/`GIF89a` header bytes and
+  the frame-0 `extension` tuple `(label bytes, offset after the
+  label)` — Pillow's `info["extension"] = block, self.fp.tell()`
+  analogue (the NETSCAPE2.0 label at offset 39); later frames drop
+  the key, via `pillow_c_image_gif_open_info`.
+- TIFFs fill `compression` with the IFD0 tag-259 name via
+  `pillow_c_image_metadata_tiff_compression` and the
+  COMPRESSION_INFO mapping (`raw`/`tiff_ccitt`/`group3`/`group4`/
+  `tiff_lzw`/`jpeg`/`packbits`/`tiff_adobe_deflate`); unknown values
+  raise the bare KeyError shape like Pillow's dict lookup.
+- TGAs fill `orientation` = 1/-1 from the descriptor flags and
+  `compression` = `tga_rle` only when the image type carries the RLE
+  bit, via `pillow_c_image_tga_open_info` (other descriptor flags
+  match Pillow's SyntaxError rejection).
+
+The facade target passes `1/1` in `31ms`; the full directory suite
+passes `2853/2853`; Release x64 Rebuild has `0 Warning(s),
+0 Error(s)`; source/DLL export parity moves to `518/518`; and the
+rebuilt DLL SHA-256 is
+`EF03A7684225AF7ACEAB0C3AD8E9842F27E1CBC0818D065FA4604E034434AE41`.
+API-OPENINFO-001 is now DONE; the API-FONTVAR-002
+FreeType-dependent boundary stays the next packet, then the
+API-DRAWFONT-001/API-FONTANCHOR-001 native follow-ups.
+
 ## 2026-08-15 BEHAV-MODSURF-001 ImageDraw Module Surface (GREEN)
 
 `BEHAV-MODSURF-001` delivers the module half of API-DRAW-TEXT-001
@@ -42034,7 +42076,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | API-FONTANCHOR-001 | Facade API | gap | The native font anchor seam approximates Pillow's `_imagingft.c` anchor math: Pillow anchors `m`/`a`/`d` vertically on the em-box (`ascender`/`descender`) and `m`/`r` horizontally on the advance (`PIXEL(position)`) while the native seam's values diverge (verified for `m`/`d` vertical and `r` horizontal on arial.ttf 16; `a`/`l`/`la`/`rs`/`ls` pins pass). | BEHAV-DRAWTEXT-001 multiline anchor pins vs `_imagingft.c` `getbbox` anchor switch. |
 | API-SAVEOPTS-001 | Facade API | done | Waves 1-6 (BEHAV-SAVEOPTS-001 through 006) plus BEHAV-ERRMSGS-001 are done: QOI `colorspace`, TGA `id_section`/`orientation`, TIFF unknown-compression-ignored + `quality` validation, JPEG integer `subsampling` breadth, PNG `compress_type` (0-4 accepted, the exact 5+ OSError), P-mode `bits` (auto-minimized depths + the override chain with the exact shift errors), and `dictionary` (the exact bytes-like TypeError; bytes accepted-and-ignored under the documented no-compressor boundary — the DLL writes stored deflate blocks), GIF `interlace` (the interlaced default with the @PIL153 workaround) and `palette` (the exact-match remap), TIFF `resolution`/`resolution_unit` (Pillow's exact float->RATIONAL continued-fraction conversion, the pair-truncation warning, unit-only tag 296, verbatim unit values, and the exact TypeError/struct.error messages; `strip_size` is accepted-and-ignored like Pillow 11.3.0), TIFF named-tag kwargs `description`/`software`/`date_time`/`artist`/`copyright` (write_string's exact conversions plus the per-axis `x_resolution`/`y_resolution` surface and the resolution/x/y/dpi precedence chain), JPEG `smooth`/`streamtype` (libjpeg-turbo's input smoothing kernels ported into the native L/RGB/CMYK encoders and the abbreviated tables-only/image-only stream modes with Pillow's exact marker structures, reopen errors, and the PyArg_ParseTuple TypeErrors), TIFF `tiffinfo` arbitrary tags (ImageFileDirectory_v2's full type inference for unknown tags plus the registered-tag rules and the exact error shapes, patched into IFD0 after the plain save). TIFF jpeg/group3/group4 compression stays the documented rejection boundary. | Red-team audit (probe_save_options.py); BEHAV-SAVEOPTS-001/002/003/004/005/006 (oracle/probe_saveopts_dll.py, probe_pngbits_dll.py, probe_gifopts2_dll.py, probe_tiffres_dll.py, probe_tiffnamed_dll.py, probe_jpegsmooth_dll.py, probe_tiffinfo_dll.py). |
 | API-SAVEOPTS-002 | Facade API | done | All six runtime-verified error-message mismatches are Pillow-exact with BEHAV-SAVEOPTS-001: PNG `compress_level` type (`'str' object cannot be interpreted as an integer`) and range (`codec configuration error when writing image file`), JPEG `quality` bogus (`Invalid quality setting`; the non-Pillow preset aliases are removed), JPEG `subsampling` (`'str' object cannot be interpreted as an integer`), TIFF `quality` (`Invalid quality setting` on the jpeg route), ICO `sizes` (`'>' not supported between instances of 'str' and 'int'`). | Red-team audit; BEHAV-SAVEOPTS-001. |
-| API-OPENINFO-001 | Facade API | gap | Unexposed open-side info: JPEG `quantization`/`progressive`/`progression`/`adobe`/`adobe_transform`, GIF `version`/`extension`, TIFF `compression`, TGA `compression`/`orientation` — not exposed and not boundary-recorded. | Red-team audit (probe_open_info.py). |
+| API-OPENINFO-001 | Facade API | done | `Image.quantization` (JPEG-only dict `{table_index: [64 values]}` with Pillow's exact AttributeError elsewhere), JPEG `progressive`/`progression`/`adobe`/`adobe_transform`, GIF `version`/`extension` (the `(label, offset)` tuple on frame 0), TIFF `compression` (the COMPRESSION_INFO names incl. code 8 deflate; unknown values raise the bare KeyError shape), and TGA `compression` (`tga_rle` iff the RLE bit)/`orientation` (1/-1) are implemented with BEHAV-OPENINFO-001 (four deliberate native exports: `pillow_c_image_metadata_jpeg_open_info`, `pillow_c_image_gif_open_info`, `pillow_c_image_metadata_tiff_compression`, `pillow_c_image_tga_open_info`). | BEHAV-OPENINFO-001 (oracle/probe_open_info.py, probe_open_info2.py + the plugin sources). |
 | MODE-NUM-001CM-CORR | Modes | covered | CORRECTION of the `MODE-NUM-001CM` default-resample claim, closed by MODE-RGBA-RESIZE-001: Pillow 11.3.0's rule is `NEAREST if mode.startswith("BGR;") else BICUBIC`; the facade now defaults to BICUBIC (the old NEAREST-for-any-`;`-mode rule at pillow.ahk line 14579 is gone). Oracle: default `I;16` resize == BICUBIC `[59,241,59,241]` (facade/native byte-exact); the I;16B non-NEAREST facade error stays a documented boundary (Pillow accepts and garbles via the endian bug; replicating the corruption is declined). Red test added in `PillowTestResizeRgbaPremultiply` plus the regenerated I;16 default fixture in `PillowTestImageResizeTransformI16`. | Red-team audit (probe2.py); `Image.resize` source; MODE-RGBA-RESIZE-001 packet. |
 | MODE-RGBA-RESIZE-001 | Modes | covered | Bounded RGBA/LA premultiplied resize roundtrip plus the default-resample rule: Pillow 11.3.0 resize premultiplies RGBA/LA non-NEAREST resizes into RGBa/La with `out[c] = (c * a + 127) // 255`, resizes, and unpremultiplies with `out[c] = clip(c * 255 // a)` — the premultiplied value is KEPT when `a == 0` (a==255 passes through) — and drops `reducing_gap` on the inner resize; 1/P force NEAREST and same-size full-box short-circuits to a copy. `source_sample_for_resize` now premultiplies in-sample with +127 (was +128 via `pillow_c_mul_div_255`), the main filter path's output unpremultiply keeps the premultiplied value at a==0 (was zeroed), `resize_with_mode_rules` forces 1/P to NEAREST and drops reducing_gap for RGBA/LA non-NEAREST, and the facade `Resize` defaults to BICUBIC with the I;16B non-NEAREST boundary error restored. Verified by `PillowTestResizeRgbaPremultiply`, the raw advanced-filter matrix (LANCZOS RGBA a==0 pixel), the I;16 boundaries target, and `oracle/probe_premultiply_formulas.py`; full suite `2820/2820`. Export parity remains `477/477`; DLL SHA-256 `6FB517FE788BA01A1EEF079AC2396C8BA3DF2A2DE15840C1D7C115385A462E70`. | `oracle/probe_premultiply_formulas.py`, `source_sample_for_resize`, `resize_with_mode_rules`, facade `Resize` default + I;16B guard, `PillowTestBufferFromU16` helper, facade/raw resize tests. |
 | API-ERRMSGS-001 | Facade API | done | Waves 1 (BEHAV-ERRMSGS-001) and 2 (BEHAV-ERRMSGS-002) are done: resize resample/size (the exact `Unknown resampling filter (<value>). Use Image.Resampling...` ValueError with the value rendered verbatim, plus the C-int parse TypeErrors), crop box order (`Coordinate 'right' is less than 'left'` / `Coordinate 'lower' is less than 'upper'`, strict comparisons before the C call), getpixel coordinates (`an integer is required` for strings, float truncation, single negative wrap, `image index out of range` for OOB), reduce (`scale must be > 0` plus the int-parse TypeErrors), transpose (`No such transpose operation` plus the int-parse TypeErrors), histogram/entropy masks (`bad transparency mask` for non-1/L modes, `images do not match` for size mismatches), point LUT (`wrong number of lut entries`, `type str doesn't define __round__ method` for strings), filter (`filter argument should be ImageFilter.Filter instance or class`), PNG `dictionary` (`a bytes-like object is required, not 'str'`; bytes accepted-and-ignored under the documented no-compressor boundary), and the dependency-gated format shapes (BUFR/GRIB/HDF5/WMF `save handler not installed`, FITS/MPEG bare KeyError, `encoder WebP/AVIF/JPEG2000 not available`, `decoder webp/avif/jpeg2000 not available` for Pillow-accepted magic, the quoted UnidentifiedImageError form, and the missing-file FileNotFoundError). | Red-team audit; BEHAV-ERRMSGS-001/002 runtime facade probes + `_imaging.c`/`Image.py` source pins. |

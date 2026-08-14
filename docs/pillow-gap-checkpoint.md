@@ -84,7 +84,10 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-MODSURF-001 (the ImageDraw module
+Latest covered gap tail: BEHAV-OPENINFO-001 (the open-side info
+attributes: JPEG quantization/progressive/adobe, GIF
+version/extension, TIFF compression, TGA compression/orientation)
+after BEHAV-MODSURF-001 (the ImageDraw module
 surface: getdraw/ImageDraw2, ImageStat.Global, the ImageFilter base
 classes + exact validation messages, and ImageMath
 lambda_eval/imagemath_*)
@@ -475,11 +478,10 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-OPENINFO-001` (open-side JPEG
-  quantization/progressive/adobe, GIF version/extension, TIFF
-  compression, TGA compression/orientation), then the
-  `API-FONTVAR-002` FreeType-dependent variable-font boundary and
-  the `API-DRAWFONT-001`/`API-FONTANCHOR-001` native follow-ups.
+- Selected next gap: the `API-FONTVAR-002` FreeType-dependent
+  variable-font boundary, then the `API-DRAWFONT-001` (truetype draw
+  seams) and `API-FONTANCHOR-001` (em-box anchor math) native
+  follow-ups.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19769,6 +19771,40 @@ skips. Export parity stays `514/514` and the DLL SHA-256 stays
 `5787FE4F5D322204C0845136B13FD7B09326C78230A7DDF68E4BF42EB6B3CABF`.
 API-DRAW-TEXT-001 is now DONE; API-OPENINFO-001 stays the next
 packet, then the API-FONTVAR-002 FreeType-dependent boundary.
+```
+
+2026-08-15: `BEHAV-OPENINFO-001` is GREEN as the open-side info
+wave (API-OPENINFO-001). The Pillow 11.3.0 oracle (fresh pins plus
+the JpegImagePlugin/GifImagePlugin/TiffImagePlugin/TgaImagePlugin
+sources) pins: `Image.quantization` is a JPEG-only attribute — a
+dict `{table_index: [64 values]}` from the DQT tables (the facade's
+encoder scales its own DQT tables, so the values are structural
+pins; Pillow's exact AttributeError `'Image' object has no attribute
+'quantization'` on every other image); opened JPEGs fill
+`progressive`/`progression` = 1 for SOF2 streams, `adobe` = 100 and
+`adobe_transform` = 0 from the CMYK APP14 marker (absent otherwise);
+GIFs fill `version` with the `GIF87a`/`GIF89a` header bytes and the
+frame-0 `extension` tuple `(label bytes, offset after the label)`
+(the NETSCAPE2.0 label at offset 39 — Pillow's `self.fp.tell()`
+analogue; later frames drop the key); TIFFs fill `compression` with
+the IFD0 tag-259 name (`raw`/`tiff_ccitt`/`group3`/`group4`/
+`tiff_lzw`/`jpeg`/`packbits`/`tiff_adobe_deflate`, unknown values
+raise the bare KeyError shape like Pillow's COMPRESSION_INFO
+lookup); TGAs fill `orientation` = 1/-1 from the descriptor flags
+and `compression` = `tga_rle` only when the image type carries the
+RLE bit. Four deliberate native exports (`pillow_c_image_metadata_
+jpeg_open_info`, `pillow_c_image_gif_open_info`,
+`pillow_c_image_metadata_tiff_compression`,
+`pillow_c_image_tga_open_info`); Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity moves to
+`518/518` with zero difference; and the rebuilt DLL SHA-256 is
+`EF03A7684225AF7ACEAB0C3AD8E9842F27E1CBC0818D065FA4604E034434AE41`.
+The facade target passes `1/1` in `31ms`; the full directory suite
+passes `2853/2853` in `23047ms` with zero failures, errors, or
+skips. API-OPENINFO-001 is now
+DONE; the API-FONTVAR-002 FreeType-dependent boundary stays the
+next packet, then the API-DRAWFONT-001/API-FONTANCHOR-001 native
+follow-ups.
 ```
 
 If any line above is no longer true, update this file first, then update

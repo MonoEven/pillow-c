@@ -9065,6 +9065,40 @@ bool pillow_c_tiff_read_signed_rational_array_entry_value(
         out_denominators);
 }
 
+bool read_tiff_ifd0_compression(const std::uint8_t* tiff, std::size_t tiff_size, std::uint32_t* out_compression)
+{
+    if (!tiff || !out_compression || tiff_size < 8u) {
+        return false;
+    }
+    const bool little_endian = tiff[0] == 'I' && tiff[1] == 'I';
+    const bool big_endian = tiff[0] == 'M' && tiff[1] == 'M';
+    if ((!little_endian && !big_endian) || read_tiff16(tiff + 2u, little_endian) != 42u) {
+        return false;
+    }
+    const std::uint32_t ifd_offset = read_tiff32(tiff + 4u, little_endian);
+    if (ifd_offset > tiff_size || tiff_size - ifd_offset < 2u) {
+        return false;
+    }
+    const std::uint16_t entry_count = read_tiff16(tiff + ifd_offset, little_endian);
+    const std::size_t entries_offset = static_cast<std::size_t>(ifd_offset) + 2u;
+    if (entries_offset > tiff_size || entry_count > (tiff_size - entries_offset) / 12u) {
+        return false;
+    }
+    for (std::uint16_t index = 0u; index < entry_count; ++index) {
+        const std::uint8_t* entry = tiff + entries_offset + static_cast<std::size_t>(index) * 12u;
+        if (read_tiff16(entry, little_endian) == 259u) {
+            const std::uint16_t type = read_tiff16(entry + 2u, little_endian);
+            const std::uint32_t count = read_tiff32(entry + 4u, little_endian);
+            if (type != 3u || count != 1u) {
+                return false;
+            }
+            *out_compression = read_tiff16(entry + 8u, little_endian);
+            return true;
+        }
+    }
+    return false;
+}
+
 bool count_tiff_ifds(const std::uint8_t* tiff, std::size_t tiff_size, int* out_count)
 {
     if (!tiff || !out_count || tiff_size < 8u) {
@@ -9247,6 +9281,27 @@ extern "C" __declspec(dllexport) int pillow_c_image_frame_count_tiff(
         return PILLOW_C_ALLOCATION_FAILED;
     }
     return wic_container_frame_count(path, GUID_ContainerFormatTiff, out_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_metadata_tiff_compression(
+    const char* path,
+    std::uint32_t* out_compression)
+{
+    if (!path || !out_compression) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_compression = 0u;
+    try {
+        std::vector<std::uint8_t> tiff_bytes;
+        if (!read_binary_file(path, &tiff_bytes) ||
+            !read_tiff_ifd0_compression(tiff_bytes.data(), tiff_bytes.size(),
+                                        out_compression)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_tiff(

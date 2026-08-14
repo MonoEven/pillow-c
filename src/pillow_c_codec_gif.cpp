@@ -22,6 +22,10 @@ struct GifMetadata {
     int background = -1;
     int transparency = -1;
     std::vector<std::uint8_t> comment;
+    bool is_87a = false;
+    bool has_extension = false;
+    std::vector<std::uint8_t> extension_label;
+    std::size_t extension_offset = 0;
 };
 
 bool skip_gif_sub_blocks(const std::vector<std::uint8_t>& data, std::size_t* pos)
@@ -69,6 +73,7 @@ bool read_gif_metadata(const char* path, int frame_index, GifMetadata* out)
           std::memcmp(data.data(), "GIF89a", 6u) == 0)) {
         return false;
     }
+    out->is_87a = std::memcmp(data.data(), "GIF87a", 6u) == 0;
 
     const std::uint8_t logical_packed = data[10];
     out->background = data[11];
@@ -134,6 +139,13 @@ bool read_gif_metadata(const char* path, int frame_index, GifMetadata* out)
                 const std::uint8_t* app = data.data() + pos;
                 const bool is_looping_app = gif_app_extension_is_looping(app, app_size);
                 pos += app_size;
+                // Pillow's info["extension"] = (label_bytes, file_offset
+                // right after the label) -- only for the first frame.
+                if (current_frame == 0 && !out->has_extension) {
+                    out->has_extension = true;
+                    out->extension_label.assign(app, app + app_size);
+                    out->extension_offset = pos;
+                }
                 bool terminated = false;
                 while (pos < data.size()) {
                     const std::size_t block_size = data[pos++];
@@ -2725,6 +2737,53 @@ extern "C" __declspec(dllexport) int pillow_c_image_gif_metadata_ex(
         *out_disposal = metadata.disposal;
         *out_background = metadata.background;
         *out_transparency = metadata.transparency;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_gif_open_info(
+    const char* path,
+    int frame_index,
+    int* out_is_87a,
+    int* out_has_extension,
+    std::uint8_t* out_label,
+    std::size_t out_label_size,
+    std::size_t* out_extension_offset)
+{
+    if (!path || !out_is_87a || !out_has_extension || !out_extension_offset) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_is_87a = 0;
+    *out_has_extension = 0;
+    *out_extension_offset = 0;
+    if (frame_index < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    try {
+        GifMetadata metadata;
+        if (!read_gif_metadata(path, frame_index, &metadata)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        // API-OPENINFO-001: Pillow's version (the GIF87a/GIF89a header) and
+        // the extension tuple (label bytes, offset after the label) -- the
+        // extension exists on the first frame only.
+        *out_is_87a = metadata.is_87a ? 1 : 0;
+        if (frame_index == 0 && metadata.has_extension) {
+            *out_has_extension = 1;
+            if (out_label_size < metadata.extension_label.size()) {
+                return PILLOW_C_INVALID_LENGTH;
+            }
+            if (!metadata.extension_label.empty() && !out_label) {
+                return PILLOW_C_NULL_POINTER;
+            }
+            if (!metadata.extension_label.empty()) {
+                std::memcpy(out_label, metadata.extension_label.data(),
+                            metadata.extension_label.size());
+            }
+            *out_extension_offset = metadata.extension_offset;
+        }
         return PILLOW_C_OK;
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
