@@ -880,10 +880,224 @@ class Pillow {
         }
 
         static Load(filename) {
-            ; Pillow 11.3.0 parses GIMP palette/gradient and Adobe palette
-            ; text files through the PaletteFile parser classes; that
-            ; file-parser family is a documented boundary in this runtime.
-            throw Error("Pillow.ImagePalette.load GIMP/Adobe palette file parsing is not supported by the AHK runtime", -1)
+            ; BEHAV-PALETTE-002: Pillow 11.3.0 ImagePalette.load tries
+            ; GimpPaletteFile, GimpGradientFile, then PaletteFile; each
+            ; parser's SyntaxError/ValueError falls through to the next,
+            ; and a fully failed chain raises "cannot load palette". The
+            ; gradient's non-RGB colour space OSError and its short-line
+            ; IndexError escape load unwrapped.
+            if !FileExist(filename)
+                throw Error("[Errno 2] No such file or directory: '" filename "'", -1)
+            content := FileRead(filename)
+            try {
+                return Pillow.ImagePalette.GimpPaletteParse(content)
+            } catch Error as err {
+                if !Pillow.ImagePalette.PaletteLoadCaught(err.Message)
+                    throw
+            }
+            try {
+                return Pillow.ImagePalette.GimpGradientParse(content)
+            } catch Error as err {
+                if !Pillow.ImagePalette.PaletteLoadCaught(err.Message)
+                    throw
+            }
+            try {
+                return Pillow.ImagePalette.PaletteParse(content)
+            } catch Error as err {
+                if !Pillow.ImagePalette.PaletteLoadCaught(err.Message)
+                    throw
+            }
+            throw Error("cannot load palette", -1)
+        }
+
+        static PaletteLoadCaught(message) {
+            return message = "not a GIMP palette file" || message = "bad palette file" || message = "bad palette entry"
+                || message = "not a GIMP gradient file" || message = "Invalid value."
+        }
+
+        static PaletteTokens(line) {
+            trimmed := Trim(line)
+            collapsed := RegExReplace(trimmed, "\s+", " ")
+            if collapsed = ""
+                return []
+            return StrSplit(collapsed, " ")
+        }
+
+        static GimpPaletteParse(content) {
+            ; GimpPaletteFile._read with limit=True
+            lines := StrSplit(content, "`n", "`r")
+            if lines.Length = 0 || !(SubStr(lines[1], 1, 13) = "GIMP Palette")
+                throw Error("not a GIMP palette file", -1)
+            values := []
+            i := 0
+            for line in lines {
+                if A_Index = 1
+                    continue
+                if i = 259
+                    break
+                i += 1
+                if line = "" {
+                    if A_Index < lines.Length
+                        throw Error("bad palette entry", -1)
+                    break
+                }
+                if RegExMatch(line, "^\w+:|^#")
+                    continue
+                if StrLen(line) > 100
+                    throw Error("bad palette file", -1)
+                tokens := Pillow.ImagePalette.PaletteTokens(line)
+                if tokens.Length < 3
+                    throw Error("bad palette entry", -1)
+                values.Push(Pillow.ImagePalette.PaletteInt(tokens[1]))
+                values.Push(Pillow.ImagePalette.PaletteInt(tokens[2]))
+                values.Push(Pillow.ImagePalette.PaletteInt(tokens[3]))
+                if values.Length = 768
+                    break
+            }
+            out := Buffer(values.Length, 0)
+            for index, value in values
+                NumPut("UChar", value, out, index - 1)
+            return [out, "RGB"]
+        }
+
+        static PaletteInt(text) {
+            try {
+                return Integer(text)
+            } catch {
+                throw Error("Invalid value.", -1)
+            }
+        }
+
+        static GradientSegment(id, middle, pos) {
+            ; GimpGradientFile segment functions
+            if id = 0 {
+                if pos <= middle {
+                    if middle < 0.0000000001
+                        return 0.0
+                    return 0.5 * pos / middle
+                }
+                pos2 := pos - middle
+                middle2 := 1.0 - middle
+                if middle2 < 0.0000000001
+                    return 1.0
+                return 0.5 + 0.5 * pos2 / middle2
+            }
+            if id = 1
+                return pos ** (Log(0.5) / Log(Max(middle, 0.0000000001)))
+            linear := Pillow.ImagePalette.GradientSegment(0, middle, pos)
+            if id = 2
+                return (Sin(-1.5707963267948966 + 3.141592653589793 * linear) + 1.0) / 2.0
+            if id = 3
+                return Sqrt(1.0 - (linear - 1.0) ** 2)
+            return 1.0 - Sqrt(1.0 - linear ** 2)
+        }
+
+        static GimpGradientParse(content) {
+            ; GimpGradientFile + GradientFile.getpalette(256)
+            lines := StrSplit(content, "`n", "`r")
+            if lines.Length = 0 || !(SubStr(lines[1], 1, 14) = "GIMP Gradient")
+                throw Error("not a GIMP gradient file", -1)
+            line := lines[2]
+            if SubStr(line, 1, 6) = "Name: "
+                line := Trim(lines[3])
+            count := Pillow.ImagePalette.PaletteInt(Trim(line))
+            segments := []
+            loop count {
+                tokens := Pillow.ImagePalette.PaletteTokens(lines[3 + A_Index])
+                if tokens.Length < 13
+                    throw Error("list index out of range", -1)
+                w := []
+                loop 11
+                    w.Push(Pillow.ImagePalette.PaletteFloat(tokens[A_Index]))
+                segmentId := Pillow.ImagePalette.PaletteInt(tokens[12])
+                cspace := Pillow.ImagePalette.PaletteInt(tokens[13])
+                if cspace != 0
+                    throw Error("cannot handle HSV colour space", -1)
+                segments.Push([w[1], w[3], w[2], [w[4], w[5], w[6], w[7]], [w[8], w[9], w[10], w[11]], segmentId])
+            }
+            out := Buffer(1024, 0)
+            ix := 1
+            loop 256 {
+                i := A_Index - 1
+                x := i / 255
+                while segments[ix][2] < x
+                    ix += 1
+                seg := segments[ix]
+                x0 := seg[1]
+                x1 := seg[2]
+                xm := seg[3]
+                rgb0 := seg[4]
+                rgb1 := seg[5]
+                segment := seg[6]
+                w := x1 - x0
+                scale := 0.0
+                if w < 0.0000000001
+                    scale := Pillow.ImagePalette.GradientSegment(segment, 0.5, 0.5)
+                else
+                    scale := Pillow.ImagePalette.GradientSegment(segment, (xm - x0) / w, (x - x0) / w)
+                for band in [1, 2, 3, 4] {
+                    value := Integer(255 * ((rgb1[band] - rgb0[band]) * scale + rgb0[band]) + 0.5)
+                    NumPut("UChar", value, out, i * 4 + band - 1)
+                }
+            }
+            return [out, "RGBA"]
+        }
+
+        static PaletteFloat(text) {
+            try {
+                return Float(text)
+            } catch {
+                throw Error("Invalid value.", -1)
+            }
+        }
+
+        static PaletteParse(content) {
+            ; PaletteFile (Teragon-style): 256 grayscale entries overridden
+            ; by "index r g b" or "index value" lines
+            out := Buffer(768, 0)
+            loop 256 {
+                base := (A_Index - 1) * 3
+                NumPut("UChar", A_Index - 1, out, base)
+                NumPut("UChar", A_Index - 1, out, base + 1)
+                NumPut("UChar", A_Index - 1, out, base + 2)
+            }
+            paletteLines := StrSplit(content, "`n", "`r")
+            for line in paletteLines {
+                if line = "" {
+                    if A_Index < paletteLines.Length
+                        throw Error("Invalid value.", -1)
+                    break
+                }
+                if SubStr(line, 1, 1) = "#"
+                    continue
+                if StrLen(line) > 100
+                    throw Error("bad palette file", -1)
+                tokens := Pillow.ImagePalette.PaletteTokens(line)
+                i := 0
+                r := 0
+                g := 0
+                b := 0
+                if tokens.Length = 4 {
+                    i := Pillow.ImagePalette.PaletteInt(tokens[1])
+                    r := Pillow.ImagePalette.PaletteInt(tokens[2])
+                    g := Pillow.ImagePalette.PaletteInt(tokens[3])
+                    b := Pillow.ImagePalette.PaletteInt(tokens[4])
+                } else if tokens.Length = 2 {
+                    i := Pillow.ImagePalette.PaletteInt(tokens[1])
+                    r := Pillow.ImagePalette.PaletteInt(tokens[2])
+                    g := r
+                    b := r
+                } else
+                    throw Error("Invalid value.", -1)
+                if i >= 0 && i <= 255 {
+                    if r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255
+                        throw Error("int too big to convert", -1)
+                    NumPut("UChar", r, out, i * 3)
+                    NumPut("UChar", g, out, i * 3 + 1)
+                    NumPut("UChar", b, out, i * 3 + 2)
+                }
+            }
+            return [out, "RGB"]
         }
 
         static MakeLinearLut(black, white) {

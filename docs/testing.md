@@ -47,8 +47,22 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2833` AHK tests: `1392` raw DLL tests and
-`1441` facade tests.
+This suite currently registers `2834` AHK tests: `1392` raw DLL tests and
+`1442` facade tests.
+
+Latest `BEHAV-PALETTE-002` verification: the Pillow 11.3.0 oracle
+(`oracle/probe_palette_load.py`/`probe_palette_load.json`) pins
+ImagePalette.load (the GimpPaletteFile/GimpGradientFile/PaletteFile
+try-chain with the 259-line/768-byte caps, the byte-pinned gradient
+render, the HSV/IndexError escapes, the fall-through
+`cannot load palette`, and the FileNotFoundError shape). The facade
+palette-load target passes `1/1` in `16ms`; the full directory
+suite passes `2834/2834` in `22344ms` with zero failures, errors,
+or skips. Facade-only change: source/DLL export parity remains
+`498/498` and the DLL SHA-256 remains
+`6603840FEEA48553F2D42ED2444DD5A30331A17ABE3ABCBBB8E262D0988AE747`.
+The wave continues with ImageFile.Parser feed/close and
+TransposedFont.GetMask next.
 
 Latest `BEHAV-OPEN-009` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_9.py`/`probe_open_9.json` with the ctypes

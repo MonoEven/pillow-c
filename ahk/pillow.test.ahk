@@ -27065,15 +27065,16 @@ PillowTestImagePalette(*) {
     }
     AhkTest.AssertEqual("palette contains raw palette data", saveRawError)
 
-    ; load() and the GimpPaletteFile/GimpGradientFile/PaletteFile parser
-    ; classes are documented boundaries (fail-loud).
+    ; load() now implements the GIMP/gradient/Teragon parser family
+    ; (BEHAV-PALETTE-002, pinned by PillowTestImagePaletteLoad); a
+    ; missing file raises Pillow's FileNotFoundError shape.
     loadError := ""
     try {
         Pillow.ImagePalette.Load("palette.gpl")
     } catch Error as err {
         loadError := err.Message
     }
-    AhkTest.AssertEqual("Pillow.ImagePalette.load GIMP/Adobe palette file parsing is not supported by the AHK runtime", loadError)
+    AhkTest.AssertEqual("[Errno 2] No such file or directory: 'palette.gpl'", loadError)
 
     ; Pillow's ImagePalette.ImagePalette class name is served by the
     ; Pillow.ImagePalette class itself.
@@ -27081,6 +27082,79 @@ PillowTestImagePalette(*) {
 }
 
 AhkTest.Test("Pillow ImagePalette matches Pillow 11.3.0 palette semantics", PillowTestImagePalette)
+
+PillowTestImagePaletteLoad(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    gplPath := A_Temp "\palette-load.gpl"
+    ggrPath := A_Temp "\palette-load.ggr"
+    terPath := A_Temp "\palette-load.txt"
+    try {
+        ; --- GIMP .gpl ---
+        FileAppend("GIMP Palette`nName: test`nColumns: 4`n# comment`n  0  10  20  30`n1 40 50 60`n", gplPath)
+        result := Pillow.ImagePalette.Load(gplPath)
+        AhkTest.AssertEqual("RGB", result[2])
+        AhkTest.AssertEqual(6, result[1].Size)
+        AhkTest.AssertEqual("000a14012832", PillowTestPdfBytesToHex(PillowTestBufferToArray(result[1])))
+
+        ; --- 256 entries exactly, and the 300-entry cap ---
+        gplFull := "GIMP Palette`n"
+        loop 256
+            gplFull .= (A_Index - 1) " " (A_Index - 1) " " (A_Index - 1) " " A_Index "`n"
+        PillowTestDeleteFile(gplPath)
+        FileAppend(gplFull, gplPath)
+        AhkTest.AssertEqual(768, Pillow.ImagePalette.Load(gplPath)[1].Size)
+        gpl300 := "GIMP Palette`n"
+        loop 300
+            gpl300 .= (A_Index - 1) " " (A_Index - 1) " " (A_Index - 1) " " A_Index "`n"
+        PillowTestDeleteFile(gplPath)
+        FileAppend(gpl300, gplPath)
+        AhkTest.AssertEqual(768, Pillow.ImagePalette.Load(gplPath)[1].Size)
+
+        ; --- .gpl errors fall through to "cannot load palette" ---
+        PillowTestDeleteFile(gplPath)
+        FileAppend("GIMP Palette`n0 1 x 3`n", gplPath)
+        AhkTest.AssertEqual("cannot load palette", PillowTestFormatCaptureError(() => Pillow.ImagePalette.Load(gplPath)))
+        PillowTestDeleteFile(gplPath)
+        FileAppend("GIMP Palette`n" StrReplace(Format("{:120}", ""), " ", "x") "`n", gplPath)
+        AhkTest.AssertEqual("cannot load palette", PillowTestFormatCaptureError(() => Pillow.ImagePalette.Load(gplPath)))
+
+        ; --- Teragon-style palette ---
+        FileAppend("# simple`n0 1 2 3`n5 9`n", terPath)
+        terResult := Pillow.ImagePalette.Load(terPath)
+        AhkTest.AssertEqual("RGB", terResult[2])
+        AhkTest.AssertEqual(768, terResult[1].Size)
+        AhkTest.AssertEqual("010203010101020202030303", PillowTestPdfBytesToHex(PillowTestArraySlice(PillowTestBufferToArray(terResult[1]), 1, 12)))
+        PillowTestDeleteFile(terPath)
+        FileAppend("0 x y z`n", terPath)
+        AhkTest.AssertEqual("cannot load palette", PillowTestFormatCaptureError(() => Pillow.ImagePalette.Load(terPath)))
+
+        ; --- GIMP gradient ---
+        FileAppend("GIMP Gradient`nName: g`n3`n0.0 0.5 1.0 0.0 0.0 0.0 1.0 1.0 0.0 0.0 1.0 0 0`n0.5 0.75 1.0 1.0 0.0 0.0 1.0 0.0 1.0 0.0 1.0 0 0`n0.75 1.0 1.0 0.0 1.0 0.0 1.0 0.0 0.0 1.0 1.0 1 0`n", ggrPath)
+        ggrResult := Pillow.ImagePalette.Load(ggrPath)
+        AhkTest.AssertEqual("RGBA", ggrResult[2])
+        AhkTest.AssertEqual(1024, ggrResult[1].Size)
+        AhkTest.AssertEqual("000000ff010000ff020000ff", PillowTestPdfBytesToHex(PillowTestArraySlice(PillowTestBufferToArray(ggrResult[1]), 1, 12)))
+        PillowTestDeleteFile(ggrPath)
+        FileAppend("GIMP Gradient`nName: h`n1`n0.0 0.5 1.0 0.0 0.0 0.0 1.0 1.0 0.0 0.0 1.0 0 1`n", ggrPath)
+        AhkTest.AssertEqual("cannot handle HSV colour space", PillowTestFormatCaptureError(() => Pillow.ImagePalette.Load(ggrPath)))
+        PillowTestDeleteFile(ggrPath)
+        FileAppend("not a gradient`n", ggrPath)
+        AhkTest.AssertEqual("cannot load palette", PillowTestFormatCaptureError(() => Pillow.ImagePalette.Load(ggrPath)))
+
+        ; --- garbage and missing files ---
+        PillowTestDeleteFile(gplPath)
+        FileAppend("`x01`x02`x03 not a palette at all`n", gplPath)
+        AhkTest.AssertEqual("cannot load palette", PillowTestFormatCaptureError(() => Pillow.ImagePalette.Load(gplPath)))
+        missingPath := A_Temp "\palette-load-missing.gpl"
+        AhkTest.AssertEqual("[Errno 2] No such file or directory: '" missingPath "'", PillowTestFormatCaptureError(() => Pillow.ImagePalette.Load(missingPath)))
+    } finally {
+        PillowTestDeleteFile(gplPath)
+        PillowTestDeleteFile(ggrPath)
+        PillowTestDeleteFile(terPath)
+    }
+}
+
+AhkTest.Test("Pillow ImagePalette.load matches Pillow 11.3.0 GIMP/gradient/Teragon parsing and errors", PillowTestImagePaletteLoad)
 
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

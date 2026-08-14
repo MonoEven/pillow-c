@@ -270,10 +270,15 @@ bitmap` / `cannot select bitmap` escapes; the dpi-override
 load(dpi) stays a documented child and save raises the exact
 `WMF save handler not installed` OSError.
 
+`BEHAV-PALETTE-002` is facade-only and changes NO ABI: the
+ImagePalette.load GIMP/.ggr/Teragon parser family runs in the
+facade with Pillow's exact try-chain and error escapes.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`498/498`; the full AHK suite is `2833/2833`; and the current DLL SHA-256 is
+`498/498`; the full AHK suite is `2834/2834`; and the current DLL SHA-256 is
 `6603840FEEA48553F2D42ED2444DD5A30331A17ABE3ABCBBB8E262D0988AE747`
-(BEHAV-OPEN-009 adds the `pillow_c_image_open_wmf` export below;
+(BEHAV-PALETTE-002 changes no ABI;
+BEHAV-OPEN-009 adds the `pillow_c_image_open_wmf` export below;
 BEHAV-OPEN-008 changes no ABI;
 BEHAV-OPEN-007 adds the `pillow_c_image_open_pcd` export below;
 BEHAV-OPEN-006 adds the `pillow_c_image_open_mic` export below;

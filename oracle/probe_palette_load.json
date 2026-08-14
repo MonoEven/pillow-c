@@ -1,0 +1,58 @@
+{
+ "gpl": {
+  "ok": [
+   6,
+   "RGB",
+   "000a14012832"
+  ]
+ },
+ "gpl_full": {
+  "ok": [
+   768,
+   "RGB",
+   "000000010101020202030303"
+  ]
+ },
+ "gpl_300": {
+  "ok": [
+   768,
+   "RGB",
+   "000000010101020202030303"
+  ]
+ },
+ "gpl_bad_int": {
+  "err": "OSError: cannot load palette"
+ },
+ "gpl_long_line": {
+  "err": "OSError: cannot load palette"
+ },
+ "teragon": {
+  "ok": [
+   768,
+   "RGB",
+   "010203010101020202030303"
+  ]
+ },
+ "teragon_bad": {
+  "err": "OSError: cannot load palette"
+ },
+ "ggr": {
+  "ok": [
+   1024,
+   "RGBA",
+   "000000ff010000ff020000ff"
+  ]
+ },
+ "ggr_hsv": {
+  "err": "OSError: cannot handle HSV colour space"
+ },
+ "ggr_bad_magic": {
+  "err": "OSError: cannot load palette"
+ },
+ "garbage": {
+  "err": "OSError: cannot load palette"
+ },
+ "missing": {
+  "err": "FileNotFoundError: [Errno 2] No such file or directory: 'C:\\\\Users\\\\78442\\\\AppData\\\\Local\\\\Temp\\\\palette_load_missing_xyz.gpl'"
+ }
+}

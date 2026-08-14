@@ -74,11 +74,11 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-OPEN-009 (WMF/EMF open: the
-placeable/EMF header math, the GDI render byte-identical to
-Pillow's drawwmf md5, the Invalid-inch/cannot-load-metafile
-escapes, and the exact save-handler error)
-after BEHAV-OPEN-008/
+Latest covered gap tail: BEHAV-PALETTE-002 (ImagePalette.load: the
+GIMP .gpl/.ggr and Teragon palette-file parsers with the try-chain
+fall-through and the exact error escapes)
+after BEHAV-OPEN-009/
+BEHAV-OPEN-008/
 BEHAV-OPEN-007/
 BEHAV-OPEN-006/
 BEHAV-OPEN-005/
@@ -90,10 +90,10 @@ BEHAV-PDF-001/
 BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
-the format-family open/save surface is now COMPLETE; the next
-bounded children are the AUDIT-003 gaps
-(truetype font loading, save-option parity, error-message parity),
-then
+the format-family open/save surface and ImagePalette.load are now
+COMPLETE; the next
+bounded children are ImageFile.Parser feed/close semantics and
+TransposedFont.GetMask rasterization, then
 the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
 follow as their own packets.
@@ -545,6 +545,25 @@ errors, or skips. Facade-only change: source/DLL export parity
 remains `482/482` and the DLL SHA-256 remains
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
 The next bounded child is `BEHAV-PDF-001`, the PDF format.
+
+2026-08-14: `BEHAV-PALETTE-002` is GREEN as ImagePalette.load
+(facade-only). The Pillow 11.3.0 oracle
+(`oracle/probe_palette_load.py`/`probe_palette_load.json`) pins
+the load try-chain: GimpPaletteFile (magic, field/comment skips,
+the 259-line/768-byte caps, the bad-file/bad-entry errors),
+GimpGradientFile (the five segment functions, the 256-entry RGBA
+render byte-pinned, the HSV OSError and short-line IndexError
+escapes), and PaletteFile (Teragon grayscale-default overrides)
+with the fall-through `cannot load palette` and Pillow's
+FileNotFoundError shape. The facade Load returns
+`[Buffer, rawmode]`. The facade palette-load target passes `1/1`
+in `16ms`; the full directory suite passes `2834/2834` in
+`22344ms` with zero failures, errors, or skips. Facade-only change:
+source/DLL export parity remains `498/498` and the DLL SHA-256
+remains
+`6603840FEEA48553F2D42ED2444DD5A30331A17ABE3ABCBBB8E262D0988AE747`.
+The next bounded children are ImageFile.Parser feed/close and
+TransposedFont.GetMask.
 
 2026-08-14: `BEHAV-OPEN-009` is GREEN as the WMF/EMF open (GDI
 render). The Pillow 11.3.0 oracle (`oracle/probe_open_9.py`/

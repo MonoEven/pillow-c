@@ -331,6 +331,35 @@ export parity moves to `493/493` and the DLL SHA-256 is
 The next bounded child is the remaining pure-Python open families
 (MIC/PCD).
 
+## 2026-08-14 BEHAV-PALETTE-002 ImagePalette.load (GREEN)
+
+`BEHAV-PALETTE-002` implements `ImagePalette.load` (facade-only,
+no ABI change). The Pillow 11.3.0 oracle
+(`oracle/probe_palette_load.py`/`probe_palette_load.json`) pins
+the load try-chain (GimpPaletteFile -> GimpGradientFile ->
+PaletteFile; each parser's SyntaxError/ValueError falls through,
+and a fully failed chain raises `cannot load palette`):
+GimpPaletteFile (the `GIMP Palette` magic, `\w+:` field lines and
+`#` comments skipped, the >100-byte `bad palette file` and <3-token
+`bad palette entry` errors, the 259-examined-lines/768-byte caps
+pinned with the 300-entry fixture), GimpGradientFile (the
+`GIMP Gradient` magic, the optional `Name:` line, the 13-token
+segment lines with the linear/curved/sine/sphere segments, the
+256-entry RGBA render byte-pinned
+(`000000ff010000ff020000ff...`), the `cannot handle HSV colour
+space` OSError that escapes load unwrapped, and the short-line
+IndexError escape), and PaletteFile (the Teragon-style 256
+grayscale-default overrides — first 12 bytes `010203010101020202
+030303`). A missing file raises Pillow's FileNotFoundError shape
+(`[Errno 2] No such file or directory: '<path>'`); the facade Load
+returns `[Buffer, rawmode]` in Pillow's `(bytes, rawmode)` order.
+The facade palette-load target passes `1/1` in `16ms`; the
+full directory suite passes `2834/2834` in `22344ms`; source/DLL
+export parity remains `498/498` and the DLL SHA-256 remains
+`6603840FEEA48553F2D42ED2444DD5A30331A17ABE3ABCBBB8E262D0988AE747`.
+The next bounded children are ImageFile.Parser feed/close and
+TransposedFont.GetMask.
+
 ## 2026-08-14 BEHAV-OPEN-009 WMF/EMF Open (GREEN)
 
 `BEHAV-OPEN-009` implements the WMF/EMF open (one deliberate
@@ -1105,7 +1134,7 @@ Classification of every boundary item (treatment applies per packet):
 | JPEG2000 P save | `broken data stream when writing image file` | MATCH the exact message |
 | WEBP/AVIF/JPEG2000 | work via bundled libs | dependency-gated: match Pillow's own not-enabled messages; remain documented build boundaries |
 | ImageFile.Parser | feed/close works (partial feed → close returns correct image) | IMPLEMENT feed/close semantics (facade buffer + native open at close) |
-| ImagePalette.load | parses GIMP/Adobe palette files | IMPLEMENT GIMP .gpl parsing (facade) |
+| ImagePalette.load | parses GIMP/Adobe palette files | DONE with BEHAV-PALETTE-002 — facade parsers for GimpPaletteFile (the "GIMP Palette" walk with the 259-line/768-byte caps, field/comment skips, and the bad-file/bad-entry errors), GimpGradientFile (the "GIMP Gradient" header, the five segment functions, the RGBA 256-entry render, the HSV-colour-space OSError escape, and the short-line IndexError escape), and PaletteFile (the Teragon 256-grayscale-default override) with the try-chain fall-through to `cannot load palette` and Pillow's FileNotFoundError shape; byte-pinned against the 11.3.0 oracle |
 | TransposedFont.GetMask | returns an L-mode mask with glyphs | IMPLEMENT via native text rasterization into an L image |
 | ImageQt/ImageTk | local Pillow HAS Qt/Tk bindings (PyQt5/PySide6/tkinter installed) | environment-gated: the AHK runtime can never create QImage/Tk objects; keep the Pillow no-binding/no-root messages as the honest environment boundary |
 | ImagePalette.random stream | Python Mersenne-Twister global state | stateful-unmatchable; keep the documented boundary (shape/range identical) |
