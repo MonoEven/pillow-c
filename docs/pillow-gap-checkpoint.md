@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 90% (about ±5%) under
+Estimate: AHK-first Pillow-runtime overall completion 91% (about ±5%) under
 the real-workload Pillow replacement-readiness model — measured against
 the FULL Pillow 11.3.0 public surface since the AUDIT-002 re-audit.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
@@ -58,19 +58,25 @@ False with True a documented fail-loud boundary, PyCodecState covered
 exactly, and the incremental/plugin protocol — ImageFile/Parser/
 StubImageFile/StubHandler/PyCodec/PyDecoder/PyEncoder/raise_oserror —
 an explicit documented boundary that fails loudly on construction with
-Pillow-shaped messages).
+Pillow-shaped messages), and `API-PALETTE-001` — the ImagePalette
+module surface (the ImagePalette class with palette/colors/getcolor/
+getdata/tobytes/tostring/copy/save covered exactly, plus raw/negative/
+sepia/wedge/make_linear_lut/make_gamma_lut covered exactly; random()
+shares Pillow's shape with the RNG stream a documented boundary, and
+load() with the GimpPaletteFile/GimpGradientFile/PaletteFile parser
+classes a documented fail-loud boundary).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The ImageFile boundary target passes `1/1` in
-`31ms`, and the full directory suite passes `2802/2802` in `19640ms`;
+IFD as a writer artifact. The ImagePalette target passes `1/1` in
+`32ms`, and the full directory suite passes `2803/2803` in `21000ms`;
 source/DLL exports remain `466/466` with zero difference; and the DLL
 SHA-256 remains
 `7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`
 (facade-only slice).
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is
-`API-PALETTE-001`, the ImagePalette module surface.
+`API-TRANSFORMCLS-001`, the ImageTransform class-object surface.
 ```
 
 Current work packet:
@@ -487,6 +493,32 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `API-PALETTE-001` is GREEN as the ImagePalette module
+surface (facade-only). The Pillow 11.3.0 oracle (kept in
+`oracle/probe_imagepalette.py`) shows the public surface is the
+`ImagePalette` class (mode/rawmode/palette/dirty fields, the lazy
+`colors` dict, copy/getdata/tobytes/tostring/save/getcolor with the
+RGBA-alpha rules, the raw-palette ValueError, the image special-color
+skip, and the 256-color allocation error) plus raw/negative/random/
+sepia/wedge/load/make_linear_lut/make_gamma_lut (the GIMP/Adobe
+palette file parser classes sit behind load). The facade
+`Pillow.ImagePalette` covers the class and the deterministic
+generators exactly (oracle-verified head/tail/mid samples for
+wedge/negative/sepia/make_linear_lut/make_gamma_lut and the getcolor
+allocation sequence `[1, 4, 15, 5, 18, 6, 21]`); random() shares
+Pillow's shape/range with the RNG stream a documented boundary
+(Pillow uses Python's Mersenne Twister), and load() with the
+GimpPaletteFile/GimpGradientFile/PaletteFile parser classes is a
+documented fail-loud boundary. Facade-only change, no native
+rebuild: the ImagePalette target passes `1/1` in `32ms`, and the full
+directory suite passes `2803/2803` in `21000ms`, with zero failures,
+errors, or skips. Source/DLL export parity remains `466/466` (DLL
+byte-identical), and the DLL SHA-256 remains
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `91% ±5%`. The next bounded child is
+`API-TRANSFORMCLS-001`, the ImageTransform class-object surface.
 
 2026-08-14: `API-FILE-001` is GREEN as the ImageFile module surface
 (facade-only). The Pillow 11.3.0 probe (results recorded in this

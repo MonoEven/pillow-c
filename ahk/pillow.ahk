@@ -639,6 +639,272 @@ class Pillow {
         }
     }
 
+    class ImagePalette {
+        ; API-PALETTE-001: Pillow 11.3.0's PIL.ImagePalette module surface.
+        ; AHK case-insensitivity serves ImagePalette/raw/negative/random/
+        ; sepia/wedge/load/make_linear_lut/make_gamma_lut. The palette
+        ; sequence is stored as an AHK Array (Pillow accepts any int
+        ; sequence); Colors uses comma-joined string keys because AHK Map
+        ; keys are identity-compared (no tuple keys). load() and the
+        ; GimpPaletteFile/GimpGradientFile/PaletteFile parser classes are
+        ; documented boundaries (fail-loud), and random() shares Pillow's
+        ; shape but not its Mersenne-Twister stream (documented boundary).
+        Mode := "RGB"
+        Rawmode := ""
+        Dirty := 0
+
+        __New(mode := "RGB", palette := unset) {
+            this.Mode := mode
+            this.Rawmode := ""
+            this._Palette := IsSet(palette) && IsObject(palette) && palette.Length > 0 ? palette : []
+            this._Colors := 0
+            this.Dirty := 0
+        }
+
+        ; Pillow's ImagePalette.ImagePalette class name is served by this
+        ; class itself (Pillow.ImagePalette(...) constructs an instance).
+        Palette {
+            get => this._Palette
+            set {
+                this._Colors := 0
+                this._Palette := value
+            }
+        }
+
+        Colors {
+            get {
+                if !IsObject(this._Colors) {
+                    modeLen := StrLen(this.Mode)
+                    colorMap := Map()
+                    loop this._Palette.Length // modeLen {
+                        colorIndex := A_Index - 1
+                        key := ""
+                        loop modeLen
+                            key .= (A_Index > 1 ? "," : "") this._Palette[colorIndex * modeLen + A_Index]
+                        if !colorMap.Has(key)
+                            colorMap[key] := colorIndex
+                    }
+                    this._Colors := colorMap
+                }
+                return this._Colors
+            }
+            set {
+                this._Colors := value
+            }
+        }
+
+        Copy() {
+            new := Pillow.ImagePalette()
+            new.Mode := this.Mode
+            new.Rawmode := this.Rawmode
+            new._Palette := this._Palette.Clone()
+            new._Colors := 0
+            new.Dirty := this.Dirty
+            return new
+        }
+
+        GetData() {
+            if this.Rawmode
+                return [this.Rawmode, this._Palette]
+            return [this.Mode, this.ToBytes()]
+        }
+
+        ToBytes() {
+            if this.Rawmode
+                throw Error("palette contains raw palette data", -1)
+            out := Buffer(this._Palette.Length, 0)
+            for index, value in this._Palette
+                NumPut("UChar", value, out, index - 1)
+            return out
+        }
+
+        Tostring() => this.ToBytes()
+
+        GetColor(color, image := unset) {
+            if this.Rawmode
+                throw Error("palette contains raw palette data", -1)
+            if !IsObject(color) {
+                spec := color is String ? "'" color "'" : color
+                throw Error("unknown color specifier: " spec, -1)
+            }
+            if this.Mode = "RGB" {
+                if color.Length = 4 {
+                    if color[4] != 255
+                        throw Error("cannot add non-opaque RGBA color to RGB palette", -1)
+                    color := [color[1], color[2], color[3]]
+                }
+            } else if this.Mode = "RGBA" {
+                if color.Length = 3
+                    color := [color[1], color[2], color[3], 255]
+            }
+            key := Pillow.ImagePalette.ColorKey(color)
+            colorMap := this.Colors
+            if colorMap.Has(key)
+                return colorMap[key]
+            ; allocate a new color slot (Pillow hard-codes //3 regardless
+            ; of mode — mirrored exactly)
+            index := this._Palette.Length // 3
+            specials := []
+            if IsSet(image) && IsObject(image) {
+                if image.Info.Has("background")
+                    specials.Push(image.Info["background"])
+                if image.Info.Has("transparency")
+                    specials.Push(image.Info["transparency"])
+            }
+            loop {
+                isSpecial := false
+                for specialIndex, special in specials {
+                    if index = special {
+                        isSpecial := true
+                        break
+                    }
+                }
+                if !isSpecial
+                    break
+                index += 1
+            }
+            if index >= 256 {
+                if IsSet(image) && IsObject(image) {
+                    histogram := image.Histogram()
+                    loop histogram.Length {
+                        i := histogram.Length - A_Index
+                        if histogram[i + 1] = 0 {
+                            taken := false
+                            for specialIndex, special in specials {
+                                if i = special {
+                                    taken := true
+                                    break
+                                }
+                            }
+                            if !taken {
+                                index := i
+                                break
+                            }
+                        }
+                    }
+                }
+                if index >= 256
+                    throw Error("cannot allocate more than 256 colors", -1)
+            }
+            colorMap[key] := index
+            if index * 3 < this._Palette.Length {
+                ; replace the slot in place
+                loop color.Length
+                    this._Palette[index * 3 + A_Index] := color[A_Index]
+            } else {
+                ; append trailing channels
+                for channelIndex, channelValue in color
+                    this._Palette.Push(channelValue)
+            }
+            this.Dirty := 1
+            return index
+        }
+
+        Save(fp) {
+            if this.Rawmode
+                throw Error("palette contains raw palette data", -1)
+            if !(fp is String)
+                throw Error("Pillow.ImagePalette.Save expects a file path string", -1)
+            ; Pillow writes "# Palette\n", "# Mode: ...\n" and 256 indexed
+            ; lines; Windows text mode turns "\n" into CRLF.
+            text := "# Palette`r`n# Mode: " this.Mode "`r`n"
+            loop 256 {
+                i := A_Index - 1
+                text .= i
+                loop StrLen(this.Mode) {
+                    valueIndex := i * StrLen(this.Mode) + A_Index
+                    text .= " " (valueIndex <= this._Palette.Length ? this._Palette[valueIndex] : 0)
+                }
+                text .= "`r`n"
+            }
+            FileAppend text, fp, "UTF-8"
+        }
+
+        static ColorKey(color) {
+            key := ""
+            for index, value in color
+                key .= (A_Index > 1 ? "," : "") value
+            return key
+        }
+
+        static Raw(rawmode, data) {
+            palette := Pillow.ImagePalette()
+            palette.Rawmode := rawmode
+            palette.Palette := data
+            palette.Dirty := 1
+            return palette
+        }
+
+        static Negative(mode := "RGB") {
+            count := 256 * StrLen(mode)
+            palette := []
+            loop count {
+                v := count - A_Index
+                palette.Push(v // StrLen(mode))
+            }
+            return Pillow.ImagePalette(mode, palette)
+        }
+
+        static Random(mode := "RGB") {
+            ; Pillow 11.3.0 uses Python's Mersenne-Twister random stream;
+            ; this runtime uses AHK's own RNG with the same range/shape
+            ; (documented boundary).
+            count := 256 * StrLen(mode)
+            palette := []
+            loop count
+                palette.Push(Random(0, 255))
+            return Pillow.ImagePalette(mode, palette)
+        }
+
+        static Sepia(white := "#fff0c0") {
+            rgb := Pillow.ImageColor.GetRgb(white)
+            bands := [
+                Pillow.ImagePalette.MakeLinearLut(0, rgb[1]),
+                Pillow.ImagePalette.MakeLinearLut(0, rgb[2]),
+                Pillow.ImagePalette.MakeLinearLut(0, rgb[3]),
+            ]
+            palette := []
+            loop 768 {
+                i := A_Index - 1
+                palette.Push(bands[Mod(i, 3) + 1][i // 3 + 1])
+            }
+            return Pillow.ImagePalette("RGB", palette)
+        }
+
+        static Wedge(mode := "RGB") {
+            count := 256 * StrLen(mode)
+            palette := []
+            loop count
+                palette.Push((A_Index - 1) // StrLen(mode))
+            return Pillow.ImagePalette(mode, palette)
+        }
+
+        static Load(filename) {
+            ; Pillow 11.3.0 parses GIMP palette/gradient and Adobe palette
+            ; text files through the PaletteFile parser classes; that
+            ; file-parser family is a documented boundary in this runtime.
+            throw Error("Pillow.ImagePalette.load GIMP/Adobe palette file parsing is not supported by the AHK runtime", -1)
+        }
+
+        static MakeLinearLut(black, white) {
+            if black != 0
+                throw Error("unavailable when black is non-zero", -1)
+            lut := []
+            loop 256
+                lut.Push(Integer(Floor(white * (A_Index - 1) / 255)))
+            return lut
+        }
+
+        static MakeGammaLut(exp) {
+            lut := []
+            loop 256 {
+                i := A_Index - 1
+                lut.Push(Integer(((i / 255.0) ** exp) * 255.0 + 0.5))
+            }
+            return lut
+        }
+    }
+
     class ImagePath {
         ; AHK case-insensitivity serves Pillow's ImagePath.Path module.
         class Path {

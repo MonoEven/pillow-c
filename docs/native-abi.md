@@ -241,6 +241,17 @@ lex as the `raise` keyword at call sites, and a parameter named
 `error` would shadow the AHK `Error` class); the DLL SHA-256 is
 unchanged.
 
+`API-PALETTE-001` changes no ABI at all either: the facade
+`Pillow.ImagePalette` covers the ImagePalette class (fields, lazy
+`colors`, copy/getdata/tobytes/tostring/save/getcolor with the
+RGBA-alpha rules, the raw-palette ValueError, the image
+special-color skip, and the 256-color allocation error) and the
+deterministic generators raw/negative/sepia/wedge/make_linear_lut/
+make_gamma_lut exactly; `random()` shares Pillow's shape/range with
+the RNG stream a documented boundary, and `load()` with the
+GimpPaletteFile/GimpGradientFile/PaletteFile parser classes is a
+documented fail-loud boundary; the DLL SHA-256 is unchanged.
+
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.
 

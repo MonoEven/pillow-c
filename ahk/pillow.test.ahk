@@ -22248,6 +22248,207 @@ PillowTestImageFileBoundaries(*) {
 
 AhkTest.Test("Pillow ImageFile surface: exact constants/state plus documented boundaries", PillowTestImageFileBoundaries)
 
+PillowTestPaletteBufferUChars(buffer, offset, count) {
+    values := []
+    loop count
+        values.Push(NumGet(buffer, offset + A_Index - 1, "UChar"))
+    return values
+}
+
+PillowTestImagePalette(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+
+    ; Pillow 11.3.0 ImagePalette() defaults: mode RGB, empty palette,
+    ; rawmode None, dirty None (0 and "" are this runtime's None analogues).
+    def := Pillow.ImagePalette()
+    AhkTest.AssertEqual("RGB", def.Mode)
+    AhkTest.AssertEqual("", def.Rawmode)
+    AhkTest.AssertEqual(0, def.Dirty)
+    AhkTest.AssertEqual(0, def.ToBytes().Size)
+
+    ; wedge(mode) repeats 0..255 once per mode channel.
+    wedgeBytes := Pillow.ImagePalette.Wedge("RGB").ToBytes()
+    AhkTest.AssertEqual(768, wedgeBytes.Size)
+    AhkTest.AssertEqual([0, 0, 0, 1, 1, 1, 2, 2, 2], PillowTestPaletteBufferUChars(wedgeBytes, 0, 9))
+    AhkTest.AssertEqual([253, 253, 253, 254, 254, 254, 255, 255, 255], PillowTestPaletteBufferUChars(wedgeBytes, 759, 9))
+
+    ; negative(mode) is the reversed wedge.
+    negBytes := Pillow.ImagePalette.Negative("RGB").ToBytes()
+    AhkTest.AssertEqual([255, 255, 255, 254, 254, 254], PillowTestPaletteBufferUChars(negBytes, 0, 6))
+    AhkTest.AssertEqual([1, 1, 1, 0, 0, 0], PillowTestPaletteBufferUChars(negBytes, 762, 6))
+    negLBytes := Pillow.ImagePalette.Negative("L").ToBytes()
+    AhkTest.AssertEqual(256, negLBytes.Size)
+    AhkTest.AssertEqual([2, 1, 0], PillowTestPaletteBufferUChars(negLBytes, 253, 3))
+
+    ; raw(rawmode, data) keeps the raw sequence; tobytes/getcolor fail.
+    raw := Pillow.ImagePalette.Raw("RGB", [0, 1, 2, 3, 4, 5])
+    AhkTest.AssertEqual("RGB", raw.Rawmode)
+    AhkTest.AssertEqual(1, raw.Dirty)
+    AhkTest.AssertEqual([0, 1, 2, 3, 4, 5], raw.Palette)
+    rawBytesError := ""
+    try {
+        raw.ToBytes()
+    } catch Error as err {
+        rawBytesError := err.Message
+    }
+    AhkTest.AssertEqual("palette contains raw palette data", rawBytesError)
+    rawData := raw.GetData()
+    AhkTest.AssertEqual("RGB", rawData[1])
+    AhkTest.AssertEqual([0, 1, 2, 3, 4, 5], rawData[2])
+
+    ; sepia interpolates each white channel through a linear LUT.
+    sepiaBytes := Pillow.ImagePalette.Sepia().ToBytes()
+    AhkTest.AssertEqual([0, 0, 0, 1, 0, 0, 2, 1, 1], PillowTestPaletteBufferUChars(sepiaBytes, 0, 9))
+    AhkTest.AssertEqual([253, 238, 190, 254, 239, 191, 255, 240, 192], PillowTestPaletteBufferUChars(sepiaBytes, 759, 9))
+
+    ; make_linear_lut(0, white) = floor(white * i / 255); black != 0 fails.
+    linear := Pillow.ImagePalette.MakeLinearLut(0, 255)
+    AhkTest.AssertEqual([0, 1, 2], [linear[1], linear[2], linear[3]])
+    AhkTest.AssertEqual([253, 254, 255], [linear[254], linear[255], linear[256]])
+    linear128 := Pillow.ImagePalette.MakeLinearLut(0, 128.0)
+    AhkTest.AssertEqual([63, 64, 64, 65], [linear128[128], linear128[129], linear128[130], linear128[131]])
+    linear240 := Pillow.ImagePalette.MakeLinearLut(0, 240.0)
+    AhkTest.AssertEqual([119, 120, 121, 122], [linear240[128], linear240[129], linear240[130], linear240[131]])
+    AhkTest.AssertEqual([238, 239, 240], [linear240[254], linear240[255], linear240[256]])
+    linearError := ""
+    try {
+        Pillow.ImagePalette.MakeLinearLut(1, 255)
+    } catch Error as err {
+        linearError := err.Message
+    }
+    AhkTest.AssertEqual("unavailable when black is non-zero", linearError)
+
+    ; make_gamma_lut(exp) = int(((i / 255) ** exp) * 255 + 0.5).
+    gamma := Pillow.ImagePalette.MakeGammaLut(0.5)
+    AhkTest.AssertEqual([0, 16, 23, 28, 32], [gamma[1], gamma[2], gamma[3], gamma[4], gamma[5]])
+    AhkTest.AssertEqual([180, 181, 181, 182], [gamma[128], gamma[129], gamma[130], gamma[131]])
+    AhkTest.AssertEqual([254, 254, 255], [gamma[254], gamma[255], gamma[256]])
+
+    ; random() shares Pillow's shape/range; the RNG stream is a documented
+    ; boundary (Pillow uses Python's Mersenne Twister).
+    rand := Pillow.ImagePalette.Random("RGB")
+    AhkTest.AssertEqual("RGB", rand.Mode)
+    AhkTest.AssertEqual(0, rand.Dirty)
+    randBytes := rand.ToBytes()
+    AhkTest.AssertEqual(768, randBytes.Size)
+    spot := NumGet(randBytes, 0, "UChar")
+    AhkTest.AssertTrue(spot >= 0 && spot <= 255)
+
+    ; getcolor: exact hits, allocation, alpha rules, and the errors.
+    p := Pillow.ImagePalette("RGB", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    AhkTest.AssertEqual(1, p.GetColor([3, 4, 5]))
+    AhkTest.AssertEqual(4, p.GetColor([1, 2, 3]))
+    AhkTest.AssertEqual(15, p.Palette.Length)
+    AhkTest.AssertEqual(1, p.Dirty)
+    AhkTest.AssertEqual(5, p.GetColor([9, 9, 9]))
+    AhkTest.AssertEqual(18, p.Palette.Length)
+    AhkTest.AssertEqual(6, p.GetColor([10, 20, 30, 255]))
+    AhkTest.AssertEqual(21, p.Palette.Length)
+    alphaError := ""
+    try {
+        p.GetColor([1, 2, 3, 128])
+    } catch Error as err {
+        alphaError := err.Message
+    }
+    AhkTest.AssertEqual("cannot add non-opaque RGBA color to RGB palette", alphaError)
+    specError := ""
+    try {
+        p.GetColor("red")
+    } catch Error as err {
+        specError := err.Message
+    }
+    AhkTest.AssertEqual("unknown color specifier: 'red'", specError)
+    ; image info special colors shift the allocation index.
+    image := Pillow.Image.New("L", [2, 2], 7)
+    try {
+        p2 := Pillow.ImagePalette("RGB", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        image.Info["transparency"] := 4
+        AhkTest.AssertEqual(5, p2.GetColor([50, 60, 70], image))
+        AhkTest.AssertEqual(15, p2.Palette.Length)
+    } finally {
+        image.Close()
+    }
+    ; a full 256-entry palette cannot allocate another color.
+    fullError := ""
+    try {
+        Pillow.ImagePalette("RGB", Pillow.ImagePalette.Wedge("RGB").Palette).GetColor([1, 2, 3])
+    } catch Error as err {
+        fullError := err.Message
+    }
+    AhkTest.AssertEqual("cannot allocate more than 256 colors", fullError)
+    ; raw palettes reject getcolor.
+    rawColorError := ""
+    try {
+        raw.GetColor([0, 1, 2])
+    } catch Error as err {
+        rawColorError := err.Message
+    }
+    AhkTest.AssertEqual("palette contains raw palette data", rawColorError)
+    ; RGBA mode appends an opaque alpha for 3-length colors.
+    pr := Pillow.ImagePalette("RGBA", [])
+    AhkTest.AssertEqual(0, pr.GetColor([1, 2, 3]))
+    AhkTest.AssertEqual([1, 2, 3, 255], pr.Palette)
+
+    ; getdata mirrors (rawmode, palette) / (mode, tobytes()).
+    data := Pillow.ImagePalette("L", [0, 1, 2]).GetData()
+    AhkTest.AssertEqual("L", data[1])
+    AhkTest.AssertEqual([0, 1, 2], PillowTestPaletteBufferUChars(data[2], 0, 3))
+
+    ; copy is independent and carries mode/rawmode/dirty.
+    copied := p.Copy()
+    AhkTest.AssertEqual("RGB", copied.Mode)
+    AhkTest.AssertEqual("", copied.Rawmode)
+    AhkTest.AssertEqual(1, copied.Dirty)
+    copied.Palette[1] := 99
+    AhkTest.AssertEqual(0, p.Palette[1])
+
+    ; tostring is Pillow's alias for tobytes.
+    AhkTest.AssertEqual(21, p.ToBytes().Size)
+    AhkTest.AssertEqual(21, p.Tostring().Size)
+    AhkTest.AssertEqual(PillowTestPaletteBufferUChars(p.ToBytes(), 0, 4), PillowTestPaletteBufferUChars(p.Tostring(), 0, 4))
+
+    ; save writes Pillow's GIMP text layout (256 indexed lines, missing
+    ; channels as 0; Windows text mode CRLF).
+    sp := Pillow.ImagePalette("RGB", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    savePath := A_Temp "\pillow_c_palette_test.txt"
+    sp.Save(savePath)
+    expected := "# Palette`r`n# Mode: RGB`r`n"
+    loop 256 {
+        i := A_Index - 1
+        expected .= i
+        loop 3 {
+            vi := i * 3 + A_Index
+            expected .= " " (vi <= 12 ? sp.Palette[vi] : 0)
+        }
+        expected .= "`r`n"
+    }
+    AhkTest.AssertEqual(expected, FileRead(savePath))
+    FileDelete(savePath)
+    saveRawError := ""
+    try {
+        raw.Save(savePath)
+    } catch Error as err {
+        saveRawError := err.Message
+    }
+    AhkTest.AssertEqual("palette contains raw palette data", saveRawError)
+
+    ; load() and the GimpPaletteFile/GimpGradientFile/PaletteFile parser
+    ; classes are documented boundaries (fail-loud).
+    loadError := ""
+    try {
+        Pillow.ImagePalette.Load("palette.gpl")
+    } catch Error as err {
+        loadError := err.Message
+    }
+    AhkTest.AssertEqual("Pillow.ImagePalette.load GIMP/Adobe palette file parsing is not supported by the AHK runtime", loadError)
+
+    ; Pillow's ImagePalette.ImagePalette class name is served by the
+    ; Pillow.ImagePalette class itself.
+    AhkTest.AssertEqual("L", Pillow.ImagePalette("L").Mode)
+}
+
+AhkTest.Test("Pillow ImagePalette matches Pillow 11.3.0 palette semantics", PillowTestImagePalette)
+
 PillowTestImageDisplayApiBoundaries(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [2, 2], 7)

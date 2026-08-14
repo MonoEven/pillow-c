@@ -37,6 +37,46 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 API-PALETTE-001 ImagePalette Module Surface (GREEN)
+
+`API-PALETTE-001` closes the ImagePalette module surface (facade-only).
+
+The Pillow 11.3.0 oracle (kept in `oracle/probe_imagepalette.py`)
+shows the public surface is the `ImagePalette` class (mode/rawmode/
+palette/dirty fields, the lazy `colors` dict, copy/getdata/tobytes/
+tostring/save/getcolor with the RGBA-alpha rules, the raw-palette
+ValueError, the image special-color skip, and the 256-color allocation
+error) plus raw/negative/random/sepia/wedge/load/make_linear_lut/
+make_gamma_lut (the GimpPaletteFile/GimpGradientFile/PaletteFile
+parser classes sit behind load). The facade `Pillow.ImagePalette`
+covers the class and the deterministic generators exactly
+(oracle-verified head/tail/mid samples for wedge/negative/sepia/
+make_linear_lut/make_gamma_lut and the getcolor allocation sequence
+`[1, 4, 15, 5, 18, 6, 21]`; `colors` uses comma-joined string keys
+because AHK Map keys are identity-compared); random() shares Pillow's
+shape/range with the RNG stream a documented boundary (Pillow uses
+Python's Mersenne Twister), and load() with the
+GimpPaletteFile/GimpGradientFile/PaletteFile parser classes is a
+documented fail-loud boundary. Facade-only change; no new export;
+parity remains `466/466` and the DLL SHA-256 is unchanged.
+
+Verification:
+
+- Red evidence: the module was absent except for the WEB/ADAPTIVE
+  constants (AUDIT-002).
+- Facade ImagePalette target passes `1/1` in `32ms` (defaults, all
+  deterministic generators with oracle samples, raw/negative/sepia/
+  wedge, the two LUTs including the black!=0 error, getcolor
+  hits/allocations/alpha rules/three ValueErrors/special-color skip,
+  getdata, copy, tostring, save's exact GIMP text layout, the load()
+  boundary, and random's shape).
+- Full AHK directory suite: `2803/2803` in `21000ms`; zero failures,
+  errors, or skips.
+
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `91% ±5%`. The next bounded child is
+`API-TRANSFORMCLS-001`, the ImageTransform class-object surface.
+
 ## 2026-08-14 API-FILE-001 ImageFile Module Surface (GREEN)
 
 `API-FILE-001` closes the ImageFile module surface (facade-only).
@@ -39973,7 +40013,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | API-PATH-001 | Facade API | covered | ImagePath.Path object (facade-only): Pillow 11.3.0's `Image.core.path` is a simplified five-method object — constructor from flat/pair sequences with float coordinates, `tolist` flat (x,y) pairs, `getbbox` float (minx,miny,maxx,maxy) with empty -> (0,0,0,0), in-place no-op `compact` returning 0 (lines only), 6-value affine `transform` with Pillow's length error, and callable `map` returning None without mutating (ImagingTransformHandler form stays a documented boundary). The facade `Pillow.ImagePath.Path` mirrors all five (AHK case-insensitivity serves the aliases; 0 is the None analogue). Export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, `oracle/probe_imagepath3.py`, facade `ImagePath.Path` class, facade ImagePath test. |
 | API-QTTK-001 | Facade API | covered | ImageQt/ImageTk module surfaces as explicit documented boundaries (dependency-gated): Pillow 11.3.0 defines the ImageQt surface (ImageQt/fromqimage/toqimage/toqpixmap) only when a Qt binding is importable, and ImageTk.PhotoImage without a root raises `Too early to create image: no default root window`. The AHK runtime ships no Qt binding and no Tk interpreter, so the facade `ImageQt`/`ImageTk` stub surfaces raise the Pillow-shaped messages (`Qt bindings are not installed` / the no-root message). Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imageqtk.py`, facade `ImageQt`/`ImageTk` boundary stubs, facade Qt/Tk boundary test. |
 | API-FILE-001 | Facade API | covered | ImageFile module surface: `MAXBLOCK`/`SAFEBLOCK` (65536/1048576) and the `ERRORS` table covered exactly; `LOAD_TRUNCATED_IMAGES` defaults False with True a documented fail-loud boundary (native decoders decode whole files strictly, matching the Pillow default); `PyCodecState` covered exactly; the incremental/plugin protocol (`ImageFile` base object, `Parser`, `StubImageFile`, `StubHandler`, `PyCodec`, `PyDecoder`, `PyEncoder`, and the deprecated `raise_oserror`, served by `ReportOSError(code)` because AHK identifiers beginning with "Raise" lex as the raise keyword at call sites and an `error` parameter would shadow the AHK Error class) is an explicit documented boundary failing loudly on construction with Pillow-shaped messages (`Can't instantiate abstract class StubImageFile ...`, `PyCodec.__init__() missing 1 required positional argument: 'mode'`). `ImageFileFormat` does not exist in Pillow 11.3.0. Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | Pillow 11.3.0 probe (this packet), facade `ImageFile` constants/flag/PyCodecState plus boundary stubs, facade ImageFile boundary test. |
-| API-PALETTE-001 | Facade API | not started | ImagePalette module (ImagePalette/PaletteFile/GimpPaletteFile/GimpGradientFile, wedge/sepia/random/raw/negative/make_gamma_lut/make_linear_lut, 18 names) — the facade `Palette` class is only WEB/ADAPTIVE constants. | Facade ImagePalette or documented boundary. |
+| API-PALETTE-001 | Facade API | covered | ImagePalette module surface: the `ImagePalette` class (mode/rawmode/palette/dirty fields, lazy `colors` with comma-joined string keys, copy/getdata/tobytes/tostring/save/getcolor with the RGBA-alpha rules, the raw-palette ValueError, the image special-color skip, and the 256-color allocation error) plus raw/negative/sepia/wedge/make_linear_lut/make_gamma_lut covered exactly (oracle-verified in `oracle/probe_imagepalette.py`, including the getcolor allocation sequence `[1, 4, 15, 5, 18, 6, 21]`); random() shares Pillow's shape/range with the RNG stream a documented boundary, and load() with the GimpPaletteFile/GimpGradientFile/PaletteFile parser classes is a documented fail-loud boundary. Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imagepalette.py`, facade `ImagePalette` class/module functions, facade ImagePalette target test. |
 | API-TRANSFORMCLS-001 | Facade API | not started | ImageTransform class objects (TransformHandler/AffineTransform/etc., 10 names) — constants and Transform methods exist, the class objects do not. | Facade classes or documented boundary. |
 | API-FONTVAR-001 | Facade API | not started | ImageFont variation surface (TransposedFont/Axis/Layout) — FreeTypeFont and load_default exist. | Facade variation API or documented boundary. |
 | API-READONLY-001 | Facade API | not started | `Image.readonly` property name (behavior partially covered through DetachBufferView). | Facade Readonly property. |
