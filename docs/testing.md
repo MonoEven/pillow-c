@@ -47,27 +47,25 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2805` AHK tests: `1388` raw DLL tests and
-`1417` facade tests.
+This suite currently registers `2806` AHK tests: `1388` raw DLL tests and
+`1418` facade tests.
 
-Latest `API-FONTVAR-001` verification: the Pillow 11.3.0 oracle (kept
-in `oracle/probe_imagefont_var.py`) records Layout (BASIC=0/RAQM=1),
-the type-only Axis TypedDict, and TransposedFont semantics (getbbox
-normalization with the 90/270 swap, getlength delegation and the
-90/270 ValueError, getmask wrapping). The facade
-`Pillow.ImageFont.TransposedFont` covers orientation storage, the
-exact getbbox normalization, the getlength delegation and error, and
-`Layout` covers BASIC/RAQM exactly; getmask is a documented boundary
-(the runtime rasterizes text through the native draw seam) and Axis
-is a recorded type-only boundary name. Facade-only change, no
-native rebuild: the ImageFont variation target passes `1/1` in
-`46ms`, and the full directory suite passes `2805/2805` in
-`20094ms`, with zero failures, errors, or skips. Source/DLL export
+Latest `API-READONLY-001` verification: the Pillow 11.3.0 oracle (kept
+in `oracle/probe_image_readonly.py`) records the getter/setter pair —
+`readonly = (im and im.readonly) or _readonly` with the setter
+storing `_readonly` directly, the default 0, the frombuffer core flag
+winning over the facade flag, and the set-False-not-clearing rule.
+The facade `Image.ReadOnly` adds the setter and the OR-semantics;
+the existing DetachBufferView write-detach model stays the documented
+replacement for Pillow's `_ensure_mutable` raise. Facade-only
+change, no native rebuild: the readonly target passes `1/1` in
+`47ms`, and the full directory suite passes `2806/2806` in
+`20109ms`, with zero failures, errors, or skips. Source/DLL export
 parity remains `466/466` (DLL byte-identical), and the DLL SHA-256
 remains
 `7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
 No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-The overall Pillow replacement-readiness estimate moves to `93% ±5%`.
+The overall Pillow replacement-readiness estimate moves to `94% ±5%`.
 
 Latest `API-PATH-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and

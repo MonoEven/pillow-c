@@ -37,6 +37,37 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 API-READONLY-001 Image.readonly Property (GREEN)
+
+`API-READONLY-001` closes the Image.readonly property surface
+(facade-only).
+
+The Pillow 11.3.0 oracle (kept in `oracle/probe_image_readonly.py`)
+shows the property has both a getter and a setter:
+`readonly = (self._im and self._im.readonly) or self._readonly`, the
+setter stores `_readonly` directly, the default is 0, frombuffer
+images carry the core flag, and setting `readonly = False` on a
+frombuffer image does NOT clear the core flag. The facade
+`Image.ReadOnly` now adds the setter and the OR-semantics (the core
+alias flag wins, then the facade flag); the existing
+DetachBufferView write-detach model stays the documented replacement
+for Pillow's `_ensure_mutable` raise. Facade-only change; no new
+export; parity remains `466/466` and the DLL SHA-256 is unchanged.
+
+Verification:
+
+- Red evidence: the property had a get-only native-flag reader
+  (AUDIT-002); the setter and the `_readonly` OR-half were absent.
+- Facade readonly target passes `1/1` in `47ms` (default 0, the
+  setter round-trip, the frombuffer core-flag-wins rule, and the
+  write-detach clearing the core flag).
+- Full AHK directory suite: `2806/2806` in `20109ms`; zero failures,
+  errors, or skips.
+
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `94% ±5%`. The next bounded child is
+`FMT-UNREC-001`, the unrecorded-format ledger.
+
 ## 2026-08-14 API-FONTVAR-001 ImageFont Variation Surface (GREEN)
 
 `API-FONTVAR-001` closes the ImageFont variation surface
@@ -40085,7 +40116,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | API-PALETTE-001 | Facade API | covered | ImagePalette module surface: the `ImagePalette` class (mode/rawmode/palette/dirty fields, lazy `colors` with comma-joined string keys, copy/getdata/tobytes/tostring/save/getcolor with the RGBA-alpha rules, the raw-palette ValueError, the image special-color skip, and the 256-color allocation error) plus raw/negative/sepia/wedge/make_linear_lut/make_gamma_lut covered exactly (oracle-verified in `oracle/probe_imagepalette.py`, including the getcolor allocation sequence `[1, 4, 15, 5, 18, 6, 21]`); random() shares Pillow's shape/range with the RNG stream a documented boundary, and load() with the GimpPaletteFile/GimpGradientFile/PaletteFile parser classes is a documented fail-loud boundary. Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imagepalette.py`, facade `ImagePalette` class/module functions, facade ImagePalette target test. |
 | API-TRANSFORMCLS-001 | Facade API | covered | ImageTransform class objects covered exactly: the base `Transform` class (data storage, `GetData()` shape, `Transform()` routing through the facade `Image.Transform` seam with resample/fillcolor) plus AffineTransform/ExtentTransform/PerspectiveTransform/QuadTransform/MeshTransform carrying the AFFINE/EXTENT/PERSPECTIVE/QUAD/MESH method constants; constructing the module class fails loudly (Pillow's module is not callable, and the base getdata AttributeError is the same missing-method shape). Oracle-verified in `oracle/probe_imagetransform.py` (getdata pairs and byte-equal affine/extent routing). Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imagetransform.py`, facade `ImageTransform` class objects, facade ImageTransform target test. |
 | API-FONTVAR-001 | Facade API | covered | ImageFont variation surface: `TransposedFont` covers orientation storage, the exact getbbox (0, 0, w, h) normalization with the 90/270 width/height swap, getlength delegation, and the 90/270 `text length is undefined for text rotated by 90 or 270 degrees` error (oracle-verified in `oracle/probe_imagefont_var.py`); `Layout` covers BASIC=0/RAQM=1 exactly; getmask is a documented boundary (the runtime rasterizes text through the native draw seam and exposes no mask objects) and Axis is Pillow's type-only TypedDict recorded as a boundary name. Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imagefont_var.py`, facade `ImageFont.TransposedFont`/`Layout`, facade ImageFont variation target test. |
-| API-READONLY-001 | Facade API | not started | `Image.readonly` property name (behavior partially covered through DetachBufferView). | Facade Readonly property. |
+| API-READONLY-001 | Facade API | covered | `Image.readonly` covered exactly: Pillow 11.3.0's getter is `(im and im.readonly) or _readonly` and the setter stores `_readonly` directly (default 0; the frombuffer core alias flag wins over the facade flag, and setting readonly=False on a frombuffer image does not clear the core flag — oracle-verified in `oracle/probe_image_readonly.py`). The facade `ReadOnly` property adds the setter and OR-semantics; the existing DetachBufferView write-detach model stays the documented replacement for Pillow's `_ensure_mutable` raise. Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_image_readonly.py`, facade `Image.ReadOnly` getter/setter, facade readonly target test. |
 | FMT-UNREC-001 | Formats | not started | Formats neither implemented nor listed in BNDRY-001: save BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF; open FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/XVTHUMB plus the same save-side subset. | Dependency-gated boundary ledger extension or implementation per format. |
 | FMT-WEBP-001 | WebP | boundary | Open/save WebP and animation stay behind an explicit dependency/scope decision; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | FMT-AVIF-001 | AVIF | boundary | Open/save AVIF stays behind dependency and packaging constraints; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |

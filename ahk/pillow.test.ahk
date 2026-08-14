@@ -22554,6 +22554,40 @@ PillowTestImageFontVariation(*) {
 
 AhkTest.Test("Pillow ImageFont variation surface matches Pillow 11.3.0", PillowTestImageFontVariation)
 
+PillowTestImageReadonlyProperty(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+
+    ; Pillow 11.3.0: readonly = (im and im.readonly) or _readonly; the
+    ; setter stores _readonly directly (default 0).
+    image := Pillow.Image.New("L", [2, 2], 7)
+    try {
+        AhkTest.AssertEqual(0, image.ReadOnly)
+        image.ReadOnly := true
+        AhkTest.AssertEqual(true, image.ReadOnly)
+        image.ReadOnly := false
+        AhkTest.AssertEqual(0, image.ReadOnly)
+    } finally {
+        image.Close()
+    }
+
+    ; the aliased core flag wins over the facade flag.
+    data := PillowTestBuffer([1, 2, 3, 4])
+    view := Pillow.Image.FromBuffer("L", [2, 2], data, "raw", "L", 2, 1)
+    try {
+        AhkTest.AssertEqual(1, view.ReadOnly)
+        view.ReadOnly := false
+        AhkTest.AssertEqual(1, view.ReadOnly)
+        ; a write detaches the view and the core flag clears (the facade's
+        ; DetachBufferView model replaces Pillow's _ensure_mutable raise).
+        view.Paste(5, [0, 0, 1, 1])
+        AhkTest.AssertEqual(0, view.ReadOnly)
+    } finally {
+        view.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.readonly matches Pillow 11.3.0 flag semantics", PillowTestImageReadonlyProperty)
+
 PillowTestImageDisplayApiBoundaries(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [2, 2], 7)

@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 93% (about ±5%) under
+Estimate: AHK-first Pillow-runtime overall completion 94% (about ±5%) under
 the real-workload Pillow replacement-readiness model — measured against
 the FULL Pillow 11.3.0 public surface since the AUDIT-002 re-audit.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
@@ -75,19 +75,25 @@ height normalization with the 90/270 swap and the rotate getlength
 ValueError, Layout's BASIC/RAQM IntEnum values covered exactly;
 getmask is a documented boundary because the runtime rasterizes text
 through the native draw seam, and Axis is Pillow's type-only
-TypedDict recorded as a boundary name).
+TypedDict recorded as a boundary name), and `API-READONLY-001` —
+the Image.readonly property (the Pillow 11.3.0 fget
+`(im and im.readonly) or _readonly` OR-semantics with the setter
+storing the facade flag directly, the default 0, the frombuffer
+core-flag-wins rule, and the DetachBufferView write detach — covered
+exactly, with the facade detach model replacing Pillow's
+_ensure_mutable raise as the long-documented readonly-view model).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The ImageFont variation target passes `1/1`
-in `46ms`, and the full directory suite passes `2805/2805` in
-`20094ms`; source/DLL exports remain `466/466` with zero difference;
-and the DLL SHA-256 remains
+IFD as a writer artifact. The readonly target passes `1/1` in `47ms`,
+and the full directory suite passes `2806/2806` in `20109ms`;
+source/DLL exports remain `466/466` with zero difference; and the DLL
+SHA-256 remains
 `7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`
 (facade-only slice).
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is
-`API-READONLY-001`, the Image.readonly property surface.
+`FMT-UNREC-001`, the unrecorded-format ledger.
 ```
 
 Current work packet:
@@ -504,6 +510,27 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `API-READONLY-001` is GREEN as the Image.readonly property
+(facade-only). The Pillow 11.3.0 oracle (kept in
+`oracle/probe_image_readonly.py`) shows the property has both a
+getter and a setter: `readonly = (self._im and self._im.readonly) or
+self._readonly`, the setter stores `_readonly` directly, the default
+is 0, frombuffer images carry the core flag, and setting
+`readonly = False` on a frombuffer image does NOT clear the core
+flag. The facade `Image.ReadOnly` now adds the setter and the
+OR-semantics (the core alias flag wins, then the facade flag), and
+the existing DetachBufferView write-detach model stays the documented
+replacement for Pillow's `_ensure_mutable` raise. Facade-only
+change, no native rebuild: the readonly target passes `1/1` in
+`47ms`, and the full directory suite passes `2806/2806` in
+`20109ms`, with zero failures, errors, or skips. Source/DLL export
+parity remains `466/466` (DLL byte-identical), and the DLL SHA-256
+remains
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `94% ±5%`. The next bounded child is
+`FMT-UNREC-001`, the unrecorded-format ledger.
 
 2026-08-14: `API-FONTVAR-001` is GREEN as the ImageFont variation
 surface (facade-only). The Pillow 11.3.0 oracle (kept in

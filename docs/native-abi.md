@@ -269,6 +269,13 @@ BASIC/RAQM; getmask is a documented boundary (no mask objects
 exist — text rasterizes through the native draw seam) and Axis is
 Pillow's type-only TypedDict; the DLL SHA-256 is unchanged.
 
+`API-READONLY-001` changes no ABI at all either: the facade
+`Image.ReadOnly` property adds Pillow 11.3.0's setter and the
+`(im and im.readonly) or _readonly` OR-semantics over the existing
+`pillow_c_image_readonly` export; the DetachBufferView write-detach
+model stays the documented replacement for Pillow's `_ensure_mutable`
+raise; the DLL SHA-256 is unchanged.
+
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.
 

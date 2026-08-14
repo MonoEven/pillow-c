@@ -9635,8 +9635,13 @@ class Pillow {
             }
         }
 
+        _ReadOnly := 0
+
         ReadOnly {
             get {
+                ; Pillow 11.3.0: (self._im and self._im.readonly) or
+                ; self._readonly — the core alias flag wins, then the
+                ; facade flag set through the readonly setter.
                 readonly := 0
                 Pillow.CheckStatus(DllCall(
                     Pillow.RequireDllPath() "\pillow_c_image_readonly",
@@ -9644,7 +9649,13 @@ class Pillow {
                     "Int*", &readonly,
                     "Int"
                 ))
-                return readonly
+                if readonly
+                    return readonly
+                return this._ReadOnly
+            }
+            set {
+                ; Pillow 11.3.0's setter stores _readonly directly.
+                this._ReadOnly := value
             }
         }
 
