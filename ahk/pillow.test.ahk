@@ -27262,6 +27262,71 @@ PillowTestParser(*) {
 
 AhkTest.Test("Pillow ImageFile.Parser feed/close matches Pillow 11.3.0 semantics and errors", PillowTestParser)
 
+PillowTestFontMask(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    font := Pillow.ImageFont.LoadDefault()
+    try {
+        ; --- default-font masks (the glyph shapes and per-glyph advances
+        ; are this runtime's classic bitmap font; the "AB" length matches
+        ; Pillow's 12.0 and the structural sizes hold) ---
+        maskA := font.GetMask("A")
+        AhkTest.AssertEqual("L", maskA.Mode)
+        AhkTest.AssertEqual([6, 8], maskA.Size)
+        maskA.Close()
+        maskAB := font.GetMask("AB")
+        AhkTest.AssertEqual([12, 8], maskAB.Size)
+        AhkTest.AssertEqual(0, maskAB.GetPixel([0, 0]))
+        maskAB.Close()
+        maskEmpty := font.GetMask("")
+        AhkTest.AssertEqual([0, 0], maskEmpty.Size)
+        maskEmpty.Close()
+        mask1 := font.GetMask("A", "1")
+        AhkTest.AssertEqual("1", mask1.Mode)
+        AhkTest.AssertEqual([6, 8], mask1.Size)
+        mask1.Close()
+        maskXX := font.GetMask("A", "XX")
+        AhkTest.AssertEqual("L", maskXX.Mode)
+        AhkTest.AssertEqual([6, 8], maskXX.Size)
+        maskXX.Close()
+
+        ; --- TransposedFont: the transposed mask sizes and the exact
+        ; rotate-90 pixel relation ---
+        tf90 := Pillow.ImageFont.TransposedFont(font, Pillow.Transpose.ROTATE_90)
+        t90 := tf90.GetMask("AB")
+        AhkTest.AssertEqual([8, 12], t90.Size)
+        maskRef := font.GetMask("AB")
+        AhkTest.AssertEqual(maskRef.GetPixel([11, 0]), t90.GetPixel([0, 0]))
+        t90.Close()
+        maskRef.Close()
+        tf270 := Pillow.ImageFont.TransposedFont(font, Pillow.Transpose.ROTATE_270)
+        t270 := tf270.GetMask("AB")
+        AhkTest.AssertEqual([8, 12], t270.Size)
+        t270.Close()
+        tf180 := Pillow.ImageFont.TransposedFont(font, Pillow.Transpose.ROTATE_180)
+        t180 := tf180.GetMask("AB")
+        AhkTest.AssertEqual([12, 8], t180.Size)
+        t180.Close()
+        tfNone := Pillow.ImageFont.TransposedFont(font)
+        tNone := tfNone.GetMask("AB")
+        AhkTest.AssertEqual([12, 8], tNone.Size)
+        tNone.Close()
+
+        ; --- bbox and length ---
+        AhkTest.AssertEqual([0, 0, 12, 8], tfNone.GetBbox("AB"))
+        AhkTest.AssertEqual([0, 0, 8, 12], tf90.GetBbox("AB"))
+        AhkTest.AssertEqual([0, 0, 8, 12], tf270.GetBbox("AB"))
+        AhkTest.AssertEqual([0, 0, 12, 8], tf180.GetBbox("AB"))
+        AhkTest.AssertEqual(12.0, tfNone.GetLength("AB"))
+        AhkTest.AssertEqual(12.0, tf180.GetLength("AB"))
+        AhkTest.AssertEqual("text length is undefined for text rotated by 90 or 270 degrees", PillowTestFormatCaptureError(() => tf90.GetLength("AB")))
+        AhkTest.AssertEqual("text length is undefined for text rotated by 90 or 270 degrees", PillowTestFormatCaptureError(() => tf270.GetLength("AB")))
+    } finally {
+        font.Close()
+    }
+}
+
+AhkTest.Test("Pillow default-font GetMask and TransposedFont match Pillow 11.3.0 mask/bbox/length semantics", PillowTestFontMask)
+
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
 
@@ -27352,14 +27417,15 @@ PillowTestImageFontVariation(*) {
         f := Pillow.ImageFont.TransposedFont(font, Pillow.Transpose.FLIP_LEFT_RIGHT)
         AhkTest.AssertEqual(expected, f.GetBbox("ab"))
         AhkTest.AssertEqual(font.GetLength("ab"), f.GetLength("ab"))
-        ; getmask is a documented boundary (no mask objects in this runtime).
-        maskError := ""
+        ; getmask left the documented-boundary list with BEHAV-FONT-002
+        ; (pinned by PillowTestFontMask): the wrapped font's mask is
+        ; transposed by the orientation.
+        mask := t.GetMask("ab")
         try {
-            t.GetMask("ab")
-        } catch Error as err {
-            maskError := err.Message
+            AhkTest.AssertEqual("L", mask.Mode)
+        } finally {
+            mask.Close()
         }
-        AhkTest.AssertEqual("Pillow.ImageFont.TransposedFont.GetMask mask objects are not exposed by the AHK runtime; text rasterizes through the native draw seam", maskError)
     } finally {
         font.Close()
     }

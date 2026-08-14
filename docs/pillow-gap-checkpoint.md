@@ -74,10 +74,11 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-PARSER-001 (ImageFile.Parser
-feed/close: the buffered feeds, the per-feed content open, the
-close reopen, and the exact error/reset/finished surface)
-after BEHAV-PALETTE-002/
+Latest covered gap tail: BEHAV-FONT-002 (default-font GetMask and
+TransposedFont: the native glyph-coverage masks, the mode-"1"
+packing, and the exact transpose/bbox/length surface)
+after BEHAV-PARSER-001/
+BEHAV-PALETTE-002/
 BEHAV-OPEN-009/
 BEHAV-OPEN-008/
 BEHAV-OPEN-007/
@@ -91,9 +92,10 @@ BEHAV-PDF-001/
 BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
-the format-family surface, ImagePalette.load, and the Parser are
-now COMPLETE; the next
-bounded child is TransposedFont.GetMask rasterization, then
+the format-family surface, ImagePalette.load, the Parser, and the
+font mask/TransposedFont are now COMPLETE; the next
+bounded child is the API-FONTFILE-001 truetype font loading
+(the largest AUDIT-003 gap), then
 the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
 follow as their own packets.
@@ -545,6 +547,31 @@ errors, or skips. Facade-only change: source/DLL export parity
 remains `482/482` and the DLL SHA-256 remains
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
 The next bounded child is `BEHAV-PDF-001`, the PDF format.
+
+2026-08-14: `BEHAV-FONT-002` is GREEN as the default-font GetMask and
+TransposedFont. The Pillow 11.3.0 oracle (`oracle/probe_font_mask.py`/
+`probe_font_mask.json`) pins ImageFont.getmask and TransposedFont:
+the L coverage masks, the mode-"1" MSB-first threshold-128 packing
+(verified by the mask_1 == pack(mask_a) relation), the mode
+""/L/unknown-mode equivalence, the empty-text (0,0) mask, the
+orientation transposes, the normalized (0,0,w,h) bbox with the
+90/270 swap, and the exact `text length is undefined for text
+rotated by 90 or 270 degrees` ValueError. One deliberate native
+export (`pillow_c_font_getmask`) renders the glyph coverage into an
+L image (or the mode-1 packed image); the facade FreeTypeFont.
+GetMask wraps the handle and TransposedFont applies the existing
+core transpose. The glyph shapes are this runtime's classic bitmap
+font (the FreeType default-font shapes stay the API-FONTFILE-001
+truetype gap); the mask sizes, bbox math, and error messages match
+Pillow's shapes (the "AB" length 12.0 matches exactly). The facade
+font-mask target passes `1/1` in `0ms`; the full directory suite
+passes `2836/2836` in `21625ms` with zero failures, errors, or
+skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity moves to `499/499` (one deliberate new
+export) with zero difference; and the rebuilt DLL SHA-256 is
+`FE2990B14C6282E211C81D38FCD278BA8499FF1BB9CEFC976009DC53299A90EB`.
+The next bounded child is the API-FONTFILE-001 truetype font
+loading (the largest AUDIT-003 gap).
 
 2026-08-14: `BEHAV-PARSER-001` is GREEN as ImageFile.Parser feed/close
 (facade-only). The Pillow 11.3.0 oracle (`oracle/probe_parser.py`/

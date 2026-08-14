@@ -5506,6 +5506,136 @@ extern "C" __declspec(dllexport) int pillow_c_image_draw_text_font(
     });
 }
 
+// BEHAV-FONT-002: the default-font glyph coverage mask as an image handle.
+// mode "1" packs the threshold-128 coverage into MSB-first bytes (Pillow's
+// mode-"1" mask packing); every other mode returns the L alpha image. The
+// glyph shapes are this runtime's classic bitmap font (the FreeType
+// default-font shapes stay the API-FONTFILE-001 truetype gap; the metrics
+// are pinned to Pillow's).
+extern "C" __declspec(dllexport) int pillow_c_font_getmask(
+    const PillowCFont* font,
+    const char* text,
+    const char* mode,
+    PillowCImage** out_image)
+{
+    if (!font || !text || !mode || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (font->kind != PILLOW_C_FONT_DEFAULT) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::size_t text_length = std::strlen(text);
+    if (text_length == 0) {
+        try {
+            auto* image = new PillowCImage{
+                0,
+                0,
+                PILLOW_C_MODE_L,
+                1,
+                0,
+                std::vector<std::uint8_t>()};
+            *out_image = image;
+            return PILLOW_C_OK;
+        } catch (const std::bad_alloc&) {
+            return PILLOW_C_ALLOCATION_FAILED;
+        }
+    }
+    int length = 0;
+    int left = 0;
+    int top = 0;
+    int right = 0;
+    int bottom = 0;
+    const int metrics_status = default_font_text_metrics(
+        text,
+        &length,
+        &left,
+        &top,
+        &right,
+        &bottom);
+    if (metrics_status != PILLOW_C_OK) {
+        return metrics_status;
+    }
+    const int mask_width = length;
+    const int mask_height = bottom - top;
+    if (mask_width <= 0 || mask_height <= 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const bool packed = mode[0] == '1' && mode[1] == '\0';
+
+    try {
+        std::vector<std::uint8_t> mask(
+            static_cast<std::size_t>(mask_width) * static_cast<std::size_t>(mask_height),
+            0);
+        int cursor = 0;
+        for (std::size_t index = 0; index < text_length; ++index) {
+            const DefaultFontGlyph* glyph = default_font_glyph(static_cast<unsigned char>(text[index]));
+            if (!glyph) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            for (int glyph_y = 0; glyph_y < glyph->height; ++glyph_y) {
+                const std::uint8_t* glyph_row =
+                    glyph->mask + static_cast<std::size_t>(glyph_y) * static_cast<std::size_t>(glyph->width);
+                for (int glyph_x = 0; glyph_x < glyph->width; ++glyph_x) {
+                    const std::uint8_t alpha = glyph_row[glyph_x];
+                    if (alpha == 0) {
+                        continue;
+                    }
+                    const int base_x = left + cursor + glyph->offset_x + glyph_x;
+                    const int base_y = top + glyph->offset_y + glyph_y;
+                    const int mask_x = base_x - left;
+                    const int mask_y = base_y - top;
+                    if (mask_x < 0 || mask_x >= mask_width || mask_y < 0 || mask_y >= mask_height) {
+                        continue;
+                    }
+                    std::uint8_t& current =
+                        mask[static_cast<std::size_t>(mask_y) * static_cast<std::size_t>(mask_width) + static_cast<std::size_t>(mask_x)];
+                    current = std::max(current, alpha);
+                }
+            }
+            cursor += glyph->advance;
+        }
+
+        if (!packed) {
+            auto* image = new PillowCImage{
+                mask_width,
+                mask_height,
+                PILLOW_C_MODE_L,
+                1,
+                static_cast<std::size_t>(mask_width),
+                std::move(mask)};
+            *out_image = image;
+            return PILLOW_C_OK;
+        }
+
+        const std::size_t row_bytes = (static_cast<std::size_t>(mask_width) + 7u) / 8u;
+        std::vector<std::uint8_t> packed_bytes(
+            static_cast<std::size_t>(mask_height) * row_bytes,
+            0);
+        for (int y = 0; y < mask_height; ++y) {
+            for (int x = 0; x < mask_width; ++x) {
+                const std::uint8_t alpha =
+                    mask[static_cast<std::size_t>(y) * static_cast<std::size_t>(mask_width) + static_cast<std::size_t>(x)];
+                if (alpha >= 128) {
+                    packed_bytes[static_cast<std::size_t>(y) * row_bytes + static_cast<std::size_t>(x) / 8u] |=
+                        static_cast<std::uint8_t>(0x80u >> (x % 8));
+                }
+            }
+        }
+        auto* image = new PillowCImage{
+            mask_width,
+            mask_height,
+            PILLOW_C_MODE_1,
+            1,
+            row_bytes,
+            std::move(packed_bytes)};
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_draw_text_font_stroke(
     PillowCImage* image,
     int left,

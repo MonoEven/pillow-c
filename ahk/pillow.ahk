@@ -4616,6 +4616,30 @@ class Pillow {
                 return length
             }
 
+            GetMask(text, mode := "") {
+                ; BEHAV-FONT-002: the default-font glyph coverage mask.
+                ; mode "1" packs the threshold-128 coverage into MSB-first
+                ; bytes (Pillow's mode-"1" packing); every other mode
+                ; returns the L alpha image. The glyph shapes are this
+                ; runtime's classic bitmap font (the FreeType default-font
+                ; shapes stay the API-FONTFILE-001 truetype gap; the
+                ; metrics are pinned to Pillow's).
+                if !(text is String)
+                    throw Error("Pillow.ImageFont.GetMask text expects a string", -1)
+                textBytes := Pillow.Image.Utf8Buffer(text)
+                modeBytes := Pillow.Image.Utf8Buffer(mode)
+                outHandle := 0
+                Pillow.CheckStatus(DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_font_getmask",
+                    "Ptr", this.RequireHandle(),
+                    "Ptr", textBytes,
+                    "Ptr", modeBytes,
+                    "Ptr*", &outHandle,
+                    "Int"
+                ))
+                return Pillow.WrapImageHandle(outHandle)
+            }
+
             GetBbox(text, anchor := unset) {
                 if !(text is String)
                     throw Error("Pillow.ImageFont.GetBbox text expects a string", -1)
@@ -4735,7 +4759,12 @@ class Pillow {
             }
 
             GetMask(text, mode := "", args*) {
-                throw Error("Pillow.ImageFont.TransposedFont.GetMask mask objects are not exposed by the AHK runtime; text rasterizes through the native draw seam", -1)
+                ; Pillow returns the wrapped font's mask, transposed by the
+                ; orientation when one is set.
+                mask := this.Font.GetMask(text, mode, args*)
+                if this.Orientation != ""
+                    return mask.Transpose(this.Orientation)
+                return mask
             }
 
             GetBbox(text, anchor := unset) {

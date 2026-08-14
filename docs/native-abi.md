@@ -280,10 +280,21 @@ content open, close reopen, and the exact error/reset surface) runs
 in the facade; the decoder-based incremental decode stays a
 documented child.
 
+`BEHAV-FONT-002` adds one deliberate export —
+`pillow_c_font_getmask` — that renders the default-font glyph
+coverage into an L image handle (or the mode-1 image with Pillow's
+MSB-first threshold-128 packing for mode "1"). The glyph shapes are
+this runtime's classic bitmap font (the FreeType default-font
+shapes stay the API-FONTFILE-001 truetype gap); the facade
+FreeTypeFont.GetMask wraps the handle and TransposedFont applies
+the existing core transpose with Pillow's exact bbox/length
+semantics.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`498/498`; the full AHK suite is `2835/2835`; and the current DLL SHA-256 is
-`6603840FEEA48553F2D42ED2444DD5A30331A17ABE3ABCBBB8E262D0988AE747`
-(BEHAV-PARSER-001 changes no ABI;
+`499/499`; the full AHK suite is `2836/2836`; and the current DLL SHA-256 is
+`FE2990B14C6282E211C81D38FCD278BA8499FF1BB9CEFC976009DC53299A90EB`
+(BEHAV-FONT-002 adds the `pillow_c_font_getmask` export below;
+BEHAV-PARSER-001 changes no ABI;
 BEHAV-PALETTE-002 changes no ABI;
 BEHAV-OPEN-009 adds the `pillow_c_image_open_wmf` export below;
 BEHAV-OPEN-008 changes no ABI;

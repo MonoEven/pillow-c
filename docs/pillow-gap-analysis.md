@@ -331,6 +331,35 @@ export parity moves to `493/493` and the DLL SHA-256 is
 The next bounded child is the remaining pure-Python open families
 (MIC/PCD).
 
+## 2026-08-14 BEHAV-FONT-002 TransposedFont.GetMask (GREEN)
+
+`BEHAV-FONT-002` implements the default-font GetMask and
+TransposedFont (one deliberate export, `pillow_c_font_getmask`).
+The Pillow 11.3.0 oracle (`oracle/probe_font_mask.py`/
+`probe_font_mask.json`) pins ImageFont.getmask and TransposedFont:
+the L coverage mask sizes, the mode-"1" MSB-first packing with the
+threshold-128 rule (verified by the mask_1 == pack(mask_a)
+relation), the mode ""/L/unknown-mode equivalence, the empty-text
+(0,0) mask, the orientation transposes (90/270 swap to 8x12,
+180/flips keep 12x8), the normalized (0,0,w,h) bbox with the 90/270
+swap, and the exact
+`text length is undefined for text rotated by 90 or 270 degrees`
+ValueError. The native renders the default-font glyph coverage into
+an L image (or the mode-1 packed image); the facade FreeTypeFont.
+GetMask wraps the handle and TransposedFont.GetMask applies the
+existing core transpose. The glyph shapes are this runtime's
+classic bitmap font — the FreeType default-font shapes stay the
+API-FONTFILE-001 truetype gap — while the mask sizes, the bbox
+math, and the error messages match Pillow's shapes (the "AB"
+length 12.0 matches Pillow's exactly). The facade font-mask target
+passes `1/1` in `0ms`; the full directory suite passes
+`2836/2836` in `21625ms`; source/DLL export parity moves to
+`499/499` and the
+DLL SHA-256 is
+`FE2990B14C6282E211C81D38FCD278BA8499FF1BB9CEFC976009DC53299A90EB`.
+The next bounded child is the API-FONTFILE-001 truetype font
+loading (the largest AUDIT-003 gap).
+
 ## 2026-08-14 BEHAV-PARSER-001 ImageFile.Parser feed/close (GREEN)
 
 `BEHAV-PARSER-001` implements ImageFile.Parser feed/close
@@ -1161,7 +1190,7 @@ Classification of every boundary item (treatment applies per packet):
 | WEBP/AVIF/JPEG2000 | work via bundled libs | dependency-gated: match Pillow's own not-enabled messages; remain documented build boundaries |
 | ImageFile.Parser | feed/close works (partial feed → close returns correct image) | DONE with BEHAV-PARSER-001 — the facade Parser accumulates fed buffers, attempts Pillow's per-feed content open (swallowing the OSError-family failures), reopens the complete stream at close(), and replays Pillow's exact surface: `cannot parse this image`, `cannot reuse parsers`, the finished-ignore feed, and the second-close image return; the decoder-based incremental decode stays a documented child |
 | ImagePalette.load | parses GIMP/Adobe palette files | DONE with BEHAV-PALETTE-002 — facade parsers for GimpPaletteFile (the "GIMP Palette" walk with the 259-line/768-byte caps, field/comment skips, and the bad-file/bad-entry errors), GimpGradientFile (the "GIMP Gradient" header, the five segment functions, the RGBA 256-entry render, the HSV-colour-space OSError escape, and the short-line IndexError escape), and PaletteFile (the Teragon 256-grayscale-default override) with the try-chain fall-through to `cannot load palette` and Pillow's FileNotFoundError shape; byte-pinned against the 11.3.0 oracle |
-| TransposedFont.GetMask | returns an L-mode mask with glyphs | IMPLEMENT via native text rasterization into an L image |
+| TransposedFont.GetMask | returns an L-mode mask with glyphs | DONE with BEHAV-FONT-002 — one deliberate native export (`pillow_c_font_getmask`) renders the default-font glyph coverage into an L image (or the mode-"1" MSB-first packed image with the threshold-128 rule); the facade FreeTypeFont.GetMask and TransposedFont (transpose/bbox/length with the exact 90/270 ValueError) complete the surface. The glyph shapes are this runtime's classic bitmap font (the FreeType default-font shapes stay the API-FONTFILE-001 truetype gap); the mask sizes, bbox math, and error messages match Pillow's shapes |
 | ImageQt/ImageTk | local Pillow HAS Qt/Tk bindings (PyQt5/PySide6/tkinter installed) | environment-gated: the AHK runtime can never create QImage/Tk objects; keep the Pillow no-binding/no-root messages as the honest environment boundary |
 | ImagePalette.random stream | Python Mersenne-Twister global state | stateful-unmatchable; keep the documented boundary (shape/range identical) |
 | ImagePath map ImagingTransformHandler form | C-level handler object | environment-gated (documented) |

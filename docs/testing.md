@@ -47,8 +47,23 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2835` AHK tests: `1392` raw DLL tests and
-`1443` facade tests.
+This suite currently registers `2836` AHK tests: `1392` raw DLL tests and
+`1444` facade tests.
+
+Latest `BEHAV-FONT-002` verification: the Pillow 11.3.0 oracle
+(`oracle/probe_font_mask.py`/`probe_font_mask.json`) pins the
+default-font getmask and TransposedFont (the L coverage masks, the
+mode-"1" MSB-first threshold-128 packing, the orientation
+transposes, the normalized bbox with the 90/270 swap, and the exact
+rotated-length ValueError). The facade font-mask target passes
+`1/1` in `0ms`; the full directory suite passes `2836/2836` in
+`21625ms` with zero failures, errors, or skips. Release x64 Rebuild
+has `0 Warning(s), 0 Error(s)`; source/DLL export parity moves to
+`499/499` (one deliberate new export) with zero difference; and the
+rebuilt DLL SHA-256 is
+`FE2990B14C6282E211C81D38FCD278BA8499FF1BB9CEFC976009DC53299A90EB`.
+The wave continues with the API-FONTFILE-001 truetype font loading
+next.
 
 Latest `BEHAV-PARSER-001` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_parser.py`/`probe_parser.json`) pins ImageFile.Parser
