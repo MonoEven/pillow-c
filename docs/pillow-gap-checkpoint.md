@@ -83,12 +83,12 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-FONTFILE-002 (ImageFont.load/load_path/
-load_default_imagefont: the PILfont bitmap loader with the pinned
-big-endian metrics, the src-to-dst blit masks, the exact SystemError
-and load-flow error shapes, and Pillow's bundled courB08 font with
-byte-identical masks)
-after BEHAV-FONTFILE-001/
+Latest covered gap tail: BEHAV-SAVEOPTS-001 (save-option parity
+wave 1: the API-SAVEOPTS-002 error messages all Pillow-exact, the
+JPEG quality-preset alias removal, the QOI colorspace byte and the
+TGA id_section/orientation containers byte-identical to Pillow)
+after BEHAV-FONTFILE-002/
+BEHAV-FONTFILE-001/
 BEHAV-FONT-002/
 BEHAV-PARSER-001/
 BEHAV-PALETTE-002/
@@ -106,10 +106,12 @@ BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
 the format-family surface, ImagePalette.load, the Parser, and the
-font mask/TransposedFont/truetype/PILfont surfaces are now COMPLETE;
-the next
-bounded children are the save-option parity (API-SAVEOPTS-001/002)
-and error-message parity (API-ERRMSGS-001) packets.
+font mask/TransposedFont/truetype/PILfont surfaces are now COMPLETE
+and the save-option error messages are Pillow-exact; the next
+bounded children are the remaining API-SAVEOPTS-001 option
+implementations (PNG compress_type/dictionary/bits, JPEG
+smooth/streamtype, TIFF strip_size/resolution/named tags, GIF
+palette/interlace), then API-ERRMSGS-001.
 ```
 
 Current work packet:
@@ -452,8 +454,10 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-SAVEOPTS-001/002`, the save-option parity,
-  then `API-ERRMSGS-001` (exact error messages).
+- Selected next gap: `API-SAVEOPTS-001` remainder, the save-option
+  implementations (PNG compress_type/dictionary/bits, JPEG
+  smooth/streamtype, TIFF strip_size/resolution/named tags, GIF
+  palette/interlace), then `API-ERRMSGS-001`.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19336,6 +19340,30 @@ rebuilt DLL SHA-256 is
 `F33F40465287FAFA4F65D69B1972FDB3B614DEFB882F5C0F723B63CDF54A35E1`.
 The next bounded children are the save-option parity (API-SAVEOPTS-001/002)
 and error-message parity (API-ERRMSGS-001) packets.
+
+2026-08-15: `BEHAV-SAVEOPTS-001` is GREEN as the save-option parity wave 1.
+The Pillow 11.3.0 oracle (`oracle/audit3-redteam/probe_save_options.py`
+re-run plus the ctypes cross-check `oracle/probe_saveopts_dll.py`) pins:
+the exact PNG `compress_level` TypeError/OSError shapes, the JPEG
+`Invalid quality setting` ValueError (the facade's non-Pillow preset
+aliases low/medium/high/web_very_high/web_maximum/maximum are removed), the
+JPEG `subsampling` integer breadth (negative keep, 3 = 4:1:1, 4+ = 4:4:4)
+and its exact TypeError, the TIFF `quality` validation on the jpeg route
+and unknown-compression fallback, the ICO `sizes` TypeError, the QOI
+`colorspace` header byte (0 only for "sRGB", default linear), and the TGA
+`id_section`/`orientation` containers — the QOI and TGA files are
+byte-identical to Pillow for the full option matrix. Two deliberate native
+exports (`pillow_c_image_save_qoi_options`,
+`pillow_c_image_save_tga_full_options`) implement the container options.
+The facade save-option target passes `1/1` in `31ms`; the `Save` filter
+passes `843/843` in `8063ms`; the full directory suite passes
+`2839/2839` in `20718ms` with zero failures, errors, or skips. Release
+x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export parity moves
+to `505/505` with zero difference; and the rebuilt DLL SHA-256 is
+`0A9FAB1D3D5D3A0175EC6994ABEDB57A75F26B89BF38DD69F91223269D27406C`.
+The remaining API-SAVEOPTS-001 children (PNG compress_type/dictionary/bits,
+JPEG smooth/streamtype, TIFF strip_size/resolution/named tags, GIF
+palette/interlace) stay the next packets.
 ```
 
 If any line above is no longer true, update this file first, then update

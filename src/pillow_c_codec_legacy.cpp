@@ -585,7 +585,16 @@ int open_qoi_image(const char* path, PillowCImage** out_image)
     }
 }
 
+int save_qoi_image_with_colorspace(const PillowCImage* image, const char* path, int colorspace);
+
 int save_qoi_image(const PillowCImage* image, const char* path)
+{
+    return save_qoi_image_with_colorspace(image, path, 1);
+}
+
+// BEHAV-SAVEOPTS-001: Pillow 11.3.0's QOI save writes the colorspace byte
+// as 0 when colorspace == "sRGB" and 1 otherwise (the default is linear).
+int save_qoi_image_with_colorspace(const PillowCImage* image, const char* path, int colorspace)
 {
     if (!image || !path) {
         return PILLOW_C_NULL_POINTER;
@@ -607,7 +616,7 @@ int save_qoi_image(const PillowCImage* image, const char* path)
         append_be32(out, static_cast<std::uint32_t>(image->width));
         append_be32(out, static_cast<std::uint32_t>(image->height));
         out.push_back(static_cast<std::uint8_t>(image->channels));
-        out.push_back(1u);
+        out.push_back(static_cast<std::uint8_t>(colorspace ? 1 : 0));
 
         std::uint8_t index[64][4] = {};
         bool valid[64] = {};
@@ -964,7 +973,31 @@ int open_tga_image(const char* path, PillowCImage** out_image)
     }
 }
 
+int save_tga_image_with_full_options(
+    const PillowCImage* image,
+    const char* path,
+    bool rle,
+    const std::uint8_t* id_section,
+    std::size_t id_size,
+    int orientation);
+
 int save_tga_image_with_options(const PillowCImage* image, const char* path, bool rle)
+{
+    return save_tga_image_with_full_options(image, path, rle, nullptr, 0, -1);
+}
+
+// BEHAV-SAVEOPTS-001: Pillow 11.3.0's TGA save options: id_section (up to
+// 255 bytes, written after the header; longer values are trimmed with a
+// warning -- silently here) and orientation (positive values flip the rows
+// to top-down and set the 0x20 descriptor flag; the default -1 keeps the
+// bottom-up layout). compression values other than "tga_rle" are ignored.
+int save_tga_image_with_full_options(
+    const PillowCImage* image,
+    const char* path,
+    bool rle,
+    const std::uint8_t* id_section,
+    std::size_t id_size,
+    int orientation)
 {
     if (!image || !path) {
         return PILLOW_C_NULL_POINTER;
@@ -981,6 +1014,9 @@ int save_tga_image_with_options(const PillowCImage* image, const char* path, boo
         (image->palette_rgb.size() > 256u * 3u || image->palette_rgb.size() % 3u != 0)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
+    if (id_size > 255u) {
+        id_size = 255u;
+    }
     const int refresh_status = pillow_c_refresh_const_buffer_view_image(image);
     if (refresh_status != PILLOW_C_OK) {
         return refresh_status;
@@ -994,9 +1030,9 @@ int save_tga_image_with_options(const PillowCImage* image, const char* path, boo
         const std::size_t pixel_count =
             static_cast<std::size_t>(image->width) * static_cast<std::size_t>(image->height);
         std::vector<std::uint8_t> out;
-        out.reserve(18u + palette_entries * 3u + pixel_count * static_cast<std::size_t>(file_pixel_bytes) + 26u);
+        out.reserve(18u + id_size + palette_entries * 3u + pixel_count * static_cast<std::size_t>(file_pixel_bytes) + 26u);
 
-        out.push_back(0);
+        out.push_back(static_cast<std::uint8_t>(id_size));
         out.push_back(static_cast<std::uint8_t>(is_palette ? 1 : 0));
         out.push_back(static_cast<std::uint8_t>((is_palette ? 1 : (is_l ? 3 : 2)) + (rle ? 8 : 0)));
         append_le16(out, 0);
@@ -1007,7 +1043,14 @@ int save_tga_image_with_options(const PillowCImage* image, const char* path, boo
         append_le16(out, static_cast<std::uint16_t>(image->width));
         append_le16(out, static_cast<std::uint16_t>(image->height));
         out.push_back(static_cast<std::uint8_t>((is_l || is_palette) ? 8 : image->channels * 8));
-        out.push_back(static_cast<std::uint8_t>(image->mode == PILLOW_C_MODE_RGBA ? 8 : 0));
+        out.push_back(static_cast<std::uint8_t>(
+            (image->mode == PILLOW_C_MODE_RGBA ? 8 : 0) | (orientation > 0 ? 0x20 : 0)));
+        if (id_size > 0) {
+            if (!id_section) {
+                return PILLOW_C_NULL_POINTER;
+            }
+            out.insert(out.end(), id_section, id_section + id_size);
+        }
         if (is_palette) {
             for (std::size_t i = 0; i < palette_entries; ++i) {
                 const std::size_t offset = i * 3u;
@@ -1021,10 +1064,12 @@ int save_tga_image_with_options(const PillowCImage* image, const char* path, boo
         if (rle) {
             file_pixels.reserve(pixel_count * static_cast<std::size_t>(file_pixel_bytes));
         }
-        for (int y = image->height - 1; y >= 0; --y) {
-            const std::uint8_t* row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
+        const bool top_down = orientation > 0;
+        for (int row = 0; row < image->height; ++row) {
+            const int y = top_down ? row : (image->height - 1 - row);
+            const std::uint8_t* pixels_row = image->pixels.data() + static_cast<std::size_t>(y) * image->stride;
             for (int x = 0; x < image->width; ++x) {
-                const std::uint8_t* src = row + static_cast<std::size_t>(x) * static_cast<std::size_t>(image->channels);
+                const std::uint8_t* src = pixels_row + static_cast<std::size_t>(x) * static_cast<std::size_t>(image->channels);
                 if (is_l || is_palette) {
                     (rle ? file_pixels : out).push_back(src[0]);
                 } else {
@@ -8471,6 +8516,14 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_qoi(
     return save_qoi_image(image, path);
 }
 
+extern "C" __declspec(dllexport) int pillow_c_image_save_qoi_options(
+    const PillowCImage* image,
+    const char* path,
+    int colorspace)
+{
+    return save_qoi_image_with_colorspace(image, path, colorspace);
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_open_tga(
     const char* path,
     PillowCImage** out_image)
@@ -8491,6 +8544,18 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_tga_options(
     int rle)
 {
     return save_tga_image_with_options(image, path, rle != 0);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_save_tga_full_options(
+    const PillowCImage* image,
+    const char* path,
+    int rle,
+    const std::uint8_t* id_section,
+    std::size_t id_size,
+    int orientation)
+{
+    return save_tga_image_with_full_options(
+        image, path, rle != 0, id_section, id_size, orientation);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_open_xbm(

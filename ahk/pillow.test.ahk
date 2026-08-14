@@ -27717,6 +27717,100 @@ PillowTestPilFont(*) {
 
 AhkTest.Test("Pillow ImageFont.load/load_path/load_default_imagefont match Pillow 11.3.0 PIL bitmap fonts", PillowTestPilFont)
 
+; BEHAV-SAVEOPTS-001/002: save-option parity. The error messages are pinned
+; to Pillow 11.3.0 (oracle/audit3-redteam/probe_save_options.py); the QOI
+; colorspace byte and the TGA id_section/orientation containers are pinned
+; byte-exact via oracle/probe_saveopts_dll.py.
+PillowTestSaveOptionParity(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGB", [2, 2], [0, 0, 0])
+    try {
+        image.PutPixel([0, 0], [10, 0, 0])
+        image.PutPixel([1, 0], [20, 0, 0])
+        image.PutPixel([0, 1], [30, 0, 0])
+        image.PutPixel([1, 1], [40, 0, 0])
+
+        ; --- PNG compress_level: Pillow's exact TypeError/OSError shapes ---
+        pngPath := PillowTestTempPngPath("saveopt-err")
+        AhkTest.AssertEqual("'str' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Save(pngPath, "PNG", { compress_level: "abc" })))
+        AhkTest.AssertEqual("codec configuration error when writing image file", PillowTestFormatCaptureError(() => image.Save(pngPath, "PNG", { compress_level: 99 })))
+        AhkTest.AssertEqual("codec configuration error when writing image file", PillowTestFormatCaptureError(() => image.Save(pngPath, "PNG", { compress_level: -5 })))
+        PillowTestDeleteFile(pngPath)
+
+        ; --- JPEG quality/subsampling ---
+        jpgPath := PillowTestTempJpegPath("saveopt-err")
+        AhkTest.AssertEqual("Invalid quality setting", PillowTestFormatCaptureError(() => image.Save(jpgPath, "JPEG", { quality: "bogus" })))
+        AhkTest.AssertEqual("'str' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Save(jpgPath, "JPEG", { subsampling: "bogus" })))
+        ; out-of-range quality clamps (no error) and subsampling >= 4 falls to
+        ; the all-1x1 (4:4:4) layout like Pillow's C switch
+        AhkTest.AssertEqual("", PillowTestFormatCaptureError(() => image.Save(jpgPath, "JPEG", { quality: -10 })))
+        AhkTest.AssertEqual("", PillowTestFormatCaptureError(() => image.Save(jpgPath, "JPEG", { quality: 101 })))
+        AhkTest.AssertEqual("", PillowTestFormatCaptureError(() => image.Save(jpgPath, "JPEG", { subsampling: 7 })))
+        AhkTest.AssertEqual("", PillowTestFormatCaptureError(() => image.Save(jpgPath, "JPEG", { subsampling: "4:2:2" })))
+        PillowTestDeleteFile(jpgPath)
+
+        ; --- TIFF quality + unknown compression ---
+        tiffPath := PillowTestTempTiffPath("saveopt-err")
+        AhkTest.AssertEqual("Invalid quality setting", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { compression: "jpeg", quality: 200 })))
+        AhkTest.AssertEqual("Invalid quality setting", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { compression: "jpeg", quality: "x" })))
+        AhkTest.AssertEqual("", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { quality: 80 })))
+        AhkTest.AssertEqual("", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { compression: "bogus" })))
+        reopened := Pillow.Image.Open(tiffPath)
+        try {
+            AhkTest.AssertEqual("TIFF", reopened.Format)
+        } finally {
+            reopened.Close()
+        }
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- ICO sizes: Pillow's exact TypeError ---
+        icoPath := PillowTestTempIcoPath("saveopt-err")
+        AhkTest.AssertEqual("'>' not supported between instances of 'str' and 'int'", PillowTestFormatCaptureError(() => image.Save(icoPath, "ICO", { sizes: "bogus" })))
+        PillowTestDeleteFile(icoPath)
+
+        ; --- QOI colorspace byte (offset 12: 0 sRGB / 1 linear default) ---
+        qoiSrgb := PillowTestTempQoiPath("saveopt-srgb")
+        qoiLinear := PillowTestTempQoiPath("saveopt-linear")
+        qoiDefault := PillowTestTempQoiPath("saveopt-default")
+        image.Save(qoiSrgb, "QOI", { colorspace: "sRGB" })
+        image.Save(qoiLinear, "QOI", { colorspace: "linear" })
+        image.Save(qoiDefault, "QOI")
+        srgbBytes := PillowTestReadFileBytes(qoiSrgb)
+        linearBytes := PillowTestReadFileBytes(qoiLinear)
+        defaultBytes := PillowTestReadFileBytes(qoiDefault)
+        AhkTest.AssertEqual(0, srgbBytes[14])
+        AhkTest.AssertEqual(1, linearBytes[14])
+        AhkTest.AssertEqual(1, defaultBytes[14])
+        PillowTestDeleteFile(qoiSrgb)
+        PillowTestDeleteFile(qoiLinear)
+        PillowTestDeleteFile(qoiDefault)
+
+        ; --- TGA id_section / orientation ---
+        tgaId := PillowTestTempTgaPath("saveopt-id")
+        tgaO2 := PillowTestTempTgaPath("saveopt-o2")
+        tgaDefault := PillowTestTempTgaPath("saveopt-default")
+        image.Save(tgaId, "TGA", { id_section: PillowTestBuffer([97, 98, 99]) })
+        image.Save(tgaO2, "TGA", { orientation: 2 })
+        image.Save(tgaDefault, "TGA")
+        idBytes := PillowTestReadFileBytes(tgaId)
+        o2Bytes := PillowTestReadFileBytes(tgaO2)
+        defaultBytes := PillowTestReadFileBytes(tgaDefault)
+        AhkTest.AssertEqual(3, idBytes[1])            ; id length field
+        AhkTest.AssertEqual([97, 98, 99], PillowTestPaletteBufferUChars(PillowTestBuffer([idBytes[19], idBytes[20], idBytes[21]]), 0, 3))
+        AhkTest.AssertEqual(0x20, o2Bytes[18] & 0x20) ; top-origin descriptor flag
+        AhkTest.AssertEqual(10, o2Bytes[21])          ; top row first (BGR: R byte) when flipped
+        AhkTest.AssertEqual(0, defaultBytes[18] & 0x20)
+        AhkTest.AssertEqual(30, defaultBytes[21])     ; bottom-up: last row first
+        PillowTestDeleteFile(tgaId)
+        PillowTestDeleteFile(tgaO2)
+        PillowTestDeleteFile(tgaDefault)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save option errors and QOI/TGA option bytes match Pillow 11.3.0", PillowTestSaveOptionParity)
+
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
 
@@ -36118,19 +36212,12 @@ PillowTestImageSavePngCompressLevelRejectsInvalidOption(*) {
     image := Pillow.Image.FromBytes("RGB", [1, 1], PillowTestBuffer([1, 2, 3]))
     badPath := PillowTestTempPngPath("bad-compress")
     try {
-        try {
-            image.Save(badPath, "PNG", { compress_level: "0" })
-            AhkTest.Fail("Expected Image.Save to reject non-integer PNG compress_level")
-        } catch Error as err {
-            AhkTest.AssertTrue(InStr(err.Message, "compress_level") > 0)
-        }
-
-        try {
-            image.Save(badPath, "PNG", { CompressLevel: 10 })
-            AhkTest.Fail("Expected Image.Save to reject invalid PNG compress_level")
-        } catch Error as err {
-            AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)
-        }
+        ; Pillow parses the option as a C int (the exact TypeError) and
+        ; out-of-range levels fail in zlib with the codec-configuration
+        ; OSError.
+        AhkTest.AssertEqual("'str' object cannot be interpreted as an integer", PillowTestFormatCaptureError(() => image.Save(badPath, "PNG", { compress_level: "0" })))
+        AhkTest.AssertEqual("codec configuration error when writing image file", PillowTestFormatCaptureError(() => image.Save(badPath, "PNG", { CompressLevel: 10 })))
+        AhkTest.AssertEqual("codec configuration error when writing image file", PillowTestFormatCaptureError(() => image.Save(badPath, "PNG", { CompressLevel: -1 })))
     } finally {
         PillowTestDeleteFile(badPath)
         image.Close()
@@ -43786,13 +43873,7 @@ PillowTestImageSaveJpegQualityPresetAliasesWritePresetDqtAndSampling(*) {
         cases := [
             { Name: "web_low", Options: { quality: "web_low", subsampling: 0, qtables: [customLuma, customChroma] }, Sampling: sampling420, Luma: webLowLuma, Chroma: webLowChroma },
             { Name: "web_medium", Options: { quality: "web_medium" }, Sampling: sampling420 },
-            { Name: "low", Options: { quality: "low" }, Sampling: sampling420 },
-            { Name: "medium", Options: { quality: "medium" }, Sampling: sampling420 },
             { Name: "web_high", Options: { quality: "web_high" }, Sampling: sampling444 },
-            { Name: "web_very_high", Options: { quality: "web_very_high" }, Sampling: sampling444 },
-            { Name: "web_maximum", Options: { quality: "web_maximum" }, Sampling: sampling444 },
-            { Name: "high", Options: { quality: "high" }, Sampling: sampling444, Luma: highLuma, Chroma: highChroma },
-            { Name: "maximum", Options: { quality: "maximum" }, Sampling: sampling444 },
         ]
         for testCase in cases {
             path := PillowTestTempJpegPath("quality-preset-" StrReplace(testCase.Name, "_", "-"))
@@ -43808,6 +43889,16 @@ PillowTestImageSaveJpegQualityPresetAliasesWritePresetDqtAndSampling(*) {
                 AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(testCase.Luma, -1), dqtPayloads[1].Values)
                 AhkTest.AssertEqual(PillowTestExpectedJpegDqtPayload(testCase.Chroma, -1), dqtPayloads[2].Values)
             }
+        }
+        ; Pillow 11.3.0's presets are only web_low/web_medium/web_high; every
+        ; other non-"keep" quality string raises the exact ValueError (the
+        ; facade's older low/medium/high/web_very_high/web_maximum/maximum
+        ; aliases are gone).
+        for alias in ["low", "medium", "high", "web_very_high", "web_maximum", "maximum"] {
+            aliasPath := PillowTestTempJpegPath("quality-preset-bogus")
+            aliasValue := alias
+            AhkTest.AssertEqual("Invalid quality setting", PillowTestFormatCaptureError(() => image.Save(aliasPath, "JPEG", { quality: aliasValue })))
+            PillowTestDeleteFile(aliasPath)
         }
     } finally {
         for path in paths

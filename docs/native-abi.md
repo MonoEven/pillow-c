@@ -12787,3 +12787,25 @@ whose size differs from its destination box returns the local status
 `<method 'getmask' of 'ImagingFont' objects> returned a result with an
 exception set`. The generic statuses keep their public meanings; the
 kind-3 handle follows the existing font-handle ownership rules.
+
+`BEHAV-SAVEOPTS-001` adds two deliberate exports:
+
+- `pillow_c_image_save_qoi_options(const PillowCImage* image, const
+  char* path, int colorspace)` — the QOI header colorspace byte (0 for
+  "sRGB", 1 otherwise; the plain `pillow_c_image_save_qoi` keeps the
+  linear default). The output is byte-identical to Pillow 11.3.0 for
+  the sRGB/linear/default trio.
+- `pillow_c_image_save_tga_full_options(const PillowCImage* image,
+  const char* path, int rle, const uint8_t* id_section, size_t
+  id_size, int orientation)` — Pillow's TGA save options: the id field
+  (up to 255 bytes written after the header; longer values trimmed)
+  and the orientation (positive values flip the rows to top-down and
+  set the 0x20 descriptor flag; -1 keeps the bottom-up default). The
+  output is byte-identical to Pillow 11.3.0 for the
+  default/orientation-2/id/id+orientation-2/rle matrix. The existing
+  `pillow_c_image_save_tga`/`pillow_c_image_save_tga_options` exports
+  delegate to the full-options writer with the old defaults.
+
+No other export, status code, handle-ownership rule, or pointer
+lifetime changed; the facade's save-option error messages now match
+Pillow's exact strings (the facade-side validation only).

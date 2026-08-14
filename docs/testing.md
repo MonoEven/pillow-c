@@ -7140,3 +7140,16 @@ getsize/mask assembly, the SystemError boundary, and the byte-identical
 courB08 masks against local Pillow 11.3.0. Source/DLL export parity is
 `503/503` (one deliberate new export) and the rebuilt DLL SHA-256 is
 `F33F40465287FAFA4F65D69B1972FDB3B614DEFB882F5C0F723B63CDF54A35E1`.
+
+2026-08-15 BEHAV-SAVEOPTS-001 verification: the facade
+`Pillow Image.Save option errors and QOI/TGA option bytes` target passes
+`1/1` in `31ms`; the `Save` filter passes `843/843` in `8063ms`; and
+the full directory suite passes `2839/2839` in `20718ms` with zero
+failures, errors, or skips. The oracle re-runs
+`oracle/audit3-redteam/probe_save_options.py` (saved to
+`oracle/probe_save_options_11_3_0.txt`) and the ctypes cross-check
+`oracle/probe_saveopts_dll.py` pin the exact error messages and the
+byte-identical QOI/TGA option containers against local Pillow 11.3.0.
+Source/DLL export parity is `505/505` (two deliberate new exports) and the
+rebuilt DLL SHA-256 is
+`0A9FAB1D3D5D3A0175EC6994ABEDB57A75F26B89BF38DD69F91223269D27406C`.

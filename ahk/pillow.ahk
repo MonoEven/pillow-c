@@ -11327,14 +11327,25 @@ class Pillow {
                 return 8
             if text = "packbits"
                 return 32773
-            throw Error("Pillow.Image.Save TIFF compression is not supported", -1)
+            if text = "jpeg" || text = "tiff_jpeg" || text = "group3" || text = "group4" || text = "tiff_ccitt"
+                throw Error("Pillow.Image.Save TIFF compression is not supported", -1)
+            ; any other unknown compression string is ignored by Pillow and
+            ; the image falls back to the raw writer
+            return 1
         }
 
         static SaveJpegSubsampling(value) {
             if value is Integer {
-                if value >= -1 && value <= 2
-                    return value
-                throw Error("Pillow.Image.Save subsampling must be -1, 0, 1, or 2", -1)
+                ; Pillow passes any integer to the encoder: values below 0
+                ; keep the default, 3 selects 4:1:1 (2x1), and 4+ falls to
+                ; the all-1x1 (4:4:4) default of the C switch.
+                if value < 0
+                    return -1
+                if value = 3
+                    return 1
+                if value >= 4
+                    return 0
+                return value
             }
             text := StrLower(String(value))
             if text = "4:4:4" || text = "web_high" || text = "web_very_high" || text = "web_maximum" || text = "high" || text = "maximum"
@@ -11345,7 +11356,8 @@ class Pillow {
                 return 2
             if text = "keep"
                 return -2
-            throw Error("Pillow.Image.Save subsampling expects 0, 1, 2, a Pillow JPEG subsampling alias, or keep", -1)
+            ; any other non-integer reaches the C int parse in Pillow
+            throw Error("'str' object cannot be interpreted as an integer", -1)
         }
 
         static SaveJpegQTables(value) {
@@ -11784,6 +11796,10 @@ class Pillow {
         }
 
         static SaveIcoSizePairs(value) {
+            if value is String
+                ; Pillow iterates the value and compares the characters
+                ; against integer sizes, raising this exact TypeError.
+                throw Error("'>' not supported between instances of 'str' and 'int'", -1)
             if !IsObject(value)
                 throw Error("Pillow.Image.Save sizes expects an array of [width, height] pairs", -1)
             flat := []
@@ -13371,6 +13387,17 @@ class Pillow {
                         dpiY := dpi[2]
                     }
                     if compressionOption.Set {
+                        ; Pillow validates quality only on the jpeg
+                        ; compression route (the exact ValueError); with any
+                        ; other compression the option is ignored.
+                        qualityOption := Pillow.Image.SaveOption(saveOptions, "Quality", "quality")
+                        if qualityOption.Set {
+                            compressionText := StrLower(String(compressionOption.Value))
+                            if compressionText = "jpeg" || compressionText = "tiff_jpeg" {
+                                if !(qualityOption.Value is Integer) || qualityOption.Value < 0 || qualityOption.Value > 100
+                                    throw Error("Invalid quality setting", -1)
+                            }
+                        }
                         compression := Pillow.Image.SaveTiffCompression(compressionOption.Value)
                         Pillow.CheckStatus(DllCall(
                             Pillow.RequireDllPath() "\pillow_c_image_save_tiff_compression_options",
@@ -13410,8 +13437,14 @@ class Pillow {
                 if compressLevelOption.Set || dpiOption.Set || transparencyOption.Set || pngInfoOption.Set || iccProfileOption.Set || exifOption.Set || interlaceOption.Set || gammaOption.Set || optimizeOption.Set {
                     compressLevel := -1
                     if compressLevelOption.Set {
+                        ; Pillow parses the value as a C int (the exact
+                        ; TypeError for non-integers) and out-of-range
+                        ; levels fail in zlib with the codec-configuration
+                        ; OSError.
                         if !(compressLevelOption.Value is Integer)
-                            throw Error("Pillow.Image.Save compress_level must be an integer", -1)
+                            throw Error("'str' object cannot be interpreted as an integer", -1)
+                        if compressLevelOption.Value < 0 || compressLevelOption.Value > 9
+                            throw Error("codec configuration error when writing image file", -1)
                         compressLevel := compressLevelOption.Value
                     }
                     dpiX := 0.0
@@ -13791,14 +13824,16 @@ class Pillow {
                             if qualityText = "keep" {
                                 qualityKeep := true
                                 quality := -1
-                            } else {
+                            } else if qualityText = "web_low" || qualityText = "web_medium" || qualityText = "web_high" {
                                 qualityPreset := Pillow.Image.SaveJpegQualityPreset(qualityText)
                                 qualityPresetSet := true
                                 quality := -1
+                            } else {
+                                throw Error("Invalid quality setting", -1)
                             }
                         } else {
                             if !(qualityOption.Value is Integer)
-                                throw Error("Pillow.Image.Save quality must be an integer, 'keep', or a Pillow JPEG quality preset", -1)
+                                throw Error("Invalid quality setting", -1)
                             quality := qualityOption.Value
                         }
                     }
@@ -15028,18 +15063,49 @@ class Pillow {
             if IsSet(saveOptions) && resolvedFormat = "TGA" {
                 rleOption := Pillow.Image.SaveOption(saveOptions, "Rle", "rle")
                 compressionOption := Pillow.Image.SaveOption(saveOptions, "Compression", "compression")
-                if rleOption.Set || compressionOption.Set {
+                idOption := Pillow.Image.SaveOption(saveOptions, "IdSection", "id_section")
+                orientationOption := Pillow.Image.SaveOption(saveOptions, "Orientation", "orientation")
+                if rleOption.Set || compressionOption.Set || idOption.Set || orientationOption.Set {
                     rle := 0
                     if rleOption.Set {
                         rle := !!rleOption.Value
                     } else if compressionOption.Set {
                         rle := StrLower(String(compressionOption.Value)) = "tga_rle"
                     }
+                    idBytes := 0
+                    idSize := 0
+                    if idOption.Set {
+                        idBytes := Pillow.Image.BinaryBuffer(idOption.Value, "Pillow.Image.Save id_section")
+                        idSize := idBytes.Size
+                    }
+                    orientation := -1
+                    if orientationOption.Set
+                        orientation := orientationOption.Value
                     Pillow.CheckStatus(DllCall(
-                        Pillow.RequireDllPath() "\pillow_c_image_save_tga_options",
+                        Pillow.RequireDllPath() "\pillow_c_image_save_tga_full_options",
                         "Ptr", this.RequireHandle(),
                         "Ptr", pathBytes,
                         "Int", rle,
+                        "Ptr", idBytes,
+                        "UPtr", idSize,
+                        "Int", orientation,
+                        "Int"
+                    ))
+                    return
+                }
+            }
+
+            if IsSet(saveOptions) && resolvedFormat = "QOI" {
+                colorspaceOption := Pillow.Image.SaveOption(saveOptions, "Colorspace", "colorspace")
+                if colorspaceOption.Set {
+                    ; Pillow writes 0 only when colorspace == "sRGB"; every
+                    ; other value (including the default) writes 1 (linear).
+                    colorspace := colorspaceOption.Value = "sRGB" ? 0 : 1
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_qoi_options",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Int", colorspace,
                         "Int"
                     ))
                     return
