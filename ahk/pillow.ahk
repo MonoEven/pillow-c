@@ -48,6 +48,471 @@ class Pillow {
         static LIBIMAGEQUANT := 3
     }
 
+    class ImageMath {
+        ; AHK identifiers are case-insensitive, so Eval()/UnsafeEval()
+        ; also serve Pillow's eval()/unsafe_eval() aliases. Variables are
+        ; passed as a Map of name -> Image or Number (Pillow kwargs).
+        static UnsafeEval(expression, variables := unset) => Pillow.ImageMath.Eval(expression, variables)
+
+        static Eval(expression, variables := unset) {
+            if !(expression is String)
+                throw Error("Pillow.ImageMath expects a string expression", -1)
+            variableTable := Pillow.ImageMath.NormalizeVariables(IsSet(variables) ? variables : unset)
+            tokens := Pillow.ImageMath.Tokenize(expression)
+            compiled := Pillow.ImageMath.Compile(tokens, variableTable)
+            if compiled.ImageSlots.Length = 0 {
+                value := Pillow.ImageMath.EvalTreeScalar(compiled.Root, compiled.Constants)
+                return value.IsFloat ? value.Value + 0.0 : Integer(value.Value)
+            }
+            handles := Buffer(compiled.SlotCount * A_PtrSize, 0)
+            for slot, image in compiled.Images {
+                if image.Width != compiled.Width || image.Height != compiled.Height
+                    throw Error("images do not match", -1)
+                NumPut("Ptr", image.RequireHandle(), handles, (slot - 1) * A_PtrSize)
+            }
+            constants := Buffer(compiled.SlotCount * 8, 0)
+            for slot, value in compiled.Constants
+                NumPut("Double", value, constants, (slot - 1) * 8)
+            constantFloats := Buffer(compiled.SlotCount, 0)
+            for slot, value in compiled.ConstantFloats
+                NumPut("UChar", value ? 1 : 0, constantFloats, slot - 1)
+            kinds := Buffer(compiled.SlotCount, 0)
+            for slot, value in compiled.Kinds
+                NumPut("UChar", value, kinds, slot - 1)
+            program := Pillow.ImageMath.Linearize(compiled.Root, [])
+            programBuf := Pillow.ImageMath.ProgramBuffer(program)
+            outHandle := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_math_rpn",
+                "Ptr", handles,
+                "Ptr", constants,
+                "Ptr", constantFloats,
+                "Ptr", kinds,
+                "UPtr", compiled.SlotCount,
+                "Ptr", programBuf,
+                "UPtr", programBuf.Size,
+                "Ptr*", &outHandle,
+                "Int"
+            )
+            if status = -3 && compiled.FloatBitwiseOperator
+                throw TypeError("bad operand type for '" compiled.FloatBitwiseOperator "'", -1)
+            Pillow.CheckStatus(status)
+            return compiled.FirstImage.WrapDerivedHandle(outHandle)
+        }
+
+        static Tokenize(expression) {
+            tokens := []
+            pos := 1
+            length := StrLen(expression)
+            while pos <= length {
+                char := SubStr(expression, pos, 1)
+                if char = " " || char = "`t" || char = "`r" || char = "`n" {
+                    pos++
+                    continue
+                }
+                if RegExMatch(SubStr(expression, pos), "^(\d+\.\d*|\.\d+|\d+)", &m) {
+                    value := m[1]
+                    if RegExMatch(SubStr(expression, pos + StrLen(m[1])), "^\w") || RegExMatch(SubStr(expression, pos + StrLen(m[1])), "^\.\d")
+                        throw Error("SyntaxError: invalid syntax", -1)
+                    tokens.Push({ Kind: "Number", Value: value + 0.0, Int: !InStr(value, ".") })
+                    pos += StrLen(m[1])
+                    continue
+                }
+                if RegExMatch(SubStr(expression, pos), "^[A-Za-z_]\w*", &m) {
+                    tokens.Push({ Kind: "Name", Value: m[0] })
+                    pos += StrLen(m[0])
+                    continue
+                }
+                two := SubStr(expression, pos, 2)
+                if two = "<<" || two = ">>" || two = "==" || two = "!=" || two = "<=" || two = ">=" {
+                    tokens.Push({ Kind: "Operator", Value: two })
+                    pos += 2
+                    continue
+                }
+                if InStr("+-*/%&|^~<>()", char) || char = "," {
+                    tokens.Push({ Kind: char = "," ? "Comma" : (char = "(" || char = ")") ? "Paren" : "Operator", Value: char })
+                    pos++
+                    continue
+                }
+                if char = "'" {
+                    end := InStr(expression, "'", false, pos + 1)
+                    if !end
+                        throw Error("unbalanced parentheses", -1)
+                    tokens.Push({ Kind: "String", Value: SubStr(expression, pos + 1, end - pos - 1) })
+                    pos := end + 1
+                    continue
+                }
+                throw Error("SyntaxError: invalid syntax", -1)
+            }
+            return tokens
+        }
+
+        static NormalizeVariables(variables := unset) {
+            if !IsSet(variables)
+                return Map()
+            if variables is Map
+                return variables
+            throw Error("Pillow.ImageMath variables must be a Map of name to Image or Number", -1)
+        }
+
+        static Compile(tokens, variables) {
+            imageSlots := []
+            images := Map()
+            constants := Map()
+            kinds := Map()
+            constantFloats := Map()
+            slotCount := 0
+            firstImage := 0
+            width := 0
+            height := 0
+            floatBitwiseOperator := ""
+
+            precedence := Map(
+                "==", 1, "!=", 1, "<", 1, "<=", 1, ">", 1, ">=", 1,
+                "|", 2, "^", 3, "&", 4, "<<", 5, ">>", 5,
+                "+", 6, "-", 6, "*", 7, "/", 7, "%", 7)
+            binaryOpcodes := Map("+", 2, "-", 3, "*", 4, "/", 5, "%", 6, "&", 7, "|", 8, "^", 9,
+                "<<", 10, ">>", 11, "==", 12, "!=", 13, "<", 14, "<=", 15, ">", 16, ">=", 17)
+
+            output := []
+            ops := []
+            for index, token in tokens {
+                if token.Kind = "Number" {
+                    output.Push({ Kind: "Leaf", Float: !token.Int, Slot: Pillow.ImageMath.AddConstant(token.Value, !token.Int, &constants, &kinds, &slotCount, &constantFloats) })
+                    continue
+                }
+                if token.Kind = "String" {
+                    output.Push({ Kind: "ModeStr", Value: token.Value })
+                    continue
+                }
+                if token.Kind = "Name" {
+                    if token.Value = "min" || token.Value = "max" || token.Value = "abs"
+                        || token.Value = "float" || token.Value = "int" || token.Value = "convert" {
+                        ops.Push({ Kind: "Function", Name: token.Value })
+                        continue
+                    }
+                    if !variables.Has(token.Value)
+                        throw Error("'" token.Value "' not allowed", -1)
+                    value := variables[token.Value]
+                    if IsObject(value) && value is Pillow.Image {
+                        if !(value.Mode = "L" || value.Mode = "I" || value.Mode = "F")
+                            throw Error("unsupported mode: " value.Mode, -1)
+                        slot := Pillow.ImageMath.AddImage(value, &images, &kinds, &slotCount, &imageSlots, &firstImage, &width, &height)
+                        output.Push({ Kind: "Leaf", Float: value.Mode = "F", Slot: slot })
+                        continue
+                    }
+                    if value is Number {
+                        output.Push({ Kind: "Leaf", Float: value is Float, Slot: Pillow.ImageMath.AddConstant(value + 0.0, value is Float, &constants, &kinds, &slotCount, &constantFloats) })
+                        continue
+                    }
+                    throw Error("'" token.Value "' not allowed", -1)
+                }
+                if token.Kind = "Paren" && token.Value = "(" {
+                    ops.Push({ Kind: "Open" })
+                    continue
+                }
+                if token.Kind = "Paren" && token.Value = ")" {
+                    while ops.Length > 0 && (ops[ops.Length].Kind = "Binary" || ops[ops.Length].Kind = "Unary") {
+                        top := ops.Pop()
+                        if top.Kind = "Binary" {
+                            if !Pillow.ImageMath.EmitBinary(top.Name, output, &floatBitwiseOperator)
+                                throw TypeError("bad operand type for '" Pillow.ImageMath.OperatorName(top.Name) "'", -1)
+                        } else {
+                            Pillow.ImageMath.EmitUnary(top.Name, output)
+                        }
+                    }
+                    if ops.Length = 0 || ops[ops.Length].Kind != "Open"
+                        throw Error("unbalanced parentheses", -1)
+                    ops.Pop()
+                    if ops.Length = 0 || ops[ops.Length].Kind != "Function"
+                        throw Error("unbalanced parentheses", -1)
+                    last := ops.Pop()
+                    Pillow.ImageMath.EmitCall(last.Name, output)
+                    continue
+                }
+                if token.Kind = "Comma" {
+                    while ops.Length > 0 && (ops[ops.Length].Kind = "Binary" || ops[ops.Length].Kind = "Unary") {
+                        top := ops.Pop()
+                        if top.Kind = "Binary" {
+                            if !Pillow.ImageMath.EmitBinary(top.Name, output, &floatBitwiseOperator)
+                                throw TypeError("bad operand type for '" Pillow.ImageMath.OperatorName(top.Name) "'", -1)
+                        } else {
+                            Pillow.ImageMath.EmitUnary(top.Name, output)
+                        }
+                    }
+                    continue
+                }
+                if token.Kind = "Operator" {
+                    op := token.Value
+                    if op = "-" && (index = 1
+                        || tokens[index - 1].Kind = "Operator"
+                        || (tokens[index - 1].Kind = "Paren" && tokens[index - 1].Value = "(")
+                        || tokens[index - 1].Kind = "Comma") {
+                        ops.Push({ Kind: "Unary", Name: "u-" })
+                        continue
+                    }
+                    if op = "~" {
+                        ops.Push({ Kind: "Unary", Name: "~" })
+                        continue
+                    }
+                    if !precedence.Has(op)
+                        throw Error("SyntaxError: invalid syntax", -1)
+                    current := precedence[op]
+                    while ops.Length > 0 && ops[ops.Length].Kind = "Unary" {
+                        Pillow.ImageMath.EmitUnary(ops.Pop().Name, output)
+                    }
+                    while ops.Length > 0 && ops[ops.Length].Kind = "Binary"
+                        && precedence[ops[ops.Length].Name] >= current {
+                        top := ops.Pop()
+                        if !Pillow.ImageMath.EmitBinary(top.Name, output, &floatBitwiseOperator)
+                            throw TypeError("bad operand type for '" Pillow.ImageMath.OperatorName(top.Name) "'", -1)
+                    }
+                    ops.Push({ Kind: "Binary", Name: op })
+                    continue
+                }
+                throw Error("SyntaxError: invalid syntax", -1)
+            }
+            while ops.Length > 0 {
+                last := ops.Pop()
+                if last.Kind = "Binary" {
+                    if !Pillow.ImageMath.EmitBinary(last.Name, output, &floatBitwiseOperator)
+                        throw TypeError("bad operand type for '" Pillow.ImageMath.OperatorName(last.Name) "'", -1)
+                } else if last.Kind = "Unary" {
+                    Pillow.ImageMath.EmitUnary(last.Name, output)
+                } else if last.Kind = "Function" {
+                    Pillow.ImageMath.EmitCall(last.Name, output)
+                } else {
+                    throw Error("unbalanced parentheses", -1)
+                }
+            }
+            if output.Length != 1
+                throw Error("SyntaxError: invalid syntax", -1)
+            root := output[1]
+            if !IsObject(root)
+                throw Error("SyntaxError: invalid syntax", -1)
+            return {
+                Root: root,
+                Images: images,
+                Constants: constants,
+                ConstantFloats: constantFloats,
+                Kinds: kinds,
+                SlotCount: slotCount,
+                ImageSlots: imageSlots,
+                FirstImage: firstImage,
+                Width: width,
+                Height: height,
+                FloatBitwiseOperator: floatBitwiseOperator,
+            }
+        }
+
+        static AddConstant(value, isFloat, &constants, &kinds, &slotCount, &constantFloats) {
+            slotCount++
+            kinds[slotCount] := 1
+            constants[slotCount] := value
+            constantFloats[slotCount] := isFloat ? 1 : 0
+            return slotCount
+        }
+
+        static AddImage(image, &images, &kinds, &slotCount, &imageSlots, &firstImage, &width, &height) {
+            slotCount++
+            kinds[slotCount] := 0
+            images[slotCount] := image
+            imageSlots.Push(slotCount)
+            if !firstImage {
+                firstImage := image
+                width := image.Width
+                height := image.Height
+            }
+            return slotCount
+        }
+
+        static OperatorName(op) {
+            names := Map("&", "and", "|", "or", "^", "xor", "<<", "lshift", ">>", "rshift")
+            return names.Has(op) ? names[op] : op
+        }
+
+        static EmitBinary(name, output, &floatBitwiseOperator) {
+            if output.Length < 2
+                throw Error("SyntaxError: invalid syntax", -1)
+            right := output.Pop()
+            left := output.Pop()
+            if left.Kind = "ModeStr" || right.Kind = "ModeStr"
+                throw Error("SyntaxError: invalid syntax", -1)
+            floatResult := left.Float || right.Float
+            if InStr("&|^<<>>", name) && floatResult {
+                floatBitwiseOperator := Pillow.ImageMath.OperatorName(name)
+                return false
+            }
+            opcodes := Map("+", 2, "-", 3, "*", 4, "/", 5, "%", 6, "&", 7, "|", 8, "^", 9,
+                "<<", 10, ">>", 11, "==", 12, "!=", 13, "<", 14, "<=", 15, ">", 16, ">=", 17)
+            output.Push({ Kind: "Binary", Opcode: opcodes[name], Lhs: left, Rhs: right, Float: floatResult })
+            return true
+        }
+
+        static EmitUnary(name, output) {
+            if output.Length < 1
+                throw Error("SyntaxError: invalid syntax", -1)
+            arg := output.Pop()
+            if arg.Kind = "ModeStr"
+                throw Error("SyntaxError: invalid syntax", -1)
+            if name = "u-" {
+                output.Push({ Kind: "Unary", Opcode: 18, Child: arg, Float: arg.Float })
+            } else {
+                if arg.Float
+                    throw TypeError("bad operand type for 'invert'", -1)
+                output.Push({ Kind: "Unary", Opcode: 19, Child: arg, Float: false })
+            }
+        }
+
+        static EmitCall(name, output) {
+            if name = "abs" || name = "float" || name = "int" {
+                if output.Length < 1
+                    throw Error("unbalanced parentheses", -1)
+                arg := output.Pop()
+                if arg.Kind = "ModeStr"
+                    throw Error("SyntaxError: invalid syntax", -1)
+                if name = "abs" {
+                    output.Push({ Kind: "Unary", Opcode: 20, Child: arg, Float: arg.Float })
+                } else if name = "float" {
+                    output.Push({ Kind: "Unary", Opcode: 23, Child: arg, Float: true })
+                } else {
+                    output.Push({ Kind: "Unary", Opcode: 24, Child: arg, Float: false })
+                }
+                return
+            }
+            if name = "min" || name = "max" {
+                if output.Length < 2
+                    throw Error("unbalanced parentheses", -1)
+                right := output.Pop()
+                left := output.Pop()
+                if left.Kind = "ModeStr" || right.Kind = "ModeStr"
+                    throw Error("SyntaxError: invalid syntax", -1)
+                output.Push({
+                    Kind: "Binary",
+                    Opcode: name = "min" ? 21 : 22,
+                    Lhs: left,
+                    Rhs: right,
+                    Float: left.Float || right.Float,
+                })
+                return
+            }
+            if name = "convert" {
+                if output.Length < 2
+                    throw Error("unbalanced parentheses", -1)
+                modeNode := output.Pop()
+                arg := output.Pop()
+                if modeNode.Kind != "ModeStr"
+                    throw Error("SyntaxError: invalid syntax", -1)
+                target := StrUpper(modeNode.Value)
+                if target = "F" {
+                    output.Push({ Kind: "Convert", Mode: 9, Child: arg, Float: true })
+                } else if target = "I" {
+                    output.Push({ Kind: "Convert", Mode: 8, Child: arg, Float: false })
+                } else if target = "L" {
+                    output.Push({ Kind: "Convert", Mode: 1, Child: arg, Float: false })
+                } else {
+                    throw Error("unsupported mode: " target, -1)
+                }
+                return
+            }
+            throw Error("'" name "' not allowed", -1)
+        }
+
+        static Linearize(node, program) {
+            switch node.Kind {
+                case "Leaf":
+                    program.Push(1, node.Slot)
+                case "Unary":
+                    Pillow.ImageMath.Linearize(node.Child, program)
+                    program.Push(node.Opcode)
+                case "Binary":
+                    Pillow.ImageMath.Linearize(node.Lhs, program)
+                    Pillow.ImageMath.Linearize(node.Rhs, program)
+                    program.Push(node.Opcode)
+                case "Convert":
+                    Pillow.ImageMath.Linearize(node.Child, program)
+                    program.Push(25, node.Mode)
+                default:
+                    throw Error("SyntaxError: invalid syntax", -1)
+            }
+            return program
+        }
+
+        static ProgramBuffer(program) {
+            buf := Buffer(program.Length, 0)
+            for index, value in program
+                NumPut("UChar", value, buf, index - 1)
+            return buf
+        }
+
+        static EvalTreeScalar(node, constants) {
+            switch node.Kind {
+                case "Leaf":
+                    return { IsFloat: node.Float, Value: constants[node.Slot] }
+                case "Unary":
+                    arg := Pillow.ImageMath.EvalTreeScalar(node.Child, constants)
+                    if node.Opcode = 18
+                        return { IsFloat: arg.IsFloat, Value: -arg.Value }
+                    if node.Opcode = 19
+                        return { IsFloat: false, Value: ~Integer(arg.Value) }
+                    if node.Opcode = 20
+                        return { IsFloat: arg.IsFloat, Value: Abs(arg.Value) }
+                    if node.Opcode = 23
+                        return { IsFloat: true, Value: arg.Value + 0.0 }
+                    return { IsFloat: false, Value: Integer(arg.Value) }
+                case "Binary":
+                    right := Pillow.ImageMath.EvalTreeScalar(node.Rhs, constants)
+                    left := Pillow.ImageMath.EvalTreeScalar(node.Lhs, constants)
+                    return Pillow.ImageMath.ScalarBinary(node.Opcode, left, right)
+                case "Convert":
+                    arg := Pillow.ImageMath.EvalTreeScalar(node.Child, constants)
+                    if node.Mode = 9
+                        return { IsFloat: true, Value: arg.Value + 0.0 }
+                    return { IsFloat: false, Value: Integer(arg.Value) }
+                default:
+                    throw Error("SyntaxError: invalid syntax", -1)
+            }
+        }
+
+        static ScalarBinary(op, left, right) {
+            if left.IsFloat || right.IsFloat {
+                a := left.Value + 0.0
+                b := right.Value + 0.0
+                switch op {
+                    case 2: return { IsFloat: true, Value: a + b }
+                    case 3: return { IsFloat: true, Value: a - b }
+                    case 4: return { IsFloat: true, Value: a * b }
+                    case 5: return { IsFloat: true, Value: a / b }
+                    case 21: return { IsFloat: true, Value: Min(a, b) }
+                    case 22: return { IsFloat: true, Value: Max(a, b) }
+                }
+                return { IsFloat: true, Value: 0.0 }
+            }
+            a := Integer(left.Value)
+            b := Integer(right.Value)
+            switch op {
+                case 2: return { IsFloat: false, Value: a + b }
+                case 3: return { IsFloat: false, Value: a - b }
+                case 4: return { IsFloat: false, Value: a * b }
+                case 5: return { IsFloat: false, Value: a // b }
+                case 6: return { IsFloat: false, Value: Mod(a, b) }
+                case 7: return { IsFloat: false, Value: a & b }
+                case 8: return { IsFloat: false, Value: a | b }
+                case 9: return { IsFloat: false, Value: a ^ b }
+                case 10: return { IsFloat: false, Value: a << b }
+                case 11: return { IsFloat: false, Value: a >> b }
+                case 12: return { IsFloat: false, Value: a = b ? 1 : 0 }
+                case 13: return { IsFloat: false, Value: a != b ? 1 : 0 }
+                case 14: return { IsFloat: false, Value: a < b ? 1 : 0 }
+                case 15: return { IsFloat: false, Value: a <= b ? 1 : 0 }
+                case 16: return { IsFloat: false, Value: a > b ? 1 : 0 }
+                case 17: return { IsFloat: false, Value: a >= b ? 1 : 0 }
+                case 21: return { IsFloat: false, Value: Min(a, b) }
+                case 22: return { IsFloat: false, Value: Max(a, b) }
+            }
+            return { IsFloat: false, Value: 0 }
+        }
+    }
     class ImageSequence {
         static AllFrames(im, fn := unset) {
             if im is Array {

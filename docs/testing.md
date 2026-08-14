@@ -47,8 +47,29 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2795` AHK tests: `1386` raw DLL tests and
-`1409` facade tests.
+This suite currently registers `2797` AHK tests: `1387` raw DLL tests and
+`1410` facade tests.
+
+Latest `API-MATH-001` verification: the Pillow 11.3.0 oracles (kept
+in `oracle/probe_imagemath.py`, `oracle/probe_imagemath2.py`, and
+`oracle/probe_imagemath3.py`) pin the bounded eval/unsafe_eval grammar
+over L/I/F operands (binary ops, comparisons, unary -/~,
+abs/min/max/float/int/convert, literals; mode I/F results; C
+truncation division and C remainder; RGB/name/type error parity).
+The new `pillow_c_image_math_rpn` export runs the per-pixel RPN stack
+machine, and the facade `ImageMath` class adds the tokenizer,
+shunting-yard compiler, and scalar evaluator. The ctypes cross-check
+(kept in `oracle/probe_imagemath_dll_compose.py`) matches Pillow's
+eval outputs for 20 expressions byte-exactly (`FAILURES: 0`).
+Raw/facade math targets pass `2/2` in `47ms`; the numeric filter
+passes `128/128` in `625ms`; and the full directory suite passes
+`2797/2797` in `21547ms`, with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export
+parity moves to `464/464` (one deliberate new export) with zero
+difference; and the rebuilt DLL SHA-256 is
+`E721E4C964B99CE6D12E7E77043847C0DAC578A95A956E36444E154A3BD032BF`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+overall Pillow replacement-readiness estimate moves to `86% ±5%`.
 
 Latest `AUDIT-002` verification (independent re-audit): the surface
 enumerator (`oracle/audit_pillow_surface.py` →

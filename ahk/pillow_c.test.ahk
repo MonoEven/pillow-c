@@ -20035,6 +20035,54 @@ PillowCMeshQuads(values) {
     return buf
 }
 
+PillowCImageMathRpn(images, constants, kinds, slotCount, programValues, constantFloats := 0) {
+    handles := Buffer(slotCount * A_PtrSize, 0)
+    imageIndex := 1
+    for slot, kind in kinds {
+        if kind = 0 {
+            NumPut("Ptr", images[imageIndex], handles, (slot - 1) * A_PtrSize)
+            imageIndex++
+        }
+    }
+    constantsBuf := Buffer(slotCount * 8, 0)
+    constIndex := 1
+    if IsObject(constants) {
+        for slot, kind in kinds {
+            if kind = 1 {
+                NumPut("Double", constants[constIndex], constantsBuf, (slot - 1) * 8)
+                constIndex++
+            }
+        }
+    }
+    floatsBuf := Buffer(slotCount, 0)
+    if IsObject(constantFloats) {
+        for slot, value in constantFloats
+            NumPut("UChar", value ? 1 : 0, floatsBuf, slot - 1)
+    }
+    kindsBuf := Buffer(slotCount, 0)
+    for slot, kind in kinds
+        NumPut("UChar", kind, kindsBuf, slot - 1)
+    program := Buffer(programValues.Length, 0)
+    for index, value in programValues
+        NumPut("UChar", value, program, index - 1)
+    outHandle := 0
+    status := DllCall(
+        PillowCDllPath() "\pillow_c_image_math_rpn",
+        "Ptr", handles,
+        "Ptr", constantsBuf,
+        "Ptr", floatsBuf,
+        "Ptr", kindsBuf,
+        "UPtr", slotCount,
+        "Ptr", program,
+        "UPtr", program.Size,
+        "Ptr*", &outHandle,
+        "Int"
+    )
+    PillowCAssertStatus(status)
+    AhkTest.AssertTrue(outHandle != 0)
+    return outHandle
+}
+
 PillowCImageTransformAffine(sourceHandle, width, height, matrixValues, resample := 0, fillValues := 0) {
     matrix := PillowCAffineMatrix(matrixValues)
     fill := IsObject(fillValues) ? PillowCBuffer(fillValues) : 0
@@ -22086,7 +22134,7 @@ AhkTest.Test("pillow_c image open_ico_size reads requested icon frame", PillowCT
 
 PillowCTestImageSaveIcoNonExactSourceSelection(*) {
     ; Pillow 11.3.0 picks exact-size sources, else thumbnails the LAST
-    ; provided image proportionally (never upscaling) — oracle/probe_ico_
+    ; provided image proportionally (never upscaling) 鈥?oracle/probe_ico_
     ; non_exact_sources.py and probe_ico_thumbnail_fallback.py.
     cases := [
         {
@@ -22971,7 +23019,7 @@ AhkTest.Test("pillow_c I;16 resize/transform resamples per-sample with documente
 
 PillowCTestImageRotateI16FillSamples(*) {
     ; The native rotate/transform ABI accepts a raw 2-byte fill for I;16
-    ; (little-endian) and I;16B (big-endian raw) — the facade packs it.
+    ; (little-endian) and I;16B (big-endian raw) 鈥?the facade packs it.
     i16 := PillowCCreateImageMode(3, 2, 11)
     i16b := PillowCCreateImageMode(3, 2, 12)
     out := 0
@@ -23174,6 +23222,84 @@ PillowCTestImageEntropyGetcolorsI16Boundaries(*) {
 }
 
 AhkTest.Test("pillow_c I;16 entropy/getcolors reject with documented boundaries", PillowCTestImageEntropyGetcolorsI16Boundaries)
+
+PillowCTestImageMathRpnSamples(*) {
+    ; API-MATH-001: the RPN math engine evaluates per-pixel int32/float32
+    ; arithmetic with Pillow ImageMath semantics (mode I for integral
+    ; results, mode F for floating results).
+    a := PillowCCreateImageMode(2, 2, 1)
+    b := PillowCCreateImageMode(2, 2, 1)
+    out := 0
+    try {
+        ; 10, 20, 30, 40
+        PillowCImageSetBytes(a, [10, 20, 30, 40])
+        ; 2, 5, 3, 4
+        PillowCImageSetBytes(b, [2, 5, 3, 4])
+
+        ; a + b: PUSH 0, PUSH 1, ADD
+        out := PillowCImageMathRpn([a, b], 0, [0, 0], 2, [1, 1, 1, 2, 2])
+        AhkTest.AssertEqual(8, PillowCImageMode(out))
+        ; 12, 25, 33, 44
+        AhkTest.AssertEqual(
+            [12, 0, 0, 0, 25, 0, 0, 0, 33, 0, 0, 0, 44, 0, 0, 0],
+            PillowCImageToArray(out, 16))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; a / b: PUSH 0, PUSH 1, DIV
+        out := PillowCImageMathRpn([a, b], 0, [0, 0], 2, [1, 1, 1, 2, 5])
+        ; 5, 4, 10, 10
+        AhkTest.AssertEqual(
+            [5, 0, 0, 0, 4, 0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0],
+            PillowCImageToArray(out, 16))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; a & b: PUSH 0, PUSH 1, AND
+        out := PillowCImageMathRpn([a, b], 0, [0, 0], 2, [1, 1, 1, 2, 7])
+        ; 2, 4, 2, 0
+        AhkTest.AssertEqual(
+            [2, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0],
+            PillowCImageToArray(out, 16))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; float(a) * b: PUSH 0, FLOAT, PUSH 1, MUL
+        out := PillowCImageMathRpn([a, b], 0, [0, 0], 2, [1, 1, 23, 1, 2, 4])
+        AhkTest.AssertEqual(9, PillowCImageMode(out))
+        ; 20, 100, 90, 160
+        AhkTest.AssertEqual(
+            [0, 0, 160, 65, 0, 0, 200, 66, 0, 0, 180, 66, 0, 0, 32, 67],
+            PillowCImageToArray(out, 16))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; -a: PUSH 0, NEG
+        out := PillowCImageMathRpn([a], 0, [0], 1, [1, 1, 18])
+        ; -10, -20, -30, -40
+        AhkTest.AssertEqual(
+            [246, 255, 255, 255, 236, 255, 255, 255, 226, 255, 255, 255, 216, 255, 255, 255],
+            PillowCImageToArray(out, 16))
+        PillowCFreeImage(out)
+        out := 0
+
+        ; Constant operand: a * 3: PUSH 0, PUSH 1(const slot), MUL
+        out := PillowCImageMathRpn([a], [3.0], [0, 1], 2, [1, 1, 1, 2, 4])
+        ; 30, 60, 90, 120
+        AhkTest.AssertEqual(
+            [30, 0, 0, 0, 60, 0, 0, 0, 90, 0, 0, 0, 120, 0, 0, 0],
+            PillowCImageToArray(out, 16))
+    } finally {
+        if out
+            PillowCFreeImage(out)
+        if a
+            PillowCFreeImage(a)
+        if b
+            PillowCFreeImage(b)
+    }
+}
+
+AhkTest.Test("pillow_c image_math_rpn evaluates per-pixel int32/float32 arithmetic", PillowCTestImageMathRpnSamples)
 
 PillowCTestI32Bytes(values) {
     bytes := []
@@ -59309,7 +59435,7 @@ AhkTest.Test("pillow_c default font metadata and variant match Pillow", PillowCT
 
 PillowCTestImageDrawTextRejectsUnsupportedInputs(*) {
     image := PillowCCreateImageMode(4, 4, 1)
-    textBytes := PillowCUtf8Buffer("é")
+    textBytes := PillowCUtf8Buffer("茅")
     fill := PillowCBuffer([255])
     try {
         status := DllCall(

@@ -29,8 +29,8 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`463/463`; the full AHK suite is `2793/2793`; and the current DLL SHA-256 is
-`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`.
+`464/464`; the full AHK suite is `2797/2797`; and the current DLL SHA-256 is
+`E721E4C964B99CE6D12E7E77043847C0DAC578A95A956E36444E154A3BD032BF`.
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.
@@ -175,6 +175,28 @@ slices, qtables beyond two tables, malformed marker streams, explicit
 YCCK encoding, the META-002 tail, and the whole-file parity policy) as
 explicit documented boundaries; the DLL SHA-256 is unchanged. The
 completion definition is met.
+
+## ImageMath RPN ABI Behavior
+
+`API-MATH-001` adds one public export:
+`pillow_c_image_math_rpn(images, constants, constant_floats,
+slot_kinds, slot_count, program, program_size, out_image)`. Existing
+exported names, signatures, status codes, image-handle ownership,
+source-pointer lifetimes, and facade routes remain unchanged. The
+export evaluates a per-pixel RPN stack machine over L/I/F samples with
+Pillow 11.3.0 ImageMath semantics: program opcodes are `1` PUSH (followed
+by a 1-based slot byte: kind 0 image, kind 1 constant with the
+floatness flag), `2`-`17` binary ops (add/sub/mul/div/mod/and/or/xor/
+shl/shr/eq/ne/lt/le/gt/ge), `18`-`22` unary (neg/not/abs/min/max),
+`23` float, `24` int, and `25` convert (followed by a target-mode byte
+1/8/9). Integral results store int32 (C truncation division, C
+remainder, arithmetic shifts), floating results store float32; the
+output mode is I or F accordingly. Non-L/I/F operand modes, malformed
+programs, empty stacks, and float bitwise/shift operands return
+`PILLOW_C_INVALID_ARGUMENT`; mixed image sizes return
+`PILLOW_C_MISMATCH`. The facade `ImageMath` class compiles expressions
+to this RPN (tokenizer, shunting-yard, scalar evaluator for
+constant-only expressions) and surfaces Pillow's error messages.
 
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.

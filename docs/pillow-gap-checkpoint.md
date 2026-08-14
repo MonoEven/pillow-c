@@ -21,19 +21,9 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 85% (about ±5%) under
-the real-workload Pillow replacement-readiness model — DEMOTED from the
-recorded 100% by the 2026-08-14 independent Pillow 11.3.0 surface
-re-audit (see `oracle/audit_report_2026-08-14.md` and the AUDIT-002
-ledger section). The previous 100% measured only the ledger's own
-bounded coverage definition; the re-audit found whole modules and
-formats that were neither implemented nor recorded as boundaries
-(ImageMath, ImageGrab, ImagePath, ImageQt/ImageTk module surfaces,
-ImageFile module surface, ImagePalette, ImageTransform class objects,
-ImageFont variation fonts, the Image.readonly property, and the
-unrecorded BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF save formats
-plus FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/
-XVTHUMB/BLP/BUFR/DIB/GRIB/HDF5/MSP open formats).
+Estimate: AHK-first Pillow-runtime overall completion 86% (about ±5%) under
+the real-workload Pillow replacement-readiness model — measured against
+the FULL Pillow 11.3.0 public surface since the AUDIT-002 re-audit.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
 BigTIFF common-EXIF family matrix, its big-endian counterpart, the
 malformed-metadata robustness slice, one-level ExifIFD/GPSInfo sub-IFD
@@ -53,22 +43,30 @@ also COMPLETE), the complete facade API slice (`API-IMG-001D` getim,
 `MODE-F-001B`), the complete numeric transform family
 (`MODE-NUM-001CH`/`001CI`/`001CJ`), the complete numeric resize family
 (`MODE-NUM-001CK`/`001CL`/`001CM`/`001CN`), the complete I;16 numeric
-surface (`MODE-NUM-001CO`/`001CP`/`001CQ`), and `BNDRY-001` — the
-remaining-item boundary ledger (superseded by the AUDIT-002
-re-audit for the newly found gaps).
+surface (`MODE-NUM-001CO`/`001CP`/`001CQ`), `BNDRY-001` the
+remaining-item boundary ledger (superseded by AUDIT-002 for the newly
+found gaps), and `API-MATH-001` — the ImageMath eval/unsafe_eval
+arithmetic module (bounded safe grammar: + - * / % & | ^ << >>,
+unary -/~, abs/min/max/float/int/convert, comparisons, int/float
+literals; Pillow's L/I/F domain with I/F result modes, C truncation
+division, C remainder, RGB/mode/type error parity) through the new
+`pillow_c_image_math_rpn` per-pixel RPN engine and the facade
+shunting-yard compiler.
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The current full directory suite passes
-`2795/2795`; source/DLL exports remain `463/463` with zero difference;
-and the DLL SHA-256 remains
-`8C5B3EE20232B304CB6F06F8EB971DC043B5CFF562F8519D3994444033290308`
-(no native change since the AUDIT-002 demotion).
+IFD as a writer artifact. The ImageMath slice was cross-verified
+against Pillow's eval outputs (exact int32/float32 bytes,
+`FAILURES: 0`), the math filter passes `2/2` in `47ms`, the numeric
+filter passes `128/128` in `625ms`, and the full directory suite
+passes `2797/2797` in `21547ms`; source/DLL export parity moves to
+`464/464` (one deliberate new export) with zero difference; and the
+DLL SHA-256 is
+`E721E4C964B99CE6D12E7E77043847C0DAC578A95A956E36444E154A3BD032BF`.
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is
-`API-MATH-001`, the bounded `ImageMath` eval/unsafe_eval arithmetic
-implementation (the largest unrecorded functional module found by the
-re-audit). The other AUDIT-002 gaps stay not-started until selected.
+`API-GRAB-001`, the ImageGrab screen-capture module (implementation or
+explicit documented boundary).
 ```
 
 Current work packet:
@@ -411,9 +409,8 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-MATH-001`, the bounded `ImageMath`
-  eval/unsafe_eval arithmetic implementation (largest unrecorded
-  functional module found by the AUDIT-002 re-audit).
+- Selected next gap: `API-GRAB-001`, the ImageGrab screen-capture
+  module (implementation or explicit documented boundary).
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -487,6 +484,37 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `API-MATH-001` is GREEN for the bounded `ImageMath`
+eval/unsafe_eval arithmetic module — the first functional gap closed
+after the AUDIT-002 demotion. The Pillow 11.3.0 oracles (kept in
+`oracle/probe_imagemath.py`, `oracle/probe_imagemath2.py`, and
+`oracle/probe_imagemath3.py`) show eval/unsafe_eval support a bounded
+safe grammar over L/I/F operands: binary + - * / % & | ^ << >> and
+comparisons, unary -/~, abs/min/max/float/int/convert, int/float
+literals; results are mode I (int32) or F (float32); int division
+truncates toward zero, % is C remainder, comparisons yield int32 0/1;
+RGB operands raise `unsupported mode: RGB`, unknown names raise
+`'X' not allowed`, float bitwise raises `bad operand type for 'and'`
+etc., and constant-only expressions return scalars. The new native
+export `pillow_c_image_math_rpn` evaluates a per-pixel int64/float64
+RPN stack machine over image/constant slots, and the facade
+`ImageMath` class adds the tokenizer, shunting-yard compiler
+(precedence/unary/function handling), scalar evaluator, and the
+Pillow-shaped errors (Eval/UnsafeEval serve eval/unsafe_eval via AHK
+case-insensitivity; variables pass as a Map). A ctypes cross-check
+(kept in `oracle/probe_imagemath_dll_compose.py`) matches Pillow's
+eval outputs for 20 expressions byte-exactly (`FAILURES: 0`).
+Raw/facade math targets pass `2/2` in `47ms`; the numeric filter
+passes `128/128` in `625ms`; and the full directory suite passes
+`2797/2797` in `21547ms`, with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL export
+parity moves to `464/464` (one deliberate new export) with zero
+difference; and the rebuilt DLL SHA-256 is
+`E721E4C964B99CE6D12E7E77043847C0DAC578A95A956E36444E154A3BD032BF`.
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+estimate moves to `86% ±5%`. The next bounded child is
+`API-GRAB-001`, the ImageGrab screen-capture module.
 
 2026-08-14: AUDIT-002 (independent Pillow 11.3.0 surface re-audit) is
 GREEN and DEMOTES the estimate to `85% ±5%`. The re-audit (evidence in

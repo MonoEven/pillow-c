@@ -37,6 +37,61 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 API-MATH-001 ImageMath eval/unsafe_eval (GREEN)
+
+`API-MATH-001` closes the bounded `ImageMath` eval/unsafe_eval
+arithmetic module — the first functional gap after the AUDIT-002
+demotion.
+
+The Pillow 11.3.0 oracles (kept in `oracle/probe_imagemath.py`,
+`oracle/probe_imagemath2.py`, and `oracle/probe_imagemath3.py`) pin
+the bounded safe grammar over L/I/F operands: binary
+`+ - * / % & | ^ << >>` and comparisons, unary `-`/`~`,
+`abs`/`min`/`max`/`float`/`int`/`convert`, int/float literals and
+parentheses; results are mode I (int32) or F (float32); int division
+truncates toward zero (`7/2 -> 3`, `9/-2 -> -4`), `%` is C remainder
+(`9 % -2 -> 1`), comparisons yield int32 0/1, `float()`/`convert(...,
+'F')` promote to F, and `int()`/`convert(..., 'I')` truncate. Error
+parity: RGB operands raise `ValueError: unsupported mode: RGB`,
+unknown names raise `'X' not allowed` (sin/log/pow/e/pi blocked even
+in unsafe_eval), float bitwise/shift raises
+`TypeError: bad operand type for 'and'/'lshift'/...`, and
+constant-only expressions return scalars.
+
+The new native export `pillow_c_image_math_rpn(images, constants,
+constant_floats, slot_kinds, slot_count, program, program_size,
+out_image)` evaluates a per-pixel int64/float64 RPN stack machine
+(`MATH_PUSH` with typed slots, the 25 opcodes) over L/I/F samples with
+Pillow's C semantics. The facade `ImageMath` class adds the tokenizer,
+the shunting-yard compiler (precedence table, unary/function handling,
+type tracking for the bitwise-on-float rejection), the scalar tree
+evaluator for constant-only expressions, and `Eval`/`UnsafeEval`
+serving `eval`/`unsafe_eval` through AHK case-insensitivity (variables
+pass as a Map of name -> Image/Number). Export parity moves to
+`464/464`.
+
+Verification:
+
+- Red evidence: the module was absent (AUDIT-002), and the first
+  iterations fixed slot indexing, int-constant typing, and the
+  parenthesis/unary drain logic (found via a standalone AHK debug
+  run).
+- ctypes cross-check (`oracle/probe_imagemath_dll_compose.py`): 20
+  expressions match Pillow's eval outputs byte-exactly
+  (`FAILURES: 0`).
+- Raw/facade math targets pass `2/2` in `47ms`; numeric filter:
+  `128/128` in `625ms`.
+- Full AHK directory suite: `2797/2797` in `21547ms`; zero failures,
+  errors, or skips.
+- Release x64 Rebuild: `0 Warning(s), 0 Error(s)`.
+- Source/DLL export parity: `464/464`, zero difference.
+- DLL SHA-256:
+  `E721E4C964B99CE6D12E7E77043847C0DAC578A95A956E36444E154A3BD032BF`.
+
+No facade lifetime rule, fallback, or AHK pixel loop changed. The
+estimate moves to `86% ±5%`. The next bounded child is
+`API-GRAB-001`, the ImageGrab screen-capture module.
+
 ## 2026-08-14 AUDIT-002 Independent Surface Re-Audit (DEMOTION)
 
 `AUDIT-002` is an independent re-audit against the real installed
@@ -39763,7 +39818,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
 | BNDRY-001 | Boundaries | covered | Explicit remaining-item boundary ledger completing the coverage definition: dependency-gated formats (WebP/AVIF/JPEG2000/PDF/PSD/DDS/PCX/ICNS/SGI/SUN/EPS/MPO/FLI/DCX/XPM) fail loudly with `Pillow image file format is unsupported`; APNG and true PNG compression strategy stay future families (default-deflate single-frame PNGs only); dither exact parity stays bounded to the FLOYDSTEINBERG slices with libimagequant keeping Pillow's `dependency required by this method was not enabled at compile time` error; qtables beyond two tables, malformed marker streams, and explicit YCCK encoding are not replicated; the META-002 tail stays behind explicit children; and byte-exact whole-file parity is claimed only for the verified bounded packets. The facade boundary test pins the rejections. Facade-only; export parity remains `463/463` and the DLL SHA-256 is unchanged. SUPERSEDED for the newly found gaps by the AUDIT-002 re-audit (rows below). | `PillowTestDependencyGatedFormatBoundaries`, existing NormalizeFileFormat/FormatFromPath rejections, existing LIBIMAGEQUANT guard, ledger boundary rows. |
 | AUDIT-002 | Audit | covered | Independent Pillow 11.3.0 surface re-audit that demotes the estimate to `85% ±5%`: enumerated the real public surface (59 Image.Image names, 69 ImagingCore names, 23 submodules, 30 SAVE / 45 OPEN formats) and diffed it against the facade, finding the unrecorded gaps in the rows below. Evidence in `oracle/audit_pillow_surface.py`, `oracle/pillow_surface.json`, `oracle/audit_report_2026-08-14.md`. | Surface enumerator, facade/native diff, audit report, ledger demotion. |
-| API-MATH-001 | Facade API | not started | ImageMath `eval`/`unsafe_eval` arithmetic over images (18 names: + - * / & \| ^ abs negate min max convert log sin cos, constants e/pi) — the largest unrecorded functional module found by AUDIT-002. | Native per-pixel arithmetic route, facade ImageMath.eval parser, raw/facade tests. |
+| API-MATH-001 | Facade API | covered | Bounded ImageMath eval/unsafe_eval arithmetic: Pillow 11.3.0's safe grammar over L/I/F operands — binary + - * / % & \| ^ << >> and comparisons, unary -/~, abs/min/max/float/int/convert, int/float literals; results mode I (int32, C truncation division and C remainder) or F (float32); RGB -> `unsupported mode: RGB`, unknown names -> `'X' not allowed`, float bitwise -> `bad operand type for 'and'`, constant-only expressions return scalars. The new `pillow_c_image_math_rpn` export evaluates a per-pixel RPN stack machine, and the facade ImageMath class adds the tokenizer/shunting-yard compiler/scalar evaluator with Pillow-shaped errors (Eval/UnsafeEval serve eval/unsafe_eval; variables as a Map). A ctypes cross-check matches 20 expressions byte-exactly (`FAILURES: 0`). Export parity moves to `464/464`. | `oracle/probe_imagemath.py`, `oracle/probe_imagemath2.py`, `oracle/probe_imagemath3.py`, `oracle/probe_imagemath_dll_compose.py`, `pillow_c_image_math_rpn`, facade `ImageMath` class, raw/facade math tests. |
 | API-GRAB-001 | Facade API | not started | ImageGrab grab/grabclipboard screen capture (11 names) — platform/UI integration surface found by AUDIT-002. | Platform capture route or documented boundary. |
 | API-PATH-001 | Facade API | not started | ImagePath path objects (3 names) for ImageDraw — found by AUDIT-002. | Facade ImagePath or documented boundary. |
 | API-QTTK-001 | Facade API | not started | ImageQt/ImageTk module surfaces (26/10 names) — only the toqimage/toqpixmap boundaries were recorded (API-IMG-001E); the module objects themselves are unrecorded. | Documented boundary or Qt/Tk dependency decision. |

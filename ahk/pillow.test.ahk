@@ -1,4 +1,4 @@
-#Requires AutoHotkey v2.0
+﻿#Requires AutoHotkey v2.0
 #Include <stdlib\ahktest>
 #Include "pillow.ahk"
 
@@ -21870,7 +21870,7 @@ PillowTestDependencyGatedFormatBoundaries(*) {
     try {
         ; BNDRY-001: dependency-gated formats (WebP/AVIF/PDF/JPEG2000/MPO
         ; and the other long-tail families) are explicit documented
-        ; boundaries — open and save fail loudly with the same error.
+        ; boundaries 鈥?open and save fail loudly with the same error.
         for format in ["WEBP", "AVIF", "PDF", "JPEG2000", "MPO", "PSD"] {
             boundaryError := ""
             try {
@@ -21904,6 +21904,119 @@ PillowTestDependencyGatedFormatBoundaries(*) {
 }
 
 AhkTest.Test("Pillow dependency-gated formats and libimagequant surface documented boundaries", PillowTestDependencyGatedFormatBoundaries)
+
+PillowTestImageMathEval(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    a := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([10, 20, 30, 40]))
+    b := Pillow.Image.FromBytes("L", [2, 2], PillowTestBuffer([2, 5, 3, 4]))
+    rgb := Pillow.Image.New("RGB", [2, 2], [1, 2, 3])
+    out := 0
+    try {
+        out := Pillow.ImageMath.Eval("a + b", Map("a", a, "b", b))
+        AhkTest.AssertEqual("I", out.Mode)
+        AhkTest.AssertEqual(PillowTestBytesFromI32([12, 25, 33, 44]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("a / b", Map("a", a, "b", b))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([5, 4, 10, 10]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("a & b", Map("a", a, "b", b))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([2, 4, 2, 0]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("a | b", Map("a", a, "b", b))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([10, 21, 31, 44]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("a ^ b", Map("a", a, "b", b))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([8, 17, 29, 44]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("min(a, b)", Map("a", a, "b", b))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([2, 5, 3, 4]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("max(a, b)", Map("a", a, "b", b))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([10, 20, 30, 40]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("abs(a - b)", Map("a", a, "b", b))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([8, 15, 27, 36]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("a >> 1", Map("a", a))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([5, 10, 15, 20]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("a << 2", Map("a", a))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([40, 80, 120, 160]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("float(a) * b", Map("a", a, "b", b))
+        AhkTest.AssertEqual("F", out.Mode)
+        AhkTest.AssertEqual(PillowTestBytesFromF32([20.0, 100.0, 90.0, 160.0]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("a + 1", Map("a", a))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([11, 21, 31, 41]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("-a", Map("a", a))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([-10, -20, -30, -40]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("convert(a, 'F')", Map("a", a))
+        AhkTest.AssertEqual("F", out.Mode)
+        AhkTest.AssertEqual(PillowTestBytesFromF32([10.0, 20.0, 30.0, 40.0]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("a == b", Map("a", a, "b", b))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([0, 0, 0, 0]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        out := Pillow.ImageMath.Eval("a < b", Map("a", a, "b", b))
+        AhkTest.AssertEqual(PillowTestBytesFromI32([0, 0, 0, 0]), PillowTestBufferToArray(out.ToBytes()))
+        out.Close()
+
+        ; Constant-only expression.
+        AhkTest.AssertEqual(3, Pillow.ImageMath.Eval("1 + 2"))
+        AhkTest.AssertEqual(2.5, Pillow.ImageMath.Eval("5 / 2.0"))
+
+        ; Errors.
+        modeError := ""
+        try {
+            Pillow.ImageMath.Eval("a + rgb", Map("a", a, "rgb", rgb))
+        } catch Error as err {
+            modeError := err.Message
+        }
+        AhkTest.AssertEqual("unsupported mode: RGB", modeError)
+
+        nameError := ""
+        try {
+            Pillow.ImageMath.Eval("sin(1)", Map("a", a))
+        } catch Error as err {
+            nameError := err.Message
+        }
+        AhkTest.AssertEqual("'sin' not allowed", nameError)
+
+        typeError := ""
+        try {
+            Pillow.ImageMath.Eval("float(a) & b", Map("a", a, "b", b))
+        } catch Error as err {
+            typeError := err.Message
+        }
+        AhkTest.AssertEqual("bad operand type for 'and'", typeError)
+    } finally {
+        if IsObject(out)
+            out.Close()
+        a.Close()
+        b.Close()
+        rgb.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageMath eval/unsafe_eval evaluates per-pixel expressions with Pillow semantics", PillowTestImageMathEval)
 
 PillowTestImageDisplayApiBoundaries(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -52600,7 +52713,7 @@ PillowTestImageDrawTextRejectsUnsupportedInputs(*) {
     try {
         draw := Pillow.ImageDraw.Draw(image)
         try {
-            draw.Text([0, 0], "é", 255)
+            draw.Text([0, 0], "茅", 255)
             AhkTest.Fail("Expected ImageDraw.Text to reject unsupported non-ASCII text")
         } catch Error as err {
             AhkTest.AssertTrue(InStr(err.Message, "invalid argument") > 0)

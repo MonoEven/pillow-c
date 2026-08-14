@@ -7022,6 +7022,323 @@ extern "C" __declspec(dllexport) int pillow_c_image_rgb_to_l(
     }
 }
 
+namespace {
+
+constexpr int MATH_PUSH = 1;
+constexpr int MATH_ADD = 2;
+constexpr int MATH_SUB = 3;
+constexpr int MATH_MUL = 4;
+constexpr int MATH_DIV = 5;
+constexpr int MATH_MOD = 6;
+constexpr int MATH_AND = 7;
+constexpr int MATH_OR = 8;
+constexpr int MATH_XOR = 9;
+constexpr int MATH_SHL = 10;
+constexpr int MATH_SHR = 11;
+constexpr int MATH_EQ = 12;
+constexpr int MATH_NE = 13;
+constexpr int MATH_LT = 14;
+constexpr int MATH_LE = 15;
+constexpr int MATH_GT = 16;
+constexpr int MATH_GE = 17;
+constexpr int MATH_NEG = 18;
+constexpr int MATH_NOT = 19;
+constexpr int MATH_ABS = 20;
+constexpr int MATH_MIN = 21;
+constexpr int MATH_MAX = 22;
+constexpr int MATH_FLOAT = 23;
+constexpr int MATH_INT = 24;
+constexpr int MATH_CONVERT = 25;
+
+struct MathValue {
+    std::int64_t i;
+    double f;
+    bool is_float;
+};
+
+bool math_bitwise_supported(const MathValue& left, const MathValue& right)
+{
+    return !left.is_float && !right.is_float;
+}
+
+bool math_shift_supported(const MathValue& value)
+{
+    return !value.is_float;
+}
+
+std::int64_t math_shift(std::int64_t value, std::int64_t amount)
+{
+    if (amount <= 0) {
+        return value;
+    }
+    if (amount >= 64) {
+        return value < 0 ? -1 : 0;
+    }
+    return value << amount;
+}
+
+std::int64_t math_shift_right(std::int64_t value, std::int64_t amount)
+{
+    if (amount <= 0) {
+        return value;
+    }
+    if (amount >= 64) {
+        return value < 0 ? -1 : 0;
+    }
+    return value >> amount;
+}
+
+MathValue math_binary_op(int opcode, const MathValue& left, const MathValue& right)
+{
+    if (left.is_float || right.is_float) {
+        const double a = left.is_float ? left.f : static_cast<double>(left.i);
+        const double b = right.is_float ? right.f : static_cast<double>(right.i);
+        switch (opcode) {
+        case MATH_ADD: return {0, a + b, true};
+        case MATH_SUB: return {0, a - b, true};
+        case MATH_MUL: return {0, a * b, true};
+        case MATH_DIV: return {0, a / b, true};
+        case MATH_MIN: return {0, a < b ? a : b, true};
+        case MATH_MAX: return {0, a > b ? a : b, true};
+        default:
+            return {0, 0.0, true};
+        }
+    }
+    const std::int64_t a = left.i;
+    const std::int64_t b = right.i;
+    switch (opcode) {
+    case MATH_ADD: return {a + b, 0.0, false};
+    case MATH_SUB: return {a - b, 0.0, false};
+    case MATH_MUL: return {a * b, 0.0, false};
+    case MATH_DIV:
+        return {b == 0 ? 0 : a / b, 0.0, false};
+    case MATH_MOD:
+        return {b == 0 ? 0 : a % b, 0.0, false};
+    case MATH_AND: return {a & b, 0.0, false};
+    case MATH_OR: return {a | b, 0.0, false};
+    case MATH_XOR: return {a ^ b, 0.0, false};
+    case MATH_SHL: return {math_shift(a, b), 0.0, false};
+    case MATH_SHR: return {math_shift_right(a, b), 0.0, false};
+    case MATH_EQ: return {a == b ? 1 : 0, 0.0, false};
+    case MATH_NE: return {a != b ? 1 : 0, 0.0, false};
+    case MATH_LT: return {a < b ? 1 : 0, 0.0, false};
+    case MATH_LE: return {a <= b ? 1 : 0, 0.0, false};
+    case MATH_GT: return {a > b ? 1 : 0, 0.0, false};
+    case MATH_GE: return {a >= b ? 1 : 0, 0.0, false};
+    case MATH_MIN: return {a < b ? a : b, 0.0, false};
+    case MATH_MAX: return {a > b ? a : b, 0.0, false};
+    default:
+        return {0, 0.0, false};
+    }
+}
+
+MathValue math_sample(const PillowCImage* image, std::size_t pixel)
+{
+    if (image->mode == PILLOW_C_MODE_F) {
+        return {0, static_cast<double>(pillow_c_read_f32_le(image->pixels.data() + pixel * 4u)), true};
+    }
+    if (image->mode == PILLOW_C_MODE_I) {
+        return {pillow_c_read_i32_le(image->pixels.data() + pixel * 4u), 0.0, false};
+    }
+    return {static_cast<std::int32_t>(image->pixels[pixel]), 0.0, false};
+}
+
+int math_convert_target_mode(const std::uint8_t* program, std::size_t program_size, std::size_t at)
+{
+    return at + 1 < program_size ? static_cast<int>(program[at + 1]) : -1;
+}
+
+} // namespace
+
+extern "C" __declspec(dllexport) int pillow_c_image_math_rpn(
+    const PillowCImage* const* images,
+    const double* constants,
+    const std::uint8_t* constant_floats,
+    const std::uint8_t* slot_kinds,
+    std::size_t slot_count,
+    const std::uint8_t* program,
+    std::size_t program_size,
+    PillowCImage** out_image)
+{
+    if (!out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+    if (slot_count > 0 && (!images || !constants || !constant_floats || !slot_kinds)) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    if (!program || program_size == 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    const PillowCImage* first = nullptr;
+    for (std::size_t slot = 0; slot < slot_count; ++slot) {
+        if (slot_kinds[slot] != 0) {
+            continue;
+        }
+        const PillowCImage* image = images[slot];        if (!image) {
+            return PILLOW_C_NULL_POINTER;
+        }
+        if (image->mode != PILLOW_C_MODE_L &&
+            image->mode != PILLOW_C_MODE_I &&
+            image->mode != PILLOW_C_MODE_F) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (!first) {
+            first = image;
+        } else if (image->width != first->width || image->height != first->height) {
+            return PILLOW_C_MISMATCH;
+        }
+    }
+    if (!first) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    std::size_t stride = 0;
+    std::size_t size = 0;
+    if (!checked_image_size_allow_empty(first->width, first->height, 4, &stride, &size)) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+
+    try {
+        const std::size_t pixels = static_cast<std::size_t>(first->width) * first->height;
+
+        std::vector<MathValue> stack(64);
+        int depth = 0;
+        bool result_float = false;
+        auto run = [&](std::size_t pixel) -> int {
+            depth = 0;
+            for (std::size_t at = 0; at < program_size; ++at) {
+                const int opcode = program[at];
+                if (opcode == MATH_PUSH) {
+                    if (at + 1 >= program_size || depth >= 64) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                    const std::size_t slot = program[++at];
+                    if (slot < 1 || slot > slot_count) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                    if (slot_kinds[slot - 1] == 0) {
+                        stack[depth++] = math_sample(images[slot - 1], pixel);
+                    } else if (constant_floats[slot - 1] != 0) {
+                        stack[depth++] = {0, constants[slot - 1], true};
+                    } else {
+                        stack[depth++] = {static_cast<std::int64_t>(constants[slot - 1]), 0.0, false};
+                    }
+                    continue;
+                }
+                if (opcode == MATH_NEG || opcode == MATH_NOT || opcode == MATH_ABS ||
+                    opcode == MATH_FLOAT || opcode == MATH_INT) {
+                    if (depth < 1) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                    MathValue& value = stack[depth - 1];
+                    if (opcode == MATH_NEG) {
+                        if (value.is_float) {
+                            value.f = -value.f;
+                        } else {
+                            value.i = -value.i;
+                        }
+                    } else if (opcode == MATH_NOT) {
+                        if (value.is_float) {
+                            return PILLOW_C_INVALID_ARGUMENT;
+                        }
+                        value.i = ~value.i;
+                    } else if (opcode == MATH_ABS) {
+                        if (value.is_float) {
+                            value.f = value.f < 0.0 ? -value.f : value.f;
+                        } else {
+                            value.i = value.i < 0 ? -value.i : value.i;
+                        }
+                    } else if (opcode == MATH_FLOAT) {
+                        value.f = value.is_float ? value.f : static_cast<double>(value.i);
+                        value.is_float = true;
+                    } else {
+                        value.i = value.is_float ? static_cast<std::int64_t>(value.f) : value.i;
+                        value.is_float = false;
+                    }
+                    continue;
+                }
+                if (opcode == MATH_CONVERT) {
+                    if (depth < 1) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                    const int target = math_convert_target_mode(program, program_size, at);
+                    if (target != PILLOW_C_MODE_L && target != PILLOW_C_MODE_I && target != PILLOW_C_MODE_F) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                    ++at;
+                    MathValue& value = stack[depth - 1];
+                    const double d = value.is_float ? value.f : static_cast<double>(value.i);
+                    if (target == PILLOW_C_MODE_L) {
+                        value.i = static_cast<std::int64_t>(d < 0.0 ? 0.0 : (d > 255.0 ? 255.0 : d));
+                        value.is_float = false;
+                    } else if (target == PILLOW_C_MODE_I) {
+                        value.i = static_cast<std::int64_t>(d);
+                        value.is_float = false;
+                    } else {
+                        value.f = d;
+                        value.is_float = true;
+                    }
+                    continue;
+                }
+                if (depth < 2) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                const MathValue right = stack[--depth];
+                MathValue& left = stack[depth - 1];
+                const bool bitwise = opcode == MATH_AND || opcode == MATH_OR || opcode == MATH_XOR;
+                if (bitwise && !math_bitwise_supported(left, right)) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                if ((opcode == MATH_SHL || opcode == MATH_SHR) && !math_shift_supported(left)) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                left = math_binary_op(opcode, left, right);
+            }
+            if (depth != 1) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            result_float = stack[0].is_float;
+            return PILLOW_C_OK;
+        };
+
+        if (pixels > 0) {
+            const int probe_status = run(0);
+            if (probe_status != PILLOW_C_OK) {
+                return probe_status;
+            }
+        }
+
+        const int out_mode = result_float ? PILLOW_C_MODE_F : PILLOW_C_MODE_I;
+        auto* image = new PillowCImage{
+            first->width,
+            first->height,
+            out_mode,
+            4,
+            stride,
+            std::vector<std::uint8_t>(size)};
+        for (std::size_t pixel = 0; pixel < pixels; ++pixel) {
+            const int status = run(pixel);
+            if (status != PILLOW_C_OK) {
+                delete image;
+                return status;
+            }
+            const MathValue& value = stack[0];
+            std::uint8_t* dst = image->pixels.data() + pixel * 4u;
+            if (result_float) {
+                pillow_c_write_f32_le(dst, static_cast<float>(value.f));
+            } else {
+                pillow_c_write_i32_le(dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(value.i)));
+            }
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 extern "C" __declspec(dllexport) int pillow_c_image_point_lut(
     const PillowCImage* source,
     const std::uint8_t* lut,
