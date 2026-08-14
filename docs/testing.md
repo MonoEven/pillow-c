@@ -47,8 +47,36 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2823` AHK tests: `1391` raw DLL tests and
-`1432` facade tests.
+This suite currently registers `2824` AHK tests: `1391` raw DLL tests and
+`1433` facade tests.
+
+Latest `BEHAV-PDF-001` verification: the Pillow 11.3.0 oracle
+(PdfImagePlugin/PdfParser source, `oracle/probe_pdf.py`/`probe_pdf.json`,
+and the ctypes cross-check in `oracle/probe_pdf_dll.py`) pins the
+save-only plugin (open raises the standard identification error),
+the Catalog/Pages/image/page/contents/Info object layout, the
+ASCIIHexDecode P-mode stream with the Indexed DeviceRGB palette
+(lowercase hex indices), the DCTDecode JPEG payloads for
+L/RGB/CMYK (CMYK adds the `/Decode [ 1 0 1 0 1 0 1 0 ]` array),
+the `str(float)` MediaBox and `%f` contents numbers, the
+UTF-16BE+BOM Info strings with the path-stem Title and UTC
+CreationDate/ModDate pair, the exact `cannot save mode X`
+ValueError, and the save_all/append_images multi-page Kids. A
+P-mode page is byte-exact against the oracle modulo the two
+timestamps; the facade PDF target passes `1/1` in `47ms` (the
+byte-exact P page with date patching, DCT payload pixel
+round-trips, CMYK Decode, dpi/resolution MediaBox plus `float
+division by zero`, save_all multi-page Kids, title/author Info,
+six mode errors, the LA/RGBA/mode-1 JPEG2000/group4 boundary
+messages, and both open identification-error shapes); the full
+directory suite passes `2824/2824` in `21797ms` with zero
+failures, errors, or skips. Release x64 Rebuild has `0 Warning(s),
+0 Error(s)`; source/DLL export parity moves to `484/484` (two
+deliberate new exports) with zero difference; and the rebuilt DLL
+SHA-256 is
+`FC2C7C3C633FE73E9343C7A359FF5C3C39EDC04913B0CE19B1A946C1C79C03DC`.
+The behavioral-parity wave continues with the pure-Python open
+families next.
 
 Latest `BEHAV-MPO-001` verification: the Pillow 11.3.0 oracle
 (MpoImagePlugin source plus fixtures, `oracle/probe_mpo.py`, and

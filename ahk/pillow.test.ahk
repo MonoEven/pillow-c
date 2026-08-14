@@ -21875,10 +21875,12 @@ PillowTestDependencyGatedFormatBoundaries(*) {
     image := Pillow.Image.New("L", [2, 2], 7)
     path := StrReplace(PillowTestTempPngPath("bndry-dep"), ".png", ".webp")
     try {
-        ; BNDRY-001: dependency-gated formats (WebP/AVIF/PDF/JPEG2000
+        ; BNDRY-001: dependency-gated formats (WebP/AVIF/JPEG2000
         ; and the other long-tail families) are explicit documented
         ; boundaries — open and save fail loudly with the same error.
-        for format in ["WEBP", "AVIF", "PDF", "JPEG2000", "PSD"] {
+        ; PDF left this list via BEHAV-PDF-001 (its LA/RGBA/mode-1
+        ; sub-mode boundaries are pinned by PillowTestPdfFormat).
+        for format in ["WEBP", "AVIF", "JPEG2000", "PSD"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -23969,6 +23971,325 @@ PillowTestByteString(bytes, start, count) {
 }
 
 AhkTest.Test("Pillow MPO format matches Pillow 11.3.0 structure, reopen parity, and mode errors", PillowTestMpoFormat)
+
+PillowTestPdfHexToBytes(hex) {
+    bytes := []
+    loop Integer(StrLen(hex) / 2)
+        bytes.Push(Integer("0x" SubStr(hex, (A_Index - 1) * 2 + 1, 2)))
+    return bytes
+}
+
+PillowTestPdfBytesToHex(bytes) {
+    hex := ""
+    for value in bytes
+        hex .= Format("{:02x}", value)
+    return hex
+}
+
+PillowTestPdfWriteHexFile(path, hex) {
+    bytes := PillowTestPdfHexToBytes(hex)
+    buf := Buffer(bytes.Length, 0)
+    for index, value in bytes
+        NumPut("UChar", value, buf, index - 1)
+    file := FileOpen(path, "w")
+    try
+        file.RawWrite(buf, buf.Size)
+    finally
+        file.Close()
+}
+
+PillowTestPdfExtractDate(hex, second) {
+    ; "(D:" is hex 28443a; the full "D:YYYYMMDDHHMMSSZ" field is 17
+    ; ASCII chars (34 hex digits) starting at the "D" (pos + 2)
+    pos := InStr(hex, "28443a", false, 1, second ? 2 : 1)
+    if !pos
+        return ""
+    return SubStr(hex, pos + 2, 34)
+}
+
+PillowTestPdfImageStream(hex, index) {
+    ; image payloads are the odd ">>stream\n" occurrences (page contents
+    ; streams interleave); returns the payload as a hex string
+    streamHex := "3e3e73747265616d0a"
+    endHex := "0a656e6473747265616d"
+    pos := 0
+    loop index * 2 - 1 {
+        pos := InStr(hex, streamHex, false, pos + 1)
+        if !pos
+            return ""
+    }
+    start := pos + 18
+    end := InStr(hex, endHex, false, start)
+    if !end
+        return ""
+    return SubStr(hex, start, end - start)
+}
+
+PillowTestPdfFormat(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    singlePath := A_Temp "\single.pdf"
+    rgbPath := A_Temp "\pdf-rgb.pdf"
+    cmykPath := A_Temp "\pdf-cmyk.pdf"
+    dpiPath := A_Temp "\pdf-dpi.pdf"
+    resPath := A_Temp "\pdf-res.pdf"
+    multiPath := A_Temp "\pdf-multi.pdf"
+    noAllPath := A_Temp "\pdf-noall.pdf"
+    refPath := A_Temp "\pdf-ref.jpg"
+    frame2RefPath := A_Temp "\pdf-ref2.jpg"
+    payloadPath := A_Temp "\pdf-payload.jpg"
+    openPath := A_Temp "\pdf-open.pdf"
+    try {
+        ; --- P-mode single page: byte-exact vs the Pillow 11.3.0 oracle ---
+        p := Pillow.Image.New("P", [4, 3])
+        try {
+            palette := []
+            loop 768
+                palette.Push(Mod(A_Index - 1, 256))
+            p.PutPalette(palette)
+            values := Buffer(12, 0)
+            loop 12
+                NumPut("UChar", A_Index - 1, values, A_Index - 1)
+            p.FromBytes(values)
+            p.Save(singlePath, "PDF")
+        } finally {
+            p.Close()
+        }
+        actualHex := PillowTestPdfBytesToHex(PillowTestReadFileBytes(singlePath))
+        ; the timestamps are the current UTC second (Pillow's
+        ; time.gmtime); patch the oracle fixture's two date fields with
+        ; the actual ones and compare everything else byte-for-byte
+        date1 := PillowTestPdfExtractDate(actualHex, false)
+        date2 := PillowTestPdfExtractDate(actualHex, true)
+        AhkTest.AssertEqual(date1, date2)
+        fixtureHex := ""
+        fixtureHex .= "255044462d312e340a2520637265617465642062792050696c6c6f772031312e332e3020504446206472697665720a34"
+        fixtureHex .= "2030206f626a3c3c0a2f54797065202f436174616c6f670a2f50616765732035203020520a3e3e656e646f626a0a3520"
+        fixtureHex .= "30206f626a3c3c0a2f54797065202f50616765730a2f436f756e7420310a2f4b696473205b203220302052205d0a3e3e"
+        fixtureHex .= "656e646f626a0a312030206f626a3c3c0a2f54797065202f584f626a6563740a2f53756274797065202f496d6167650a"
+        fixtureHex .= "2f576964746820340a2f48656967687420330a2f46696c746572202f41534349494865784465636f64650a2f42697473"
+        fixtureHex .= "506572436f6d706f6e656e7420380a2f436f6c6f725370616365205b202f496e6465786564202f446576696365524742"
+        fixtureHex .= "20323535203c303030313032303330343035303630373038303930413042304330443045304631303131313231333134"
+        fixtureHex .= "313531363137313831393141314231433144314531463230323132323233323432353236323732383239324132423243"
+        fixtureHex .= "324432453246333033313332333333343335333633373338333933413342334333443345334634303431343234333434"
+        fixtureHex .= "343534363437343834393441344234433444344534463530353135323533353435353536353735383539354135423543"
+        fixtureHex .= "354435453546363036313632363336343635363636373638363936413642364336443645364637303731373237333734"
+        fixtureHex .= "373537363737373837393741374237433744374537463830383138323833383438353836383738383839384138423843"
+        fixtureHex .= "384438453846393039313932393339343935393639373938393939413942394339443945394641304131413241334134"
+        fixtureHex .= "413541364137413841394141414241434144414541464230423142324233423442354236423742384239424142424243"
+        fixtureHex .= "424442454246433043314332433343344335433643374338433943414342434343444345434644304431443244334434"
+        fixtureHex .= "443544364437443844394441444244434444444544464530453145324533453445354536453745384539454145424543"
+        fixtureHex .= "454445454546463046314632463346344635463646374638463946414642464346444645464630303031303230333034"
+        fixtureHex .= "303530363037303830393041304230433044304530463130313131323133313431353136313731383139314131423143"
+        fixtureHex .= "314431453146323032313232323332343235323632373238323932413242324332443245324633303331333233333334"
+        fixtureHex .= "333533363337333833393341334233433344334533463430343134323433343434353436343734383439344134423443"
+        fixtureHex .= "344434453446353035313532353335343535353635373538353935413542354335443545354636303631363236333634"
+        fixtureHex .= "363536363637363836393641364236433644364536463730373137323733373437353736373737383739374137423743"
+        fixtureHex .= "374437453746383038313832383338343835383638373838383938413842384338443845384639303931393239333934"
+        fixtureHex .= "393539363937393839393941394239433944394539464130413141324133413441354136413741384139414141424143"
+        fixtureHex .= "414441454146423042314232423342344235423642374238423942414242424342444245424643304331433243334334"
+        fixtureHex .= "433543364337433843394341434243434344434543464430443144324433443444354436443744384439444144424443"
+        fixtureHex .= "444444454446453045314532453345344535453645374538453945414542454345444545454646304631463246334634"
+        fixtureHex .= "463546364637463846394641464246434644464546463030303130323033303430353036303730383039304130423043"
+        fixtureHex .= "304430453046313031313132313331343135313631373138313931413142314331443145314632303231323232333234"
+        fixtureHex .= "323532363237323832393241324232433244324532463330333133323333333433353336333733383339334133423343"
+        fixtureHex .= "334433453346343034313432343334343435343634373438343934413442344334443445344635303531353235333534"
+        fixtureHex .= "353535363537353835393541354235433544354535463630363136323633363436353636363736383639364136423643"
+        fixtureHex .= "364436453646373037313732373337343735373637373738373937413742374337443745374638303831383238333834"
+        fixtureHex .= "383538363837383838393841384238433844384538463930393139323933393439353936393739383939394139423943"
+        fixtureHex .= "394439453946413041314132413341344135413641374138413941414142414341444145414642304231423242334234"
+        fixtureHex .= "423542364237423842394241424242434244424542464330433143324333433443354336433743384339434143424343"
+        fixtureHex .= "434443454346443044314432443344344435443644374438443944414442444344444445444645304531453245334534"
+        fixtureHex .= "453545364537453845394541454245434544454545464630463146324633463446354636463746384639464146424643"
+        fixtureHex .= "4644464546463e205d0a2f4c656e6774682032340a3e3e73747265616d0a303030313032303330343035303630373038"
+        fixtureHex .= "3039306130620a656e6473747265616d0a656e646f626a0a322030206f626a3c3c0a2f5265736f7572636573203c3c0a"
+        fixtureHex .= "2f50726f63536574205b202f504446202f496d61676549205d0a2f584f626a656374203c3c0a2f696d61676520312030"
+        fixtureHex .= "20520a3e3e0a3e3e0a2f4d65646961426f78205b2030203020342e3020332e30205d0a2f436f6e74656e747320332030"
+        fixtureHex .= "20520a2f54797065202f506167650a2f506172656e742035203020520a3e3e656e646f626a0a332030206f626a3c3c0a"
+        fixtureHex .= "2f4c656e6774682034330a3e3e73747265616d0a7120342e3030303030302030203020332e3030303030302030203020"
+        fixtureHex .= "636d202f696d61676520446f20510a0a656e6473747265616d0a656e646f626a0a362030206f626a3c3c0a2f5469746c"
+        fixtureHex .= "652028feff00730069006e0067006c0065290a2f4372656174696f6e446174652028443a323032363038313431313337"
+        fixtureHex .= "32335a290a2f4d6f64446174652028443a32303236303831343131333732335a290a3e3e656e646f626a0a787265660a"
+        fixtureHex .= "3020370a303030303030303030302036353533362066200a30303030303030313531203030303030206e200a30303030"
+        fixtureHex .= "303031383936203030303030206e200a30303030303032303534203030303030206e200a303030303030303034372030"
+        fixtureHex .= "30303030206e200a30303030303030303934203030303030206e200a30303030303032313435203030303030206e200a"
+        fixtureHex .= "747261696c65720a3c3c0a2f526f6f742034203020520a2f53697a6520370a2f496e666f2036203020520a3e3e0a7374"
+        fixtureHex .= "617274787265660a323235310a2525454f46"
+        fixtureHex := StrReplace(fixtureHex, "443a32303236303831343131333732335a", date1, , , 1)
+        fixtureHex := StrReplace(fixtureHex, "443a32303236303831343131333732335a", date2, , , 1)
+        AhkTest.AssertEqual(fixtureHex, actualHex)
+
+        ; --- RGB page: DCT payload decodes to the source pixels ---
+        rgb := Pillow.Image.New("RGB", [4, 2])
+        try {
+            values := Buffer(24, 0)
+            loop 24
+                NumPut("UChar", A_Index - 1, values, A_Index - 1)
+            rgb.FromBytes(values)
+            rgb.Save(rgbPath, "PDF")
+            rgb.Save(refPath, "JPEG")
+        } finally {
+            rgb.Close()
+        }
+        rgbHex := PillowTestPdfBytesToHex(PillowTestReadFileBytes(rgbPath))
+        AhkTest.AssertTrue(InStr(rgbHex, "2f46696c746572202f4443544465636f6465") > 0)
+        AhkTest.AssertTrue(InStr(rgbHex, "2f436f6c6f725370616365202f446576696365524742") > 0)
+        AhkTest.AssertTrue(InStr(rgbHex, "2f4d65646961426f78205b2030203020342e3020322e30205d") > 0)
+        PillowTestPdfWriteHexFile(payloadPath, PillowTestPdfImageStream(rgbHex, 1))
+        openedPayload := Pillow.Image.Open(payloadPath)
+        openedRef := Pillow.Image.Open(refPath)
+        try {
+            AhkTest.AssertEqual("RGB", openedPayload.Mode)
+            AhkTest.AssertEqual(PillowTestBufferToArray(openedRef.ToBytes()), PillowTestBufferToArray(openedPayload.ToBytes()))
+        } finally {
+            openedPayload.Close()
+            openedRef.Close()
+        }
+
+        ; --- CMYK page: /Decode array plus DeviceCMYK ---
+        cmyk := Pillow.Image.New("CMYK", [4, 2])
+        try {
+            values := Buffer(32, 0)
+            loop 32
+                NumPut("UChar", Mod((A_Index - 1) * 7, 256), values, A_Index - 1)
+            cmyk.FromBytes(values)
+            cmyk.Save(cmykPath, "PDF")
+        } finally {
+            cmyk.Close()
+        }
+        cmykHex := PillowTestPdfBytesToHex(PillowTestReadFileBytes(cmykPath))
+        AhkTest.AssertTrue(InStr(cmykHex, "2f4465636f6465205b20312030203120302031203020312030205d") > 0)
+        AhkTest.AssertTrue(InStr(cmykHex, "2f436f6c6f725370616365202f446576696365434d594b") > 0)
+
+        ; --- dpi/resolution options drive the MediaBox and contents ---
+        dpi := Pillow.Image.New("RGB", [4, 2])
+        try {
+            dpi.Save(dpiPath, "PDF", { Dpi: [300, 150] })
+            dpi.Save(resPath, "PDF", { Resolution: 144 })
+        } finally {
+            dpi.Close()
+        }
+        dpiHex := PillowTestPdfBytesToHex(PillowTestReadFileBytes(dpiPath))
+        AhkTest.AssertTrue(InStr(dpiHex, "2f4d65646961426f78205b2030203020302e393620302e3936205d") > 0)
+        AhkTest.AssertTrue(InStr(dpiHex, "7120302e3936303030302030203020302e3936303030302030203020636d") > 0)
+        resHex := PillowTestPdfBytesToHex(PillowTestReadFileBytes(resPath))
+        AhkTest.AssertTrue(InStr(resHex, "2f4d65646961426f78205b2030203020322e3020312e30205d") > 0)
+        zeroError := ""
+        zero := Pillow.Image.New("RGB", [4, 2])
+        try {
+            zeroError := PillowTestFormatCaptureError(() => zero.Save(resPath, "PDF", { Resolution: 0 }))
+        } finally {
+            zero.Close()
+        }
+        AhkTest.AssertEqual("float division by zero", zeroError)
+
+        ; --- info fields: title/author strings plus default timestamps ---
+        titled := Pillow.Image.New("RGB", [4, 2])
+        try {
+            titled.Save(singlePath, "PDF", { Title: "custom", Author: "me" })
+        } finally {
+            titled.Close()
+        }
+        titledHex := PillowTestPdfBytesToHex(PillowTestReadFileBytes(singlePath))
+        AhkTest.AssertTrue(InStr(titledHex, "2f5469746c652028feff0063007500730074006f006d29") > 0)
+        AhkTest.AssertTrue(InStr(titledHex, "2f417574686f722028feff006d006529") > 0)
+        AhkTest.AssertEqual(PillowTestPdfExtractDate(titledHex, false), PillowTestPdfExtractDate(titledHex, true))
+
+        ; --- multi-page: save_all + append_images ---
+        base := Pillow.Image.New("RGB", [4, 2])
+        frame2 := Pillow.Image.New("RGB", [4, 2])
+        try {
+            baseValues := Buffer(24, 0)
+            frame2Values := Buffer(24, 0)
+            loop 24 {
+                NumPut("UChar", A_Index - 1, baseValues, A_Index - 1)
+                NumPut("UChar", 40 + A_Index - 1, frame2Values, A_Index - 1)
+            }
+            base.FromBytes(baseValues)
+            frame2.FromBytes(frame2Values)
+            base.Save(multiPath, "PDF", { SaveAll: true, AppendImages: [frame2] })
+            ; without save_all Pillow ignores append_images entirely
+            base.Save(noAllPath, "PDF", { AppendImages: [frame2] })
+            base.Save(refPath, "JPEG")
+            frame2.Save(frame2RefPath, "JPEG")
+        } finally {
+            base.Close()
+            frame2.Close()
+        }
+        multiHex := PillowTestPdfBytesToHex(PillowTestReadFileBytes(multiPath))
+        AhkTest.AssertTrue(InStr(multiHex, "2f436f756e742032") > 0)
+        AhkTest.AssertTrue(InStr(multiHex, "2f4b696473205b203220302052203520302052205d") > 0)
+        noAllHex := PillowTestPdfBytesToHex(PillowTestReadFileBytes(noAllPath))
+        AhkTest.AssertTrue(InStr(noAllHex, "2f436f756e742031") > 0)
+        PillowTestPdfWriteHexFile(payloadPath, PillowTestPdfImageStream(multiHex, 1))
+        payloadOne := Pillow.Image.Open(payloadPath)
+        refOne := Pillow.Image.Open(refPath)
+        try {
+            AhkTest.AssertEqual(PillowTestBufferToArray(refOne.ToBytes()), PillowTestBufferToArray(payloadOne.ToBytes()))
+        } finally {
+            payloadOne.Close()
+            refOne.Close()
+        }
+        PillowTestPdfWriteHexFile(payloadPath, PillowTestPdfImageStream(multiHex, 2))
+        payloadTwo := Pillow.Image.Open(payloadPath)
+        refTwo := Pillow.Image.Open(frame2RefPath)
+        try {
+            AhkTest.AssertEqual(PillowTestBufferToArray(refTwo.ToBytes()), PillowTestBufferToArray(payloadTwo.ToBytes()))
+        } finally {
+            payloadTwo.Close()
+            refTwo.Close()
+        }
+
+        ; --- mode errors and the JPEG2000/group4 runtime boundaries ---
+        for mode in ["I;16", "F", "RGBX"] {
+            image := Pillow.Image.New(mode, [2, 2])
+            try {
+                AhkTest.AssertEqual("cannot save mode " mode, PillowTestFormatCaptureError(() => image.Save(singlePath, "PDF")), mode)
+            } finally {
+                image.Close()
+            }
+        }
+        for mode in ["LA", "RGBA"] {
+            image := Pillow.Image.New(mode, [2, 2])
+            try {
+                AhkTest.AssertEqual("PDF save of mode " mode " requires JPEG2000 support, which this runtime does not ship", PillowTestFormatCaptureError(() => image.Save(singlePath, "PDF")), mode)
+            } finally {
+                image.Close()
+            }
+        }
+        one := Pillow.Image.New("1", [2, 2])
+        try {
+            AhkTest.AssertEqual("PDF save of mode 1 requires CCITT Group 4 compression, which this runtime does not ship", PillowTestFormatCaptureError(() => one.Save(singlePath, "PDF")))
+        } finally {
+            one.Close()
+        }
+        ptrans := Pillow.Image.New("P", [2, 2])
+        try {
+            ptrans.Info["transparency"] := "x"
+            AhkTest.AssertEqual("PDF save of mode P requires JPEG2000 support, which this runtime does not ship", PillowTestFormatCaptureError(() => ptrans.Save(singlePath, "PDF")))
+        } finally {
+            ptrans.Close()
+        }
+
+        ; --- open: Pillow 11.3.0 registers no PDF open handler ---
+        AhkTest.AssertEqual("cannot identify image file <" singlePath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(singlePath)))
+        AhkTest.AssertEqual("cannot identify image file <" singlePath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(singlePath, ["PDF"])))
+        AhkTest.AssertEqual("", Pillow.Image.FormatDescription("PDF"))
+    } finally {
+        PillowTestDeleteFile(singlePath)
+        PillowTestDeleteFile(rgbPath)
+        PillowTestDeleteFile(cmykPath)
+        PillowTestDeleteFile(dpiPath)
+        PillowTestDeleteFile(resPath)
+        PillowTestDeleteFile(multiPath)
+        PillowTestDeleteFile(noAllPath)
+        PillowTestDeleteFile(refPath)
+        PillowTestDeleteFile(frame2RefPath)
+        PillowTestDeleteFile(payloadPath)
+        PillowTestDeleteFile(openPath)
+    }
+}
+
+AhkTest.Test("Pillow PDF format matches Pillow 11.3.0 save bytes, payload pixels, and open error", PillowTestPdfFormat)
 
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

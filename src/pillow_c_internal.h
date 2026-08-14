@@ -360,6 +360,12 @@ int pillow_c_png_decode_memory(
     std::size_t size,
     PillowCImage** out_image);
 
+// BEHAV-PDF-001 seam: the default WIC JPEG save to a path, shared with the
+// PDF writer (L/RGB/CMYK PDF pages embed a DCTDecode JPEG payload).
+namespace pillow_c_jpeg {
+int save_jpeg_image(const PillowCImage* image, const char* path);
+}
+
 int copy_metadata_blob(
     const std::vector<std::uint8_t>& data,
     int* out_has_blob,

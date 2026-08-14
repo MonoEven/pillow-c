@@ -7653,6 +7653,11 @@ class Pillow {
                         ; SyntaxError into UnidentifiedImageError.
                         throw Error("cannot identify image file <" path ">", -1)
                     throw Error(epsError, -1)
+                } else if format = "PDF" {
+                    ; BEHAV-PDF-001: Pillow 11.3.0 registers no PDF open
+                    ; (PdfImagePlugin is save-only), so identification
+                    ; fails exactly like an unknown file.
+                    throw Error("cannot identify image file <" path ">", -1)
                 } else if format = "MPO" {
                     ; BEHAV-MPO-001: Pillow opens MPO through the JPEG
                     ; factory — a file WITH the MPF index reports format
@@ -8130,6 +8135,21 @@ class Pillow {
             )
             Pillow.CheckStatus(status)
             return subsampling
+        }
+
+        static SavePdfInfoString(options, names*) {
+            ; BEHAV-PDF-001: Pillow's PDF info entries only accept strings
+            ; (pdf_repr(str) -> UTF-16BE with BOM); an empty string is
+            ; falsy in the plugin's "if v:" guard and is omitted, and an
+            ; unset option returns 0 (nullptr -> the native default).
+            option := Pillow.Image.SaveOption(options, names*)
+            if !option.Set
+                return 0
+            if !(option.Value is String)
+                throw Error("Pillow.Image.Save PDF info values must be strings", -1)
+            if StrLen(option.Value) = 0
+                return 0
+            return Pillow.Image.Utf8Buffer(option.Value)
         }
 
         static SaveJpegCommentBuffer(commentOption, handle, useOpenedComment) {
@@ -9165,6 +9185,8 @@ class Pillow {
                 return "EPS"
             if RegExMatch(path, "i)\.mpo$")
                 return "MPO"
+            if RegExMatch(path, "i)\.pdf$")
+                return "PDF"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -9194,7 +9216,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -11109,6 +11131,119 @@ class Pillow {
                         image.Close()
                     for tempPath in tempPaths
                         FileDelete(tempPath)
+                }
+                return
+            }
+            if resolvedFormat = "PDF" {
+                ; BEHAV-PDF-001: Pillow's PdfImagePlugin is save-only —
+                ; a P image writes a byte-exact ASCIIHexDecode stream
+                ; with the Indexed DeviceRGB palette, L/RGB/CMYK pages
+                ; embed a DCTDecode JPEG payload (structure-exact here;
+                ; WIC JPEG vs Pillow's libjpeg), and the UTC timestamps
+                ; plus the path-stem UTF-16BE title go into the Info
+                ; object. LA/RGBA (and P with a transparency entry)
+                ; require JPEG2000 and mode 1 requires CCITT Group 4 —
+                ; Pillow performs both locally, so those are documented
+                ; runtime boundaries (no Pillow error exists to match).
+                ; Every other mode raises Pillow's exact ValueError.
+                images := [this]
+                if IsSet(saveOptions) {
+                    saveAllOption := Pillow.Image.SaveOption(saveOptions, "SaveAll", "save_all")
+                    appendOption := Pillow.Image.SaveOption(saveOptions, "AppendImages", "append_images")
+                    if saveAllOption.Set && saveAllOption.Value && appendOption.Set {
+                        ; Pillow only appends when save_all is truthy;
+                        ; each appended image contributes one page (the
+                        ; n_frames>1 first-image expansion stays a
+                        ; documented child).
+                        appendImages := appendOption.Value
+                        if IsObject(appendImages) && appendImages is Pillow.Image {
+                            images.Push(appendImages)
+                        } else if IsObject(appendImages) {
+                            for image in appendImages {
+                                if !(IsObject(image) && image is Pillow.Image)
+                                    throw Error("Pillow.Image.Save append_images expects Pillow.Image values", -1)
+                                images.Push(image)
+                            }
+                        } else {
+                            throw Error("Pillow.Image.Save append_images expects an image or image array", -1)
+                        }
+                    }
+                }
+                for image in images {
+                    if image.Mode = "LA" || image.Mode = "RGBA" || (image.Mode = "P" && image.Info.Has("transparency"))
+                        throw Error("PDF save of mode " image.Mode " requires JPEG2000 support, which this runtime does not ship", -1)
+                    if image.Mode = "1"
+                        throw Error("PDF save of mode 1 requires CCITT Group 4 compression, which this runtime does not ship", -1)
+                    if !(image.Mode = "P" || image.Mode = "L" || image.Mode = "RGB" || image.Mode = "CMYK")
+                        throw Error("cannot save mode " image.Mode, -1)
+                }
+                xResolution := 72.0
+                yResolution := 72.0
+                if IsSet(saveOptions) {
+                    dpiOption := Pillow.Image.SaveOption(saveOptions, "Dpi", "dpi")
+                    dpiEmpty := dpiOption.Set && ((dpiOption.Value is String && StrLen(dpiOption.Value) = 0) || (dpiOption.Value is Array && dpiOption.Value.Length = 0))
+                    if dpiOption.Set && !dpiEmpty {
+                        dpiPair := Pillow.Image.SaveDpiPair(dpiOption.Value, false)
+                        xResolution := dpiPair[1]
+                        yResolution := dpiPair[2]
+                    } else if !dpiOption.Set {
+                        resolutionOption := Pillow.Image.SaveOption(saveOptions, "Resolution", "resolution")
+                        if resolutionOption.Set {
+                            if !(resolutionOption.Value is Number)
+                                throw Error("Pillow.Image.Save resolution expects a number", -1)
+                            xResolution := resolutionOption.Value + 0.0
+                            yResolution := xResolution
+                        }
+                    }
+                }
+                if xResolution = 0 || yResolution = 0
+                    throw Error("float division by zero", -1)
+                pathBytes := Pillow.Image.Utf8Buffer(path)
+                infoOptions := IsSet(saveOptions) ? saveOptions : 0
+                titleBuffer := Pillow.Image.SavePdfInfoString(infoOptions, "Title", "title")
+                authorBuffer := Pillow.Image.SavePdfInfoString(infoOptions, "Author", "author")
+                subjectBuffer := Pillow.Image.SavePdfInfoString(infoOptions, "Subject", "subject")
+                keywordsBuffer := Pillow.Image.SavePdfInfoString(infoOptions, "Keywords", "keywords")
+                creatorBuffer := Pillow.Image.SavePdfInfoString(infoOptions, "Creator", "creator")
+                producerBuffer := Pillow.Image.SavePdfInfoString(infoOptions, "Producer", "producer")
+                creationDateBuffer := Pillow.Image.SavePdfInfoString(infoOptions, "CreationDate", "creationDate")
+                modDateBuffer := Pillow.Image.SavePdfInfoString(infoOptions, "ModDate", "modDate")
+                if images.Length = 1 {
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_pdf",
+                        "Ptr", images[1].RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Double", xResolution,
+                        "Double", yResolution,
+                        "Ptr", titleBuffer,
+                        "Ptr", authorBuffer,
+                        "Ptr", subjectBuffer,
+                        "Ptr", keywordsBuffer,
+                        "Ptr", creatorBuffer,
+                        "Ptr", producerBuffer,
+                        "Ptr", creationDateBuffer,
+                        "Ptr", modDateBuffer,
+                        "Int"
+                    ))
+                } else {
+                    handles := Pillow.Image.HandleArray(images)
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_pdf_frames",
+                        "Ptr", handles,
+                        "Int", images.Length,
+                        "Ptr", pathBytes,
+                        "Double", xResolution,
+                        "Double", yResolution,
+                        "Ptr", titleBuffer,
+                        "Ptr", authorBuffer,
+                        "Ptr", subjectBuffer,
+                        "Ptr", keywordsBuffer,
+                        "Ptr", creatorBuffer,
+                        "Ptr", producerBuffer,
+                        "Ptr", creationDateBuffer,
+                        "Ptr", modDateBuffer,
+                        "Int"
+                    ))
                 }
                 return
             }

@@ -46,8 +46,10 @@ Everything else IS reachable, and the remaining work is bounded.
   our deflate); EPS = DONE (BEHAV-EPS-001 — byte-exact DSC save);
   MPO = DONE (BEHAV-MPO-001 — facade-composed MPF index over the
   native JPEG payloads, Pillow-reopen-verified);
-  PDF = 1 implementable
-  (pure-Python writer; the PDF save verified OK locally);
+  PDF = DONE (BEHAV-PDF-001 — byte-exact P-mode ASCIIHexDecode page,
+  structure-exact DCTDecode L/RGB/CMYK pages over the native JPEG
+  seam, exact mode errors, the identification error on open;
+  LA/RGBA/mode-1 stay documented JPEG2000/group4 boundaries);
   BUFR/GRIB/HDF5/WMF = 4 exact-error matches (`X save handler not
   installed`); AVIF/JPEG2000/WEBP = 3 unmatchable codecs.
 - OPEN (45): 19 byte-exact; 18 implementable (DCX/FITS/FLI/FTEX/
@@ -59,7 +61,8 @@ Everything else IS reachable, and the remaining work is bounded.
   exact-error matches (EPS open `Unable to locate Ghostscript on
   paths`, MPEG open parses the header bits into RGB size then
   `cannot load this image` — oracle-verified); PDF open is NOT
-  REGISTERED in 11.3.0 (identification error, trivially matched);
+  REGISTERED in 11.3.0 (identification error — DONE with
+  BEHAV-PDF-001);
   AVIF/FPX/JPEG2000/WEBP = 4 unmatchable; WMF open = 1 real native
   task (GDI `drawwmf`, oracle-verified working locally: a minimal
   placeable WMF opens as RGB 75x75 at 72 dpi).
@@ -272,6 +275,60 @@ Current local constraints:
 - AHK tests should use `ahktest` and captured errors, not modal popups.
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
+
+## 2026-08-14 BEHAV-PDF-001 PDF Format (GREEN)
+
+`BEHAV-PDF-001` implements the PDF format: Pillow 11.3.0's
+PdfImagePlugin is save-only, so open raises the standard
+identification error, and save writes through PdfParser.
+
+The Pillow 11.3.0 oracle (PdfImagePlugin/PdfParser source plus
+`oracle/probe_pdf.py`/`probe_pdf.json` and the ctypes cross-check in
+`oracle/probe_pdf_dll.py`) pins the full writer: `%PDF-1.4` plus the
+`% created by Pillow 11.3.0 PDF driver` comment; the Catalog (3N+1)
+and Pages (3N+2) objects; per page the image XObject (3i+1), Page
+(3i+2), and Contents (3i+3) objects; the Info object (3N+3); then
+`xref`/`trailer`/`startxref`/`%%EOF`. P images write an
+ASCIIHexDecode stream (lowercase hex indices, `/Length 2*w*h`, no
+line breaks) with the `/ColorSpace [ /Indexed /DeviceRGB 255
+<768-byte hex palette> ]` array and the `/ProcSet [ /PDF /ImageI ]`
+page; L/RGB/CMYK pages embed a DCTDecode JPEG payload (`/ImageB` /
+`/ImageC` procset, CMYK adds `/Decode [ 1 0 1 0 1 0 1 0 ]`); every
+other mode raises Pillow's exact `cannot save mode X` ValueError.
+The MediaBox numbers use Python `str(float)` formatting and the
+contents stream uses `%f` (`q 4.000000 0 0 3.000000 0 0 cm /image
+Do Q\n`); the Info object carries the Title (path stem) and other
+fields as UTF-16BE+BOM strings with byte-level `\ ( )` escapes and
+the CreationDate/ModDate as UTC `(D:YYYYMMDDHHMMSSZ)`; the xref
+entries are `%010d %05d n ` with Size 3N+4. Save honors
+`save_all`+`append_images` (one page per appended image; the
+n_frames>1 first-image expansion stays a documented child), `dpi`
+(per-axis) and `resolution` (both axes, default 72.0), with
+Pillow's exact `float division by zero` for a zero resolution, and
+the title/author/subject/keywords/creator/producer/creationDate/
+modDate encoderinfo strings.
+
+Two deliberate native exports write the document:
+`pillow_c_image_save_pdf` and `pillow_c_image_save_pdf_frames`
+(`src/pillow_c_codec_pdf.cpp`), reusing the shared default JPEG
+save seam (`pillow_c_jpeg::save_jpeg_image`) through temp files for
+the DCT payloads — no facade per-byte loops. The P-mode single page
+is byte-exact against the oracle modulo the two timestamps; the
+L/RGB/CMYK payloads use WIC JPEG (structure-exact, pixel-exact on
+decode — the DCT bytes differ from Pillow's libjpeg as everywhere).
+LA/RGBA (and P with a `transparency` info entry) require JPEG2000
+and mode 1 requires CCITT Group 4 — Pillow performs both locally,
+so they remain documented runtime boundaries with explicit boundary
+messages (`PDF save of mode X requires JPEG2000 support, which this
+runtime does not ship` / `... requires CCITT Group 4 compression,
+which this runtime does not ship`); no Pillow error exists to
+match. PDF left the BNDRY-001 dependency-gated list. The facade PDF
+target passes `1/1` in `47ms`; the full directory suite passes
+`2824/2824` in `21797ms`; Release x64 Rebuild has `0 Warning(s), 0
+Error(s)`; source/DLL export parity moves to `484/484` and the DLL
+SHA-256 is
+`FC2C7C3C633FE73E9343C7A359FF5C3C39EDC04913B0CE19B1A946C1C79C03DC`.
+The next bounded child is the pure-Python open families.
 
 ## 2026-08-14 BEHAV-MPO-001 MPO Format (GREEN)
 
@@ -667,13 +724,13 @@ Classification of every boundary item (treatment applies per packet):
 | DDS | save L/RGB/RGBA OK; P `cannot write mode P as DDS` | DONE — BEHAV-DDS-001 (byte-exact raw L/LA/RGB/RGBA + DXT1/3/5 + BC2/BC3/BC5 BCN writes, the mask/luminance/P8/BC1-5/BC7 reopen matrix, and the exact error shapes; BC6H/BC6HS open stays a deferred child; native open/save exports) |
 | ICNS | save all modes OK (PNG/JPEG2000 payloads); reopen picks the best size, decodes PNG payloads and legacy 32-bit RGB/mask chunks, and the first tobytes() carries the pre-load RGBA rawmode quirk | DONE — BEHAV-ICNS-001 (container-byte-exact TOC + eight PNG-backed icons over the native PNG seams; mode-preserving reopen incl. L/P/RGB/LA/RGBA, legacy is32/il32/ih32/it32 + masks with the bottom-up verbatim storage and the RLE [N left] error, exact error shapes, info["sizes"], the ToBytes quirk replay; jp2 payloads keep Pillow's no-jp2 message as the dependency-gated boundary) |
 | EPS | save L/RGB OK; RGBA/P `image mode is not supported`; open `Unable to locate Ghostscript on paths` | DONE — BEHAV-EPS-001 (byte-exact DSC header + preamble + 39-byte hex lines for L/RGB/CMYK, the exact mode ValueError, the DSC header replay with Pillow's identification/bbox error shapes, the binary-preview offset, and the Ghostscript load error at the eager facade's Open; native save export) |
-| PDF | save all modes OK (pure-Python writer); open needs Ghostscript | IMPLEMENT save (facade) + match Ghostscript error |
+| PDF | save all modes OK (pure-Python writer); open needs Ghostscript | DONE — BEHAV-PDF-001 (save-only plugin: byte-exact P-mode ASCIIHexDecode page, structure-exact DCTDecode L/RGB/CMYK pages, exact `cannot save mode X` errors, save_all multi-page, dpi/resolution, Info strings; open = the standard identification error; LA/RGBA/mode-1 = documented JPEG2000/group4 boundaries) |
 | MPO | save L/RGB OK; RGBA/P `cannot write mode X as JPEG` | DONE — BEHAV-MPO-001 (single save = plain JPEG; append_images writes the APP2 MPF index placeholder patched at offset 28 plus the appended frames; L/RGB/CMYK save, mode 1 JPEG-encoded as grayscale, the exact mode errors, and the MPF-marker JPEG/MPO format detection on open; Pillow 11.3.0 reopens the facade's file with 2 seekable frames; n_frames/seek stay a documented child) |
 | XPM/PIXAR/GBR/IMT/IPTC/MCIDAS/MIC/FTEX/XVTHUMB/FLI/DCX/PSD/SUN open, FITS/FPX open | pure-Python open plugins; classify per packet with Pillow-generated/hand-crafted fixtures | IMPLEMENT open where feasible (bounded per format) |
 | FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/XVTHUMB/SUN/FLI/DCX/XPM/PSD save | `KeyError: 'FMT'` (no save handler) | MATCH the exact KeyError message |
 | BUFR/GRIB/HDF5/WMF save | `X save handler not installed` (OSError) | MATCH the exact message |
 | JPEG2000 P save | `broken data stream when writing image file` | MATCH the exact message |
-| WEBP/AVIF/JPEG2000/PDF-open | work via bundled libs/ghostscript | dependency-gated: match Pillow's own not-enabled messages; remain documented build boundaries |
+| WEBP/AVIF/JPEG2000 | work via bundled libs | dependency-gated: match Pillow's own not-enabled messages; remain documented build boundaries |
 | ImageFile.Parser | feed/close works (partial feed → close returns correct image) | IMPLEMENT feed/close semantics (facade buffer + native open at close) |
 | ImagePalette.load | parses GIMP/Adobe palette files | IMPLEMENT GIMP .gpl parsing (facade) |
 | TransposedFont.GetMask | returns an L-mode mask with glyphs | IMPLEMENT via native text rasterization into an L image |
@@ -40790,7 +40847,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | MODE-NUM-001CQ | Modes | covered | Bounded I;16 entropy/getcolors/ImageStat boundaries: Pillow 11.3.0 raises `image has wrong mode` for I;16/I;16B `getcolors()`, while its C entropy returns layout-dependent byte-misread values (`log2(6)` for six misread-distinct samples) and `ImageStat.Stat` derives from that same misread histogram. The native entropy and getcolors entry points return `PILLOW_C_INVALID_ARGUMENT` for I;16/I;16B, the facade surfaces Pillow's `image has wrong mode` for `GetColors`, a documented boundary error for `Entropy`, and inherits the histogram boundary through `ImageStat.Stat`. Export parity remains `463/463`. | `oracle/probe_mode_i16_stats2.py`, native entropy/getcolors I;16 rejections, facade GetColors/Entropy boundaries, ImageStat histogram inheritance, raw/facade boundary tests. |
 | API-IMG-001F | Facade API | covered | Bounded low-level `im` accessor boundary completing the named `PIL.Image.Image` object-model list: Pillow 11.3.0's `im` is the per-image `ImagingCore` C object, whose AHK analogue is the native image handle (the `pillow_c_*` ABI covers the ImagingCore method surface). The facade adds the `Im` property returning the same handle as `GetIm()` (AHK case-insensitivity serves `im`) with the Pillow-shaped closed-image error. Facade-only; export parity remains `463/463` and the DLL SHA-256 is unchanged. | Facade `Image.Im` property, facade im-accessor boundary test. |
 | FMT-ICO-002 | ICO/CUR | partial | `FMT-ICO-002A` covers Pillow's public ICO `size` setter plus `load()` selected-frame path, `FMT-ICO-002B` covers `im.ico.sizes()` plus `im.ico.getimage(...)` missing-size fallback, `FMT-ICO-002C` covers duplicate-size open color-depth selection, `FMT-ICO-002D` covers embedded PNG payload `format` metadata for `ico.getimage(...)`, `FMT-ICO-002E` covers DIB-backed payload `dpi`/`compression` metadata for `ico.getimage(...)`, and `FMT-ICO-002F` covers bounded DIB-backed CUR open metadata. CUR save and hotspot exposure remain separate. | `pillow_c_image_open_ico_size`, `pillow_c_image_open_cur`, `pillow_c_image_ico_sizes`, `pillow_c_image_ico_payload_format`, `pillow_c_image_ico_payload_dib_metadata`, `pillow_c_image_metadata_dib_compression`, facade ICO `Size` setter and `ico` object, XBM hotspot precedent. |
-| BNDRY-001 | Boundaries | covered | Explicit remaining-item boundary ledger completing the coverage definition: dependency-gated formats (WebP/AVIF/JPEG2000/PDF/PSD/DDS/PCX/ICNS/SGI/SUN/EPS/MPO/FLI/DCX/XPM) fail loudly with `Pillow image file format is unsupported`; APNG and true PNG compression strategy stay future families (default-deflate single-frame PNGs only); dither exact parity stays bounded to the FLOYDSTEINBERG slices with libimagequant keeping Pillow's `dependency required by this method was not enabled at compile time` error; qtables beyond two tables, malformed marker streams, and explicit YCCK encoding are not replicated; the META-002 tail stays behind explicit children; and byte-exact whole-file parity is claimed only for the verified bounded packets. The facade boundary test pins the rejections. Facade-only; export parity remains `463/463` and the DLL SHA-256 is unchanged. SUPERSEDED for the newly found gaps by the AUDIT-002 re-audit (rows below). | `PillowTestDependencyGatedFormatBoundaries`, existing NormalizeFileFormat/FormatFromPath rejections, existing LIBIMAGEQUANT guard, ledger boundary rows. |
+| BNDRY-001 | Boundaries | covered | Explicit remaining-item boundary ledger completing the coverage definition: dependency-gated formats (WebP/AVIF/JPEG2000/PSD/DDS/PCX/ICNS/SGI/SUN/EPS/MPO/FLI/DCX/XPM) fail loudly with `Pillow image file format is unsupported`; APNG and true PNG compression strategy stay future families (default-deflate single-frame PNGs only); dither exact parity stays bounded to the FLOYDSTEINBERG slices with libimagequant keeping Pillow's `dependency required by this method was not enabled at compile time` error; qtables beyond two tables, malformed marker streams, and explicit YCCK encoding are not replicated; the META-002 tail stays behind explicit children; and byte-exact whole-file parity is claimed only for the verified bounded packets. The facade boundary test pins the rejections. Facade-only; export parity remains `463/463` and the DLL SHA-256 is unchanged. SUPERSEDED for the newly found gaps by the AUDIT-002 re-audit (rows below). | `PillowTestDependencyGatedFormatBoundaries`, existing NormalizeFileFormat/FormatFromPath rejections, existing LIBIMAGEQUANT guard, ledger boundary rows. |
 | AUDIT-002 | Audit | covered | Independent Pillow 11.3.0 surface re-audit that demotes the estimate to `85% ±5%`: enumerated the real public surface (59 Image.Image names, 69 ImagingCore names, 23 submodules, 30 SAVE / 45 OPEN formats) and diffed it against the facade, finding the unrecorded gaps in the rows below. Evidence in `oracle/audit_pillow_surface.py`, `oracle/pillow_surface.json`, `oracle/audit_report_2026-08-14.md`. | Surface enumerator, facade/native diff, audit report, ledger demotion. |
 | API-MATH-001 | Facade API | covered | Bounded ImageMath eval/unsafe_eval arithmetic: Pillow 11.3.0's safe grammar over L/I/F operands — binary + - * / % & \| ^ << >> and comparisons, unary -/~, abs/min/max/float/int/convert, int/float literals; results mode I (int32, C truncation division and C remainder) or F (float32); RGB -> `unsupported mode: RGB`, unknown names -> `'X' not allowed`, float bitwise -> `bad operand type for 'and'`, constant-only expressions return scalars. The new `pillow_c_image_math_rpn` export evaluates a per-pixel RPN stack machine, and the facade ImageMath class adds the tokenizer/shunting-yard compiler/scalar evaluator with Pillow-shaped errors (Eval/UnsafeEval serve eval/unsafe_eval; variables as a Map). A ctypes cross-check matches 20 expressions byte-exactly (`FAILURES: 0`). Export parity moves to `464/464`. | `oracle/probe_imagemath.py`, `oracle/probe_imagemath2.py`, `oracle/probe_imagemath3.py`, `oracle/probe_imagemath_dll_compose.py`, `pillow_c_image_math_rpn`, facade `ImageMath` class, raw/facade math tests. |
 | API-GRAB-001 | Facade API | covered | ImageGrab implemented, not bounded: Pillow 11.3.0 grab() semantics (RGB screen captures via GDI BitBlt with bbox/all_screens/include_layered, GDI clipping for off-screen bboxes, the coordinate errors, empty-bbox empty image) and grabclipboard() CF_DIB decoding (24/32bpp -> RGB with bottom-up flip + BGR swap + 32bpp alpha drop, 8bpp -> L index grayscale, 1bpp -> packed mode 1, empty/text -> None). The new `pillow_c_grab.cpp` module adds `pillow_c_image_grab` and `pillow_c_image_grab_clipboard` (project now links gdi32/user32), and the facade `ImageGrab` class adds Grab/GrabClipboard with Pillow's errors. A ctypes cross-check matches Pillow byte-exactly across all four DIB bit counts and the empty path (`FAILURES: 0`). Export parity moves to `466/466`. | `oracle/probe_imagegrab_clip.py`, `oracle/probe_imagegrab_dib.py`, `oracle/probe_imagegrab_dll_compose.py`, `pillow_c_grab.cpp`, facade `ImageGrab` class, raw/facade grab tests. |
@@ -40804,7 +40861,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-UNREC-001 | Formats | covered | The previously unrecorded format families are now explicit documented codec boundaries (the final AUDIT-002 row): save BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF and open FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/XVTHUMB plus the save-side subset all fail loudly with `Pillow image file format is unsupported` (pinned by the facade boundary test for all 22 names and representative open extensions). Pillow's own 11.3.0 build supports BLP/DIB/IM/SPIDER through its C/numpy plugins and errors per-mode/per-handler on the rest (oracle-verified in `oracle/probe_format_unrecorded.py`); the AHK native ABI implements neither codec family. Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_format_unrecorded.py`, facade unrecorded-format boundary test, BNDRY-001 ledger extension. |
 | FMT-WEBP-001 | WebP | boundary | Open/save WebP and animation stay behind an explicit dependency/scope decision; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | FMT-AVIF-001 | AVIF | boundary | Open/save AVIF stays behind dependency and packaging constraints; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
-| FMT-LONGTAIL-001 | Formats | boundary | PDF, PSD, DDS, PCX, SGI, SUN, MPO, FLI, DCX, XPM, and other registered families stay behind explicit dependency decisions; open/save fail loudly with `Pillow image file format is unsupported` (BNDRY-001). ICNS and EPS left this list via BEHAV-ICNS-001 / BEHAV-EPS-001. | BNDRY-001 boundary ledger. |
+| FMT-LONGTAIL-001 | Formats | boundary | PSD, SUN, FLI, DCX, XPM, WEBP, AVIF, JPEG2000, and the pure-Python open families stay behind explicit dependency decisions; open/save fail loudly with `Pillow image file format is unsupported` (BNDRY-001). ICNS, EPS, MPO, PDF, PCX, SGI, and DDS left this list via BEHAV-ICNS-001 / BEHAV-EPS-001 / BEHAV-MPO-001 / BEHAV-PDF-001 / BEHAV-PCX-001 / BEHAV-SGI-001 / BEHAV-DDS-001. | BNDRY-001 boundary ledger. |
 | AUDIT-003 | Audit | covered | Independent behavioral re-verification (two fresh-eyes red-team auditors + direct probes): the old `100% ±5%` (implemented-or-boundary definition) is superseded. Literal 100% runtime identity is NOT reachable: WEBP/JPEG2000/AVIF (the local Pillow build WORKS with these bundled codecs — oracle-verified round-trips), FPX, ImageQt/ImageTk, ImagePalette.random, and the ImagePath map handler are unmatchable in this runtime (documented boundaries). The matchable remainder is bounded and enumerated; the red teams found unrecorded gaps (rows below) plus runtime-verified divergences in already-claimed areas (MODE-NUM-001CM default-resample claim is WRONG; six error-message mismatches; systemic `pillow_c: invalid argument` for unvalidated paths). Evidence: `oracle/audit3-redteam/*.py`, `oracle/probe_audit3_open.py`, `oracle/probe_audit3_formats.py`. | Red-team probes, runtime facade probes, oracle format matrix. |
 | API-FONTFILE-001 | Facade API | gap | `ImageFont.truetype` / `ImageFont.load` / `ImageFont.load_path` / `load_default_imagefont` / `features` / `MAX_STRING_LENGTH` are ENTIRELY ABSENT: no TTF/OTF file loading exists (native has only `pillow_c_font_load_default`). Every real-font use case (truetype + Draw.text with a font, FreeTypeFont getmask, TransposedFont.GetMask) is unserved. | Red-team audit (probe_modules.py); native export inventory. |
 | API-CMS-DISPLAY-001 | Facade API | gap | `ImageCms.get_display_profile(handle)` absent (Pillow returns an ImageCmsProfile for the Windows display device, or None); also missing: the `Direction`/`Flags`/`Intent` enums, `PyCMSError`, `versions`, and `buildProofTransformFromOpenProfiles`. | Red-team audit; `ImageCms` source diff. |

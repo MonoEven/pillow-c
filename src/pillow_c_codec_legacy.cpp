@@ -5920,7 +5920,7 @@ int save_icns_images(const PillowCImage* const* images, std::size_t image_count,
 // and every other mode raises "image mode is not supported" (local status
 // -27 for the facade). The RGB "skip junk bytes" hack in EpsEncode.c only
 // applies to 4-byte RGBX-stored cores, which this runtime never produces
-// (tight 3-byte RGB storage), so it never triggers — verified against the
+// (tight 3-byte RGB storage), so it never triggers - verified against the
 // Pillow 11.3.0 oracle.
 // ---------------------------------------------------------------------------
 

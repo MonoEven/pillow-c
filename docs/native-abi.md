@@ -130,10 +130,30 @@ facade raises Pillow's exact `cannot write mode X as JPEG` for
 non-L/RGB/CMYK/mode-1 saves; MPO n_frames/seek stays a documented
 child (the eager facade decodes frame 0 only).
 
+`BEHAV-PDF-001` adds two deliberate exports —
+`pillow_c_image_save_pdf` and `pillow_c_image_save_pdf_frames` —
+that write Pillow 11.3.0's exact PDF save layout (the PdfParser
+serialization: Catalog/Pages/image/page/contents/Info objects,
+`%010d %05d n ` xref lines, `str(float)` MediaBox and `%f` contents
+numbers). P images write the byte-exact ASCIIHexDecode stream with
+the Indexed DeviceRGB palette; L/RGB/CMYK pages embed a DCTDecode
+JPEG payload produced through the shared default JPEG save seam via
+a temp file; the Info object carries the path-stem Title and the
+other strings as UTF-16BE+BOM values plus the UTC
+CreationDate/ModDate pair. Other modes return the local status
+`-28` (the facade raises Pillow's exact `cannot save mode X`
+before the call); the generic statuses keep their public meanings.
+The facade pre-checks the LA/RGBA/mode-1 JPEG2000/group4 runtime
+boundaries (documented environment boundaries — Pillow performs
+them locally) and replays the unregistered-PDF-open identification
+error.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`482/482`; the full AHK suite is `2823/2823`; and the current DLL SHA-256 is
-`A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`
-(BEHAV-MPO-001 changes no ABI — the MPO container is facade-composed
+`484/484`; the full AHK suite is `2824/2824`; and the current DLL SHA-256 is
+`FC2C7C3C633FE73E9343C7A359FF5C3C39EDC04913B0CE19B1A946C1C79C03DC`
+(BEHAV-PDF-001 adds the `pillow_c_image_save_pdf` and
+`pillow_c_image_save_pdf_frames` exports below;
+BEHAV-MPO-001 changes no ABI — the MPO container is facade-composed
 over the existing JPEG exports;
 BEHAV-EPS-001 adds the `pillow_c_image_save_eps` export below;
 BEHAV-ICNS-001 adds the four ICNS exports below and the internal

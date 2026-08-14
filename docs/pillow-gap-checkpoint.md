@@ -25,15 +25,16 @@ Estimate (AUDIT-003, the behavioral standard): literal 100% runtime
 identity with the local Pillow 11.3.0 build is NOT reachable and is
 no longer claimed. The honest split:
 
-- Formats: SAVE 19/30 and OPEN 19/45 byte-exact and test-pinned;
-  ICNS, EPS, and MPO are DONE (BEHAV-ICNS-001 / BEHAV-EPS-001 /
-  BEHAV-MPO-001); the
+- Formats: SAVE 20/30 and OPEN 19/45 byte-exact and test-pinned;
+  ICNS, EPS, MPO, and PDF are DONE (BEHAV-ICNS-001 / BEHAV-EPS-001 /
+  BEHAV-MPO-001 / BEHAV-PDF-001); the
   matchable remainder is bounded
-  (1 save: PDF; 18
+  (0 saves left; 18
   opens: DCX/FITS/FLI/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/
   PSD/SUN/XPM/XVTHUMB + the trivial HDF5/BUFR/GRIB 1x1-F stubs; the
   MPEG header-then-cannot-load error match;
-  PDF open is unregistered in 11.3.0 -> identification error; WMF
+  PDF open is unregistered in 11.3.0 -> identification error (DONE
+  with BEHAV-PDF-001); WMF
   open via native GDI; plus 4 exact save-error matches for
   BUFR/GRIB/HDF5/WMF).
 - UNMATCHABLE BY NATURE (7, documented as boundaries): WEBP /
@@ -65,14 +66,15 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-MPO-001 (MPO save over the native
-JPEG seams: plain-JPEG single save, the APP2 MPF index + appended
-frames for append_images, Pillow's exact mode errors, and the
-MPF-marker Format detection on open) after BEHAV-EPS-001/
+Latest covered gap tail: BEHAV-PDF-001 (PDF save with a byte-exact P
+page and structure-exact DCTDecode L/RGB/CMYK pages plus the
+identification error on open) after BEHAV-MPO-001/
+BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
-the next bounded child is BEHAV-PDF-001 (PDF save + the
-identification error on open), then the pure-Python open families,
-then the AUDIT-003 newly recorded gaps
+the next bounded child is the pure-Python open families
+(DCX/FITS/FLI/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/PSD/SUN/XPM/
+XVTHUMB + the trivial HDF5/BUFR/GRIB 1x1-F stubs), then
+the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
 follow as their own packets.
 ```
@@ -523,6 +525,48 @@ errors, or skips. Facade-only change: source/DLL export parity
 remains `482/482` and the DLL SHA-256 remains
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
 The next bounded child is `BEHAV-PDF-001`, the PDF format.
+
+2026-08-14: `BEHAV-PDF-001` is GREEN as the PDF format (byte-exact
+P-mode save, structure-exact DCTDecode pages, and the
+identification error on open). The Pillow 11.3.0 oracle
+(PdfImagePlugin/PdfParser source, `oracle/probe_pdf.py`/`probe_pdf.json`,
+and the ctypes cross-check in `oracle/probe_pdf_dll.py`) pins
+PdfImagePlugin as save-only (no open registration -> the standard
+identification error), the `%PDF-1.4` / `% created by Pillow 11.3.0
+PDF driver` header, the Catalog/Pages/image/page/contents/Info
+object layout with object IDs 3i+1..3i+3 plus root/pages/info,
+PdfDict `<<\n/key value\n>>` and PdfArray `[ a b ]` serialization,
+the `%010d %05d n ` xref lines, Python `str(float)` MediaBox
+numbers and `%f` contents transforms, the ASCIIHexDecode P-mode
+stream (lowercase hex indices with the 768-byte Indexed DeviceRGB
+palette), the DCTDecode JPEG payloads for L/RGB/CMYK (CMYK adds
+`/Decode [ 1 0 1 0 1 0 1 0 ]`), the UTF-16BE+BOM Info strings with
+the path-stem Title and the UTC CreationDate/ModDate pair, and the
+exact `cannot save mode X` ValueError for every other mode. A P
+page is byte-exact against the oracle modulo the two timestamps
+(the whole remaining file matches byte-for-byte); the L/RGB/CMYK
+payloads use this runtime's WIC JPEG (structure-exact,
+pixel-exact on decode — Pillow embeds libjpeg bytes). LA/RGBA (and
+P with a transparency entry) need JPEG2000 and mode 1 needs CCITT
+Group 4 — Pillow performs both locally, so they are documented
+runtime boundaries with explicit boundary messages (no Pillow
+error exists to match). Two deliberate exports
+(`pillow_c_image_save_pdf`, `pillow_c_image_save_pdf_frames`) write
+the document over the shared default-JPEG save seam (temp-file
+payloads, no per-byte facade loops). The facade PDF target passes
+`1/1` in `47ms` (the byte-exact P page with date patching, DCT
+payload pixel round-trips, CMYK Decode, dpi/resolution MediaBox and
+`float division by zero`, save_all multi-page Kids, title/author
+Info, six mode errors, three boundary messages, and both open
+identification-error shapes); the full directory suite passes
+`2824/2824` in `21797ms` with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity moves to `484/484` (two deliberate new exports) with
+zero difference; and the rebuilt DLL SHA-256 is
+`FC2C7C3C633FE73E9343C7A359FF5C3C39EDC04913B0CE19B1A946C1C79C03DC`.
+The next bounded child is the pure-Python open families
+(DCX/FITS/FLI/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/PSD/SUN/XPM/
+XVTHUMB plus the trivial HDF5/BUFR/GRIB 1x1-F stubs).
 
 2026-08-14: `BEHAV-EPS-001` is GREEN as the EPS format (byte-exact
 save plus the Ghostscript open error match). The Pillow 11.3.0
