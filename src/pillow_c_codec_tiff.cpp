@@ -6355,7 +6355,9 @@ int save_tiff_frames_image_with_ascii_entries_options(
     const std::size_t* ascii_sizes,
     std::size_t ascii_count,
     std::uint32_t resolution_unit = 2u,
-    bool has_resolution_unit = false)
+    bool has_resolution_unit = false,
+    bool has_x_resolution = true,
+    bool has_y_resolution = true)
 {
     if (!images || !path) {
         return PILLOW_C_NULL_POINTER;
@@ -6378,10 +6380,10 @@ int save_tiff_frames_image_with_ascii_entries_options(
     if (ascii_count > 0u && (!ascii_tags || !ascii_values || !ascii_sizes)) {
         return PILLOW_C_NULL_POINTER;
     }
-    if (ascii_count > 2u) {
+    if (ascii_count > 5u) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    std::size_t ascii_order[2] = {0u, 0u};
+    std::size_t ascii_order[5] = {0u, 0u, 0u, 0u, 0u};
     for (std::size_t index = 0u; index < ascii_count; ++index) {
         const int tag = ascii_tags[index];
         const std::size_t size = ascii_sizes[index];
@@ -6391,7 +6393,8 @@ int save_tiff_frames_image_with_ascii_entries_options(
         if (size == 0u || size > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
             return PILLOW_C_INVALID_LENGTH;
         }
-        if ((tag != 270 && tag != 315) || ascii_values[index][size - 1u] != 0u) {
+        if ((tag != 270 && tag != 305 && tag != 306 && tag != 315 && tag != 33432) ||
+            ascii_values[index][size - 1u] != 0u) {
             return PILLOW_C_INVALID_ARGUMENT;
         }
         ascii_order[index] = index;
@@ -6633,9 +6636,13 @@ int save_tiff_frames_image_with_ascii_entries_options(
             const bool has_icc_profile = icc_profile_size > 0u;
             const bool has_xmp = xmp_size > 0u;
             const bool write_unit = (has_dpi && resolution_unit != 0u) || has_resolution_unit;
+            const bool write_x_resolution = has_dpi && has_x_resolution;
+            const bool write_y_resolution = has_dpi && has_y_resolution;
+            const std::size_t resolution_entry_count =
+                (write_x_resolution ? 1u : 0u) + (write_y_resolution ? 1u : 0u);
             const std::size_t base_entry_count =
                 7u + (has_bits_per_sample ? 1u : 0u) + (has_samples_per_pixel ? 1u : 0u) +
-                (has_dpi ? 2u : 0u) + (write_unit ? 1u : 0u) +
+                resolution_entry_count + (write_unit ? 1u : 0u) +
                 (has_planar_config ? 1u : 0u) + (has_extra_samples ? 1u : 0u) +
                 (is_palette ? 1u : 0u) + (has_sample_format ? 1u : 0u) +
                 (has_xmp ? 1u : 0u) + (has_icc_profile ? 1u : 0u);
@@ -6654,8 +6661,8 @@ int save_tiff_frames_image_with_ascii_entries_options(
                 : 0u;
             const std::size_t bits_offset = cursor + ifd_bytes;
             const std::size_t x_resolution_offset = bits_offset + bits_bytes;
-            const std::size_t y_resolution_offset = x_resolution_offset + 8u;
-            const std::size_t resolution_bytes = has_dpi ? 16u : 0u;
+            const std::size_t y_resolution_offset = x_resolution_offset + (write_x_resolution ? 8u : 0u);
+            const std::size_t resolution_bytes = resolution_entry_count * 8u;
             const bool inline_xmp = has_xmp && xmp_size <= 4u;
             const std::size_t xmp_offset = align_tiff_offset(bits_offset + bits_bytes + resolution_bytes);
             const std::size_t xmp_bytes = has_xmp && !inline_xmp ? xmp_size : 0u;
@@ -6682,8 +6689,8 @@ int save_tiff_frames_image_with_ascii_entries_options(
                 : prepared_pixels[index].size();
             const std::size_t next_cursor = align_tiff_offset(pixel_offset + pixel_byte_count);
             if ((bits_bytes > 0u && !tiff_u32_offset(bits_offset, &layout.bits_offset)) ||
-                (has_dpi && (!tiff_u32_offset(x_resolution_offset, &layout.x_resolution_offset) ||
-                             !tiff_u32_offset(y_resolution_offset, &layout.y_resolution_offset))) ||
+                (write_x_resolution && !tiff_u32_offset(x_resolution_offset, &layout.x_resolution_offset)) ||
+                (write_y_resolution && !tiff_u32_offset(y_resolution_offset, &layout.y_resolution_offset)) ||
                 (has_xmp && !inline_xmp && !tiff_u32_offset(xmp_offset, &layout.xmp_offset)) ||
                 (has_icc_profile && !inline_icc_profile &&
                     !tiff_u32_offset(icc_profile_offset, &layout.icc_profile_offset)) ||
@@ -6720,6 +6727,8 @@ int save_tiff_frames_image_with_ascii_entries_options(
             const bool has_planar_config =
                 image->mode == PILLOW_C_MODE_L || image->channels > 1 || is_mode_one || is_palette || is_numeric || is_i16;
             const bool write_unit = (has_dpi && resolution_unit != 0u) || has_resolution_unit;
+            const bool write_x_resolution = has_dpi && has_x_resolution;
+            const bool write_y_resolution = has_dpi && has_y_resolution;
             const auto append_ascii_entry = [&](int wanted_tag) {
                 for (std::size_t order_index = 0u; order_index < ascii_count; ++order_index) {
                     const std::size_t entry_index = ascii_order[order_index];
@@ -6782,8 +6791,10 @@ int save_tiff_frames_image_with_ascii_entries_options(
             }
             append_tiff_entry(out, 278u, 4u, 1u, static_cast<std::uint32_t>(image->height));
             append_tiff_entry(out, 279u, 4u, 1u, layout.pixel_byte_count);
-            if (has_dpi) {
+            if (write_x_resolution) {
                 append_tiff_entry(out, 282u, 5u, 1u, layout.x_resolution_offset);
+            }
+            if (write_y_resolution) {
                 append_tiff_entry(out, 283u, 5u, 1u, layout.y_resolution_offset);
             }
             if (has_planar_config) {
@@ -6792,7 +6803,10 @@ int save_tiff_frames_image_with_ascii_entries_options(
             if (write_unit) {
                 append_tiff_entry(out, 296u, 3u, 1u, resolution_unit);
             }
+            append_ascii_entry(305);
+            append_ascii_entry(306);
             append_ascii_entry(315);
+            append_ascii_entry(33432);
             if (image->mode == PILLOW_C_MODE_LA || image->mode == PILLOW_C_MODE_RGBA) {
                 append_tiff_entry(out, 338u, 3u, 1u, 2u);
             }
@@ -6834,9 +6848,11 @@ int save_tiff_frames_image_with_ascii_entries_options(
                     append_le16(out, 8u);
                 }
             }
-            if (has_dpi) {
+            if (write_x_resolution) {
                 append_le32(out, x_resolution_numerator);
                 append_le32(out, x_resolution_denominator);
+            }
+            if (write_y_resolution) {
                 append_le32(out, y_resolution_numerator);
                 append_le32(out, y_resolution_denominator);
             }
@@ -9357,6 +9373,83 @@ extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_resolution_options
         0u,
         has_unit != 0 ? static_cast<std::uint32_t>(unit & 0xFFFFu) : 0u,
         has_unit != 0);
+}
+
+// BEHAV-SAVEOPTS-004: Pillow's TIFF named-tag kwargs (description ->
+// ImageDescription 270, software -> Software 305, date_time -> DateTime 306,
+// artist -> Artist 315, copyright -> Copyright 33432) composed with the
+// per-axis resolution surface (x_resolution/y_resolution write only their
+// own axis; the facade already resolves resolution/x_resolution/
+// y_resolution/dpi precedence, Pillow's exact "too many entries" truncation,
+// and Pillow's exact ASCII conversion, so the export just serializes).
+// The ascii values must be NUL-terminated; the writer sorts them by tag and
+// uses inline storage for sizes <= 4 like libtiff.  compression uses the
+// same bounded TIFF code set as the other options exports; icc_profile
+// composes like Pillow's icc_profile kwarg.
+extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_named_options(
+    const PillowCImage* image,
+    const char* path,
+    int has_x_resolution,
+    double resolution_x,
+    int has_y_resolution,
+    double resolution_y,
+    int has_unit,
+    int unit,
+    int compression,
+    const std::uint8_t* icc_profile,
+    std::size_t icc_profile_size,
+    const int* ascii_tags,
+    const std::uint8_t* const* ascii_values,
+    const std::size_t* ascii_sizes,
+    std::size_t ascii_count)
+{
+    if (!image || !path) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    std::uint16_t normalized_compression = TIFF_COMPRESSION_NONE;
+    const int compression_status = normalize_tiff_save_compression(compression, &normalized_compression);
+    if (compression_status != PILLOW_C_OK) {
+        return compression_status;
+    }
+    const bool has_any_resolution = has_x_resolution != 0 || has_y_resolution != 0;
+    const double x_value = has_x_resolution != 0 ? resolution_x : 0.0;
+    const double y_value = has_y_resolution != 0 ? resolution_y : 0.0;
+    std::uint32_t x_numerator = 0u;
+    std::uint32_t x_denominator = 1u;
+    std::uint32_t y_numerator = 0u;
+    std::uint32_t y_denominator = 1u;
+    const int dpi_status = tiff_dpi_to_rational(
+        has_any_resolution,
+        x_value,
+        y_value,
+        &x_numerator,
+        &x_denominator,
+        &y_numerator,
+        &y_denominator);
+    if (dpi_status != PILLOW_C_OK) {
+        return dpi_status;
+    }
+    const PillowCImage* images[] = {image};
+    return save_tiff_frames_image_with_ascii_entries_options(
+        images,
+        1u,
+        path,
+        has_any_resolution,
+        x_value,
+        y_value,
+        normalized_compression,
+        icc_profile,
+        icc_profile_size,
+        nullptr,
+        0u,
+        ascii_tags,
+        ascii_values,
+        ascii_sizes,
+        ascii_count,
+        has_unit != 0 ? static_cast<std::uint32_t>(unit & 0xFFFFu) : 0u,
+        has_unit != 0,
+        has_x_resolution != 0,
+        has_y_resolution != 0);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_tiff_compression_options(

@@ -28101,6 +28101,147 @@ PillowTestSaveOptionTiff(*) {
 
 AhkTest.Test("Pillow Image.Save TIFF resolution and resolution_unit match Pillow 11.3.0", PillowTestSaveOptionTiff)
 
+PillowTestReadTiffAsciiTag(path, tag) {
+    bytes := PillowTestReadFileBytes(path)
+    entries := PillowTestReadTiffIfd0Entries(bytes)
+    if !entries.Has(tag)
+        return []
+    entry := entries[tag]
+    AhkTest.AssertEqual(2, entry.Type)
+    result := []
+    if entry.Count <= 4 {
+        offset := 0
+        while offset < entry.Count {
+            result.Push((entry.Value >> (offset * 8)) & 0xFF)
+            offset += 1
+        }
+        return result
+    }
+    offset := 0
+    while offset < entry.Count {
+        result.Push(bytes[entry.Value + offset + 1])
+        offset += 1
+    }
+    return result
+}
+
+PillowTestSaveOptionTiffNamed(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGB", [8, 8], [0, 0, 0])
+    try {
+        ; --- description -> tag 270 with the trailing NUL ---
+        tiffPath := PillowTestTempTiffPath("saveopt-named-desc")
+        image.Save(tiffPath, "TIFF", { description: "hello" })
+        AhkTest.AssertEqual([104, 101, 108, 108, 111, 0], PillowTestReadTiffAsciiTag(tiffPath, 270))
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- all five named kwargs write their tags ---
+        tiffPath := PillowTestTempTiffPath("saveopt-named-all")
+        image.Save(tiffPath, "TIFF", { description: "d", software: "s", artist: "a", copyright: "c", date_time: "2026:01:02 03:04:05" })
+        AhkTest.AssertEqual([100, 0], PillowTestReadTiffAsciiTag(tiffPath, 270))
+        AhkTest.AssertEqual([115, 0], PillowTestReadTiffAsciiTag(tiffPath, 305))
+        AhkTest.AssertEqual([97, 0], PillowTestReadTiffAsciiTag(tiffPath, 315))
+        AhkTest.AssertEqual([99, 0], PillowTestReadTiffAsciiTag(tiffPath, 33432))
+        AhkTest.AssertEqual([50, 48, 50, 54, 58, 48, 49, 58, 48, 50, 32, 48, 51, 58, 48, 52, 58, 48, 53, 0], PillowTestReadTiffAsciiTag(tiffPath, 306))
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- Pillow's write_string conversions: int -> str, ascii-replace,
+        ;     bytes pass through, sequences truncate to the first entry ---
+        tiffPath := PillowTestTempTiffPath("saveopt-named-int")
+        image.Save(tiffPath, "TIFF", { description: 5 })
+        AhkTest.AssertEqual([53, 0], PillowTestReadTiffAsciiTag(tiffPath, 270))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-named-nonascii")
+        image.Save(tiffPath, "TIFF", { description: "h" Chr(0xE9) "llo" })
+        AhkTest.AssertEqual([104, 63, 108, 108, 111, 0], PillowTestReadTiffAsciiTag(tiffPath, 270))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-named-bytes")
+        image.Save(tiffPath, "TIFF", { description: PillowTestBuffer([97, 98, 99]) })
+        AhkTest.AssertEqual([97, 98, 99, 0], PillowTestReadTiffAsciiTag(tiffPath, 270))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-named-seq")
+        image.Save(tiffPath, "TIFF", { software: ["a", "b"] })
+        AhkTest.AssertEqual([97, 0], PillowTestReadTiffAsciiTag(tiffPath, 305))
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- the per-axis surface: x_resolution/y_resolution write only
+        ;     their own tag and resolution+x_resolution keeps Pillow's
+        ;     overwrite precedence ---
+        tiffPath := PillowTestTempTiffPath("saveopt-named-xonly")
+        image.Save(tiffPath, "TIFF", { x_resolution: 300 })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertEqual([300, 1], tags["x"])
+        AhkTest.AssertFalse(tags.Has("y"))
+        AhkTest.AssertFalse(tags.Has("unit"))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-named-yonly")
+        image.Save(tiffPath, "TIFF", { y_resolution: 150 })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertFalse(tags.Has("x"))
+        AhkTest.AssertEqual([150, 1], tags["y"])
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-named-xy")
+        image.Save(tiffPath, "TIFF", { x_resolution: 145.5, y_resolution: 72.5 })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertEqual([291, 2], tags["x"])
+        AhkTest.AssertEqual([145, 2], tags["y"])
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-named-rpx")
+        image.Save(tiffPath, "TIFF", { resolution: 300, x_resolution: 111 })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertEqual([111, 1], tags["x"])
+        AhkTest.AssertEqual([300, 1], tags["y"])
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- composition: resolution + unit + description ---
+        tiffPath := PillowTestTempTiffPath("saveopt-named-dru")
+        image.Save(tiffPath, "TIFF", { resolution: 145.5, resolution_unit: 3, description: "longer than four bytes" })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertEqual([291, 2], tags["x"])
+        AhkTest.AssertEqual(3, tags["unit"])
+        AhkTest.AssertEqual([108, 111, 110, 103, 101, 114, 32, 116, 104, 97, 110, 32, 102, 111, 117, 114, 32, 98, 121, 116, 101, 115, 0], PillowTestReadTiffAsciiTag(tiffPath, 270))
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- a truthy dpi pair overwrites resolution and forces unit 2;
+        ;     a falsy (0,0) pair is skipped like Pillow's "if dpi:" ---
+        tiffPath := PillowTestTempTiffPath("saveopt-named-dpiwins")
+        image.Save(tiffPath, "TIFF", { dpi: [300, 150], resolution: 99, description: "d" })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertEqual([300, 1], tags["x"])
+        AhkTest.AssertEqual([150, 1], tags["y"])
+        AhkTest.AssertEqual(2, tags["unit"])
+        AhkTest.AssertEqual([100, 0], PillowTestReadTiffAsciiTag(tiffPath, 270))
+        PillowTestDeleteFile(tiffPath)
+        tiffPath := PillowTestTempTiffPath("saveopt-named-dpizero")
+        image.Save(tiffPath, "TIFF", { dpi: [0, 0], description: "d" })
+        tags := PillowTestReadTiffResolutionTags(tiffPath)
+        AhkTest.AssertFalse(tags.Has("x"))
+        AhkTest.AssertFalse(tags.Has("y"))
+        AhkTest.AssertFalse(tags.Has("unit"))
+        AhkTest.AssertEqual([100, 0], PillowTestReadTiffAsciiTag(tiffPath, 270))
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- compression composes (PackBits tag 32773) ---
+        tiffPath := PillowTestTempTiffPath("saveopt-named-pb")
+        image.Save(tiffPath, "TIFF", { artist: "artist", compression: "packbits" })
+        PillowTestAssertTiffCompressionTag(tiffPath, 32773)
+        AhkTest.AssertEqual([97, 114, 116, 105, 115, 116, 0], PillowTestReadTiffAsciiTag(tiffPath, 315))
+        PillowTestDeleteFile(tiffPath)
+
+        ; --- Pillow's exact type errors ---
+        tiffPath := PillowTestTempTiffPath("saveopt-named-err")
+        AhkTest.AssertEqual("'float' object has no attribute 'encode'", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { description: 2.5 })))
+        AhkTest.AssertEqual("argument out of range", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { x_resolution: -1 })))
+        AhkTest.AssertEqual("argument out of range", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { y_resolution: -0.5 })))
+        AhkTest.AssertEqual("argument out of range", PillowTestFormatCaptureError(() => image.Save(tiffPath, "TIFF", { description: "d", dpi: [-5, 300] })))
+        PillowTestDeleteFile(tiffPath)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow Image.Save TIFF named kwargs and per-axis resolution match Pillow 11.3.0", PillowTestSaveOptionTiffNamed)
+
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
 

@@ -83,13 +83,13 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-SAVEOPTS-003 (save-option parity
-wave 3: the TIFF resolution/resolution_unit options — Pillow's exact
-float->RATIONAL conversion including the continued-fraction
-limit_denominator port, resolution 0 -> 0/1, the pair-truncation
-warning behavior, the resolution_unit-only tag 296, verbatim unit
-values 0/65535, and the exact TypeError/struct.error messages)
-after BEHAV-SAVEOPTS-002/
+Latest covered gap tail: BEHAV-SAVEOPTS-004 (save-option parity
+wave 4: the TIFF named-tag kwargs description/software/date_time/
+artist/copyright with Pillow's write_string conversions, the
+per-axis x_resolution/y_resolution surface, and the
+resolution/x_resolution/y_resolution/dpi precedence chain)
+after BEHAV-SAVEOPTS-003/
+BEHAV-SAVEOPTS-002/
 BEHAV-SAVEOPTS-001/
 BEHAV-FONTFILE-002/
 BEHAV-FONTFILE-001/
@@ -114,8 +114,8 @@ font mask/TransposedFont/truetype/PILfont surfaces are now COMPLETE
 and the save-option error messages plus the PNG/GIF/QOI/TGA/TIFF
 option containers are Pillow-exact; the next
 bounded children are the remaining API-SAVEOPTS-001 option
-implementations (PNG dictionary, JPEG smooth/streamtype, TIFF named
-tags), then API-ERRMSGS-001.
+implementations (PNG dictionary, JPEG smooth/streamtype, TIFF
+tiffinfo breadth), then API-ERRMSGS-001.
 ```
 
 Current work packet:
@@ -459,8 +459,8 @@ Current work packet:
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
 - Selected next gap: `API-SAVEOPTS-001` remainder, the save-option
-  implementations (PNG dictionary, JPEG smooth/streamtype, TIFF named
-  tags), then `API-ERRMSGS-001`.
+  implementations (PNG dictionary, JPEG smooth/streamtype, TIFF
+  tiffinfo breadth), then `API-ERRMSGS-001`.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19423,6 +19423,39 @@ difference; and the rebuilt DLL SHA-256 is
 `1E83872CBCD49B9E35A326F64F02C7B59B3147535627FACA36C03B2DDDDCAB8C`.
 The remaining API-SAVEOPTS-001 children (PNG dictionary, JPEG
 smooth/streamtype, TIFF named tags) stay the next packets.
+```
+
+2026-08-15: `BEHAV-SAVEOPTS-004` is GREEN as the save-option parity wave 4
+(the TIFF named-tag kwargs and the per-axis resolution surface). The Pillow
+11.3.0 oracle (fresh pins plus the ctypes cross-check
+`oracle/probe_tiffnamed_dll.py`) pins: the five named ASCII kwargs
+(`description` -> 270, `software` -> 305, `date_time` -> 306, `artist` ->
+315, `copyright` -> 33432) written with `write_string`'s exact conversions
+(int -> `str(value)`, str -> ascii-with-replace, bytes -> verbatim + NUL,
+sequences truncated to the first entry with the "too many entries" warning,
+float -> the exact `'float' object has no attribute 'encode'` AttributeError);
+the per-axis `x_resolution`/`y_resolution` kwargs write ONLY their own tag
+(282 or 283, no unit); and the precedence chain in `_save` — `resolution`
+sets both axes, `x_resolution`/`y_resolution` overwrite their own axis, and a
+truthy `dpi` pair overwrites all of it and forces ResolutionUnit=2 while a
+falsy `(0,0)` pair is skipped entirely. Named tags compose with resolution,
+units, dpi, PackBits/LZW/Deflate compression, and `icc_profile`. The
+deliberate native export is `pillow_c_image_save_tiff_named_options` (the
+ascii-entries writer now accepts the five-tag set, sorts entries by tag, and
+supports single-axis rational blocks). The facade target passes `1/1` in
+`31ms`; the full directory suite passes `2843/2843` in `22594ms` with zero
+failures, errors, or skips. Release x64 Rebuild has `0 Warning(s),
+0 Error(s)`; source/DLL export parity moves to `509/509` with zero
+difference; and the rebuilt DLL SHA-256 is
+`106C6182EED0CA6F0A6DA38B38A2A11A540377728A0DECA15205B2384EB618F0`.
+Bounded divergence kept: AHK booleans are indistinguishable from 1/0, so a
+boolean named-tag value writes "1"/"0" where Pillow writes "True"/"False";
+named tags composed with `tiffinfo`/`exif`/`big_tiff` or with `icc_profile`
+plus `dpi` still route through the older SaveTiffFrames path, which ignores
+the named kwargs; and `I;16` images with named tags plus binary metadata
+stay rejected by the native writer. The remaining API-SAVEOPTS-001 children
+(PNG dictionary, JPEG smooth/streamtype, TIFF tiffinfo breadth) stay the
+next packets.
 ```
 
 If any line above is no longer true, update this file first, then update

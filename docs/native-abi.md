@@ -9604,6 +9604,7 @@ Image lifecycle and metadata:
 - `pillow_c_image_save_tiff`
 - `pillow_c_image_save_tiff_options`
 - `pillow_c_image_save_tiff_resolution_options`
+- `pillow_c_image_save_tiff_named_options`
 - `pillow_c_image_save_tiff_compression_options`
 - `pillow_c_image_save_tiff_frames`
 - `pillow_c_image_open_gif`
@@ -12200,6 +12201,21 @@ When `has_unit != 0`, tag 296 is written with the verbatim SHORT unit value
 (0 and 65535 included, as Pillow writes them) even without any resolution.
 Resolution validation matches the DPI route; the facade maps the `-3`
 rejection to Pillow's `argument out of range` error.
+`pillow_c_image_save_tiff_named_options` (BEHAV-SAVEOPTS-004) takes
+`image`, `path`, `has_x_resolution`, `resolution_x`, `has_y_resolution`,
+`resolution_y`, `has_unit`, `unit`, `compression`, `icc_profile`,
+`icc_profile_size`, `ascii_tags`, `ascii_values`, `ascii_sizes`, and
+`ascii_count`. Each set resolution axis writes only its own RATIONAL tag
+(282 or 283) with Pillow's exact float->RATIONAL conversion; `has_unit`
+writes tag 296 verbatim. `compression` uses the same bounded TIFF code set
+as the other options exports; `icc_profile` writes tag 34675. The ascii
+entries accept tags 270/305/306/315/33432 (the ImageDescription,
+Software, DateTime, Artist, and Copyright kwargs), must be NUL-terminated,
+are sorted by tag, stored inline when `size <= 4` and at tag-ordered
+offsets otherwise, and reject duplicates, empty values, or values above
+`2**32-1` bytes. The facade resolves Pillow's write_string conversions
+and the resolution/x_resolution/y_resolution/dpi precedence before
+calling, so the export only serializes.
 `pillow_c_image_save_tiff_compression_options` adds an `int compression` after
 the same DPI fields; compression `0` and `1` write uncompressed tag `1`,
 compression `32773` writes tag `259` as PackBits and encodes each scanline

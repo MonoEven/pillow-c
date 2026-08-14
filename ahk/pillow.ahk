@@ -11334,6 +11334,32 @@ class Pillow {
             return 1
         }
 
+        static SaveTiffAsciiNamedValue(value) {
+            ; Pillow 11.3.0 TiffImagePlugin.write_string: a sequence
+            ; truncates to its first entry first, bytes pass through with a
+            ; trailing NUL, int becomes str(value), str is encoded
+            ; ascii-with-replace, and a float hits the exact AttributeError.
+            if IsObject(value) && Type(value) != "Buffer" {
+                if value.Length = 0
+                    throw Error("Pillow.Image.Save tiff named tag sequence must not be empty", -1)
+                value := value[1]
+            }
+            if value is Buffer {
+                out := Buffer(value.Size + 1, 0)
+                offset := 0
+                while offset < value.Size {
+                    NumPut("UChar", NumGet(value, offset, "UChar"), out, offset)
+                    offset += 1
+                }
+                return out
+            }
+            if value is String
+                return Pillow.Image.Utf8Buffer(RegExReplace(value, "[^\x00-\x7F]", "?"))
+            if value is Integer
+                return Pillow.Image.Utf8Buffer(String(value))
+            throw Error("'float' object has no attribute 'encode'", -1)
+        }
+
         static SaveJpegSubsampling(value) {
             if value is Integer {
                 ; Pillow passes any integer to the encoder: values below 0
@@ -13419,6 +13445,157 @@ class Pillow {
                 resolutionOption := Pillow.Image.SaveOption(saveOptions, "Resolution", "resolution")
                 resolutionUnitOption := Pillow.Image.SaveOption(saveOptions, "ResolutionUnit", "resolution_unit")
                 stripSizeOption := Pillow.Image.SaveOption(saveOptions, "StripSize", "strip_size")
+                descriptionOption := Pillow.Image.SaveOption(saveOptions, "Description", "description")
+                softwareOption := Pillow.Image.SaveOption(saveOptions, "Software", "software")
+                artistOption := Pillow.Image.SaveOption(saveOptions, "Artist", "artist")
+                copyrightOption := Pillow.Image.SaveOption(saveOptions, "Copyright", "copyright")
+                dateTimeOption := Pillow.Image.SaveOption(saveOptions, "DateTime", "date_time")
+                xResolutionOption := Pillow.Image.SaveOption(saveOptions, "XResolution", "x_resolution")
+                yResolutionOption := Pillow.Image.SaveOption(saveOptions, "YResolution", "y_resolution")
+                if descriptionOption.Set || softwareOption.Set || artistOption.Set || copyrightOption.Set
+                    || dateTimeOption.Set || xResolutionOption.Set || yResolutionOption.Set {
+                    ; Pillow 11.3.0 TiffImagePlugin._save: the named ASCII
+                    ; kwargs (description -> 270, software -> 305, date_time
+                    ; -> 306, artist -> 315, copyright -> 33432) compose with
+                    ; the resolution surface. resolution sets BOTH axes,
+                    ; x_resolution/y_resolution overwrite their own axis, and
+                    ; a truthy dpi pair overwrites all of it plus forces
+                    ; ResolutionUnit=2. strip_size stays accepted-and-ignored.
+                    hasX := 0
+                    hasY := 0
+                    resX := 0.0
+                    resY := 0.0
+                    if resolutionOption.Set {
+                        first := IsObject(resolutionOption.Value) ? resolutionOption.Value[1] : resolutionOption.Value
+                        if !(first is Number)
+                            throw Error("bad operand type for abs(): 'str'", -1)
+                        if first < 0
+                            throw Error("argument out of range", -1)
+                        hasX := 1
+                        hasY := 1
+                        resX := first
+                        resY := first
+                    }
+                    if xResolutionOption.Set {
+                        xFirst := IsObject(xResolutionOption.Value) ? xResolutionOption.Value[1] : xResolutionOption.Value
+                        if !(xFirst is Number)
+                            throw Error("bad operand type for abs(): 'str'", -1)
+                        if xFirst < 0
+                            throw Error("argument out of range", -1)
+                        hasX := 1
+                        resX := xFirst
+                    }
+                    if yResolutionOption.Set {
+                        yFirst := IsObject(yResolutionOption.Value) ? yResolutionOption.Value[1] : yResolutionOption.Value
+                        if !(yFirst is Number)
+                            throw Error("bad operand type for abs(): 'str'", -1)
+                        if yFirst < 0
+                            throw Error("argument out of range", -1)
+                        hasY := 1
+                        resY := yFirst
+                    }
+                    hasUnit := 0
+                    resolutionUnit := 0
+                    if resolutionUnitOption.Set {
+                        if !(resolutionUnitOption.Value is Integer)
+                            throw Error("required argument is not an integer", -1)
+                        if resolutionUnitOption.Value < 0 || resolutionUnitOption.Value > 65535
+                            throw Error("ushort format requires 0 <= number <= 0xffff", -1)
+                        hasUnit := 1
+                        resolutionUnit := resolutionUnitOption.Value
+                    }
+                    if dpiOption.Set {
+                        dpi := Pillow.Image.SaveDpiPair(dpiOption.Value, false)
+                        if dpi[1] != 0 || dpi[2] != 0 {
+                            ; Pillow: "if dpi:" — a truthy pair overwrites the
+                            ; resolution surface and forces ResolutionUnit=2;
+                            ; a negative value hits the exact struct.error.
+                            if dpi[1] < 0 || dpi[2] < 0
+                                throw Error("argument out of range", -1)
+                            hasX := 1
+                            hasY := 1
+                            resX := dpi[1]
+                            resY := dpi[2]
+                            hasUnit := 1
+                            resolutionUnit := 2
+                        }
+                    }
+                    compression := 1
+                    if compressionOption.Set {
+                        ; Pillow validates quality only on the jpeg
+                        ; compression route (the exact ValueError); with any
+                        ; other compression the option is ignored.
+                        qualityOption := Pillow.Image.SaveOption(saveOptions, "Quality", "quality")
+                        if qualityOption.Set {
+                            compressionText := StrLower(String(compressionOption.Value))
+                            if compressionText = "jpeg" || compressionText = "tiff_jpeg" {
+                                if !(qualityOption.Value is Integer) || qualityOption.Value < 0 || qualityOption.Value > 100
+                                    throw Error("Invalid quality setting", -1)
+                            }
+                        }
+                        compression := Pillow.Image.SaveTiffCompression(compressionOption.Value)
+                    }
+                    iccProfile := 0
+                    iccProfileOption := Pillow.Image.SaveOption(saveOptions, "IccProfile", "icc_profile")
+                    if iccProfileOption.Set {
+                        iccProfile := Pillow.Image.BinaryBuffer(
+                            iccProfileOption.Value,
+                            "Pillow.Image.Save icc_profile"
+                        )
+                        if iccProfile.Size = 0
+                            throw Error("Pillow.Image.Save icc_profile must not be empty", -1)
+                    }
+                    asciiTags := []
+                    asciiValues := []
+                    if descriptionOption.Set {
+                        asciiTags.Push(270)
+                        asciiValues.Push(Pillow.Image.SaveTiffAsciiNamedValue(descriptionOption.Value))
+                    }
+                    if softwareOption.Set {
+                        asciiTags.Push(305)
+                        asciiValues.Push(Pillow.Image.SaveTiffAsciiNamedValue(softwareOption.Value))
+                    }
+                    if dateTimeOption.Set {
+                        asciiTags.Push(306)
+                        asciiValues.Push(Pillow.Image.SaveTiffAsciiNamedValue(dateTimeOption.Value))
+                    }
+                    if artistOption.Set {
+                        asciiTags.Push(315)
+                        asciiValues.Push(Pillow.Image.SaveTiffAsciiNamedValue(artistOption.Value))
+                    }
+                    if copyrightOption.Set {
+                        asciiTags.Push(33432)
+                        asciiValues.Push(Pillow.Image.SaveTiffAsciiNamedValue(copyrightOption.Value))
+                    }
+                    asciiTagBuffer := Buffer(asciiTags.Length * 4, 0)
+                    asciiValuePointers := Buffer(asciiTags.Length * A_PtrSize, 0)
+                    asciiValueSizes := Buffer(asciiTags.Length * A_PtrSize, 0)
+                    for index, tag in asciiTags {
+                        NumPut("Int", tag, asciiTagBuffer, (index - 1) * 4)
+                        NumPut("Ptr", asciiValues[index].Ptr, asciiValuePointers, (index - 1) * A_PtrSize)
+                        NumPut("UPtr", asciiValues[index].Size, asciiValueSizes, (index - 1) * A_PtrSize)
+                    }
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_save_tiff_named_options",
+                        "Ptr", this.RequireHandle(),
+                        "Ptr", pathBytes,
+                        "Int", hasX,
+                        "Double", resX,
+                        "Int", hasY,
+                        "Double", resY,
+                        "Int", hasUnit,
+                        "Int", resolutionUnit,
+                        "Int", compression,
+                        "Ptr", IsObject(iccProfile) ? iccProfile : 0,
+                        "UPtr", IsObject(iccProfile) ? iccProfile.Size : 0,
+                        "Ptr", asciiTagBuffer,
+                        "Ptr", asciiValuePointers,
+                        "Ptr", asciiValueSizes,
+                        "UPtr", asciiTags.Length,
+                        "Int"
+                    ))
+                    return
+                }
                 if resolutionOption.Set || resolutionUnitOption.Set {
                     ; Pillow 11.3.0's resolution/resolution_unit: the scalar
                     ; (a pair truncates to its first value for BOTH axes,

@@ -7164,3 +7164,25 @@ palette remap against local Pillow 11.3.0 (reopened pixels byte-for-byte).
 Source/DLL export parity is `507/507` (two deliberate new exports) and the
 rebuilt DLL SHA-256 is
 `9852FA232B737D709EB0A12960A7F0770BF116E0D3074DA38A4A0F93BAB55D09`.
+
+2026-08-15 BEHAV-SAVEOPTS-003 verification: the facade
+`Pillow Image.Save TIFF resolution and resolution_unit` target passes `1/1`
+in `16ms`; the full directory suite passes `2842/2842` in `22422ms` with
+zero failures, errors, or skips. The ctypes cross-check
+`oracle/probe_tiffres_dll.py` plus a 174-value rational fuzz across
+(0, 2**32-1] pin the float->RATIONAL conversion byte-for-byte against
+local Pillow 11.3.0. Source/DLL export parity is `508/508` (one deliberate
+new export) and the rebuilt DLL SHA-256 is
+`1E83872CBCD49B9E35A326F64F02C7B59B3147535627FACA36C03B2DDDDCAB8C`.
+
+2026-08-15 BEHAV-SAVEOPTS-004 verification: the facade
+`Pillow Image.Save TIFF named kwargs and per-axis resolution` target passes
+`1/1` in `31ms`; the full directory suite passes `2843/2843` in `22594ms`
+with zero failures, errors, or skips. The ctypes cross-check
+`oracle/probe_tiffnamed_dll.py` pins the five named ASCII tags, the
+write_string conversions, the per-axis 282/283 surface, and the
+resolution/x_resolution/y_resolution/dpi precedence chain against local
+Pillow 11.3.0 (tag-level byte-for-byte on all 17 cases). Source/DLL export
+parity is `509/509` (one deliberate new export) and the rebuilt DLL
+SHA-256 is
+`106C6182EED0CA6F0A6DA38B38A2A11A540377728A0DECA15205B2384EB618F0`.
