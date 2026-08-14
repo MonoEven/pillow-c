@@ -7558,6 +7558,10 @@ class Pillow {
                     ; that header from the BITMAPINFOHEADER and reuses the
                     ; native BMP decoder.
                     lastStatus := Pillow.Image.OpenDibHandle(path, &outHandle)
+                } else if format = "IM" {
+                    ; BEHAV-IM-001: parse the ASCII header, then feed the
+                    ; raw payload (and P-mode LUT) into native storage.
+                    lastStatus := Pillow.Image.OpenImHandle(path, &outHandle)
                 } else {
                     lastStatus := DllCall(
                         Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
@@ -8283,6 +8287,197 @@ class Pillow {
             return buf
         }
 
+        static OpenImHandle(path, &outHandle) {
+            ; BEHAV-IM-001: parse the ASCII header (lines end at the first
+            ; NUL or ^Z), rebuild the raw payload into native storage, and
+            ; reattach the P-mode LUT as the image palette.
+            source := FileOpen(path, "r")
+            if !source
+                throw Error("Pillow.Image.Open IM failed to open the source file", -1)
+            size := source.Length
+            if size < 40 {
+                source.Close()
+                outHandle := 0
+                return -3
+            }
+            payload := Buffer(size, 0)
+            source.RawRead(payload, size)
+            source.Close()
+            foundLf := false
+            loop (size > 100 ? 100 : size) {
+                if NumGet(payload, A_Index - 1, "UChar") = 10 {
+                    foundLf := true
+                    break
+                }
+            }
+            if !foundLf {
+                outHandle := 0
+                return -3
+            }
+            textLen := 0
+            headerEnd := 0
+            loop payload.Size {
+                byte := NumGet(payload, A_Index - 1, "UChar")
+                if byte = 0 || byte = 0x1A {
+                    if !textLen
+                        textLen := A_Index - 1
+                    if byte = 0x1A {
+                        headerEnd := A_Index - 1
+                        break
+                    }
+                }
+            }
+            if !headerEnd {
+                outHandle := 0
+                return -3
+            }
+            header := StrGet(payload.Ptr, textLen, "UTF-8")
+            types := Map(
+                "L", ["L", "L"],
+                "Greyscale", ["L", "L"],
+                "Grayscale", ["L", "L"],
+                "RGB", ["RGB", "RGB;L"],
+                "RGBA", ["RGBA", "RGBA;L"],
+                "0 1", ["1", "1"],
+                "L 1", ["1", "1"],
+                "B1", ["1", "1"],
+                "P", ["P", "P"],
+                "LA", ["LA", "LA;L"],
+                "CMYK", ["CMYK", "CMYK;L"],
+                "L 32S", ["I", "I;32S"],
+                "L 16", ["I;16", "I;16"],
+                "L 16B", ["I;16B", "I;16B"],
+                "L 32F", ["F", "F;32F"]
+            )
+            mode := "L"
+            rawmode := "L"
+            width := 512
+            height := 512
+            hasLut := false
+            for line in StrSplit(header, "`r`n") {
+                parts := StrSplit(line, ": ", , 2)
+                if parts.Length < 2
+                    continue
+                key := parts[1]
+                value := parts[2]
+                if key = "Image type" {
+                    if RegExMatch(value, "^(.*) image$", &typeMatch) && types.Has(typeMatch[1]) {
+                        mode := types[typeMatch[1]][1]
+                        rawmode := types[typeMatch[1]][2]
+                    } else {
+                        outHandle := 0
+                        return -3
+                    }
+                } else if key = "Image size (x*y)" {
+                    if RegExMatch(value, "^(\d+)\*(\d+)$", &sizeMatch) {
+                        width := Integer(sizeMatch[1])
+                        height := Integer(sizeMatch[2])
+                    } else {
+                        outHandle := 0
+                        return -3
+                    }
+                } else if key = "Lut" {
+                    hasLut := value = "1"
+                }
+            }
+            if hasLut && (mode = "L" || mode = "P") {
+                ; Pillow 11.3.0 promotes to P only for a NON-greyscale LUT;
+                ; a greyscale LUT keeps mode L (Pillow may attach a lut,
+                ; recorded as a boundary note for the display LUT).
+                greyscale := true
+                loop 256 {
+                    r := NumGet(payload, headerEnd + 1 + A_Index - 1, "UChar")
+                    g := NumGet(payload, headerEnd + 1 + 256 + A_Index - 1, "UChar")
+                    b := NumGet(payload, headerEnd + 1 + 512 + A_Index - 1, "UChar")
+                    if r != g || g != b {
+                        greyscale := false
+                        break
+                    }
+                }
+                if !greyscale {
+                    mode := "P"
+                    rawmode := "P"
+                }
+            }
+            if width <= 0 || height <= 0 {
+                outHandle := 0
+                return -3
+            }
+            dataOffset := headerEnd + 1
+            if hasLut
+                dataOffset += 768
+            bytesPerPixel := 0
+            switch mode {
+                case "L", "P": bytesPerPixel := 1
+                case "LA": bytesPerPixel := 2
+                case "RGB": bytesPerPixel := 3
+                case "RGBA", "CMYK", "I", "F": bytesPerPixel := 4
+                case "I;16", "I;16B": bytesPerPixel := 2
+            }
+            pixelCount := width * height * bytesPerPixel
+            if mode = "1"
+                pixelCount := ((width + 7) // 8) * height
+            if dataOffset + pixelCount > size {
+                outHandle := 0
+                return -3
+            }
+            handle := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_create_mode",
+                "Int", width,
+                "Int", height,
+                "Int", Pillow.ModeId(mode),
+                "Ptr*", &handle,
+                "Int"
+            )
+            if status != 0 {
+                outHandle := 0
+                return status
+            }
+            try {
+                rawModeBytes := Pillow.Image.RawModeBuffer(rawmode)
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_set_raw_bytes",
+                    "Ptr", handle,
+                    "Ptr", payload.Ptr + dataOffset,
+                    "UPtr", pixelCount,
+                    "Ptr", rawModeBytes,
+                    "Int", 0,
+                    "Int", -1,
+                    "Int"
+                )
+                if status != 0
+                    throw Error("pillow_c: " Pillow.StatusMessage(status), status)
+                if hasLut && mode = "P" {
+                    lutOffset := headerEnd + 1
+                    rgb := []
+                    loop 256 {
+                        rgb.Push(NumGet(payload, lutOffset + A_Index - 1, "UChar"))
+                        rgb.Push(NumGet(payload, lutOffset + 256 + A_Index - 1, "UChar"))
+                        rgb.Push(NumGet(payload, lutOffset + 512 + A_Index - 1, "UChar"))
+                    }
+                    paletteBytes := Pillow.Image.PaletteBuffer(rgb, "RGB", "Pillow.Image.Open IM")
+                    Pillow.CheckStatus(DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_put_palette_rgb",
+                        "Ptr", handle,
+                        "Ptr", paletteBytes,
+                        "UPtr", paletteBytes.Size,
+                        "Int"
+                    ))
+                }
+                outHandle := handle
+                return 0
+            } catch Error as err {
+                DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", handle, "Int")
+                outHandle := 0
+                throw
+            } catch {
+                DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", handle, "Int")
+                outHandle := 0
+                return -3
+            }
+        }
+
         static ResolveOpenFormat(path, formats := unset) {
             return Pillow.Image.ResolveOpenFormats(path, IsSet(formats) ? formats : unset)[1]
         }
@@ -8371,6 +8566,8 @@ class Pillow {
                 return "BMP"
             if RegExMatch(path, "i)\.dib$")
                 return "DIB"
+            if RegExMatch(path, "i)\.im$")
+                return "IM"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -8400,7 +8597,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -8410,6 +8607,7 @@ class Pillow {
                 "BMP", "Windows Bitmap",
                 "CUR", "Windows Cursor",
                 "DIB", "DIB",
+                "IM", "IM",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -9805,7 +10003,7 @@ class Pillow {
             return value
         }
 
-        ToBytes(encoder := unset, rawmode := unset) {
+        ToBytes(encoder := unset, rawmode := unset, orientation := 1) {
             this.RefreshBufferView()
             if IsSet(encoder) {
                 if encoder != "raw"
@@ -9815,9 +10013,10 @@ class Pillow {
                 rawModeBytes := Pillow.Image.RawModeBuffer(rawmode)
                 required := 0
                 Pillow.CheckStatus(DllCall(
-                    Pillow.RequireDllPath() "\pillow_c_image_get_raw_bytes",
+                    Pillow.RequireDllPath() "\pillow_c_image_get_raw_bytes_oriented",
                     "Ptr", this.RequireHandle(),
                     "Ptr", rawModeBytes,
+                    "Int", orientation,
                     "Ptr", 0,
                     "UPtr", 0,
                     "UPtr*", &required,
@@ -9827,9 +10026,10 @@ class Pillow {
                 if required = 0
                     return out
                 Pillow.CheckStatus(DllCall(
-                    Pillow.RequireDllPath() "\pillow_c_image_get_raw_bytes",
+                    Pillow.RequireDllPath() "\pillow_c_image_get_raw_bytes_oriented",
                     "Ptr", this.RequireHandle(),
                     "Ptr", rawModeBytes,
+                    "Int", orientation,
                     "Ptr", out,
                     "UPtr", out.Size,
                     "UPtr*", &required,
@@ -9907,6 +10107,13 @@ class Pillow {
                 ; minus the 14-byte BITMAPFILEHEADER; save reuses the
                 ; byte-matched native BMP encoder and strips that header.
                 this.SaveDib(path)
+                return
+            }
+            if resolvedFormat = "IM" {
+                ; BEHAV-IM-001: Pillow's IM is a 512-byte ASCII header
+                ; (with an optional 768-byte palette LUT for P) plus raw
+                ; pixel bytes; save composes it over the raw encoder.
+                this.SaveIm(path)
                 return
             }
             if IsSet(saveOptions) && resolvedFormat = "CUR" {
@@ -11820,6 +12027,77 @@ class Pillow {
                     FileDelete(tempPath)
                 } catch {
                 }
+            }
+        }
+
+        SaveIm(path) {
+            ; BEHAV-IM-001: Pillow 11.3.0's IM format is a 512-byte ASCII
+            ; header (NUL padding plus a ^Z marker, an optional 768-byte
+            ; palette LUT for P) followed by raw pixel bytes written with
+            ; orientation -1 (bottom-up rows) and Pillow's ;L per-row
+            ; planar raw modes for multi-channel modes.
+            typeName := ""
+            rawmode := ""
+            switch this.Mode {
+                case "1": typeName := "0 1", rawmode := "1"
+                case "L": typeName := "Greyscale", rawmode := "L"
+                case "LA": typeName := "LA", rawmode := "LA;L"
+                case "P": typeName := "Greyscale", rawmode := "P"
+                case "I": typeName := "L 32S", rawmode := "I;32S"
+                case "I;16": typeName := "L 16", rawmode := "I;16"
+                case "I;16B": typeName := "L 16B", rawmode := "I;16B"
+                case "F": typeName := "L 32F", rawmode := "F;32F"
+                case "RGB": typeName := "RGB", rawmode := "RGB;L"
+                case "RGBA": typeName := "RGBA", rawmode := "RGBA;L"
+                case "RGBX": typeName := "RGBX", rawmode := "RGBX;L"
+                case "CMYK": typeName := "CMYK", rawmode := "CMYK;L"
+                default:
+                    throw Error("Cannot save " this.Mode " images as IM", -1)
+            }
+            base := ""
+            if RegExMatch(path, "i)([^\\/]+)$", &baseMatch) {
+                base := baseMatch[1]
+                if RegExMatch(base, "i)(.+)(\.[^.]+)$", &nameMatch) {
+                    ext := nameMatch[2]
+                    limit := 92 - StrLen(ext)
+                    base := (StrLen(nameMatch[1]) > limit ? SubStr(nameMatch[1], 1, limit) : nameMatch[1]) ext
+                }
+            }
+            header := "Image type: " typeName " image`r`n"
+            if base != ""
+                header .= "Name: " base "`r`n"
+            header .= "Image size (x*y): " this.Size[1] "*" this.Size[2] "`r`n"
+            header .= "File size (no of images): 1`r`n"
+            if this.Mode = "P"
+                header .= "Lut: 1`r`n"
+            padCount := 511 - StrLen(header)
+            if padCount < 0
+                throw Error("Cannot save " this.Mode " images as IM", -1)
+            target := FileOpen(path, "w")
+            if !target
+                throw Error("Pillow.Image.Save IM failed to open the target file", -1)
+            try {
+                target.Write(header)
+                pad := Buffer(padCount + 1, 0)
+                NumPut("UChar", 0x1A, pad, padCount)
+                target.RawWrite(pad.Ptr, pad.Size)
+                if this.Mode = "P" {
+                    ; the LUT holds the R plane, then G, then B (256 each).
+                    palette := this.GetPalette("RGB")
+                    while palette.Length < 768
+                        palette.Push(0)
+                    lut := Buffer(768, 0)
+                    loop 256 {
+                        NumPut("UChar", palette[(A_Index - 1) * 3 + 1], lut, A_Index - 1)
+                        NumPut("UChar", palette[(A_Index - 1) * 3 + 2], lut, 256 + A_Index - 1)
+                        NumPut("UChar", palette[(A_Index - 1) * 3 + 3], lut, 512 + A_Index - 1)
+                    }
+                    target.RawWrite(lut.Ptr, lut.Size)
+                }
+                raw := this.ToBytes("raw", rawmode, -1)
+                target.RawWrite(raw.Ptr, raw.Size)
+            } finally {
+                target.Close()
             }
         }
 

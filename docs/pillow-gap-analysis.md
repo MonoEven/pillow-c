@@ -37,6 +37,34 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 BEHAV-IM-001 IM Format (GREEN)
+
+`BEHAV-IM-001` implements the IM format with byte-level behavioral
+parity.
+
+The Pillow 11.3.0 oracle (ImImagePlugin source plus path-based
+fixtures) shows IM is a 512-byte ASCII header (Image type/Name/Image
+size/File size lines, an optional `Lut: 1` line, NUL padding plus a
+^Z marker) followed by an optional 768-byte plane LUT and raw pixels
+written with orientation -1 (bottom-up rows) and Pillow's per-row
+planar `;L` raw modes (RGB;L/RGBA;L/LA;L/CMYK;L); the P-mode open
+promotes to P only for a NON-greyscale LUT, and the SAVE dict covers
+1/L/LA/P/I/I;16/I;16B/F/RGB/RGBA/RGBX/CMYK with
+`Cannot save X images as IM` otherwise (LAB verified). The native
+raw codec gains `;L` planar encode/decode plus the oriented
+`pillow_c_image_get_raw_bytes_oriented` export (the existing export
+keeps orientation 1), and the facade routes `.im`/`IM` through
+`SaveIm`/`OpenImHandle` (byte-exact against embedded Pillow fixtures
+for L/RGB/RGBA/1 plus the P-mode header/LUT/payload matrix, the
+reopen matrix, and the LAB-mode error; the greyscale-LUT `lut`
+display attribute is a recorded boundary note). The facade IM target
+passes `1/1` in `63ms`; the full directory suite passes `2810/2810`
+in `18266ms`. Release x64 Rebuild is clean; source/DLL export parity
+moves to `467/467`; the rebuilt DLL SHA-256 is
+`6604522ED0B4458DF25B5A4BE213E0D3959327A4AECF884AB240AD09E7E6C898`.
+The IM row left the FMT-UNREC-001 boundary list. The next bounded
+child is `BEHAV-MSP-001`, the MSP format.
+
 ## 2026-08-14 BEHAV-DIB-001 DIB Format (GREEN)
 
 `BEHAV-DIB-001` implements the DIB format with byte-level behavioral
@@ -81,7 +109,7 @@ Classification of every boundary item (treatment applies per packet):
 | Item | Pillow local behavior | Treatment |
 |---|---|---|
 | DIB | save L/RGB/RGBA/P all OK; reopen OK | DONE — BEHAV-DIB-001 (byte-exact over the native BMP seams + native mode-1 branches; P-mode stays a separate child) |
-| IM | save all modes OK; reopen OK | IMPLEMENT (facade, raw-bytes writer) |
+| IM | save all modes OK; reopen OK | DONE — BEHAV-IM-001 (byte-exact 512-byte header + bottom-up ;L planar raw payloads; greyscale-LUT lut attribute recorded as a boundary note) |
 | MSP | save mode 1 (probe in packet); others `cannot write mode X as MSP` | IMPLEMENT save 1 + match mode errors |
 | PALM | save P OK; others `cannot write mode X as Palm` | IMPLEMENT save P + match mode errors |
 | BLP | save P OK; L/RGB/RGBA `Unsupported BLP image mode` | IMPLEMENT save P + match mode errors |

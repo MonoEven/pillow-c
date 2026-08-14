@@ -29,12 +29,14 @@ marker-stream packets add `pillow_c_image_save_jpeg_extra_options`,
 `pillow_c_image_save_jpeg_metadata_keep_rgb_extra_encode_options` and
 `pillow_c_image_save_jpeg_qtables_metadata_keep_rgb_extra_encode_options`.
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`466/466`; the full AHK suite is `2809/2809`; and the current DLL SHA-256 is
-`B787C38A4D3064330F8D21C7C98DCD2FF19966812D45F3448F0E2966F42DDE4B`
-(BEHAV-DIB-001: the existing `pillow_c_image_save_bmp`/`open_bmp`
-exports gain mode-1 branches — 1bpp MSB-first packing/unpacking with
-the exact 2-entry black/white palette and biClrUsed/biClrImportant=2 —
-with no new export; the facade DIB route composes over those seams).
+`467/467`; the full AHK suite is `2810/2810`; and the current DLL SHA-256 is
+`6604522ED0B4458DF25B5A4BE213E0D3959327A4AECF884AB240AD09E7E6C898`
+(BEHAV-IM-001: the raw codec gains the per-row planar `;L` modes
+(RGB;L/RGBA;L/LA;L/CMYK;L) on encode and decode, `I;32S`, and one
+deliberate new export `pillow_c_image_get_raw_bytes_oriented` —
+the existing `pillow_c_image_get_raw_bytes` keeps orientation 1 —
+so the facade IM route can write Pillow's bottom-up planar
+payloads; the DIB packet's mode-1 BMP branches ride the same slice).
 `FMT-TIFF-003BG` changes no ABI: the BigTIFF save_all composition (chained
 numeric multi-frame and per-frame metadata) is a lock-in over the existing
 frames/metadata writers, verified against Pillow 11.3.0 ctypes.

@@ -47,24 +47,27 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2809` AHK tests: `1389` raw DLL tests and
-`1420` facade tests.
+This suite currently registers `2810` AHK tests: `1389` raw DLL tests and
+`1421` facade tests.
 
-Latest `BEHAV-DIB-001` verification: the Pillow 11.3.0 oracle shows
-DIB is byte-identical to Pillow's own BMP minus the 14-byte
-BITMAPFILEHEADER across 1/L/RGB/RGBA, with biClrUsed=2 and a 2-entry
-black/white palette for mode 1. The facade routes `.dib`/`DIB`
-through the byte-matched native BMP encoder (save strips the file
-header) and decoder (open rebuilds a synthetic file header), and the
-native BMP exports gain the mode-1 branches. The facade DIB target
-passes `1/1` (byte-exact embedded Pillow RGB fixture, the
-DIB==BMP[14:] relation, reopen matrix), the raw mode-1 BMP target
-passes `1/1`, and the full directory suite passes `2809/2809` in
-`19578ms`, with zero failures, errors, or skips. Release x64 Rebuild
-is clean; source/DLL export parity remains `466/466` with zero
-difference; and the rebuilt DLL SHA-256 is
-`B787C38A4D3064330F8D21C7C98DCD2FF19966812D45F3448F0E2966F42DDE4B`.
-The behavioral-parity wave continues with `BEHAV-IM-001` next.
+Latest `BEHAV-IM-001` verification: the Pillow 11.3.0 oracle
+(ImImagePlugin source plus path-based fixtures) shows IM is a
+512-byte ASCII header (type/Name/size/frames lines, optional
+`Lut: 1`, NUL padding + ^Z) plus an optional 768-byte plane LUT and
+raw pixels written with orientation -1 and Pillow's per-row planar
+`;L` raw modes; the P-mode open promotes to P only for non-greyscale
+LUTs, and unsupported modes raise `Cannot save X images as IM`.
+The native raw codec gains `;L` planar encode/decode and the
+oriented `pillow_c_image_get_raw_bytes_oriented` export, and the
+facade routes `.im`/`IM` through `SaveIm`/`OpenImHandle`. The facade
+IM target passes `1/1` in `63ms` (byte-exact embedded Pillow
+fixtures for L/RGB/RGBA/1, the P-mode header/LUT/payload matrix, the
+reopen matrix, and the LAB-mode error), and the full directory suite
+passes `2810/2810` in `18266ms`, with zero failures, errors, or
+skips. Release x64 Rebuild is clean; source/DLL export parity moves
+to `467/467` with zero difference; and the rebuilt DLL SHA-256 is
+`6604522ED0B4458DF25B5A4BE213E0D3959327A4AECF884AB240AD09E7E6C898`.
+The behavioral-parity wave continues with `BEHAV-MSP-001` next.
 
 Latest `API-PATH-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and

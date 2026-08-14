@@ -523,6 +523,30 @@ Current work packet:
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
 
+2026-08-14: `BEHAV-IM-001` is GREEN as the IM format (behavioral
+parity). The Pillow 11.3.0 oracle (ImImagePlugin source plus
+path-based fixtures) shows IM is a 512-byte ASCII header (Image type/
+Name/Image size/File size lines, an optional `Lut: 1` line, NUL
+padding plus a ^Z marker) followed by an optional 768-byte plane
+LUT and raw pixels written with orientation -1 (bottom-up rows) and
+Pillow's per-row planar `;L` raw modes (RGB;L/RGBA;L/LA;L/CMYK;L);
+the P-mode open promotes to P only for a NON-greyscale LUT, and the
+SAVE dict covers 1/L/LA/P/I/I;16/I;16B/F/RGB/RGBA/RGBX/CMYK with
+`Cannot save X images as IM` otherwise. The native raw codec gains
+`;L` planar encode/decode plus the oriented
+`pillow_c_image_get_raw_bytes_oriented` export, and the facade
+routes `.im`/`IM` through `SaveIm`/`OpenImHandle` (byte-exact
+against embedded Pillow fixtures for L/RGB/RGBA/1 plus the P-mode
+header/LUT/payload matrix, the reopen matrix, and the LAB-mode
+error). The facade IM target passes `1/1` in `63ms`; the full
+directory suite passes `2810/2810` in `18266ms`, with zero
+failures, errors, or skips. Release x64 Rebuild is clean;
+source/DLL export parity moves to `467/467` (one deliberate new
+export) with zero difference; and the rebuilt DLL SHA-256 is
+`6604522ED0B4458DF25B5A4BE213E0D3959327A4AECF884AB240AD09E7E6C898`.
+The IM row left the FMT-UNREC-001 boundary list. The next bounded
+child is `BEHAV-MSP-001`, the MSP format.
+
 2026-08-14: `BEHAV-DIB-001` is GREEN as the DIB format (behavioral
 parity). The Pillow 11.3.0 oracle shows DIB is byte-identical to
 Pillow's own BMP minus the 14-byte BITMAPFILEHEADER across 1/L/RGB/
