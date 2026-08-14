@@ -227,6 +227,20 @@ unchanged.
 dependency-gated boundaries (no Qt binding, no Tk interpreter) with
 Pillow-shaped errors; the DLL SHA-256 is unchanged.
 
+`API-FILE-001` changes no ABI at all either: the facade
+`Pillow.ImageFile` module surface records `MAXBLOCK`/`SAFEBLOCK` and
+the `ERRORS` table exactly, exposes the `LOAD_TRUNCATED_IMAGES`
+default (False; enabling it is a fail-loud boundary because the
+native decoders decode whole files strictly, matching Pillow's
+default) and the plain `PyCodecState` object, and fails loudly on the
+incremental/plugin protocol (the `ImageFile` base object, `Parser`,
+`StubImageFile`, `StubHandler`, `PyCodec`, `PyDecoder`, `PyEncoder`,
+and the deprecated `raise_oserror` helper — exposed as
+`ReportOSError(code)` because AHK identifiers beginning with "Raise"
+lex as the `raise` keyword at call sites, and a parameter named
+`error` would shadow the AHK `Error` class); the DLL SHA-256 is
+unchanged.
+
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.
 

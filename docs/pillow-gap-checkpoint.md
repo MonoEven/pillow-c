@@ -4,7 +4,7 @@ This is the short resume layer for Pillow work in this repository. Read this
 file first, then open `docs/pillow-gap-analysis.md` only for the selected gap
 card or broader evidence.
 
-Last updated: 2026-08-13
+Last updated: 2026-08-14
 
 ## Required Resume Order
 
@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 89% (about ±5%) under
+Estimate: AHK-first Pillow-runtime overall completion 90% (about ±5%) under
 the real-workload Pillow replacement-readiness model — measured against
 the FULL Pillow 11.3.0 public surface since the AUDIT-002 re-audit.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
@@ -46,24 +46,31 @@ also COMPLETE), the complete facade API slice (`API-IMG-001D` getim,
 surface (`MODE-NUM-001CO`/`001CP`/`001CQ`), `BNDRY-001` the
 remaining-item boundary ledger, `API-MATH-001` the ImageMath module,
 `API-GRAB-001` the ImageGrab capture module, `API-PATH-001` the
-ImagePath.Path object, and `API-QTTK-001` — the ImageQt/ImageTk
+ImagePath.Path object, `API-QTTK-001` — the ImageQt/ImageTk
 module-surface boundaries (the AHK runtime ships no Qt binding and no
 Tk interpreter, so the ImageQt surface raises Pillow's
 `Qt bindings are not installed` and the ImageTk surface raises
 Pillow's no-root `Too early to create image: no default root window`,
-both recorded as explicit documented boundaries).
+both recorded as explicit documented boundaries), and
+`API-FILE-001` — the ImageFile module surface (MAXBLOCK/SAFEBLOCK and
+the ERRORS table covered exactly, the LOAD_TRUNCATED_IMAGES default
+False with True a documented fail-loud boundary, PyCodecState covered
+exactly, and the incremental/plugin protocol — ImageFile/Parser/
+StubImageFile/StubHandler/PyCodec/PyDecoder/PyEncoder/raise_oserror —
+an explicit documented boundary that fails loudly on construction with
+Pillow-shaped messages).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The Qt/Tk boundary target passes `1/1` in
-`32ms`, and the full directory suite passes `2801/2801` in `20938ms`;
+IFD as a writer artifact. The ImageFile boundary target passes `1/1` in
+`31ms`, and the full directory suite passes `2802/2802` in `19640ms`;
 source/DLL exports remain `466/466` with zero difference; and the DLL
 SHA-256 remains
 `7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`
 (facade-only slice).
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is
-`API-FILE-001`, the ImageFile module surface.
+`API-PALETTE-001`, the ImagePalette module surface.
 ```
 
 Current work packet:
@@ -480,6 +487,37 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `API-FILE-001` is GREEN as the ImageFile module surface
+(facade-only). The Pillow 11.3.0 probe (results recorded in this
+packet) shows the `PIL.ImageFile` public surface is `MAXBLOCK`
+(65536), `SAFEBLOCK` (1048576), the `ERRORS` table, the
+`LOAD_TRUNCATED_IMAGES` default (False), the plain `PyCodecState`
+object, and the incremental/plugin protocol (`ImageFile` base object,
+`Parser`, `StubImageFile`, `StubHandler`, `PyCodec`, `PyDecoder`,
+`PyEncoder`, and the deprecated `raise_oserror` — Pillow 11.3.0
+deprecates it for removal in Pillow 12). The facade
+`Pillow.ImageFile` covers the constants, the flag default, and
+`PyCodecState` exactly; the protocol classes fail loudly on
+construction with Pillow-shaped messages (including the exact
+`Can't instantiate abstract class StubImageFile with abstract methods
+_load, _open`, `Can't instantiate abstract class StubHandler with
+abstract method load`, and `PyCodec.__init__() missing 1 required
+positional argument: 'mode'` errors), `LOAD_TRUNCATED_IMAGES := true`
+is a documented fail-loud boundary (native decoders decode whole files
+strictly, matching the Pillow default), and `raise_oserror` is served
+by `ReportOSError(code)` because AHK identifiers beginning with
+"Raise" lex as the `raise` keyword at call sites and a parameter named
+`error` would shadow the AHK `Error` class (AHK names are
+case-insensitive). Facade-only change, no native rebuild: the
+ImageFile boundary target passes `1/1` in `31ms`, and the full
+directory suite passes `2802/2802` in `19640ms`, with zero failures,
+errors, or skips. Source/DLL export parity remains `466/466` (DLL
+byte-identical), and the DLL SHA-256 remains
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `90% ±5%`. The next bounded child is
+`API-PALETTE-001`, the ImagePalette module surface.
 
 2026-08-14: `API-QTTK-001` is GREEN as the ImageQt/ImageTk module-surface
 boundaries. The Pillow 11.3.0 oracle (kept in

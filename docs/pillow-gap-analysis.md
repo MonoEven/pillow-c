@@ -7,7 +7,7 @@ state.
 For the fastest resume path, read `docs/pillow-gap-checkpoint.md` first, then
 use this file as the detailed ledger.
 
-Last updated: 2026-08-13
+Last updated: 2026-08-14
 
 ## Read This First
 
@@ -36,6 +36,47 @@ Current local constraints:
 - AHK tests should use `ahktest` and captured errors, not modal popups.
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
+
+## 2026-08-14 API-FILE-001 ImageFile Module Surface (GREEN)
+
+`API-FILE-001` closes the ImageFile module surface (facade-only).
+
+The Pillow 11.3.0 probe (results recorded in this packet) shows the
+`PIL.ImageFile` public surface is `MAXBLOCK` (65536), `SAFEBLOCK`
+(1048576), the `ERRORS` table, the `LOAD_TRUNCATED_IMAGES` default
+(False), the plain `PyCodecState` object, and the incremental/plugin
+protocol (`ImageFile` base object, `Parser`, `StubImageFile`,
+`StubHandler`, `PyCodec`, `PyDecoder`, `PyEncoder`, and the deprecated
+`raise_oserror` — Pillow 11.3.0 deprecates it for removal in Pillow
+12; `ImageFileFormat` does NOT exist in 11.3.0). The facade
+`Pillow.ImageFile` covers the constants, the flag default, and
+`PyCodecState` exactly; the protocol classes fail loudly on
+construction with Pillow-shaped messages (including the exact
+`Can't instantiate abstract class StubImageFile with abstract methods
+_load, _open`, `Can't instantiate abstract class StubHandler with
+abstract method load`, and `PyCodec.__init__() missing 1 required
+positional argument: 'mode'` errors); `LOAD_TRUNCATED_IMAGES := true`
+is a documented fail-loud boundary (native decoders decode whole files
+strictly, matching the Pillow default); and `raise_oserror` is served
+by `ReportOSError(code)` because AHK identifiers beginning with
+"Raise" lex as the `raise` keyword at call sites and a parameter named
+`error` would shadow the AHK `Error` class (AHK names are
+case-insensitive). Facade-only change; no new export; parity remains
+`466/466` and the DLL SHA-256 is unchanged.
+
+Verification:
+
+- Red evidence: the module was absent (AUDIT-002).
+- Facade ImageFile boundary target passes `1/1` in `31ms` (constants,
+  ERRORS table, flag default/False-set/True-boundary, PyCodecState,
+  all eight fail-loud construction boundaries with exact Pillow
+  messages, and the raise_oserror boundary stub).
+- Full AHK directory suite: `2802/2802` in `19640ms`; zero failures,
+  errors, or skips.
+
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `90% ±5%`. The next bounded child is
+`API-PALETTE-001`, the ImagePalette module surface.
 
 ## 2026-08-14 API-QTTK-001 ImageQt/ImageTk Boundaries (GREEN)
 
@@ -39931,7 +39972,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | API-GRAB-001 | Facade API | covered | ImageGrab implemented, not bounded: Pillow 11.3.0 grab() semantics (RGB screen captures via GDI BitBlt with bbox/all_screens/include_layered, GDI clipping for off-screen bboxes, the coordinate errors, empty-bbox empty image) and grabclipboard() CF_DIB decoding (24/32bpp -> RGB with bottom-up flip + BGR swap + 32bpp alpha drop, 8bpp -> L index grayscale, 1bpp -> packed mode 1, empty/text -> None). The new `pillow_c_grab.cpp` module adds `pillow_c_image_grab` and `pillow_c_image_grab_clipboard` (project now links gdi32/user32), and the facade `ImageGrab` class adds Grab/GrabClipboard with Pillow's errors. A ctypes cross-check matches Pillow byte-exactly across all four DIB bit counts and the empty path (`FAILURES: 0`). Export parity moves to `466/466`. | `oracle/probe_imagegrab_clip.py`, `oracle/probe_imagegrab_dib.py`, `oracle/probe_imagegrab_dll_compose.py`, `pillow_c_grab.cpp`, facade `ImageGrab` class, raw/facade grab tests. |
 | API-PATH-001 | Facade API | covered | ImagePath.Path object (facade-only): Pillow 11.3.0's `Image.core.path` is a simplified five-method object — constructor from flat/pair sequences with float coordinates, `tolist` flat (x,y) pairs, `getbbox` float (minx,miny,maxx,maxy) with empty -> (0,0,0,0), in-place no-op `compact` returning 0 (lines only), 6-value affine `transform` with Pillow's length error, and callable `map` returning None without mutating (ImagingTransformHandler form stays a documented boundary). The facade `Pillow.ImagePath.Path` mirrors all five (AHK case-insensitivity serves the aliases; 0 is the None analogue). Export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, `oracle/probe_imagepath3.py`, facade `ImagePath.Path` class, facade ImagePath test. |
 | API-QTTK-001 | Facade API | covered | ImageQt/ImageTk module surfaces as explicit documented boundaries (dependency-gated): Pillow 11.3.0 defines the ImageQt surface (ImageQt/fromqimage/toqimage/toqpixmap) only when a Qt binding is importable, and ImageTk.PhotoImage without a root raises `Too early to create image: no default root window`. The AHK runtime ships no Qt binding and no Tk interpreter, so the facade `ImageQt`/`ImageTk` stub surfaces raise the Pillow-shaped messages (`Qt bindings are not installed` / the no-root message). Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imageqtk.py`, facade `ImageQt`/`ImageTk` boundary stubs, facade Qt/Tk boundary test. |
-| API-FILE-001 | Facade API | not started | ImageFile module surface (Parser/ImageFile/StubImageFile/_save base classes, 31 names) — absent as a module; actual decode/encode runs through the native ABI. | Documented boundary (native ABI analogue) or facade module. |
+| API-FILE-001 | Facade API | covered | ImageFile module surface: `MAXBLOCK`/`SAFEBLOCK` (65536/1048576) and the `ERRORS` table covered exactly; `LOAD_TRUNCATED_IMAGES` defaults False with True a documented fail-loud boundary (native decoders decode whole files strictly, matching the Pillow default); `PyCodecState` covered exactly; the incremental/plugin protocol (`ImageFile` base object, `Parser`, `StubImageFile`, `StubHandler`, `PyCodec`, `PyDecoder`, `PyEncoder`, and the deprecated `raise_oserror`, served by `ReportOSError(code)` because AHK identifiers beginning with "Raise" lex as the raise keyword at call sites and an `error` parameter would shadow the AHK Error class) is an explicit documented boundary failing loudly on construction with Pillow-shaped messages (`Can't instantiate abstract class StubImageFile ...`, `PyCodec.__init__() missing 1 required positional argument: 'mode'`). `ImageFileFormat` does not exist in Pillow 11.3.0. Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | Pillow 11.3.0 probe (this packet), facade `ImageFile` constants/flag/PyCodecState plus boundary stubs, facade ImageFile boundary test. |
 | API-PALETTE-001 | Facade API | not started | ImagePalette module (ImagePalette/PaletteFile/GimpPaletteFile/GimpGradientFile, wedge/sepia/random/raw/negative/make_gamma_lut/make_linear_lut, 18 names) — the facade `Palette` class is only WEB/ADAPTIVE constants. | Facade ImagePalette or documented boundary. |
 | API-TRANSFORMCLS-001 | Facade API | not started | ImageTransform class objects (TransformHandler/AffineTransform/etc., 10 names) — constants and Transform methods exist, the class objects do not. | Facade classes or documented boundary. |
 | API-FONTVAR-001 | Facade API | not started | ImageFont variation surface (TransposedFont/Axis/Layout) — FreeTypeFont and load_default exist. | Facade variation API or documented boundary. |

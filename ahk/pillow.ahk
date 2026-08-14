@@ -541,6 +541,104 @@ class Pillow {
         }
     }
 
+    class ImageFile {
+        ; API-FILE-001: Pillow 11.3.0's PIL.ImageFile module surface. The
+        ; native ABI decodes/encodes whole files, so the incremental
+        ; feed/plugin protocol (ImageFile/Parser/StubImageFile/StubHandler/
+        ; PyCodec/PyDecoder/PyEncoder) is an explicit documented boundary;
+        ; MAXBLOCK/SAFEBLOCK/ERRORS, the LOAD_TRUNCATED_IMAGES default, and
+        ; the plain PyCodecState object are covered exactly.
+        static MAXBLOCK := 65536
+        static SAFEBLOCK := 1048576
+
+        static ERRORS := Map(
+            -1, "image buffer overrun error",
+            -2, "decoding error",
+            -3, "unknown error",
+            -8, "bad configuration",
+            -9, "out of memory error"
+        )
+
+        static LoadTruncatedImages {
+            get => Pillow.ImageFile._LoadTruncated
+            set {
+                if value
+                    throw Error("Pillow.ImageFile.LOAD_TRUNCATED_IMAGES truncated-load tolerance is not supported: native decoders require complete files (the Pillow default is False)", -1)
+                Pillow.ImageFile._LoadTruncated := false
+            }
+        }
+        static _LoadTruncated := false
+
+        ; Pillow's ImageFile.ImageFile(fp, name) base object and the Parser
+        ; incremental feed are documented boundaries: the AHK runtime has no
+        ; file-object/incremental protocol, and the native ABI decodes whole
+        ; files. Construction fails loudly instead of building inert shells.
+        __New(args*) => Pillow.ImageFile.RequireIncremental()
+
+        class ImageFile {
+            __New(args*) => Pillow.ImageFile.RequireIncremental()
+        }
+
+        class Parser {
+            __New(args*) => Pillow.ImageFile.RequireIncremental()
+        }
+
+        class StubImageFile {
+            ; Pillow 11.3.0 raises this exact TypeError (abstract _load/_open).
+            __New(args*) {
+                throw Error("Can't instantiate abstract class StubImageFile with abstract methods _load, _open", -1)
+            }
+        }
+
+        class StubHandler {
+            ; Pillow 11.3.0 raises this exact TypeError (abstract load).
+            __New(args*) {
+                throw Error("Can't instantiate abstract class StubHandler with abstract method load", -1)
+            }
+        }
+
+        class PyCodec {
+            ; Pillow 11.3.0: PyCodec.__init__() requires 'mode'.
+            __New(args*) => Pillow.ImageFile.RequirePyCodecMode()
+        }
+
+        class PyDecoder {
+            __New(args*) => Pillow.ImageFile.RequirePyCodecMode()
+        }
+
+        class PyEncoder {
+            __New(args*) => Pillow.ImageFile.RequirePyCodecMode()
+        }
+
+        class PyCodecState {
+            ; Pillow 11.3.0's plain codec state object; AHK case-insensitivity
+            ; serves xsize/ysize/xoff/yoff.
+            Xsize := 0
+            Ysize := 0
+            Xoff := 0
+            Yoff := 0
+        }
+
+        static ReportOSError(code) {
+            ; Serves Pillow 11.3.0's raise_oserror, which Pillow deprecates
+            ; (removal in Pillow 12); it only translates codec decode()
+            ; return codes, which the native ABI surfaces directly. AHK
+            ; identifiers beginning with "Raise" lex as the raise keyword at
+            ; call sites, and a parameter named "error" would shadow the
+            ; Error class (AHK names are case-insensitive), so the facade
+            ; member is ReportOSError(code).
+            throw Error("raise_oserror is a deprecated Pillow helper; codec errors surface directly from the native ABI", -1)
+        }
+
+        static RequireIncremental() {
+            throw Error("Pillow.ImageFile incremental decoding is not supported: the native ABI decodes whole files", -1)
+        }
+
+        static RequirePyCodecMode() {
+            throw Error("PyCodec.__init__() missing 1 required positional argument: 'mode'", -1)
+        }
+    }
+
     class ImagePath {
         ; AHK case-insensitivity serves Pillow's ImagePath.Path module.
         class Path {

@@ -22156,6 +22156,98 @@ PillowTestImageQtTkBoundaries(*) {
 
 AhkTest.Test("Pillow ImageQt/ImageTk surface documented boundaries", PillowTestImageQtTkBoundaries)
 
+PillowTestImageFileBoundaries(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+
+    ; API-FILE-001: constants and the ERRORS table are covered exactly.
+    AhkTest.AssertEqual(65536, Pillow.ImageFile.MAXBLOCK)
+    AhkTest.AssertEqual(1048576, Pillow.ImageFile.SAFEBLOCK)
+    AhkTest.AssertEqual("image buffer overrun error", Pillow.ImageFile.ERRORS[-1])
+    AhkTest.AssertEqual("decoding error", Pillow.ImageFile.ERRORS[-2])
+    AhkTest.AssertEqual("unknown error", Pillow.ImageFile.ERRORS[-3])
+    AhkTest.AssertEqual("bad configuration", Pillow.ImageFile.ERRORS[-8])
+    AhkTest.AssertEqual("out of memory error", Pillow.ImageFile.ERRORS[-9])
+
+    ; LOAD_TRUNCATED_IMAGES defaults to False and accepts False; enabling it
+    ; is a documented fail-loud boundary (native decoders require complete
+    ; files, matching the Pillow default False).
+    AhkTest.AssertEqual(false, Pillow.ImageFile.LoadTruncatedImages)
+    Pillow.ImageFile.LoadTruncatedImages := false
+    AhkTest.AssertEqual(false, Pillow.ImageFile.LoadTruncatedImages)
+    truncateError := ""
+    try {
+        Pillow.ImageFile.LoadTruncatedImages := true
+    } catch Error as err {
+        truncateError := err.Message
+    }
+    AhkTest.AssertEqual("Pillow.ImageFile.LOAD_TRUNCATED_IMAGES truncated-load tolerance is not supported: native decoders require complete files (the Pillow default is False)", truncateError)
+
+    ; PyCodecState is covered exactly (Pillow's plain 4-field object).
+    state := Pillow.ImageFile.PyCodecState()
+    AhkTest.AssertEqual(0, state.Xsize)
+    AhkTest.AssertEqual(0, state.Ysize)
+    AhkTest.AssertEqual(0, state.Xoff)
+    AhkTest.AssertEqual(0, state.Yoff)
+
+    ; The incremental/plugin protocol is a documented boundary: the ImageFile
+    ; base object and Parser fail loudly on construction.
+    for entry in [
+        (() => Pillow.ImageFile()),
+        (() => Pillow.ImageFile.ImageFile()),
+        (() => Pillow.ImageFile.Parser()),
+    ] {
+        message := ""
+        try {
+            entry.Call()
+        } catch Error as err {
+            message := err.Message
+        }
+        AhkTest.AssertEqual("Pillow.ImageFile incremental decoding is not supported: the native ABI decodes whole files", message)
+    }
+
+    ; Abstract-base codec classes reproduce Pillow 11.3.0's exact messages.
+    message := ""
+    try {
+        Pillow.ImageFile.StubImageFile()
+    } catch Error as err {
+        message := err.Message
+    }
+    AhkTest.AssertEqual("Can't instantiate abstract class StubImageFile with abstract methods _load, _open", message)
+    message := ""
+    try {
+        Pillow.ImageFile.StubHandler()
+    } catch Error as err {
+        message := err.Message
+    }
+    AhkTest.AssertEqual("Can't instantiate abstract class StubHandler with abstract method load", message)
+    for entry in [
+        (() => Pillow.ImageFile.PyCodec()),
+        (() => Pillow.ImageFile.PyDecoder()),
+        (() => Pillow.ImageFile.PyEncoder()),
+    ] {
+        message := ""
+        try {
+            entry.Call()
+        } catch Error as err {
+            message := err.Message
+        }
+        AhkTest.AssertEqual("PyCodec.__init__() missing 1 required positional argument: 'mode'", message)
+    }
+
+    ; raise_oserror is deprecated in Pillow 11.3.0 (removal in Pillow 12);
+    ; documented boundary stub (AHK cannot name members starting with
+    ; "Raise", so the facade serves it as ReportOSError).
+    message := ""
+    try {
+        Pillow.ImageFile.ReportOSError(-2)
+    } catch Error as err {
+        message := err.Message
+    }
+    AhkTest.AssertEqual("raise_oserror is a deprecated Pillow helper; codec errors surface directly from the native ABI", message)
+}
+
+AhkTest.Test("Pillow ImageFile surface: exact constants/state plus documented boundaries", PillowTestImageFileBoundaries)
+
 PillowTestImageDisplayApiBoundaries(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [2, 2], 7)
