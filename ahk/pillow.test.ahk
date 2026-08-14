@@ -21875,9 +21875,8 @@ PillowTestDependencyGatedFormatBoundaries(*) {
     image := Pillow.Image.New("L", [2, 2], 7)
     path := StrReplace(PillowTestTempPngPath("bndry-dep"), ".png", ".webp")
     try {
-        ; BNDRY-001: dependency-gated formats (WebP/AVIF/JPEG2000
-        ; and the other long-tail families) are explicit documented
-        ; boundaries — open and save fail loudly with the same error.
+        ; BNDRY-001: dependency-gated formats (WebP/AVIF/JPEG2000) now
+        ; surface Pillow's exact missing-codec errors (BEHAV-ERRMSGS-002);
         ; PDF left this list via BEHAV-PDF-001 (its LA/RGBA/mode-1
         ; sub-mode boundaries are pinned by PillowTestPdfFormat) and
         ; PSD via BEHAV-OPEN-004.
@@ -21888,7 +21887,10 @@ PillowTestDependencyGatedFormatBoundaries(*) {
             } catch Error as err {
                 boundaryError := err.Message
             }
-            AhkTest.AssertEqual("Pillow image file format is unsupported", boundaryError)
+            expected := format = "WEBP" ? "encoder WebP not available"
+                : format = "AVIF" ? "encoder AVIF not available"
+                : "encoder JPEG2000 not available"
+            AhkTest.AssertEqual(expected, boundaryError)
         }
         boundaryError := ""
         try {
@@ -21896,7 +21898,7 @@ PillowTestDependencyGatedFormatBoundaries(*) {
         } catch Error as err {
             boundaryError := err.Message
         }
-        AhkTest.AssertEqual("Pillow image file format is unsupported", boundaryError)
+        AhkTest.AssertEqual("[Errno 2] No such file or directory: '" path "'", boundaryError)
 
         ; BNDRY-001: libimagequant stays a compile-time dependency boundary
         ; with Pillow's exact error (QUANT-001).
@@ -21958,7 +21960,7 @@ PillowTestUnrecordedFormatBoundaries(*) {
             } catch Error as err {
                 boundaryError := err.Message
             }
-            AhkTest.AssertEqual("cannot identify image file <" unrecOpenPath ">", boundaryError)
+            AhkTest.AssertEqual("[Errno 2] No such file or directory: '" unrecOpenPath "'", boundaryError)
         }
     } finally {
         image.Close()
@@ -22318,7 +22320,7 @@ PillowTestPalmFormat(*) {
         } catch Error as err {
             openError := err.Message
         }
-        AhkTest.AssertEqual("cannot identify image file <" path ">", openError)
+        AhkTest.AssertEqual("cannot identify image file '" path "'", openError)
     } finally {
         PillowTestDeleteFile(path)
     }
@@ -22777,7 +22779,7 @@ PillowTestSgiFormat(*) {
         } catch Error as err {
             badmagicError := err.Message
         }
-        AhkTest.AssertEqual("cannot identify image file <" badmagicPath ">", badmagicError)
+        AhkTest.AssertEqual("cannot identify image file '" badmagicPath "'", badmagicError)
 
         ; Pillow raises the exact save errors for other modes and bpc
         ; values.
@@ -23152,7 +23154,7 @@ PillowTestDdsFormat(*) {
         } catch Error as err {
             badmagicError := err.Message
         }
-        AhkTest.AssertEqual("cannot identify image file <" openPath ">", badmagicError)
+        AhkTest.AssertEqual("cannot identify image file '" openPath "'", badmagicError)
     } finally {
         PillowTestDeleteFile(rgbRawPath)
         PillowTestDeleteFile(rgbaRawPath)
@@ -23529,7 +23531,7 @@ PillowTestIcnsFormat(*) {
         PillowTestIcnsPutType(badMagic, 0, "noti")
         PillowTestIcnsPutBe32(badMagic, 4, 8)
         PillowTestIcnsWrite(badMagicPath, badMagic)
-        AhkTest.AssertEqual("cannot identify image file <" badMagicPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(badMagicPath)))
+        AhkTest.AssertEqual("cannot identify image file '" badMagicPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(badMagicPath)))
         PillowTestDeleteFile(badMagicPath)
 
         garbage := Buffer(96, 0)
@@ -23770,15 +23772,15 @@ PillowTestEpsFormat(*) {
         file := FileOpen(badMagicPath, "w")
         file.RawWrite(badMagic, badMagic.Size)
         file.Close()
-        AhkTest.AssertEqual("cannot identify image file <" badMagicPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(badMagicPath)))
+        AhkTest.AssertEqual("cannot identify image file '" badMagicPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(badMagicPath)))
         PillowTestDeleteFile(badMagicPath)
 
         PillowTestEpsWriteText(noPsAdobePath, "%!PS`n%%BoundingBox: 0 0 10 10`n%%EndComments`n")
-        AhkTest.AssertEqual("cannot identify image file <" noPsAdobePath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(noPsAdobePath)))
+        AhkTest.AssertEqual("cannot identify image file '" noPsAdobePath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(noPsAdobePath)))
         PillowTestDeleteFile(noPsAdobePath)
 
         PillowTestEpsWriteText(noBboxPath, "%!PS-Adobe-3.0 EPSF-3.0`n%%EndComments`n")
-        AhkTest.AssertEqual("cannot identify image file <" noBboxPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(noBboxPath)))
+        AhkTest.AssertEqual("cannot identify image file '" noBboxPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(noBboxPath)))
         PillowTestDeleteFile(noBboxPath)
 
         PillowTestEpsWriteText(atendPath, "%!PS-Adobe-3.0 EPSF-3.0`n%%BoundingBox: (atend)`n%%EndComments`n")
@@ -24284,8 +24286,8 @@ PillowTestPdfFormat(*) {
         }
 
         ; --- open: Pillow 11.3.0 registers no PDF open handler ---
-        AhkTest.AssertEqual("cannot identify image file <" singlePath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(singlePath)))
-        AhkTest.AssertEqual("cannot identify image file <" singlePath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(singlePath, ["PDF"])))
+        AhkTest.AssertEqual("cannot identify image file '" singlePath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(singlePath)))
+        AhkTest.AssertEqual("cannot identify image file '" singlePath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(singlePath, ["PDF"])))
         AhkTest.AssertEqual("", Pillow.Image.FormatDescription("PDF"))
     } finally {
         PillowTestDeleteFile(singlePath)
@@ -24388,11 +24390,11 @@ PillowTestOpenSimpleFormats(*) {
         badMagic := PillowTestPixarFixture(3, 2, payload)
         NumPut("UChar", 0, badMagic, 0)
         PillowTestWriteFileBuffer(pixarPath, badMagic)
-        AhkTest.AssertEqual("cannot identify image file <" pixarPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(pixarPath)))
+        AhkTest.AssertEqual("cannot identify image file '" pixarPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(pixarPath)))
         badMode := PillowTestPixarFixture(3, 2, payload)
         NumPut("UShort", 1, badMode, 424)
         PillowTestWriteFileBuffer(pixarPath, badMode)
-        AhkTest.AssertEqual("cannot identify image file <" pixarPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(pixarPath)))
+        AhkTest.AssertEqual("cannot identify image file '" pixarPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(pixarPath)))
 
         ; --- XVTHUMB: "P7 332" + comments + "W H" + indices (RGB332) ---
         indices := Buffer(6, 0)
@@ -24415,9 +24417,9 @@ PillowTestOpenSimpleFormats(*) {
         PillowTestWriteTextAndBytes(xvPath, "P7 332`n3 2`n", xvShort)
         AhkTest.AssertEqual("image file is truncated (2 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvPath, ["XVTHUMB"])))
         PillowTestEpsWriteText(xvPath, "P7 331`n1 1`n")
-        AhkTest.AssertEqual("cannot identify image file <" xvPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvPath, ["XVTHUMB"])))
+        AhkTest.AssertEqual("cannot identify image file '" xvPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvPath, ["XVTHUMB"])))
         PillowTestEpsWriteText(xvPath, "P7 332`n# c`n# d`n")
-        AhkTest.AssertEqual("cannot identify image file <" xvPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvPath, ["XVTHUMB"])))
+        AhkTest.AssertEqual("cannot identify image file '" xvPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvPath, ["XVTHUMB"])))
         ; .xvthumb is not a registered extension (Pillow: identification
         ; error; the facade keeps its BNDRY-001 unknown-extension message)
         xvExtPath := StrReplace(PillowTestTempPngPath("open-simple-xvext"), ".png", ".xvthumb")
@@ -24472,32 +24474,32 @@ PillowTestOpenSimpleFormats(*) {
         ; bad magic / empty directory / bad inner PCX -> identification
         badDcx := Buffer(16, 0)
         PillowTestWriteFileBuffer(dcxPath, badDcx)
-        AhkTest.AssertEqual("cannot identify image file <" dcxPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(dcxPath)))
+        AhkTest.AssertEqual("cannot identify image file '" dcxPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(dcxPath)))
         emptyDcx := Buffer(4100, 0)
         NumPut("UInt", 0x3ADE68B1, emptyDcx, 0)
         PillowTestWriteFileBuffer(dcxPath, emptyDcx)
-        AhkTest.AssertEqual("cannot identify image file <" dcxPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(dcxPath)))
+        AhkTest.AssertEqual("cannot identify image file '" dcxPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(dcxPath)))
         badInner := Buffer(4100 + 32, 0)
         NumPut("UInt", 0x3ADE68B1, badInner, 0)
         NumPut("UInt", 4100, badInner, 4)
         PillowTestWriteFileBuffer(dcxPath, badInner)
-        AhkTest.AssertEqual("cannot identify image file <" dcxPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(dcxPath)))
+        AhkTest.AssertEqual("cannot identify image file '" dcxPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(dcxPath)))
 
         ; --- HDF5 / BUFR / GRIB stub handlers ---
         PillowTestWriteMagicAndJunk(h5Path, [0x89, 0x48, 0x44, 0x46, 0x0D, 0x0A, 0x1A, 0x0A])
         AhkTest.AssertEqual("cannot find loader for this HDF5 file", PillowTestFormatCaptureError(() => Pillow.Image.Open(h5Path)))
         PillowTestWriteFileBuffer(h5Path, Buffer(16, 0))
-        AhkTest.AssertEqual("cannot identify image file <" h5Path ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(h5Path)))
+        AhkTest.AssertEqual("cannot identify image file '" h5Path "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(h5Path)))
         PillowTestWriteMagicAndJunk(bufrPath, [0x42, 0x55, 0x46, 0x52])
         AhkTest.AssertEqual("cannot find loader for this BUFR file", PillowTestFormatCaptureError(() => Pillow.Image.Open(bufrPath)))
         PillowTestWriteMagicAndJunk(bufrPath, [0x5A, 0x43, 0x5A, 0x43])
         AhkTest.AssertEqual("cannot find loader for this BUFR file", PillowTestFormatCaptureError(() => Pillow.Image.Open(bufrPath)))
         PillowTestWriteMagicAndJunk(bufrPath, [0x58, 0x58, 0x58, 0x58])
-        AhkTest.AssertEqual("cannot identify image file <" bufrPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(bufrPath)))
+        AhkTest.AssertEqual("cannot identify image file '" bufrPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(bufrPath)))
         PillowTestWriteMagicAndJunk(gribPath, [0x47, 0x52, 0x49, 0x42, 0x00, 0x00, 0x00, 0x01])
         AhkTest.AssertEqual("cannot find loader for this GRIB file", PillowTestFormatCaptureError(() => Pillow.Image.Open(gribPath)))
         PillowTestWriteMagicAndJunk(gribPath, [0x47, 0x52, 0x49, 0x42, 0x00, 0x00, 0x00, 0x02])
-        AhkTest.AssertEqual("cannot identify image file <" gribPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(gribPath)))
+        AhkTest.AssertEqual("cannot identify image file '" gribPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(gribPath)))
         saveImage := Pillow.Image.New("L", [2, 2], 7)
         try {
             for format in ["HDF5", "BUFR", "GRIB"]
@@ -24507,8 +24509,9 @@ PillowTestOpenSimpleFormats(*) {
         } finally {
             saveImage.Close()
         }
-        ; IMT is not registered at all in 11.3.0
-        AhkTest.AssertEqual("cannot identify image file <" savePath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(savePath, ["IMT"])))
+        ; IMT is not registered at all in 11.3.0 (the missing file raises
+        ; Pillow's exact FileNotFoundError before identification)
+        AhkTest.AssertEqual("[Errno 2] No such file or directory: '" savePath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(savePath, ["IMT"])))
 
         ; --- format descriptions ---
         AhkTest.AssertEqual("Intel DCX", Pillow.Image.FormatDescription("DCX"))
@@ -24732,7 +24735,7 @@ PillowTestOpenMidFormats(*) {
         PillowTestWriteFileBuffer(ftexPath, multiFtex)
         AhkTest.AssertEqual("", PillowTestFormatCaptureError(() => Pillow.Image.Open(ftexPath)))
         PillowTestWriteFileBuffer(ftexPath, Buffer(16, 0))
-        AhkTest.AssertEqual("cannot identify image file <" ftexPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(ftexPath)))
+        AhkTest.AssertEqual("cannot identify image file '" ftexPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(ftexPath)))
 
         ; --- SUN: depths, palette, RLE, and error shapes ---
         sun1 := Buffer(4, 0)
@@ -24839,9 +24842,9 @@ PillowTestOpenMidFormats(*) {
         PillowTestWriteFileBuffer(sunPath, PillowTestSun(3, 2, 8, sunTrunc))
         AhkTest.AssertEqual("image file is truncated (2 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(sunPath)))
         PillowTestWriteFileBuffer(sunPath, PillowTestSun(3, 2, 6, Buffer(4, 0)))
-        AhkTest.AssertEqual("cannot identify image file <" sunPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(sunPath)))
+        AhkTest.AssertEqual("cannot identify image file '" sunPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(sunPath)))
         PillowTestWriteFileBuffer(sunPath, Buffer(32, 0))
-        AhkTest.AssertEqual("cannot identify image file <" sunPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(sunPath)))
+        AhkTest.AssertEqual("cannot identify image file '" sunPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(sunPath)))
 
         ; --- GBR: version 1/2, info fields, and errors ---
         gbrData := Buffer(6, 0)
@@ -24874,12 +24877,12 @@ PillowTestOpenMidFormats(*) {
         badGbr := Buffer(36, 0)
         PillowTestPutBe32(badGbr, 0, 12)
         PillowTestWriteFileBuffer(gbrPath, badGbr)
-        AhkTest.AssertEqual("cannot identify image file <" gbrPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(gbrPath)))
+        AhkTest.AssertEqual("cannot identify image file '" gbrPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(gbrPath)))
         badGbr2 := Buffer(36, 0)
         PillowTestPutBe32(badGbr2, 0, 20)
         PillowTestPutBe32(badGbr2, 4, 3)
         PillowTestWriteFileBuffer(gbrPath, badGbr2)
-        AhkTest.AssertEqual("cannot identify image file <" gbrPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(gbrPath)))
+        AhkTest.AssertEqual("cannot identify image file '" gbrPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(gbrPath)))
 
         ; --- FITS: BITPIX matrix, bottom-up rows, and error shapes ---
         fits8 := Buffer(80, 0)
@@ -24939,7 +24942,7 @@ PillowTestOpenMidFormats(*) {
         PillowTestWriteFileBuffer(fitsPath, PillowTestFits(8, 0, 0, Buffer(0, 0)))
         AhkTest.AssertEqual("Truncated FITS file", PillowTestFormatCaptureError(() => Pillow.Image.Open(fitsPath)))
         PillowTestWriteFileBuffer(fitsPath, Buffer(64, 0))
-        AhkTest.AssertEqual("cannot identify image file <" fitsPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(fitsPath)))
+        AhkTest.AssertEqual("cannot identify image file '" fitsPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(fitsPath)))
         PillowTestWriteFileBuffer(fitsPath, PillowTestFits(8, 3, 2, Buffer(2, 0)))
         openedFitsQuirk := Pillow.Image.Open(fitsPath)
         try {
@@ -24988,7 +24991,7 @@ PillowTestOpenMidFormats(*) {
         PillowTestWriteByteArray(xpmPath, PillowTestXpm(3, 2, [["a", "#FF0000"]], ["aaa"]))
         AhkTest.AssertEqual("not enough image data", PillowTestFormatCaptureError(() => Pillow.Image.Open(xpmPath)))
         PillowTestWriteFileBuffer(xpmPath, Buffer(16, 0))
-        AhkTest.AssertEqual("cannot identify image file <" xpmPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(xpmPath)))
+        AhkTest.AssertEqual("cannot identify image file '" xpmPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(xpmPath)))
 
         ; --- saves raise the exact KeyError strings ---
         saveImage := Pillow.Image.New("L", [2, 2], 7)
@@ -25190,7 +25193,7 @@ PillowTestOpenThreeFormats(*) {
             PillowTestIptcField(3, 120, PillowTestBe16Bytes(1)),
             PillowTestIptcField(8, 10, Buffer(6, 0))
         ]))
-        AhkTest.AssertEqual("cannot identify image file <" iptcPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
+        AhkTest.AssertEqual("cannot identify image file '" iptcPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
 
         ; --- IPTC: error shapes ---
         PillowTestWriteFileBuffer(iptcPath, PillowTestConcatBuffers([
@@ -25205,7 +25208,7 @@ PillowTestOpenThreeFormats(*) {
         NumPut("UChar", 0x1C, badRecord, 0)
         NumPut("UChar", 11, badRecord, 1)
         PillowTestWriteFileBuffer(iptcPath, badRecord)
-        AhkTest.AssertEqual("cannot identify image file <" iptcPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
+        AhkTest.AssertEqual("cannot identify image file '" iptcPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(iptcPath)))
         illegal := Buffer(6, 0)
         NumPut("UChar", 0x1C, illegal, 0)
         NumPut("UChar", 3, illegal, 1)
@@ -25293,9 +25296,9 @@ PillowTestOpenThreeFormats(*) {
             openedMcPrefix.Close()
         }
         PillowTestWriteFileBuffer(mcPath, PillowTestMcIdas(3, 2, 2, Buffer(8, 0)))
-        AhkTest.AssertEqual("cannot identify image file <" mcPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(mcPath, ["MCIDAS"])))
+        AhkTest.AssertEqual("cannot identify image file '" mcPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(mcPath, ["MCIDAS"])))
         PillowTestWriteFileBuffer(mcPath, Buffer(64, 0))
-        AhkTest.AssertEqual("cannot identify image file <" mcPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(mcPath, ["MCIDAS"])))
+        AhkTest.AssertEqual("cannot identify image file '" mcPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(mcPath, ["MCIDAS"])))
         PillowTestWriteFileBuffer(mcPath, PillowTestMcIdas(1, 3, 2, Buffer(2, 0)))
         AhkTest.AssertEqual("image file is truncated (2 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(mcPath, ["MCIDAS"])))
 
@@ -25556,9 +25559,9 @@ PillowTestOpenPsd(*) {
         AhkTest.AssertEqual("not enough channels", PillowTestFormatCaptureError(() => Pillow.Image.Open(psdPath)))
         badMode := PillowTestPsd(9, 16, 3, 2, 2, [Buffer(4, 0)])
         PillowTestWriteFileBuffer(psdPath, badMode)
-        AhkTest.AssertEqual("cannot identify image file <" psdPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(psdPath)))
+        AhkTest.AssertEqual("cannot identify image file '" psdPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(psdPath)))
         PillowTestWriteFileBuffer(psdPath, Buffer(64, 0))
-        AhkTest.AssertEqual("cannot identify image file <" psdPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(psdPath)))
+        AhkTest.AssertEqual("cannot identify image file '" psdPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(psdPath)))
         truncated := PillowTestPsd(3, 8, 3, 3, 2, [Buffer(4, 0)])
         PillowTestWriteFileBuffer(psdPath, truncated)
         AhkTest.AssertEqual("image file is truncated (1 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(psdPath)))
@@ -25796,13 +25799,13 @@ PillowTestOpenFli(*) {
         PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, [PillowTestFliSubchunk(13, Buffer(0, 0))], , , , palette, prefix))
         AhkTest.AssertEqual("unrecognized data stream contents when reading image file", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
         PillowTestWriteFileBuffer(fliPath, Buffer(64, 0))
-        AhkTest.AssertEqual("cannot identify image file <" fliPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+        AhkTest.AssertEqual("cannot identify image file '" fliPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
         badFlags := PillowTestFli(4, 2, [PillowTestFliSubchunk(13, Buffer(0, 0))], , , , palette)
         NumPut("UChar", 1, badFlags, 20)
         PillowTestWriteFileBuffer(fliPath, badFlags)
-        AhkTest.AssertEqual("cannot identify image file <" fliPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+        AhkTest.AssertEqual("cannot identify image file '" fliPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
         PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, []))
-        AhkTest.AssertEqual("cannot identify image file <" fliPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+        AhkTest.AssertEqual("cannot identify image file '" fliPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
 
         ; --- save raises the exact KeyError ---
         saveImage := Pillow.Image.New("L", [2, 2], 7)
@@ -26106,18 +26109,18 @@ PillowTestOpenMic(*) {
 
         ; --- errors ---
         PillowTestWriteFileBuffer(micPath, PillowTestMic([["foo.txt/Data", PillowTestRangeBuffer(5000)]]))
-        AhkTest.AssertEqual("cannot identify image file <" micPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+        AhkTest.AssertEqual("cannot identify image file '" micPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
         PillowTestWriteFileBuffer(micPath, PillowTestMic([["pic.aci/Image", tiffL]]))
-        AhkTest.AssertEqual("cannot identify image file <" micPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+        AhkTest.AssertEqual("cannot identify image file '" micPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
         PillowTestWriteFileBuffer(micPath, PillowTestMic([["pic.ACI/Other", PillowTestRangeBuffer(5000)]]))
-        AhkTest.AssertEqual("cannot identify image file <" micPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+        AhkTest.AssertEqual("cannot identify image file '" micPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
         PillowTestWriteFileBuffer(micPath, PillowTestMic([["pic.ACI/Image", PillowTestBuffer([1, 2, 3, 4])]]))
-        AhkTest.AssertEqual("cannot identify image file <" micPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+        AhkTest.AssertEqual("cannot identify image file '" micPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
         PillowTestWriteFileBuffer(micPath, Buffer(64, 0))
-        AhkTest.AssertEqual("cannot identify image file <" micPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+        AhkTest.AssertEqual("cannot identify image file '" micPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
         truncated := PillowTestMic([["pic.ACI/Image", tiffL]])
         PillowTestWriteFileBuffer(micPath, PillowTestFliSlice(truncated, truncated.Size // 2))
-        AhkTest.AssertEqual("cannot identify image file <" micPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+        AhkTest.AssertEqual("cannot identify image file '" micPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
         headerOnly := Buffer(512, 0)
         loop 8 {
             headerBytes := [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]
@@ -26210,14 +26213,14 @@ PillowTestOpenPcd(*) {
         badMagic := PillowTestPcd(0)
         NumPut("UChar", Ord("N"), badMagic, 2048)
         PillowTestWriteFileBuffer(pcdPath, badMagic)
-        AhkTest.AssertEqual("cannot identify image file <" pcdPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(pcdPath)))
+        AhkTest.AssertEqual("cannot identify image file '" pcdPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(pcdPath)))
         shortHeader := Buffer(2052, 0)
         NumPut("UChar", Ord("P"), shortHeader, 2048)
         NumPut("UChar", Ord("C"), shortHeader, 2049)
         NumPut("UChar", Ord("D"), shortHeader, 2050)
         NumPut("UChar", Ord("_"), shortHeader, 2051)
         PillowTestWriteFileBuffer(pcdPath, shortHeader)
-        AhkTest.AssertEqual("cannot identify image file <" pcdPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(pcdPath)))
+        AhkTest.AssertEqual("cannot identify image file '" pcdPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(pcdPath)))
         PillowTestWriteFileBuffer(pcdPath, PillowTestPcd(0, 10000))
         AhkTest.AssertEqual("image file is truncated (1520 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(pcdPath)))
         PillowTestWriteFileBuffer(pcdPath, PillowTestPcd(0, 128 * 2304))
@@ -26259,11 +26262,11 @@ PillowTestOpenMpeg(*) {
 
         ; errors
         PillowTestWriteFileBuffer(mpegPath, Buffer(8, 0))
-        AhkTest.AssertEqual("cannot identify image file <" mpegPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(mpegPath)))
+        AhkTest.AssertEqual("cannot identify image file '" mpegPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(mpegPath)))
         PillowTestWriteFileBuffer(mpegPath, PillowTestFliSlice(header, 4))
-        AhkTest.AssertEqual("cannot identify image file <" mpegPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(mpegPath)))
+        AhkTest.AssertEqual("cannot identify image file '" mpegPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(mpegPath)))
         PillowTestWriteFileBuffer(mpegPath, PillowTestFliSlice(header, 6))
-        AhkTest.AssertEqual("cannot identify image file <" mpegPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(mpegPath)))
+        AhkTest.AssertEqual("cannot identify image file '" mpegPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(mpegPath)))
 
         ; save raises the exact KeyError
         saveImage := Pillow.Image.New("L", [2, 2], 7)
@@ -26386,12 +26389,12 @@ PillowTestOpenWmf(*) {
         PillowTestWriteFileBuffer(wmfPath, PillowTestWmf(, 0))
         AhkTest.AssertEqual("Invalid inch", PillowTestFormatCaptureError(() => Pillow.Image.Open(wmfPath)))
         PillowTestWriteFileBuffer(wmfPath, PillowTestWmf(, , , [0, 0, 0, 0]))
-        AhkTest.AssertEqual("cannot identify image file <" wmfPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(wmfPath)))
+        AhkTest.AssertEqual("cannot identify image file '" wmfPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(wmfPath)))
         PillowTestWriteFileBuffer(wmfPath, Buffer(64, 0))
-        AhkTest.AssertEqual("cannot identify image file <" wmfPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(wmfPath)))
+        AhkTest.AssertEqual("cannot identify image file '" wmfPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(wmfPath)))
         short := PillowTestWmf()
         PillowTestWriteFileBuffer(wmfPath, PillowTestFliSlice(short, 20))
-        AhkTest.AssertEqual("cannot identify image file <" wmfPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(wmfPath)))
+        AhkTest.AssertEqual("cannot identify image file '" wmfPath "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(wmfPath)))
 
         ; --- save raises the exact handler error ---
         saveImage := Pillow.Image.New("L", [2, 2], 7)
@@ -28524,6 +28527,57 @@ PillowTestErrorMessageParity(*) {
 }
 
 AhkTest.Test("Pillow Image error messages match Pillow 11.3.0", PillowTestErrorMessageParity)
+
+PillowTestDependencyGatedFormatErrors(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("RGB", [8, 8], [0, 0, 0])
+    try {
+        ; handler-based plugins with a missing handler
+        AhkTest.AssertEqual("BUFR save handler not installed", PillowTestFormatCaptureError(() => image.Save(PillowTestTempPngPath("gated-bufr"), "BUFR")))
+        AhkTest.AssertEqual("GRIB save handler not installed", PillowTestFormatCaptureError(() => image.Save(PillowTestTempPngPath("gated-grib"), "GRIB")))
+        AhkTest.AssertEqual("HDF5 save handler not installed", PillowTestFormatCaptureError(() => image.Save(PillowTestTempPngPath("gated-hdf5"), "HDF5")))
+        AhkTest.AssertEqual("WMF save handler not installed", PillowTestFormatCaptureError(() => image.Save(PillowTestTempPngPath("gated-wmf"), "WMF")))
+        ; open-only registrations raise the exact KeyError shape
+        AhkTest.AssertEqual("'FITS'", PillowTestFormatCaptureError(() => image.Save(PillowTestTempPngPath("gated-fits"), "FITS")))
+        AhkTest.AssertEqual("'MPEG'", PillowTestFormatCaptureError(() => image.Save(PillowTestTempPngPath("gated-mpeg"), "MPEG")))
+        ; missing codec encoders raise the exact encoder OSError
+        AhkTest.AssertEqual("encoder WebP not available", PillowTestFormatCaptureError(() => image.Save(PillowTestTempPngPath("gated-webp"), "WEBP")))
+        AhkTest.AssertEqual("encoder AVIF not available", PillowTestFormatCaptureError(() => image.Save(PillowTestTempPngPath("gated-avif"), "AVIF")))
+        AhkTest.AssertEqual("encoder JPEG2000 not available", PillowTestFormatCaptureError(() => image.Save(PillowTestTempPngPath("gated-j2k"), "JPEG2000")))
+        AhkTest.AssertEqual("encoder JPEG2000 not available", PillowTestFormatCaptureError(() => image.Save(PillowTestTempPngPath("gated-j2kalias"), "J2K")))
+        webpSavePath := A_Temp "\pillow-ahk-gated-path-" A_TickCount "-" Random(1, 1000000) ".webp"
+        AhkTest.AssertEqual("encoder WebP not available", PillowTestFormatCaptureError(() => image.Save(webpSavePath)))
+        PillowTestDeleteFile(webpSavePath)
+
+        ; open: bogus content keeps the UnidentifiedImageError shape
+        bogusBufr := A_Temp "\pillow-ahk-gated-o-" A_TickCount "-" Random(1, 1000000) ".bufr"
+        PillowTestWriteFileBytes(bogusBufr, [1, 2, 3, 4, 5, 6, 7, 8])
+        AhkTest.AssertEqual("cannot identify image file '" bogusBufr "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(bogusBufr)))
+        PillowTestDeleteFile(bogusBufr)
+
+        ; open: valid magic without the codec raises the exact decoder OSError
+        webpPath := A_Temp "\pillow-ahk-gated-o-" A_TickCount "-" Random(1, 1000000) ".webp"
+        PillowTestWriteFileBytes(webpPath, [0x52, 0x49, 0x46, 0x46, 0x24, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20])
+        AhkTest.AssertEqual("decoder webp not available", PillowTestFormatCaptureError(() => Pillow.Image.Open(webpPath)))
+        PillowTestDeleteFile(webpPath)
+        avifPath := A_Temp "\pillow-ahk-gated-o-" A_TickCount "-" Random(1, 1000000) ".avif"
+        PillowTestWriteFileBytes(avifPath, [0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66, 0, 0, 0, 0])
+        AhkTest.AssertEqual("decoder avif not available", PillowTestFormatCaptureError(() => Pillow.Image.Open(avifPath)))
+        PillowTestDeleteFile(avifPath)
+        jp2Path := A_Temp "\pillow-ahk-gated-o-" A_TickCount "-" Random(1, 1000000) ".jp2"
+        PillowTestWriteFileBytes(jp2Path, [0, 0, 0, 0x0C, 0x6A, 0x50, 0x20, 0x20, 0x0D, 0x0A, 0x87, 0x0A])
+        AhkTest.AssertEqual("decoder jpeg2000 not available", PillowTestFormatCaptureError(() => Pillow.Image.Open(jp2Path)))
+        PillowTestDeleteFile(jp2Path)
+        bogusWebp := A_Temp "\pillow-ahk-gated-ow-" A_TickCount "-" Random(1, 1000000) ".webp"
+        PillowTestWriteFileBytes(bogusWebp, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+        AhkTest.AssertEqual("cannot identify image file '" bogusWebp "'", PillowTestFormatCaptureError(() => Pillow.Image.Open(bogusWebp)))
+        PillowTestDeleteFile(bogusWebp)
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow dependency-gated format errors match Pillow 11.3.0", PillowTestDependencyGatedFormatErrors)
 
 PillowTestImageTransformClasses(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

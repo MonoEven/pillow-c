@@ -8397,6 +8397,10 @@ class Pillow {
         static Open(path, formats := unset) {
             if !(path is String)
                 throw Error("Pillow.Image.Open expects a file path", -1)
+            if !FileExist(path)
+                ; Pillow 11.3.0 raises the exact FileNotFoundError before
+                ; any format identification.
+                throw Error("[Errno 2] No such file or directory: '" path "'", -1)
             openFormats := Pillow.Image.ResolveOpenFormats(path, IsSet(formats) ? formats : unset)
 
             pathBytes := Pillow.Image.Utf8Buffer(path)
@@ -8416,7 +8420,7 @@ class Pillow {
                 } else if format = "PALM" {
                     ; BEHAV-PALM-001: Pillow registers no Palm OPEN, so
                     ; identification fails with the Pillow-shaped message.
-                    throw Error("cannot identify image file <" path ">", -1)
+                    throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "SPIDER" {
                     ; BEHAV-SPIDER-001: parse the float header records and
                     ; feed the native float32 samples into an F image.
@@ -8445,7 +8449,7 @@ class Pillow {
                     if lastStatus = -6
                         throw Error("image file is truncated (" Pillow.Image.SgiTruncatedCount(path) " bytes not processed)", -1)
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "DDS" {
                     ; BEHAV-DDS-001: the native DDS decoder returns local
                     ; status codes for Pillow's distinct error shapes;
@@ -8459,7 +8463,7 @@ class Pillow {
                     if lastStatus < -8
                         throw Error(Pillow.Image.DdsOpenError(lastStatus, path), -1)
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "ICNS" {
                     ; BEHAV-ICNS-001: the native ICNS decoder returns local
                     ; status codes for Pillow's load-time error shapes;
@@ -8485,7 +8489,7 @@ class Pillow {
                     if lastStatus = -25
                         throw Error("image file is truncated", -1)
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "EPS" {
                     ; BEHAV-EPS-001: Pillow's EpsImageFile parses the DSC
                     ; header at open (its SyntaxErrors collapse to the
@@ -8502,13 +8506,13 @@ class Pillow {
                     if epsError = 'EPS header missing "%!PS-Adobe" comment' || epsError = 'EPS header missing "%%BoundingBox" comment'
                         ; Pillow's Image.open wraps the plugin's
                         ; SyntaxError into UnidentifiedImageError.
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                     throw Error(epsError, -1)
                 } else if format = "PDF" {
                     ; BEHAV-PDF-001: Pillow 11.3.0 registers no PDF open
                     ; (PdfImagePlugin is save-only), so identification
                     ; fails exactly like an unknown file.
-                    throw Error("cannot identify image file <" path ">", -1)
+                    throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "PIXAR" {
                     ; BEHAV-OPEN-001: Pillow's PixarImageFile reads the
                     ; 512-byte header (size at 418/416, mode 14,2 = RGB)
@@ -8524,7 +8528,7 @@ class Pillow {
                     if lastStatus = -29
                         throw Error("image file is truncated (" Pillow.Image.OpenSimpleTruncatedCount(path, Pillow.Image.PixarWidth(path) * 3, 1024) " bytes not processed)", -1)
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "XVTHUMB" {
                     ; BEHAV-OPEN-001: Pillow's XVThumbImageFile parses
                     ; "P7 332", skips "#" comments, reads "W H", and
@@ -8541,7 +8545,7 @@ class Pillow {
                     if lastStatus = -29
                         throw Error("image file is truncated (" Pillow.Image.XvThumbTruncatedCount(path, Pillow.Image.XvThumbHeader(path)) " bytes not processed)", -1)
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "DCX" {
                     ; BEHAV-OPEN-001: Pillow's DcxImageFile is the PCX
                     ; multi-page container (LE32 directory, frames at
@@ -8555,7 +8559,7 @@ class Pillow {
                         "Int"
                     )
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "FTEX" {
                     ; BEHAV-OPEN-002: FtexImageFile — "FTEX" magic, one
                     ; format entry (else Pillow's AssertionError), format
@@ -8577,7 +8581,7 @@ class Pillow {
                     if lastStatus = -29
                         throw Error("image file is truncated (" Pillow.Image.FtexTruncatedCount(path) " bytes not processed)", -1)
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "SUN" {
                     ; BEHAV-OPEN-002: SunImageFile — big-endian 32-byte
                     ; header, depths 1/4/8/24/32 with the 16-bit-padded
@@ -8595,7 +8599,7 @@ class Pillow {
                     if lastStatus = -29
                         throw Error("image file is truncated (" Pillow.Image.OpenSimpleTruncatedCount(path, Pillow.Image.SunStride(path), 0) " bytes not processed)", -1)
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "GBR" {
                     ; BEHAV-OPEN-002: GbrImageFile — big-endian header
                     ; (version 1/2, depth 1 = L or 4 = RGBA), the GIMP
@@ -8611,7 +8615,7 @@ class Pillow {
                     if lastStatus = -31
                         throw Error("not enough image data", -1)
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "FITS" {
                     ; BEHAV-OPEN-002: FitsImageFile — 80-byte card walk,
                     ; 2880-boundary data offset with Pillow's tell()-80
@@ -8630,7 +8634,7 @@ class Pillow {
                     if lastStatus = -29
                         throw Error("image file is truncated (" Pillow.Image.FitsTruncatedCount(path) " bytes not processed)", -1)
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "XPM" {
                     ; BEHAV-OPEN-002: XpmImageFile — "/* XPM */" magic,
                     ; the quoted header, palette lines with "c" colors or
@@ -8654,7 +8658,7 @@ class Pillow {
                     if lastStatus = -39
                         throw Error("b'" Pillow.Image.XpmRgbUnknownKey(path) "'", -1)
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "IPTC" {
                     ; BEHAV-OPEN-003: IptcImageFile — facade-only field
                     ; walker; raw payloads become L images and JPEG
@@ -8700,7 +8704,7 @@ class Pillow {
                         throw Error("image file is truncated (0 bytes not processed)", -1)
                     }
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "FLI" {
                     ; BEHAV-OPEN-005: FliImageFile — the native opener
                     ; parses the 128-byte header (magic, zero field,
@@ -8733,7 +8737,7 @@ class Pillow {
                         throw Error("image file is truncated (" fliUnprocessed " bytes not processed)", -1)
                     }
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "MIC" {
                     ; BEHAV-OPEN-006: MicImageFile — the native opener
                     ; parses the OLE2/CFB container (v3: 512-byte
@@ -8754,7 +8758,7 @@ class Pillow {
                     if lastStatus = -52
                         throw Error("bytes length not a multiple of item size", -1)
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "PCD" {
                     ; BEHAV-OPEN-007: PcdImageFile — the native opener
                     ; decodes the 768x512 base image at sector 96 with
@@ -8783,7 +8787,7 @@ class Pillow {
                         throw Error("image file is truncated (" pcdUnprocessed " bytes not processed)", -1)
                     }
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "MPEG" {
                     ; BEHAV-OPEN-008: MpegImageFile parses the
                     ; 0x000001B3 sequence-header bits into an RGB
@@ -8793,7 +8797,7 @@ class Pillow {
                     ; short streams collapse to the identification
                     ; error; n_frames/is_animated are not exposed.
                     if !Pillow.Image.MpegAccepts(path)
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                     throw Error("cannot load this image", -1)
                 } else if format = "WMF" {
                     ; BEHAV-OPEN-009: WmfImageFile — the native opener
@@ -8818,7 +8822,7 @@ class Pillow {
                     if lastStatus = -58
                         throw Error("cannot select bitmap", -1)
                     if lastStatus = -3
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "HDF5" || format = "BUFR" || format = "GRIB" {
                     ; BEHAV-OPEN-001: the HDF5/BUFR/GRIB stub plugins
                     ; accept the magic and open an F(1,1) image whose
@@ -8826,13 +8830,13 @@ class Pillow {
                     ; the eager facade surfaces that load error at Open
                     ; (no handler is ever registered in this runtime).
                     if !Pillow.Image.StubAccepts(path, format)
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                     throw Error("cannot find loader for this " format " file", -1)
                 } else if format = "IMT" {
                     ; BEHAV-OPEN-001: Pillow 11.3.0 registers no IMT
                     ; format at all (the IM plugin only maps ".im"), so
                     ; identification fails.
-                    throw Error("cannot identify image file <" path ">", -1)
+                    throw Error("cannot identify image file '" path "'", -1)
                 } else if format = "MPO" {
                     ; BEHAV-MPO-001: Pillow opens MPO through the JPEG
                     ; factory — a file WITH the MPF index reports format
@@ -8847,6 +8851,14 @@ class Pillow {
                     )
                     if lastStatus = 0
                         format := Pillow.Image.MpoHasIndex(path) ? "MPO" : "JPEG"
+                } else if format = "WEBP" || format = "AVIF" || format = "JPEG2000" {
+                    ; BEHAV-ERRMSGS-002: Pillow identifies the magic even
+                    ; without the codec and then raises the exact decoder
+                    ; OSError; unknown content keeps the
+                    ; UnidentifiedImageError shape.
+                    if Pillow.Image.SniffCodecMagic(path, format)
+                        throw Error("decoder " StrLower(format) " not available", -1)
+                    throw Error("cannot identify image file '" path "'", -1)
                 } else {
                     lastStatus := DllCall(
                         Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
@@ -9902,6 +9914,40 @@ class Pillow {
             return [Pillow.Image.FormatFromPath(path)]
         }
 
+        static SniffCodecMagic(path, format) {
+            ; BEHAV-ERRMSGS-002: the byte signatures Pillow's WebP/AVIF/
+            ; JPEG2000 plugins accept, so a valid file without the codec
+            ; raises "decoder <name> not available" like Pillow.
+            file := FileOpen(path, "r")
+            if !file
+                return false
+            try {
+                header := Buffer(16, 0)
+                if file.RawRead(header, 16) < 12
+                    return false
+                if format = "WEBP" {
+                    return NumGet(header, 0, "UChar") = 0x52 && NumGet(header, 1, "UChar") = 0x49
+                        && NumGet(header, 2, "UChar") = 0x46 && NumGet(header, 3, "UChar") = 0x46
+                        && NumGet(header, 8, "UChar") = 0x57 && NumGet(header, 9, "UChar") = 0x45
+                        && NumGet(header, 10, "UChar") = 0x42 && NumGet(header, 11, "UChar") = 0x50
+                }
+                if format = "AVIF" {
+                    return NumGet(header, 4, "UChar") = 0x66 && NumGet(header, 5, "UChar") = 0x74
+                        && NumGet(header, 6, "UChar") = 0x79 && NumGet(header, 7, "UChar") = 0x70
+                        && NumGet(header, 8, "UChar") = 0x61 && NumGet(header, 9, "UChar") = 0x76
+                        && NumGet(header, 10, "UChar") = 0x69
+                        && (NumGet(header, 11, "UChar") = 0x66 || NumGet(header, 11, "UChar") = 0x73)
+                }
+                ; JPEG2000 signature (00 00 00 0C 6A 50 20 20)
+                return NumGet(header, 0, "UChar") = 0x00 && NumGet(header, 1, "UChar") = 0x00
+                    && NumGet(header, 2, "UChar") = 0x00 && NumGet(header, 3, "UChar") = 0x0C
+                    && NumGet(header, 4, "UChar") = 0x6A && NumGet(header, 5, "UChar") = 0x50
+                    && NumGet(header, 6, "UChar") = 0x20 && NumGet(header, 7, "UChar") = 0x20
+            } finally {
+                file.Close()
+            }
+        }
+
         static ResolveSaveFormat(path, format := unset) {
             if IsSet(format)
                 return Pillow.Image.NormalizeFileFormat(format)
@@ -10489,14 +10535,14 @@ class Pillow {
             ; w[15]+w[10]*bpp*w[14] with only the first w*bpp bytes used.
             data := Pillow.Image.ReadAllBytes(path)
             if data.Size < 256
-                throw Error("cannot identify image file <" path ">", -1)
+                throw Error("cannot identify image file '" path "'", -1)
             magicOk := true
             loop 7 {
                 if NumGet(data, A_Index - 1, "UChar") != 0
                     magicOk := false
             }
             if !magicOk || NumGet(data, 7, "UChar") != 4
-                throw Error("cannot identify image file <" path ">", -1)
+                throw Error("cannot identify image file '" path "'", -1)
             bpp := Pillow.Image.Be32At(data, 40)
             width := Pillow.Image.Be32At(data, 36)
             height := Pillow.Image.Be32At(data, 32)
@@ -10515,14 +10561,14 @@ class Pillow {
                 modeName := "I"
                 rawMode := "I;32B"
             } else {
-                throw Error("cannot identify image file <" path ">", -1)
+                throw Error("cannot identify image file '" path "'", -1)
             }
             if width <= 0 || height <= 0
-                throw Error("cannot identify image file <" path ">", -1)
+                throw Error("cannot identify image file '" path "'", -1)
             offset := offsetPrefix + prefixLen
             stride := prefixLen + width * bpp * aux
             if stride <= 0 || offset > data.Size
-                throw Error("cannot identify image file <" path ">", -1)
+                throw Error("cannot identify image file '" path "'", -1)
             present := data.Size - offset
             needed := (height - 1) * stride + width * bpp
             if present < needed
@@ -10571,11 +10617,11 @@ class Pillow {
                 if allZero
                     break
                 if NumGet(data, pos, "UChar") != 0x1C
-                    throw Error("cannot identify image file <" path ">", -1)
+                    throw Error("cannot identify image file '" path "'", -1)
                 record := NumGet(data, pos + 1, "UChar")
                 tagNum := NumGet(data, pos + 2, "UChar")
                 if !(record = 1 || record = 2 || record = 3 || record = 4 || record = 5 || record = 6 || record = 7 || record = 8 || record = 9 || record = 240)
-                    throw Error("cannot identify image file <" path ">", -1)
+                    throw Error("cannot identify image file '" path "'", -1)
                 sizeByte := NumGet(data, pos + 3, "UChar")
                 size := 0
                 headerLen := 5
@@ -10586,7 +10632,7 @@ class Pillow {
                 } else if sizeByte > 128 {
                     extBytes := sizeByte - 128
                     if pos + 5 + extBytes > data.Size
-                        throw Error("cannot identify image file <" path ">", -1)
+                        throw Error("cannot identify image file '" path "'", -1)
                     size := 0
                     loop extBytes
                         size := size * 256 + NumGet(data, pos + 4 + A_Index, "UChar")
@@ -10596,7 +10642,7 @@ class Pillow {
                 }
                 fieldData := pos + headerLen
                 if fieldData + size > data.Size
-                    throw Error("cannot identify image file <" path ">", -1)
+                    throw Error("cannot identify image file '" path "'", -1)
                 if record = 8 && tagNum = 10 {
                     sawData := true
                     if payloadStart = 0
@@ -10635,20 +10681,20 @@ class Pillow {
                 ; negative ids wrap from the end and out-of-range ids
                 ; raise IndexError (the identification error).
                 if id < -3 || id > 2
-                    throw Error("cannot identify image file <" path ">", -1)
+                    throw Error("cannot identify image file '" path "'", -1)
                 if id < 0
                     id := id + 3
                 modeChar := SubStr("RGB", id + 1, 1)
                 throw Error("No packer found from " modeChar " to " modeChar, -1)
             } else if layers = 4 && component {
                 if id < -4 || id > 3
-                    throw Error("cannot identify image file <" path ">", -1)
+                    throw Error("cannot identify image file '" path "'", -1)
                 if id < 0
                     id := id + 4
                 modeChar := SubStr("CMYK", id + 1, 1)
                 throw Error("No packer found from " modeChar " to " modeChar, -1)
             } else {
-                throw Error("cannot identify image file <" path ">", -1)
+                throw Error("cannot identify image file '" path "'", -1)
             }
             if !sawData || payloadStart = 0 || payloadEnd <= payloadStart
                 throw Error("cannot load this image", -1)
@@ -10691,7 +10737,7 @@ class Pillow {
                     FileDelete(tempPath)
                 } catch {
                 }
-                throw Error("cannot identify image file <" path ">", -1)
+                throw Error("cannot identify image file '" path "'", -1)
             }
         }
 
@@ -10849,10 +10895,10 @@ class Pillow {
             ; Ghostscript error) or Pillow's exact open-time message.
             file := FileOpen(path, "r")
             if !file
-                return "cannot identify image file <" path ">"
+                return "cannot identify image file '" path "'"
             try {
                 if file.Length < 4
-                    return "cannot identify image file <" path ">"
+                    return "cannot identify image file '" path "'"
                 head := Buffer(4, 0)
                 file.RawRead(head, 4)
                 if StrGet(head, 4, "UTF-8") = "%!PS" {
@@ -10863,7 +10909,7 @@ class Pillow {
                     file.RawRead(ext, 8)
                     file.Seek(NumGet(ext, 0, "Int"))
                 } else {
-                    return "cannot identify image file <" path ">"
+                    return "cannot identify image file '" path "'"
                 }
 
                 info := Map()
@@ -10878,7 +10924,7 @@ class Pillow {
                     if line = "" && file.AtEOF
                         break
                     if StrLen(line) > 255 && SubStr(line, 1, 1) = "%"
-                        return "cannot identify image file <" path ">"
+                        return "cannot identify image file '" path "'"
 
                     if readingHeader {
                         if SubStr(line, 1, 1) != "%" || SubStr(line, 1, 13) = "%%EndComments" {
@@ -11162,6 +11208,12 @@ class Pillow {
                 return "MPEG"
             if RegExMatch(path, "i)\.(wmf|emf)$")
                 return "WMF"
+            if RegExMatch(path, "i)\.webp$")
+                return "WEBP"
+            if RegExMatch(path, "i)\.avif$")
+                return "AVIF"
+            if RegExMatch(path, "i)\.(jp2|j2k|j2c|jpx)$")
+                return "JPEG2000"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -11189,9 +11241,11 @@ class Pillow {
             name := StrUpper(format)
             if name = "JPG"
                 return "JPEG"
+            if name = "J2K"
+                return "JPEG2000"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "FLI" || name = "MIC" || name = "PCD" || name = "MPEG" || name = "WMF" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "FLI" || name = "MIC" || name = "PCD" || name = "MPEG" || name = "WMF" || name = "WEBP" || name = "AVIF" || name = "JPEG2000" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -13022,6 +13076,11 @@ class Pillow {
                 saveOptions := options
 
             resolvedFormat := Pillow.Image.ResolveSaveFormat(path, IsSet(saveFormat) ? saveFormat : unset)
+            if resolvedFormat = "WEBP" || resolvedFormat = "AVIF" || resolvedFormat = "JPEG2000"
+                ; BEHAV-ERRMSGS-002: the DLL lacks these codec encoders;
+                ; Pillow without the codec raises the exact encoder OSError
+                ; with the canonical format name.
+                throw Error("encoder " (resolvedFormat = "JPEG2000" ? "JPEG2000" : resolvedFormat = "AVIF" ? "AVIF" : "WebP") " not available", -1)
             if resolvedFormat = "DIB" {
                 ; BEHAV-DIB-001: Pillow's DIB is byte-identical to its BMP
                 ; minus the 14-byte BITMAPFILEHEADER; save reuses the

@@ -83,12 +83,12 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-ERRMSGS-001 (the runtime error-message
-parity wave: resize resample/size, crop box order, getpixel
-coordinates, reduce scale, transpose method, histogram/entropy
-masks, point LUT, filter argument, and PNG dictionary — Pillow's
-exact ValueError/TypeError/IndexError shapes)
-after BEHAV-SAVEOPTS-006/
+Latest covered gap tail: BEHAV-ERRMSGS-002 (the dependency-gated
+format error shapes: BUFR/GRIB/HDF5/WMF/FITS/MPEG save and
+WebP/AVIF/JPEG2000 encode/decode when the DLL lacks the codec,
+plus the quoted UnidentifiedImageError form)
+after BEHAV-ERRMSGS-001/
+BEHAV-SAVEOPTS-006/
 BEHAV-SAVEOPTS-005/
 BEHAV-SAVEOPTS-004/
 BEHAV-SAVEOPTS-003/
@@ -461,10 +461,10 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-ERRMSGS-001` remainder (the dependency-gated
-  format error shapes: BUFR/GRIB/HDF5/WMF-save, FITS/MPEG open,
-  WebP/AVIF/JPEG2000/PDF), then the BNDRY-001/FMT-UNREC-001
-  format-plugin children.
+- Selected next gap: the BNDRY-001/FMT-UNREC-001 format-plugin children
+  (the pure-Python plugin implementations not yet covered), then
+  ImagePalette.load GIMP parsing, ImageFile.Parser feed/close
+  semantics, and TransposedFont.GetMask rasterization.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19568,6 +19568,29 @@ The facade target passes `1/1` in `0ms`; the full directory suite
 passes `2846/2846` in `22782ms` with zero failures, errors, or skips.
 The remaining API-ERRMSGS-001 items (the dependency-gated format error
 shapes) stay the next packet.
+```
+
+2026-08-15: `BEHAV-ERRMSGS-002` is GREEN as the dependency-gated format
+error-shape wave (the remaining API-ERRMSGS-001 items). The Pillow 11.3.0
+oracle pins: save through the handler-based plugins without a handler
+raises `OSError "<FMT> save handler not installed"` (BUFR/GRIB/HDF5/WMF);
+save through open-only registrations raises the bare `KeyError` shape
+(`'FITS'`, `'MPEG'`); save through codec encoders the DLL lacks raises
+`encoder WebP not available` / `encoder AVIF not available` / `encoder
+JPEG2000 not available` (Pillow's `encoder {name} not available` template
+with the canonical names; `J2K` normalizes to JPEG2000); open of content
+whose magic Pillow accepts raises `decoder webp/avif/jpeg2000 not
+available` (the `SniffCodecMagic` signatures: RIFF....WEBP, ftyp
+avif/avis, and the 00 00 00 0C 6A 50 20 20 JPEG2000 box), while bogus
+content keeps the UnidentifiedImageError; and the UnidentifiedImageError form is now Pillow's exact
+`cannot identify image file '<path>'` (single quotes) across all 39
+facade sites (the previous angle-bracket form was a facade invention),
+and a missing file raises Pillow's exact
+`[Errno 2] No such file or directory: '<path>'` before identification.
+All pure facade changes; the DLL is unchanged. The facade target passes
+`1/1` in `15ms`; the full directory suite passes `2847/2847` in
+`21094ms` with zero failures, errors, or skips. The next
+packets are the BNDRY-001/FMT-UNREC-001 format-plugin children.
 ```
 
 If any line above is no longer true, update this file first, then update

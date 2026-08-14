@@ -7222,3 +7222,13 @@ getpixel/reduce/transpose/mask/point/filter/dictionary message shapes
 against local Pillow 11.3.0. No native code changed: export parity stays
 `513/513` and the DLL SHA-256 stays
 `43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.
+
+2026-08-15 BEHAV-ERRMSGS-002 verification: the facade
+`Pillow dependency-gated format errors match Pillow 11.3.0` target passes
+`1/1` in `15ms`; the full directory suite passes `2847/2847` in `21094ms`
+with zero failures, errors, or skips. The oracle pins the handler/
+KeyError/encoder/decoder shapes, the quoted UnidentifiedImageError form
+(retired across all 39 facade sites plus 51 test pins), and the
+missing-file FileNotFoundError against local Pillow 11.3.0. No native
+code changed: export parity stays `513/513` and the DLL SHA-256 stays
+`43CBFB23EDDF67D6E10960F27CBD886CDC87E790B0062775C1F94FF56BCE9EE6`.
