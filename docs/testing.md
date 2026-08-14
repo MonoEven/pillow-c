@@ -47,8 +47,24 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2799` AHK tests: `1388` raw DLL tests and
-`1411` facade tests.
+This suite currently registers `2800` AHK tests: `1388` raw DLL tests and
+`1412` facade tests.
+
+Latest `API-PATH-001` verification: the Pillow 11.3.0 oracles (kept
+in `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and
+`oracle/probe_imagepath3.py`) show the simplified five-method
+`Image.core.path` (constructor pairs/flat with float coordinates,
+tolist flat pairs, getbbox with the empty (0,0,0,0) rule, in-place
+no-op compact, 6-value affine transform with Pillow's length error,
+None-returning callable map). The facade `Pillow.ImagePath.Path`
+mirrors all five. Facade-only change, no native rebuild: the
+ImagePath target passes `1/1` in `47ms`, and the full directory suite
+passes `2800/2800` in `19516ms`, with zero failures, errors, or
+skips. Source/DLL export parity remains `466/466` with zero
+difference, and the DLL SHA-256 remains
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The overall Pillow replacement-readiness estimate moves to `88% ±5%`.
 
 Latest `API-GRAB-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagegrab_clip.py` and

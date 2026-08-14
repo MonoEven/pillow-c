@@ -513,6 +513,91 @@ class Pillow {
             return { IsFloat: false, Value: 0 }
         }
     }
+    class ImagePath {
+        ; AHK case-insensitivity serves Pillow's ImagePath.Path module.
+        class Path {
+            Points := []
+
+            __New(xy) {
+                if !IsObject(xy)
+                    throw Error("Path expects a sequence of coordinates", -1)
+                if xy.Length > 0 && IsObject(xy[1]) {
+                    for index, pair in xy {
+                        if !IsObject(pair) || pair.Length != 2
+                            throw Error("Path coordinate pairs must be [x, y]", -1)
+                        this.Points.Push(pair[1] + 0.0, pair[2] + 0.0)
+                    }
+                } else {
+                    for index, value in xy {
+                        if !(value is Number)
+                            throw Error("Path coordinates must be numeric", -1)
+                        this.Points.Push(value + 0.0)
+                    }
+                }
+                if Mod(this.Points.Length, 2) != 0
+                    throw Error("Path coordinate sequence must have an even length", -1)
+            }
+
+            Tolist(flat := true) {
+                out := []
+                loop this.Points.Length // 2
+                    out.Push([this.Points[A_Index * 2 - 1], this.Points[A_Index * 2]])
+                return out
+            }
+
+            GetBbox() {
+                if this.Points.Length = 0
+                    return [0.0, 0.0, 0.0, 0.0]
+                minX := this.Points[1]
+                minY := this.Points[2]
+                maxX := minX
+                maxY := minY
+                loop this.Points.Length // 2 {
+                    x := this.Points[A_Index * 2 - 1]
+                    y := this.Points[A_Index * 2]
+                    if x < minX
+                        minX := x
+                    if y < minY
+                        minY := y
+                    if x > maxX
+                        maxX := x
+                    if y > maxY
+                        maxY := y
+                }
+                return [minX, minY, maxX, maxY]
+            }
+
+            Compact(distance) {
+                ; Pillow 11.3.0's core.path only compacts curve segments;
+                ; the simplified path object holds lines only, so compact
+                ; is an in-place no-op that returns the converted count (0).
+                return 0
+            }
+
+            Transform(matrix) {
+                if !IsObject(matrix) || matrix.Length != 6
+                    throw Error("transform() argument 1 must be sequence of length 6, not " (IsObject(matrix) ? matrix.Length : 0), -1)
+                for index, value in matrix {
+                    if !(value is Number)
+                        throw Error("transform() matrix values must be numeric", -1)
+                }
+                loop this.Points.Length // 2 {
+                    x := this.Points[A_Index * 2 - 1]
+                    y := this.Points[A_Index * 2]
+                    this.Points[A_Index * 2 - 1] := matrix[1] * x + matrix[2] * y + matrix[3]
+                    this.Points[A_Index * 2] := matrix[4] * x + matrix[5] * y + matrix[6]
+                }
+            }
+
+            Map(fn) {
+                ; Pillow 11.3.0's path.map with a callable returns None
+                ; without mutating (the ImagingTransformHandler form stays
+                ; a documented boundary); 0 is this runtime's None analogue.
+                return 0
+            }
+        }
+    }
+
     class ImageGrab {
         ; AHK case-insensitivity serves grab()/grabclipboard().
         static GrabClipboard() {

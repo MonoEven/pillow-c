@@ -217,6 +217,11 @@ BGR->RGB swap, 32bpp alpha dropped), 8bpp -> L index grayscale, 1bpp
 -> packed mode 1, DWORD-aligned strides; an empty/text clipboard
 returns status `0` with a null handle (the facade's None analogue).
 
+`API-PATH-001` changes no ABI at all: the facade `Pillow.ImagePath.Path`
+object (constructor/tolist/getbbox/compact/transform/map) mirrors
+Pillow 11.3.0's simplified path semantics; the DLL SHA-256 is
+unchanged.
+
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.
 

@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 87% (about ±5%) under
+Estimate: AHK-first Pillow-runtime overall completion 88% (about ±5%) under
 the real-workload Pillow replacement-readiness model — measured against
 the FULL Pillow 11.3.0 public surface since the AUDIT-002 re-audit.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
@@ -44,26 +44,25 @@ also COMPLETE), the complete facade API slice (`API-IMG-001D` getim,
 (`MODE-NUM-001CH`/`001CI`/`001CJ`), the complete numeric resize family
 (`MODE-NUM-001CK`/`001CL`/`001CM`/`001CN`), the complete I;16 numeric
 surface (`MODE-NUM-001CO`/`001CP`/`001CQ`), `BNDRY-001` the
-remaining-item boundary ledger, `API-MATH-001` the ImageMath
-eval/unsafe_eval arithmetic module, and `API-GRAB-001` — the
-ImageGrab screen/clipboard capture module (GDI BitBlt screen grabs
-with bbox/all_screens/include_layered, CF_DIB clipboard decoding for
-24/32/8/1bpp with Pillow's row-flip/BGR-swap/index-grayscale
-semantics, and Pillow's coordinate/error parity).
+remaining-item boundary ledger, `API-MATH-001` the ImageMath module,
+`API-GRAB-001` the ImageGrab capture module, and `API-PATH-001` —
+the ImagePath.Path object (Pillow 11.3.0's simplified five-method
+path: constructor pairs/flat, tolist, getbbox with the empty
+(0,0,0,0) rule, the in-place no-op compact, affine transform with
+Pillow's length error, and the None-returning callable map).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The grab slice was cross-verified against
-Pillow's grabclipboard outputs (exact bytes across all four DIB bit
-counts, `FAILURES: 0`), the grab filter passes `2/2` in `172ms`, the
-math filter passes `2/2` in `47ms`, and the full directory suite
-passes `2799/2799` in `21953ms`; source/DLL export parity moves to
-`466/466` (two deliberate new exports) with zero difference; and the
-DLL SHA-256 is
-`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+IFD as a writer artifact. The ImagePath slice was pinned by the
+Pillow probes (`oracle/probe_imagepath*.py`) and its facade target
+passes `1/1` in `47ms`; the full directory suite passes `2800/2800`
+in `19516ms`; source/DLL exports remain `466/466` with zero
+difference; and the DLL SHA-256 remains
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`
+(facade-only slice).
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is
-`API-PATH-001`, the ImagePath module (path objects for ImageDraw).
+`API-QTTK-001`, the ImageQt/ImageTk module-surface boundaries.
 ```
 
 Current work packet:
@@ -406,8 +405,8 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-PATH-001`, the ImagePath module (path objects
-  for ImageDraw).
+- Selected next gap: `API-QTTK-001`, the ImageQt/ImageTk module-surface
+  boundaries.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -481,6 +480,31 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `API-PATH-001` is GREEN for the ImagePath.Path object
+(facade-only). The Pillow 11.3.0 oracles (kept in
+`oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and
+`oracle/probe_imagepath3.py`) show Pillow 11.3.0's `Image.core.path`
+is a simplified five-method object: the constructor accepts flat
+sequences or (x, y) pair lists and keeps float coordinates; `tolist`
+returns flat (x, y) pairs in both flag modes; `getbbox` returns
+(minx, miny, maxx, maxy) floats with the empty path giving
+(0, 0, 0, 0); `compact` is an in-place no-op returning 0 because the
+simplified path holds lines only; `transform` applies a 6-value affine
+matrix with `transform() argument 1 must be sequence of length 6, not
+N`; and `map` with a callable returns None without mutating (the
+ImagingTransformHandler form stays a documented boundary). The facade
+adds `Pillow.ImagePath.Path` with `Tolist`/`GetBbox`/`Compact`/
+`Transform`/`Map` (AHK case-insensitivity serves the lowercase
+aliases; 0 is the None analogue). Facade-only change, no native
+rebuild: the ImagePath target passes `1/1` in `47ms`, and the full
+directory suite passes `2800/2800` in `19516ms`, with zero failures,
+errors, or skips. Source/DLL export parity remains `466/466` with
+zero difference, and the DLL SHA-256 remains
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `88% ±5%`. The next bounded child is
+`API-QTTK-001`, the ImageQt/ImageTk module-surface boundaries.
 
 2026-08-14: `API-GRAB-001` is GREEN for the ImageGrab screen/clipboard
 capture module — implemented, not bounded. The Pillow 11.3.0 oracles

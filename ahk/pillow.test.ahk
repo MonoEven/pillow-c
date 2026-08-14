@@ -22073,6 +22073,50 @@ PillowTestImageGrab(*) {
 
 AhkTest.Test("Pillow ImageGrab grabs the screen and clipboard with Pillow semantics", PillowTestImageGrab)
 
+PillowTestImagePath(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := Pillow.ImagePath.Path([[1, 1], [5, 5]])
+    AhkTest.AssertEqual([[1.0, 1.0], [5.0, 5.0]], path.Tolist())
+    AhkTest.AssertEqual([1.0, 1.0, 5.0, 5.0], path.GetBbox())
+    AhkTest.AssertEqual([[1.0, 1.0], [5.0, 5.0]], path.tolist())
+
+    flat := Pillow.ImagePath.Path([1, 1, 5, 5])
+    AhkTest.AssertEqual([[1.0, 1.0], [5.0, 5.0]], flat.Tolist())
+
+    floats := Pillow.ImagePath.Path([1.5, 2.5, 6.5, 7.5])
+    AhkTest.AssertEqual([[1.5, 2.5], [6.5, 7.5]], floats.Tolist())
+    AhkTest.AssertEqual([1.5, 2.5, 6.5, 7.5], floats.getbbox())
+
+    empty := Pillow.ImagePath.Path([])
+    AhkTest.AssertEqual([], empty.Tolist())
+    AhkTest.AssertEqual([0.0, 0.0, 0.0, 0.0], empty.GetBbox())
+
+    ; Pillow 11.3.0's simplified path holds lines only: compact is an
+    ; in-place no-op returning 0.
+    line := Pillow.ImagePath.Path([[0, 0], [2, 2], [4, 4], [6, 6], [6, 10], [0, 10]])
+    AhkTest.AssertEqual(0, line.Compact(0))
+    AhkTest.AssertEqual([[0.0, 0.0], [2.0, 2.0], [4.0, 4.0], [6.0, 6.0], [6.0, 10.0], [0.0, 10.0]], line.Tolist())
+
+    transformed := Pillow.ImagePath.Path([[0, 0], [10, 0]])
+    transformed.Transform([2.0, 0.0, 5.0, 0.0, 2.0, 5.0])
+    AhkTest.AssertEqual([[5.0, 5.0], [25.0, 5.0]], transformed.Tolist())
+
+    lengthError := ""
+    try {
+        Pillow.ImagePath.Path([[0, 0]]).Transform([1.0, 0.0, 0.0, 0.0, 1.0])
+    } catch Error as err {
+        lengthError := err.Message
+    }
+    AhkTest.AssertEqual("transform() argument 1 must be sequence of length 6, not 5", lengthError)
+
+    ; Pillow 11.3.0's map with a callable returns None without mutating.
+    mapped := Pillow.ImagePath.Path([[0, 0], [10, 10]])
+    AhkTest.AssertEqual(0, mapped.Map((x, y) => [x + 1, y + 2]))
+    AhkTest.AssertEqual([[0.0, 0.0], [10.0, 10.0]], mapped.Tolist())
+}
+
+AhkTest.Test("Pillow ImagePath.Path matches Pillow 11.3.0 path semantics", PillowTestImagePath)
+
 PillowTestImageDisplayApiBoundaries(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [2, 2], 7)

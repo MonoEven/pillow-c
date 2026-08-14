@@ -37,6 +37,41 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 API-PATH-001 ImagePath.Path Object (GREEN)
+
+`API-PATH-001` closes the ImagePath module (facade-only).
+
+The Pillow 11.3.0 oracles (kept in `oracle/probe_imagepath.py`,
+`oracle/probe_imagepath2.py`, and `oracle/probe_imagepath3.py`) show
+Pillow 11.3.0's `Image.core.path` is a simplified five-method object
+(the construction methods line/curve/arc/ellipse/rectangle were
+removed upstream): the constructor accepts flat sequences or (x, y)
+pair lists and keeps float coordinates; `tolist` returns flat (x, y)
+pairs in both flag modes; `getbbox` returns float
+(minx, miny, maxx, maxy) with the empty path giving (0, 0, 0, 0);
+`compact` is an in-place no-op returning 0 (the simplified path holds
+lines only); `transform` applies a 6-value affine matrix with
+`transform() argument 1 must be sequence of length 6, not N`; and
+`map` with a callable returns None without mutating (the
+ImagingTransformHandler form stays a documented boundary). The facade
+adds `Pillow.ImagePath.Path` with `Tolist`/`GetBbox`/`Compact`/
+`Transform`/`Map` (AHK case-insensitivity serves the lowercase
+aliases; 0 is the None analogue). No new export; parity remains
+`466/466` and the DLL SHA-256 is unchanged.
+
+Verification:
+
+- Red evidence: the module was absent (AUDIT-002).
+- Facade ImagePath target passes `1/1` in `47ms` (constructor forms,
+  float preservation, empty-path bbox, compact no-op, affine
+  transform, the length error, and the None-returning map).
+- Full AHK directory suite: `2800/2800` in `19516ms`; zero failures,
+  errors, or skips.
+
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `88% ±5%`. The next bounded child is
+`API-QTTK-001`, the ImageQt/ImageTk module-surface boundaries.
+
 ## 2026-08-14 API-GRAB-001 ImageGrab Capture Module (GREEN)
 
 `API-GRAB-001` closes the ImageGrab module with a full
@@ -39864,7 +39899,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | AUDIT-002 | Audit | covered | Independent Pillow 11.3.0 surface re-audit that demotes the estimate to `85% ±5%`: enumerated the real public surface (59 Image.Image names, 69 ImagingCore names, 23 submodules, 30 SAVE / 45 OPEN formats) and diffed it against the facade, finding the unrecorded gaps in the rows below. Evidence in `oracle/audit_pillow_surface.py`, `oracle/pillow_surface.json`, `oracle/audit_report_2026-08-14.md`. | Surface enumerator, facade/native diff, audit report, ledger demotion. |
 | API-MATH-001 | Facade API | covered | Bounded ImageMath eval/unsafe_eval arithmetic: Pillow 11.3.0's safe grammar over L/I/F operands — binary + - * / % & \| ^ << >> and comparisons, unary -/~, abs/min/max/float/int/convert, int/float literals; results mode I (int32, C truncation division and C remainder) or F (float32); RGB -> `unsupported mode: RGB`, unknown names -> `'X' not allowed`, float bitwise -> `bad operand type for 'and'`, constant-only expressions return scalars. The new `pillow_c_image_math_rpn` export evaluates a per-pixel RPN stack machine, and the facade ImageMath class adds the tokenizer/shunting-yard compiler/scalar evaluator with Pillow-shaped errors (Eval/UnsafeEval serve eval/unsafe_eval; variables as a Map). A ctypes cross-check matches 20 expressions byte-exactly (`FAILURES: 0`). Export parity moves to `464/464`. | `oracle/probe_imagemath.py`, `oracle/probe_imagemath2.py`, `oracle/probe_imagemath3.py`, `oracle/probe_imagemath_dll_compose.py`, `pillow_c_image_math_rpn`, facade `ImageMath` class, raw/facade math tests. |
 | API-GRAB-001 | Facade API | covered | ImageGrab implemented, not bounded: Pillow 11.3.0 grab() semantics (RGB screen captures via GDI BitBlt with bbox/all_screens/include_layered, GDI clipping for off-screen bboxes, the coordinate errors, empty-bbox empty image) and grabclipboard() CF_DIB decoding (24/32bpp -> RGB with bottom-up flip + BGR swap + 32bpp alpha drop, 8bpp -> L index grayscale, 1bpp -> packed mode 1, empty/text -> None). The new `pillow_c_grab.cpp` module adds `pillow_c_image_grab` and `pillow_c_image_grab_clipboard` (project now links gdi32/user32), and the facade `ImageGrab` class adds Grab/GrabClipboard with Pillow's errors. A ctypes cross-check matches Pillow byte-exactly across all four DIB bit counts and the empty path (`FAILURES: 0`). Export parity moves to `466/466`. | `oracle/probe_imagegrab_clip.py`, `oracle/probe_imagegrab_dib.py`, `oracle/probe_imagegrab_dll_compose.py`, `pillow_c_grab.cpp`, facade `ImageGrab` class, raw/facade grab tests. |
-| API-PATH-001 | Facade API | not started | ImagePath path objects (3 names) for ImageDraw — found by AUDIT-002. | Facade ImagePath or documented boundary. |
+| API-PATH-001 | Facade API | covered | ImagePath.Path object (facade-only): Pillow 11.3.0's `Image.core.path` is a simplified five-method object — constructor from flat/pair sequences with float coordinates, `tolist` flat (x,y) pairs, `getbbox` float (minx,miny,maxx,maxy) with empty -> (0,0,0,0), in-place no-op `compact` returning 0 (lines only), 6-value affine `transform` with Pillow's length error, and callable `map` returning None without mutating (ImagingTransformHandler form stays a documented boundary). The facade `Pillow.ImagePath.Path` mirrors all five (AHK case-insensitivity serves the aliases; 0 is the None analogue). Export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, `oracle/probe_imagepath3.py`, facade `ImagePath.Path` class, facade ImagePath test. |
 | API-QTTK-001 | Facade API | not started | ImageQt/ImageTk module surfaces (26/10 names) — only the toqimage/toqpixmap boundaries were recorded (API-IMG-001E); the module objects themselves are unrecorded. | Documented boundary or Qt/Tk dependency decision. |
 | API-FILE-001 | Facade API | not started | ImageFile module surface (Parser/ImageFile/StubImageFile/_save base classes, 31 names) — absent as a module; actual decode/encode runs through the native ABI. | Documented boundary (native ABI analogue) or facade module. |
 | API-PALETTE-001 | Facade API | not started | ImagePalette module (ImagePalette/PaletteFile/GimpPaletteFile/GimpGradientFile, wedge/sepia/random/raw/negative/make_gamma_lut/make_linear_lut, 18 names) — the facade `Palette` class is only WEB/ADAPTIVE constants. | Facade ImagePalette or documented boundary. |
