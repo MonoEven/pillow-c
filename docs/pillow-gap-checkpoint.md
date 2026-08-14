@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 92% (about ±5%) under
+Estimate: AHK-first Pillow-runtime overall completion 93% (about ±5%) under
 the real-workload Pillow replacement-readiness model — measured against
 the FULL Pillow 11.3.0 public surface since the AUDIT-002 re-audit.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
@@ -64,23 +64,30 @@ getdata/tobytes/tostring/copy/save covered exactly, plus raw/negative/
 sepia/wedge/make_linear_lut/make_gamma_lut covered exactly; random()
 shares Pillow's shape with the RNG stream a documented boundary, and
 load() with the GimpPaletteFile/GimpGradientFile/PaletteFile parser
-classes a documented fail-loud boundary), and `API-TRANSFORMCLS-001` —
+classes a documented fail-loud boundary), `API-TRANSFORMCLS-001` —
 the ImageTransform class objects (the base Transform data storage/
 getdata-shape/transform routing plus AffineTransform/ExtentTransform/
 PerspectiveTransform/QuadTransform/MeshTransform method constants,
-all covered exactly; the module itself fails loudly as not callable).
+all covered exactly; the module itself fails loudly as not callable),
+and `API-FONTVAR-001` — the ImageFont variation surface
+(TransposedFont orientation storage and the exact getbbox width/
+height normalization with the 90/270 swap and the rotate getlength
+ValueError, Layout's BASIC/RAQM IntEnum values covered exactly;
+getmask is a documented boundary because the runtime rasterizes text
+through the native draw seam, and Axis is Pillow's type-only
+TypedDict recorded as a boundary name).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The ImageTransform target passes `1/1` in
-`47ms`, and the full directory suite passes `2804/2804` in `20890ms`;
-source/DLL exports remain `466/466` with zero difference; and the DLL
-SHA-256 remains
+IFD as a writer artifact. The ImageFont variation target passes `1/1`
+in `46ms`, and the full directory suite passes `2805/2805` in
+`20094ms`; source/DLL exports remain `466/466` with zero difference;
+and the DLL SHA-256 remains
 `7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`
 (facade-only slice).
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is
-`API-FONTVAR-001`, the ImageFont variation surface.
+`API-READONLY-001`, the Image.readonly property surface.
 ```
 
 Current work packet:
@@ -497,6 +504,30 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `API-FONTVAR-001` is GREEN as the ImageFont variation
+surface (facade-only). The Pillow 11.3.0 oracle (kept in
+`oracle/probe_imagefont_var.py`) shows Layout is an IntEnum
+(BASIC=0, RAQM=1), Axis is a type-only TypedDict, and TransposedFont
+stores font/orientation, normalizes getbbox to (0, 0, w, h) with the
+width/height swap for ROTATE_90/ROTATE_270, delegates getlength
+except for the 90/270 `text length is undefined for text rotated by
+90 or 270 degrees` ValueError, and wraps getmask with a transpose.
+The facade `Pillow.ImageFont.TransposedFont` covers orientation
+storage, the exact getbbox normalization (oracle-verified
+[0, 0, 11, 8] / [0, 0, 8, 11] shapes), the getlength delegation and
+the 90/270 error, and `Layout` covers BASIC/RAQM exactly; getmask is
+a documented boundary (the runtime rasterizes text through the
+native draw seam and exposes no mask objects) and Axis is recorded
+as a type-only boundary name. Facade-only change, no native rebuild:
+the ImageFont variation target passes `1/1` in `46ms`, and the full
+directory suite passes `2805/2805` in `20094ms`, with zero failures,
+errors, or skips. Source/DLL export parity remains `466/466` (DLL
+byte-identical), and the DLL SHA-256 remains
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `93% ±5%`. The next bounded child is
+`API-READONLY-001`, the Image.readonly property surface.
 
 2026-08-14: `API-TRANSFORMCLS-001` is GREEN as the ImageTransform
 class-object surface (facade-only). The Pillow 11.3.0 oracle (kept in

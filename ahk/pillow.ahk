@@ -4351,6 +4351,43 @@ class Pillow {
                 return this.FontVariant()
             }
         }
+
+        class TransposedFont {
+            ; API-FONTVAR-001: Pillow 11.3.0's ImageFont.TransposedFont
+            ; wrapper for rotated/mirrored text. The orientation default
+            ; uses "" as the None analogue. GetMask stays a documented
+            ; boundary (the AHK runtime rasterizes text through the native
+            ; draw seam and exposes no mask objects); Pillow's Axis is a
+            ; type-only TypedDict and is recorded as a boundary name.
+            __New(font, orientation := unset) {
+                this.Font := font
+                this.Orientation := IsSet(orientation) ? orientation : ""
+            }
+
+            GetMask(text, mode := "", args*) {
+                throw Error("Pillow.ImageFont.TransposedFont.GetMask mask objects are not exposed by the AHK runtime; text rasterizes through the native draw seam", -1)
+            }
+
+            GetBbox(text, anchor := unset) {
+                bbox := IsSet(anchor) ? this.Font.GetBbox(text, anchor) : this.Font.GetBbox(text)
+                width := bbox[3] - bbox[1]
+                height := bbox[4] - bbox[2]
+                if this.Orientation = Pillow.Transpose.ROTATE_90 || this.Orientation = Pillow.Transpose.ROTATE_270
+                    return [0, 0, height, width]
+                return [0, 0, width, height]
+            }
+
+            GetLength(text) {
+                if this.Orientation = Pillow.Transpose.ROTATE_90 || this.Orientation = Pillow.Transpose.ROTATE_270
+                    throw Error("text length is undefined for text rotated by 90 or 270 degrees", -1)
+                return this.Font.GetLength(text)
+            }
+        }
+
+        class Layout {
+            static BASIC := 0
+            static RAQM := 1
+        }
     }
 
     class ImageDraw {

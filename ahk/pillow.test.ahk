@@ -22509,6 +22509,51 @@ PillowTestImageTransformClasses(*) {
 
 AhkTest.Test("Pillow ImageTransform class objects match Pillow 11.3.0", PillowTestImageTransformClasses)
 
+PillowTestImageFontVariation(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+
+    ; Layout is Pillow's IntEnum (BASIC=0, RAQM=1); Axis is a type-only
+    ; TypedDict recorded as a documented boundary name.
+    AhkTest.AssertEqual(0, Pillow.ImageFont.Layout.BASIC)
+    AhkTest.AssertEqual(1, Pillow.ImageFont.Layout.RAQM)
+
+    font := Pillow.ImageFont.LoadDefault()
+    try {
+        t := Pillow.ImageFont.TransposedFont(font)
+        AhkTest.AssertEqual("", t.Orientation)
+        bbox := font.GetBbox("ab")
+        expected := [0, 0, bbox[3] - bbox[1], bbox[4] - bbox[2]]
+        AhkTest.AssertEqual(expected, t.GetBbox("ab"))
+        AhkTest.AssertEqual(font.GetLength("ab"), t.GetLength("ab"))
+        ; rotated bbox swaps width/height and getlength fails loudly.
+        r := Pillow.ImageFont.TransposedFont(font, Pillow.Transpose.ROTATE_90)
+        AhkTest.AssertEqual([0, 0, bbox[4] - bbox[2], bbox[3] - bbox[1]], r.GetBbox("ab"))
+        lenError := ""
+        try {
+            r.GetLength("ab")
+        } catch Error as err {
+            lenError := err.Message
+        }
+        AhkTest.AssertEqual("text length is undefined for text rotated by 90 or 270 degrees", lenError)
+        ; flip orientations keep width/height and delegate length.
+        f := Pillow.ImageFont.TransposedFont(font, Pillow.Transpose.FLIP_LEFT_RIGHT)
+        AhkTest.AssertEqual(expected, f.GetBbox("ab"))
+        AhkTest.AssertEqual(font.GetLength("ab"), f.GetLength("ab"))
+        ; getmask is a documented boundary (no mask objects in this runtime).
+        maskError := ""
+        try {
+            t.GetMask("ab")
+        } catch Error as err {
+            maskError := err.Message
+        }
+        AhkTest.AssertEqual("Pillow.ImageFont.TransposedFont.GetMask mask objects are not exposed by the AHK runtime; text rasterizes through the native draw seam", maskError)
+    } finally {
+        font.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageFont variation surface matches Pillow 11.3.0", PillowTestImageFontVariation)
+
 PillowTestImageDisplayApiBoundaries(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [2, 2], 7)

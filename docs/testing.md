@@ -47,26 +47,27 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2804` AHK tests: `1388` raw DLL tests and
-`1416` facade tests.
+This suite currently registers `2805` AHK tests: `1388` raw DLL tests and
+`1417` facade tests.
 
-Latest `API-TRANSFORMCLS-001` verification: the Pillow 11.3.0 oracle
-(kept in `oracle/probe_imagetransform.py`) records the base
-`Transform` class (data storage, the base getdata AttributeError
-shape, transform routing) and the five method-constant subclasses;
-the module is not callable. The facade `Pillow.ImageTransform`
-covers all six classes exactly — `GetData()` returns `[method,
-data]`, `Transform()` routes through the facade `Image.Transform`
-seam (oracle-verified byte-equal affine identity, BILINEAR option,
-and extent routing), and constructing the module class fails loudly.
-Facade-only change, no native rebuild: the ImageTransform target
-passes `1/1` in `47ms`, and the full directory suite passes
-`2804/2804` in `20890ms`, with zero failures, errors, or skips.
-Source/DLL export parity remains `466/466` (DLL byte-identical), and
-the DLL SHA-256 remains
+Latest `API-FONTVAR-001` verification: the Pillow 11.3.0 oracle (kept
+in `oracle/probe_imagefont_var.py`) records Layout (BASIC=0/RAQM=1),
+the type-only Axis TypedDict, and TransposedFont semantics (getbbox
+normalization with the 90/270 swap, getlength delegation and the
+90/270 ValueError, getmask wrapping). The facade
+`Pillow.ImageFont.TransposedFont` covers orientation storage, the
+exact getbbox normalization, the getlength delegation and error, and
+`Layout` covers BASIC/RAQM exactly; getmask is a documented boundary
+(the runtime rasterizes text through the native draw seam) and Axis
+is a recorded type-only boundary name. Facade-only change, no
+native rebuild: the ImageFont variation target passes `1/1` in
+`46ms`, and the full directory suite passes `2805/2805` in
+`20094ms`, with zero failures, errors, or skips. Source/DLL export
+parity remains `466/466` (DLL byte-identical), and the DLL SHA-256
+remains
 `7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
 No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-The overall Pillow replacement-readiness estimate moves to `92% ±5%`.
+The overall Pillow replacement-readiness estimate moves to `93% ±5%`.
 
 Latest `API-PATH-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and

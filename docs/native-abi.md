@@ -261,6 +261,14 @@ QuadTransform/MeshTransform); constructing the module class fails
 loudly as Pillow's module is not callable; the DLL SHA-256 is
 unchanged.
 
+`API-FONTVAR-001` changes no ABI at all either: the facade
+`Pillow.ImageFont.TransposedFont` covers orientation storage, the
+exact getbbox (0, 0, w, h) normalization with the 90/270 swap, the
+getlength delegation and the 90/270 ValueError, and `Layout` covers
+BASIC/RAQM; getmask is a documented boundary (no mask objects
+exist — text rasterizes through the native draw seam) and Axis is
+Pillow's type-only TypedDict; the DLL SHA-256 is unchanged.
+
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.
 
