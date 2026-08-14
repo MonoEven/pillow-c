@@ -35,8 +35,13 @@ planar-slice quirk, row-padded 8-bit indices) plus the exact mode
 errors and the Pillow-shaped open-identification error; the DLL
 SHA-256 is unchanged.
 
+`BEHAV-SPIDER-001` changes no ABI at all either: the facade
+`SaveSpider`/`OpenSpiderHandle` reproduce Pillow's SPIDER float
+header records plus the `F;32NF` native float32 payload and the
+labbyt-based reopen; the DLL SHA-256 is unchanged.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`471/471`; the full AHK suite is `2815/2815`; and the current DLL SHA-256 is
+`471/471`; the full AHK suite is `2816/2816`; and the current DLL SHA-256 is
 `F221F74B23EED5BA832F5E551E46AA72B2B7B31C4A6CD1BD04AD656F214E45F8`
 (BEHAV-BLP-001 adds two deliberate exports — `pillow_c_image_open_blp`
 and `pillow_c_image_save_blp` (with the BLP1 flag), the exact

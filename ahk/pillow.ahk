@@ -7566,6 +7566,10 @@ class Pillow {
                     ; BEHAV-PALM-001: Pillow registers no Palm OPEN, so
                     ; identification fails with the Pillow-shaped message.
                     throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "SPIDER" {
+                    ; BEHAV-SPIDER-001: parse the float header records and
+                    ; feed the native float32 samples into an F image.
+                    lastStatus := Pillow.Image.OpenSpiderHandle(path, &outHandle)
                 } else {
                     lastStatus := DllCall(
                         Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
@@ -8486,6 +8490,69 @@ class Pillow {
             return Pillow.Image.ResolveOpenFormats(path, IsSet(formats) ? formats : unset)[1]
         }
 
+        static OpenSpiderHandle(path, &outHandle) {
+            ; BEHAV-SPIDER-001: the header carries labbyt at written float
+            ; 21 (byte 84) and the size at floats 11/1 (bytes 44/4); the
+            ; samples are native little-endian float32.
+            source := FileOpen(path, "r")
+            if !source
+                throw Error("Pillow.Image.Open SPIDER failed to open the source file", -1)
+            size := source.Length
+            if size < 92 {
+                source.Close()
+                outHandle := 0
+                return -3
+            }
+            payload := Buffer(size, 0)
+            source.RawRead(payload, size)
+            source.Close()
+            labbyt := Integer(NumGet(payload, 84, "Float"))
+            nsam := Integer(NumGet(payload, 44, "Float"))
+            nrow := Integer(NumGet(payload, 4, "Float"))
+            if labbyt < 92 || nsam <= 0 || nrow <= 0 || labbyt + nsam * nrow * 4 > size {
+                outHandle := 0
+                return -3
+            }
+            handle := 0
+            status := DllCall(
+                Pillow.RequireDllPath() "\pillow_c_image_create_mode",
+                "Int", nsam,
+                "Int", nrow,
+                "Int", Pillow.ModeId("F"),
+                "Ptr*", &handle,
+                "Int"
+            )
+            if status != 0 {
+                outHandle := 0
+                return status
+            }
+            try {
+                rawModeBytes := Pillow.Image.RawModeBuffer("F;32F")
+                status := DllCall(
+                    Pillow.RequireDllPath() "\pillow_c_image_set_raw_bytes",
+                    "Ptr", handle,
+                    "Ptr", payload.Ptr + labbyt,
+                    "UPtr", nsam * nrow * 4,
+                    "Ptr", rawModeBytes,
+                    "Int", 0,
+                    "Int", 1,
+                    "Int"
+                )
+                if status != 0
+                    throw Error("pillow_c: " Pillow.StatusMessage(status), status)
+                outHandle := handle
+                return 0
+            } catch Error as err {
+                DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", handle, "Int")
+                outHandle := 0
+                throw
+            } catch {
+                DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", handle, "Int")
+                outHandle := 0
+                return -3
+            }
+        }
+
         static ResolveOpenFormats(path, formats := unset) {
             if IsSet(formats) {
                 if !IsObject(formats)
@@ -8578,6 +8645,8 @@ class Pillow {
                 return "PALM"
             if RegExMatch(path, "i)\.blp$")
                 return "BLP"
+            if RegExMatch(path, "i)\.spider$")
+                return "SPIDER"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -8607,7 +8676,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -8621,6 +8690,7 @@ class Pillow {
                 "MSP", "Windows Paint",
                 "PALM", "Palm pixmap",
                 "BLP", "Blizzard Mipmap Format",
+                "SPIDER", "The Spider image format",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -10171,6 +10241,13 @@ class Pillow {
                     "Int", blp1,
                     "Int"
                 ))
+                return
+            }
+            if resolvedFormat = "SPIDER" {
+                ; BEHAV-SPIDER-001: Pillow's SPIDER is the float header
+                ; records plus raw native float32 samples; save composes
+                ; the exact header over the F;32NF raw encoder.
+                this.SaveSpider(path)
                 return
             }
             if IsSet(saveOptions) && resolvedFormat = "CUR" {
@@ -12224,6 +12301,45 @@ class Pillow {
                 target.RawWrite(padded.Ptr, padded.Size)
             } finally {
                 target.Close()
+            }
+        }
+
+        SaveSpider(path) {
+            ; BEHAV-SPIDER-001: Pillow 11.3.0's SPIDER is the float header
+            ; records (nvalues floats, Fortran 1-based fields shifted to a
+            ; 0-based written array) plus raw native float32 samples; save
+            ; composes the exact header over the F;32NF raw encoder.
+            w := this.Size[1]
+            h := this.Size[2]
+            lenbyt := w * 4
+            if lenbyt = 0
+                throw Error("cannot write zero-width image as SPIDER", -1)
+            labrec := (1024 + lenbyt - 1) // lenbyt
+            labbyt := labrec * lenbyt
+            header := Buffer(labbyt, 0)
+            NumPut("Float", 1.0, header, 0)
+            NumPut("Float", h, header, 4)
+            NumPut("Float", h, header, 8)
+            NumPut("Float", 1.0, header, 16)
+            NumPut("Float", w, header, 44)
+            NumPut("Float", labrec, header, 48)
+            NumPut("Float", labbyt, header, 84)
+            NumPut("Float", lenbyt, header, 88)
+            f := this.Mode = "F" ? this : this.Convert("F")
+            try {
+                data := f.ToBytes("raw", "F;32NF")
+                target := FileOpen(path, "w")
+                if !target
+                    throw Error("Pillow.Image.Save SPIDER failed to open the target file", -1)
+                try {
+                    target.RawWrite(header.Ptr, header.Size)
+                    target.RawWrite(data.Ptr, data.Size)
+                } finally {
+                    target.Close()
+                }
+            } finally {
+                if f != this
+                    f.Close()
             }
         }
 

@@ -37,6 +37,27 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 BEHAV-SPIDER-001 SPIDER Format (GREEN)
+
+`BEHAV-SPIDER-001` implements the SPIDER format with byte-level
+behavioral parity (facade-only).
+
+The Pillow 11.3.0 oracle (SpiderImagePlugin source plus fixtures)
+shows SPIDER is the float header records (nvalues floats; the
+Fortran 1-based fields shift to the written array with nslice=1,
+rows, records, iform=1, nsam, labrec=ceil(1024/lenbyt), labbyt,
+lenbyt) followed by raw native float32 samples (`F;32NF`), and the
+open parses labbyt/size from the header floats into an F image;
+non-F modes convert to float through the same raw encoder. The
+facade `SaveSpider`/`OpenSpiderHandle` reproduce the exact header
+and payload. The facade SPIDER target passes `1/1` in `47ms`
+(byte-exact embedded F fixture, the reopen matrix, the L-to-float
+save tail), and the full directory suite passes `2816/2816` in
+`20406ms`. Facade-only change: parity remains `471/471` and the DLL
+SHA-256 is unchanged. The SPIDER row left the FMT-UNREC-001
+boundary list. The next bounded child is `BEHAV-PCX-001`, the PCX
+format.
+
 ## 2026-08-14 BEHAV-BLP-001 BLP Format (GREEN)
 
 `BEHAV-BLP-001` implements the BLP (Blizzard Mipmap) format with
@@ -188,7 +209,7 @@ Classification of every boundary item (treatment applies per packet):
 | MSP | save mode 1 (probe in packet); others `cannot write mode X as MSP` | DONE — BEHAV-MSP-001 (byte-exact DanM header/rows + LinS RLE decode + exact mode errors) |
 | PALM | save P OK; others `cannot write mode X as Palm` | DONE — BEHAV-PALM-001 (byte-exact header + planar-slice colormap quirk + exact mode errors + the no-open identification error; L-with-bpp and mode-1 slices stay separate children) |
 | BLP | save P OK; L/RGB/RGBA `Unsupported BLP image mode` | DONE — BEHAV-BLP-001 (byte-exact BLP1/BLP2 headers + 1172-offset quirk + linear palette walk + decode; RGBA-palette alpha and DXT stay children) |
-| SPIDER | save L/RGB/RGBA/P OK (numpy); reopen as F | IMPLEMENT (facade float rows) |
+| SPIDER | save L/RGB/RGBA/P OK (numpy); reopen as F | DONE — BEHAV-SPIDER-001 (byte-exact float header + F;32NF payload + F reopen; facade-only) |
 | PCX | save L/RGB/P OK; RGBA `Cannot save RGBA images as PCX` | IMPLEMENT (native RLE packet) |
 | SGI | save L/RGB/RGBA OK; P `Unsupported SGI image mode` | IMPLEMENT (native RLE packet) |
 | DDS | save L/RGB/RGBA OK; P `cannot write mode P as DDS` | IMPLEMENT (native DXT packet) |

@@ -47,26 +47,23 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2815` AHK tests: `1391` raw DLL tests and
-`1424` facade tests.
+This suite currently registers `2816` AHK tests: `1391` raw DLL tests and
+`1425` facade tests.
 
-Latest `BEHAV-BLP-001` verification: the Pillow 11.3.0 oracle
-(BlpImagePlugin source plus fixtures) shows BLP is P-mode only —
-BLP2/BLP1 headers, a 128-byte preamble with Pillow's 1172-offset
-quirk, 256 quirky linear-walk palette entries, and raw indices,
-decoded back through the quirky palette into RGB. The new native
-`pillow_c_image_open_blp`/`save_blp` exports implement the exact
-layout (RGBA-palette alpha and DXT stay separate children), and the
-facade routes `.blp`/`BLP` with the `blp_version` option and Pillow's
-exact `Unsupported BLP image mode` error. The facade BLP target
-passes `1/1` (byte-exact BLP2 and BLP1 fixtures, the reopen matrix,
-five exact mode errors) and the raw BLP target passes `1/1`; the
-full directory suite passes `2815/2815` in `42047ms`, with zero
-failures, errors, or skips. Release x64 Rebuild is clean;
-source/DLL export parity moves to `471/471` with zero difference;
-and the rebuilt DLL SHA-256 is
+Latest `BEHAV-SPIDER-001` verification: the Pillow 11.3.0 oracle
+(SpiderImagePlugin source plus fixtures) shows SPIDER is the float
+header records plus raw native float32 samples (`F;32NF`), with the
+open parsing labbyt/size from the header floats into an F image and
+non-F modes converting to float through the same encoder. The facade
+`SaveSpider`/`OpenSpiderHandle` reproduce the exact header and
+payload. The facade SPIDER target passes `1/1` in `47ms` (byte-exact
+embedded F fixture, the reopen matrix, the L-to-float save tail),
+and the full directory suite passes `2816/2816` in `20406ms`, with
+zero failures, errors, or skips. Facade-only change: source/DLL
+export parity remains `471/471` (DLL byte-identical) and the DLL
+SHA-256 remains
 `F221F74B23EED5BA832F5E551E46AA72B2B7B31C4A6CD1BD04AD656F214E45F8`.
-The behavioral-parity wave continues with `BEHAV-SPIDER-001` next.
+The behavioral-parity wave continues with `BEHAV-PCX-001` next.
 
 Latest `API-PATH-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and

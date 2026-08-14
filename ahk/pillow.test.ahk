@@ -21917,9 +21917,10 @@ PillowTestUnrecordedFormatBoundaries(*) {
         ; per-handler on the rest), so open and save fail loudly with the
         ; same documented message. DIB left this list in BEHAV-DIB-001,
         ; IM in BEHAV-IM-001, MSP in BEHAV-MSP-001, PALM in
-        ; BEHAV-PALM-001, and BLP in BEHAV-BLP-001 (all now implemented
-        ; with Pillow's exact mode errors).
-        for format in ["BUFR", "GRIB", "HDF5", "SPIDER", "WMF", "FITS", "FPX", "FTEX", "GBR", "IMT", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD", "PIXAR", "XVTHUMB"] {
+        ; BEHAV-PALM-001, BLP in BEHAV-BLP-001, and SPIDER in
+        ; BEHAV-SPIDER-001 (all now implemented with Pillow's exact mode
+        ; errors).
+        for format in ["BUFR", "GRIB", "HDF5", "WMF", "FITS", "FPX", "FTEX", "GBR", "IMT", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD", "PIXAR", "XVTHUMB"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -22365,6 +22366,59 @@ PillowTestBlpFormat(*) {
 }
 
 AhkTest.Test("Pillow BLP format matches Pillow 11.3.0 bytes and round-trips", PillowTestBlpFormat)
+
+PillowTestSpiderFormat(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    path := A_Temp "\spider-1.spider"
+    lPath := A_Temp "\spider-2.spider"
+    try {
+        ; BEHAV-SPIDER-001: F-mode save is byte-exact against Pillow's
+        ; SPIDER writer (the 1032-byte float header for a 3x2 image plus
+        ; the native float32 samples; embedded fixture).
+        f := Pillow.Image.FromBytes("F", [3, 2], PillowTestBuffer(PillowTestBytesFromF32([0.5, 1.5, 2.5, -3.5, 4.5, 5.5])))
+        try {
+            f.Save(path, "SPIDER")
+        } finally {
+            f.Close()
+        }
+        AhkTest.AssertEqual(PillowTestBufferToArray(PillowTestBuffer(PillowTestHexBytes("0000803f0000004000000040000000000000803f000000000000000000000000000000000000000000000000000040400000ac4200000000000000000000000000000000000000000000000000000000000000000000814400004041000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003f0000c03f00002040000060c0000090400000b040"))), PillowTestReadFileBytes(path))
+        opened := Pillow.Image.Open(path)
+        try {
+            AhkTest.AssertEqual("SPIDER", opened.Format)
+            AhkTest.AssertEqual("F", opened.Mode)
+            AhkTest.AssertEqual([3, 2], opened.Size)
+            AhkTest.AssertEqual(0.5, opened.GetPixel([0, 0]))
+            AhkTest.AssertEqual(2.5, opened.GetPixel([2, 0]))
+            AhkTest.AssertEqual(-3.5, opened.GetPixel([0, 1]))
+            AhkTest.AssertEqual(5.5, opened.GetPixel([2, 1]))
+        } finally {
+            opened.Close()
+        }
+        ; non-F modes convert to float exactly like Pillow.
+        l := Pillow.Image.FromBytes("L", [3, 2], PillowTestBuffer([10, 20, 30, 40, 50, 60]))
+        try {
+            l.Save(lPath, "SPIDER")
+        } finally {
+            l.Close()
+        }
+        lBytes := PillowTestReadFileBytes(lPath)
+        AhkTest.AssertEqual(1056, lBytes.Length)
+        AhkTest.AssertEqual(PillowTestBufferToArray(PillowTestBuffer(PillowTestHexBytes("000020410000a0410000f041000020420000484200007042"))), PillowTestSliceBytes(lBytes, 1033, 24))
+        lOpened := Pillow.Image.Open(lPath)
+        try {
+            AhkTest.AssertEqual("F", lOpened.Mode)
+            AhkTest.AssertEqual(10.0, lOpened.GetPixel([0, 0]))
+            AhkTest.AssertEqual(60.0, lOpened.GetPixel([2, 1]))
+        } finally {
+            lOpened.Close()
+        }
+    } finally {
+        PillowTestDeleteFile(path)
+        PillowTestDeleteFile(lPath)
+    }
+}
+
+AhkTest.Test("Pillow SPIDER format matches Pillow 11.3.0 bytes and round-trips", PillowTestSpiderFormat)
 
 
 PillowTestImageMathEval(*) {

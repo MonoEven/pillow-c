@@ -523,6 +523,25 @@ Current work packet:
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
 
+2026-08-14: `BEHAV-SPIDER-001` is GREEN as the SPIDER format
+(behavioral parity, facade-only). The Pillow 11.3.0 oracle
+(SpiderImagePlugin source plus fixtures) shows SPIDER is the float
+header records (nvalues floats; the Fortran 1-based fields shift to
+the written array with nslice=1, rows, records, iform=1, nsam,
+labrec=ceil(1024/lenbyt), labbyt, lenbyt) followed by raw native
+float32 samples (`F;32NF`), and the open parses labbyt/size from the
+header floats into an F image; non-F modes convert to float through
+the same raw encoder. The facade `SaveSpider`/`OpenSpiderHandle`
+reproduce the exact header and payload. The facade SPIDER target
+passes `1/1` in `47ms` (byte-exact embedded F fixture, the reopen
+matrix, the L-to-float save tail), and the full directory suite
+passes `2816/2816` in `20406ms`, with zero failures, errors, or
+skips. Facade-only change: source/DLL export parity remains
+`471/471` (DLL byte-identical) and the DLL SHA-256 remains
+`F221F74B23EED5BA832F5E551E46AA72B2B7B31C4A6CD1BD04AD656F214E45F8`.
+The SPIDER row left the FMT-UNREC-001 boundary list. The next
+bounded child is `BEHAV-PCX-001`, the PCX format.
+
 2026-08-14: `BEHAV-BLP-001` is GREEN as the BLP format (behavioral
 parity). The Pillow 11.3.0 oracle (BlpImagePlugin source plus
 fixtures) shows BLP is P-mode only: BLP2 (20-byte header) or BLP1
