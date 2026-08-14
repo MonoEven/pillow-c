@@ -162,10 +162,30 @@ to the identification error. The HDF5/BUFR/GRIB stub opens and
 saves plus the DCX/PIXAR/XVTHUMB/IMT KeyError save strings are
 facade-only (no native surface beyond the openers).
 
+`BEHAV-OPEN-002` adds five deliberate exports —
+`pillow_c_image_open_ftex`, `pillow_c_image_open_sun`,
+`pillow_c_image_open_gbr`, `pillow_c_image_open_fits`, and
+`pillow_c_image_open_xpm` — that decode Pillow 11.3.0's
+FtexImageFile (raw RGB + DXT1/BC1 RGBA with bit-replication
+expansion), SunImageFile (depths 1/4/8/24/32 with the padded
+stride, the plane-major RGB;L palette, and the 0x80-escape RLE),
+GbrImageFile (version 1/2, depth 1/4), FitsImageFile (the 80-byte
+card walk, the tell()-80 data offset quirk, big-endian verbatim
+samples with bottom-up rows), and XpmImageFile (P/RGB modes with
+the quote-joined pixel rows). Local statuses -29..-39 carry the
+truncation/error shapes; the facade derives the row-modulo counts
+from the file headers and replays Pillow's exact messages
+(including the 11.3.0 fact that plugin ValueErrors/KeyErrors do
+NOT wrap to the identification error).
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`487/487`; the full AHK suite is `2825/2825`; and the current DLL SHA-256 is
-`7DE215308B71A8F1FCD28BFDE1CE18BF16930C9960DDAA682CBFEFF231615687`
-(BEHAV-OPEN-001 adds the `pillow_c_image_open_pixar`,
+`492/492`; the full AHK suite is `2826/2826`; and the current DLL SHA-256 is
+`24D6E15F69678B8EB2E40798F7D0754634A0A7413DA44A9A4320B878B40408BF`
+(BEHAV-OPEN-002 adds the `pillow_c_image_open_ftex`,
+`pillow_c_image_open_sun`, `pillow_c_image_open_gbr`,
+`pillow_c_image_open_fits`, and `pillow_c_image_open_xpm` exports
+below;
+BEHAV-OPEN-001 adds the `pillow_c_image_open_pixar`,
 `pillow_c_image_open_xvthumb`, and `pillow_c_image_open_dcx`
 exports below;
 BEHAV-PDF-001 adds the `pillow_c_image_save_pdf` and

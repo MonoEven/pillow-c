@@ -21931,7 +21931,7 @@ PillowTestUnrecordedFormatBoundaries(*) {
         ; errors). PIXAR/XVTHUMB/DCX plus the HDF5/BUFR/GRIB stub
         ; handlers and the IMT non-registration left this list in
         ; BEHAV-OPEN-001 (Pillow's exact KeyError/save-handler errors).
-        for format in ["WMF", "FITS", "FPX", "FTEX", "GBR", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD"] {
+        for format in ["WMF", "FPX", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -21940,7 +21940,7 @@ PillowTestUnrecordedFormatBoundaries(*) {
             }
             AhkTest.AssertEqual("Pillow image file format is unsupported", boundaryError)
         }
-        for extension in [".fits", ".wmf"] {
+        for extension in [".wmf"] {
             boundaryError := ""
             try {
                 Pillow.Image.Open(StrReplace(PillowTestTempPngPath("fmt-unrec-open"), ".png", extension))
@@ -24552,6 +24552,459 @@ PillowTestWriteMagicAndJunk(path, magic) {
 }
 
 AhkTest.Test("Pillow PIXAR XVTHUMB DCX and stub openers match Pillow 11.3.0 shapes and errors", PillowTestOpenSimpleFormats)
+
+PillowTestPutBe32(buf, offset, value) {
+    NumPut("UChar", (value >> 24) & 0xFF, buf, offset)
+    NumPut("UChar", (value >> 16) & 0xFF, buf, offset + 1)
+    NumPut("UChar", (value >> 8) & 0xFF, buf, offset + 2)
+    NumPut("UChar", value & 0xFF, buf, offset + 3)
+}
+
+PillowTestWriteByteArray(path, values) {
+    buf := Buffer(values.Length, 0)
+    for index, value in values
+        NumPut("UChar", value, buf, index - 1)
+    file := FileOpen(path, "w")
+    try
+        file.RawWrite(buf, buf.Size)
+    finally
+        file.Close()
+}
+
+PillowTestFtex(w, h, payload, formatId) {
+    out := Buffer(24 + 8 + 4 + payload.Size, 0)
+    NumPut("UInt", 0x58455446, out, 0)
+    NumPut("Int", 1, out, 4)
+    NumPut("Int", w, out, 8)
+    NumPut("Int", h, out, 12)
+    NumPut("Int", 1, out, 16)
+    NumPut("Int", 1, out, 20)
+    NumPut("Int", formatId, out, 24)
+    NumPut("UInt", 32, out, 28)
+    NumPut("Int", payload.Size, out, 32)
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + 36, "Ptr", payload, "UPtr", payload.Size, "CDecl Ptr")
+    return out
+}
+
+PillowTestSun(w, h, depth, data, fileType := 1, paletteType := 0, palette := unset) {
+    palSize := IsSet(palette) ? palette.Size : 0
+    out := Buffer(32 + palSize + data.Size, 0)
+    PillowTestPutBe32(out, 0, 0x59A66A95)
+    PillowTestPutBe32(out, 4, w)
+    PillowTestPutBe32(out, 8, h)
+    PillowTestPutBe32(out, 12, depth)
+    PillowTestPutBe32(out, 16, data.Size)
+    PillowTestPutBe32(out, 20, fileType)
+    PillowTestPutBe32(out, 24, paletteType)
+    PillowTestPutBe32(out, 28, palSize)
+    if palSize
+        DllCall("msvcrt\memcpy", "Ptr", out.Ptr + 32, "Ptr", palette, "UPtr", palSize, "CDecl Ptr")
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + 32 + palSize, "Ptr", data, "UPtr", data.Size, "CDecl Ptr")
+    return out
+}
+
+PillowTestGbr(w, h, depth, data, version := 1, comment := "") {
+    commentBytes := Buffer(StrPut(comment, "UTF-8"), 0)
+    StrPut(comment, commentBytes, "UTF-8")
+    headerSize := 20 + commentBytes.Size - 1 + (version = 1 ? 1 : 9)
+    out := Buffer(headerSize + data.Size, 0)
+    PillowTestPutBe32(out, 0, headerSize)
+    PillowTestPutBe32(out, 4, version)
+    PillowTestPutBe32(out, 8, w)
+    PillowTestPutBe32(out, 12, h)
+    PillowTestPutBe32(out, 16, depth)
+    offset := 20
+    if version = 2 {
+        NumPut("UChar", Ord("G"), out, offset)
+        NumPut("UChar", Ord("I"), out, offset + 1)
+        NumPut("UChar", Ord("M"), out, offset + 2)
+        NumPut("UChar", Ord("P"), out, offset + 3)
+        PillowTestPutBe32(out, offset + 4, 25)
+        offset += 8
+    }
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", commentBytes, "UPtr", commentBytes.Size - 1, "CDecl Ptr")
+    NumPut("UChar", 10, out, offset + commentBytes.Size - 1)
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + headerSize, "Ptr", data, "UPtr", data.Size, "CDecl Ptr")
+    return out
+}
+
+PillowTestFits(bitpix, naxis1, naxis2, payload) {
+    lines := ["SIMPLE  =                    T",
+              "BITPIX  = " Format("{:20d}", bitpix),
+              "NAXIS   = " Format("{:20d}", naxis2 ? 2 : 0),
+              "NAXIS1  = " Format("{:20d}", naxis1),
+              "NAXIS2  = " Format("{:20d}", naxis2),
+              "END"]
+    header := Buffer(2880, 32)
+    offset := 0
+    for line in lines {
+        for char in StrSplit(line)
+            NumPut("UChar", Ord(char), header, offset + A_Index - 1)
+        offset += 80
+    }
+    out := Buffer(2880 + payload.Size, 0)
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr, "Ptr", header, "UPtr", 2880, "CDecl Ptr")
+    if payload.Size
+        DllCall("msvcrt\memcpy", "Ptr", out.Ptr + 2880, "Ptr", payload, "UPtr", payload.Size, "CDecl Ptr")
+    return out
+}
+
+PillowTestXpm(w, h, colors, pixels, bpp := 1) {
+    text := "/* XPM */`n`"" w " " h " " colors.Length " " bpp "`"`n"
+    for entry in colors
+        text .= "`"" entry[1] " c " entry[2] "`",`n"
+    text .= "/* pixels */`n"
+    for row in pixels
+        text .= "`"" row "`",`n"
+    return PillowTestTextBytes(text)
+}
+
+PillowTestOpenMidFormats(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    ftexPath := A_Temp "\open-mid.ftu"
+    sunPath := A_Temp "\open-mid.ras"
+    gbrPath := A_Temp "\open-mid.gbr"
+    fitsPath := A_Temp "\open-mid.fits"
+    xpmPath := A_Temp "\open-mid.xpm"
+    savePath := A_Temp "\open-mid-save.bin"
+    try {
+        ; --- FTEX: raw RGB, DXT1, and the error shapes ---
+        rgbPayload := Buffer(18, 0)
+        index := 0
+        loop 2 {
+            y := A_Index - 1
+            loop 3 {
+                x := A_Index - 1
+                loop 3 {
+                    NumPut("UChar", Mod(x * 7 + y, 256), rgbPayload, index)
+                    index += 1
+                }
+            }
+        }
+        PillowTestWriteFileBuffer(ftexPath, PillowTestFtex(3, 2, rgbPayload, 1))
+        opened := Pillow.Image.Open(ftexPath)
+        try {
+            AhkTest.AssertEqual("FTEX", opened.Format)
+            AhkTest.AssertEqual("RGB", opened.Mode)
+            AhkTest.AssertEqual([3, 2], opened.Size)
+            AhkTest.AssertEqual("0000000707070e0e0e0101010808080f0f0f", PillowTestPdfBytesToHex(PillowTestBufferToArray(opened.ToBytes())))
+        } finally {
+            opened.Close()
+        }
+        short := Buffer(10, 0)
+        loop 10
+            NumPut("UChar", A_Index - 1, short, A_Index - 1)
+        PillowTestWriteFileBuffer(ftexPath, PillowTestFtex(3, 2, short, 1))
+        AhkTest.AssertEqual("image file is truncated (1 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(ftexPath)))
+        dxt1 := Buffer(8, 0)
+        NumPut("UShort", 0x7C00, dxt1, 0)
+        NumPut("UShort", 0x0000, dxt1, 2)
+        NumPut("UInt", 0x00000000, dxt1, 4)
+        PillowTestWriteFileBuffer(ftexPath, PillowTestFtex(4, 4, dxt1, 0))
+        openedDxt := Pillow.Image.Open(ftexPath)
+        try {
+            AhkTest.AssertEqual("RGBA", openedDxt.Mode)
+            AhkTest.AssertEqual([4, 4], openedDxt.Size)
+            AhkTest.AssertEqual("7b8200ff7b8200ff7b8200ff7b8200ff7b8200ff7b8200ff7b8200ff7b8200ff7b8200ff7b8200ff7b8200ff7b8200ff7b8200ff7b8200ff7b8200ff7b8200ff", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedDxt.ToBytes())))
+        } finally {
+            openedDxt.Close()
+        }
+        PillowTestWriteFileBuffer(ftexPath, PillowTestFtex(3, 2, rgbPayload, 7))
+        AhkTest.AssertEqual("Invalid texture compression format: 7", PillowTestFormatCaptureError(() => Pillow.Image.Open(ftexPath)))
+        multiFtex := Buffer(24 + 64, 0)
+        NumPut("UInt", 0x58455446, multiFtex, 0)
+        NumPut("Int", 1, multiFtex, 4)
+        NumPut("Int", 3, multiFtex, 8)
+        NumPut("Int", 2, multiFtex, 12)
+        NumPut("Int", 1, multiFtex, 16)
+        NumPut("Int", 2, multiFtex, 20)
+        PillowTestWriteFileBuffer(ftexPath, multiFtex)
+        AhkTest.AssertEqual("", PillowTestFormatCaptureError(() => Pillow.Image.Open(ftexPath)))
+        PillowTestWriteFileBuffer(ftexPath, Buffer(16, 0))
+        AhkTest.AssertEqual("cannot identify image file <" ftexPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(ftexPath)))
+
+        ; --- SUN: depths, palette, RLE, and error shapes ---
+        sun1 := Buffer(4, 0)
+        NumPut("UChar", 0x80, sun1, 0)
+        NumPut("UChar", 0x40, sun1, 1)
+        NumPut("UChar", 0xC0, sun1, 2)
+        PillowTestWriteFileBuffer(sunPath, PillowTestSun(3, 2, 1, sun1))
+        openedSun1 := Pillow.Image.Open(sunPath)
+        try {
+            AhkTest.AssertEqual("SUN", openedSun1.Format)
+            AhkTest.AssertEqual("1", openedSun1.Mode)
+            AhkTest.AssertEqual([0x60, 0x20], PillowTestBufferToArray(openedSun1.ToBytes()))
+        } finally {
+            openedSun1.Close()
+        }
+        sun8 := Buffer(8, 0)
+        loop 8
+            NumPut("UChar", A_Index - 1, sun8, A_Index - 1)
+        PillowTestWriteFileBuffer(sunPath, PillowTestSun(3, 2, 8, sun8))
+        openedSun8 := Pillow.Image.Open(sunPath)
+        try {
+            AhkTest.AssertEqual("L", openedSun8.Mode)
+            AhkTest.AssertEqual([0, 1, 2, 4, 5, 6], PillowTestBufferToArray(openedSun8.ToBytes()))
+        } finally {
+            openedSun8.Close()
+        }
+        sun24 := Buffer(24, 0)
+        loop 24
+            NumPut("UChar", A_Index - 1, sun24, A_Index - 1)
+        PillowTestWriteFileBuffer(sunPath, PillowTestSun(3, 2, 24, sun24, 1))
+        openedSun24 := Pillow.Image.Open(sunPath)
+        try {
+            AhkTest.AssertEqual("0201000504030807060c0b0a0f0e0d121110", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedSun24.ToBytes())))
+        } finally {
+            openedSun24.Close()
+        }
+        PillowTestWriteFileBuffer(sunPath, PillowTestSun(3, 2, 24, sun24, 3))
+        openedSun24rgb := Pillow.Image.Open(sunPath)
+        try {
+            AhkTest.AssertEqual("0001020304050607080a0b0c0d0e0f101112", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedSun24rgb.ToBytes())))
+        } finally {
+            openedSun24rgb.Close()
+        }
+        sun4 := Buffer(4, 0)
+        NumPut("UChar", 0x12, sun4, 0)
+        NumPut("UChar", 0x34, sun4, 1)
+        NumPut("UChar", 0x56, sun4, 2)
+        NumPut("UChar", 0x78, sun4, 3)
+        PillowTestWriteFileBuffer(sunPath, PillowTestSun(3, 2, 4, sun4))
+        openedSun4 := Pillow.Image.Open(sunPath)
+        try {
+            AhkTest.AssertEqual([0x11, 0x22, 0x33, 0x55, 0x66, 0x77], PillowTestBufferToArray(openedSun4.ToBytes()))
+        } finally {
+            openedSun4.Close()
+        }
+        sunPal := Buffer(6, 0)
+        NumPut("UChar", 10, sunPal, 0)
+        NumPut("UChar", 20, sunPal, 1)
+        NumPut("UChar", 30, sunPal, 2)
+        NumPut("UChar", 40, sunPal, 3)
+        NumPut("UChar", 50, sunPal, 4)
+        NumPut("UChar", 60, sunPal, 5)
+        sunPalData := Buffer(8, 0)
+        loop 4 {
+            NumPut("UChar", 0, sunPalData, (A_Index - 1) * 2)
+            NumPut("UChar", 1, sunPalData, (A_Index - 1) * 2 + 1)
+        }
+        PillowTestWriteFileBuffer(sunPath, PillowTestSun(3, 2, 8, sunPalData, 1, 1, sunPal))
+        openedSunPal := Pillow.Image.Open(sunPath)
+        try {
+            AhkTest.AssertEqual("P", openedSunPal.Mode)
+            AhkTest.AssertEqual([10, 30, 50, 20, 40, 60], PillowTestArraySlice(openedSunPal.GetPalette(), 1, 6))
+        } finally {
+            openedSunPal.Close()
+        }
+        sunRle := Buffer(12, 0)
+        NumPut("UChar", 0x80, sunRle, 0)
+        NumPut("UChar", 0x02, sunRle, 1)
+        NumPut("UChar", 7, sunRle, 2)
+        NumPut("UChar", 8, sunRle, 3)
+        loop 5
+            NumPut("UChar", 9, sunRle, 3 + A_Index)
+        PillowTestWriteFileBuffer(sunPath, PillowTestSun(3, 2, 8, sunRle, 2))
+        openedSunRle := Pillow.Image.Open(sunPath)
+        try {
+            AhkTest.AssertEqual([7, 7, 7, 8, 9, 9], PillowTestBufferToArray(openedSunRle.ToBytes()))
+        } finally {
+            openedSunRle.Close()
+        }
+        rleShort := Buffer(3, 0)
+        NumPut("UChar", 0x80, rleShort, 0)
+        NumPut("UChar", 0x80, rleShort, 1)
+        NumPut("UChar", 0x80, rleShort, 2)
+        PillowTestWriteFileBuffer(sunPath, PillowTestSun(3, 2, 8, rleShort, 2))
+        openedRleShort := Pillow.Image.Open(sunPath)
+        try {
+            AhkTest.AssertEqual([0x80, 0x80, 0x80, 0x80, 0x80, 0x80], PillowTestBufferToArray(openedRleShort.ToBytes()))
+        } finally {
+            openedRleShort.Close()
+        }
+        sunTrunc := Buffer(6, 0)
+        loop 6
+            NumPut("UChar", A_Index - 1, sunTrunc, A_Index - 1)
+        PillowTestWriteFileBuffer(sunPath, PillowTestSun(3, 2, 8, sunTrunc))
+        AhkTest.AssertEqual("image file is truncated (2 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(sunPath)))
+        PillowTestWriteFileBuffer(sunPath, PillowTestSun(3, 2, 6, Buffer(4, 0)))
+        AhkTest.AssertEqual("cannot identify image file <" sunPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(sunPath)))
+        PillowTestWriteFileBuffer(sunPath, Buffer(32, 0))
+        AhkTest.AssertEqual("cannot identify image file <" sunPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(sunPath)))
+
+        ; --- GBR: version 1/2, info fields, and errors ---
+        gbrData := Buffer(6, 0)
+        loop 6
+            NumPut("UChar", A_Index - 1, gbrData, A_Index - 1)
+        PillowTestWriteFileBuffer(gbrPath, PillowTestGbr(3, 2, 1, gbrData, 1))
+        openedGbr := Pillow.Image.Open(gbrPath)
+        try {
+            AhkTest.AssertEqual("GBR", openedGbr.Format)
+            AhkTest.AssertEqual("L", openedGbr.Mode)
+            AhkTest.AssertEqual([0, 1, 2, 3, 4, 5], PillowTestBufferToArray(openedGbr.ToBytes()))
+            AhkTest.AssertEqual("", openedGbr.Info["comment"])
+        } finally {
+            openedGbr.Close()
+        }
+        gbrRgba := Buffer(24, 0)
+        loop 24
+            NumPut("UChar", A_Index - 1, gbrRgba, A_Index - 1)
+        PillowTestWriteFileBuffer(gbrPath, PillowTestGbr(3, 2, 4, gbrRgba, 2, "hello"))
+        openedGbr2 := Pillow.Image.Open(gbrPath)
+        try {
+            AhkTest.AssertEqual("RGBA", openedGbr2.Mode)
+            AhkTest.AssertEqual("hello", openedGbr2.Info["comment"])
+            AhkTest.AssertEqual(25, openedGbr2.Info["spacing"])
+        } finally {
+            openedGbr2.Close()
+        }
+        PillowTestWriteFileBuffer(gbrPath, PillowTestGbr(3, 2, 1, Buffer(1, 0), 1))
+        AhkTest.AssertEqual("not enough image data", PillowTestFormatCaptureError(() => Pillow.Image.Open(gbrPath)))
+        badGbr := Buffer(36, 0)
+        PillowTestPutBe32(badGbr, 0, 12)
+        PillowTestWriteFileBuffer(gbrPath, badGbr)
+        AhkTest.AssertEqual("cannot identify image file <" gbrPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(gbrPath)))
+        badGbr2 := Buffer(36, 0)
+        PillowTestPutBe32(badGbr2, 0, 20)
+        PillowTestPutBe32(badGbr2, 4, 3)
+        PillowTestWriteFileBuffer(gbrPath, badGbr2)
+        AhkTest.AssertEqual("cannot identify image file <" gbrPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(gbrPath)))
+
+        ; --- FITS: BITPIX matrix, bottom-up rows, and error shapes ---
+        fits8 := Buffer(80, 0)
+        loop 80
+            NumPut("UChar", A_Index - 1, fits8, A_Index - 1)
+        PillowTestWriteFileBuffer(fitsPath, PillowTestFits(8, 40, 2, fits8))
+        openedFits := Pillow.Image.Open(fitsPath)
+        try {
+            AhkTest.AssertEqual("FITS", openedFits.Format)
+            AhkTest.AssertEqual("L", openedFits.Mode)
+            AhkTest.AssertEqual([40, 2], openedFits.Size)
+            AhkTest.AssertEqual("28292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2021222324252627", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedFits.ToBytes())))
+        } finally {
+            openedFits.Close()
+        }
+        fits16 := Buffer(40, 0)
+        loop 40
+            NumPut("UChar", A_Index - 1, fits16, A_Index - 1)
+        PillowTestWriteFileBuffer(fitsPath, PillowTestFits(16, 10, 2, fits16))
+        openedFits16 := Pillow.Image.Open(fitsPath)
+        try {
+            AhkTest.AssertEqual("I;16", openedFits16.Mode)
+            AhkTest.AssertEqual("20202020202020202020202020202020202020202020202020202020202020202020202020202020", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedFits16.ToBytes())))
+        } finally {
+            openedFits16.Close()
+        }
+        fits32 := Buffer(80, 0)
+        offset := 0
+        loop 20 {
+            PillowTestPutBe32(fits32, offset, A_Index - 1)
+            offset += 4
+        }
+        PillowTestWriteFileBuffer(fitsPath, PillowTestFits(32, 10, 2, fits32))
+        openedFits32 := Pillow.Image.Open(fitsPath)
+        try {
+            AhkTest.AssertEqual("I", openedFits32.Mode)
+            AhkTest.AssertEqual("0000000a0000000b0000000c0000000d0000000e0000000f0000001000000011000000120000001300000000000000010000000200000003000000040000000500000006000000070000000800000009", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedFits32.ToBytes())))
+        } finally {
+            openedFits32.Close()
+        }
+        fitsf := Buffer(80, 0)
+        offset := 0
+        loop 20 {
+            tmp := Buffer(4, 0)
+            NumPut("Float", A_Index - 1, tmp, 0)
+            PillowTestPutBe32(fitsf, offset, NumGet(tmp, 0, "UInt"))
+            offset += 4
+        }
+        PillowTestWriteFileBuffer(fitsPath, PillowTestFits(-32, 10, 2, fitsf))
+        openedFitsF := Pillow.Image.Open(fitsPath)
+        try {
+            AhkTest.AssertEqual("F", openedFitsF.Mode)
+            AhkTest.AssertEqual("41200000413000004140000041500000416000004170000041800000418800004190000041980000000000003f80000040000000404000004080000040a0000040c0000040e000004100000041100000", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedFitsF.ToBytes())))
+        } finally {
+            openedFitsF.Close()
+        }
+        PillowTestWriteFileBuffer(fitsPath, PillowTestFits(8, 0, 0, Buffer(0, 0)))
+        AhkTest.AssertEqual("Truncated FITS file", PillowTestFormatCaptureError(() => Pillow.Image.Open(fitsPath)))
+        PillowTestWriteFileBuffer(fitsPath, Buffer(64, 0))
+        AhkTest.AssertEqual("cannot identify image file <" fitsPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(fitsPath)))
+        PillowTestWriteFileBuffer(fitsPath, PillowTestFits(8, 3, 2, Buffer(2, 0)))
+        openedFitsQuirk := Pillow.Image.Open(fitsPath)
+        try {
+            ; the sub-80-byte payload quirk: Pillow's offset math lands in
+            ; the header padding and the decode reads spaces
+            AhkTest.AssertEqual("202020202020", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedFitsQuirk.ToBytes())))
+        } finally {
+            openedFitsQuirk.Close()
+        }
+
+        ; --- XPM: P/RGB modes, transparency, and error shapes ---
+        PillowTestWriteByteArray(xpmPath, PillowTestXpm(3, 2, [["a", "#FF0000"], [".", "#00FF00"]], ["a.a", ".a."]))
+        openedXpm := Pillow.Image.Open(xpmPath)
+        try {
+            AhkTest.AssertEqual("XPM", openedXpm.Format)
+            AhkTest.AssertEqual("P", openedXpm.Mode)
+            AhkTest.AssertEqual([3, 2], openedXpm.Size)
+            AhkTest.AssertEqual([0, 1, 0, 1, 0, 1], PillowTestBufferToArray(openedXpm.ToBytes()))
+            AhkTest.AssertEqual([255, 0, 0, 0, 255, 0], PillowTestArraySlice(openedXpm.GetPalette(), 1, 6))
+        } finally {
+            openedXpm.Close()
+        }
+        xpmRgbColors := []
+        loop 300
+            xpmRgbColors.Push([Format("{:03d}", A_Index - 1), Format("#{:02x}{:02x}{:02x}", Mod((A_Index - 1) * 3, 256), Mod((A_Index - 1) * 5, 256), Mod((A_Index - 1) * 7, 256))])
+        PillowTestWriteByteArray(xpmPath, PillowTestXpm(3, 2, xpmRgbColors, ["000001002", "003004005"], 3))
+        openedXpmRgb := Pillow.Image.Open(xpmPath)
+        try {
+            AhkTest.AssertEqual("RGB", openedXpmRgb.Mode)
+            AhkTest.AssertEqual("000000030507060a0e090f150c141c0f1923", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedXpmRgb.ToBytes())))
+        } finally {
+            openedXpmRgb.Close()
+        }
+        PillowTestWriteByteArray(xpmPath, PillowTestXpm(2, 1, [["a", "None"], [".", "#112233"]], ["a."]))
+        openedXpmNone := Pillow.Image.Open(xpmPath)
+        try {
+            AhkTest.AssertEqual("P", openedXpmNone.Mode)
+            AhkTest.AssertEqual("a", openedXpmNone.Info["transparency"])
+        } finally {
+            openedXpmNone.Close()
+        }
+        PillowTestWriteByteArray(xpmPath, PillowTestXpm(2, 1, [["a", "rgb:1/2/3"]], ["aa"]))
+        AhkTest.AssertEqual("cannot read this XPM file", PillowTestFormatCaptureError(() => Pillow.Image.Open(xpmPath)))
+        PillowTestWriteByteArray(xpmPath, PillowTestXpm(2, 1, [["a", "#FF0000"]], ["ab"]))
+        AhkTest.AssertEqual("tuple.index(x): x not in tuple", PillowTestFormatCaptureError(() => Pillow.Image.Open(xpmPath)))
+        PillowTestWriteByteArray(xpmPath, PillowTestXpm(3, 2, [["a", "#FF0000"]], ["aaa"]))
+        AhkTest.AssertEqual("not enough image data", PillowTestFormatCaptureError(() => Pillow.Image.Open(xpmPath)))
+        PillowTestWriteFileBuffer(xpmPath, Buffer(16, 0))
+        AhkTest.AssertEqual("cannot identify image file <" xpmPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(xpmPath)))
+
+        ; --- saves raise the exact KeyError strings ---
+        saveImage := Pillow.Image.New("L", [2, 2], 7)
+        try {
+            for saveFormatName in ["FTEX", "SUN", "GBR", "FITS", "XPM"]
+                PillowTestAssertSaveKeyError(saveImage, savePath, saveFormatName)
+        } finally {
+            saveImage.Close()
+        }
+
+        ; --- format descriptions ---
+        AhkTest.AssertEqual("Texture File Format (IW2:EOC)", Pillow.Image.FormatDescription("FTEX"))
+        AhkTest.AssertEqual("Sun Raster File", Pillow.Image.FormatDescription("SUN"))
+        AhkTest.AssertEqual("GIMP brush file", Pillow.Image.FormatDescription("GBR"))
+        AhkTest.AssertEqual("FITS", Pillow.Image.FormatDescription("FITS"))
+        AhkTest.AssertEqual("X11 Pixel Map", Pillow.Image.FormatDescription("XPM"))
+    } finally {
+        PillowTestDeleteFile(ftexPath)
+        PillowTestDeleteFile(sunPath)
+        PillowTestDeleteFile(gbrPath)
+        PillowTestDeleteFile(fitsPath)
+        PillowTestDeleteFile(xpmPath)
+        PillowTestDeleteFile(savePath)
+    }
+}
+
+AhkTest.Test("Pillow FTEX SUN GBR FITS XPM openers match Pillow 11.3.0 shapes and errors", PillowTestOpenMidFormats)
 
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

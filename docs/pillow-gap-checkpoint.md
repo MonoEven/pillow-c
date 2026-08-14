@@ -25,13 +25,14 @@ Estimate (AUDIT-003, the behavioral standard): literal 100% runtime
 identity with the local Pillow 11.3.0 build is NOT reachable and is
 no longer claimed. The honest split:
 
-- Formats: SAVE 20/30 and OPEN 22/45 byte-exact and test-pinned;
-  ICNS, EPS, MPO, PDF, PIXAR, XVTHUMB, and DCX are DONE
-  (BEHAV-ICNS-001 / BEHAV-EPS-001 / BEHAV-MPO-001 / BEHAV-PDF-001 /
-  BEHAV-OPEN-001); the
+- Formats: SAVE 20/30 and OPEN 27/45 byte-exact and test-pinned;
+  ICNS, EPS, MPO, PDF, PIXAR, XVTHUMB, DCX, FTEX, SUN, GBR, FITS,
+  and XPM are DONE (BEHAV-ICNS-001 / BEHAV-EPS-001 /
+  BEHAV-MPO-001 / BEHAV-PDF-001 / BEHAV-OPEN-001 / BEHAV-OPEN-002);
+  the
   matchable remainder is bounded
-  (0 saves left; 11
-  opens: FITS/FLI/FTEX/GBR/IPTC/MCIDAS/MIC/PCD/PSD/SUN/XPM (IMT is
+  (0 saves left; 6
+  opens: FLI/IPTC/MCIDAS/MIC/PCD/PSD (IMT is
   NOT registered in 11.3.0 — probe-verified no-op); the
   MPEG header-then-cannot-load error match;
   PDF open is unregistered in 11.3.0 -> identification error (DONE
@@ -70,14 +71,15 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-OPEN-001 (PIXAR/XVTHUMB/DCX openers
-plus the HDF5/BUFR/GRIB stub open/save handler errors and the IMT
-non-registration) after BEHAV-PDF-001/
+Latest covered gap tail: BEHAV-OPEN-002 (FTEX/SUN/GBR/FITS/XPM
+openers with Pillow's exact decodes and error shapes) after
+BEHAV-OPEN-001/
+BEHAV-PDF-001/
 BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
 the next bounded child is the remaining pure-Python open families
-(FITS/FLI/FTEX/GBR/IPTC/MCIDAS/MIC/PCD/PSD/SUN/XPM), then the MPEG
+(FLI/IPTC/MCIDAS/MIC/PCD/PSD), then the MPEG
 error match and WMF open, then
 the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
@@ -530,6 +532,52 @@ errors, or skips. Facade-only change: source/DLL export parity
 remains `482/482` and the DLL SHA-256 remains
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
 The next bounded child is `BEHAV-PDF-001`, the PDF format.
+
+2026-08-14: `BEHAV-OPEN-002` is GREEN as the FTEX/SUN/GBR/FITS/XPM
+openers. The Pillow 11.3.0 oracle (`oracle/probe_open_mid.py`/
+`probe_open_mid.json` and the ctypes cross-check in
+`oracle/probe_open_mid_dll.py`) pins FtexImageFile (magic `FTEX`,
+one format entry — else Pillow's AssertionError — format 1 = raw
+RGB at the directory offset with the row-modulo truncation count,
+format 0 = DXT1/BC1 RGBA blocks with bit-replication expansion and
+the `(0 bytes not processed)` short shape, other ids = the exact
+`Invalid texture compression format: N` ValueError),
+SunImageFile (big-endian 32-byte header, depths 1/4/8/24/32 with
+the 16-bit-padded stride and the `1;I`/`L;4`/`L`/`RGB`/`BGR`/
+`RGBX`/`BGRX` raw modes, the plane-major `RGB;L` palette converting
+8-bit to P, file type 2 = the 0x80-escape RLE where a zero count
+emits the 0x80 itself and count+1 copies of the value follow with
+EOF runs repeating the value but literal EOF raising `(0 bytes not
+processed)`, and every unsupported header shape collapsing to the
+identification error), GbrImageFile (BE header, versions 1/2 with
+the `GIMP` magic and spacing info, depth 1 = L / 4 = RGBA, comment
+info, short data = the exact `not enough image data` ValueError),
+FitsImageFile (the 80-byte card walk, the 2880-boundary END jump,
+Pillow's `tell()-80` data offset including the sub-80-byte payload
+quirk that reads header padding, BITPIX 8/16/32/-32/-64 as
+L/I;16/I/F with verbatim big-endian samples and bottom-up rows,
+`Truncated FITS file`/`No image data` OSError/ValueError shapes),
+and XpmImageFile (`/* XPM */` magic, the quoted header, palette
+lines with `c` colors or `None` transparency keys, P (<= 256
+colors, exact-size palette) or RGB (> 256) mode, quote-joined
+pixel rows with the one-shot `/* pixels */` skip, `cannot read this
+XPM file`, `not enough image data`, and the P-mode
+`tuple.index(x): x not in tuple` / RGB-mode KeyError shapes —
+ValueError does NOT wrap to the identification error in 11.3.0).
+Five deliberate native exports (`pillow_c_image_open_ftex`/
+`open_sun`/`open_gbr`/`open_fits`/`open_xpm`) implement the
+decoders; the facade replays the exact messages, exposes
+GBR comment/spacing and XPM transparency info, matches the
+KeyError save strings, and keeps the truncation counts file-derived.
+The facade mid-group target passes `1/1` in `31ms`; the full
+directory suite passes `2826/2826` in `21531ms` with zero failures,
+errors, or skips. Release x64 Rebuild has `0 Warning(s), 0
+Error(s)`; source/DLL export parity moves to `492/492` (five
+deliberate new exports) with zero difference; and the rebuilt DLL
+SHA-256 is
+`24D6E15F69678B8EB2E40798F7D0754634A0A7413DA44A9A4320B878B40408BF`.
+The next bounded child is the remaining pure-Python open families
+(FLI/IPTC/MCIDAS/MIC/PCD/PSD).
 
 2026-08-14: `BEHAV-OPEN-001` is GREEN as the PIXAR/XVTHUMB/DCX
 openers plus the HDF5/BUFR/GRIB stub handlers. The Pillow 11.3.0

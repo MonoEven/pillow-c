@@ -2447,6 +2447,16 @@ int open_pcx_image(const char* path, PillowCImage** out_image)
 // routes. -29 means the raw payload is short; the facade computes
 // Pillow's per-row "bytes not processed" count from the file itself.
 constexpr int PILLOW_C_OPEN_TRUNCATED = -29;
+// BEHAV-OPEN-002: FTEX/SUN/GBR/FITS/XPM local status codes.
+constexpr int PILLOW_C_OPEN_MULTI_FORMAT = -30;   // FTEX AssertionError
+constexpr int PILLOW_C_OPEN_NOT_ENOUGH = -31;     // "not enough image data"
+constexpr int PILLOW_C_OPEN_RLE_TRUNCATED = -32;  // "(0 bytes not processed)"
+constexpr int PILLOW_C_OPEN_FITS_TRUNCATED = -33; // "Truncated FITS file"
+constexpr int PILLOW_C_OPEN_FITS_NO_DATA = -34;   // "No image data"
+constexpr int PILLOW_C_OPEN_XPM_BAD = -35;        // "cannot read this XPM file"
+constexpr int PILLOW_C_OPEN_XPM_KEY = -36;        // "tuple.index(x): x not in tuple"
+constexpr int PILLOW_C_OPEN_XPM_RGB_KEY = -39;    // RGB-mode KeyError (facade rescan)
+constexpr int PILLOW_C_OPEN_FTEX_FORMAT = -38;    // "Invalid texture compression format"
 
 int open_pixar_image(const char* path, PillowCImage** out_image)
 {
@@ -2652,6 +2662,851 @@ int open_dcx_image(const char* path, PillowCImage** out_image)
     }
     std::vector<std::uint8_t> inner(data.begin() + static_cast<std::ptrdiff_t>(first_offset), data.end());
     return open_pcx_from_data(inner, out_image);
+}
+
+// ---------------------------------------------------------------------------
+// BEHAV-OPEN-002: FTEX / SUN / GBR / FITS / XPM openers.
+// ---------------------------------------------------------------------------
+
+void decode_bc1_block(const std::uint8_t* block, int dst_x, int dst_y,
+                      int width, int height, std::uint8_t* pixels, std::size_t stride)
+{
+    const std::uint16_t c0 = read_le16(block);
+    const std::uint16_t c1 = read_le16(block + 2);
+    const std::uint32_t indices = read_le32(block + 4);
+    const auto expand5 = [](std::uint32_t v) {
+        return static_cast<std::uint8_t>((v << 3) | (v >> 2));
+    };
+    const auto expand6 = [](std::uint32_t v) {
+        return static_cast<std::uint8_t>((v << 2) | (v >> 4));
+    };
+    const std::uint8_t color0[4] = {
+        expand5((c0 >> 11) & 31u),
+        expand6((c0 >> 5) & 63u),
+        expand5(c0 & 31u),
+        255};
+    const std::uint8_t color1[4] = {
+        expand5((c1 >> 11) & 31u),
+        expand6((c1 >> 5) & 63u),
+        expand5(c1 & 31u),
+        255};
+    std::uint8_t color2[4] = {0, 0, 0, 255};
+    std::uint8_t color3[4] = {0, 0, 0, 0};
+    for (int i = 0; i < 3; ++i) {
+        color2[i] = static_cast<std::uint8_t>((color0[i] + color1[i]) / 2u);
+    }
+    if (c0 > c1) {
+        for (int i = 0; i < 3; ++i) {
+            color2[i] = static_cast<std::uint8_t>((2u * color0[i] + color1[i] + 1u) / 3u);
+            color3[i] = static_cast<std::uint8_t>((color0[i] + 2u * color1[i] + 1u) / 3u);
+        }
+        color3[3] = 255;
+    }
+    const std::uint8_t* table[4] = {color0, color1, color2, color3};
+    for (int i = 0; i < 16; ++i) {
+        const int x = dst_x + (i & 3);
+        const int y = dst_y + (i >> 2);
+        if (x < width && y < height) {
+            const std::uint32_t index = (indices >> (i * 2u)) & 3u;
+            std::uint8_t* dst = pixels + static_cast<std::size_t>(y) * stride + static_cast<std::size_t>(x) * 4u;
+            for (int c = 0; c < 4; ++c) {
+                dst[c] = table[index][c];
+            }
+        }
+    }
+}
+
+int open_ftex_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() < 24u || std::memcmp(data.data(), "FTEX", 4u) != 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::int32_t width = static_cast<std::int32_t>(read_le32(data.data() + 8));
+        const std::int32_t height = static_cast<std::int32_t>(read_le32(data.data() + 12));
+        const std::int32_t format_count = static_cast<std::int32_t>(read_le32(data.data() + 20));
+        if (format_count != 1) {
+            return PILLOW_C_OPEN_MULTI_FORMAT;
+        }
+        if (data.size() < 32u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::int32_t format = static_cast<std::int32_t>(read_le32(data.data() + 24));
+        const std::uint32_t where = read_le32(data.data() + 28);
+        if (format != 0 && format != 1) {
+            return PILLOW_C_OPEN_FTEX_FORMAT;
+        }
+        if (where + 4u > data.size()) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::uint32_t mipmap_size = read_le32(data.data() + where);
+        std::size_t payload_start = static_cast<std::size_t>(where) + 4u;
+        if (payload_start > data.size()) {
+            payload_start = data.size();
+        }
+        const std::size_t payload = data.size() - payload_start;
+        const std::size_t present = payload < mipmap_size ? payload : mipmap_size;
+
+        int mode = 0;
+        int channels = 0;
+        std::size_t expected = 0;
+        if (format == 1) {
+            mode = PILLOW_C_MODE_RGB;
+            channels = 3;
+            expected = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 3u;
+        } else {
+            mode = PILLOW_C_MODE_RGBA;
+            channels = 4;
+            expected = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u;
+        }
+        if (width <= 0 || height <= 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (format == 0) {
+            if (present < static_cast<std::size_t>(((width + 3) / 4) * ((height + 3) / 4) * 8)) {
+                return PILLOW_C_OPEN_RLE_TRUNCATED;
+            }
+        } else {
+            if (present < expected) {
+                return PILLOW_C_OPEN_TRUNCATED;
+            }
+        }
+        std::size_t image_stride = 0;
+        std::size_t image_size = 0;
+        if (!checked_image_size(width, height, channels, &image_stride, &image_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        auto* image = new PillowCImage{
+            width,
+            height,
+            mode,
+            channels,
+            image_stride,
+            std::vector<std::uint8_t>(image_size)};
+        if (format == 1) {
+            std::memcpy(image->pixels.data(), data.data() + payload_start, expected);
+        } else {
+            for (int block_y = 0; block_y < (height + 3) / 4; ++block_y) {
+                for (int block_x = 0; block_x < (width + 3) / 4; ++block_x) {
+                    const std::size_t offset = (static_cast<std::size_t>(block_y) * static_cast<std::size_t>((width + 3) / 4) + static_cast<std::size_t>(block_x)) * 8u;
+                    decode_bc1_block(data.data() + payload_start + offset, block_x * 4, block_y * 4,
+                                     width, height, image->pixels.data(), image_stride);
+                }
+            }
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int open_sun_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() < 32u || read_be32(data.data()) != 0x59A66A95u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::int32_t width = static_cast<std::int32_t>(read_be32(data.data() + 4));
+        const std::int32_t height = static_cast<std::int32_t>(read_be32(data.data() + 8));
+        const std::int32_t depth = static_cast<std::int32_t>(read_be32(data.data() + 12));
+        const std::int32_t file_type = static_cast<std::int32_t>(read_be32(data.data() + 20));
+        const std::int32_t palette_type = static_cast<std::int32_t>(read_be32(data.data() + 24));
+        const std::int32_t palette_length = static_cast<std::int32_t>(read_be32(data.data() + 28));
+
+        std::size_t offset = 32u;
+        int mode = 0;
+        int channels = 0;
+        if (depth == 1) {
+            mode = PILLOW_C_MODE_1;
+            channels = 1;
+        } else if (depth == 4 || depth == 8) {
+            mode = PILLOW_C_MODE_L;
+            channels = 1;
+        } else if (depth == 24 || depth == 32) {
+            mode = PILLOW_C_MODE_RGB;
+            channels = 3;
+        } else {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        bool has_palette = false;
+        if (palette_length != 0) {
+            if (palette_length > 1024 || palette_type != 1) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            offset += static_cast<std::size_t>(palette_length);
+            if (offset > data.size()) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            has_palette = true;
+            if (mode == PILLOW_C_MODE_L) {
+                mode = PILLOW_C_MODE_P;
+            }
+        }
+        const std::size_t stride = static_cast<std::size_t>(((width * depth + 15) / 16) * 2);
+        const std::size_t expected = stride * static_cast<std::size_t>(height);
+        if (width <= 0 || height <= 0 || expected == 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (file_type != 2 && file_type != 0 && file_type != 1 && file_type != 3 && file_type != 4 && file_type != 5) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::size_t present = data.size() > offset ? data.size() - offset : 0u;
+        if (file_type != 2 && present < expected) {
+            return PILLOW_C_OPEN_TRUNCATED;
+        }
+
+        std::size_t image_stride = 0;
+        std::size_t image_size = 0;
+        if (!checked_image_size(width, height, channels, &image_stride, &image_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        auto* image = new PillowCImage{
+            width,
+            height,
+            mode,
+            channels,
+            image_stride,
+            std::vector<std::uint8_t>(image_size)};
+
+        if (file_type == 2) {
+            // Pillow's sun_rle: literal bytes; 0x80 escapes a run -- the
+            // next byte is the count; count 0 emits the 0x80 itself,
+            // otherwise the following byte repeats count+1 times. EOF
+            // inside a literal stretch -> "(0 bytes not processed)".
+            std::size_t src = offset;
+            std::size_t dst = 0;
+            const std::size_t tight = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+            bool hit_eof = false;
+            while (dst < tight) {
+                if (src >= data.size()) {
+                    hit_eof = true;
+                    break;
+                }
+                const std::uint8_t byte = data[src++];
+                if (byte == 0x80) {
+                    if (src >= data.size()) {
+                        hit_eof = true;
+                        break;
+                    }
+                    const std::uint8_t count = data[src++];
+                    if (count == 0) {
+                        image->pixels[dst++] = 0x80;
+                    } else {
+                        if (src >= data.size()) {
+                            hit_eof = true;
+                            break;
+                        }
+                        const std::uint8_t value = data[src++];
+                        for (std::uint8_t i = 0; i <= count && dst < tight; ++i) {
+                            image->pixels[dst++] = value;
+                        }
+                    }
+                } else {
+                    image->pixels[dst++] = byte;
+                }
+            }
+            if (hit_eof) {
+                delete image;
+                return PILLOW_C_OPEN_RLE_TRUNCATED;
+            }
+            if (has_palette) {
+                // Pillow stores the SUN palette with rawmode "RGB;L"
+                // (plane major); de-interleave the R/G/B planes into the
+                // facade's interleaved palette.
+                const std::size_t entries = static_cast<std::size_t>(palette_length) / 3u;
+                image->palette_rgb.assign(entries * 3u, std::uint8_t{0});
+                const std::uint8_t* pal_src = data.data() + 32u;
+                for (std::size_t i = 0u; i < entries; ++i) {
+                    image->palette_rgb[i * 3u + 0u] = pal_src[i];
+                    image->palette_rgb[i * 3u + 1u] = pal_src[entries + i];
+                    image->palette_rgb[i * 3u + 2u] = pal_src[entries * 2u + i];
+                }
+                image->palette_alpha.clear();
+                image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+            }
+            *out_image = image;
+            return PILLOW_C_OK;
+        }
+
+        // Raw modes: depth 1 -> inverted 1-bit (rawmode "1;I"), depth 4 ->
+        // "L;4" (high nibble first), depth 8 -> L, depth 24/32 -> RGB/BGR
+        // with the 32-bit X byte skipped (type 3 = RGB order).
+        for (int y = 0; y < height; ++y) {
+            const std::uint8_t* row = data.data() + offset + static_cast<std::size_t>(y) * stride;
+            if (depth == 1) {
+                std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image_stride;
+                for (int x = 0; x < width; ++x) {
+                    const std::uint8_t byte = row[static_cast<std::size_t>(x) / 8u];
+                    const bool bit = (byte & static_cast<std::uint8_t>(0x80u >> (x & 7))) != 0;
+                    dst_row[x] = bit ? 0 : 255;
+                }
+            } else if (depth == 4) {
+                std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image_stride;
+                for (int x = 0; x < width; ++x) {
+                    const std::uint8_t byte = row[static_cast<std::size_t>(x) / 2u];
+                    const std::uint8_t nibble = (x & 1) ? static_cast<std::uint8_t>(byte & 15u) : static_cast<std::uint8_t>(byte >> 4);
+                    dst_row[x] = static_cast<std::uint8_t>(nibble * 17u);
+                }
+            } else if (depth == 8) {
+                std::memcpy(image->pixels.data() + static_cast<std::size_t>(y) * image_stride, row, static_cast<std::size_t>(width));
+            } else {
+                const bool rgb_order = file_type == 3;
+                std::uint8_t* dst_row = image->pixels.data() + static_cast<std::size_t>(y) * image_stride;
+                for (int x = 0; x < width; ++x) {
+                    const std::size_t src = static_cast<std::size_t>(x) * (depth == 32 ? 4 : 3);
+                    if (rgb_order) {
+                        dst_row[static_cast<std::size_t>(x) * 3u + 0u] = row[src + 0u];
+                        dst_row[static_cast<std::size_t>(x) * 3u + 1u] = row[src + 1u];
+                        dst_row[static_cast<std::size_t>(x) * 3u + 2u] = row[src + 2u];
+                    } else {
+                        dst_row[static_cast<std::size_t>(x) * 3u + 0u] = row[src + 2u];
+                        dst_row[static_cast<std::size_t>(x) * 3u + 1u] = row[src + 1u];
+                        dst_row[static_cast<std::size_t>(x) * 3u + 2u] = row[src + 0u];
+                    }
+                }
+            }
+        }
+        if (has_palette) {
+            // Pillow stores the SUN palette with rawmode "RGB;L" (plane
+            // major); the facade palette is interleaved RGB, so
+            // de-interleave the R/G/B planes here.
+            const std::size_t entries = static_cast<std::size_t>(palette_length) / 3u;
+            image->palette_rgb.assign(entries * 3u, std::uint8_t{0});
+            const std::uint8_t* src = data.data() + 32u;
+            for (std::size_t i = 0u; i < entries; ++i) {
+                image->palette_rgb[i * 3u + 0u] = src[i];
+                image->palette_rgb[i * 3u + 1u] = src[entries + i];
+                image->palette_rgb[i * 3u + 2u] = src[entries * 2u + i];
+            }
+            image->palette_alpha.clear();
+            image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int open_gbr_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() < 20u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::uint32_t header_size = read_be32(data.data());
+        if (header_size < 20u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::uint32_t version = read_be32(data.data() + 4);
+        if (version != 1u && version != 2u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::int32_t width = static_cast<std::int32_t>(read_be32(data.data() + 8));
+        const std::int32_t height = static_cast<std::int32_t>(read_be32(data.data() + 12));
+        const std::uint32_t color_depth = read_be32(data.data() + 16);
+        if (width <= 0 || height <= 0 || (color_depth != 1u && color_depth != 4u)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (version == 2u) {
+            if (header_size < 28u || data.size() < 28u || std::memcmp(data.data() + 20, "GIMP", 4u) != 0) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+        }
+        if (header_size > data.size()) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::uint64_t data_size = static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height) * color_depth;
+        if (data.size() - header_size < data_size) {
+            return PILLOW_C_OPEN_NOT_ENOUGH;
+        }
+        const int channels = color_depth == 1u ? 1 : 4;
+        const int mode = color_depth == 1u ? PILLOW_C_MODE_L : PILLOW_C_MODE_RGBA;
+        std::size_t image_stride = 0;
+        std::size_t image_size = 0;
+        if (!checked_image_size(width, height, channels, &image_stride, &image_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        auto* image = new PillowCImage{
+            width,
+            height,
+            mode,
+            channels,
+            image_stride,
+            std::vector<std::uint8_t>(image_size)};
+        std::memcpy(image->pixels.data(), data.data() + header_size, static_cast<std::size_t>(data_size));
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int open_fits_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        // Pillow's header walk: 80-byte records; SIMPLE/XTENSION start a
+        // unit, END jumps to the 2880 boundary, and the first record that
+        // is not a unit start after END breaks the loop. The data offset
+        // mirrors Pillow's tell()-80 arithmetic including the sub-80-byte
+        // payload quirk (offset = record_start + record_len - 80).
+        int bitpix = 0;
+        int naxis = 0;
+        int naxis1 = 0;
+        int naxis2 = 0;
+        bool header_in_progress = false;
+        bool saw_end = false;
+        bool broke = false;
+        std::size_t pos = 0u;
+        std::size_t data_offset = 0u;
+        while (pos < data.size()) {
+            const std::size_t record_len = std::min<std::size_t>(80u, data.size() - pos);
+            const std::uint8_t* record = data.data() + pos;
+            std::size_t key_len = 0u;
+            while (key_len < record_len && key_len < 8u && record[key_len] != ' ') {
+                ++key_len;
+            }
+            const bool is_simple = key_len == 6u && std::memcmp(record, "SIMPLE", 6u) == 0;
+            const bool is_xtension = key_len == 8u && std::memcmp(record, "XTENSION", 8u) == 0;
+            const bool is_end = key_len == 3u && std::memcmp(record, "END", 3u) == 0;
+            if (is_simple || is_xtension) {
+                header_in_progress = true;
+                if (saw_end) {
+                    // A later header unit starts; its records are parsed
+                    // with the current (single-HDU) bounded support.
+                }
+            } else if (is_end) {
+                pos += record_len;
+                const std::size_t remainder = pos % 2880u;
+                if (remainder != 0u) {
+                    pos += 2880u - remainder;
+                }
+                saw_end = true;
+                header_in_progress = false;
+                continue;
+            } else if (saw_end && !header_in_progress) {
+                data_offset = pos + record_len - 80u;
+                broke = true;
+                break;
+            }
+            if (!saw_end) {
+                if (pos == 0u && !is_simple) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                const std::uint8_t* value = record + 8u;
+                std::size_t value_len = record_len > 8u ? record_len - 8u : 0u;
+                const std::uint8_t* slash = static_cast<const std::uint8_t*>(std::memchr(value, '/', value_len));
+                if (slash) {
+                    value_len = static_cast<std::size_t>(slash - value);
+                }
+                while (value_len > 0u && (value[value_len - 1u] == ' ' || value[value_len - 1u] == '\t')) {
+                    --value_len;
+                }
+                if (value_len > 0u && value[0] == '=') {
+                    ++value;
+                    --value_len;
+                    while (value_len > 0u && (value[0] == ' ' || value[0] == '\t')) {
+                        ++value;
+                        --value_len;
+                    }
+                }
+                if (is_simple && !(value_len == 1u && value[0] == 'T')) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                if (key_len == 6u && std::memcmp(record, "BITPIX", 6u) == 0) {
+                    bool negative = false;
+                    std::size_t i = 0u;
+                    if (i < value_len && value[i] == '-') {
+                        negative = true;
+                        ++i;
+                    }
+                    bitpix = 0;
+                    for (; i < value_len && value[i] >= '0' && value[i] <= '9'; ++i) {
+                        bitpix = bitpix * 10 + (value[i] - '0');
+                    }
+                    if (negative) {
+                        bitpix = -bitpix;
+                    }
+                } else if (key_len == 5u && std::memcmp(record, "NAXIS", 5u) == 0) {
+                    naxis = 0;
+                    for (std::size_t i = 0u; i < value_len && value[i] >= '0' && value[i] <= '9'; ++i) {
+                        naxis = naxis * 10 + (value[i] - '0');
+                    }
+                } else if (key_len == 6u && std::memcmp(record, "NAXIS1", 6u) == 0) {
+                    naxis1 = 0;
+                    for (std::size_t i = 0u; i < value_len && value[i] >= '0' && value[i] <= '9'; ++i) {
+                        naxis1 = naxis1 * 10 + (value[i] - '0');
+                    }
+                } else if (key_len == 6u && std::memcmp(record, "NAXIS2", 6u) == 0) {
+                    naxis2 = 0;
+                    for (std::size_t i = 0u; i < value_len && value[i] >= '0' && value[i] <= '9'; ++i) {
+                        naxis2 = naxis2 * 10 + (value[i] - '0');
+                    }
+                }
+            }
+            pos += record_len;
+        }
+        if (!broke) {
+            // EOF inside the header walk (Pillow: "Truncated FITS file"),
+            // which also covers NAXIS = 0 (the walk keeps reading past
+            // the END until EOF because no decoder was selected).
+            return PILLOW_C_OPEN_FITS_TRUNCATED;
+        }
+        if (!saw_end) {
+            return PILLOW_C_OPEN_FITS_NO_DATA;
+        }
+        if (naxis == 0 || naxis1 <= 0 || naxis2 <= 0) {
+            return PILLOW_C_OPEN_FITS_TRUNCATED;
+        }
+        int mode = 0;
+        std::size_t sample_bytes = 0u;
+        if (bitpix == 8) {
+            mode = PILLOW_C_MODE_L;
+            sample_bytes = 1u;
+        } else if (bitpix == 16) {
+            mode = PILLOW_C_MODE_I16;
+            sample_bytes = 2u;
+        } else if (bitpix == 32) {
+            mode = PILLOW_C_MODE_I;
+            sample_bytes = 4u;
+        } else if (bitpix == -32 || bitpix == -64) {
+            mode = PILLOW_C_MODE_F;
+            sample_bytes = bitpix == -32 ? 4u : 8u;
+        } else {
+            return PILLOW_C_OPEN_FITS_NO_DATA;
+        }
+        const std::uint64_t row_bytes = static_cast<std::uint64_t>(naxis1) * sample_bytes;
+        const std::uint64_t expected = row_bytes * static_cast<std::uint64_t>(naxis2);
+        const std::size_t present = data.size() > data_offset ? data.size() - data_offset : 0u;
+        if (present < expected) {
+            return PILLOW_C_OPEN_TRUNCATED;
+        }
+        // Numeric FITS modes keep the file's big-endian bytes verbatim
+        // (Pillow's raw decoder copies them); rows are bottom-up.
+        std::size_t tight_stride = 0u;
+        std::size_t tight_size = 0u;
+        if (!checked_image_size(naxis1 * static_cast<int>(sample_bytes), naxis2, 1, &tight_stride, &tight_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        auto* image = new PillowCImage{
+            naxis1,
+            naxis2,
+            mode,
+            1,
+            tight_stride,
+            std::vector<std::uint8_t>(tight_size)};
+        for (int y = 0; y < naxis2; ++y) {
+            const int src_y = naxis2 - 1 - y;
+            std::memcpy(image->pixels.data() + static_cast<std::size_t>(y) * tight_stride,
+                        data.data() + data_offset + static_cast<std::size_t>(src_y) * static_cast<std::size_t>(row_bytes),
+                        static_cast<std::size_t>(row_bytes));
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int open_xpm_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() < 9u || std::memcmp(data.data(), "/* XPM */", 9u) != 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        // Skip to the header line: "W H NCOLORS CPP at the line start.
+        std::size_t pos = 9u;
+        int width = 0;
+        int height = 0;
+        int palette_length = 0;
+        int bpp = 0;
+        bool found = false;
+        while (pos < data.size()) {
+            const std::size_t line_start = pos;
+            while (pos < data.size() && data[pos] != '\n') {
+                ++pos;
+            }
+            const std::size_t line_length = pos - line_start;
+            const std::uint8_t* line = data.data() + line_start;
+            if (line_length >= 2u && line[0] == '"' && line[1] >= '0' && line[1] <= '9') {
+                const auto parse_int = [&](std::size_t* cursor) {
+                    int value = 0;
+                    while (*cursor < line_length && line[*cursor] >= '0' && line[*cursor] <= '9') {
+                        value = value * 10 + (line[*cursor] - '0');
+                        ++(*cursor);
+                    }
+                    return value;
+                };
+                std::size_t cursor = 1u;
+                width = parse_int(&cursor);
+                if (cursor < line_length && line[cursor] == ' ') {
+                    ++cursor;
+                    height = parse_int(&cursor);
+                }
+                if (cursor < line_length && line[cursor] == ' ') {
+                    ++cursor;
+                    palette_length = parse_int(&cursor);
+                }
+                if (cursor < line_length && line[cursor] == ' ') {
+                    ++cursor;
+                    bpp = parse_int(&cursor);
+                }
+                found = true;
+            }
+            if (pos < data.size()) {
+                ++pos;
+            }
+            if (found) {
+                break;
+            }
+        }
+        if (!found || width <= 0 || height <= 0 || palette_length <= 0 || bpp <= 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        // Palette lines: "key c #RRGGBB", (strip 2 trailing chars), or
+        // "None" -> transparency key. P mode keeps the entries in order.
+        std::vector<std::string> keys;
+        std::vector<std::uint8_t> palette_rgb;
+        for (int i = 0; i < palette_length; ++i) {
+            const std::size_t line_start = pos;
+            while (pos < data.size() && data[pos] != '\n') {
+                ++pos;
+            }
+            const std::size_t line_length = pos - line_start;
+            if (pos < data.size()) {
+                ++pos;
+            }
+            const std::uint8_t* line = data.data() + line_start;
+            if (line_length < static_cast<std::size_t>(1u + bpp + 2u)) {
+                return PILLOW_C_OPEN_XPM_BAD;
+            }
+            const std::string key(reinterpret_cast<const char*>(line) + 1, static_cast<std::size_t>(bpp));
+            // Value section: from bpp+1 to len-2, split on whitespace.
+            const std::uint8_t* section = line + static_cast<std::size_t>(bpp) + 1u;
+            const std::size_t section_length = line_length - static_cast<std::size_t>(bpp) - 1u - 2u;
+            bool has_c = false;
+            std::size_t cursor = 0u;
+            std::string color;
+            while (cursor < section_length) {
+                while (cursor < section_length && (section[cursor] == ' ' || section[cursor] == '\t')) {
+                    ++cursor;
+                }
+                const std::size_t word_start = cursor;
+                while (cursor < section_length && section[cursor] != ' ' && section[cursor] != '\t') {
+                    ++cursor;
+                }
+                if (cursor == word_start) {
+                    break;
+                }
+                const std::string word(reinterpret_cast<const char*>(section) + word_start, cursor - word_start);
+                if (word == "c") {
+                    if (cursor >= section_length) {
+                        return PILLOW_C_OPEN_XPM_BAD;
+                    }
+                    while (cursor < section_length && (section[cursor] == ' ' || section[cursor] == '\t')) {
+                        ++cursor;
+                    }
+                    const std::size_t color_start = cursor;
+                    while (cursor < section_length && section[cursor] != ' ' && section[cursor] != '\t') {
+                        ++cursor;
+                    }
+                    color = std::string(reinterpret_cast<const char*>(section) + color_start, cursor - color_start);
+                    has_c = true;
+                    break;
+                }
+            }
+            if (!has_c) {
+                return PILLOW_C_OPEN_XPM_BAD;
+            }
+            if (color == "None") {
+                keys.push_back(key);
+                palette_rgb.insert(palette_rgb.end(), {0u, 0u, 0u});
+            } else if (color.size() >= 2u && color[0] == '#') {
+                unsigned int rgb = 0u;
+                bool ok = true;
+                for (std::size_t c = 1u; c < color.size(); ++c) {
+                    const char ch = color[c];
+                    unsigned int nibble = 0u;
+                    if (ch >= '0' && ch <= '9') {
+                        nibble = static_cast<unsigned int>(ch - '0');
+                    } else if (ch >= 'a' && ch <= 'f') {
+                        nibble = static_cast<unsigned int>(ch - 'a' + 10);
+                    } else if (ch >= 'A' && ch <= 'F') {
+                        nibble = static_cast<unsigned int>(ch - 'A' + 10);
+                    } else {
+                        ok = false;
+                        break;
+                    }
+                    rgb = rgb * 16u + nibble;
+                }
+                if (!ok) {
+                    return PILLOW_C_OPEN_XPM_BAD;
+                }
+                keys.push_back(key);
+                palette_rgb.push_back(static_cast<std::uint8_t>((rgb >> 16) & 255u));
+                palette_rgb.push_back(static_cast<std::uint8_t>((rgb >> 8) & 255u));
+                palette_rgb.push_back(static_cast<std::uint8_t>(rgb & 255u));
+            } else {
+                return PILLOW_C_OPEN_XPM_BAD;
+            }
+        }
+
+        const bool indexed = palette_length <= 256;
+        const int channels = indexed ? 1 : 3;
+        const int mode = indexed ? PILLOW_C_MODE_P : PILLOW_C_MODE_RGB;
+        std::size_t image_stride = 0u;
+        std::size_t image_size = 0u;
+        if (!checked_image_size(width, height, channels, &image_stride, &image_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        auto* image = new PillowCImage{
+            width,
+            height,
+            mode,
+            channels,
+            image_stride,
+            std::vector<std::uint8_t>(image_size)};
+
+        // Pixel rows: skip one "/* pixels */" line (first only), then read
+        // lines until the output is full; each line keeps the segments
+        // between quotes; keys are bpp chars each. EOF with a short
+        // output -> "not enough image data".
+        bool skipped_marker = false;
+        std::size_t dst = 0u;
+        const std::size_t dest_length = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * static_cast<std::size_t>(channels);
+        bool eof = false;
+        while (dst < dest_length) {
+            if (pos >= data.size()) {
+                eof = true;
+                break;
+            }
+            const std::size_t line_start = pos;
+            while (pos < data.size() && data[pos] != '\n') {
+                ++pos;
+            }
+            const std::size_t line_length = pos - line_start;
+            if (pos < data.size()) {
+                ++pos;
+            }
+            const std::uint8_t* line = data.data() + line_start;
+            // rstrip == "/* pixels */"
+            std::size_t stripped = line_length;
+            while (stripped > 0u && (line[stripped - 1u] == ' ' || line[stripped - 1u] == '\t' || line[stripped - 1u] == '\r')) {
+                --stripped;
+            }
+            if (!skipped_marker && stripped == 12u && std::memcmp(line, "/* pixels */", 12u) == 0) {
+                skipped_marker = true;
+                continue;
+            }
+            // Concatenate the segments between quotes.
+            std::vector<std::uint8_t> joined;
+            bool inside = false;
+            for (std::size_t i = 0u; i < line_length; ++i) {
+                if (line[i] == '"') {
+                    inside = !inside;
+                } else if (inside) {
+                    joined.push_back(line[i]);
+                }
+            }
+            for (std::size_t i = 0u; i + static_cast<std::size_t>(bpp) <= joined.size() && dst < dest_length; i += static_cast<std::size_t>(bpp)) {
+                const std::string key(reinterpret_cast<const char*>(joined.data()) + i, static_cast<std::size_t>(bpp));
+                if (indexed) {
+                    std::size_t index = 0u;
+                    bool found_key = false;
+                    for (std::size_t k = 0u; k < keys.size(); ++k) {
+                        if (keys[k] == key) {
+                            index = k;
+                            found_key = true;
+                            break;
+                        }
+                    }
+                    if (!found_key) {
+                        delete image;
+                        return PILLOW_C_OPEN_XPM_KEY;
+                    }
+                    image->pixels[dst++] = static_cast<std::uint8_t>(index);
+                } else {
+                    std::size_t index = 0u;
+                    bool found_key = false;
+                    for (std::size_t k = 0u; k < keys.size(); ++k) {
+                        if (keys[k] == key) {
+                            index = k;
+                            found_key = true;
+                            break;
+                        }
+                    }
+                    if (!found_key) {
+                        delete image;
+                        return PILLOW_C_OPEN_XPM_RGB_KEY;
+                    }
+                    image->pixels[dst++] = palette_rgb[index * 3u + 0u];
+                    image->pixels[dst++] = palette_rgb[index * 3u + 1u];
+                    image->pixels[dst++] = palette_rgb[index * 3u + 2u];
+                }
+            }
+        }
+        if (eof && dst < dest_length) {
+            delete image;
+            return PILLOW_C_OPEN_NOT_ENOUGH;
+        }
+        if (indexed) {
+            image->palette_rgb = palette_rgb;
+            image->palette_alpha.clear();
+            image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+        }
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
 }
 
 // BEHAV-SGI-001: SGI status codes local to the SGI open route. The
@@ -6315,6 +7170,41 @@ extern "C" __declspec(dllexport) int pillow_c_image_open_dcx(
     PillowCImage** out_image)
 {
     return open_dcx_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_ftex(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_ftex_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_sun(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_sun_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_gbr(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_gbr_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_fits(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_fits_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_xpm(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_xpm_image(path, out_image);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_pcx(

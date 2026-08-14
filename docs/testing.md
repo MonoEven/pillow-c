@@ -47,8 +47,33 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2825` AHK tests: `1391` raw DLL tests and
-`1434` facade tests.
+This suite currently registers `2826` AHK tests: `1391` raw DLL tests and
+`1435` facade tests.
+
+Latest `BEHAV-OPEN-002` verification: the Pillow 11.3.0 oracle
+(`oracle/probe_open_mid.py`/`probe_open_mid.json` with the ctypes
+cross-check in `oracle/probe_open_mid_dll.py`) pins the FTEX opener
+(raw RGB + DXT1/BC1 RGBA, the bare AssertionError for multiple
+formats, the exact `Invalid texture compression format: N`
+ValueError), the SUN opener (depths 1/4/8/24/32 with the padded
+stride, the plane-major RGB;L palette, the 0x80-escape RLE whose
+zero count emits the 0x80 itself, the identification-error
+collapses), the GBR opener (version 1/2 with the GIMP magic,
+comment/spacing info, `not enough image data`), the FITS opener
+(the 80-byte card walk, the tell()-80 offset quirk including the
+sub-80-byte payload padding read, big-endian verbatim L/I;16/I/F
+samples with bottom-up rows, `Truncated FITS file`/`No image
+data`), and the XPM opener (P/RGB modes, the None transparency key,
+`cannot read this XPM file`, `not enough image data`, the P-mode
+tuple.index and RGB-mode KeyError shapes). The facade mid-group
+target passes `1/1` in `31ms`; the full directory suite passes
+`2826/2826` in `21531ms` with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity moves to `492/492` (five deliberate new exports) with
+zero difference; and the rebuilt DLL SHA-256 is
+`24D6E15F69678B8EB2E40798F7D0754634A0A7413DA44A9A4320B878B40408BF`.
+The behavioral-parity wave continues with the remaining open
+families (FLI/IPTC/MCIDAS/MIC/PCD/PSD) next.
 
 Latest `BEHAV-OPEN-001` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_simple.py`/`probe_open_simple.json`) pins the

@@ -7705,6 +7705,105 @@ class Pillow {
                     )
                     if lastStatus = -3
                         throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "FTEX" {
+                    ; BEHAV-OPEN-002: FtexImageFile — "FTEX" magic, one
+                    ; format entry (else Pillow's AssertionError), format
+                    ; 1 = raw RGB at the directory offset, format 0 =
+                    ; DXT1/BC1 RGBA; other ids raise Pillow's exact
+                    ; ValueError and short payloads the truncated shapes.
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_ftex",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -30
+                        throw Error("", -1)
+                    if lastStatus = -38
+                        throw Error("Invalid texture compression format: " Pillow.Image.FtexFormatId(path), -1)
+                    if lastStatus = -32
+                        throw Error("image file is truncated (0 bytes not processed)", -1)
+                    if lastStatus = -29
+                        throw Error("image file is truncated (" Pillow.Image.FtexTruncatedCount(path) " bytes not processed)", -1)
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "SUN" {
+                    ; BEHAV-OPEN-002: SunImageFile — big-endian 32-byte
+                    ; header, depths 1/4/8/24/32 with the 16-bit-padded
+                    ; stride, optional RGB;L palette (P mode), raw or the
+                    ; 0x80-escape RLE (file type 2); every other shape
+                    ; collapses to the identification error.
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_sun",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -32
+                        throw Error("image file is truncated (0 bytes not processed)", -1)
+                    if lastStatus = -29
+                        throw Error("image file is truncated (" Pillow.Image.OpenSimpleTruncatedCount(path, Pillow.Image.SunStride(path), 0) " bytes not processed)", -1)
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "GBR" {
+                    ; BEHAV-OPEN-002: GbrImageFile — big-endian header
+                    ; (version 1/2, depth 1 = L or 4 = RGBA), the GIMP
+                    ; magic for version 2, comment/spacing info, and the
+                    ; raw data block; short data raises Pillow's exact
+                    ; "not enough image data" ValueError.
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_gbr",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -31
+                        throw Error("not enough image data", -1)
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "FITS" {
+                    ; BEHAV-OPEN-002: FitsImageFile — 80-byte card walk,
+                    ; 2880-boundary data offset with Pillow's tell()-80
+                    ; arithmetic, BITPIX 8/16/32/-32/-64 as L/I;16/I/F
+                    ; with verbatim big-endian samples and bottom-up rows.
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_fits",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -33
+                        throw Error("Truncated FITS file", -1)
+                    if lastStatus = -34
+                        throw Error("No image data", -1)
+                    if lastStatus = -29
+                        throw Error("image file is truncated (" Pillow.Image.FitsTruncatedCount(path) " bytes not processed)", -1)
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "XPM" {
+                    ; BEHAV-OPEN-002: XpmImageFile — "/* XPM */" magic,
+                    ; the quoted header, palette lines with "c" colors or
+                    ; "None" transparency keys, P (<= 256) or RGB mode,
+                    ; and the quote-joined pixel rows; header failures
+                    ; collapse to the identification error while the
+                    ; color/key/data errors keep Pillow's ValueError
+                    ; messages (unwrapped in 11.3.0).
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_xpm",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -31
+                        throw Error("not enough image data", -1)
+                    if lastStatus = -35
+                        throw Error("cannot read this XPM file", -1)
+                    if lastStatus = -36
+                        throw Error("tuple.index(x): x not in tuple", -1)
+                    if lastStatus = -39
+                        throw Error("b'" Pillow.Image.XpmRgbUnknownKey(path) "'", -1)
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
                 } else if format = "HDF5" || format = "BUFR" || format = "GRIB" {
                     ; BEHAV-OPEN-001: the HDF5/BUFR/GRIB stub plugins
                     ; accept the magic and open an F(1,1) image whose
@@ -7764,6 +7863,22 @@ class Pillow {
                             image.Info["sizes"] := Pillow.Image.IcnsSizes(path)
                             if image.Mode != "RGBA"
                                 image.IcnsQuirkPending := true
+                        }
+                        if format = "GBR" {
+                            ; BEHAV-OPEN-002: expose info["comment"] and
+                            ; info["spacing"] like Pillow's GbrImageFile.
+                            gbrInfo := Pillow.Image.GbrInfo(path)
+                            if gbrInfo.Has("comment")
+                                image.Info["comment"] := gbrInfo["comment"]
+                            if gbrInfo.Has("spacing")
+                                image.Info["spacing"] := gbrInfo["spacing"]
+                        }
+                        if format = "XPM" {
+                            ; BEHAV-OPEN-002: Pillow's XpmImageFile stores
+                            ; info["transparency"] as the "c None" key.
+                            transparencyKey := Pillow.Image.XpmTransparencyKey(path)
+                            if transparencyKey != ""
+                                image.Info["transparency"] := transparencyKey
                         }
                     } catch {
                         image.Close()
@@ -8943,6 +9058,267 @@ class Pillow {
             }
         }
 
+        static FtexWidth(path) {
+            file := FileOpen(path, "r")
+            if !file
+                return 0
+            try {
+                head := Buffer(24, 0)
+                file.RawRead(head, Min(file.Length, 24))
+                return NumGet(head, 8, "Int")
+            } finally {
+                file.Close()
+            }
+        }
+
+        static FtexDataStart(path) {
+            file := FileOpen(path, "r")
+            if !file
+                return 0
+            try {
+                head := Buffer(32, 0)
+                file.RawRead(head, Min(file.Length, 32))
+                return NumGet(head, 28, "UInt") + 4
+            } finally {
+                file.Close()
+            }
+        }
+
+        static FtexTruncatedCount(path) {
+            file := FileOpen(path, "r")
+            if !file
+                return 0
+            try {
+                payload := file.Length - Pillow.Image.FtexDataStart(path)
+                rowBytes := Pillow.Image.FtexWidth(path) * 3
+                if payload <= 0 || rowBytes <= 0
+                    return 0
+                return Mod(payload, rowBytes)
+            } finally {
+                file.Close()
+            }
+        }
+
+        static FtexFormatId(path) {
+            file := FileOpen(path, "r")
+            if !file
+                return -1
+            try {
+                head := Buffer(32, 0)
+                file.RawRead(head, Min(file.Length, 32))
+                return NumGet(head, 24, "Int")
+            } finally {
+                file.Close()
+            }
+        }
+
+        static SunStride(path) {
+            file := FileOpen(path, "r")
+            if !file
+                return 0
+            try {
+                head := Buffer(32, 0)
+                file.RawRead(head, Min(file.Length, 32))
+                width := (NumGet(head, 4, "UChar") << 24) | (NumGet(head, 5, "UChar") << 16) | (NumGet(head, 6, "UChar") << 8) | NumGet(head, 7, "UChar")
+                depth := (NumGet(head, 12, "UChar") << 24) | (NumGet(head, 13, "UChar") << 16) | (NumGet(head, 14, "UChar") << 8) | NumGet(head, 15, "UChar")
+                if width <= 0 || depth <= 0
+                    return 0
+                return ((width * depth + 15) // 16) * 2
+            } finally {
+                file.Close()
+            }
+        }
+
+        static GbrInfo(path) {
+            ; BEHAV-OPEN-002: Pillow exposes info["comment"] (and
+            ; info["spacing"] for version 2) from the GBR header.
+            file := FileOpen(path, "r")
+            if !file
+                return Map()
+            try {
+                head := Buffer(28, 0)
+                file.RawRead(head, Min(file.Length, 28))
+                headerSize := (NumGet(head, 0, "UChar") << 24) | (NumGet(head, 1, "UChar") << 16) | (NumGet(head, 2, "UChar") << 8) | NumGet(head, 3, "UChar")
+                version := (NumGet(head, 4, "UChar") << 24) | (NumGet(head, 5, "UChar") << 16) | (NumGet(head, 6, "UChar") << 8) | NumGet(head, 7, "UChar")
+                if headerSize < 20 || !(version = 1 || version = 2)
+                    return Map()
+                commentLength := headerSize - (version = 1 ? 20 : 28)
+                if commentLength <= 0
+                    return Map()
+                file.Pos := version = 1 ? 20 : 28
+                comment := file.Read(commentLength)
+                if SubStr(comment, -1) = "`n"
+                    comment := SubStr(comment, 1, -1)
+                info := Map()
+                info["comment"] := comment
+                if version = 2
+                    info["spacing"] := (NumGet(head, 24, "UChar") << 24) | (NumGet(head, 25, "UChar") << 16) | (NumGet(head, 26, "UChar") << 8) | NumGet(head, 27, "UChar")
+                return info
+            } finally {
+                file.Close()
+            }
+        }
+
+        static FitsRowBytes(path) {
+            ; BEHAV-OPEN-002: NAXIS1 * bytes-per-sample plus the data
+            ; offset for the truncation row-modulo count.
+            file := FileOpen(path, "r")
+            if !file
+                return Map("RowBytes", 0, "DataStart", 0)
+            try {
+                bitpix := 0
+                naxis1 := 0
+                dataStart := 0
+                sawEnd := false
+                loop {
+                    recordStart := file.Pos
+                    record := file.Read(80)
+                    if StrLen(record) = 0
+                        return Map("RowBytes", 0, "DataStart", 0)
+                    recordLen := StrLen(record)
+                    keyword := StrReplace(SubStr(record, 1, 8), " ", "")
+                    isUnitStart := keyword = "SIMPLE" || keyword = "XTENSION"
+                    if keyword = "END" {
+                        file.Pos := Ceil(file.Pos / 2880) * 2880
+                        sawEnd := true
+                        continue
+                    }
+                    if sawEnd && !isUnitStart {
+                        ; the first non-unit record after END breaks the
+                        ; walk; Pillow's offset = tell() - 80
+                        dataStart := recordStart + recordLen - 80
+                        break
+                    }
+                    if keyword = "BITPIX" {
+                        value := StrReplace(SubStr(record, 11), "/", "")
+                        value := Trim(SubStr(value, InStr(value, "=") + 1))
+                        negative := SubStr(value, 1, 1) = "-"
+                        if negative
+                            value := SubStr(value, 2)
+                        parsed := 0
+                        for char in StrSplit(value) {
+                            if char = ""
+                                continue
+                            parsed := parsed * 10 + Integer(char)
+                        }
+                        bitpix := negative ? -parsed : parsed
+                    }
+                    if keyword = "NAXIS1" {
+                        value := StrReplace(SubStr(record, 11), "/", "")
+                        value := Trim(SubStr(value, InStr(value, "=") + 1))
+                        parsed := 0
+                        for char in StrSplit(value) {
+                            if char = ""
+                                continue
+                            parsed := parsed * 10 + Integer(char)
+                        }
+                        naxis1 := parsed
+                    }
+                }
+                sampleBytes := bitpix = 8 ? 1 : (bitpix = 16 ? 2 : (bitpix = 32 ? 4 : (bitpix = -32 ? 4 : 8)))
+                return Map("RowBytes", naxis1 > 0 ? naxis1 * sampleBytes : 0, "DataStart", dataStart)
+            } finally {
+                file.Close()
+            }
+        }
+
+        static FitsTruncatedCount(path) {
+            file := FileOpen(path, "r")
+            if !file
+                return 0
+            try {
+                info := Pillow.Image.FitsRowBytes(path)
+                payload := file.Length - info["DataStart"]
+                if payload <= 0 || info["RowBytes"] <= 0
+                    return 0
+                return Mod(payload, info["RowBytes"])
+            } finally {
+                file.Close()
+            }
+        }
+
+        static XpmRgbUnknownKey(path) {
+            ; BEHAV-OPEN-002: Pillow's RGB-mode pixel decode looks the
+            ; key up in a dict — an unknown key raises KeyError whose
+            ; message is the key's bytes repr. Rescan the file to find
+            ; the first unknown key.
+            file := FileOpen(path, "r")
+            if !file
+                return ""
+            try {
+                file.ReadLine()
+                loop {
+                    line := file.ReadLine()
+                    if line = ""
+                        return ""
+                    if SubStr(line, 1, 1) = '"' && RegExMatch(SubStr(line, 2), "^\d+ \d+ \d+ \d+")
+                        break
+                }
+                bpp := 0
+                parts := StrSplit(Trim(StrReplace(file.ReadLine(), '"', "")), " ")
+                if parts.Length >= 4
+                    bpp := Integer(parts[4])
+                keys := Map()
+                loop {
+                    line := file.ReadLine()
+                    if line = ""
+                        return ""
+                    if SubStr(line, 1, 1) != '"'
+                        break
+                    keys[SubStr(line, 2, bpp)] := true
+                }
+                loop {
+                    line := file.ReadLine()
+                    if line = ""
+                        return ""
+                    if Trim(line, " `t`r`n") = "/* pixels */"
+                        continue
+                    joined := ""
+                    for segment in StrSplit(line, '"')
+                        joined .= segment
+                    index := 1
+                    while index + bpp - 1 <= StrLen(joined) {
+                        key := SubStr(joined, index, bpp)
+                        if !keys.Has(key)
+                            return key
+                        index += bpp
+                    }
+                }
+            } finally {
+                file.Close()
+            }
+        }
+
+        static XpmTransparencyKey(path) {
+            ; BEHAV-OPEN-002: Pillow stores info["transparency"] as the
+            ; key of the first "c None" palette entry.
+            file := FileOpen(path, "r")
+            if !file
+                return ""
+            try {
+                file.ReadLine()
+                loop {
+                    line := file.ReadLine()
+                    if line = ""
+                        return ""
+                    if SubStr(line, 1, 1) = '"' && RegExMatch(SubStr(line, 2), "^\d+ \d+ \d+ \d+")
+                        break
+                }
+                loop {
+                    line := file.ReadLine()
+                    if line = ""
+                        return ""
+                    if SubStr(line, 1, 1) != '"'
+                        return ""
+                    nonePos := InStr(line, " c None")
+                    if nonePos
+                        return SubStr(line, 2, nonePos - 2)
+                }
+            } finally {
+                file.Close()
+            }
+        }
+
         static StubAccepts(path, format) {
             ; BEHAV-OPEN-001: HDF5/BUFR/GRIB stub plugins accept only the
             ; exact magic (HDF5 8 bytes; BUFR "BUFR"/"ZCZC"; GRIB "GRIB"
@@ -9384,6 +9760,16 @@ class Pillow {
                 return "BUFR"
             if RegExMatch(path, "i)\.grib$")
                 return "GRIB"
+            if RegExMatch(path, "i)\.(ftc|ftu)$")
+                return "FTEX"
+            if RegExMatch(path, "i)\.ras$")
+                return "SUN"
+            if RegExMatch(path, "i)\.gbr$")
+                return "GBR"
+            if RegExMatch(path, "i)\.fits?$")
+                return "FITS"
+            if RegExMatch(path, "i)\.xpm$")
+                return "XPM"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -9413,7 +9799,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -9440,6 +9826,11 @@ class Pillow {
                 "HDF5", "HDF5",
                 "BUFR", "BUFR",
                 "GRIB", "GRIB",
+                "FTEX", "Texture File Format (IW2:EOC)",
+                "SUN", "Sun Raster File",
+                "GBR", "GIMP brush file",
+                "FITS", "FITS",
+                "XPM", "X11 Pixel Map",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -11343,8 +11734,8 @@ class Pillow {
                 ; OSError before writing anything.
                 throw Error(resolvedFormat " save handler not installed", -1)
             }
-            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" {
-                ; BEHAV-OPEN-001: these plugins register no save handler
+            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" {
+                ; BEHAV-OPEN-001/002: these plugins register no save handler
                 ; at all — Pillow raises KeyError with the bare name.
                 throw Error("'" resolvedFormat "'", -1)
             }
