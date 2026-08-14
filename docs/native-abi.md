@@ -77,9 +77,11 @@ pixel-format, truncation, and division-by-zero messages; the
 generic statuses keep their public meanings.
 
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`477/477`; the full AHK suite is `2819/2819`; and the current DLL SHA-256 is
-`494D4A5F26550004D127E860433B728F3B4B06B48D7406B83919769457373897`
-(BEHAV-DDS-001 adds the two DDS exports above over the SGI slice:
+`477/477`; the full AHK suite is `2820/2820`; and the current DLL SHA-256 is
+`6FB517FE788BA01A1EEF079AC2396C8BA3DF2A2DE15840C1D7C115385A462E70`
+(MODE-RGBA-RESIZE-001 changes no ABI — the resize premultiply roundtrip
+and default-resample rules below replace the old +128/a==0-zero behavior;
+BEHAV-DDS-001 adds the two DDS exports above over the SGI slice:
 BEHAV-SGI-001 adds the two SGI exports over the PCX slice:
 BEHAV-PCX-001 adds the two PCX exports over the BLP slice:
 BEHAV-BLP-001 adds two deliberate exports — `pillow_c_image_open_blp`
@@ -12434,6 +12436,34 @@ Current resize support:
 4 BOX
 5 HAMMING
 ```
+
+## Resize Mode Rules and RGBA/LA Premultiply Semantics
+
+`MODE-RGBA-RESIZE-001` changes no exported name or signature, but pins the
+resize exports (`pillow_c_image_resize`, `pillow_c_image_resize_box`,
+`pillow_c_image_resize_reducing_gap` and the `_into` variants) to Pillow
+11.3.0's exact mode rules through `resize_with_mode_rules`:
+
+- Mode `1` and `P` sources force NEAREST (`resize_resample_for_mode`),
+  matching Pillow's unconditional override.
+- RGBA/LA sources with a non-NEAREST resample run Pillow's premultiply
+  roundtrip: samples are premultiplied in-filter with
+  `(c * a + 127) / 255`, and the output unpremultiplies with
+  `c * 255 / a` — when `a == 0` the premultiplied value is KEPT
+  (Pillow's RGBa/La back-conversion behavior; a==255 passes through).
+- For RGBA/LA non-NEAREST resizes the `reducing_gap` argument is
+  dropped on the inner resize, mirroring Pillow 11.3.0's resize
+  source (verified in `oracle/probe_premultiply_formulas.py`).
+- Same-size, full-box resizes short-circuit to a copy.
+
+The facade `Image.Resize` defaults the resample to BICUBIC for every
+non-`BGR;`-prefixed mode (Pillow 11.3.0's rule) and keeps the
+documented boundary error
+`Pillow.Image.Resize BILINEAR/BICUBIC is not supported for mode I;16B`
+for non-NEAREST I;16B resizes (Pillow accepts those and garbles every
+sample through its endian handling; replicating that corruption is
+declined). No other export, status code, handle-ownership rule, or
+pointer lifetime changed.
 
 ## Transpose Method IDs
 

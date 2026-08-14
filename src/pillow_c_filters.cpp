@@ -259,7 +259,8 @@ std::uint8_t source_sample_for_resize(const PillowCImage* source, int x, int y, 
     const bool alpha_mode = source->mode == PILLOW_C_MODE_LA || source->mode == PILLOW_C_MODE_RGBA;
     const int alpha_channel = source->channels - 1;
     if (alpha_mode && channel < alpha_channel) {
-        return pillow_c_mul_div_255(px[channel], px[alpha_channel]);
+        // Pillow's RGBa/La premultiply: (c * a + 127) // 255.
+        return static_cast<std::uint8_t>((px[channel] * px[alpha_channel] + 127) / 255);
     }
     return px[channel];
 }
@@ -517,6 +518,9 @@ int resize_filter_box_into(
                     const std::uint8_t alpha = values[alpha_channel];
                     for (int channel = 0; channel < alpha_channel; ++channel) {
                         const std::uint8_t premultiplied = values[channel];
+                        // Pillow's RGBa/La back-conversion: c * 255 // a,
+                        // with a == 0 keeping the premultiplied value and
+                        // a == 255 passing it through unchanged.
                         dst[channel] = (alpha == 0 || alpha == 255)
                             ? premultiplied
                             : pillow_c_clip_u8_int(255 * static_cast<int>(premultiplied) / alpha);
@@ -2417,11 +2421,26 @@ extern "C" __declspec(dllexport) int pillow_c_image_filter_color_3d_lut_into(
         target);
 }
 
-extern "C" __declspec(dllexport) int pillow_c_image_resize(
+bool resize_uses_rgba_premultiply(const PillowCImage* source, int resample)
+{
+    return resample != PILLOW_C_RESAMPLE_NEAREST && source &&
+        ((source->mode == PILLOW_C_MODE_RGBA && source->channels == 4) ||
+         (source->mode == PILLOW_C_MODE_LA && source->channels == 2));
+}
+
+// Pillow 11.3.0 resize rules shared by the plain/box/reducing-gap
+// routes: mode 1/P always forces NEAREST, and RGBA/LA with a
+// non-NEAREST resample resamples the premultiplied La/RGBa values
+// (the filter premultiplies per sample with Pillow's exact
+// (c*a+127)//255 and unpremultiplies with c*255//a at the end);
+// the RGBA/LA inner resize drops reducing_gap.
+int resize_with_mode_rules(
     const PillowCImage* source,
     int out_width,
     int out_height,
     int resample,
+    const double* box,
+    const double* reducing_gap,
     PillowCImage** out_image)
 {
     if (!source || !out_image) {
@@ -2434,10 +2453,13 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize(
     if (resample != PILLOW_C_RESAMPLE_NEAREST && !filter_spec_for_resample(resample)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-     const int refresh_status = pillow_c_refresh_const_buffer_view_image(source);
+    const int refresh_status = pillow_c_refresh_const_buffer_view_image(source);
     if (refresh_status != PILLOW_C_OK) {
         return refresh_status;
     }
+    const int effective_resample = resize_resample_for_mode(source, resample);
+    const bool drop_reducing_gap = reducing_gap != nullptr &&
+        resize_uses_rgba_premultiply(source, effective_resample);
 
     std::size_t stride = 0;
     std::size_t size = 0;
@@ -2453,7 +2475,18 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize(
             source->channels,
             stride,
             std::vector<std::uint8_t>(size)};
-        const int status = resize_image_into(source, out_width, out_height, resample, image);
+        int status = PILLOW_C_OK;
+        if (box && reducing_gap && !drop_reducing_gap) {
+            status = resize_image_reducing_gap_into(
+                source, out_width, out_height, resample,
+                box[0], box[1], box[2], box[3], *reducing_gap, image);
+        } else if (box) {
+            status = resize_image_box_into(
+                source, out_width, out_height, effective_resample,
+                box[0], box[1], box[2], box[3], image);
+        } else {
+            status = resize_image_into(source, out_width, out_height, effective_resample, image);
+        }
         if (status != PILLOW_C_OK) {
             delete image;
             return status;
@@ -2463,6 +2496,16 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize(
     } catch (const std::bad_alloc&) {
         return PILLOW_C_ALLOCATION_FAILED;
     }
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_resize(
+    const PillowCImage* source,
+    int out_width,
+    int out_height,
+    int resample,
+    PillowCImage** out_image)
+{
+    return resize_with_mode_rules(source, out_width, out_height, resample, nullptr, nullptr, out_image);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_resize_box(
@@ -2483,38 +2526,8 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize_box(
     if (out_width <= 0 || out_height <= 0 || !valid_resize_box(source, box_left, box_top, box_right, box_bottom)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (resample != PILLOW_C_RESAMPLE_NEAREST && !filter_spec_for_resample(resample)) {
-        return PILLOW_C_INVALID_ARGUMENT;
-    }
-     const int refresh_status = pillow_c_refresh_const_buffer_view_image(source);
-    if (refresh_status != PILLOW_C_OK) {
-        return refresh_status;
-    }
-
-    std::size_t stride = 0;
-    std::size_t size = 0;
-    if (!checked_image_size(out_width, out_height, source->channels, &stride, &size)) {
-        return PILLOW_C_INVALID_ARGUMENT;
-    }
-
-    try {
-        auto* image = new PillowCImage{
-            out_width,
-            out_height,
-            source->mode,
-            source->channels,
-            stride,
-            std::vector<std::uint8_t>(size)};
-        const int status = resize_image_box_into(source, out_width, out_height, resample, box_left, box_top, box_right, box_bottom, image);
-        if (status != PILLOW_C_OK) {
-            delete image;
-            return status;
-        }
-        *out_image = image;
-        return PILLOW_C_OK;
-    } catch (const std::bad_alloc&) {
-        return PILLOW_C_ALLOCATION_FAILED;
-    }
+    const double box[4] = {box_left, box_top, box_right, box_bottom};
+    return resize_with_mode_rules(source, out_width, out_height, resample, box, nullptr, out_image);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_resize_reducing_gap(
@@ -2540,53 +2553,9 @@ extern "C" __declspec(dllexport) int pillow_c_image_resize_reducing_gap(
         !valid_resize_box(source, box_left, box_top, box_right, box_bottom)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-
-    const int effective_resample = resize_resample_for_mode(source, resample);
-    if (effective_resample != PILLOW_C_RESAMPLE_NEAREST && !filter_spec_for_resample(effective_resample)) {
-        return PILLOW_C_INVALID_ARGUMENT;
-    }
-     const int refresh_status = pillow_c_refresh_const_buffer_view_image(source);
-    if (refresh_status != PILLOW_C_OK) {
-        return refresh_status;
-    }
-
-    std::size_t stride = 0;
-    std::size_t size = 0;
-    if (!checked_image_size(out_width, out_height, source->channels, &stride, &size)) {
-        return PILLOW_C_INVALID_ARGUMENT;
-    }
-
-    try {
-        auto* image = new PillowCImage{
-            out_width,
-            out_height,
-            source->mode,
-            source->channels,
-            stride,
-            std::vector<std::uint8_t>(size),
-            source->palette_rgb};
-        image->palette_alpha = source->palette_alpha;
-        image->palette_alpha_mode = source->palette_alpha_mode;
-        const int status = resize_image_reducing_gap_into(
-            source,
-            out_width,
-            out_height,
-            resample,
-            box_left,
-            box_top,
-            box_right,
-            box_bottom,
-            reducing_gap,
-            image);
-        if (status != PILLOW_C_OK) {
-            delete image;
-            return status;
-        }
-        *out_image = image;
-        return PILLOW_C_OK;
-    } catch (const std::bad_alloc&) {
-        return PILLOW_C_ALLOCATION_FAILED;
-    }
+    const double box[4] = {box_left, box_top, box_right, box_bottom};
+    return resize_with_mode_rules(
+        source, out_width, out_height, resample, box, &reducing_gap, out_image);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_reduce(

@@ -50,10 +50,10 @@ no longer claimed. The honest split:
   id_section/orientation, GIF palette/interlace); TIFF jpeg/group3/
   group4 compression rejected though local libtiff supports it; six
   runtime-verified error-message mismatches (PNG compress_level,
-  JPEG quality/subsampling, TIFF quality, ICO sizes); and the
-  I;16-resize default-resample divergence (Pillow uses BICUBIC for
-  non-BGR modes; the facade uses NEAREST for any ';' mode — ledger
-  row MODE-NUM-001CM's "exact" claim is WRONG); plus systemic
+  JPEG quality/subsampling, TIFF quality, ICO sizes); the I;16
+  default-resample divergence (Pillow uses BICUBIC for non-BGR
+  modes while the facade used NEAREST for any ';' mode) — now
+  CLOSED by MODE-RGBA-RESIZE-001 below; plus systemic
   `pillow_c: invalid argument` where Pillow raises its specific
   ValueError/IndexError messages (resize resample, inverted crop,
   getpixel OOB, reduce(0), transpose(99) — runtime-verified).
@@ -62,9 +62,10 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-DDS-001 (DDS byte-exact raw + BCN)
-after BEHAV-SGI-001/PCX-001; the next bounded child is
-BEHAV-ICNS-001, then the AUDIT-003 newly recorded gaps (truetype
+Latest covered gap tail: MODE-RGBA-RESIZE-001 (RGBA/LA premultiplied
+resize roundtrip, I;16 default = BICUBIC, I;16B non-NEAREST boundary
+restored) after BEHAV-DDS-001/SGI-001/PCX-001; the next bounded child
+is BEHAV-ICNS-001, then the AUDIT-003 newly recorded gaps (truetype
 font loading, save-option parity, error-message parity) follow as
 their own packets.
 ```
@@ -483,6 +484,36 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `MODE-RGBA-RESIZE-001` is GREEN as the RGBA/LA premultiplied
+resize and default-resample packet (behavioral parity). The Pillow
+11.3.0 oracle (Image.py resize plus the convert-based RGBa/La
+roundtrip, probed pointwise in `oracle/probe_premultiply_formulas.py`)
+shows premultiply `out[c] = (c * a + 127) // 255`, unpremultiply
+`out[c] = clip(c * 255 // a)` with the premultiplied value KEPT when
+`a == 0` (a==255 passes through unchanged), the default resample is
+BICUBIC for every non-`BGR;` mode with 1/P forced NEAREST, and
+RGBA/LA non-NEAREST resize runs through the premultiplied roundtrip
+with `reducing_gap` dropped on the inner resize. The native filter
+sampler now premultiplies in-sample with +127, the output
+unpremultiply keeps the premultiplied value at a==0 (previously
+zeroed — wrong), the resize dispatcher forces 1/P to NEAREST and
+drops reducing_gap for RGBA/LA non-NEAREST, and the facade defaults
+`Resize` to BICUBIC while restoring the documented I;16B non-NEAREST
+boundary error. Three oracle-divergent fixtures were repaired: the
+premultiply test's I;16 input was built with the UChar-truncating
+`PillowTestBuffer` (300 became 44) and now uses the new
+`PillowTestBufferFromU16`, the I;16 default-resize fixture moved from
+the old NEAREST default to Pillow's BICUBIC bytes, and the LANCZOS
+RGBA raw fixture is Pillow-regenerated (its a==0 blue channel proves
+the keep-premultiplied rule). The premultiply facade target, the raw
+advanced-filter target, and the I;16 boundaries target all pass; the
+full directory suite passes `2820/2820` in `27594ms` with zero
+failures, errors, or skips. Release x64 is clean; source/DLL export
+parity remains `477/477` with zero difference; and the rebuilt DLL
+SHA-256 is
+`6FB517FE788BA01A1EEF079AC2396C8BA3DF2A2DE15840C1D7C115385A462E70`.
+The next bounded child is `BEHAV-ICNS-001`, the ICNS format.
 
 2026-08-14: `BEHAV-DDS-001` is GREEN as the DDS format (behavioral
 parity). The Pillow 11.3.0 oracle (DdsImagePlugin source plus the

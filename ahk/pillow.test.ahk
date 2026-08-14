@@ -42,6 +42,13 @@ PillowTestBytesFromU16(values) {
     return PillowTestBufferToArray(buf)
 }
 
+PillowTestBufferFromU16(values) {
+    buf := Buffer(values.Length * 2, 0)
+    for index, value in values
+        NumPut("UShort", value, buf, (index - 1) * 2)
+    return buf
+}
+
 PillowTestBytesFromU16BE(values) {
     buf := Buffer(values.Length * 2, 0)
     for index, value in values {
@@ -23154,6 +23161,134 @@ PillowTestDdsFormat(*) {
 
 AhkTest.Test("Pillow DDS format matches Pillow 11.3.0 bytes and round-trips", PillowTestDdsFormat)
 
+PillowTestResizeRgbaPremultiply(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    try {
+        ; MODE-RGBA-RESIZE-001: Pillow resizes RGBA/LA with a non-NEAREST
+        ; resample through the premultiplied La/RGBa modes (out = (c*a+127)//255,
+        ; back = c*255//a); same-size + full-box short-circuits to a copy,
+        ; NEAREST skips the roundtrip, mode 1/P forces NEAREST, and the
+        ; RGBA inner resize drops reducing_gap.
+        rgba := Pillow.Image.New("RGBA", [16, 16])
+        try {
+            values := Buffer(16 * 16 * 4, 0)
+            i := 0
+            loop 16 {
+                y := A_Index - 1
+                loop 16 {
+                    x := A_Index - 1
+                    NumPut("UChar", x * 16, values, i)
+                    NumPut("UChar", y * 16, values, i + 1)
+                    NumPut("UChar", (x + y) * 8, values, i + 2)
+                    NumPut("UChar", 255 - x - y, values, i + 3)
+                    i += 4
+                }
+            }
+            rgba.FromBytes(values)
+
+            r32 := rgba.Resize([32, 32])
+            try {
+                AhkTest.AssertEqual(PillowTestHexBytes("000000ff030000ff0b0005fe140009fe1c000dfd240011fd2b0015fc330019fc3b001cfb440020fb4b0024fa530028fa5c002df9640031f96b0034f8740038f87b003cf7840041f78b0044f6940048f69c004df5a40051f5ab0054f4b30058f4bb005cf3c40060f3cb0065f2d30069f2dc006cf1e40071f1ee0075f0f10078f0000301ff030302ff0b0307fe14030bfe1c030ffd240313fd2b0317fc33031bfc3b031efb440322fb4b0326fa53032afa5c032ff9640333f96b0236f874023af87b023ef7840243f78b0246f694024af69c034ff5a40353f5ab0356f4b3035af4bb035ef3c40362f3cb0367f2d3036bf2dc036ff1e40373f1ee0378f0f1037af0000b05fe030b07fe0b0b0cfd140b10fd1c0b14fc240b18fc2b0b1bfb330b1ffb3c0b23fa440b27fa4b0b2cf9530b30f95b0b33f8630b37f86b0b3bf7730b40f77b0b43f6830b47f68b0b4bf5930b50f59b0b53f4a40b57f4ac0b5bf3b40b5ff3bb0b64f2c30b68f2cc0b6bf1d40b70f1dd0b73f0e40b78f0ed0b7ceff10b7eef001409fe03140bfe0b1410fd141414fd1c1418fc24141cfc2b141ffb331423fb3c1427fa44142bfa4b1430f9531434f95b1437f863143bf86b1340f7731344f77b1347f683134bf68b1350f5931354f59b1357f4a4135bf4ac135ff3b41363f3bb1468f2c3146cf2cc1470f1d41474f1dd1478f0e4147cf0ed1481eff11483ef001c0dfd031c0ffd0b1c14fc141c18fc1b1b1bfb231b1ffb2b1b23fa341b27fa3b1b2cf9431b30f94c1b33f8541b37f85b1b3bf7641b40f76b1b43f6741b47f67b1c4bf5841c50f58c1c53f4941c57f49b1b5bf3a31b5ff3ab1b64f2b41b68f2bb1b6bf1c31b70f1cc1b73f0d41b78f0dc1b7befe41b80efed1b84eef11b87ee002411fd032413fd0b2418fc14241cfc1b231ffb232323fb2b2327fa34232bfa3b2330f9432334f94c2337f854233bf85b2440f7642444f76b2447f674244bf67b2450f5842454f58c2457f494245bf49b235ff3a32363f3ab2368f2b4236cf2bb2370f1c32374f1cc2478f0d4247cf0dc2480efe42484efed2489eef1248bee002b15fc032b17fc0b2b1bfb142b1ffb1b2b23fa232b27fa2c2c2cf9342c30f93b2c33f8432c37f84b2b3bf7532b40f75c2b43f6642b47f66c2b4bf5742b50f57b2b53f4832b57f48b2c5bf3932c5ff39b2c64f2a42c68f2ab2b6bf1b32b70f1bc2b73f0c42b78f0cc2b7befd42b80efdc2b83eee42b88eeed2c8cedf12c8fed003319fc03331bfc0b331ffb143323fb1b3427fa23342bfa2c3430f9343434f93b3437f843343bf84b3340f7533344f75c3347f664334bf66c3450f5743454f57b3457f483345bf48b345ff3933463f39b3468f2a4346cf2ab3370f1b33374f1bc3478f0c4347cf0cc3480efd43484efdc3488eee4348ceeed3491edf13493ed003b1cfb033b1efb0b3c23fa143c27fa1b3b2cf9233b30f92c3b33f8343b37f83b3b3bf7443b40f74b3c43f6533c47f65b3b4bf5633b50f56b3b53f4743b57f47b3b5bf3843b5ff38c3c64f2943c68f29b3b6bf1a43b70f1ac3b73f0b43b78f0bc3b7befc43b80efcc3c83eed43c88eedc3b8bede43b90eded3b95ecf03b97ec004420fb034422fb0b4427fa14442bfa1b4330f9234334f92c4337f834433bf83b4440f7444444f74b4447f653444bf65b4350f5634354f56b4357f474435bf47b445ff3844463f38c4468f294446cf29b4370f1a44374f1ac4478f0b4447cf0bc4480efc44484efcc4488eed4448ceedc4390ede44394eded4499ecf0449bec004b24fa034b26fa0b4b2cf9144b30f91b4c33f8234c37f82b4b3bf7334b40f73c4b43f6444b47f64b4b4bf5544b50f55b4c53f4644c57f46c4b5bf3744b5ff37b4b64f2834b68f28b4c6bf1944c70f19c4b73f0a44b78f0ac4b7befb44b80efbc4c83eec44c88eecc4b8bedd34b90eddc4b94ece34b98eced4b9cebf04b9eeb005328fa03532afa0b5330f9145334f91b5437f823543bf82b5340f7335344f73c5347f644534bf64b5450f5545454f55b5457f464545bf46c535ff3745363f37b5468f283546cf28b5470f1945474f19c5378f0a4537cf0ac5480efb45484efbc5488eec4548ceecc5390edd35394eddc5498ece3549ceced54a0ebf054a2eb005c2df9035c2ff90b5b33f8145b37f81b5b3bf7245b40f72b5c43f6335c47f63b5b4bf5435b50f54c5b53f4545b57f45b5b5bf3635b5ff36b5b64f2735b68f27b5c6bf1845c70f18c5b73f0945b78f09c5b7befa45b80efac5c83eeb25c88eebb5b8bedc35b90edcc5b94ecd35b98ecdc5b9bebe35b9febed5ca4eaf05ca6ea006431f9036433f90b6337f814633bf81b6440f7246444f72b6447f633644bf63b6350f5436354f54c6457f454645bf45b635ff3636363f36b6468f273646cf27b6470f1846474f18c6378f094637cf09c6480efa46484efac6488eeb2648ceebb6490edc36494edcc6498ecd3649cecdc639febe363a3ebed64a8eaf064abea006b34f8026b36f80b6b3bf7136b40f71b6b43f6246b47f62b6c4bf5346c50f53b6b53f4436b57f44b6c5bf3536c5ff35b6b64f2646b68f26b6b6bf1746b70f17b6b73f0836b78f08b6b7bef946b80ef9b6c83eea36c88eeac6c8bedb46c90edbd6c94ecc46c98eccd6c9bebd46c9febdd6ba3eae46ba7eaed6cace9f06cafe9007438f802743af80b7340f7137344f71b7447f624744bf62b7450f5347454f53b7457f443745bf44b745ff3537463f35b7368f264736cf26b7470f1747474f17b7378f083737cf08b7480ef947484ef9b7488eea3748ceeac7390edb47394edbd7498ecc4749ceccd739febd473a3ebdd74a7eae474aceaed74b1e9f074b3e9007b3cf7027b3ef70b7b43f6137b47f61c7b4bf5247b50f52b7b53f4347b57f43b7b5bf3447b5ff34b7b64f2547b68f25c7b6bf1647b70f16b7b73f0737b78f07b7b7bef847b80ef8b7b83ee937b88ee9c7c8beda47c90edac7b94ecb47b98ecbc7c9bebc47c9febcc7ba3ead47ba7eadd7cabe9e47cb0e9ed7cb4e8f07cb6e8008441f7028443f70b8347f613834bf61c8450f5248454f52b8357f434835bf43b845ff3448463f34b8368f254836cf25c8470f1648474f16b8378f073837cf07b8480ef848484ef8b8388ee93838cee9c8490eda48494edac8398ecb4839cecbc849febc484a3ebcc83a7ead483aceadd84b0e9e484b4e9ed83b8e8f083bae8008b44f6028b46f60b8b4bf5138b50f51c8c53f4248c57f42c8b5bf3348b5ff33c8c64f2448c68f24c8b6bf1548b70f15b8c73f0638c78f06b8b7bef748b80ef7b8b83ee838b88ee8b8b8bed948b90ed9c8c94eca48c98ecac8b9bebb48b9febbc8ca3eac48ca7eacc8cabe9d48cb0e9dc8cb3e8e48cb7e8ed8cbce7f08cbee7009448f602944af60b9350f5139354f51c9457f424945bf42c935ff3349363f33c9468f244946cf24c9470f1549474f15b9478f063947cf06b9480ef749484ef7b9388ee83938cee8b9490ed949494ed9c9298eca4929cecac949febb494a3ebbc94a7eac494aceacc94b0e9d494b4e9dc94b7e8e494bbe8ed93c1e7f093c3e7009c4df5039c4ff50b9b53f4139b57f41b9b5bf3239b5ff32c9b64f2349b68f23b9b6bf1439b70f14b9c73f0539c78f05b9c7bef649c80ef6c9b83ee749b88ee7c9c8bed849c90ed8c9c94ec929c98ec9b9b9beba39b9febac9ca3eab39ca7eabc9cabe9c29cb0e9cb9db3e8d49db7e8dc9cbbe7e49cc0e7ed9cc4e6f09cc6e600a451f503a453f50ba457f413a45bf41ba35ff323a363f32ca468f234a46cf23ba470f143a474f14ba478f053a47cf05ba480ef64a484ef6ca388ee74a38cee7ca490ed84a494ed8ca498ec92a49cec9ba39feba3a3a3ebaca4a7eab3a4aceabca4b0e9c2a4b4e9cba3b7e8d4a3bbe8dca4c0e7e4a4c4e7eda4c8e6f0a4cae600ab54f403ab56f40bac5bf313ac5ff31bab64f223ab68f22bab6bf133ab70f13bac73f044ac78f04bac7bef54ac80ef5cac83ee64ac88ee6cac8bed73ac90ed7bac94ec83ac98ec8bac9beb94ac9feb9caca3eaa4aca7eaacacabe9b4acb0e9bdacb3e8c3acb7e8ccacbbe7d2acc0e7dbacc3e6e4acc7e6eeaccce5f1accfe500b358f403b35af40bb45ff313b463f31bb468f223b46cf22bb370f133b374f13bb478f044b47cf04bb480ef54b484ef5cb288ee64b28cee6cb490ed73b494ed7bb498ec83b49cec8bb49feb94b4a3eb9cb3a7eaa4b3aceaacb4b0e9b4b4b4e9bdb4b7e8c3b4bbe8ccb2c0e7d2b2c4e7dbb3c7e6e4b3cce6eeb4d1e5f1b4d3e500bb5cf303bb5ef30bbb64f214bb68f21bbb6bf123bb70f12bbc73f034bc78f03bbc7bef44bc80ef4cbc83ee54bc88ee5bbb8bed64bb90ed6cbd94ec74bd98ec7cbc9beb84bc9feb8cbca3ea94bca7ea9cbcabe9a4bcb0e9acbdb3e8b4bdb7e8bcbcbbe7c4bcc0e7cdbbc3e6d3bbc7e6dcbccbe5e4bcd0e5eebdd5e4f1bdd7e400c460f303c462f30bc368f214c36cf21bc370f123c374f12bc478f034c47cf03bc480ef44c484ef4cc488ee54c48cee5bc390ed64c394ed6cc498ec74c49cec7cc49feb84c4a3eb8cc4a7ea94c4acea9cc2b0e9a4c2b4e9acc3b7e8b4c3bbe8bcc4c0e7c4c4c4e7cdc4c7e6d3c4cce6dcc2d0e5e4c2d4e5eec3d7e4f1c3dae400cb65f203cb67f20bcc6bf114cc70f11bcc73f024cc78f02bcc7bef34cc80ef3ccc83ee44cc88ee4bcc8bed53cc90ed5bcc94ec64cc98ec6ccd9beb73cd9feb7bcca3ea83cca7ea8cccabe994ccb0e99dcbb3e8a3cbb7e8acccbbe7b2ccc0e7bbcdc3e6c4cdc7e6cccccbe5d3ccd0e5dcccd4e4e4ccd8e4eeccdce3f1ccdee300d369f203d36bf20bd470f114d474f11bd478f024d47cf02bd480ef34d484ef3cd488ee44d48cee4bd390ed53d394ed5bd398ec64d39cec6cd49feb73d4a3eb7bd4a7ea83d4acea8cd4b0e994d4b4e99dd4b7e8a3d4bbe8acd2c0e7b2d2c4e7bbd3c7e6c4d3cce6ccd3d0e5d3d3d3e5dcd3d7e4e4d3dbe4eed3e0e3f1d3e2e300dc6cf103dc6ff10bdd73f014dd78f01bdc7bef24dc80ef2bdc83ee34dc88ee3bdc8bed43dc90ed4bdc94ec54dc98ec5bdc9beb63dc9feb6bdda3ea74dda7ea7cddabe984ddb0e98cdcb3e894dcb7e89cdcbbe7a4dcc0e7acdbc3e6b3dbc7e6bcdccbe5c2dcd0e5ccdcd4e4d3dcd7e4dcdcdce3e4dcdfe3eedde5e2f1dde7e200e471f103e473f10be478f014e47cf01be480ef24e484ef2be488ee34e48cee3be490ed43e494ed4be398ec54e39cec5be39feb63e3a3eb6be4a7ea74e4acea7ce4b0e984e4b4e98ce4b7e894e4bbe89ce4c0e7a4e4c4e7ace4c7e6b3e4cce6bce4d0e5c2e4d4e5cce4d8e4d3e4dbe4dce4dfe3e4e4e4e3eee5e9e2f1e5ebe200ee75f003ee78f00bed7cef14ed81ef1bed84ee24ed89ee2ced8ced34ed91ed3bed95ec44ed99ec4bed9ceb54eda0eb5ceda4ea64eda8ea6cedace974edb1e97cedb4e883edb8e88cedbce793edc1e79cedc4e6a4edc8e6aceecce5b4eed1e5bdeed5e4c3eed7e4cceedce3d3eee0e3ddeee5e2e5eee9e2eeeeeee1f1eef0e100f178f003f17af00bf17eef14f183ef1bf187ee24f18bee2cf18fed34f193ed3bf097ec44f09bec4bf09eeb54f0a2eb5cf0a6ea64f0abea6cf0afe974f0b3e97cf0b6e883f0bae88cf0bee793f0c3e79cf0c6e6a4f0cae6acf1cfe5b4f1d3e5bdf1d7e4c3f1d8e4ccf1dde3d3f1e2e3ddf1e7e2e5f1ebe2eef1f0e1f1f1f2e1"), PillowTestBufferToArray(r32.ToBytes()))
+            } finally {
+                r32.Close()
+            }
+
+            r79 := rgba.Resize([7, 9], Pillow.Resampling.BILINEAR)
+            try {
+                AhkTest.AssertEqual(PillowTestHexBytes("0d090bfd2e091bfb53092ef9780840f79c0852f4c00865f2e20875f00d2118fc2e2127fa53213af878214cf69c215ef3c02172f1e22282ef0d3f26fa2e3e37f8533f49f6783e5bf49c3f6ef1c13e81efe13f91ed0d5c35f82e5c45f6535d57f4785c6af29b5c7cefc05c8fede15c9feb0d7743f72e7753f5537765f3777777f19b788aeec0779cece177acea0d9250f52f9260f3539373f1779385ef9b9297ecc093aaeae293bae80db05ef32eb06ff154b082ef77af93ed9bb0a5eac1afb8e8e2b0c8e60dce6ef12ece7def53ce91ed77cea2eb9cceb5e8c0cec7e6e1cdd7e40de67af02fe68aee53e69cec76e5aeea9be6c1e7c0e6d3e5e1e6e4e3"), PillowTestBufferToArray(r79.ToBytes()))
+            } finally {
+                r79.Close()
+            }
+
+            rbox := rgba.Resize([5, 5], Pillow.Resampling.BICUBIC, [2.0, 3.0, 14.0, 15.0])
+            try {
+                AhkTest.AssertEqual(PillowTestHexBytes("2a3a32f8513b46f6783a58f49e3b6cf1c63a81ef296145f6516258f478606cf29e6280efc56193ed298758f452876cf2788680f09e8793edc687a6eb29ae6bf152ae80ef77ae93ed9faea6eac5aeb9e829d680ef51d694ed77d6a7eb9ed6bae8c5d5cee6"), PillowTestBufferToArray(rbox.ToBytes()))
+            } finally {
+                rbox.Close()
+            }
+
+            rgap := rgba.Resize([32, 32], Pillow.Resampling.BICUBIC, unset, 2.0)
+            try {
+                ; Pillow drops reducing_gap on the RGBA roundtrip.
+                AhkTest.AssertEqual(PillowTestHexBytes("000000ff030000ff0b0005fe140009fe1c000dfd240011fd2b0015fc330019fc3b001cfb440020fb4b0024fa530028fa5c002df9640031f96b0034f8740038f87b003cf7840041f78b0044f6940048f69c004df5a40051f5ab0054f4b30058f4bb005cf3c40060f3cb0065f2d30069f2dc006cf1e40071f1ee0075f0f10078f0000301ff030302ff0b0307fe14030bfe1c030ffd240313fd2b0317fc33031bfc3b031efb440322fb4b0326fa53032afa5c032ff9640333f96b0236f874023af87b023ef7840243f78b0246f694024af69c034ff5a40353f5ab0356f4b3035af4bb035ef3c40362f3cb0367f2d3036bf2dc036ff1e40373f1ee0378f0f1037af0000b05fe030b07fe0b0b0cfd140b10fd1c0b14fc240b18fc2b0b1bfb330b1ffb3c0b23fa440b27fa4b0b2cf9530b30f95b0b33f8630b37f86b0b3bf7730b40f77b0b43f6830b47f68b0b4bf5930b50f59b0b53f4a40b57f4ac0b5bf3b40b5ff3bb0b64f2c30b68f2cc0b6bf1d40b70f1dd0b73f0e40b78f0ed0b7ceff10b7eef001409fe03140bfe0b1410fd141414fd1c1418fc24141cfc2b141ffb331423fb3c1427fa44142bfa4b1430f9531434f95b1437f863143bf86b1340f7731344f77b1347f683134bf68b1350f5931354f59b1357f4a4135bf4ac135ff3b41363f3bb1468f2c3146cf2cc1470f1d41474f1dd1478f0e4147cf0ed1481eff11483ef001c0dfd031c0ffd0b1c14fc141c18fc1b1b1bfb231b1ffb2b1b23fa341b27fa3b1b2cf9431b30f94c1b33f8541b37f85b1b3bf7641b40f76b1b43f6741b47f67b1c4bf5841c50f58c1c53f4941c57f49b1b5bf3a31b5ff3ab1b64f2b41b68f2bb1b6bf1c31b70f1cc1b73f0d41b78f0dc1b7befe41b80efed1b84eef11b87ee002411fd032413fd0b2418fc14241cfc1b231ffb232323fb2b2327fa34232bfa3b2330f9432334f94c2337f854233bf85b2440f7642444f76b2447f674244bf67b2450f5842454f58c2457f494245bf49b235ff3a32363f3ab2368f2b4236cf2bb2370f1c32374f1cc2478f0d4247cf0dc2480efe42484efed2489eef1248bee002b15fc032b17fc0b2b1bfb142b1ffb1b2b23fa232b27fa2c2c2cf9342c30f93b2c33f8432c37f84b2b3bf7532b40f75c2b43f6642b47f66c2b4bf5742b50f57b2b53f4832b57f48b2c5bf3932c5ff39b2c64f2a42c68f2ab2b6bf1b32b70f1bc2b73f0c42b78f0cc2b7befd42b80efdc2b83eee42b88eeed2c8cedf12c8fed003319fc03331bfc0b331ffb143323fb1b3427fa23342bfa2c3430f9343434f93b3437f843343bf84b3340f7533344f75c3347f664334bf66c3450f5743454f57b3457f483345bf48b345ff3933463f39b3468f2a4346cf2ab3370f1b33374f1bc3478f0c4347cf0cc3480efd43484efdc3488eee4348ceeed3491edf13493ed003b1cfb033b1efb0b3c23fa143c27fa1b3b2cf9233b30f92c3b33f8343b37f83b3b3bf7443b40f74b3c43f6533c47f65b3b4bf5633b50f56b3b53f4743b57f47b3b5bf3843b5ff38c3c64f2943c68f29b3b6bf1a43b70f1ac3b73f0b43b78f0bc3b7befc43b80efcc3c83eed43c88eedc3b8bede43b90eded3b95ecf03b97ec004420fb034422fb0b4427fa14442bfa1b4330f9234334f92c4337f834433bf83b4440f7444444f74b4447f653444bf65b4350f5634354f56b4357f474435bf47b445ff3844463f38c4468f294446cf29b4370f1a44374f1ac4478f0b4447cf0bc4480efc44484efcc4488eed4448ceedc4390ede44394eded4499ecf0449bec004b24fa034b26fa0b4b2cf9144b30f91b4c33f8234c37f82b4b3bf7334b40f73c4b43f6444b47f64b4b4bf5544b50f55b4c53f4644c57f46c4b5bf3744b5ff37b4b64f2834b68f28b4c6bf1944c70f19c4b73f0a44b78f0ac4b7befb44b80efbc4c83eec44c88eecc4b8bedd34b90eddc4b94ece34b98eced4b9cebf04b9eeb005328fa03532afa0b5330f9145334f91b5437f823543bf82b5340f7335344f73c5347f644534bf64b5450f5545454f55b5457f464545bf46c535ff3745363f37b5468f283546cf28b5470f1945474f19c5378f0a4537cf0ac5480efb45484efbc5488eec4548ceecc5390edd35394eddc5498ece3549ceced54a0ebf054a2eb005c2df9035c2ff90b5b33f8145b37f81b5b3bf7245b40f72b5c43f6335c47f63b5b4bf5435b50f54c5b53f4545b57f45b5b5bf3635b5ff36b5b64f2735b68f27b5c6bf1845c70f18c5b73f0945b78f09c5b7befa45b80efac5c83eeb25c88eebb5b8bedc35b90edcc5b94ecd35b98ecdc5b9bebe35b9febed5ca4eaf05ca6ea006431f9036433f90b6337f814633bf81b6440f7246444f72b6447f633644bf63b6350f5436354f54c6457f454645bf45b635ff3636363f36b6468f273646cf27b6470f1846474f18c6378f094637cf09c6480efa46484efac6488eeb2648ceebb6490edc36494edcc6498ecd3649cecdc639febe363a3ebed64a8eaf064abea006b34f8026b36f80b6b3bf7136b40f71b6b43f6246b47f62b6c4bf5346c50f53b6b53f4436b57f44b6c5bf3536c5ff35b6b64f2646b68f26b6b6bf1746b70f17b6b73f0836b78f08b6b7bef946b80ef9b6c83eea36c88eeac6c8bedb46c90edbd6c94ecc46c98eccd6c9bebd46c9febdd6ba3eae46ba7eaed6cace9f06cafe9007438f802743af80b7340f7137344f71b7447f624744bf62b7450f5347454f53b7457f443745bf44b745ff3537463f35b7368f264736cf26b7470f1747474f17b7378f083737cf08b7480ef947484ef9b7488eea3748ceeac7390edb47394edbd7498ecc4749ceccd739febd473a3ebdd74a7eae474aceaed74b1e9f074b3e9007b3cf7027b3ef70b7b43f6137b47f61c7b4bf5247b50f52b7b53f4347b57f43b7b5bf3447b5ff34b7b64f2547b68f25c7b6bf1647b70f16b7b73f0737b78f07b7b7bef847b80ef8b7b83ee937b88ee9c7c8beda47c90edac7b94ecb47b98ecbc7c9bebc47c9febcc7ba3ead47ba7eadd7cabe9e47cb0e9ed7cb4e8f07cb6e8008441f7028443f70b8347f613834bf61c8450f5248454f52b8357f434835bf43b845ff3448463f34b8368f254836cf25c8470f1648474f16b8378f073837cf07b8480ef848484ef8b8388ee93838cee9c8490eda48494edac8398ecb4839cecbc849febc484a3ebcc83a7ead483aceadd84b0e9e484b4e9ed83b8e8f083bae8008b44f6028b46f60b8b4bf5138b50f51c8c53f4248c57f42c8b5bf3348b5ff33c8c64f2448c68f24c8b6bf1548b70f15b8c73f0638c78f06b8b7bef748b80ef7b8b83ee838b88ee8b8b8bed948b90ed9c8c94eca48c98ecac8b9bebb48b9febbc8ca3eac48ca7eacc8cabe9d48cb0e9dc8cb3e8e48cb7e8ed8cbce7f08cbee7009448f602944af60b9350f5139354f51c9457f424945bf42c935ff3349363f33c9468f244946cf24c9470f1549474f15b9478f063947cf06b9480ef749484ef7b9388ee83938cee8b9490ed949494ed9c9298eca4929cecac949febb494a3ebbc94a7eac494aceacc94b0e9d494b4e9dc94b7e8e494bbe8ed93c1e7f093c3e7009c4df5039c4ff50b9b53f4139b57f41b9b5bf3239b5ff32c9b64f2349b68f23b9b6bf1439b70f14b9c73f0539c78f05b9c7bef649c80ef6c9b83ee749b88ee7c9c8bed849c90ed8c9c94ec929c98ec9b9b9beba39b9febac9ca3eab39ca7eabc9cabe9c29cb0e9cb9db3e8d49db7e8dc9cbbe7e49cc0e7ed9cc4e6f09cc6e600a451f503a453f50ba457f413a45bf41ba35ff323a363f32ca468f234a46cf23ba470f143a474f14ba478f053a47cf05ba480ef64a484ef6ca388ee74a38cee7ca490ed84a494ed8ca498ec92a49cec9ba39feba3a3a3ebaca4a7eab3a4aceabca4b0e9c2a4b4e9cba3b7e8d4a3bbe8dca4c0e7e4a4c4e7eda4c8e6f0a4cae600ab54f403ab56f40bac5bf313ac5ff31bab64f223ab68f22bab6bf133ab70f13bac73f044ac78f04bac7bef54ac80ef5cac83ee64ac88ee6cac8bed73ac90ed7bac94ec83ac98ec8bac9beb94ac9feb9caca3eaa4aca7eaacacabe9b4acb0e9bdacb3e8c3acb7e8ccacbbe7d2acc0e7dbacc3e6e4acc7e6eeaccce5f1accfe500b358f403b35af40bb45ff313b463f31bb468f223b46cf22bb370f133b374f13bb478f044b47cf04bb480ef54b484ef5cb288ee64b28cee6cb490ed73b494ed7bb498ec83b49cec8bb49feb94b4a3eb9cb3a7eaa4b3aceaacb4b0e9b4b4b4e9bdb4b7e8c3b4bbe8ccb2c0e7d2b2c4e7dbb3c7e6e4b3cce6eeb4d1e5f1b4d3e500bb5cf303bb5ef30bbb64f214bb68f21bbb6bf123bb70f12bbc73f034bc78f03bbc7bef44bc80ef4cbc83ee54bc88ee5bbb8bed64bb90ed6cbd94ec74bd98ec7cbc9beb84bc9feb8cbca3ea94bca7ea9cbcabe9a4bcb0e9acbdb3e8b4bdb7e8bcbcbbe7c4bcc0e7cdbbc3e6d3bbc7e6dcbccbe5e4bcd0e5eebdd5e4f1bdd7e400c460f303c462f30bc368f214c36cf21bc370f123c374f12bc478f034c47cf03bc480ef44c484ef4cc488ee54c48cee5bc390ed64c394ed6cc498ec74c49cec7cc49feb84c4a3eb8cc4a7ea94c4acea9cc2b0e9a4c2b4e9acc3b7e8b4c3bbe8bcc4c0e7c4c4c4e7cdc4c7e6d3c4cce6dcc2d0e5e4c2d4e5eec3d7e4f1c3dae400cb65f203cb67f20bcc6bf114cc70f11bcc73f024cc78f02bcc7bef34cc80ef3ccc83ee44cc88ee4bcc8bed53cc90ed5bcc94ec64cc98ec6ccd9beb73cd9feb7bcca3ea83cca7ea8cccabe994ccb0e99dcbb3e8a3cbb7e8acccbbe7b2ccc0e7bbcdc3e6c4cdc7e6cccccbe5d3ccd0e5dcccd4e4e4ccd8e4eeccdce3f1ccdee300d369f203d36bf20bd470f114d474f11bd478f024d47cf02bd480ef34d484ef3cd488ee44d48cee4bd390ed53d394ed5bd398ec64d39cec6cd49feb73d4a3eb7bd4a7ea83d4acea8cd4b0e994d4b4e99dd4b7e8a3d4bbe8acd2c0e7b2d2c4e7bbd3c7e6c4d3cce6ccd3d0e5d3d3d3e5dcd3d7e4e4d3dbe4eed3e0e3f1d3e2e300dc6cf103dc6ff10bdd73f014dd78f01bdc7bef24dc80ef2bdc83ee34dc88ee3bdc8bed43dc90ed4bdc94ec54dc98ec5bdc9beb63dc9feb6bdda3ea74dda7ea7cddabe984ddb0e98cdcb3e894dcb7e89cdcbbe7a4dcc0e7acdbc3e6b3dbc7e6bcdccbe5c2dcd0e5ccdcd4e4d3dcd7e4dcdcdce3e4dcdfe3eedde5e2f1dde7e200e471f103e473f10be478f014e47cf01be480ef24e484ef2be488ee34e48cee3be490ed43e494ed4be398ec54e39cec5be39feb63e3a3eb6be4a7ea74e4acea7ce4b0e984e4b4e98ce4b7e894e4bbe89ce4c0e7a4e4c4e7ace4c7e6b3e4cce6bce4d0e5c2e4d4e5cce4d8e4d3e4dbe4dce4dfe3e4e4e4e3eee5e9e2f1e5ebe200ee75f003ee78f00bed7cef14ed81ef1bed84ee24ed89ee2ced8ced34ed91ed3bed95ec44ed99ec4bed9ceb54eda0eb5ceda4ea64eda8ea6cedace974edb1e97cedb4e883edb8e88cedbce793edc1e79cedc4e6a4edc8e6aceecce5b4eed1e5bdeed5e4c3eed7e4cceedce3d3eee0e3ddeee5e2e5eee9e2eeeeeee1f1eef0e100f178f003f17af00bf17eef14f183ef1bf187ee24f18bee2cf18fed34f193ed3bf097ec44f09bec4bf09eeb54f0a2eb5cf0a6ea64f0abea6cf0afe974f0b3e97cf0b6e883f0bae88cf0bee793f0c3e79cf0c6e6a4f0cae6acf1cfe5b4f1d3e5bdf1d7e4c3f1d8e4ccf1dde3d3f1e2e3ddf1e7e2e5f1ebe2eef1f0e1f1f1f2e1"), PillowTestBufferToArray(rgap.ToBytes()))
+            } finally {
+                rgap.Close()
+            }
+
+            rsame := rgba.Resize([16, 16])
+            try {
+                AhkTest.AssertEqual(PillowTestBufferToArray(values), PillowTestBufferToArray(rsame.ToBytes()))
+            } finally {
+                rsame.Close()
+            }
+
+            rnear := rgba.Resize([5, 5], Pillow.Resampling.NEAREST)
+            try {
+                AhkTest.AssertEqual(PillowTestHexBytes("101010fd401028fa801048f6b01060f3e01078f0104028fa404040f7804060f3b04078f0e04090ed108048f6408060f3808080efb08098ece080b0e910b060f340b078f080b098ecb0b0b0e9e0b0c8e610e078f040e090ed80e0b0e9b0e0c8e6e0e0e0e3"), PillowTestBufferToArray(rnear.ToBytes()))
+            } finally {
+                rnear.Close()
+            }
+        } finally {
+            rgba.Close()
+        }
+
+        la := Pillow.Image.New("LA", [8, 8])
+        try {
+            laValues := Buffer(8 * 8 * 2, 0)
+            i := 0
+            loop 8 {
+                y := A_Index - 1
+                loop 8 {
+                    x := A_Index - 1
+                    NumPut("UChar", x * 31, laValues, i)
+                    NumPut("UChar", 255 - y * 31, laValues, i + 1)
+                    i += 2
+                }
+            }
+            la.FromBytes(laValues)
+            laR := la.Resize([13, 5])
+            try {
+                AhkTest.AssertEqual(PillowTestHexBytes("00f50af520f533f545f559f56df580f592f5a5f5b8f5cff5dbf500c50ac520c533c545c559c56cc580c592c5a4c5b9c5cdc5dac500930a9320933293459358936b9380939393a693b793cc93d89300600a601f60326045605a606c607f609460a760b960cf60dc6000300a301f30353045305a306f307f309430a430b930cf30d930"), PillowTestBufferToArray(laR.ToBytes()))
+            } finally {
+                laR.Close()
+            }
+        } finally {
+            la.Close()
+        }
+
+        ; Pillow forces NEAREST for mode P even with an explicit BICUBIC.
+        p := Pillow.Image.New("P", [4, 4])
+        try {
+            p.FromBytes(PillowTestBuffer([0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3]))
+            pR := p.Resize([6, 3], Pillow.Resampling.BICUBIC)
+            try {
+                AhkTest.AssertEqual(PillowTestHexBytes("000101020203000101020203000101020203"), PillowTestBufferToArray(pR.ToBytes()))
+            } finally {
+                pR.Close()
+            }
+        } finally {
+            p.Close()
+        }
+
+        ; Pillow's default I;16 resize is BICUBIC, not NEAREST. Build the
+        ; buffer as true uint16 samples (PillowTestBuffer truncates at 255).
+        i16 := Pillow.Image.FromBytes("I;16", [4, 4], PillowTestBufferFromU16([0, 100, 200, 300, 0, 100, 200, 300, 0, 100, 200, 300, 0, 100, 200, 300]))
+        try {
+            i16R := i16.Resize([2, 2])
+            try {
+                AhkTest.AssertEqual(PillowTestHexBytes("3b00f1003b00f100"), PillowTestBufferToArray(i16R.ToBytes()))
+            } finally {
+                i16R.Close()
+            }
+        } finally {
+            i16.Close()
+        }
+    } finally {
+    }
+}
+
+AhkTest.Test("Pillow Image.Resize RGBA/LA premultiply and default resample match Pillow 11.3.0", PillowTestResizeRgbaPremultiply)
+
 
 PillowTestImageMathEval(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
@@ -24371,11 +24506,12 @@ PillowTestImageResizeTransformI16(*) {
     imageB := Pillow.Image.FromBytes("I;16B", [3, 2], PillowTestBuffer(PillowTestBytesFromU16([1000, 50000, 60000, 300, 200, 65535])))
     out := 0
     try {
-        ; Pillow defaults special modes (with ";") to NEAREST.
+        ; Pillow 11.3.0 defaults I;16 (only BGR;-prefixed modes default to
+        ; NEAREST) to BICUBIC.
         out := image.Resize([4, 3])
         AhkTest.AssertEqual("I;16", out.Mode)
         AhkTest.AssertEqual(
-            PillowTestBytesFromU16([1000, 50000, 50000, 60000, 300, 200, 200, 65535, 300, 200, 200, 65535]),
+            PillowTestBytesFromU16([0, 33049, 59314, 60203, 153, 15505, 40875, 62943, 325, 0, 22435, 65427]),
             PillowTestBufferToArray(out.ToBytes()))
         out.Close()
 

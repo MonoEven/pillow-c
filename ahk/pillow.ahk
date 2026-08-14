@@ -14576,8 +14576,14 @@ class Pillow {
             if size.Length != 2
                 throw Error("Pillow.Image.Resize expects size [width, height]", -1)
             if !IsSet(resample)
-                resample := (this.Mode = "1" || this.Mode = "P" || InStr(this.Mode, ";")) ? Pillow.Resampling.NEAREST : Pillow.Resampling.BICUBIC
+                ; Pillow 11.3.0: NEAREST only for BGR;-prefixed modes,
+                ; BICUBIC otherwise; the native layer forces NEAREST for
+                ; mode 1/P and applies the RGBA/LA premultiply roundtrip.
+                resample := Pillow.Resampling.BICUBIC
             if this.Mode = "I;16B" && resample != Pillow.Resampling.NEAREST
+                ; Pillow 11.3.0 accepts I;16B non-NEAREST resize but garbles
+                ; every sample through its endian handling; replicating that
+                ; corruption is declined, so this is a documented boundary.
                 throw Error("Pillow.Image.Resize BILINEAR/BICUBIC is not supported for mode I;16B", -1)
 
             outHandle := 0

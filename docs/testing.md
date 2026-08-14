@@ -47,8 +47,33 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2819` AHK tests: `1391` raw DLL tests and
-`1428` facade tests.
+This suite currently registers `2820` AHK tests: `1391` raw DLL tests and
+`1429` facade tests.
+
+Latest `MODE-RGBA-RESIZE-001` verification: the Pillow 11.3.0 oracle
+(Image.py resize plus the convert-based RGBa/La roundtrip, probed
+pointwise in `oracle/probe_premultiply_formulas.py`) pins premultiply
+`(c * a + 127) // 255`, unpremultiply `c * 255 // a` with the
+premultiplied value KEPT when `a == 0`, the BICUBIC default for
+non-`BGR;` modes, the 1/P NEAREST force, and the RGBA/LA
+`reducing_gap` drop. The native sampler premultiplies with +127
+in-sample, the output unpremultiply keeps the premultiplied value at
+`a == 0`, the dispatcher applies the mode rules, and the facade
+defaults `Resize` to BICUBIC with the I;16B non-NEAREST boundary
+error restored. Three fixtures were repaired: the premultiply
+test's I;16 input now uses the new `PillowTestBufferFromU16` helper
+(the old `PillowTestBuffer` truncates values above 255 — its 300
+became 44), the I;16 default-resize fixture moved to Pillow's
+BICUBIC bytes, and the LANCZOS RGBA raw fixture is regenerated from
+Pillow (its `a == 0` blue channel proves the keep-premultiplied
+rule). The premultiply facade target, the raw advanced-filter
+target, and the I;16 boundaries target all pass; the full directory
+suite passes `2820/2820` in `27594ms` with zero failures, errors, or
+skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity remains `477/477` with zero difference; and
+the rebuilt DLL SHA-256 is
+`6FB517FE788BA01A1EEF079AC2396C8BA3DF2A2DE15840C1D7C115385A462E70`.
+The behavioral-parity wave continues with `BEHAV-ICNS-001` next.
 
 Latest `BEHAV-DDS-001` verification: the Pillow 11.3.0 oracle
 (DdsImagePlugin source plus the BcnEncode/BcnDecode C semantics,
