@@ -155,6 +155,37 @@ below).
    (`Expected a Number but got a String.`) instead of Pillow's
    TypeError.
 
+### Red-team detailed-report refinements
+
+The full red-team report (20 numbered findings, probes preserved in
+`oracle/audit3-redteam/`) adds these classification nuances on top
+of the rows below:
+
+- `ImageDraw.text` `direction`/`features`/`language`: on THIS build
+  they raise Pillow's exact `KeyError: setting text direction,
+  language or font features is not supported without libraqm` — so
+  those three kwargs are MATCH-ERROR items (trivial), not
+  implementations; `spacing`/`align` (including multiline
+  `"justify"` and Pillow's exact `align must be "left", "center",
+  "right" or "justify"` error)/`embedded_color`/`font_size` are the
+  real implementation slice.
+- REVERSE divergence: the facade honors `interlace`/`gamma` as PNG
+  save options (and writes a gAMA chunk), while Pillow 11.3.0's PNG
+  writer IGNORES those two kwargs entirely — the facade must stop
+  writing them.
+- The facade restricts TIFF `tiffinfo` to tags 270/315/700 while
+  Pillow writes ANY tag through `ImageFileDirectory` (e.g. 256).
+- `ImageFont` also lacks `load_default_imagefont`, `features`, and
+  `MAX_STRING_LENGTH` (= 1000000).
+- `ImageFilter` needs the base classes AND Pillow's exact
+  validation messages: `BoxBlur(-1)` → `radius must be >= 0`,
+  `MinFilter(0)`/`MedianFilter(2)` → `bad filter size`,
+  `Kernel((2,2),...)` → `bad kernel size`, `Kernel((3,3), 8 elems)`
+  → `not enough coefficients in kernel`, `RankFilter(size)` without
+  rank → the missing-argument TypeError shape.
+- `ImageCms` also lacks the `Direction`/`Flags`/`Intent` enums,
+  `PyCMSError`, `versions`, and `buildProofTransformFromOpenProfiles`.
+
 ### Corrected estimate
 
 The honest completion split under the behavioral standard:
@@ -40612,11 +40643,11 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-AVIF-001 | AVIF | boundary | Open/save AVIF stays behind dependency and packaging constraints; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | FMT-LONGTAIL-001 | Formats | boundary | PDF, PSD, DDS, PCX, ICNS, SGI, SUN, EPS, MPO, FLI, DCX, XPM, and other registered families stay behind explicit dependency decisions; open/save fail loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | AUDIT-003 | Audit | covered | Independent behavioral re-verification (two fresh-eyes red-team auditors + direct probes): the old `100% ±5%` (implemented-or-boundary definition) is superseded. Literal 100% runtime identity is NOT reachable: WEBP/JPEG2000/AVIF (the local Pillow build WORKS with these bundled codecs — oracle-verified round-trips), FPX, ImageQt/ImageTk, ImagePalette.random, and the ImagePath map handler are unmatchable in this runtime (documented boundaries). The matchable remainder is bounded and enumerated; the red teams found unrecorded gaps (rows below) plus runtime-verified divergences in already-claimed areas (MODE-NUM-001CM default-resample claim is WRONG; six error-message mismatches; systemic `pillow_c: invalid argument` for unvalidated paths). Evidence: `oracle/audit3-redteam/*.py`, `oracle/probe_audit3_open.py`, `oracle/probe_audit3_formats.py`. | Red-team probes, runtime facade probes, oracle format matrix. |
-| API-FONTFILE-001 | Facade API | gap | `ImageFont.truetype` / `ImageFont.load` / `ImageFont.load_path` are ENTIRELY ABSENT: no TTF/OTF file loading exists (native has only `pillow_c_font_load_default`). Every real-font use case (truetype + Draw.text with a font, FreeTypeFont getmask, TransposedFont.GetMask) is unserved. | Red-team audit (probe_modules.py); native export inventory. |
-| API-CMS-DISPLAY-001 | Facade API | gap | `ImageCms.get_display_profile(handle)` absent; Pillow returns an ImageCmsProfile for the Windows display device (or None). | Red-team audit; `ImageCms` source diff. |
+| API-FONTFILE-001 | Facade API | gap | `ImageFont.truetype` / `ImageFont.load` / `ImageFont.load_path` / `load_default_imagefont` / `features` / `MAX_STRING_LENGTH` are ENTIRELY ABSENT: no TTF/OTF file loading exists (native has only `pillow_c_font_load_default`). Every real-font use case (truetype + Draw.text with a font, FreeTypeFont getmask, TransposedFont.GetMask) is unserved. | Red-team audit (probe_modules.py); native export inventory. |
+| API-CMS-DISPLAY-001 | Facade API | gap | `ImageCms.get_display_profile(handle)` absent (Pillow returns an ImageCmsProfile for the Windows display device, or None); also missing: the `Direction`/`Flags`/`Intent` enums, `PyCMSError`, `versions`, and `buildProofTransformFromOpenProfiles`. | Red-team audit; `ImageCms` source diff. |
 | API-FONTVAR-002 | Facade API | gap | `FreeTypeFont.get_variation_axes/get_variation_names/set_variation_by_axes/set_variation_by_name/getmask/getmask2` absent (only getmask was boundary-recorded). | Red-team audit; FreeTypeFont surface diff. |
-| API-DRAW-TEXT-001 | Facade API | gap | `ImageDraw.text`/`multiline_text` drop the `spacing/align/direction/features/language/embedded_color/font_size` options Pillow honors; `ImageDraw.getdraw`, `ImageMath.lambda_eval`/`imagemath_*`, `ImageStat.Global`, and the `ImageFilter` base classes are absent. | Red-team audit (probe_modules.py, probe_modules2.py). |
-| API-SAVEOPTS-001 | Facade API | gap | Silent save-option drops: PNG `compress_type`/`dictionary`/P-mode `bits`, JPEG `smooth`/`streamtype`, TIFF `strip_size`/`quality`/named-tag kwargs (`description`/`software`/`artist`/`copyright`/`date_time`/`resolution`/`resolution_unit`; tags stay reachable via `tiffinfo`), QOI `colorspace`, TGA `id_section`/`orientation`, GIF `palette`/`interlace`. TIFF compression `jpeg`/`group3`/`group4` REJECTED (`Pillow.Image.Save TIFF compression is not supported`) while local libtiff saves them. | Red-team audit (probe_save_options.py); runtime facade probe. |
+| API-DRAW-TEXT-001 | Facade API | gap | `ImageDraw.text`/`multiline_text` drop the `spacing/align/direction/features/language/embedded_color/font_size` options; `direction`/`features`/`language` are MATCH-ERROR items on this build (Pillow raises the exact libraqm KeyError — matchable trivially), while `spacing`/`align` (incl. multiline `justify` + Pillow's exact align error)/`embedded_color`/`font_size` need real implementation. `ImageDraw.getdraw`, `ImageMath.lambda_eval`/`imagemath_*`, `ImageStat.Global`, and the `ImageFilter` base classes (`Filter`/`BuiltinFilter`/`MultibandFilter`) plus Pillow's exact filter-validation messages (`radius must be >= 0`, `bad filter size`, `bad kernel size`, `not enough coefficients in kernel`, the RankFilter missing-rank TypeError) are absent. | Red-team audit (probe_modules.py, probe_modules2.py, probe_filters2.py). |
+| API-SAVEOPTS-001 | Facade API | gap | Silent save-option drops: PNG `compress_type`/`dictionary`/P-mode `bits`, JPEG `smooth`/`streamtype`, TIFF `strip_size`/`quality`/named-tag kwargs (`description`/`software`/`artist`/`copyright`/`date_time`/`resolution`/`resolution_unit`; tags stay reachable via `tiffinfo`), QOI `colorspace`, TGA `id_section`/`orientation`, GIF `palette`/`interlace`. TIFF compression `jpeg`/`group3`/`group4` REJECTED (`Pillow.Image.Save TIFF compression is not supported`) while local libtiff saves them. REVERSE divergence: the facade honors `interlace`/`gamma` as PNG options (writing a gAMA chunk) while Pillow 11.3.0 ignores those two kwargs. The facade also restricts TIFF `tiffinfo` to tags 270/315/700 while Pillow writes ANY tag. | Red-team audit (probe_save_options.py); runtime facade probe. |
 | API-SAVEOPTS-002 | Facade API | gap | Error-message mismatches: PNG `compress_level` range (`pillow_c: invalid argument` vs OSError `codec configuration error when writing image file`) and type (`Pillow.Image.Save compress_level must be an integer` vs TypeError `'str' object cannot be interpreted as an integer`); JPEG `quality='bogus'` (`Pillow.Image.Save quality must be an integer, 'keep', or a Pillow JPEG quality preset` vs ValueError `Invalid quality setting`); JPEG `subsampling`, TIFF `quality`, ICO `sizes` messages. | Red-team audit; runtime facade probe. |
 | API-OPENINFO-001 | Facade API | gap | Unexposed open-side info: JPEG `quantization`/`progressive`/`progression`/`adobe`/`adobe_transform`, GIF `version`/`extension`, TIFF `compression`, TGA `compression`/`orientation` — not exposed and not boundary-recorded. | Red-team audit (probe_open_info.py). |
 | MODE-NUM-001CM-CORR | Modes | gap | CORRECTION: the `MODE-NUM-001CM` claim that the default I;16 resize "matches Pillow exactly" is FALSE. Pillow 11.3.0's rule is `NEAREST if mode.startswith("BGR;") else BICUBIC`; the facade uses NEAREST for any mode containing `;` (pillow.ahk line 14579). Oracle: default `I;16` resize == BICUBIC `[59,241,59,241]` != NEAREST `[100,300,100,300]`. Needs a red test + fix. | Red-team audit (probe2.py); `Image.resize` source. |
