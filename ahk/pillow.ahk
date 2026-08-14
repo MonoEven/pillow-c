@@ -7850,6 +7850,39 @@ class Pillow {
                     }
                     if lastStatus = -3
                         throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "FLI" {
+                    ; BEHAV-OPEN-005: FliImageFile — the native opener
+                    ; parses the 128-byte header (magic, zero field,
+                    ; duration), walks the F100 prefix + frame-0 COLOR
+                    ; subchunks for the palette, and decodes frame 0
+                    ; (BLACK/COPY/BRUN/LC/SS2 with Pillow's exact
+                    ; out-of-bounds accounting). Frame seeking stays a
+                    ; documented child; n_frames/is_animated come from
+                    ; FrameCountForOpen.
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_fli",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -48
+                        throw Error("buffer overrun when reading image file", -1)
+                    if lastStatus = -49
+                        throw Error("unrecognized data stream contents when reading image file", -1)
+                    if lastStatus = -50
+                        throw Error("broken data stream when reading image file", -1)
+                    if lastStatus = -51 {
+                        fliUnprocessed := 0
+                        Pillow.CheckStatus(DllCall(
+                            Pillow.RequireDllPath() "\pillow_c_image_fli_truncation_count",
+                            "Ptr", pathBytes,
+                            "Int64*", &fliUnprocessed,
+                            "Int"
+                        ))
+                        throw Error("image file is truncated (" fliUnprocessed " bytes not processed)", -1)
+                    }
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
                 } else if format = "HDF5" || format = "BUFR" || format = "GRIB" {
                     ; BEHAV-OPEN-001: the HDF5/BUFR/GRIB stub plugins
                     ; accept the magic and open an F(1,1) image whose
@@ -7932,6 +7965,12 @@ class Pillow {
                             icc := Pillow.Image.PsdIcc(path)
                             if icc
                                 image.Info["icc_profile"] := icc
+                        }
+                        if format = "FLI" {
+                            ; BEHAV-OPEN-005: Pillow exposes
+                            ; info["duration"] (AF11 speed-jiffies
+                            ; scaled *1000//70, AF12 raw milliseconds).
+                            image.Info["duration"] := Pillow.Image.FliDuration(path)
                         }
                     } catch {
                         image.Close()
@@ -9212,6 +9251,41 @@ class Pillow {
             }
         }
 
+        static FliHeader(path) {
+            ; BEHAV-OPEN-005: the FLI/FLC 128-byte header fields used by
+            ; FliImagePlugin._open (magic, n_frames, duration).
+            file := FileOpen(path, "r")
+            if !file
+                return Map("Magic", 0, "NFrames", 1, "Duration", 0)
+            try {
+                head := Buffer(24, 0)
+                file.RawRead(head, Min(file.Length, 24))
+                return Map(
+                    "Magic", NumGet(head, 4, "UShort"),
+                    "NFrames", NumGet(head, 6, "UShort"),
+                    "Duration", NumGet(head, 16, "Int")
+                )
+            } finally {
+                file.Close()
+            }
+        }
+
+        static FliDuration(path) {
+            ; BEHAV-OPEN-005: info["duration"] — AF11 speed-jiffies become
+            ; duration * 1000 // 70 (floor division), AF12 is raw ms.
+            header := Pillow.Image.FliHeader(path)
+            if header["Magic"] = 0xAF11
+                return Floor(header["Duration"] * 1000 / 70)
+            return header["Duration"]
+        }
+
+        static FliFrameCount(path) {
+            ; BEHAV-OPEN-005: Pillow's n_frames is the raw header count;
+            ; is_animated is n_frames > 1 (NFrames > 1 in the facade).
+            header := Pillow.Image.FliHeader(path)
+            return Max(header["NFrames"], 1)
+        }
+
         static FitsRowBytes(path) {
             ; BEHAV-OPEN-002: NAXIS1 * bytes-per-sample plus the data
             ; offset for the truncation row-modulo count.
@@ -10054,6 +10128,8 @@ class Pillow {
         static FrameCountForOpen(pathBytes, format) {
             if format = "DCX"
                 return Pillow.Image.DcxFrameCount(StrGet(pathBytes, "UTF-8"))
+            if format = "FLI"
+                return Pillow.Image.FliFrameCount(StrGet(pathBytes, "UTF-8"))
             if !(format = "TIFF" || format = "GIF")
                 return 1
             count := 0
@@ -10119,6 +10195,8 @@ class Pillow {
                 return "IPTC"
             if RegExMatch(path, "i)\.psd$")
                 return "PSD"
+            if RegExMatch(path, "i)\.(fli|flc)$")
+                return "FLI"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -10148,7 +10226,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "FLI" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -10183,6 +10261,7 @@ class Pillow {
                 "IPTC", "IPTC/NAA",
                 "MCIDAS", "McIdas area file",
                 "PSD", "Adobe Photoshop",
+                "FLI", "Autodesk FLI/FLC Animation",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -12086,8 +12165,8 @@ class Pillow {
                 ; OSError before writing anything.
                 throw Error(resolvedFormat " save handler not installed", -1)
             }
-            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" || resolvedFormat = "IPTC" || resolvedFormat = "MCIDAS" || resolvedFormat = "PSD" {
-                ; BEHAV-OPEN-001/002/003/004: these plugins register no
+            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" || resolvedFormat = "IPTC" || resolvedFormat = "MCIDAS" || resolvedFormat = "PSD" || resolvedFormat = "FLI" {
+                ; BEHAV-OPEN-001/002/003/004/005: these plugins register no
                 ; save handler at all — Pillow raises KeyError with the
                 ; bare name.
                 throw Error("'" resolvedFormat "'", -1)

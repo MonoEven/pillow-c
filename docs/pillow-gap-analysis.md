@@ -63,8 +63,10 @@ Everything else IS reachable, and the remaining work is bounded.
   directory parse with the exact mode/error shapes); PSD open is
   DONE (BEHAV-OPEN-004 — the MODES table, raw/PackBits channels,
   the RGB;L palette, and the exact error shapes; layers/seek stay a
-  documented child); 3 implementable
-  (FLI/MIC/PCD
+  documented child); FLI/FLC open is DONE (BEHAV-OPEN-005 — the
+  frame-0 chunk decoder with the exact C out-of-bounds accounting
+  and every error/truncation shape); 2 implementable
+  (MIC/PCD
   pure-Python — oracle-verified in
   `oracle/probe_audit3_formats.py`; IMT is NOT registered in 11.3.0:
   only `.im` maps to IM, probe-verified in
@@ -319,7 +321,57 @@ Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
 export parity moves to `493/493` and the DLL SHA-256 is
 `7CB27E1ED11709523A74955A517251B74FA5B6815AC96A5CCADBD02C9F2BECE7`.
 The next bounded child is the remaining pure-Python open families
-(FLI/MIC/PCD).
+(MIC/PCD).
+
+## 2026-08-14 BEHAV-OPEN-005 FLI/FLC Opener (GREEN)
+
+`BEHAV-OPEN-005` implements the FLI/FLC opener (two deliberate
+exports: `pillow_c_image_open_fli` and the truncation-count seam
+`pillow_c_image_fli_truncation_count`). The Pillow 11.3.0 oracle
+(`oracle/probe_open_5.py`/`probe_open_5.json`, pinned through the
+local FliDecode.c source for the exact C accounting) pins
+FliImageFile: the 128-byte header (magic AF11/AF12 at LE16 4, the
+zero field at 20:22, width/height at 8/10, n_frames at 6 with
+is_animated = n_frames > 1, and duration at LE32 16 — AF11 speed
+jiffies become `duration * 1000 // 70`, AF12 stays raw
+milliseconds), the frame-0 palette walk (an F100 prefix chunk
+advances the walk by its size but the decode tile stays pinned at
+offset 128, so prefix files fail to load with
+`unrecognized data stream contents when reading image file`; the
+first COLOR (shift 0) or COLOR_256 (shift 2) subchunk inside the
+F1FA frame fills the 256-entry grayscale-default RGB palette with
+count/start/n triples, n=0 meaning 256), and the frame-0 chunk
+decoder: BLACK clears, COPY copies w*h indices, BRUN byte runs
+(per-row packetcount byte then [count][value] fill runs with
+count<128 and [count|0x80][bytes] literal runs), LC byte deltas
+(y/ymax then per-row packets of skip+run/chunk), SS2 word deltas
+(lines, flag words whose high bits skip lines or store the odd last
+byte, then per-packet skip + word-run/chunk pairs), COLOR/
+COLOR_256/PSTAMP ignored. The decoder mirrors ImagingFliDecode's
+exact out-of-bounds accounting: `bytes < 10` remaining, every
+data-pointer OOB check, advance==0 broken streams, advance out of
+range, the COPY-chunk consumed-bytes path, and the framesize
+check. Error shapes pinned: `buffer overrun when reading image
+file` (OVERRUN), `unrecognized data stream contents when reading
+image file` (UNKNOWN, including unknown chunk types with enough
+remaining bytes), `broken data stream when reading image file`
+(BROKEN), and `image file is truncated (N bytes not processed)`
+with N = available-bytes-minus-128 when the frame size exceeds the
+file (26/39 pinned) or N = framesize - COPY-chunk-offset when the
+COPY data runs past the frame end (12 pinned). Identification
+errors collapse bad magic, a nonzero 20:22 field, a missing frame
+size, truncated header walks, and n_frames=0 (the _seek_check
+EOFError wraps through ImageFile.__init__ into SyntaxError).
+The facade routes `.fli`/`.flc`, exposes `FormatDescription
+"Autodesk FLI/FLC Animation"`, info["duration"], FrameCount/
+n_frames/is_animated from the header, and the exact `'FLI'` KeyError
+save string. The facade FLI target passes `1/1` in `16ms`; the full
+directory suite passes `2829/2829` in `21421ms`; Release x64 Rebuild
+has `0 Warning(s), 0 Error(s)`; source/DLL export parity moves to
+`495/495` and the DLL SHA-256 is
+`0D656AD50A2A6518E4FB05CFBF32E1B8CCDDE6D64DDF9A638808069E352B44FE`.
+Frame seeking past frame 0 stays a documented child. The next
+bounded child is the remaining pure-Python open families (MIC/PCD).
 
 ## 2026-08-14 BEHAV-OPEN-003 IPTC/MCIDAS Openers (GREEN)
 
@@ -913,8 +965,8 @@ Classification of every boundary item (treatment applies per packet):
 | EPS | save L/RGB OK; RGBA/P `image mode is not supported`; open `Unable to locate Ghostscript on paths` | DONE — BEHAV-EPS-001 (byte-exact DSC header + preamble + 39-byte hex lines for L/RGB/CMYK, the exact mode ValueError, the DSC header replay with Pillow's identification/bbox error shapes, the binary-preview offset, and the Ghostscript load error at the eager facade's Open; native save export) |
 | PDF | save all modes OK (pure-Python writer); open needs Ghostscript | DONE — BEHAV-PDF-001 (save-only plugin: byte-exact P-mode ASCIIHexDecode page, structure-exact DCTDecode L/RGB/CMYK pages, exact `cannot save mode X` errors, save_all multi-page, dpi/resolution, Info strings; open = the standard identification error; LA/RGBA/mode-1 = documented JPEG2000/group4 boundaries) |
 | MPO | save L/RGB OK; RGBA/P `cannot write mode X as JPEG` | DONE — BEHAV-MPO-001 (single save = plain JPEG; append_images writes the APP2 MPF index placeholder patched at offset 28 plus the appended frames; L/RGB/CMYK save, mode 1 JPEG-encoded as grayscale, the exact mode errors, and the MPF-marker JPEG/MPO format detection on open; Pillow 11.3.0 reopens the facade's file with 2 seekable frames; n_frames/seek stay a documented child) |
-| XPM/PIXAR/GBR/IMT/IPTC/MCIDAS/MIC/FTEX/XVTHUMB/FLI/DCX/PSD/SUN open, FITS/FPX open | pure-Python open plugins; classify per packet with Pillow-generated/hand-crafted fixtures | DONE for PIXAR/XVTHUMB/DCX — BEHAV-OPEN-001, FTEX/SUN/GBR/FITS/XPM — BEHAV-OPEN-002, IPTC/MCIDAS — BEHAV-OPEN-003, and PSD — BEHAV-OPEN-004 (byte-pinned decodes, the row-modulo truncation counts, the exact unwrapped ValueError/KeyError/OSError shapes; IMT probe-verified unregistered in 11.3.0); FLI/MIC/PCD remain for the follow-up packets |
-| FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/XVTHUMB/SUN/FLI/DCX/XPM/PSD save | `KeyError: 'FMT'` (no save handler) | DONE for DCX/PIXAR/XVTHUMB/IMT — BEHAV-OPEN-001, FTEX/SUN/GBR/FITS/XPM — BEHAV-OPEN-002, IPTC/MCIDAS — BEHAV-OPEN-003, and PSD — BEHAV-OPEN-004 match the exact `'FMT'` KeyError string; HDF5/BUFR/GRIB saves match the exact `X save handler not installed` OSError |
+| XPM/PIXAR/GBR/IMT/IPTC/MCIDAS/MIC/FTEX/XVTHUMB/FLI/DCX/PSD/SUN open, FITS/FPX open | pure-Python open plugins; classify per packet with Pillow-generated/hand-crafted fixtures | DONE for PIXAR/XVTHUMB/DCX — BEHAV-OPEN-001, FTEX/SUN/GBR/FITS/XPM — BEHAV-OPEN-002, IPTC/MCIDAS — BEHAV-OPEN-003, PSD — BEHAV-OPEN-004, and FLI/FLC — BEHAV-OPEN-005 (byte-pinned decodes, the row-modulo truncation counts, the exact unwrapped ValueError/KeyError/OSError shapes; IMT probe-verified unregistered in 11.3.0); MIC/PCD remain for the follow-up packets |
+| FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/XVTHUMB/SUN/FLI/DCX/XPM/PSD save | `KeyError: 'FMT'` (no save handler) | DONE for DCX/PIXAR/XVTHUMB/IMT — BEHAV-OPEN-001, FTEX/SUN/GBR/FITS/XPM — BEHAV-OPEN-002, IPTC/MCIDAS — BEHAV-OPEN-003, PSD — BEHAV-OPEN-004, and FLI — BEHAV-OPEN-005 match the exact `'FMT'` KeyError string; HDF5/BUFR/GRIB saves match the exact `X save handler not installed` OSError |
 | BUFR/GRIB/HDF5/WMF save | `X save handler not installed` (OSError) | MATCH the exact message |
 | JPEG2000 P save | `broken data stream when writing image file` | MATCH the exact message |
 | WEBP/AVIF/JPEG2000 | work via bundled libs | dependency-gated: match Pillow's own not-enabled messages; remain documented build boundaries |
@@ -41048,7 +41100,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | FMT-UNREC-001 | Formats | covered | The previously unrecorded format families are now explicit documented codec boundaries (the final AUDIT-002 row): save BLP/BUFR/DIB/GRIB/HDF5/IM/MSP/PALM/SPIDER/WMF and open FITS/FPX/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/MPEG/PCD/PIXAR/SPIDER/WMF/XVTHUMB plus the save-side subset all fail loudly with `Pillow image file format is unsupported` (pinned by the facade boundary test for all 22 names and representative open extensions). Pillow's own 11.3.0 build supports BLP/DIB/IM/SPIDER through its C/numpy plugins and errors per-mode/per-handler on the rest (oracle-verified in `oracle/probe_format_unrecorded.py`); the AHK native ABI implements neither codec family. Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. UPDATED by BEHAV-OPEN-001/002/003: PIXAR/XVTHUMB/DCX/HDF5/BUFR/GRIB/IMT (BEHAV-OPEN-001), FTEX/SUN/GBR/FITS/XPM (BEHAV-OPEN-002), and IPTC/MCIDAS (BEHAV-OPEN-003) left this list with Pillow's exact shapes. | `oracle/probe_format_unrecorded.py`, facade unrecorded-format boundary test, BNDRY-001 ledger extension. |
 | FMT-WEBP-001 | WebP | boundary | Open/save WebP and animation stay behind an explicit dependency/scope decision; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
 | FMT-AVIF-001 | AVIF | boundary | Open/save AVIF stays behind dependency and packaging constraints; the runtime fails loudly with `Pillow image file format is unsupported` (BNDRY-001). | BNDRY-001 boundary ledger. |
-| FMT-LONGTAIL-001 | Formats | boundary | FLI, WEBP, AVIF, JPEG2000, and the remaining pure-Python open families (MIC/PCD) stay behind explicit dependency decisions; open/save fail loudly with `Pillow image file format is unsupported` (BNDRY-001). ICNS, EPS, MPO, PDF, PCX, SGI, DDS, PIXAR, XVTHUMB, DCX, FTEX, SUN, GBR, FITS, XPM, IPTC, MCIDAS, and PSD left this list via BEHAV-ICNS-001 / BEHAV-EPS-001 / BEHAV-MPO-001 / BEHAV-PDF-001 / BEHAV-PCX-001 / BEHAV-SGI-001 / BEHAV-DDS-001 / BEHAV-OPEN-001 / BEHAV-OPEN-002 / BEHAV-OPEN-003 / BEHAV-OPEN-004. | BNDRY-001 boundary ledger. |
+| FMT-LONGTAIL-001 | Formats | boundary | FLI, WEBP, AVIF, JPEG2000, and the remaining pure-Python open families (MIC/PCD) stay behind explicit dependency decisions; open/save fail loudly with `Pillow image file format is unsupported` (BNDRY-001). ICNS, EPS, MPO, PDF, PCX, SGI, DDS, PIXAR, XVTHUMB, DCX, FTEX, SUN, GBR, FITS, XPM, IPTC, MCIDAS, PSD, and FLI left this list via BEHAV-ICNS-001 / BEHAV-EPS-001 / BEHAV-MPO-001 / BEHAV-PDF-001 / BEHAV-PCX-001 / BEHAV-SGI-001 / BEHAV-DDS-001 / BEHAV-OPEN-001 / BEHAV-OPEN-002 / BEHAV-OPEN-003 / BEHAV-OPEN-004 / BEHAV-OPEN-005. | BNDRY-001 boundary ledger. |
 | AUDIT-003 | Audit | covered | Independent behavioral re-verification (two fresh-eyes red-team auditors + direct probes): the old `100% ±5%` (implemented-or-boundary definition) is superseded. Literal 100% runtime identity is NOT reachable: WEBP/JPEG2000/AVIF (the local Pillow build WORKS with these bundled codecs — oracle-verified round-trips), FPX, ImageQt/ImageTk, ImagePalette.random, and the ImagePath map handler are unmatchable in this runtime (documented boundaries). The matchable remainder is bounded and enumerated; the red teams found unrecorded gaps (rows below) plus runtime-verified divergences in already-claimed areas (MODE-NUM-001CM default-resample claim is WRONG; six error-message mismatches; systemic `pillow_c: invalid argument` for unvalidated paths). Evidence: `oracle/audit3-redteam/*.py`, `oracle/probe_audit3_open.py`, `oracle/probe_audit3_formats.py`. | Red-team probes, runtime facade probes, oracle format matrix. |
 | API-FONTFILE-001 | Facade API | gap | `ImageFont.truetype` / `ImageFont.load` / `ImageFont.load_path` / `load_default_imagefont` / `features` / `MAX_STRING_LENGTH` are ENTIRELY ABSENT: no TTF/OTF file loading exists (native has only `pillow_c_font_load_default`). Every real-font use case (truetype + Draw.text with a font, FreeTypeFont getmask, TransposedFont.GetMask) is unserved. | Red-team audit (probe_modules.py); native export inventory. |
 | API-CMS-DISPLAY-001 | Facade API | gap | `ImageCms.get_display_profile(handle)` absent (Pillow returns an ImageCmsProfile for the Windows display device, or None); also missing: the `Direction`/`Flags`/`Intent` enums, `PyCMSError`, `versions`, and `buildProofTransformFromOpenProfiles`. | Red-team audit; `ImageCms` source diff. |

@@ -25595,6 +25595,221 @@ PillowTestOpenPsd(*) {
 
 AhkTest.Test("Pillow PSD opener matches Pillow 11.3.0 modes, PackBits, and errors", PillowTestOpenPsd)
 
+PillowTestFliSubchunk(type, payload) {
+    out := Buffer(6 + payload.Size, 0)
+    NumPut("UInt", 6 + payload.Size, out, 0)
+    NumPut("UShort", type, out, 4)
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + 6, "Ptr", payload, "UPtr", payload.Size, "CDecl Ptr")
+    return out
+}
+
+PillowTestFliPalette(entries, shift := 0, type := 4) {
+    ; entries = [[start, rgbFlatArray], ...]; COLOR shift 0, COLOR_256
+    ; shift 2; the count byte holds the number of rgb triples
+    payloadSize := 2
+    for entry in entries
+        payloadSize += 2 + entry[2].Length
+    payload := Buffer(payloadSize, 0)
+    NumPut("Short", entries.Length, payload, 0)
+    offset := 2
+    for entry in entries {
+        NumPut("UChar", entry[1], payload, offset)
+        NumPut("UChar", entry[2].Length // 3, payload, offset + 1)
+        offset += 2
+        for value in entry[2] {
+            NumPut("UChar", (value << shift) & 0xFF, payload, offset)
+            offset += 1
+        }
+    }
+    return PillowTestFliSubchunk(type, payload)
+}
+
+PillowTestFli(w, h, chunks, magic := 0xAF11, nFrames := unset, duration := 70, palette := unset, prefix := unset) {
+    ; mirrors the oracle's fli() builder: 128-byte header, optional F100
+    ; prefix chunk, then one F1FA frame holding every chunk (the COLOR
+    ; palette chunk lives inside frame 0)
+    header := Buffer(128, 0)
+    NumPut("UShort", magic, header, 4)
+    NumPut("UShort", IsSet(nFrames) ? nFrames : chunks.Length, header, 6)
+    NumPut("UShort", w, header, 8)
+    NumPut("UShort", h, header, 10)
+    NumPut("UInt", duration, header, 16)
+    bodySize := 0
+    if IsSet(prefix)
+        bodySize := 6 + prefix.Size
+    body := Buffer(bodySize, 0)
+    if IsSet(prefix) {
+        NumPut("UInt", 6 + prefix.Size, body, 0)
+        NumPut("UShort", 0xF100, body, 4)
+        DllCall("msvcrt\memcpy", "Ptr", body.Ptr + 6, "Ptr", prefix, "UPtr", prefix.Size, "CDecl Ptr")
+    }
+    allChunks := []
+    if IsSet(palette)
+        allChunks.Push(palette)
+    for chunk in chunks
+        allChunks.Push(chunk)
+    payloadSize := 0
+    for chunk in allChunks
+        payloadSize += chunk.Size
+    frame := Buffer(16 + payloadSize, 0)
+    NumPut("UInt", 16 + payloadSize, frame, 0)
+    NumPut("UShort", 0xF1FA, frame, 4)
+    NumPut("UShort", allChunks.Length, frame, 6)
+    offset := 16
+    for chunk in allChunks {
+        DllCall("msvcrt\memcpy", "Ptr", frame.Ptr + offset, "Ptr", chunk, "UPtr", chunk.Size, "CDecl Ptr")
+        offset += chunk.Size
+    }
+    out := Buffer(128 + body.Size + frame.Size, 0)
+    DllCall("msvcrt\memcpy", "Ptr", out, "Ptr", header, "UPtr", 128, "CDecl Ptr")
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + 128, "Ptr", body, "UPtr", body.Size, "CDecl Ptr")
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + 128 + body.Size, "Ptr", frame, "UPtr", frame.Size, "CDecl Ptr")
+    return out
+}
+
+PillowTestFliSlice(buf, n) {
+    out := Buffer(n, 0)
+    DllCall("msvcrt\memcpy", "Ptr", out, "Ptr", buf, "UPtr", n, "CDecl Ptr")
+    return out
+}
+
+PillowTestOpenFli(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    fliPath := A_Temp "\open-5.fli"
+    savePath := A_Temp "\open-5-save.bin"
+    palette := PillowTestFliPalette([[0, [1, 2, 3, 4, 5, 6, 7, 8, 9]]])
+    try {
+        ; --- BLACK then COPY of indices 0..7 ---
+        PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, [
+            PillowTestFliSubchunk(13, Buffer(0, 0)),
+            PillowTestFliSubchunk(16, PillowTestRangeBuffer(8))
+        ], , 2, , palette))
+        opened := Pillow.Image.Open(fliPath)
+        try {
+            AhkTest.AssertEqual("FLI", opened.Format)
+            AhkTest.AssertEqual("P", opened.Mode)
+            AhkTest.AssertEqual([4, 2], opened.Size)
+            AhkTest.AssertEqual("0001020304050607", PillowTestPdfBytesToHex(PillowTestBufferToArray(opened.ToBytes())))
+            AhkTest.AssertEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 3, 3, 3], PillowTestArraySlice(opened.GetPalette(), 1, 12))
+            AhkTest.AssertEqual(1000, opened.Info["duration"])
+            AhkTest.AssertEqual(2, opened.FrameCount)
+            AhkTest.AssertEqual(true, opened.IsAnimated)
+            AhkTest.AssertEqual(2, opened.n_frames)
+            AhkTest.AssertEqual(true, opened.is_animated)
+        } finally {
+            opened.Close()
+        }
+
+        ; --- BRUN byte runs: row0 2x7,2x9; row1 2x3,2x1 ---
+        brunPayload := Buffer(10, 0)
+        brunValues := [0, 2, 7, 2, 9, 0, 2, 3, 2, 1]
+        loop 10
+            NumPut("UChar", brunValues[A_Index], brunPayload, A_Index - 1)
+        PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, [PillowTestFliSubchunk(15, brunPayload)], , , , palette))
+        openedBrun := Pillow.Image.Open(fliPath)
+        try {
+            AhkTest.AssertEqual("0707090903030101", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedBrun.ToBytes())))
+        } finally {
+            openedBrun.Close()
+        }
+
+        ; --- LC byte delta: row0 1 chunk of 4, row1 1 run of 4 ---
+        lcPayload := Buffer(4 + 7 + 4, 0)
+        NumPut("Short", 0, lcPayload, 0)
+        NumPut("Short", 2, lcPayload, 2)
+        lcValues := [1, 0, 4, 10, 11, 12, 13, 1, 0, 0xFC, 9]
+        loop 11
+            NumPut("UChar", lcValues[A_Index], lcPayload, A_Index + 3)
+        PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, [PillowTestFliSubchunk(12, lcPayload)], , , , palette))
+        openedLc := Pillow.Image.Open(fliPath)
+        try {
+            AhkTest.AssertEqual("0a0b0c0d09090909", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedLc.ToBytes())))
+        } finally {
+            openedLc.Close()
+        }
+
+        ; --- SS2 word delta: lines=2, one 2-word chunk per line ---
+        ss2Payload := Buffer(18, 0)
+        NumPut("Short", 2, ss2Payload, 0)
+        NumPut("Short", 1, ss2Payload, 2)
+        ss2Row0 := [0, 2, 0, 1, 2, 3]
+        ss2Row1 := [0, 2, 4, 5, 6, 7]
+        loop 6 {
+            NumPut("UChar", ss2Row0[A_Index], ss2Payload, A_Index + 3)
+            NumPut("UChar", ss2Row1[A_Index], ss2Payload, A_Index + 11)
+        }
+        NumPut("Short", 1, ss2Payload, 10)
+        PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, [PillowTestFliSubchunk(7, ss2Payload)], , , , palette))
+        openedSs2 := Pillow.Image.Open(fliPath)
+        try {
+            AhkTest.AssertEqual("0001020304050607", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedSs2.ToBytes())))
+        } finally {
+            openedSs2.Close()
+        }
+
+        ; --- FLC palette: real COLOR_256 (type 11) chunk, unshifted
+        ; values — the opener applies the left-2 shift itself ---
+        PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, [
+            PillowTestFliSubchunk(16, PillowTestRangeBuffer(8))
+        ], 0xAF12, 1, 140, PillowTestFliPalette([[0, [16, 32, 48, 20, 40, 60]]], 0, 11)))
+        openedFlc := Pillow.Image.Open(fliPath)
+        try {
+            AhkTest.AssertEqual([64, 128, 192, 80, 160, 240, 2, 2, 2], PillowTestArraySlice(openedFlc.GetPalette(), 1, 9))
+            AhkTest.AssertEqual(140, openedFlc.Info["duration"])
+        } finally {
+            openedFlc.Close()
+        }
+
+        ; --- errors ---
+        PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, [PillowTestFliSubchunk(99, Buffer(1, 0))], , , , palette))
+        AhkTest.AssertEqual("buffer overrun when reading image file", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+        PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, [PillowTestFliSubchunk(99, Buffer(4, 0))], , , , palette))
+        AhkTest.AssertEqual("unrecognized data stream contents when reading image file", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+        zeroChunk := Buffer(6, 0)
+        NumPut("UShort", 13, zeroChunk, 4)
+        PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, [zeroChunk, PillowTestFliSubchunk(13, Buffer(0, 0))], , , , palette))
+        AhkTest.AssertEqual("broken data stream when reading image file", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+        truncatedFull := PillowTestFli(4, 2, [PillowTestFliSubchunk(16, PillowTestRangeBuffer(8))])
+        PillowTestWriteFileBuffer(fliPath, PillowTestFliSlice(truncatedFull, truncatedFull.Size - 4))
+        AhkTest.AssertEqual("image file is truncated (26 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+        truncatedNocopy := PillowTestFli(4, 2, [PillowTestFliSubchunk(13, Buffer(0, 0))], , , , palette)
+        PillowTestWriteFileBuffer(fliPath, PillowTestFliSlice(truncatedNocopy, truncatedNocopy.Size - 2))
+        AhkTest.AssertEqual("image file is truncated (39 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+        copyShortPayload := Buffer(6, 0)
+        NumPut("UChar", 1, copyShortPayload, 0)
+        NumPut("UChar", 2, copyShortPayload, 1)
+        PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, [PillowTestFliSubchunk(16, copyShortPayload)], , , , palette))
+        AhkTest.AssertEqual("image file is truncated (12 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+        prefix := Buffer(2, 0)
+        NumPut("UChar", 1, prefix, 0)
+        NumPut("UChar", 2, prefix, 1)
+        PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, [PillowTestFliSubchunk(13, Buffer(0, 0))], , , , palette, prefix))
+        AhkTest.AssertEqual("unrecognized data stream contents when reading image file", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+        PillowTestWriteFileBuffer(fliPath, Buffer(64, 0))
+        AhkTest.AssertEqual("cannot identify image file <" fliPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+        badFlags := PillowTestFli(4, 2, [PillowTestFliSubchunk(13, Buffer(0, 0))], , , , palette)
+        NumPut("UChar", 1, badFlags, 20)
+        PillowTestWriteFileBuffer(fliPath, badFlags)
+        AhkTest.AssertEqual("cannot identify image file <" fliPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+        PillowTestWriteFileBuffer(fliPath, PillowTestFli(4, 2, []))
+        AhkTest.AssertEqual("cannot identify image file <" fliPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(fliPath)))
+
+        ; --- save raises the exact KeyError ---
+        saveImage := Pillow.Image.New("L", [2, 2], 7)
+        try {
+            PillowTestAssertSaveKeyError(saveImage, savePath, "FLI")
+        } finally {
+            saveImage.Close()
+        }
+        AhkTest.AssertEqual("Autodesk FLI/FLC Animation", Pillow.Image.FormatDescription("FLI"))
+    } finally {
+        PillowTestDeleteFile(fliPath)
+        PillowTestDeleteFile(savePath)
+    }
+}
+
+AhkTest.Test("Pillow FLI/FLC opener matches Pillow 11.3.0 chunks, palette, meta, and errors", PillowTestOpenFli)
+
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     try {

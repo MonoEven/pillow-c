@@ -199,10 +199,32 @@ channels` shape; layers/seek/n_frames stay a facade-side
 documented child and the PackBits short-stream count is a
 documented micro-boundary.
 
+`BEHAV-OPEN-005` adds two deliberate exports —
+`pillow_c_image_open_fli` and `pillow_c_image_fli_truncation_count`
+— that decode Pillow 11.3.0's FliImageFile frame 0: the 128-byte
+header checks (magic AF11/AF12, the 20:22 zero field, n_frames,
+duration), the F100-prefix-aware frame-0 palette walk (COLOR shift
+0, COLOR_256 shift 2 over the grayscale-default 256-entry RGB
+palette), and the chunk decoder (BLACK, COPY, BRUN byte runs, LC
+byte deltas, SS2 word deltas with flag words, COLOR/COLOR_256/
+PSTAMP ignored) with ImagingFliDecode's exact out-of-bounds
+accounting. Local statuses -48..-51 carry the exact
+overrun/unrecognized/broken/truncated shapes; the truncation-count
+export returns Pillow's per-file `bytes not processed` N
+(file-bytes-minus-128 when the framesize check fails, framesize -
+COPY-chunk-offset for the COPY consumed-bytes path) so the facade
+replays the exact message. The facade routes `.fli`/`.flc`,
+exposes `Autodesk FLI/FLC Animation`, info["duration"],
+FrameCount/n_frames/is_animated from the header, and the `'FLI'`
+KeyError save string; frame seeking past frame 0 stays a
+documented child.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`493/493`; the full AHK suite is `2828/2828`; and the current DLL SHA-256 is
-`7CB27E1ED11709523A74955A517251B74FA5B6815AC96A5CCADBD02C9F2BECE7`
-(BEHAV-OPEN-004 adds the `pillow_c_image_open_psd` export below;
+`495/495`; the full AHK suite is `2829/2829`; and the current DLL SHA-256 is
+`0D656AD50A2A6518E4FB05CFBF32E1B8CCDDE6D64DDF9A638808069E352B44FE`
+(BEHAV-OPEN-005 adds the `pillow_c_image_open_fli` and
+`pillow_c_image_fli_truncation_count` exports below;
+BEHAV-OPEN-004 adds the `pillow_c_image_open_psd` export below;
 BEHAV-OPEN-003 changes no ABI — the IPTC/MCIDAS openers are
 facade-only;
 BEHAV-OPEN-002 adds the `pillow_c_image_open_ftex`,

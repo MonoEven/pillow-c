@@ -3813,6 +3813,461 @@ int open_psd_image(const char* path, PillowCImage** out_image)
     }
 }
 
+// BEHAV-OPEN-005: FLI/FLC status codes local to the FLI open route. The
+// facade maps each one to Pillow 11.3.0's exact error message. -51 lets
+// the facade recover Pillow's per-file "bytes not processed" count through
+// pillow_c_image_fli_truncation_count.
+constexpr int PILLOW_C_OPEN_FLI_OVERRUN = -48;
+constexpr int PILLOW_C_OPEN_FLI_UNKNOWN = -49;
+constexpr int PILLOW_C_OPEN_FLI_BROKEN = -50;
+constexpr int PILLOW_C_OPEN_FLI_TRUNCATED = -51;
+
+namespace {
+// Mirrors Pillow's ImagingFliDecode chunk accounting for frame 0, including
+// the exact out-of-bounds checks and the COPY-chunk "not enough data"
+// consumed-bytes path. pixels may be null when only the status/truncation
+// count is needed (the count is determined before any pixel writes matter).
+int decode_fli_frame(
+    const std::vector<std::uint8_t>& data,
+    int width,
+    int height,
+    std::vector<std::uint8_t>* pixels,
+    std::int64_t* truncation_count)
+{
+    constexpr std::size_t frame_pos = 128u;
+    if (data.size() < frame_pos + 4u) {
+        if (truncation_count) {
+            *truncation_count = static_cast<std::int64_t>(data.size()) - 128;
+        }
+        return PILLOW_C_OPEN_FLI_TRUNCATED;
+    }
+    const std::uint64_t framesize = read_le32(data.data() + frame_pos);
+    const std::int64_t avail = static_cast<std::int64_t>(data.size()) - 128;
+    if (avail < 0) {
+        return PILLOW_C_INVALID_ARGUMENT;
+    }
+    const std::uint64_t avail_u = static_cast<std::uint64_t>(avail);
+    if (avail_u + (avail_u & 1u) < framesize) {
+        if (truncation_count) {
+            *truncation_count = avail;
+        }
+        return PILLOW_C_OPEN_FLI_TRUNCATED;
+    }
+    if (data.size() < frame_pos + 8u) {
+        return PILLOW_C_OPEN_FLI_OVERRUN;
+    }
+    if (read_le16(data.data() + frame_pos + 4u) != 0xF1FA) {
+        return PILLOW_C_OPEN_FLI_UNKNOWN;
+    }
+    const std::uint64_t frame_end = frame_pos + framesize;
+    const std::uint64_t pixel_count = static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height);
+    const int chunks = read_le16(data.data() + frame_pos + 6u);
+    std::uint64_t ptr = frame_pos + 16u;
+    std::uint64_t remaining = framesize - 16u;
+    std::uint8_t* out = pixels ? pixels->data() : nullptr;
+    for (int c = 0; c < chunks; ++c) {
+        if (remaining < 10u) {
+            return PILLOW_C_OPEN_FLI_OVERRUN;
+        }
+        std::uint64_t d = ptr + 6u;
+        const int chunk_type = read_le16(data.data() + ptr + 4u);
+        const auto data_oob = [&](std::uint64_t off) -> bool {
+            return d + off > frame_end;
+        };
+        switch (chunk_type) {
+        case 4:
+        case 11:
+        case 18:
+            // COLOR/COLOR_256/PSTAMP chunks: ignored by the C decoder
+            // (the palette was parsed during the header walk).
+            break;
+        case 13:
+            // BLACK: clear the frame.
+            if (pixels) {
+                std::memset(out, 0, static_cast<std::size_t>(pixel_count));
+            }
+            break;
+        case 7: {
+            // SS2 word-delta chunk (FLC).
+            int lines = read_le16(data.data() + d);
+            d += 2u;
+            int l = 0;
+            int y = 0;
+            while (l < lines && y < height) {
+                std::uint8_t* row = out ? out + static_cast<std::uint64_t>(y) * static_cast<std::uint64_t>(width) : nullptr;
+                if (data_oob(2u)) {
+                    return PILLOW_C_OPEN_FLI_OVERRUN;
+                }
+                int packets = read_le16(data.data() + d);
+                d += 2u;
+                while (packets & 0x8000) {
+                    if (packets & 0x4000) {
+                        y += 65536 - packets;
+                        if (y >= height) {
+                            return PILLOW_C_OPEN_FLI_OVERRUN;
+                        }
+                        row = out ? out + static_cast<std::uint64_t>(y) * static_cast<std::uint64_t>(width) : nullptr;
+                    } else {
+                        if (row) {
+                            row[width - 1] = static_cast<std::uint8_t>(packets);
+                        }
+                    }
+                    if (data_oob(2u)) {
+                        return PILLOW_C_OPEN_FLI_OVERRUN;
+                    }
+                    packets = read_le16(data.data() + d);
+                    d += 2u;
+                }
+                int p = 0;
+                int x = 0;
+                for (p = 0; p < packets; ++p) {
+                    if (data_oob(2u)) {
+                        return PILLOW_C_OPEN_FLI_OVERRUN;
+                    }
+                    x += data[d];
+                    if (data[d + 1u] >= 128u) {
+                        if (data_oob(4u)) {
+                            return PILLOW_C_OPEN_FLI_OVERRUN;
+                        }
+                        const int i = 256 - data[d + 1u];
+                        if (x + i + i > width) {
+                            break;
+                        }
+                        if (row) {
+                            for (int j = 0; j < i; ++j) {
+                                row[x++] = data[d + 2u];
+                                row[x++] = data[d + 3u];
+                            }
+                        }
+                        d += 4u;
+                    } else {
+                        const int i = 2 * static_cast<int>(data[d + 1u]);
+                        if (x + i > width) {
+                            break;
+                        }
+                        if (data_oob(static_cast<std::uint64_t>(2 + i))) {
+                            return PILLOW_C_OPEN_FLI_OVERRUN;
+                        }
+                        if (row) {
+                            std::memcpy(row + x, data.data() + d + 2u, static_cast<std::size_t>(i));
+                        }
+                        d += static_cast<std::uint64_t>(2 + i);
+                        x += i;
+                    }
+                }
+                if (p < packets) {
+                    break;
+                }
+                ++l;
+                ++y;
+            }
+            if (l < lines) {
+                return PILLOW_C_OPEN_FLI_OVERRUN;
+            }
+            break;
+        }
+        case 12: {
+            // LC byte-delta chunk.
+            int y = read_le16(data.data() + d);
+            const int ymax = y + read_le16(data.data() + d + 2u);
+            d += 4u;
+            for (; y < ymax && y < height; ++y) {
+                std::uint8_t* row = out ? out + static_cast<std::uint64_t>(y) * static_cast<std::uint64_t>(width) : nullptr;
+                if (data_oob(1u)) {
+                    return PILLOW_C_OPEN_FLI_OVERRUN;
+                }
+                const int packets = data[d++];
+                int p = 0;
+                int x = 0;
+                int i = 0;
+                for (p = 0; p < packets; ++p, x += i) {
+                    if (data_oob(2u)) {
+                        return PILLOW_C_OPEN_FLI_OVERRUN;
+                    }
+                    x += data[d];
+                    if (data[d + 1u] & 0x80u) {
+                        i = 256 - data[d + 1u];
+                        if (x + i > width) {
+                            break;
+                        }
+                        if (data_oob(3u)) {
+                            return PILLOW_C_OPEN_FLI_OVERRUN;
+                        }
+                        if (row) {
+                            std::memset(row + x, data[d + 2u], static_cast<std::size_t>(i));
+                        }
+                        d += 3u;
+                    } else {
+                        i = data[d + 1u];
+                        if (x + i > width) {
+                            break;
+                        }
+                        if (data_oob(static_cast<std::uint64_t>(2 + i))) {
+                            return PILLOW_C_OPEN_FLI_OVERRUN;
+                        }
+                        if (row) {
+                            std::memcpy(row + x, data.data() + d + 2u, static_cast<std::size_t>(i));
+                        }
+                        d += static_cast<std::uint64_t>(i + 2);
+                    }
+                }
+                if (p < packets) {
+                    break;
+                }
+            }
+            if (y < ymax) {
+                return PILLOW_C_OPEN_FLI_OVERRUN;
+            }
+            break;
+        }
+        case 15: {
+            // BRUN byte-run chunk.
+            for (int y = 0; y < height; ++y) {
+                std::uint8_t* row = out ? out + static_cast<std::uint64_t>(y) * static_cast<std::uint64_t>(width) : nullptr;
+                d += 1u;
+                int x = 0;
+                int i = 0;
+                for (x = 0; x < width; x += i) {
+                    if (data_oob(2u)) {
+                        return PILLOW_C_OPEN_FLI_OVERRUN;
+                    }
+                    if (data[d] & 0x80u) {
+                        i = 256 - data[d];
+                        if (x + i > width) {
+                            break;
+                        }
+                        if (data_oob(static_cast<std::uint64_t>(i + 1))) {
+                            return PILLOW_C_OPEN_FLI_OVERRUN;
+                        }
+                        if (row) {
+                            std::memcpy(row + x, data.data() + d + 1u, static_cast<std::size_t>(i));
+                        }
+                        d += static_cast<std::uint64_t>(i + 1);
+                    } else {
+                        i = data[d];
+                        if (x + i > width) {
+                            break;
+                        }
+                        if (row) {
+                            std::memset(row + x, data[d + 1u], static_cast<std::size_t>(i));
+                        }
+                        d += 2u;
+                    }
+                }
+                if (x != width) {
+                    return PILLOW_C_OPEN_FLI_OVERRUN;
+                }
+            }
+            break;
+        }
+        case 16: {
+            // COPY chunk.
+            if (INT32_MAX < pixel_count) {
+                return PILLOW_C_OPEN_FLI_OVERRUN;
+            }
+            if (d + pixel_count > frame_end) {
+                if (truncation_count) {
+                    *truncation_count = static_cast<std::int64_t>(framesize) - static_cast<std::int64_t>(ptr - frame_pos);
+                }
+                return PILLOW_C_OPEN_FLI_TRUNCATED;
+            }
+            if (pixels) {
+                std::memcpy(out, data.data() + d, static_cast<std::size_t>(pixel_count));
+            }
+            break;
+        }
+        default:
+            return PILLOW_C_OPEN_FLI_UNKNOWN;
+        }
+        const std::uint64_t advance = read_le32(data.data() + ptr);
+        if (advance == 0u) {
+            return PILLOW_C_OPEN_FLI_BROKEN;
+        }
+        if (advance > INT32_MAX || advance > remaining) {
+            return PILLOW_C_OPEN_FLI_OVERRUN;
+        }
+        ptr += advance;
+        remaining -= advance;
+    }
+    return PILLOW_C_OK;
+}
+} // namespace
+
+int open_fli_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        // FliImagePlugin._open: 128-byte header, magic at 4 and the
+        // zero field at 20:22 gate identification.
+        if (data.size() < 128u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const int magic = read_le16(data.data() + 4u);
+        if ((magic != 0xAF11 && magic != 0xAF12) || data[20] != 0u || data[21] != 0u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        // seek(0) inside _open runs _seek_check against n_frames; a zero
+        // count raises EOFError, which ImageFile.__init__ wraps into
+        // SyntaxError, so identification fails.
+        if (read_le16(data.data() + 6u) == 0u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const int width = read_le16(data.data() + 8u);
+        const int height = read_le16(data.data() + 10u);
+        if (width <= 0 || height <= 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::size_t image_stride = 0;
+        std::size_t image_size = 0;
+        if (!checked_image_size(width, height, 1, &image_stride, &image_size)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        // Palette walk (mirrors FliImagePlugin._open): skip an optional
+        // F100 prefix chunk, then scan the first frame's subchunks for a
+        // COLOR (shift 0) or COLOR_256 (shift 2) chunk.
+        std::vector<std::uint8_t> palette_rgb(768u);
+        for (int i = 0; i < 256; ++i) {
+            palette_rgb[static_cast<std::size_t>(i) * 3u + 0u] = static_cast<std::uint8_t>(i);
+            palette_rgb[static_cast<std::size_t>(i) * 3u + 1u] = static_cast<std::uint8_t>(i);
+            palette_rgb[static_cast<std::size_t>(i) * 3u + 2u] = static_cast<std::uint8_t>(i);
+        }
+        std::size_t walk = 128u;
+        auto have = [&](std::size_t pos, std::size_t n) -> bool {
+            return pos <= data.size() && n <= data.size() - pos;
+        };
+        if (!have(walk, 16u)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::uint16_t head_type = read_le16(data.data() + walk + 4u);
+        if (head_type == 0xF100u) {
+            walk = 128u + static_cast<std::size_t>(read_le32(data.data() + walk));
+            if (!have(walk, 16u)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            head_type = read_le16(data.data() + walk + 4u);
+        }
+        if (head_type == 0xF1FAu) {
+            const int nsub = read_le16(data.data() + walk + 6u);
+            std::size_t cursor = walk + 16u;
+            std::int64_t chunk_size = -1;
+            for (int i = 0; i < nsub; ++i) {
+                if (chunk_size >= 0) {
+                    if (chunk_size < 6) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                    cursor += static_cast<std::size_t>(chunk_size) - 6u;
+                }
+                if (!have(cursor, 6u)) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                const int chunk_type = read_le16(data.data() + cursor + 4u);
+                if (chunk_type == 4 || chunk_type == 11) {
+                    const int shift = chunk_type == 11 ? 2 : 0;
+                    std::size_t pd = cursor + 6u;
+                    if (!have(pd, 2u)) {
+                        return PILLOW_C_INVALID_ARGUMENT;
+                    }
+                    const int entry_count = read_le16(data.data() + pd);
+                    pd += 2u;
+                    int palette_index = 0;
+                    for (int e = 0; e < entry_count; ++e) {
+                        if (!have(pd, 2u)) {
+                            return PILLOW_C_INVALID_ARGUMENT;
+                        }
+                        palette_index += data[pd];
+                        int n = data[pd + 1u];
+                        if (n == 0) {
+                            n = 256;
+                        }
+                        pd += 2u;
+                        const std::size_t rgb_bytes = static_cast<std::size_t>(n) * 3u;
+                        if (!have(pd, rgb_bytes)) {
+                            return PILLOW_C_INVALID_ARGUMENT;
+                        }
+                        for (int k = 0; k < n; ++k) {
+                            const int idx = palette_index + k;
+                            if (idx < 0 || idx >= 256) {
+                                return PILLOW_C_INVALID_ARGUMENT;
+                            }
+                            palette_rgb[static_cast<std::size_t>(idx) * 3u + 0u] = static_cast<std::uint8_t>(data[pd] << shift);
+                            palette_rgb[static_cast<std::size_t>(idx) * 3u + 1u] = static_cast<std::uint8_t>(data[pd + 1u] << shift);
+                            palette_rgb[static_cast<std::size_t>(idx) * 3u + 2u] = static_cast<std::uint8_t>(data[pd + 2u] << shift);
+                            pd += 3u;
+                        }
+                    }
+                    break;
+                }
+                chunk_size = read_le32(data.data() + cursor);
+                if (chunk_size == 0) {
+                    break;
+                }
+            }
+        }
+
+        std::vector<std::uint8_t> pixels(image_size, 0u);
+        std::int64_t truncation_count = 0;
+        const int decode_status = decode_fli_frame(data, width, height, &pixels, &truncation_count);
+        if (decode_status != PILLOW_C_OK) {
+            return decode_status;
+        }
+
+        auto* image = new PillowCImage{
+            width,
+            height,
+            PILLOW_C_MODE_P,
+            1,
+            image_stride,
+            std::move(pixels)};
+        image->palette_rgb = std::move(palette_rgb);
+        image->palette_alpha.clear();
+        image->palette_alpha_mode = PILLOW_C_PALETTE_ALPHA_NONE;
+        *out_image = image;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+int fli_truncation_count(const char* path, std::int64_t* out_count)
+{
+    if (!path || !out_count) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_count = 0;
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() < 128u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const int width = read_le16(data.data() + 8u);
+        const int height = read_le16(data.data() + 10u);
+        if (width <= 0 || height <= 0) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        std::int64_t count = 0;
+        const int status = decode_fli_frame(data, width, height, nullptr, &count);
+        if (status != PILLOW_C_OPEN_FLI_TRUNCATED) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        *out_count = count;
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
 // BEHAV-SGI-001: SGI status codes local to the SGI open route. The
 // facade maps each one to Pillow 11.3.0's exact error message; the
 // generic status table does not carry these shapes.
@@ -7516,6 +7971,20 @@ extern "C" __declspec(dllexport) int pillow_c_image_open_psd(
     PillowCImage** out_image)
 {
     return open_psd_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_fli(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_fli_image(path, out_image);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_fli_truncation_count(
+    const char* path,
+    std::int64_t* out_count)
+{
+    return fli_truncation_count(path, out_count);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_pcx(

@@ -47,8 +47,31 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2828` AHK tests: `1391` raw DLL tests and
-`1437` facade tests.
+This suite currently registers `2829` AHK tests: `1391` raw DLL tests and
+`1438` facade tests.
+
+Latest `BEHAV-OPEN-005` verification: the Pillow 11.3.0 oracle
+(`oracle/probe_open_5.py`/`probe_open_5.json`, pinned through the
+11.3.0 FliDecode.c source for the exact C accounting) pins the
+FLI/FLC opener (the 128-byte header with the magic/20:22 checks,
+n_frames/is_animated, and the AF11-scaled vs AF12-raw duration, the
+F100-prefix-aware frame-0 palette walk with the COLOR shift 0 /
+COLOR_256 shift 2 rules, and the frame-0 chunk decoder: BLACK,
+COPY, BRUN byte runs, LC byte deltas, SS2 word deltas with flag
+words, COLOR/COLOR_256/PSTAMP ignored; plus the exact `buffer
+overrun` / `unrecognized data stream contents` / `broken data
+stream` errors and the `image file is truncated (N bytes not
+processed)` counts — 26/39 from the framesize check and 12 from the
+COPY consumed-bytes path — and the identification-error collapses
+including n_frames=0). The facade FLI target passes `1/1` in
+`16ms`; the full directory suite passes `2829/2829` in `21421ms`
+with zero failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity moves to
+`495/495` (two deliberate new exports) with zero difference; and
+the rebuilt DLL SHA-256 is
+`0D656AD50A2A6518E4FB05CFBF32E1B8CCDDE6D64DDF9A638808069E352B44FE`.
+The behavioral-parity wave continues with the remaining open
+families (MIC/PCD) next.
 
 Latest `BEHAV-OPEN-004` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_4.py`/`probe_open_4.json` with the ctypes
@@ -67,7 +90,7 @@ export parity moves to `493/493` (one deliberate new export) with
 zero difference; and the rebuilt DLL SHA-256 is
 `7CB27E1ED11709523A74955A517251B74FA5B6815AC96A5CCADBD02C9F2BECE7`.
 The behavioral-parity wave continues with the remaining open
-families (FLI/MIC/PCD) next.
+families (MIC/PCD) next.
 
 Latest `BEHAV-OPEN-003` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_3.py`/`probe_open_3.json`) pins the IPTC field
