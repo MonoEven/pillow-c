@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <new>
 #include <string>
@@ -4268,6 +4269,376 @@ int fli_truncation_count(const char* path, std::int64_t* out_count)
     }
 }
 
+// BEHAV-OPEN-006: MIC status codes local to the MIC open route. -52 is
+// Pillow's olefile ValueError that escapes Image.open unwrapped when the
+// file is exactly the 512-byte CFB header with a valid magic.
+constexpr int PILLOW_C_OPEN_MIC_HEADER_ONLY = -52;
+
+namespace {
+
+constexpr std::uint32_t MIC_ENDOFCHAIN = 0xFFFFFFFEu;
+constexpr std::uint32_t MIC_FREESECT = 0xFFFFFFFFu;
+
+struct MicDirectoryEntry {
+    int type = 0; // 1 storage, 2 stream, 5 root
+    std::string name;
+    std::string name_lower;
+    std::uint32_t left = MIC_FREESECT;
+    std::uint32_t right = MIC_FREESECT;
+    std::uint32_t child = MIC_FREESECT;
+    std::uint32_t start = MIC_FREESECT;
+    std::uint64_t size = 0;
+};
+
+std::string mic_decode_utf16le(const std::uint8_t* p, std::size_t byte_len)
+{
+    std::string out;
+    out.reserve(byte_len / 2u);
+    for (std::size_t i = 0; i + 1u < byte_len; i += 2u) {
+        const std::uint16_t u = static_cast<std::uint16_t>(p[i] | (static_cast<std::uint16_t>(p[i + 1u]) << 8));
+        if (u == 0) {
+            break;
+        }
+        if (u < 0x80u) {
+            out.push_back(static_cast<char>(u));
+        } else {
+            out.push_back(static_cast<char>(0xC0u | (u >> 6)));
+            out.push_back(static_cast<char>(0x80u | (u & 0x3Fu)));
+        }
+    }
+    return out;
+}
+
+std::string mic_ascii_lower(const std::string& s)
+{
+    std::string out = s;
+    for (char& c : out) {
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+    }
+    return out;
+}
+
+std::uint64_t mic_read_le64(const std::uint8_t* p)
+{
+    return static_cast<std::uint64_t>(read_le32(p)) | (static_cast<std::uint64_t>(read_le32(p + 4u)) << 32);
+}
+
+bool mic_chain_fat(
+    const std::vector<std::uint32_t>& fat,
+    std::uint32_t start,
+    std::size_t max_sectors,
+    std::vector<std::uint32_t>* out_ids)
+{
+    std::uint32_t cur = start;
+    std::size_t guard = 0;
+    while (cur != MIC_ENDOFCHAIN && cur != MIC_FREESECT) {
+        if (++guard > max_sectors) {
+            return false;
+        }
+        if (static_cast<std::size_t>(cur) >= fat.size()) {
+            return false;
+        }
+        out_ids->push_back(cur);
+        cur = fat[static_cast<std::size_t>(cur)];
+    }
+    return true;
+}
+
+// the embedded Image stream decodes through the exported TIFF route
+extern "C" int pillow_c_image_open_tiff(const char* path, PillowCImage** out_image);
+
+int open_mic_image(const char* path, PillowCImage** out_image)
+{
+    if (!path || !out_image) {
+        return PILLOW_C_NULL_POINTER;
+    }
+    *out_image = nullptr;
+
+    try {
+        std::vector<std::uint8_t> data;
+        if (!read_binary_file(path, &data)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        constexpr std::size_t header_size = 512u;
+        if (data.size() < 8u ||
+            data[0] != 0xD0u || data[1] != 0xCFu || data[2] != 0x11u || data[3] != 0xE0u ||
+            data[4] != 0xA1u || data[5] != 0xB1u || data[6] != 0x1Au || data[7] != 0xE1u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (data.size() == header_size) {
+            return PILLOW_C_OPEN_MIC_HEADER_ONLY;
+        }
+        if (data.size() < header_size) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        if (read_le16(data.data() + 30u) != 9 || read_le16(data.data() + 32u) != 6) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        constexpr std::size_t sector_size = 512u;
+        constexpr std::size_t mini_size = 64u;
+        const std::uint32_t dir_start = read_le32(data.data() + 48u);
+        const std::uint32_t cutoff = read_le32(data.data() + 56u);
+        const std::uint32_t minifat_start = read_le32(data.data() + 60u);
+        const std::uint32_t nminifat = read_le32(data.data() + 64u);
+        const std::uint32_t difat_start = read_le32(data.data() + 68u);
+        const std::uint32_t ndifat = read_le32(data.data() + 72u);
+
+        const auto sector_at = [&](std::uint32_t id, const std::uint8_t** out) -> bool {
+            const std::uint64_t off = header_size + static_cast<std::uint64_t>(id) * sector_size;
+            if (off > data.size() || sector_size > data.size() - off) {
+                return false;
+            }
+            *out = data.data() + off;
+            return true;
+        };
+
+        std::vector<std::uint32_t> fat_ids;
+        for (int i = 0; i < 109; ++i) {
+            const std::uint32_t id = read_le32(data.data() + 76u + 4u * static_cast<std::size_t>(i));
+            if (id == MIC_ENDOFCHAIN || id == MIC_FREESECT) {
+                break;
+            }
+            fat_ids.push_back(id);
+        }
+        std::uint32_t difat_next = difat_start;
+        std::size_t difat_guard = 0;
+        while (ndifat > 0 && difat_next != MIC_ENDOFCHAIN && difat_next != MIC_FREESECT) {
+            if (++difat_guard > 1024u) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            const std::uint8_t* sec = nullptr;
+            if (!sector_at(difat_next, &sec)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            const std::size_t per_sector = sector_size / 4u - 1u;
+            for (std::size_t i = 0; i < per_sector; ++i) {
+                const std::uint32_t id = read_le32(sec + 4u * i);
+                if (id == MIC_ENDOFCHAIN || id == MIC_FREESECT) {
+                    break;
+                }
+                fat_ids.push_back(id);
+            }
+            difat_next = read_le32(sec + 4u * per_sector);
+        }
+
+        std::vector<std::uint32_t> fat;
+        fat.reserve(fat_ids.size() * (sector_size / 4u));
+        for (const std::uint32_t id : fat_ids) {
+            const std::uint8_t* sec = nullptr;
+            if (!sector_at(id, &sec)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            for (std::size_t i = 0; i < sector_size / 4u; ++i) {
+                fat.push_back(read_le32(sec + 4u * i));
+            }
+        }
+
+        std::vector<MicDirectoryEntry> entries;
+        std::uint32_t ds = dir_start;
+        std::size_t dir_guard = 0;
+        while (ds != MIC_ENDOFCHAIN && ds != MIC_FREESECT) {
+            if (++dir_guard > 4096u) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            const std::uint8_t* sec = nullptr;
+            if (!sector_at(ds, &sec)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            for (std::size_t i = 0; i < sector_size / 128u; ++i) {
+                const std::uint8_t* e = sec + i * 128u;
+                const int type = e[66];
+                if (type == 0) {
+                    continue;
+                }
+                MicDirectoryEntry entry;
+                entry.type = type;
+                const std::size_t name_len = read_le16(e + 64u);
+                entry.name = mic_decode_utf16le(e, name_len < 64u ? name_len : 64u);
+                entry.name_lower = mic_ascii_lower(entry.name);
+                entry.left = read_le32(e + 68u);
+                entry.right = read_le32(e + 72u);
+                entry.child = read_le32(e + 76u);
+                entry.start = read_le32(e + 116u);
+                entry.size = mic_read_le64(e + 120u);
+                entries.push_back(entry);
+            }
+            if (static_cast<std::size_t>(ds) >= fat.size()) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            ds = fat[static_cast<std::size_t>(ds)];
+        }
+        if (entries.empty() || entries[0].type != 5) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        struct MicPath {
+            std::vector<std::string> components;
+            std::uint32_t entry_id;
+        };
+        std::vector<MicPath> paths;
+        // olefile raises only a non-fatal DEFECT_INCORRECT for out-of-range
+        // tree ids, so the walk skips them instead of failing; a visited
+        // guard mirrors olefile's duplicate-reference defect
+        std::vector<std::uint8_t> visited(entries.size(), 0u);
+        std::function<void(std::uint32_t, const std::vector<std::string>&)> walk_storage =
+            [&](std::uint32_t node_id, const std::vector<std::string>& prefix) {
+                if (node_id >= entries.size()) {
+                    return;
+                }
+                std::vector<std::uint32_t> kids;
+                std::function<void(std::uint32_t)> collect = [&](std::uint32_t id) {
+                    if (id >= entries.size() || visited[static_cast<std::size_t>(id)] != 0u) {
+                        return;
+                    }
+                    visited[static_cast<std::size_t>(id)] = 1u;
+                    collect(entries[static_cast<std::size_t>(id)].left);
+                    kids.push_back(id);
+                    collect(entries[static_cast<std::size_t>(id)].right);
+                };
+                collect(entries[static_cast<std::size_t>(node_id)].child);
+                std::stable_sort(kids.begin(), kids.end(),
+                                 [&](std::uint32_t a, std::uint32_t b) {
+                                     return entries[static_cast<std::size_t>(a)].name_lower <
+                                            entries[static_cast<std::size_t>(b)].name_lower;
+                                 });
+                for (const std::uint32_t kid : kids) {
+                    std::vector<std::string> full = prefix;
+                    full.push_back(entries[static_cast<std::size_t>(kid)].name);
+                    if (entries[static_cast<std::size_t>(kid)].type == 2) {
+                        paths.push_back(MicPath{full, kid});
+                    } else if (entries[static_cast<std::size_t>(kid)].type == 1) {
+                        walk_storage(kid, full);
+                    }
+                }
+            };
+        walk_storage(0, {});
+
+        std::vector<MicPath> images;
+        for (const MicPath& p : paths) {
+            if (p.components.size() >= 2u &&
+                p.components[0].size() >= 4u &&
+                p.components[0].compare(p.components[0].size() - 4u, 4u, ".ACI") == 0 &&
+                p.components[1] == "Image") {
+                images.push_back(p);
+            }
+        }
+        if (images.empty()) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        const MicDirectoryEntry& stream_entry = entries[static_cast<std::size_t>(images[0].entry_id)];
+        std::vector<std::uint8_t> stream;
+        const std::uint64_t stream_size = stream_entry.size;
+        if (stream_size > 512u * 1024u * 1024u) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const std::size_t wanted = static_cast<std::size_t>(stream_size);
+        if (stream_size < cutoff) {
+            if (minifat_start == MIC_ENDOFCHAIN || minifat_start == MIC_FREESECT || nminifat == 0) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            std::vector<std::uint32_t> minifat_ids;
+            if (!mic_chain_fat(fat, minifat_start, 65536u, &minifat_ids) ||
+                minifat_ids.size() < static_cast<std::size_t>(nminifat)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            std::vector<std::uint32_t> minifat;
+            for (std::size_t s = 0; s < static_cast<std::size_t>(nminifat) && s < minifat_ids.size(); ++s) {
+                const std::uint8_t* sec = nullptr;
+                if (!sector_at(minifat_ids[s], &sec)) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                for (std::size_t i = 0; i < sector_size / 4u; ++i) {
+                    minifat.push_back(read_le32(sec + 4u * i));
+                }
+            }
+            std::vector<std::uint32_t> container_ids;
+            if (!mic_chain_fat(fat, entries[0].start, 65536u, &container_ids)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            std::vector<std::uint8_t> container;
+            for (const std::uint32_t id : container_ids) {
+                const std::uint8_t* sec = nullptr;
+                if (!sector_at(id, &sec)) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                container.insert(container.end(), sec, sec + sector_size);
+            }
+            const std::uint64_t container_limit = entries[0].size < container.size() ? entries[0].size : container.size();
+            std::uint32_t m = stream_entry.start;
+            std::size_t guard = 0;
+            while (m != MIC_ENDOFCHAIN && m != MIC_FREESECT && stream.size() < wanted) {
+                if (++guard > 65536u || static_cast<std::size_t>(m) >= minifat.size()) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                const std::uint64_t off = static_cast<std::uint64_t>(m) * mini_size;
+                if (off >= container_limit) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                const std::uint64_t available = container_limit - off;
+                const std::uint64_t need = wanted - stream.size();
+                const std::size_t take = static_cast<std::size_t>(available < need ? available : need);
+                stream.insert(stream.end(), container.begin() + static_cast<std::ptrdiff_t>(off),
+                              container.begin() + static_cast<std::ptrdiff_t>(off + take));
+                m = minifat[static_cast<std::size_t>(m)];
+            }
+        } else {
+            std::vector<std::uint32_t> ids;
+            if (!mic_chain_fat(fat, stream_entry.start, 65536u, &ids)) {
+                return PILLOW_C_INVALID_ARGUMENT;
+            }
+            for (const std::uint32_t id : ids) {
+                const std::uint8_t* sec = nullptr;
+                if (!sector_at(id, &sec)) {
+                    return PILLOW_C_INVALID_ARGUMENT;
+                }
+                const std::size_t take = sector_size < wanted - stream.size() ? sector_size : wanted - stream.size();
+                stream.insert(stream.end(), sec, sec + take);
+                if (stream.size() >= wanted) {
+                    break;
+                }
+            }
+        }
+        if (stream.size() < wanted) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+
+        wchar_t temp_wide[MAX_PATH];
+        const DWORD temp_length = GetTempPathW(MAX_PATH, temp_wide);
+        if (temp_length == 0 || temp_length >= MAX_PATH) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        wchar_t name[64];
+        std::swprintf(name, sizeof(name) / sizeof(name[0]), L"pillow-c-mic-%llu-%u.tif",
+                      static_cast<unsigned long long>(GetTickCount64()),
+                      static_cast<unsigned>(GetCurrentProcessId()));
+        const std::wstring temp_path = std::wstring(temp_wide) + name;
+        std::string temp_utf8;
+        const int utf8_length = WideCharToMultiByte(CP_UTF8, 0, temp_path.c_str(), static_cast<int>(temp_path.size()),
+                                                    nullptr, 0, nullptr, nullptr);
+        if (utf8_length > 0) {
+            temp_utf8.resize(static_cast<std::size_t>(utf8_length));
+            WideCharToMultiByte(CP_UTF8, 0, temp_path.c_str(), static_cast<int>(temp_path.size()),
+                                temp_utf8.data(), utf8_length, nullptr, nullptr);
+        }
+        if (temp_utf8.empty() || !write_binary_file(temp_utf8.c_str(), stream)) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        const int tiff_status = pillow_c_image_open_tiff(temp_utf8.c_str(), out_image);
+        DeleteFileW(temp_path.c_str());
+        if (tiff_status != PILLOW_C_OK) {
+            return PILLOW_C_INVALID_ARGUMENT;
+        }
+        return PILLOW_C_OK;
+    } catch (const std::bad_alloc&) {
+        return PILLOW_C_ALLOCATION_FAILED;
+    }
+}
+
+} // namespace
+
 // BEHAV-SGI-001: SGI status codes local to the SGI open route. The
 // facade maps each one to Pillow 11.3.0's exact error message; the
 // generic status table does not carry these shapes.
@@ -7985,6 +8356,13 @@ extern "C" __declspec(dllexport) int pillow_c_image_fli_truncation_count(
     std::int64_t* out_count)
 {
     return fli_truncation_count(path, out_count);
+}
+
+extern "C" __declspec(dllexport) int pillow_c_image_open_mic(
+    const char* path,
+    PillowCImage** out_image)
+{
+    return open_mic_image(path, out_image);
 }
 
 extern "C" __declspec(dllexport) int pillow_c_image_save_pcx(

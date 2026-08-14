@@ -1,0 +1,115 @@
+{
+ "self_listdir": [
+  [
+   "picture.ACI",
+   "Image"
+  ]
+ ],
+ "self_stream_size": 126,
+ "mic_l": {
+  "ok": [
+   "MIC",
+   "L",
+   [
+    2,
+    2
+   ],
+   "0a0a0a0a",
+   1,
+   false,
+   {
+    "compression": "raw",
+    "dpi": "(1, 1)",
+    "resolution": "(1, 1)"
+   }
+  ]
+ },
+ "mic_small_stream": {
+  "ok": [
+   "MIC",
+   "L",
+   [
+    1,
+    1
+   ],
+   "09",
+   1,
+   false,
+   {
+    "compression": "raw",
+    "dpi": "(1, 1)",
+    "resolution": "(1, 1)"
+   }
+  ]
+ },
+ "mic_two_frames": {
+  "ok": [
+   "MIC",
+   "L",
+   [
+    2,
+    2
+   ],
+   "0a0a0a0a",
+   1,
+   false,
+   {
+    "compression": "raw",
+    "dpi": "(1, 1)",
+    "resolution": "(1, 1)"
+   }
+  ]
+ },
+ "mic_two_frames_meta": {
+  "ok": [
+   1,
+   false,
+   0
+  ]
+ },
+ "mic_seek1": {
+  "err": "EOFError: attempt to seek outside sequence"
+ },
+ "mic_broken_second_frame": {
+  "ok": [
+   "MIC",
+   "L",
+   [
+    2,
+    2
+   ],
+   "0a0a0a0a",
+   1,
+   false,
+   {
+    "compression": "raw",
+    "dpi": "(1, 1)",
+    "resolution": "(1, 1)"
+   }
+  ]
+ },
+ "mic_truncated_realistic": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000222D59BA9D0>"
+ },
+ "mic_bad_magic": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000222D59BA9D0>"
+ },
+ "mic_valid_ole_no_image": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000222D59BA9D0>"
+ },
+ "mic_lowercase_aci": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000222D59BAAC0>"
+ },
+ "mic_no_image_child": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000222D59BAB60>"
+ },
+ "mic_broken_tiff": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000222D59BAC50>"
+ },
+ "mic_truncated_ole": {
+  "err": "ValueError: bytes length not a multiple of item size"
+ },
+ "mic_save": {
+  "err": "KeyError: 'MIC'"
+ }
+}

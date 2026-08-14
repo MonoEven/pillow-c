@@ -21932,7 +21932,9 @@ PillowTestUnrecordedFormatBoundaries(*) {
         ; errors). PIXAR/XVTHUMB/DCX plus the HDF5/BUFR/GRIB stub
         ; handlers and the IMT non-registration left this list in
         ; BEHAV-OPEN-001 (Pillow's exact KeyError/save-handler errors).
-        for format in ["WMF", "FPX", "MIC", "MPEG", "PCD"] {
+        ; MIC left this list in BEHAV-OPEN-006 (the OLE container opener
+        ; with Pillow's exact errors and the 'MIC' KeyError save string).
+        for format in ["WMF", "FPX", "MPEG", "PCD"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -25809,6 +25811,328 @@ PillowTestOpenFli(*) {
 }
 
 AhkTest.Test("Pillow FLI/FLC opener matches Pillow 11.3.0 chunks, palette, meta, and errors", PillowTestOpenFli)
+
+PillowTestMicPutName(entry, name, base) {
+    ; UTF-16LE name + NUL + the 64-byte field length at offset 64
+    offset := base
+    loop StrLen(name) {
+        NumPut("UShort", Ord(SubStr(name, A_Index, 1)), entry, offset)
+        offset += 2
+    }
+    NumPut("UShort", 0, entry, offset)
+    NumPut("UShort", offset - base + 2, entry, base + 64)
+}
+
+PillowTestMic(streams) {
+    ; streams = [[name, payloadBuffer], ...] with names like "one.ACI/Image";
+    ; builds a minimal CFB v3 container (512-byte sectors, 64-byte mini
+    ; sectors, mini FAT as a regular stream, small streams in the mini
+    ; stream) mirroring oracle/ole_builder.py
+    entryNames := []
+    entryTypes := []
+    entryNames.Push("Root Entry")
+    entryTypes.Push(5)
+    storageIds := Map()
+    streamIds := []
+    storageList := []
+    for stream in streams {
+        parts := StrSplit(stream[1], "/")
+        storageName := parts[1]
+        if !storageIds.Has(storageName) {
+            storageIds[storageName] := entryNames.Length
+            entryNames.Push(storageName)
+            entryTypes.Push(1)
+            storageList.Push(entryNames.Length - 1)
+        }
+        entryNames.Push(parts[2])
+        entryTypes.Push(2)
+        streamIds.Push(entryNames.Length - 1)
+    }
+    entryCount := entryNames.Length
+    ndir := Max(1, Ceil(entryCount / 4))
+
+    big := []
+    small := []
+    for stream in streams {
+        if stream[2].Size >= 4096
+            big.Push(stream[2])
+        else
+            small.Push(stream[2])
+    }
+    bigSectors := 0
+    for payload in big
+        bigSectors += Ceil(payload.Size / 512)
+    totalMini := 0
+    for payload in small
+        totalMini += Ceil(payload.Size / 64)
+    nminifat := Max(1, Ceil(totalMini / 128))
+    miniStreamBytes := 0
+    for payload in small
+        miniStreamBytes += Ceil(payload.Size / 64) * 64
+    miniStreamSectors := Ceil(miniStreamBytes / 512)
+    dataCount := bigSectors + nminifat + miniStreamSectors
+    nfat := Max(1, Ceil((ndir + dataCount) / 128))
+
+    ; FAT entries (FREESECT default)
+    fat := Buffer(nfat * 128 * 4, 0xFF)
+    fatIdStart := ndir + dataCount
+    loop nfat
+        NumPut("UInt", 0xFFFFFFFD, fat, (fatIdStart + A_Index - 1) * 4)
+    ; directory chain
+    loop ndir {
+        idx := A_Index - 1
+        next := (A_Index < ndir) ? idx + 1 : 0xFFFFFFFE
+        NumPut("UInt", next, fat, idx * 4)
+    }
+    ; sector ids: big streams, mini FAT, mini stream
+    bigStarts := []
+    cursor := ndir
+    for payload in big {
+        bigStarts.Push(cursor)
+        n := Ceil(payload.Size / 512)
+        loop n {
+            idx := cursor + A_Index - 1
+            next := (A_Index < n) ? idx + 1 : 0xFFFFFFFE
+            NumPut("UInt", next, fat, idx * 4)
+        }
+        cursor += n
+    }
+    minifatStart := (nminifat > 0) ? cursor : 0xFFFFFFFE
+    cursor += nminifat
+    miniStreamStart := (miniStreamSectors > 0) ? cursor : 0xFFFFFFFE
+    cursor += miniStreamSectors
+
+    ; mini FAT (ENDOFCHAIN default) with the small-stream chains
+    minifat := Buffer(nminifat * 128 * 4, 0xFF)
+    if nminifat > 0 {
+        loop nminifat * 128
+            NumPut("UInt", 0xFFFFFFFE, minifat, (A_Index - 1) * 4)
+    }
+    miniStarts := []
+    miniCursor := 0
+    for payload in small {
+        miniStarts.Push(miniCursor)
+        n := Ceil(payload.Size / 64)
+        loop n {
+            idx := miniCursor + A_Index - 1
+            next := (A_Index < n) ? idx + 1 : 0xFFFFFFFE
+            NumPut("UInt", next, minifat, idx * 4)
+        }
+        miniCursor += n
+    }
+
+    ; header
+    header := Buffer(512, 0)
+    loop 8 {
+        headerBytes := [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]
+        NumPut("UChar", headerBytes[A_Index], header, A_Index - 1)
+    }
+    NumPut("UShort", 0x3E, header, 24)
+    NumPut("UShort", 0x0003, header, 26)
+    NumPut("UShort", 0xFFFE, header, 28)
+    NumPut("UShort", 9, header, 30)
+    NumPut("UShort", 6, header, 32)
+    NumPut("UInt", nfat, header, 44)
+    NumPut("UInt", 0, header, 48)
+    NumPut("UInt", 4096, header, 56)
+    NumPut("UInt", minifatStart, header, 60)
+    NumPut("UInt", nminifat, header, 64)
+    NumPut("UInt", 0xFFFFFFFE, header, 68)
+    NumPut("UInt", 0, header, 72)
+    NumPut("UInt", fatIdStart, header, 76)
+
+    ; directory bytes
+    dir := Buffer(ndir * 512, 0)
+    rootChild := storageList.Length > 0 ? storageList[1] : 0xFFFFFFFF
+    loop entryCount {
+        entryIdx := A_Index
+        base := (entryIdx - 1) * 128
+        PillowTestMicPutName(dir, entryNames[entryIdx], base)
+        NumPut("UChar", entryTypes[entryIdx], dir, base + 66)
+        NumPut("UChar", 1, dir, base + 67)
+        NumPut("UInt", 0xFFFFFFFF, dir, base + 68)
+        NumPut("UInt", 0xFFFFFFFF, dir, base + 72)
+        NumPut("UInt", 0xFFFFFFFF, dir, base + 76)
+        NumPut("UInt", 0xFFFFFFFF, dir, base + 116)
+    }
+    NumPut("UInt", rootChild, dir, 76)
+    ; sibling chain between storages and the per-storage child link
+    loop storageList.Length {
+        idx := storageList[A_Index]
+        base := idx * 128
+        if A_Index < storageList.Length
+            NumPut("UInt", storageList[A_Index + 1], dir, base + 68)
+    }
+    ; streams: storage child = stream, stream start/size
+    streamIndex := 1
+    for stream in streams {
+        parts := StrSplit(stream[1], "/")
+        storageIdx := storageIds[parts[1]]
+        streamIdx := streamIds[streamIndex]
+        NumPut("UInt", streamIdx, dir, storageIdx * 128 + 76)
+        payload := stream[2]
+        if payload.Size >= 4096 {
+            NumPut("UInt", bigStarts[1], dir, streamIdx * 128 + 116)
+        } else {
+            ; small stream: the nth small payload's mini start
+            smallIdx := 1
+            for smallPayload in small {
+                if smallPayload == payload {
+                    NumPut("UInt", miniStarts[smallIdx], dir, streamIdx * 128 + 116)
+                    break
+                }
+                smallIdx += 1
+            }
+        }
+        NumPut("UInt", payload.Size, dir, streamIdx * 128 + 120)
+        NumPut("UInt", 0, dir, streamIdx * 128 + 124)
+        streamIndex += 1
+    }
+    ; root entry: mini stream chain + size
+    NumPut("UInt", miniStreamStart, dir, 116)
+    NumPut("UInt", miniStreamBytes, dir, 120)
+    NumPut("UInt", 0, dir, 124)
+
+    ; mini stream chain in the FAT
+    if miniStreamSectors > 0 {
+        loop miniStreamSectors {
+            idx := miniStreamStart + A_Index - 1
+            next := (A_Index < miniStreamSectors) ? idx + 1 : 0xFFFFFFFE
+            NumPut("UInt", next, fat, idx * 4)
+        }
+    }
+    ; mini FAT chain in the FAT
+    if nminifat > 0 {
+        loop nminifat {
+            idx := minifatStart + A_Index - 1
+            next := (A_Index < nminifat) ? idx + 1 : 0xFFFFFFFE
+            NumPut("UInt", next, fat, idx * 4)
+        }
+    }
+
+    ; payload assembly
+    payloadSize := dir.Size
+    for payload in big
+        payloadSize += Ceil(payload.Size / 512) * 512
+    payloadSize += nminifat * 512
+    payloadSize += miniStreamSectors * 512
+    payloadSize += fat.Size
+    out := Buffer(512 + payloadSize, 0)
+    DllCall("msvcrt\memcpy", "Ptr", out, "Ptr", header, "UPtr", 512, "CDecl Ptr")
+    offset := 512
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", dir, "UPtr", dir.Size, "CDecl Ptr")
+    offset += dir.Size
+    for payload in big {
+        DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", payload, "UPtr", payload.Size, "CDecl Ptr")
+        offset += Ceil(payload.Size / 512) * 512
+    }
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", minifat, "UPtr", minifat.Size, "CDecl Ptr")
+    offset += minifat.Size
+    ; mini stream bytes: concatenated 64-byte-padded small payloads
+    miniBuf := Buffer(miniStreamBytes, 0)
+    miniOffset := 0
+    for payload in small {
+        DllCall("msvcrt\memcpy", "Ptr", miniBuf.Ptr + miniOffset, "Ptr", payload, "UPtr", payload.Size, "CDecl Ptr")
+        miniOffset += Ceil(payload.Size / 64) * 64
+    }
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", miniBuf, "UPtr", miniBuf.Size, "CDecl Ptr")
+    offset += miniStreamSectors * 512
+    DllCall("msvcrt\memcpy", "Ptr", out.Ptr + offset, "Ptr", fat, "UPtr", fat.Size, "CDecl Ptr")
+    offset += fat.Size
+    return out
+}
+
+PillowTestOpenMic(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    micPath := A_Temp "\open-6.mic"
+    savePath := A_Temp "\open-6-save.bin"
+    tiffL := PillowTestBuffer(PillowTestHexBytes("49492a0008000000090000010400010000000200000001010400010000000200000002010300010000000800000003010300010000000100000006010300010000000100000011010400010000007a0000001601040001000000020000001701040001000000040000001c0103000100000001000000000000000a0a0a0a"))
+    tiffSmall := PillowTestBuffer(PillowTestHexBytes("49492a0008000000090000010400010000000100000001010400010000000100000002010300010000000800000003010300010000000100000006010300010000000100000011010400010000007a0000001601040001000000010000001701040001000000010000001c01030001000000010000000000000009"))
+    try {
+        ; --- single ACI/Image stream ---
+        PillowTestWriteFileBuffer(micPath, PillowTestMic([["picture.ACI/Image", tiffL]]))
+        opened := Pillow.Image.Open(micPath)
+        try {
+            AhkTest.AssertEqual("MIC", opened.Format)
+            AhkTest.AssertEqual("L", opened.Mode)
+            AhkTest.AssertEqual([2, 2], opened.Size)
+            AhkTest.AssertEqual("0a0a0a0a", PillowTestPdfBytesToHex(PillowTestBufferToArray(opened.ToBytes())))
+            AhkTest.AssertEqual(1, opened.FrameCount)
+            AhkTest.AssertEqual(false, opened.IsAnimated)
+        } finally {
+            opened.Close()
+        }
+
+        ; --- mini-stream path (small TIFF) ---
+        PillowTestWriteFileBuffer(micPath, PillowTestMic([["pic.ACI/Image", tiffSmall]]))
+        openedSmall := Pillow.Image.Open(micPath)
+        try {
+            AhkTest.AssertEqual([1, 1], openedSmall.Size)
+            AhkTest.AssertEqual("09", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedSmall.ToBytes())))
+        } finally {
+            openedSmall.Close()
+        }
+
+        ; --- big-stream path (TIFF padded past the 4096 cutoff) ---
+        bigTiff := Buffer(4200, 0)
+        DllCall("msvcrt\memcpy", "Ptr", bigTiff, "Ptr", tiffL, "UPtr", tiffL.Size, "CDecl Ptr")
+        PillowTestWriteFileBuffer(micPath, PillowTestMic([["pic.ACI/Image", bigTiff]]))
+        openedBig := Pillow.Image.Open(micPath)
+        try {
+            AhkTest.AssertEqual("0a0a0a0a", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedBig.ToBytes())))
+        } finally {
+            openedBig.Close()
+        }
+
+        ; --- two ACI entries: frame 0 decodes; Pillow's n_frames quirk
+        ; (seek(0) resets _n_frames to the TIFF IFD count) pins 1/false ---
+        PillowTestWriteFileBuffer(micPath, PillowTestMic([["one.ACI/Image", tiffL], ["two.ACI/Image", tiffSmall]]))
+        openedTwo := Pillow.Image.Open(micPath)
+        try {
+            AhkTest.AssertEqual("0a0a0a0a", PillowTestPdfBytesToHex(PillowTestBufferToArray(openedTwo.ToBytes())))
+            AhkTest.AssertEqual(1, openedTwo.FrameCount)
+            AhkTest.AssertEqual(false, openedTwo.IsAnimated)
+        } finally {
+            openedTwo.Close()
+        }
+
+        ; --- errors ---
+        PillowTestWriteFileBuffer(micPath, PillowTestMic([["foo.txt/Data", PillowTestRangeBuffer(5000)]]))
+        AhkTest.AssertEqual("cannot identify image file <" micPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+        PillowTestWriteFileBuffer(micPath, PillowTestMic([["pic.aci/Image", tiffL]]))
+        AhkTest.AssertEqual("cannot identify image file <" micPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+        PillowTestWriteFileBuffer(micPath, PillowTestMic([["pic.ACI/Other", PillowTestRangeBuffer(5000)]]))
+        AhkTest.AssertEqual("cannot identify image file <" micPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+        PillowTestWriteFileBuffer(micPath, PillowTestMic([["pic.ACI/Image", PillowTestBuffer([1, 2, 3, 4])]]))
+        AhkTest.AssertEqual("cannot identify image file <" micPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+        PillowTestWriteFileBuffer(micPath, Buffer(64, 0))
+        AhkTest.AssertEqual("cannot identify image file <" micPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+        truncated := PillowTestMic([["pic.ACI/Image", tiffL]])
+        PillowTestWriteFileBuffer(micPath, PillowTestFliSlice(truncated, truncated.Size // 2))
+        AhkTest.AssertEqual("cannot identify image file <" micPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+        headerOnly := Buffer(512, 0)
+        loop 8 {
+            headerBytes := [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]
+            NumPut("UChar", headerBytes[A_Index], headerOnly, A_Index - 1)
+        }
+        PillowTestWriteFileBuffer(micPath, headerOnly)
+        AhkTest.AssertEqual("bytes length not a multiple of item size", PillowTestFormatCaptureError(() => Pillow.Image.Open(micPath)))
+
+        ; --- save raises the exact KeyError ---
+        saveImage := Pillow.Image.New("L", [2, 2], 7)
+        try {
+            PillowTestAssertSaveKeyError(saveImage, savePath, "MIC")
+        } finally {
+            saveImage.Close()
+        }
+        AhkTest.AssertEqual("Microsoft Image Composer", Pillow.Image.FormatDescription("MIC"))
+    } finally {
+        PillowTestDeleteFile(micPath)
+        PillowTestDeleteFile(savePath)
+    }
+}
+
+AhkTest.Test("Pillow MIC opener matches Pillow 11.3.0 OLE container, TIFF stream, and errors", PillowTestOpenMic)
 
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

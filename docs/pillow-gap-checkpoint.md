@@ -25,15 +25,15 @@ Estimate (AUDIT-003, the behavioral standard): literal 100% runtime
 identity with the local Pillow 11.3.0 build is NOT reachable and is
 no longer claimed. The honest split:
 
-- Formats: SAVE 20/30 and OPEN 31/45 byte-exact and test-pinned;
+- Formats: SAVE 20/30 and OPEN 32/45 byte-exact and test-pinned;
   ICNS, EPS, MPO, PDF, PIXAR, XVTHUMB, DCX, FTEX, SUN, GBR, FITS,
-  XPM, IPTC, MCIDAS, PSD, and FLI/FLC are DONE (BEHAV-ICNS-001 /
+  XPM, IPTC, MCIDAS, PSD, FLI/FLC, and MIC are DONE (BEHAV-ICNS-001 /
   BEHAV-EPS-001 / BEHAV-MPO-001 / BEHAV-PDF-001 / BEHAV-OPEN-001 /
   BEHAV-OPEN-002 / BEHAV-OPEN-003 / BEHAV-OPEN-004 /
-  BEHAV-OPEN-005); the
+  BEHAV-OPEN-005 / BEHAV-OPEN-006); the
   matchable remainder is bounded
-  (0 saves left; 2
-  opens: MIC/PCD (IMT is
+  (0 saves left; 1
+  open: PCD (IMT is
   NOT registered in 11.3.0 — probe-verified no-op); the
   MPEG header-then-cannot-load error match;
   PDF open is unregistered in 11.3.0 -> identification error (DONE
@@ -72,11 +72,12 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-OPEN-005 (FLI/FLC opener: the
-frame-0 chunk decoder — BLACK/COPY/BRUN/LC/SS2 with the exact C
-out-of-bounds accounting — the COLOR/COLOR_256 palette walk, the
-duration/n_frames meta, and every error/truncation shape)
-after BEHAV-OPEN-004/
+Latest covered gap tail: BEHAV-OPEN-006 (MIC opener: the OLE2/CFB
+container walk — DIFAT/FAT/mini-FAT/mini-stream — the case-sensitive
+*.ACI/Image discovery, the embedded TIFF decoded through the native
+TIFF route, Pillow's n_frames-1 seek quirk, and every error shape)
+after BEHAV-OPEN-005/
+BEHAV-OPEN-004/
 BEHAV-OPEN-003/
 BEHAV-OPEN-002/
 BEHAV-OPEN-001/
@@ -84,8 +85,8 @@ BEHAV-PDF-001/
 BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
-the next bounded child is the remaining pure-Python open families
-(MIC/PCD), then the MPEG
+the next bounded child is the last pure-Python open family
+(PCD), then the MPEG
 error match and WMF open, then
 the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
@@ -539,6 +540,36 @@ remains `482/482` and the DLL SHA-256 remains
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
 The next bounded child is `BEHAV-PDF-001`, the PDF format.
 
+2026-08-14: `BEHAV-OPEN-006` is GREEN as the MIC (Microsoft Image
+Composer) opener. The Pillow 11.3.0 oracle (`oracle/probe_open_6.py`/
+`probe_open_6.json` with the hand-crafted CFB builder in
+`oracle/ole_builder.py`, olefile-validated) pins MicImageFile: the
+OLE2 magic accept, the olefile CFB v3 container walk (DIFAT + FAT +
+directory red-black trees + the mini FAT as a regular stream + the
+64-byte mini stream for sub-4096-byte streams), the case-sensitive
+`endswith(".ACI")` / exact `"Image"` discovery in olefile's sorted
+listdir order, the embedded TIFF decoded through
+TiffImagePlugin.TiffImageFile (broken TIFFs collapse to the
+identification error), and Pillow's n_frames quirk — seek(0) runs
+TiffImageFile._open which resets `_n_frames` to the TIFF IFD count,
+so multi-ACI files report n_frames 1 / is_animated false and
+seek(1) raises `attempt to seek outside sequence` (the eager facade
+pins FrameCount 1). Error shapes: bad magic, no ACI/Image entries,
+lowercase `.aci`, a missing Image child, truncated containers, and
+broken TIFF streams all collapse to the identification error; the
+exact 512-byte magic-only file raises olefile's unwrapped ValueError
+`bytes length not a multiple of item size`; save raises the `'MIC'`
+KeyError. One deliberate native export (`pillow_c_image_open_mic`)
+parses the container, extracts frame 0's stream to a temp file, and
+reuses the exported TIFF route. The facade MIC target passes `1/1`
+in `31ms`; the full directory suite passes `2830/2830` in `22485ms`
+with zero failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity moves to
+`496/496` (one deliberate new export) with zero difference; and
+the rebuilt DLL SHA-256 is
+`F8F8D88D645F671E386261D34773945E128E64F759CC907DBD6D1D65DA62329B`.
+The next bounded child is the last pure-Python open family (PCD).
+
 2026-08-14: `BEHAV-OPEN-005` is GREEN as the FLI/FLC opener. The
 Pillow 11.3.0 oracle (`oracle/probe_open_5.py`/`probe_open_5.json`,
 pinned through the 11.3.0 FliDecode.c source for the exact C
@@ -577,7 +608,8 @@ with zero failures, errors, or skips. Release x64 Rebuild has
 the rebuilt DLL SHA-256 is
 `0D656AD50A2A6518E4FB05CFBF32E1B8CCDDE6D64DDF9A638808069E352B44FE`.
 Frame seeking past frame 0 stays a documented child. The next
-bounded child is the remaining pure-Python open families (MIC/PCD).
+bounded child is the remaining pure-Python open families (MIC/PCD),
+now complete with BEHAV-OPEN-006.
 
 2026-08-14: `BEHAV-OPEN-004` is GREEN as the PSD opener. The Pillow
 11.3.0 oracle (`oracle/probe_open_4.py`/`probe_open_4.json` with

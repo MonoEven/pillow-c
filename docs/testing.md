@@ -47,8 +47,29 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2829` AHK tests: `1391` raw DLL tests and
-`1438` facade tests.
+This suite currently registers `2830` AHK tests: `1391` raw DLL tests and
+`1439` facade tests.
+
+Latest `BEHAV-OPEN-006` verification: the Pillow 11.3.0 oracle
+(`oracle/probe_open_6.py`/`probe_open_6.json` with the hand-crafted
+CFB v3 builder in `oracle/ole_builder.py`, olefile-validated) pins
+the MIC opener (the OLE2 magic accept, the DIFAT/FAT/directory
+walk with out-of-range-tree-id tolerance, the mini FAT as a regular
+stream plus the 64-byte mini stream, the case-sensitive
+`*.ACI/Image` discovery, the embedded TIFF through the native TIFF
+route, Pillow's n_frames-1 seek quirk, and the error shapes: ident
+for bad magic/no images/lowercase .aci/missing child/broken TIFF/
+truncated containers, the unwrapped `bytes length not a multiple of
+item size` ValueError for an exact-512-byte magic-valid file, and
+the `'MIC'` KeyError save). The facade MIC target passes `1/1` in
+`31ms`; the full directory suite passes `2830/2830` in `22485ms`
+with zero failures, errors, or skips. Release x64 Rebuild has
+`0 Warning(s), 0 Error(s)`; source/DLL export parity moves to
+`496/496` (one deliberate new export) with zero difference; and
+the rebuilt DLL SHA-256 is
+`F8F8D88D645F671E386261D34773945E128E64F759CC907DBD6D1D65DA62329B`.
+The behavioral-parity wave continues with the last pure-Python open
+family (PCD) next.
 
 Latest `BEHAV-OPEN-005` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_5.py`/`probe_open_5.json`, pinned through the
@@ -71,7 +92,7 @@ with zero failures, errors, or skips. Release x64 Rebuild has
 the rebuilt DLL SHA-256 is
 `0D656AD50A2A6518E4FB05CFBF32E1B8CCDDE6D64DDF9A638808069E352B44FE`.
 The behavioral-parity wave continues with the remaining open
-families (MIC/PCD) next.
+families (MIC/PCD) next — MIC completed by BEHAV-OPEN-006.
 
 Latest `BEHAV-OPEN-004` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_4.py`/`probe_open_4.json` with the ctypes

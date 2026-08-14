@@ -7883,6 +7883,27 @@ class Pillow {
                     }
                     if lastStatus = -3
                         throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "MIC" {
+                    ; BEHAV-OPEN-006: MicImageFile — the native opener
+                    ; parses the OLE2/CFB container (v3: 512-byte
+                    ; sectors, mini FAT and mini stream), finds the
+                    ; first *.ACI/Image stream (case-sensitive
+                    ; endswith/name matching, olefile's sorted order),
+                    ; and decodes it through the native TIFF route.
+                    ; Pillow's seek(0) resets n_frames to the TIFF IFD
+                    ; count, so multi-ACI files report n_frames 1 and
+                    ; seek(1) raises the sequence EOFError — the eager
+                    ; facade pins FrameCount 1/is_animated false.
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_mic",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -52
+                        throw Error("bytes length not a multiple of item size", -1)
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
                 } else if format = "HDF5" || format = "BUFR" || format = "GRIB" {
                     ; BEHAV-OPEN-001: the HDF5/BUFR/GRIB stub plugins
                     ; accept the magic and open an F(1,1) image whose
@@ -10197,6 +10218,8 @@ class Pillow {
                 return "PSD"
             if RegExMatch(path, "i)\.(fli|flc)$")
                 return "FLI"
+            if RegExMatch(path, "i)\.mic$")
+                return "MIC"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -10226,7 +10249,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "FLI" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "FLI" || name = "MIC" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -10262,6 +10285,7 @@ class Pillow {
                 "MCIDAS", "McIdas area file",
                 "PSD", "Adobe Photoshop",
                 "FLI", "Autodesk FLI/FLC Animation",
+                "MIC", "Microsoft Image Composer",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -12165,8 +12189,8 @@ class Pillow {
                 ; OSError before writing anything.
                 throw Error(resolvedFormat " save handler not installed", -1)
             }
-            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" || resolvedFormat = "IPTC" || resolvedFormat = "MCIDAS" || resolvedFormat = "PSD" || resolvedFormat = "FLI" {
-                ; BEHAV-OPEN-001/002/003/004/005: these plugins register no
+            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" || resolvedFormat = "IPTC" || resolvedFormat = "MCIDAS" || resolvedFormat = "PSD" || resolvedFormat = "FLI" || resolvedFormat = "MIC" {
+                ; BEHAV-OPEN-001/002/003/004/005/006: these plugins register no
                 ; save handler at all — Pillow raises KeyError with the
                 ; bare name.
                 throw Error("'" resolvedFormat "'", -1)

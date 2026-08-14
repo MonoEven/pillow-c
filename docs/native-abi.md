@@ -219,10 +219,28 @@ FrameCount/n_frames/is_animated from the header, and the `'FLI'`
 KeyError save string; frame seeking past frame 0 stays a
 documented child.
 
+`BEHAV-OPEN-006` adds one deliberate export —
+`pillow_c_image_open_mic` — that decodes Pillow 11.3.0's
+MicImageFile: the OLE2/CFB v3 container walk (DIFAT/FAT/directory
+red-black trees with out-of-range-tree-id tolerance, the mini FAT
+as a regular stream, and the root-chained mini stream), the
+case-sensitive `*.ACI/Image` discovery in olefile's sorted order,
+and the embedded TIFF decoded through the exported TIFF open route
+(frame 0's stream staged through a temp file). Pillow's n_frames
+quirk (seek(0) resets the count to the TIFF IFD count, so
+multi-ACI files report n_frames 1 and seek(1) raises the sequence
+EOFError) pins the facade FrameCount 1/is_animated false. Local
+status `-52` carries the olefile ValueError that escapes Image.open
+(`bytes length not a multiple of item size`) for an exact-512-byte
+magic-valid file; every other malformed container shape collapses
+to the identification error and save raises the `'MIC'` KeyError.
+CFB v4 (4096-byte sectors) stays a documented boundary.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`495/495`; the full AHK suite is `2829/2829`; and the current DLL SHA-256 is
-`0D656AD50A2A6518E4FB05CFBF32E1B8CCDDE6D64DDF9A638808069E352B44FE`
-(BEHAV-OPEN-005 adds the `pillow_c_image_open_fli` and
+`496/496`; the full AHK suite is `2830/2830`; and the current DLL SHA-256 is
+`F8F8D88D645F671E386261D34773945E128E64F759CC907DBD6D1D65DA62329B`
+(BEHAV-OPEN-006 adds the `pillow_c_image_open_mic` export below;
+BEHAV-OPEN-005 adds the `pillow_c_image_open_fli` and
 `pillow_c_image_fli_truncation_count` exports below;
 BEHAV-OPEN-004 adds the `pillow_c_image_open_psd` export below;
 BEHAV-OPEN-003 changes no ABI — the IPTC/MCIDAS openers are
