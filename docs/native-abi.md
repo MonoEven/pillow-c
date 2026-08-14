@@ -222,6 +222,11 @@ object (constructor/tolist/getbbox/compact/transform/map) mirrors
 Pillow 11.3.0's simplified path semantics; the DLL SHA-256 is
 unchanged.
 
+`API-QTTK-001` changes no ABI at all either: the facade
+`Pillow.ImageQt`/`Pillow.ImageTk` stub surfaces record the
+dependency-gated boundaries (no Qt binding, no Tk interpreter) with
+Pillow-shaped errors; the DLL SHA-256 is unchanged.
+
 No facade lifetime rule, fallback, or AHK per-pixel loop was added
 beyond the numeric transform family above.
 

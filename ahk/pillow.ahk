@@ -513,6 +513,34 @@ class Pillow {
             return { IsFloat: false, Value: 0 }
         }
     }
+    class ImageQt {
+        ; API-QTTK-001: explicit documented boundary — the AHK runtime
+        ; ships no Qt binding, so Pillow 11.3.0's ImageQt module surface
+        ; (ImageQt/fromqimage/toqimage/toqpixmap) fails loudly with the
+        ; classic Pillow message.
+        static ImageQt(im) => Pillow.ImageQt.RequireQt()
+        static ToQImage(im) => Pillow.ImageQt.RequireQt()
+        static ToQPixmap(im) => Pillow.ImageQt.RequireQt()
+        static FromQImage(qim) => Pillow.ImageQt.RequireQt()
+
+        static RequireQt() {
+            throw Error("Qt bindings are not installed", -1)
+        }
+    }
+
+    class ImageTk {
+        ; API-QTTK-001: explicit documented boundary — the AHK runtime
+        ; ships no Tk interpreter, so Pillow 11.3.0's ImageTk module
+        ; surface (PhotoImage/BitmapImage) fails loudly with Pillow's
+        ; no-root RuntimeError.
+        static PhotoImage(image := unset, args*) => Pillow.ImageTk.RequireTk()
+        static BitmapImage(image := unset, args*) => Pillow.ImageTk.RequireTk()
+
+        static RequireTk() {
+            throw Error("Too early to create image: no default root window", -1)
+        }
+    }
+
     class ImagePath {
         ; AHK case-insensitivity serves Pillow's ImagePath.Path module.
         class Path {

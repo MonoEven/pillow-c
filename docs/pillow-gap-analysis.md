@@ -37,6 +37,36 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-14 API-QTTK-001 ImageQt/ImageTk Boundaries (GREEN)
+
+`API-QTTK-001` closes the ImageQt/ImageTk module surfaces as explicit
+documented boundaries (dependency-gated: the AHK runtime ships no Qt
+binding and no Tk interpreter).
+
+The Pillow 11.3.0 oracle (kept in `oracle/probe_imageqtk.py`) plus the
+installed ImageQt.py/ImageTk.py sources show the ImageQt surface
+(ImageQt/fromqimage/toqimage/toqpixmap) is defined only when a Qt
+binding is importable, and ImageTk.PhotoImage without a root raises
+`RuntimeError: Too early to create image: no default root window`.
+The facade adds `Pillow.ImageQt` and `Pillow.ImageTk` stub surfaces
+that fail loudly with the Pillow-shaped messages: the ImageQt surface
+raises `Qt bindings are not installed` (consistent with the
+`Image.toqimage`/`toqpixmap` boundaries), and the ImageTk surface
+raises the no-root message. Facade-only change; no new export; parity
+remains `466/466` and the DLL SHA-256 is unchanged.
+
+Verification:
+
+- Red evidence: the module surfaces were absent (AUDIT-002).
+- Facade Qt/Tk boundary target passes `1/1` in `32ms` (all four Qt
+  entry points and both Tk entry points).
+- Full AHK directory suite: `2801/2801` in `20938ms`; zero failures,
+  errors, or skips.
+
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `89% ±5%`. The next bounded child is
+`API-FILE-001`, the ImageFile module surface.
+
 ## 2026-08-14 API-PATH-001 ImagePath.Path Object (GREEN)
 
 `API-PATH-001` closes the ImagePath module (facade-only).
@@ -39900,7 +39930,7 @@ behavior, facade behavior where applicable, docs, and tests all agree.
 | API-MATH-001 | Facade API | covered | Bounded ImageMath eval/unsafe_eval arithmetic: Pillow 11.3.0's safe grammar over L/I/F operands — binary + - * / % & \| ^ << >> and comparisons, unary -/~, abs/min/max/float/int/convert, int/float literals; results mode I (int32, C truncation division and C remainder) or F (float32); RGB -> `unsupported mode: RGB`, unknown names -> `'X' not allowed`, float bitwise -> `bad operand type for 'and'`, constant-only expressions return scalars. The new `pillow_c_image_math_rpn` export evaluates a per-pixel RPN stack machine, and the facade ImageMath class adds the tokenizer/shunting-yard compiler/scalar evaluator with Pillow-shaped errors (Eval/UnsafeEval serve eval/unsafe_eval; variables as a Map). A ctypes cross-check matches 20 expressions byte-exactly (`FAILURES: 0`). Export parity moves to `464/464`. | `oracle/probe_imagemath.py`, `oracle/probe_imagemath2.py`, `oracle/probe_imagemath3.py`, `oracle/probe_imagemath_dll_compose.py`, `pillow_c_image_math_rpn`, facade `ImageMath` class, raw/facade math tests. |
 | API-GRAB-001 | Facade API | covered | ImageGrab implemented, not bounded: Pillow 11.3.0 grab() semantics (RGB screen captures via GDI BitBlt with bbox/all_screens/include_layered, GDI clipping for off-screen bboxes, the coordinate errors, empty-bbox empty image) and grabclipboard() CF_DIB decoding (24/32bpp -> RGB with bottom-up flip + BGR swap + 32bpp alpha drop, 8bpp -> L index grayscale, 1bpp -> packed mode 1, empty/text -> None). The new `pillow_c_grab.cpp` module adds `pillow_c_image_grab` and `pillow_c_image_grab_clipboard` (project now links gdi32/user32), and the facade `ImageGrab` class adds Grab/GrabClipboard with Pillow's errors. A ctypes cross-check matches Pillow byte-exactly across all four DIB bit counts and the empty path (`FAILURES: 0`). Export parity moves to `466/466`. | `oracle/probe_imagegrab_clip.py`, `oracle/probe_imagegrab_dib.py`, `oracle/probe_imagegrab_dll_compose.py`, `pillow_c_grab.cpp`, facade `ImageGrab` class, raw/facade grab tests. |
 | API-PATH-001 | Facade API | covered | ImagePath.Path object (facade-only): Pillow 11.3.0's `Image.core.path` is a simplified five-method object — constructor from flat/pair sequences with float coordinates, `tolist` flat (x,y) pairs, `getbbox` float (minx,miny,maxx,maxy) with empty -> (0,0,0,0), in-place no-op `compact` returning 0 (lines only), 6-value affine `transform` with Pillow's length error, and callable `map` returning None without mutating (ImagingTransformHandler form stays a documented boundary). The facade `Pillow.ImagePath.Path` mirrors all five (AHK case-insensitivity serves the aliases; 0 is the None analogue). Export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, `oracle/probe_imagepath3.py`, facade `ImagePath.Path` class, facade ImagePath test. |
-| API-QTTK-001 | Facade API | not started | ImageQt/ImageTk module surfaces (26/10 names) — only the toqimage/toqpixmap boundaries were recorded (API-IMG-001E); the module objects themselves are unrecorded. | Documented boundary or Qt/Tk dependency decision. |
+| API-QTTK-001 | Facade API | covered | ImageQt/ImageTk module surfaces as explicit documented boundaries (dependency-gated): Pillow 11.3.0 defines the ImageQt surface (ImageQt/fromqimage/toqimage/toqpixmap) only when a Qt binding is importable, and ImageTk.PhotoImage without a root raises `Too early to create image: no default root window`. The AHK runtime ships no Qt binding and no Tk interpreter, so the facade `ImageQt`/`ImageTk` stub surfaces raise the Pillow-shaped messages (`Qt bindings are not installed` / the no-root message). Facade-only; export parity remains `466/466` and the DLL SHA-256 is unchanged. | `oracle/probe_imageqtk.py`, facade `ImageQt`/`ImageTk` boundary stubs, facade Qt/Tk boundary test. |
 | API-FILE-001 | Facade API | not started | ImageFile module surface (Parser/ImageFile/StubImageFile/_save base classes, 31 names) — absent as a module; actual decode/encode runs through the native ABI. | Documented boundary (native ABI analogue) or facade module. |
 | API-PALETTE-001 | Facade API | not started | ImagePalette module (ImagePalette/PaletteFile/GimpPaletteFile/GimpGradientFile, wedge/sepia/random/raw/negative/make_gamma_lut/make_linear_lut, 18 names) — the facade `Palette` class is only WEB/ADAPTIVE constants. | Facade ImagePalette or documented boundary. |
 | API-TRANSFORMCLS-001 | Facade API | not started | ImageTransform class objects (TransformHandler/AffineTransform/etc., 10 names) — constants and Transform methods exist, the class objects do not. | Facade classes or documented boundary. |

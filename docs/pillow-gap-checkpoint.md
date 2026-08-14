@@ -21,7 +21,7 @@ ledger together whenever coverage meaningfully changes.
 ## Current Snapshot
 
 ```text
-Estimate: AHK-first Pillow-runtime overall completion 88% (about ±5%) under
+Estimate: AHK-first Pillow-runtime overall completion 89% (about ±5%) under
 the real-workload Pillow replacement-readiness model — measured against
 the FULL Pillow 11.3.0 public surface since the AUDIT-002 re-audit.
 Latest covered gap tail: `FMT-TIFF-003AN`–`FMT-TIFF-003BJ` closes the bounded
@@ -45,24 +45,25 @@ also COMPLETE), the complete facade API slice (`API-IMG-001D` getim,
 (`MODE-NUM-001CK`/`001CL`/`001CM`/`001CN`), the complete I;16 numeric
 surface (`MODE-NUM-001CO`/`001CP`/`001CQ`), `BNDRY-001` the
 remaining-item boundary ledger, `API-MATH-001` the ImageMath module,
-`API-GRAB-001` the ImageGrab capture module, and `API-PATH-001` —
-the ImagePath.Path object (Pillow 11.3.0's simplified five-method
-path: constructor pairs/flat, tolist, getbbox with the empty
-(0,0,0,0) rule, the in-place no-op compact, affine transform with
-Pillow's length error, and the None-returning callable map).
+`API-GRAB-001` the ImageGrab capture module, `API-PATH-001` the
+ImagePath.Path object, and `API-QTTK-001` — the ImageQt/ImageTk
+module-surface boundaries (the AHK runtime ships no Qt binding and no
+Tk interpreter, so the ImageQt surface raises Pillow's
+`Qt bindings are not installed` and the ImageTk surface raises
+Pillow's no-root `Too early to create image: no default root window`,
+both recorded as explicit documented boundaries).
 `003BC` CORRECTS the round-16 oracle note: Pillow 11.3.0's `save_all`
 (classic AND `big_tiff`) output is CHAIN-LINKED — IFD0's next pointer
 jumps to page 1's IFD, with each page's own inline header preceding its
-IFD as a writer artifact. The ImagePath slice was pinned by the
-Pillow probes (`oracle/probe_imagepath*.py`) and its facade target
-passes `1/1` in `47ms`; the full directory suite passes `2800/2800`
-in `19516ms`; source/DLL exports remain `466/466` with zero
-difference; and the DLL SHA-256 remains
+IFD as a writer artifact. The Qt/Tk boundary target passes `1/1` in
+`32ms`, and the full directory suite passes `2801/2801` in `20938ms`;
+source/DLL exports remain `466/466` with zero difference; and the DLL
+SHA-256 remains
 `7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`
 (facade-only slice).
 `ARCH-MOD-001` through `ARCH-MOD-012` remain complete architecture packets;
 the next selected compatibility work packet is
-`API-QTTK-001`, the ImageQt/ImageTk module-surface boundaries.
+`API-FILE-001`, the ImageFile module surface.
 ```
 
 Current work packet:
@@ -405,8 +406,7 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: `API-QTTK-001`, the ImageQt/ImageTk module-surface
-  boundaries.
+- Selected next gap: `API-FILE-001`, the ImageFile module surface.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -480,6 +480,28 @@ Current work packet:
 - Native/facade/test entry points to preserve: the existing TIFF metadata-ex
   exports, `pillow_c_image_quantize_options`, `Pillow.Image.Quantize`,
   `ahk/pillow_c.test.ahk`, and `ahk/pillow.test.ahk`.
+
+2026-08-14: `API-QTTK-001` is GREEN as the ImageQt/ImageTk module-surface
+boundaries. The Pillow 11.3.0 oracle (kept in
+`oracle/probe_imageqtk.py`) plus the ImageQt.py/ImageTk.py sources show
+the ImageQt surface exists only when a Qt binding is importable (the
+module imports but defines ImageQt/fromqimage/toqimage/toqpixmap only
+under `qt_is_installed`), and ImageTk.PhotoImage without a root raises
+`RuntimeError: Too early to create image: no default root window`.
+The AHK runtime ships no Qt binding and no Tk interpreter, so the
+facade adds `Pillow.ImageQt` and `Pillow.ImageTk` stub surfaces that
+fail loudly with the Pillow-shaped messages (`Qt bindings are not
+installed` for the ImageQt surface, the no-root RuntimeError message
+for the ImageTk surface); both are recorded as explicit documented
+boundaries. Facade-only change, no native rebuild: the Qt/Tk boundary
+target passes `1/1` in `32ms`, and the full directory suite passes
+`2801/2801` in `20938ms`, with zero failures, errors, or skips.
+Source/DLL export parity remains `466/466` with zero difference, and
+the DLL SHA-256 remains
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The estimate moves to `89% ±5%`. The next bounded child is
+`API-FILE-001`, the ImageFile module surface.
 
 2026-08-14: `API-PATH-001` is GREEN for the ImagePath.Path object
 (facade-only). The Pillow 11.3.0 oracles (kept in

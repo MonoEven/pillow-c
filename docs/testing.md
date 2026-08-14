@@ -47,8 +47,24 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2800` AHK tests: `1388` raw DLL tests and
-`1412` facade tests.
+This suite currently registers `2801` AHK tests: `1388` raw DLL tests and
+`1413` facade tests.
+
+Latest `API-QTTK-001` verification: the Pillow 11.3.0 oracle (kept in
+`oracle/probe_imageqtk.py`) plus the ImageQt.py/ImageTk.py sources
+show the ImageQt surface exists only with an importable Qt binding and
+ImageTk.PhotoImage without a root raises
+`Too early to create image: no default root window`. The AHK runtime
+ships no Qt binding and no Tk interpreter, so the facade
+`ImageQt`/`ImageTk` stub surfaces raise the Pillow-shaped messages;
+both are recorded as explicit documented boundaries. Facade-only
+change, no native rebuild: the Qt/Tk boundary target passes `1/1` in
+`32ms`, and the full directory suite passes `2801/2801` in `20938ms`,
+with zero failures, errors, or skips. Source/DLL export parity remains
+`466/466` with zero difference, and the DLL SHA-256 remains
+`7C1D4A9145A70EC864997FF5EBE4C52CB14A1BFEEF5901994A9E38E3572B8930`.
+No export, facade lifetime rule, fallback, or AHK pixel loop changed.
+The overall Pillow replacement-readiness estimate moves to `89% ±5%`.
 
 Latest `API-PATH-001` verification: the Pillow 11.3.0 oracles (kept
 in `oracle/probe_imagepath.py`, `oracle/probe_imagepath2.py`, and

@@ -22117,6 +22117,45 @@ PillowTestImagePath(*) {
 
 AhkTest.Test("Pillow ImagePath.Path matches Pillow 11.3.0 path semantics", PillowTestImagePath)
 
+PillowTestImageQtTkBoundaries(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    image := Pillow.Image.New("L", [2, 2], 7)
+    try {
+        ; API-QTTK-001: dependency-gated boundaries — no Qt binding and no
+        ; Tk interpreter ship with the AHK runtime.
+        for entry in [
+            (() => Pillow.ImageQt.ImageQt(image)),
+            (() => Pillow.ImageQt.ToQImage(image)),
+            (() => Pillow.ImageQt.ToQPixmap(image)),
+            (() => Pillow.ImageQt.FromQImage(0)),
+        ] {
+            message := ""
+            try {
+                entry.Call()
+            } catch Error as err {
+                message := err.Message
+            }
+            AhkTest.AssertEqual("Qt bindings are not installed", message)
+        }
+        for entry in [
+            (() => Pillow.ImageTk.PhotoImage(image)),
+            (() => Pillow.ImageTk.BitmapImage(image)),
+        ] {
+            message := ""
+            try {
+                entry.Call()
+            } catch Error as err {
+                message := err.Message
+            }
+            AhkTest.AssertEqual("Too early to create image: no default root window", message)
+        }
+    } finally {
+        image.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageQt/ImageTk surface documented boundaries", PillowTestImageQtTkBoundaries)
+
 PillowTestImageDisplayApiBoundaries(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     image := Pillow.Image.New("L", [2, 2], 7)
