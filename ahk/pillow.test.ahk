@@ -21928,8 +21928,10 @@ PillowTestUnrecordedFormatBoundaries(*) {
         ; IM in BEHAV-IM-001, MSP in BEHAV-MSP-001, PALM in
         ; BEHAV-PALM-001, BLP in BEHAV-BLP-001, and SPIDER in
         ; BEHAV-SPIDER-001 (all now implemented with Pillow's exact mode
-        ; errors).
-        for format in ["BUFR", "GRIB", "HDF5", "WMF", "FITS", "FPX", "FTEX", "GBR", "IMT", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD", "PIXAR", "XVTHUMB"] {
+        ; errors). PIXAR/XVTHUMB/DCX plus the HDF5/BUFR/GRIB stub
+        ; handlers and the IMT non-registration left this list in
+        ; BEHAV-OPEN-001 (Pillow's exact KeyError/save-handler errors).
+        for format in ["WMF", "FITS", "FPX", "FTEX", "GBR", "IPTC", "MCIDAS", "MIC", "MPEG", "PCD"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -24290,6 +24292,266 @@ PillowTestPdfFormat(*) {
 }
 
 AhkTest.Test("Pillow PDF format matches Pillow 11.3.0 save bytes, payload pixels, and open error", PillowTestPdfFormat)
+
+PillowTestWriteTextAndBytes(path, text, data) {
+    bytes := PillowTestTextBytes(text)
+    buf := Buffer(bytes.Length + data.Size, 0)
+    for index, value in bytes
+        NumPut("UChar", value, buf, index - 1)
+    DllCall("msvcrt\memcpy", "Ptr", buf.Ptr + bytes.Length, "Ptr", data, "UPtr", data.Size, "CDecl Ptr")
+    file := FileOpen(path, "w")
+    try
+        file.RawWrite(buf, buf.Size)
+    finally
+        file.Close()
+}
+
+PillowTestWriteFileBuffer(path, buf) {
+    file := FileOpen(path, "w")
+    try
+        file.RawWrite(buf, buf.Size)
+    finally
+        file.Close()
+}
+
+PillowTestPixarFixture(w, h, payload) {
+    buf := Buffer(1024 + payload.Size, 0)
+    NumPut("UChar", 0x80, buf, 0)
+    NumPut("UChar", 0xE8, buf, 1)
+    NumPut("UShort", h, buf, 416)
+    NumPut("UShort", w, buf, 418)
+    NumPut("UShort", 14, buf, 424)
+    NumPut("UShort", 2, buf, 426)
+    DllCall("msvcrt\memcpy", "Ptr", buf.Ptr + 1024, "Ptr", payload, "UPtr", payload.Size, "CDecl Ptr")
+    return buf
+}
+
+PillowTestAssertSaveHandlerError(image, path, format) {
+    AhkTest.AssertEqual(format " save handler not installed", PillowTestFormatCaptureError(() => image.Save(path, format)), format)
+}
+
+PillowTestAssertSaveKeyError(image, path, format) {
+    AhkTest.AssertEqual("'" format "'", PillowTestFormatCaptureError(() => image.Save(path, format)), format)
+}
+
+PillowTestOpenSimpleFormats(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pixarPath := A_Temp "\open-simple.pxr"
+    xvPath := A_Temp "\open-simple-xv.bin"
+    dcxPath := A_Temp "\open-simple.dcx"
+    pcx1Path := A_Temp "\open-simple-1.pcx"
+    pcx2Path := A_Temp "\open-simple-2.pcx"
+    h5Path := A_Temp "\open-simple.h5"
+    bufrPath := A_Temp "\open-simple.bufr"
+    gribPath := A_Temp "\open-simple.grib"
+    savePath := A_Temp "\open-simple-save.bin"
+    try {
+        ; --- PIXAR: 512-byte header + raw RGB dump at 1024 ---
+        payload := Buffer(18, 0)
+        index := 0
+        loop 2 {
+            y := A_Index - 1
+            loop 3 {
+                x := A_Index - 1
+                loop 3 {
+                    NumPut("UChar", Mod(x * 7 + y, 256), payload, index)
+                    index += 1
+                }
+            }
+        }
+        PillowTestWriteFileBuffer(pixarPath, PillowTestPixarFixture(3, 2, payload))
+        opened := Pillow.Image.Open(pixarPath)
+        try {
+            AhkTest.AssertEqual("PIXAR", opened.Format)
+            AhkTest.AssertEqual("RGB", opened.Mode)
+            AhkTest.AssertEqual([3, 2], opened.Size)
+            AhkTest.AssertEqual([0, 0, 0, 7, 7, 7, 14, 14, 14, 1, 1, 1, 8, 8, 8, 15, 15, 15], PillowTestBufferToArray(opened.ToBytes()))
+        } finally {
+            opened.Close()
+        }
+        short := Buffer(6, 0)
+        loop 6
+            NumPut("UChar", A_Index - 1, short, A_Index - 1)
+        PillowTestWriteFileBuffer(pixarPath, PillowTestPixarFixture(3, 2, short))
+        AhkTest.AssertEqual("image file is truncated (6 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(pixarPath)))
+        badMagic := PillowTestPixarFixture(3, 2, payload)
+        NumPut("UChar", 0, badMagic, 0)
+        PillowTestWriteFileBuffer(pixarPath, badMagic)
+        AhkTest.AssertEqual("cannot identify image file <" pixarPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(pixarPath)))
+        badMode := PillowTestPixarFixture(3, 2, payload)
+        NumPut("UShort", 1, badMode, 424)
+        PillowTestWriteFileBuffer(pixarPath, badMode)
+        AhkTest.AssertEqual("cannot identify image file <" pixarPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(pixarPath)))
+
+        ; --- XVTHUMB: "P7 332" + comments + "W H" + indices (RGB332) ---
+        indices := Buffer(6, 0)
+        loop 6
+            NumPut("UChar", A_Index - 1, indices, A_Index - 1)
+        PillowTestWriteTextAndBytes(xvPath, "P7 332`n# hi`n3 2`n", indices)
+        openedXv := Pillow.Image.Open(xvPath, ["XVTHUMB"])
+        try {
+            AhkTest.AssertEqual("XVTHUMB", openedXv.Format)
+            AhkTest.AssertEqual("P", openedXv.Mode)
+            AhkTest.AssertEqual([3, 2], openedXv.Size)
+            AhkTest.AssertEqual([0, 1, 2, 3, 4, 5], PillowTestBufferToArray(openedXv.ToBytes()))
+            AhkTest.AssertEqual([0, 0, 0, 0, 0, 85, 0, 0, 170, 0, 0, 255, 0, 36, 0, 0, 36, 85, 0, 36, 170, 0, 36, 255], PillowTestArraySlice(openedXv.GetPalette(), 1, 24))
+        } finally {
+            openedXv.Close()
+        }
+        xvShort := Buffer(2, 0)
+        NumPut("UChar", 0, xvShort, 0)
+        NumPut("UChar", 1, xvShort, 1)
+        PillowTestWriteTextAndBytes(xvPath, "P7 332`n3 2`n", xvShort)
+        AhkTest.AssertEqual("image file is truncated (2 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvPath, ["XVTHUMB"])))
+        PillowTestEpsWriteText(xvPath, "P7 331`n1 1`n")
+        AhkTest.AssertEqual("cannot identify image file <" xvPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvPath, ["XVTHUMB"])))
+        PillowTestEpsWriteText(xvPath, "P7 332`n# c`n# d`n")
+        AhkTest.AssertEqual("cannot identify image file <" xvPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvPath, ["XVTHUMB"])))
+        ; .xvthumb is not a registered extension (Pillow: identification
+        ; error; the facade keeps its BNDRY-001 unknown-extension message)
+        xvExtPath := StrReplace(PillowTestTempPngPath("open-simple-xvext"), ".png", ".xvthumb")
+        PillowTestWriteTextAndBytes(xvExtPath, "P7 332`n3 2`n", indices)
+        try {
+            AhkTest.AssertEqual("Pillow image file format is unsupported", PillowTestFormatCaptureError(() => Pillow.Image.Open(xvExtPath)))
+        } finally {
+            PillowTestDeleteFile(xvExtPath)
+        }
+
+        ; --- DCX: PCX container (frames produced by our byte-exact PCX save) ---
+        one := Pillow.Image.New("1", [4, 3])
+        two := Pillow.Image.New("L", [4, 3])
+        try {
+            ; mode-1 rows are packed MSB-first (0b0110 / 0b1111 / 0b0010)
+            oneValues := Buffer(3, 0)
+            NumPut("UChar", 0x60, oneValues, 0)
+            NumPut("UChar", 0xF0, oneValues, 1)
+            NumPut("UChar", 0x20, oneValues, 2)
+            twoValues := Buffer(12, 0)
+            loop 12
+                NumPut("UChar", Mod(A_Index - 1, 256), twoValues, A_Index - 1)
+            one.FromBytes(oneValues)
+            two.FromBytes(twoValues)
+            one.Save(pcx1Path, "PCX")
+            two.Save(pcx2Path, "PCX")
+        } finally {
+            one.Close()
+            two.Close()
+        }
+        pcx1Bytes := PillowTestReadFileBytes(pcx1Path)
+        pcx2Bytes := PillowTestReadFileBytes(pcx2Path)
+        PillowTestWriteDcx(dcxPath, [pcx1Bytes, pcx2Bytes])
+        openedDcx := Pillow.Image.Open(dcxPath)
+        try {
+            AhkTest.AssertEqual("DCX", openedDcx.Format)
+            AhkTest.AssertEqual("1", openedDcx.Mode)
+            AhkTest.AssertEqual([4, 3], openedDcx.Size)
+            AhkTest.AssertEqual(2, openedDcx.FrameCount)
+            ; mode-1 frame 0 pixels (Pillow bit packing: 0b0110/0b1111/0b0010)
+            AhkTest.AssertEqual([0x60, 0xF0, 0x20], PillowTestBufferToArray(openedDcx.ToBytes()))
+        } finally {
+            openedDcx.Close()
+        }
+        PillowTestWriteDcx(dcxPath, [pcx1Bytes])
+        openedDcxOne := Pillow.Image.Open(dcxPath)
+        try {
+            AhkTest.AssertEqual(1, openedDcxOne.FrameCount)
+        } finally {
+            openedDcxOne.Close()
+        }
+        ; bad magic / empty directory / bad inner PCX -> identification
+        badDcx := Buffer(16, 0)
+        PillowTestWriteFileBuffer(dcxPath, badDcx)
+        AhkTest.AssertEqual("cannot identify image file <" dcxPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(dcxPath)))
+        emptyDcx := Buffer(4100, 0)
+        NumPut("UInt", 0x3ADE68B1, emptyDcx, 0)
+        PillowTestWriteFileBuffer(dcxPath, emptyDcx)
+        AhkTest.AssertEqual("cannot identify image file <" dcxPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(dcxPath)))
+        badInner := Buffer(4100 + 32, 0)
+        NumPut("UInt", 0x3ADE68B1, badInner, 0)
+        NumPut("UInt", 4100, badInner, 4)
+        PillowTestWriteFileBuffer(dcxPath, badInner)
+        AhkTest.AssertEqual("cannot identify image file <" dcxPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(dcxPath)))
+
+        ; --- HDF5 / BUFR / GRIB stub handlers ---
+        PillowTestWriteMagicAndJunk(h5Path, [0x89, 0x48, 0x44, 0x46, 0x0D, 0x0A, 0x1A, 0x0A])
+        AhkTest.AssertEqual("cannot find loader for this HDF5 file", PillowTestFormatCaptureError(() => Pillow.Image.Open(h5Path)))
+        PillowTestWriteFileBuffer(h5Path, Buffer(16, 0))
+        AhkTest.AssertEqual("cannot identify image file <" h5Path ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(h5Path)))
+        PillowTestWriteMagicAndJunk(bufrPath, [0x42, 0x55, 0x46, 0x52])
+        AhkTest.AssertEqual("cannot find loader for this BUFR file", PillowTestFormatCaptureError(() => Pillow.Image.Open(bufrPath)))
+        PillowTestWriteMagicAndJunk(bufrPath, [0x5A, 0x43, 0x5A, 0x43])
+        AhkTest.AssertEqual("cannot find loader for this BUFR file", PillowTestFormatCaptureError(() => Pillow.Image.Open(bufrPath)))
+        PillowTestWriteMagicAndJunk(bufrPath, [0x58, 0x58, 0x58, 0x58])
+        AhkTest.AssertEqual("cannot identify image file <" bufrPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(bufrPath)))
+        PillowTestWriteMagicAndJunk(gribPath, [0x47, 0x52, 0x49, 0x42, 0x00, 0x00, 0x00, 0x01])
+        AhkTest.AssertEqual("cannot find loader for this GRIB file", PillowTestFormatCaptureError(() => Pillow.Image.Open(gribPath)))
+        PillowTestWriteMagicAndJunk(gribPath, [0x47, 0x52, 0x49, 0x42, 0x00, 0x00, 0x00, 0x02])
+        AhkTest.AssertEqual("cannot identify image file <" gribPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(gribPath)))
+        saveImage := Pillow.Image.New("L", [2, 2], 7)
+        try {
+            for format in ["HDF5", "BUFR", "GRIB"]
+                PillowTestAssertSaveHandlerError(saveImage, savePath, format)
+            for format in ["DCX", "PIXAR", "XVTHUMB", "IMT"]
+                PillowTestAssertSaveKeyError(saveImage, savePath, format)
+        } finally {
+            saveImage.Close()
+        }
+        ; IMT is not registered at all in 11.3.0
+        AhkTest.AssertEqual("cannot identify image file <" savePath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(savePath, ["IMT"])))
+
+        ; --- format descriptions ---
+        AhkTest.AssertEqual("Intel DCX", Pillow.Image.FormatDescription("DCX"))
+        AhkTest.AssertEqual("PIXAR raster image", Pillow.Image.FormatDescription("PIXAR"))
+        AhkTest.AssertEqual("XV thumbnail image", Pillow.Image.FormatDescription("XVTHUMB"))
+        AhkTest.AssertEqual("HDF5", Pillow.Image.FormatDescription("HDF5"))
+        AhkTest.AssertEqual("BUFR", Pillow.Image.FormatDescription("BUFR"))
+        AhkTest.AssertEqual("GRIB", Pillow.Image.FormatDescription("GRIB"))
+        AhkTest.AssertEqual("", Pillow.Image.FormatDescription("IMT"))
+    } finally {
+        PillowTestDeleteFile(pixarPath)
+        PillowTestDeleteFile(xvPath)
+        PillowTestDeleteFile(dcxPath)
+        PillowTestDeleteFile(pcx1Path)
+        PillowTestDeleteFile(pcx2Path)
+        PillowTestDeleteFile(h5Path)
+        PillowTestDeleteFile(bufrPath)
+        PillowTestDeleteFile(gribPath)
+        PillowTestDeleteFile(savePath)
+    }
+}
+
+PillowTestWriteDcx(path, frames) {
+    buf := Buffer(4 + 1024 * 4, 0)
+    NumPut("UInt", 0x3ADE68B1, buf, 0)
+    total := 0
+    for frame in frames
+        total += frame.Length
+    out := Buffer(4 + 1024 * 4 + total, 0)
+    NumPut("UInt", 0x3ADE68B1, out, 0)
+    offset := 4 + 1024 * 4
+    index := 0
+    for frame in frames {
+        NumPut("UInt", offset, out, 4 + index * 4)
+        for value in frame
+            NumPut("UChar", value, out, offset + A_Index - 1)
+        offset += frame.Length
+        index += 1
+    }
+    file := FileOpen(path, "w")
+    try
+        file.RawWrite(out, out.Size)
+    finally
+        file.Close()
+}
+
+PillowTestWriteMagicAndJunk(path, magic) {
+    buf := Buffer(64, 0)
+    for index, value in magic
+        NumPut("UChar", value, buf, index - 1)
+    PillowTestWriteFileBuffer(path, buf)
+}
+
+AhkTest.Test("Pillow PIXAR XVTHUMB DCX and stub openers match Pillow 11.3.0 shapes and errors", PillowTestOpenSimpleFormats)
 
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

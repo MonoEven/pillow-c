@@ -47,8 +47,33 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2824` AHK tests: `1391` raw DLL tests and
-`1433` facade tests.
+This suite currently registers `2825` AHK tests: `1391` raw DLL tests and
+`1434` facade tests.
+
+Latest `BEHAV-OPEN-001` verification: the Pillow 11.3.0 oracle
+(`oracle/probe_open_simple.py`/`probe_open_simple.json`) pins the
+PIXAR opener (512-byte header, LE16 size at 418/416, mode (14,2) =
+RGB, raw dump at offset 1024, the row-modulo `bytes not processed`
+truncation count, identification-error collapses), the XVTHUMB
+opener (`P7 332` + comment lines + `W H` + P indices with the
+RGB332 palette, same truncation shape, no .xvthumb extension), the
+DCX container (LE32 0x3ADE68B1 + 0-terminated directory of inner
+PCX frames, n_frames/is_animated, identification-error collapses),
+the HDF5/BUFR/GRIB stub handlers (F(1,1) open, `cannot find loader
+for this X file` on load, `X save handler not installed` on save,
+the exact magics), and the IMT non-registration. The facade
+open-simple target passes `1/1` in `47ms` (byte-pinned pixels and
+palettes, truncation counts, one/two-frame DCX decodes, every stub
+magic boundary, the exact KeyError/save-handler messages, the IMT
+identification error, and the format descriptions); the full
+directory suite passes `2825/2825` in `23266ms` with zero
+failures, errors, or skips. Release x64 Rebuild has `0 Warning(s),
+0 Error(s)`; source/DLL export parity moves to `487/487` (three
+deliberate new exports) with zero difference; and the rebuilt DLL
+SHA-256 is
+`7DE215308B71A8F1FCD28BFDE1CE18BF16930C9960DDAA682CBFEFF231615687`.
+The behavioral-parity wave continues with the remaining pure-Python
+open families next.
 
 Latest `BEHAV-PDF-001` verification: the Pillow 11.3.0 oracle
 (PdfImagePlugin/PdfParser source, `oracle/probe_pdf.py`/`probe_pdf.json`,

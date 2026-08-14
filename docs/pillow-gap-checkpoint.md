@@ -25,18 +25,22 @@ Estimate (AUDIT-003, the behavioral standard): literal 100% runtime
 identity with the local Pillow 11.3.0 build is NOT reachable and is
 no longer claimed. The honest split:
 
-- Formats: SAVE 20/30 and OPEN 19/45 byte-exact and test-pinned;
-  ICNS, EPS, MPO, and PDF are DONE (BEHAV-ICNS-001 / BEHAV-EPS-001 /
-  BEHAV-MPO-001 / BEHAV-PDF-001); the
+- Formats: SAVE 20/30 and OPEN 22/45 byte-exact and test-pinned;
+  ICNS, EPS, MPO, PDF, PIXAR, XVTHUMB, and DCX are DONE
+  (BEHAV-ICNS-001 / BEHAV-EPS-001 / BEHAV-MPO-001 / BEHAV-PDF-001 /
+  BEHAV-OPEN-001); the
   matchable remainder is bounded
-  (0 saves left; 18
-  opens: DCX/FITS/FLI/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/
-  PSD/SUN/XPM/XVTHUMB + the trivial HDF5/BUFR/GRIB 1x1-F stubs; the
+  (0 saves left; 11
+  opens: FITS/FLI/FTEX/GBR/IPTC/MCIDAS/MIC/PCD/PSD/SUN/XPM (IMT is
+  NOT registered in 11.3.0 — probe-verified no-op); the
   MPEG header-then-cannot-load error match;
   PDF open is unregistered in 11.3.0 -> identification error (DONE
-  with BEHAV-PDF-001); WMF
+  with BEHAV-PDF-001); HDF5/BUFR/GRIB stub opens are DONE
+  (BEHAV-OPEN-001: F(1,1) open shape plus the exact load/save
+  handler messages); WMF
   open via native GDI; plus 4 exact save-error matches for
-  BUFR/GRIB/HDF5/WMF).
+  BUFR/GRIB/HDF5/WMF — the three stub save-handler errors are DONE
+  with BEHAV-OPEN-001).
 - UNMATCHABLE BY NATURE (7, documented as boundaries): WEBP /
   JPEG2000 / AVIF (real codecs the local Pillow build WORKS with —
   oracle-verified round-trips — that this runtime does not ship),
@@ -66,14 +70,15 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-PDF-001 (PDF save with a byte-exact P
-page and structure-exact DCTDecode L/RGB/CMYK pages plus the
-identification error on open) after BEHAV-MPO-001/
+Latest covered gap tail: BEHAV-OPEN-001 (PIXAR/XVTHUMB/DCX openers
+plus the HDF5/BUFR/GRIB stub open/save handler errors and the IMT
+non-registration) after BEHAV-PDF-001/
+BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
-the next bounded child is the pure-Python open families
-(DCX/FITS/FLI/FTEX/GBR/IMT/IPTC/MCIDAS/MIC/PCD/PIXAR/PSD/SUN/XPM/
-XVTHUMB + the trivial HDF5/BUFR/GRIB 1x1-F stubs), then
+the next bounded child is the remaining pure-Python open families
+(FITS/FLI/FTEX/GBR/IPTC/MCIDAS/MIC/PCD/PSD/SUN/XPM), then the MPEG
+error match and WMF open, then
 the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
 follow as their own packets.
@@ -525,6 +530,46 @@ errors, or skips. Facade-only change: source/DLL export parity
 remains `482/482` and the DLL SHA-256 remains
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
 The next bounded child is `BEHAV-PDF-001`, the PDF format.
+
+2026-08-14: `BEHAV-OPEN-001` is GREEN as the PIXAR/XVTHUMB/DCX
+openers plus the HDF5/BUFR/GRIB stub handlers. The Pillow 11.3.0
+oracle (`oracle/probe_open_simple.py`/`probe_open_simple.json`)
+pins PixarImageFile (512-byte header, size at LE16 418/416, mode
+(14,2) = RGB, raw dump at offset 1024; short dumps raise `image
+file is truncated (X bytes not processed)` with X = leftover
+payload mod the row width; bad magic/mode collapse to the
+identification error), XVThumbImageFile (`P7 332` then `#` comment
+lines then `W H`; P indices with the RGB332 palette `r*255//7,
+g*255//7, b*255//3`; every header shape failure collapses to the
+identification error; short indices use the same row-modulo count;
+no .xvthumb extension is registered), DcxImageFile (LE32 0x3ADE68B1
+magic, a 0-terminated directory of up to 1024 LE32 offsets, each
+frame an inner PCX decoded by the existing native PCX decoder;
+n_frames/is_animated; empty directory, bad inner magic and
+truncated inner headers collapse to the identification error), the
+HDF5/BUFR/GRIB stubs (magic-accepted F(1,1) opens whose load raises
+`cannot find loader for this X file` and whose save raises `X save
+handler not installed`; HDF5 magic `89 48 44 46 0D 0A 1A 0A`, BUFR
+`BUFR`/`ZCZC`, GRIB `GRIB` + edition byte 1), and the probe-verified
+fact that IMT is NOT a registered format in 11.3.0 (only `.im`
+maps to IM). The facade adds the exact save-side KeyError strings
+(`'DCX'`, `'PIXAR'`, `'XVTHUMB'`, `'IMT'`), the native open exports
+(`pillow_c_image_open_pixar`/`open_xvthumb`/`open_dcx` — the DCX
+route refactors the PCX decoder to a shared from-data seam),
+DCX FrameCount (n_frames/seek stay a documented child), and the
+stub load/save error shapes. The facade open-simple target passes
+`1/1` in `47ms` (byte-pinned PIXAR/XVTHUMB pixels and palettes, the
+row-modulo truncation counts, DCX one/two-frame decodes and error
+shapes, every stub magic boundary, the KeyError and save-handler
+messages, the IMT identification error, and the format
+descriptions); the full directory suite passes `2825/2825` in
+`23266ms` with zero failures, errors, or skips. Release x64 Rebuild
+has `0 Warning(s), 0 Error(s)`; source/DLL export parity moves to
+`487/487` (three deliberate new exports) with zero difference; and
+the rebuilt DLL SHA-256 is
+`7DE215308B71A8F1FCD28BFDE1CE18BF16930C9960DDAA682CBFEFF231615687`.
+The next bounded child is the remaining pure-Python open families
+(FITS/FLI/FTEX/GBR/IPTC/MCIDAS/MIC/PCD/PSD/SUN/XPM).
 
 2026-08-14: `BEHAV-PDF-001` is GREEN as the PDF format (byte-exact
 P-mode save, structure-exact DCTDecode pages, and the

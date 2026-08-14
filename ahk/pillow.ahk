@@ -7658,6 +7658,67 @@ class Pillow {
                     ; (PdfImagePlugin is save-only), so identification
                     ; fails exactly like an unknown file.
                     throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "PIXAR" {
+                    ; BEHAV-OPEN-001: Pillow's PixarImageFile reads the
+                    ; 512-byte header (size at 418/416, mode 14,2 = RGB)
+                    ; and a raw dump at offset 1024; short dumps raise
+                    ; "image file is truncated (X bytes not processed)"
+                    ; with X = leftover payload mod the row width.
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_pixar",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -29
+                        throw Error("image file is truncated (" Pillow.Image.OpenSimpleTruncatedCount(path, Pillow.Image.PixarWidth(path) * 3, 1024) " bytes not processed)", -1)
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "XVTHUMB" {
+                    ; BEHAV-OPEN-001: Pillow's XVThumbImageFile parses
+                    ; "P7 332", skips "#" comments, reads "W H", and
+                    ; decodes raw indices with the RGB332 palette; every
+                    ; header shape failure collapses to the
+                    ; identification error and short indices raise the
+                    ; truncated message with the row-modulo count.
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_xvthumb",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -29
+                        throw Error("image file is truncated (" Pillow.Image.XvThumbTruncatedCount(path, Pillow.Image.XvThumbHeader(path)) " bytes not processed)", -1)
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "DCX" {
+                    ; BEHAV-OPEN-001: Pillow's DcxImageFile is the PCX
+                    ; multi-page container (LE32 directory, frames at
+                    ; each offset); the eager facade decodes frame 0
+                    ; through the native PCX decoder and exposes
+                    ; FrameCount (n_frames/seek stay a documented child).
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_dcx",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "HDF5" || format = "BUFR" || format = "GRIB" {
+                    ; BEHAV-OPEN-001: the HDF5/BUFR/GRIB stub plugins
+                    ; accept the magic and open an F(1,1) image whose
+                    ; load raises "cannot find loader for this X file" —
+                    ; the eager facade surfaces that load error at Open
+                    ; (no handler is ever registered in this runtime).
+                    if !Pillow.Image.StubAccepts(path, format)
+                        throw Error("cannot identify image file <" path ">", -1)
+                    throw Error("cannot find loader for this " format " file", -1)
+                } else if format = "IMT" {
+                    ; BEHAV-OPEN-001: Pillow 11.3.0 registers no IMT
+                    ; format at all (the IM plugin only maps ".im"), so
+                    ; identification fails.
+                    throw Error("cannot identify image file <" path ">", -1)
                 } else if format = "MPO" {
                     ; BEHAV-MPO-001: Pillow opens MPO through the JPEG
                     ; factory — a file WITH the MPF index reports format
@@ -8780,6 +8841,130 @@ class Pillow {
             }
         }
 
+        static OpenSimpleTruncatedCount(path, rowBytes, headerSize) {
+            ; BEHAV-OPEN-001: Pillow's raw decoder reports the leftover
+            ; bytes of the short payload modulo the row width
+            ; (probed: remaining % row bytes for PIXAR/XVTHUMB).
+            file := FileOpen(path, "r")
+            if !file
+                return 0
+            try {
+                payload := file.Length - headerSize
+                if payload <= 0
+                    return 0
+                if rowBytes <= 0
+                    return 0
+                return Mod(payload, rowBytes)
+            } finally {
+                file.Close()
+            }
+        }
+
+        static PixarWidth(path) {
+            file := FileOpen(path, "r")
+            if !file
+                return 0
+            try {
+                header := Buffer(512, 0)
+                file.RawRead(header, Min(file.Length, 512))
+                return NumGet(header, 418, "UShort")
+            } finally {
+                file.Close()
+            }
+        }
+
+        static XvThumbHeader(path) {
+            ; BEHAV-OPEN-001: rescan the XV thumbnail header ("P7 332",
+            ; then "#" comments, then "W H") to recover W and the payload
+            ; offset for the truncated-count message.
+            file := FileOpen(path, "r")
+            if !file
+                return { Width: 0, PayloadOffset: 0 }
+            try {
+                line := file.ReadLine()
+                if SubStr(line, 1, 6) != "P7 332"
+                    return { Width: 0, PayloadOffset: 0 }
+                loop {
+                    line := file.ReadLine()
+                    if line = ""
+                        return { Width: 0, PayloadOffset: 0 }
+                    if SubStr(line, 1, 1) = "#"
+                        continue
+                    parts := StrSplit(line, [" ", A_Tab])
+                    width := 0
+                    for part in parts {
+                        if part != "" {
+                            width := Integer(part)
+                            break
+                        }
+                    }
+                    return { Width: width > 0 ? width : 0, PayloadOffset: file.Pos }
+                }
+            } finally {
+                file.Close()
+            }
+        }
+
+        static XvThumbTruncatedCount(path, header) {
+            file := FileOpen(path, "r")
+            if !file
+                return 0
+            try {
+                payload := file.Length - header.PayloadOffset
+                if payload <= 0 || header.Width <= 0
+                    return 0
+                return Mod(payload, header.Width)
+            } finally {
+                file.Close()
+            }
+        }
+
+        static DcxFrameCount(path) {
+            ; BEHAV-OPEN-001: the DCX component directory is up to 1024
+            ; LE32 offsets terminated by 0; n_frames = the entry count.
+            file := FileOpen(path, "r")
+            if !file
+                return 0
+            try {
+                header := Buffer(4100, 0)
+                file.RawRead(header, Min(file.Length, 4100))
+                if file.Length < 8 || NumGet(header, 0, "UInt") != 0x3ADE68B1
+                    return 0
+                count := 0
+                loop 1024 {
+                    offset := NumGet(header, 4 + (A_Index - 1) * 4, "UInt")
+                    if offset = 0
+                        break
+                    count += 1
+                }
+                return count
+            } finally {
+                file.Close()
+            }
+        }
+
+        static StubAccepts(path, format) {
+            ; BEHAV-OPEN-001: HDF5/BUFR/GRIB stub plugins accept only the
+            ; exact magic (HDF5 8 bytes; BUFR "BUFR"/"ZCZC"; GRIB "GRIB"
+            ; with byte 7 == 1).
+            file := FileOpen(path, "r")
+            if !file
+                return false
+            try {
+                head := Buffer(8, 0)
+                file.RawRead(head, Min(file.Length, 8))
+                if format = "HDF5"
+                    return NumGet(head, 0, "UInt64") = 0x0A1A0A0D46444889
+                if format = "BUFR"
+                    return NumGet(head, 0, "UInt") = 0x52465542 || NumGet(head, 0, "UInt") = 0x435A435A
+                if format = "GRIB"
+                    return NumGet(head, 0, "UInt") = 0x42495247 && NumGet(head, 7, "UChar") = 1
+                return false
+            } finally {
+                file.Close()
+            }
+        }
+
         static IcnsSizes(path) {
             ; BEHAV-ICNS-001: Pillow's info["sizes"] is the (w, h, scale)
             ; list for every present icon slot in the plugin's SIZES order.
@@ -9146,6 +9331,8 @@ class Pillow {
         }
 
         static FrameCountForOpen(pathBytes, format) {
+            if format = "DCX"
+                return Pillow.Image.DcxFrameCount(StrGet(pathBytes, "UTF-8"))
             if !(format = "TIFF" || format = "GIF")
                 return 1
             count := 0
@@ -9187,6 +9374,16 @@ class Pillow {
                 return "MPO"
             if RegExMatch(path, "i)\.pdf$")
                 return "PDF"
+            if RegExMatch(path, "i)\.dcx$")
+                return "DCX"
+            if RegExMatch(path, "i)\.pxr$")
+                return "PIXAR"
+            if RegExMatch(path, "i)\.(h5|hdf)$")
+                return "HDF5"
+            if RegExMatch(path, "i)\.bufr$")
+                return "BUFR"
+            if RegExMatch(path, "i)\.grib$")
+                return "GRIB"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -9216,7 +9413,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -9237,6 +9434,12 @@ class Pillow {
                 "ICNS", "Mac OS icns resource",
                 "EPS", "Encapsulated Postscript",
                 "MPO", "MPO (CIPA DC-007)",
+                "DCX", "Intel DCX",
+                "PIXAR", "PIXAR raster image",
+                "XVTHUMB", "XV thumbnail image",
+                "HDF5", "HDF5",
+                "BUFR", "BUFR",
+                "GRIB", "GRIB",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -11133,6 +11336,17 @@ class Pillow {
                         FileDelete(tempPath)
                 }
                 return
+            }
+            if resolvedFormat = "HDF5" || resolvedFormat = "BUFR" || resolvedFormat = "GRIB" {
+                ; BEHAV-OPEN-001: the stub plugins register a save whose
+                ; handler is never installed — Pillow raises the exact
+                ; OSError before writing anything.
+                throw Error(resolvedFormat " save handler not installed", -1)
+            }
+            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" {
+                ; BEHAV-OPEN-001: these plugins register no save handler
+                ; at all — Pillow raises KeyError with the bare name.
+                throw Error("'" resolvedFormat "'", -1)
             }
             if resolvedFormat = "PDF" {
                 ; BEHAV-PDF-001: Pillow's PdfImagePlugin is save-only —

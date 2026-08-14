@@ -1,0 +1,180 @@
+{
+ "pixar_ok": {
+  "ok": [
+   "RGB",
+   [
+    3,
+    2
+   ],
+   "0000000707070e0e0e0101010808080f0f0f"
+  ]
+ },
+ "pixar_truncated": {
+  "err": "OSError: image file is truncated (6 bytes not processed)"
+ },
+ "pixar_bad_magic": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CECFE0>"
+ },
+ "pixar_bad_mode": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CECFE0>"
+ },
+ "xvthumb_ok": {
+  "ok": [
+   "P",
+   [
+    3,
+    2
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    85,
+    0,
+    0,
+    170,
+    0,
+    0,
+    255,
+    0,
+    36,
+    0,
+    0,
+    36,
+    85,
+    0,
+    36,
+    170,
+    0,
+    36,
+    255
+   ],
+   "000102030405"
+  ]
+ },
+ "xvthumb_eof": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CED080>"
+ },
+ "xvthumb_bad_magic": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CED080>"
+ },
+ "xvthumb_no_header": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CED080>"
+ },
+ "xvthumb_truncated": {
+  "err": "OSError: image file is truncated (2 bytes not processed)"
+ },
+ "xvthumb_comments_then_eof": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CED080>"
+ },
+ "ext_xvthumb": [],
+ "ext_imt": [],
+ "ext_im": [
+  ".im"
+ ],
+ "dcx_two_frames": {
+  "ok": [
+   "DCX",
+   "1",
+   [
+    4,
+    3
+   ],
+   2,
+   true,
+   "60f020",
+   [
+    null,
+    "L",
+    [
+     4,
+     3
+    ],
+    "000102030102030402030405"
+   ]
+  ]
+ },
+ "dcx_one_frame": {
+  "ok": [
+   "DCX",
+   "1",
+   1,
+   false,
+   "60f020"
+  ]
+ },
+ "dcx_bad_magic": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CED080>"
+ },
+ "dcx_empty_dir": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CED080>"
+ },
+ "dcx_bad_inner": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CED080>"
+ },
+ "dcx_truncated_inner": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CED210>"
+ },
+ "hdf5_open": {
+  "ok": [
+   "HDF5",
+   "F",
+   [
+    1,
+    1
+   ]
+  ]
+ },
+ "hdf5_load": {
+  "err": "OSError: cannot find loader for this HDF5 file"
+ },
+ "hdf5_save": {
+  "err": "OSError: HDF5 save handler not installed"
+ },
+ "hdf5_bad_magic": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CED210>"
+ },
+ "bufr_open": {
+  "ok": [
+   "BUFR",
+   "F",
+   [
+    1,
+    1
+   ]
+  ]
+ },
+ "bufr_load": {
+  "err": "OSError: cannot find loader for this BUFR file"
+ },
+ "bufr_save": {
+  "err": "OSError: BUFR save handler not installed"
+ },
+ "bufr_zczc_open": {
+  "ok": "<PIL.BufrStubImagePlugin.BufrStubImageFile image mode=F size=1x1 at 0x230A8072DD0>"
+ },
+ "bufr_bad_magic": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CED210>"
+ },
+ "grib_open": {
+  "ok": [
+   "GRIB",
+   "F",
+   [
+    1,
+    1
+   ]
+  ]
+ },
+ "grib_load": {
+  "err": "OSError: cannot find loader for this GRIB file"
+ },
+ "grib_save": {
+  "err": "OSError: GRIB save handler not installed"
+ },
+ "grib_bad_edition": {
+  "err": "UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x00000230A9CED210>"
+ }
+}

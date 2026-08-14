@@ -148,10 +148,27 @@ boundaries (documented environment boundaries — Pillow performs
 them locally) and replays the unregistered-PDF-open identification
 error.
 
+`BEHAV-OPEN-001` adds three deliberate exports —
+`pillow_c_image_open_pixar`, `pillow_c_image_open_xvthumb`, and
+`pillow_c_image_open_dcx` — that decode Pillow 11.3.0's
+PixarImageFile (512-byte header, RGB raw dump at offset 1024),
+XVThumbImageFile (`P7 332` / comment lines / `W H` with the RGB332
+palette), and DcxImageFile (LE32 directory of inner PCX frames over
+the shared from-data PCX decoder; the existing `open_pcx_image`
+now delegates to `open_pcx_from_data`). Local status `-29` marks
+short raw payloads; the facade computes Pillow's row-modulo
+`bytes not processed` count from the file header and maps the rest
+to the identification error. The HDF5/BUFR/GRIB stub opens and
+saves plus the DCX/PIXAR/XVTHUMB/IMT KeyError save strings are
+facade-only (no native surface beyond the openers).
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`484/484`; the full AHK suite is `2824/2824`; and the current DLL SHA-256 is
-`FC2C7C3C633FE73E9343C7A359FF5C3C39EDC04913B0CE19B1A946C1C79C03DC`
-(BEHAV-PDF-001 adds the `pillow_c_image_save_pdf` and
+`487/487`; the full AHK suite is `2825/2825`; and the current DLL SHA-256 is
+`7DE215308B71A8F1FCD28BFDE1CE18BF16930C9960DDAA682CBFEFF231615687`
+(BEHAV-OPEN-001 adds the `pillow_c_image_open_pixar`,
+`pillow_c_image_open_xvthumb`, and `pillow_c_image_open_dcx`
+exports below;
+BEHAV-PDF-001 adds the `pillow_c_image_save_pdf` and
 `pillow_c_image_save_pdf_frames` exports below;
 BEHAV-MPO-001 changes no ABI — the MPO container is facade-composed
 over the existing JPEG exports;
