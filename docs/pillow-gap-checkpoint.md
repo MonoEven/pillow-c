@@ -25,22 +25,23 @@ Estimate (AUDIT-003, the behavioral standard): literal 100% runtime
 identity with the local Pillow 11.3.0 build is NOT reachable and is
 no longer claimed. The honest split:
 
-- Formats: SAVE 20/30 and OPEN 32/45 byte-exact and test-pinned;
+- Formats: SAVE 20/30 and OPEN 33/45 byte-exact and test-pinned;
   ICNS, EPS, MPO, PDF, PIXAR, XVTHUMB, DCX, FTEX, SUN, GBR, FITS,
-  XPM, IPTC, MCIDAS, PSD, FLI/FLC, and MIC are DONE (BEHAV-ICNS-001 /
+  XPM, IPTC, MCIDAS, PSD, FLI/FLC, MIC, and PCD are DONE
+  (BEHAV-ICNS-001 /
   BEHAV-EPS-001 / BEHAV-MPO-001 / BEHAV-PDF-001 / BEHAV-OPEN-001 /
   BEHAV-OPEN-002 / BEHAV-OPEN-003 / BEHAV-OPEN-004 /
-  BEHAV-OPEN-005 / BEHAV-OPEN-006); the
+  BEHAV-OPEN-005 / BEHAV-OPEN-006 / BEHAV-OPEN-007); the
   matchable remainder is bounded
-  (0 saves left; 1
-  open: PCD (IMT is
-  NOT registered in 11.3.0 — probe-verified no-op); the
-  MPEG header-then-cannot-load error match;
+  (0 saves left; 0 pure-Python
+  opens left — every remaining open family is either implemented,
+  unmatchable, or an exact-error match; the
+  MPEG header-then-cannot-load error match and the WMF GDI open
+  are the remaining open-side rows);
   PDF open is unregistered in 11.3.0 -> identification error (DONE
   with BEHAV-PDF-001); HDF5/BUFR/GRIB stub opens are DONE
   (BEHAV-OPEN-001: F(1,1) open shape plus the exact load/save
-  handler messages); WMF
-  open via native GDI; plus 4 exact save-error matches for
+  handler messages); plus 4 exact save-error matches for
   BUFR/GRIB/HDF5/WMF — the three stub save-handler errors are DONE
   with BEHAV-OPEN-001).
 - UNMATCHABLE BY NATURE (7, documented as boundaries): WEBP /
@@ -72,11 +73,12 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-OPEN-006 (MIC opener: the OLE2/CFB
-container walk — DIFAT/FAT/mini-FAT/mini-stream — the case-sensitive
-*.ACI/Image discovery, the embedded TIFF decoded through the native
-TIFF route, Pillow's n_frames-1 seek quirk, and every error shape)
-after BEHAV-OPEN-005/
+Latest covered gap tail: BEHAV-OPEN-007 (PCD opener: the PhotoYCC
+base-image decode with the UnpackYCC lookup tables, byte-identical
+to Pillow's md5, the orientation 1/3 ImagingCore-rotate
+AttributeError quirk, and the mod-2304 truncation count)
+after BEHAV-OPEN-006/
+BEHAV-OPEN-005/
 BEHAV-OPEN-004/
 BEHAV-OPEN-003/
 BEHAV-OPEN-002/
@@ -85,8 +87,8 @@ BEHAV-PDF-001/
 BEHAV-MPO-001/
 BEHAV-EPS-001/
 BEHAV-ICNS-001/MODE-RGBA-RESIZE-001/BEHAV-DDS-001/SGI-001/PCX-001;
-the next bounded child is the last pure-Python open family
-(PCD), then the MPEG
+the pure-Python open families are now COMPLETE; the next bounded
+children are the MPEG
 error match and WMF open, then
 the AUDIT-003 newly recorded gaps
 (truetype font loading, save-option parity, error-message parity)
@@ -540,6 +542,36 @@ remains `482/482` and the DLL SHA-256 remains
 `A435024FD755D0C601E8D4AA133A0AFEA1957CBA2B1B9995ECC17F506A905DBA`.
 The next bounded child is `BEHAV-PDF-001`, the PDF format.
 
+2026-08-14: `BEHAV-OPEN-007` is GREEN as the PCD (Kodak PhotoCD)
+opener. The Pillow 11.3.0 oracle (`oracle/probe_open_7.py`/
+`probe_open_7.json` with the ctypes cross-check in
+`oracle/probe_open_7_dll.py`) pins PcdImageFile plus PcdDecode.c
+and UnpackYCC.c: the `PCD_` header sector at offset 2048 (anything
+else collapses to the identification error), the orientation byte
+at 1538 (&3), the base-image tile at 96*2048 decoded as 256 chunks
+of 2304 bytes (two rows: 768+768 Y plus the 2x-horizontally
+subsampled 384 Cb + 384 Cr, where pixel x of each row uses
+`cb = ptr[1536 + x/2]` / `cr = ptr[1920 + x/2]` and the PhotoYCC
+tables L/CB/GB/CR/GR from pcdtables.py with the 0/255 clamps), and
+Pillow's load_end quirk: orientations 1/3 call the missing
+`ImagingCore.rotate`, raising the AttributeError
+`'ImagingCore' object has no attribute 'rotate'` that escapes load
+unwrapped (the eager facade surfaces it at Open). Truncated data
+raises `image file is truncated (N bytes not processed)` with
+N = (fileLen - 196608) mod 2304 (pinned across ten cuts); save
+raises the `'PCD'` KeyError. One deliberate native export
+(`pillow_c_image_open_pcd`) decodes the base image with the
+embedded tables — byte-identical to Pillow's md5 — and maps the
+orientation quirk and truncation to local statuses -53/-54. The
+facade PCD target passes `1/1` in `1250ms`; the full directory
+suite passes `2831/2831` in `22829ms` with zero failures, errors,
+or skips. Release x64 Rebuild has `0 Warning(s), 0 Error(s)`;
+source/DLL export parity moves to `497/497` (one deliberate new
+export) with zero difference; and the rebuilt DLL SHA-256 is
+`635866E602CD558D9FE984347C0F25ED82AADED7C860CCE5D6FD64FB5E5141E0`.
+The pure-Python open families are now complete; the next bounded
+children are the MPEG error match and the WMF GDI open.
+
 2026-08-14: `BEHAV-OPEN-006` is GREEN as the MIC (Microsoft Image
 Composer) opener. The Pillow 11.3.0 oracle (`oracle/probe_open_6.py`/
 `probe_open_6.json` with the hand-crafted CFB builder in
@@ -568,7 +600,8 @@ with zero failures, errors, or skips. Release x64 Rebuild has
 `496/496` (one deliberate new export) with zero difference; and
 the rebuilt DLL SHA-256 is
 `F8F8D88D645F671E386261D34773945E128E64F759CC907DBD6D1D65DA62329B`.
-The next bounded child is the last pure-Python open family (PCD).
+The next bounded child is the last pure-Python open family (PCD),
+now complete with BEHAV-OPEN-007.
 
 2026-08-14: `BEHAV-OPEN-005` is GREEN as the FLI/FLC opener. The
 Pillow 11.3.0 oracle (`oracle/probe_open_5.py`/`probe_open_5.json`,

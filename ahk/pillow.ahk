@@ -7904,6 +7904,35 @@ class Pillow {
                         throw Error("bytes length not a multiple of item size", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file <" path ">", -1)
+                } else if format = "PCD" {
+                    ; BEHAV-OPEN-007: PcdImageFile — the native opener
+                    ; decodes the 768x512 base image at sector 96 with
+                    ; the PhotoYCC lookup tables. Orientations 1/3 crash
+                    ; Pillow's load_end (ImagingCore has no rotate), so
+                    ; the eager facade surfaces that AttributeError at
+                    ; Open; truncated data uses Pillow's mod-2304
+                    ; "bytes not processed" count.
+                    lastStatus := DllCall(
+                        Pillow.RequireDllPath() "\pillow_c_image_open_pcd",
+                        "Ptr", pathBytes,
+                        "Ptr*", &outHandle,
+                        "Int"
+                    )
+                    if lastStatus = -53
+                        throw Error("'ImagingCore' object has no attribute 'rotate'", -1)
+                    if lastStatus = -54 {
+                        file := FileOpen(path, "r")
+                        pcdLength := 0
+                        try {
+                            pcdLength := file.Length
+                        } finally {
+                            file.Close()
+                        }
+                        pcdUnprocessed := Mod(Max(0, pcdLength - 196608), 2304)
+                        throw Error("image file is truncated (" pcdUnprocessed " bytes not processed)", -1)
+                    }
+                    if lastStatus = -3
+                        throw Error("cannot identify image file <" path ">", -1)
                 } else if format = "HDF5" || format = "BUFR" || format = "GRIB" {
                     ; BEHAV-OPEN-001: the HDF5/BUFR/GRIB stub plugins
                     ; accept the magic and open an F(1,1) image whose
@@ -10220,6 +10249,8 @@ class Pillow {
                 return "FLI"
             if RegExMatch(path, "i)\.mic$")
                 return "MIC"
+            if RegExMatch(path, "i)\.pcd$")
+                return "PCD"
             if RegExMatch(path, "i)\.(pbm|pgm|ppm|pnm)$")
                 return "PPM"
             if RegExMatch(path, "i)\.qoi$")
@@ -10249,7 +10280,7 @@ class Pillow {
                 return "JPEG"
             if name = "TIF"
                 return "TIFF"
-            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "FLI" || name = "MIC" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
+            if name = "BMP" || name = "DIB" || name = "IM" || name = "MSP" || name = "PALM" || name = "BLP" || name = "SPIDER" || name = "PCX" || name = "SGI" || name = "DDS" || name = "ICNS" || name = "EPS" || name = "MPO" || name = "PDF" || name = "DCX" || name = "PIXAR" || name = "XVTHUMB" || name = "IMT" || name = "HDF5" || name = "BUFR" || name = "GRIB" || name = "FTEX" || name = "SUN" || name = "GBR" || name = "FITS" || name = "XPM" || name = "IPTC" || name = "MCIDAS" || name = "PSD" || name = "FLI" || name = "MIC" || name = "PCD" || name = "PNG" || name = "JPEG" || name = "TIFF" || name = "GIF" || name = "PPM" || name = "QOI" || name = "TGA" || name = "XBM" || name = "ICO" || name = "CUR"
                 return name
             throw Error("Pillow image file format is unsupported", -1)
         }
@@ -10286,6 +10317,7 @@ class Pillow {
                 "PSD", "Adobe Photoshop",
                 "FLI", "Autodesk FLI/FLC Animation",
                 "MIC", "Microsoft Image Composer",
+                "PCD", "Kodak PhotoCD",
                 "GIF", "Compuserve GIF",
                 "ICO", "Windows Icon",
                 "JPEG", "JPEG (ISO 10918)",
@@ -12189,8 +12221,8 @@ class Pillow {
                 ; OSError before writing anything.
                 throw Error(resolvedFormat " save handler not installed", -1)
             }
-            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" || resolvedFormat = "IPTC" || resolvedFormat = "MCIDAS" || resolvedFormat = "PSD" || resolvedFormat = "FLI" || resolvedFormat = "MIC" {
-                ; BEHAV-OPEN-001/002/003/004/005/006: these plugins register no
+            if resolvedFormat = "DCX" || resolvedFormat = "PIXAR" || resolvedFormat = "XVTHUMB" || resolvedFormat = "IMT" || resolvedFormat = "FTEX" || resolvedFormat = "SUN" || resolvedFormat = "GBR" || resolvedFormat = "FITS" || resolvedFormat = "XPM" || resolvedFormat = "IPTC" || resolvedFormat = "MCIDAS" || resolvedFormat = "PSD" || resolvedFormat = "FLI" || resolvedFormat = "MIC" || resolvedFormat = "PCD" {
+                ; BEHAV-OPEN-001/002/003/004/005/006/007: these plugins register no
                 ; save handler at all — Pillow raises KeyError with the
                 ; bare name.
                 throw Error("'" resolvedFormat "'", -1)

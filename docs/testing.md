@@ -47,8 +47,26 @@ From the parent `visual_studio` workspace:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 240
 ```
 
-This suite currently registers `2830` AHK tests: `1391` raw DLL tests and
-`1439` facade tests.
+This suite currently registers `2831` AHK tests: `1391` raw DLL tests and
+`1440` facade tests.
+
+Latest `BEHAV-OPEN-007` verification: the Pillow 11.3.0 oracle
+(`oracle/probe_open_7.py`/`probe_open_7.json` with the ctypes
+cross-check in `oracle/probe_open_7_dll.py`) pins the PCD opener
+(the `PCD_` header sector at 2048, the orientation byte at 1538,
+the 96-sector base-image tile decoded with the PhotoYCC lookup
+tables — byte-identical to Pillow's md5 — the orientation 1/3
+`'ImagingCore' object has no attribute 'rotate'` AttributeError
+quirk, the mod-2304 `bytes not processed` truncation count pinned
+across ten cuts, and the `'PCD'` KeyError save). The facade PCD
+target passes `1/1` in `1250ms`; the full directory suite passes
+`2831/2831` in `22829ms` with zero failures, errors, or skips.
+Release x64 Rebuild has `0 Warning(s), 0 Error(s)`; source/DLL
+export parity moves to `497/497` (one deliberate new export) with
+zero difference; and the rebuilt DLL SHA-256 is
+`635866E602CD558D9FE984347C0F25ED82AADED7C860CCE5D6FD64FB5E5141E0`.
+The pure-Python open families are now complete; the wave continues
+with the MPEG error match and the WMF GDI open next.
 
 Latest `BEHAV-OPEN-006` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_6.py`/`probe_open_6.json` with the hand-crafted
@@ -69,7 +87,7 @@ with zero failures, errors, or skips. Release x64 Rebuild has
 the rebuilt DLL SHA-256 is
 `F8F8D88D645F671E386261D34773945E128E64F759CC907DBD6D1D65DA62329B`.
 The behavioral-parity wave continues with the last pure-Python open
-family (PCD) next.
+family (PCD) next — PCD completed by BEHAV-OPEN-007.
 
 Latest `BEHAV-OPEN-005` verification: the Pillow 11.3.0 oracle
 (`oracle/probe_open_5.py`/`probe_open_5.json`, pinned through the

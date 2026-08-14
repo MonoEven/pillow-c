@@ -21933,8 +21933,9 @@ PillowTestUnrecordedFormatBoundaries(*) {
         ; handlers and the IMT non-registration left this list in
         ; BEHAV-OPEN-001 (Pillow's exact KeyError/save-handler errors).
         ; MIC left this list in BEHAV-OPEN-006 (the OLE container opener
-        ; with Pillow's exact errors and the 'MIC' KeyError save string).
-        for format in ["WMF", "FPX", "MPEG", "PCD"] {
+        ; with Pillow's exact errors and the 'MIC' KeyError save string)
+        ; and PCD in BEHAV-OPEN-007.
+        for format in ["WMF", "FPX", "MPEG"] {
             boundaryError := ""
             try {
                 image.Save(path, format)
@@ -26133,6 +26134,103 @@ PillowTestOpenMic(*) {
 }
 
 AhkTest.Test("Pillow MIC opener matches Pillow 11.3.0 OLE container, TIFF stream, and errors", PillowTestOpenMic)
+
+PillowTestPcd(orientation := 0, dataCut := 0) {
+    ; mirrors the oracle's pcd_blob: sector 0 filler, the PCD header sector
+    ; at 2048 ("PCD_" + the orientation byte at offset 1538), filler to
+    ; sector 96, then 256 YCC chunks (2 rows: 768+768 Y, 384 Cb, 384 Cr)
+    blob := Buffer(196608 + 256 * 2304, 0)
+    NumPut("UChar", Ord("P"), blob, 2048)
+    NumPut("UChar", Ord("C"), blob, 2049)
+    NumPut("UChar", Ord("D"), blob, 2050)
+    NumPut("UChar", Ord("_"), blob, 2051)
+    NumPut("UChar", orientation, blob, 2048 + 1538)
+    loop 256 {
+        c := A_Index - 1
+        base := 196608 + c * 2304
+        loop 768 {
+            NumPut("UChar", Mod(c * 3 + A_Index - 1, 256), blob, base + A_Index - 1)
+            NumPut("UChar", Mod(c * 5 + A_Index + 63, 256), blob, base + 768 + A_Index - 1)
+        }
+        loop 384 {
+            NumPut("UChar", Mod(c * 7 + (A_Index - 1) // 2, 256), blob, base + 1536 + A_Index - 1)
+            NumPut("UChar", Mod(c * 11 + (A_Index - 1) // 3, 256), blob, base + 1920 + A_Index - 1)
+        }
+    }
+    if dataCut > 0
+        return PillowTestFliSlice(blob, blob.Size - dataCut)
+    return blob
+}
+
+PillowTestOpenPcd(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    pcdPath := A_Temp "\open-7.pcd"
+    savePath := A_Temp "\open-7-save.bin"
+    try {
+        ; --- base 768x512 decode (byte-parity pinned by the ctypes
+        ; cross-check in oracle/probe_open_7_dll.py against the Pillow
+        ; 11.3.0 oracle md5) ---
+        PillowTestWriteFileBuffer(pcdPath, PillowTestPcd(0))
+        opened := Pillow.Image.Open(pcdPath)
+        try {
+            AhkTest.AssertEqual("PCD", opened.Format)
+            AhkTest.AssertEqual("RGB", opened.Mode)
+            AhkTest.AssertEqual([768, 512], opened.Size)
+            values := PillowTestBufferToArray(opened.ToBytes())
+            AhkTest.AssertEqual(1179648, values.Length)
+            AhkTest.AssertEqual("00c20000c30000c50000c60000c70000c90000c90000cb00", PillowTestPdfBytesToHex(PillowTestArraySlice(values, 1, 24)))
+        } finally {
+            opened.Close()
+        }
+
+        ; --- orientation 2 decodes without rotation ---
+        PillowTestWriteFileBuffer(pcdPath, PillowTestPcd(2))
+        openedTwo := Pillow.Image.Open(pcdPath)
+        try {
+            AhkTest.AssertEqual([768, 512], openedTwo.Size)
+        } finally {
+            openedTwo.Close()
+        }
+
+        ; --- orientations 1/3: Pillow's load_end crashes with the
+        ; AttributeError that escapes load unwrapped ---
+        PillowTestWriteFileBuffer(pcdPath, PillowTestPcd(1))
+        AhkTest.AssertEqual("'ImagingCore' object has no attribute 'rotate'", PillowTestFormatCaptureError(() => Pillow.Image.Open(pcdPath)))
+        PillowTestWriteFileBuffer(pcdPath, PillowTestPcd(3))
+        AhkTest.AssertEqual("'ImagingCore' object has no attribute 'rotate'", PillowTestFormatCaptureError(() => Pillow.Image.Open(pcdPath)))
+
+        ; --- errors ---
+        badMagic := PillowTestPcd(0)
+        NumPut("UChar", Ord("N"), badMagic, 2048)
+        PillowTestWriteFileBuffer(pcdPath, badMagic)
+        AhkTest.AssertEqual("cannot identify image file <" pcdPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(pcdPath)))
+        shortHeader := Buffer(2052, 0)
+        NumPut("UChar", Ord("P"), shortHeader, 2048)
+        NumPut("UChar", Ord("C"), shortHeader, 2049)
+        NumPut("UChar", Ord("D"), shortHeader, 2050)
+        NumPut("UChar", Ord("_"), shortHeader, 2051)
+        PillowTestWriteFileBuffer(pcdPath, shortHeader)
+        AhkTest.AssertEqual("cannot identify image file <" pcdPath ">", PillowTestFormatCaptureError(() => Pillow.Image.Open(pcdPath)))
+        PillowTestWriteFileBuffer(pcdPath, PillowTestPcd(0, 10000))
+        AhkTest.AssertEqual("image file is truncated (1520 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(pcdPath)))
+        PillowTestWriteFileBuffer(pcdPath, PillowTestPcd(0, 128 * 2304))
+        AhkTest.AssertEqual("image file is truncated (0 bytes not processed)", PillowTestFormatCaptureError(() => Pillow.Image.Open(pcdPath)))
+
+        ; --- save raises the exact KeyError ---
+        saveImage := Pillow.Image.New("L", [2, 2], 7)
+        try {
+            PillowTestAssertSaveKeyError(saveImage, savePath, "PCD")
+        } finally {
+            saveImage.Close()
+        }
+        AhkTest.AssertEqual("Kodak PhotoCD", Pillow.Image.FormatDescription("PCD"))
+    } finally {
+        PillowTestDeleteFile(pcdPath)
+        PillowTestDeleteFile(savePath)
+    }
+}
+
+AhkTest.Test("Pillow PCD opener matches Pillow 11.3.0 YCC decode, orientation quirk, and errors", PillowTestOpenPcd)
 
 PillowTestResizeRgbaPremultiply(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

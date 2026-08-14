@@ -236,10 +236,23 @@ magic-valid file; every other malformed container shape collapses
 to the identification error and save raises the `'MIC'` KeyError.
 CFB v4 (4096-byte sectors) stays a documented boundary.
 
+`BEHAV-OPEN-007` adds one deliberate export —
+`pillow_c_image_open_pcd` — that decodes Pillow 11.3.0's
+PcdImageFile base image: the `PCD_` header sector at 2048, the
+orientation byte at 1538, the 96-sector tile offset, and the 256
+chunks of row-pair YCC data through the embedded PhotoYCC lookup
+tables (L/CB/GB/CR/GR from UnpackYCC.c) with the 0/255 clamps —
+byte-identical to Pillow's md5. Orientations 1/3 reproduce Pillow's
+load_end crash (the missing ImagingCore.rotate AttributeError) via
+local status `-53`; truncated data uses local status `-54` and the
+facade derives Pillow's `(fileLen - 196608) mod 2304` bytes-not-
+processed count from the file. Save raises the `'PCD'` KeyError.
+
 Release x64 builds with `0 Warning(s), 0 Error(s)`; source/DLL export parity is
-`496/496`; the full AHK suite is `2830/2830`; and the current DLL SHA-256 is
-`F8F8D88D645F671E386261D34773945E128E64F759CC907DBD6D1D65DA62329B`
-(BEHAV-OPEN-006 adds the `pillow_c_image_open_mic` export below;
+`497/497`; the full AHK suite is `2831/2831`; and the current DLL SHA-256 is
+`635866E602CD558D9FE984347C0F25ED82AADED7C860CCE5D6FD64FB5E5141E0`
+(BEHAV-OPEN-007 adds the `pillow_c_image_open_pcd` export below;
+BEHAV-OPEN-006 adds the `pillow_c_image_open_mic` export below;
 BEHAV-OPEN-005 adds the `pillow_c_image_open_fli` and
 `pillow_c_image_fli_truncation_count` exports below;
 BEHAV-OPEN-004 adds the `pillow_c_image_open_psd` export below;
