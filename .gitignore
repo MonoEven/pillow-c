@@ -12,7 +12,8 @@ docs/codex-goal-plan.md
 *.VC.db
 *.VC.VC.opendb
 
-third_party/
+# Pillow sdist oracle (downloaded from PyPI, ~48 MB zip; not committed):
+third_party/pillow-11.3.0/
 .codex-tiff-001ay-oracle.tif
 
 # local-only showcase artwork (never pushed):

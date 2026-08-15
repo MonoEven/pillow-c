@@ -8,7 +8,7 @@
 ;   -> Pillow Resize(BOX) + Resize(NEAREST)
 ;   -> ToImagePut() -> ImagePutFile() / ImagePutWindow()
 ; ---------------------------------------------------------------------------
-#Include "..\..\..\third_party\ImagePut\ImagePut.ahk"
+#Include "..\third_party\ImagePut\ImagePut.ahk"
 #Include "..\ahk\pillow.ahk"
 
 Pillow.Configure({ DllPath: A_ScriptDir "\..\build\x64\Release\pillow_c.dll" })

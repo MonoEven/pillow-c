@@ -1,6 +1,6 @@
 #Requires AutoHotkey v2.0
 ; ---------------------------------------------------------------------------
-#Include "..\..\..\third_party\ImagePut\ImagePut.ahk"
+#Include "..\third_party\ImagePut\ImagePut.ahk"
 #Include "..\ahk\pillow.ahk"
 
 Pillow.Configure({ DllPath: A_ScriptDir "\..\build\x64\Release\pillow_c.dll" })
