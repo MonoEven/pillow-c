@@ -7338,3 +7338,17 @@ OSError) against local Pillow 11.3.0. Six deliberate native exports:
 source/DLL export parity moves to `524/524` and the rebuilt DLL
 SHA-256 is
 `4081D23C7C3B5089908323CBA280857D72FD007F7965680F3D9794C87D3362BB`.
+
+2026-08-15 BEHAV-DRAWFONT-001/BEHAV-FONTANCHOR-001 verification: the
+facade `Pillow ImageDraw.Text draws truetype fonts through the mask
+path` target passes `1/1` in `16ms`; the restored multiline
+`mm`/`md`/`ra` anchor pins pass inside the draw-text option surface
+target; the full directory suite passes `2855/2855` in `23953ms`
+with zero failures, errors, or skips. The oracle pins cover the
+truetype getmask2+draw_bitmap path (plain and `mm`-anchored draws
+with ink checks, the stroked-truetype boundary error) and the
+em-box/advance anchor surface (`m`/`r` over the total advance,
+`a`/`t`/`m`/`s`/`b`/`d` em-box shifts, the empty-run guard, the `d`
+anchor) against local Pillow 11.3.0. No new exports: parity stays
+`524/524` and the rebuilt DLL SHA-256 is
+`DDB0BF2F4EE07AFA8BE3C5D413EEC10CD1A5236AD3EE8D3B358564B17185F980`.

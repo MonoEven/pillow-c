@@ -84,7 +84,10 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-FONTVAR-002 (the variable-font
+Latest covered gap tail: BEHAV-DRAWFONT-001 + BEHAV-FONTANCHOR-001
+(the truetype draw mask path and Pillow's exact em-box/advance
+anchor math)
+after BEHAV-FONTVAR-002 (the variable-font
 variation surface: fvar axes/named instances, the avar + HVAR
 advance-delta engine, and the exact set-variation error shapes)
 after BEHAV-OPENINFO-001 (the open-side info
@@ -481,8 +484,11 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: the `API-DRAWFONT-001` (truetype draw seams)
-  and `API-FONTANCHOR-001` (em-box anchor math) native follow-ups.
+- Selected next gap: the red-team follow-ups audit sweep — every
+  remaining documented boundary re-probed against the local Pillow
+  11.3.0 build for the works-in-Pillow / errors-in-Pillow /
+  unmatchable-stateful classification before the final ledger
+  sign-off.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19845,6 +19851,31 @@ skips. API-FONTVAR-002 is now
 DONE; the API-DRAWFONT-001 (truetype draw seams) and
 API-FONTANCHOR-001 (em-box anchor math) native follow-ups stay the
 next packets.
+```
+
+2026-08-15: `BEHAV-DRAWFONT-001` and `BEHAV-FONTANCHOR-001` are
+GREEN as the draw/anchor follow-up wave (API-DRAWFONT-001 +
+API-FONTANCHOR-001). The Pillow 11.3.0 oracle pins:
+truetype-font `ImageDraw.Text` now draws through Pillow's own path
+— `font.getmask2(text, mode, ink)` (the GDI gray8 mask, the
+documented rasterizer boundary) plus `draw_bitmap` at
+`int(xy) + offset` (the anchored case uses the font's anchored
+bbox offsets), while the default font keeps the native draw seams;
+stroked truetype text stays the documented native seam boundary
+(the facade raises its exact boundary error). The native anchor
+seam now matches Pillow's oracle-pinned anchor surface: horizontal
+`m`/`r` anchors use `PIXEL(position/2)`/`PIXEL(position)` over the
+total 26.6 advance (Pillow's `PIXEL(x) = ((x+32)&-64)>>6`), and the
+vertical anchors use the em-box lines (`a` no shift, `t` ink top to
+0, `m` `(ascent+descent)/2` px, `s`/`b` ink bottom to 0, `d`
+ascent+descent px), with Pillow's empty-run no-anchor guard and the
+`d` anchor accepted — the earlier dropped multiline `mm`/`md`/`ra`
+pins are restored with the oracle values. The facade target passes
+`1/1` in `16ms`; the full directory suite passes `2855/2855` in
+`23953ms` with zero failures, errors, or skips. Export parity stays
+`524/524` and the DLL SHA-256 is
+`DDB0BF2F4EE07AFA8BE3C5D413EEC10CD1A5236AD3EE8D3B358564B17185F980`.
+Both follow-up rows are now DONE.
 ```
 
 If any line above is no longer true, update this file first, then update

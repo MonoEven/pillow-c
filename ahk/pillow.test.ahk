@@ -59580,10 +59580,11 @@ PillowTestImageDrawTextOptionSurface(*) {
         AhkTest.AssertEqual([0, 6, 32, 28], draw.MultilineTextBbox([0, 0], "cc`ncccc", font, -2))
         AhkTest.AssertEqual([-1, 5, 33, 37], draw.MultilineTextBbox([0, 0], "cc`ncccc", font, 4, "left", unset, 1))
         AhkTest.AssertEqual([-6.0, 26, 26.0, 58], draw.MultilineTextBbox([10, 20], "cc`ncccc", font, 8, "left", "ma"))
-        ; the vertical 'm'/'d' and horizontal 'r' anchors use Pillow's
-        ; em-box/advance anchor math while the native font anchor seam
-        ; approximates them (the recorded API-FONTANCHOR-001 follow-up);
-        ; 'a'/'l' anchors are exact.
+        ; the em-box m/d and the advance r anchors now match Pillow's
+        ; oracle values (API-FONTANCHOR-001)
+        AhkTest.AssertEqual([-6.0, 7.5, 26.0, 35.5], draw.MultilineTextBbox([10, 20], "cc`ncccc", font, 4, "left", "mm"))
+        AhkTest.AssertEqual([-6.0, -12, 26.0, 16], draw.MultilineTextBbox([10, 20], "cc`ncccc", font, 4, "left", "md"))
+        AhkTest.AssertEqual([-22.0, 26, 10.0, 54], draw.MultilineTextBbox([10, 20], "cc`ncccc", font, 4, "left", "ra"))
         AhkTest.AssertEqual([0, 0, 0, 0], draw.MultilineTextBbox([0, 0], "", font))
         AhkTest.AssertEqual([10.0, 20.0, 10.0, 20.0], draw.MultilineTextBbox([10, 20], "", font, 4, "left", "mm"))
         AhkTest.AssertEqual([0, 0, 0, 19], draw.MultilineTextBbox([0, 0], "`n", font))
@@ -60076,6 +60077,43 @@ PillowTestImageFontVariationSurface(*) {
 }
 
 AhkTest.Test("Pillow ImageFont variable-font variation surface matches Pillow 11.3.0", PillowTestImageFontVariationSurface)
+
+; BEHAV-DRAWFONT-001: truetype text draws through Pillow's getmask2 +
+; draw_bitmap path (the GDI gray8 mask stays the documented rasterizer
+; boundary); stroked truetype text stays the native seam boundary.
+PillowTestImageDrawTruetypeFont(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    arial := "C:\Windows\Fonts\arial.ttf"
+    if !FileExist(arial) {
+        AhkTest.Log("arial.ttf missing; skipping the truetype draw matrix")
+        return
+    }
+    font := Pillow.ImageFont.Truetype(arial, 16)
+    image := Pillow.Image.New("L", [40, 40], 0)
+    try {
+        draw := Pillow.ImageDraw.Draw(image)
+        AhkTest.AssertEqual(draw, draw.Text([2, 2], "Hi", 255, font))
+        AhkTest.AssertTrue(image.GetBbox()[4] > image.GetBbox()[2])
+        ; anchored truetype draws place the mask at the anchor offset
+        anchoredImage := Pillow.Image.New("L", [40, 40], 0)
+        anchoredDraw := Pillow.ImageDraw.Draw(anchoredImage)
+        try {
+            anchoredDraw.Text([20, 20], "Hi", 255, font, "mm")
+            AhkTest.AssertTrue(anchoredImage.GetBbox()[4] > anchoredImage.GetBbox()[2])
+        } finally {
+            anchoredImage.Close()
+        }
+        ; stroked truetype text stays the documented boundary
+        AhkTest.AssertEqual(
+            "Pillow.ImageDraw.Text truetype stroke is not supported by this runtime",
+            PillowTestFormatCaptureError(() => draw.Text([0, 0], "Hi", 255, font, unset, 1)))
+    } finally {
+        image.Close()
+        font.Close()
+    }
+}
+
+AhkTest.Test("Pillow ImageDraw.Text draws truetype fonts through the mask path", PillowTestImageDrawTruetypeFont)
 
 PillowTestImageFontLoadDefaultExposesMetadataAndVariant(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })

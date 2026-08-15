@@ -2044,7 +2044,7 @@ int font_tt_getbbox_anchor(
     const std::size_t anchor_length = std::strlen(anchor);
     if (anchor_length != 2 || (anchor[0] != 'l' && anchor[0] != 'm' && anchor[0] != 'r') ||
         (anchor[1] != 'a' && anchor[1] != 't' && anchor[1] != 'm' && anchor[1] != 's' &&
-         anchor[1] != 'b')) {
+         anchor[1] != 'b' && anchor[1] != 'd')) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
     int left = 0;
@@ -2055,21 +2055,47 @@ int font_tt_getbbox_anchor(
     if (status != PILLOW_C_OK) {
         return status;
     }
-    const int width = right - left;
-    const int height = bottom - top;
+    // API-FONTANCHOR-001: Pillow 11.3.0's anchor surface, oracle-pinned.
+    // The anchored bbox is the ink bbox shifted by (-x_anchor, -y_anchor)
+    // where the horizontal anchors use the total advance
+    // (PIXEL(position/2) / PIXEL(position)) and the vertical anchors use
+    // the em-box lines: ascender (no shift), top (ink top to 0), em middle,
+    // baseline/bottom (ink bottom to 0), and descender (asc+descent).
+    std::vector<GlyphRunEntry> run;
+    std::int64_t final_pen = 0;
+    std::int64_t total = 0;
+    build_glyph_run(*tt, text, &run, &final_pen, &total);
+    int ascent_px = 0;
+    int descent_px = 0;
+    font_tt_ascent_px(*tt, &ascent_px, &descent_px);
+    const auto anchor_pixel = [](std::int64_t value_26_6) {
+        // Pillow's PIXEL(x) = ((x + 32) & -64) >> 6.
+        return static_cast<int>(((value_26_6 + 32) & ~std::int64_t{63}) >> 6);
+    };
     int shift_x = 0;
-    if (anchor[0] == 'm') {
-        shift_x = width / 2;
-    } else if (anchor[0] == 'r') {
-        shift_x = width - 1;
-    }
     int shift_y = 0;
+    if (run.empty()) {
+        // Pillow's C skips the anchor math for empty runs (count == 0).
+        *out_left = left;
+        *out_top = top;
+        *out_right = right;
+        *out_bottom = bottom;
+        return PILLOW_C_OK;
+    }
+    if (anchor[0] == 'm') {
+        shift_x = anchor_pixel(total / 2);
+    } else if (anchor[0] == 'r') {
+        shift_x = anchor_pixel(total);
+    }
     if (anchor[1] == 't') {
         shift_y = top;
     } else if (anchor[1] == 'm') {
-        shift_y = top + (height + 1) / 2;
+        // the em middle: (ascent + descent) / 2 in pixels, oracle-pinned.
+        shift_y = (ascent_px + descent_px) / 2;
     } else if (anchor[1] == 's' || anchor[1] == 'b') {
-        shift_y = top + height;
+        shift_y = bottom;
+    } else if (anchor[1] == 'd') {
+        shift_y = ascent_px + descent_px;
     }
     *out_left = left - shift_x;
     *out_top = top - shift_y;

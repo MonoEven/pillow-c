@@ -6526,6 +6526,29 @@ class Pillow {
                 if IsSet(font) {
                     if !(IsObject(font) && font is Pillow.ImageFont.FreeTypeFont)
                         throw Error("Pillow.ImageDraw.Text currently supports only Pillow.ImageFont fonts", -1)
+                    if font.HasOwnProp("Path") {
+                        ; API-DRAWFONT-001: truetype text draws through
+                        ; Pillow's own path — font.getmask2 + draw_bitmap.
+                        ; The mask uses the GDI gray8 rasterizer (the
+                        ; documented boundary); stroked truetype text stays
+                        ; the native seam boundary.
+                        if strokeWidth > 0
+                            throw Error("Pillow.ImageDraw.Text truetype stroke is not supported by this runtime", -1)
+                        maskAndOffset := font.GetMask2(text, this.Image.Mode = "1" ? "1" : "L", 0)
+                        mask := maskAndOffset[1]
+                        offset := maskAndOffset[2]
+                        if IsSet(anchor) {
+                            anchorBbox := font.GetBbox(text, anchor)
+                            offset := [anchorBbox[1], anchorBbox[2]]
+                        }
+                        coordX := Integer(xy[1]) + offset[1]
+                        coordY := Integer(xy[2]) + offset[2]
+                        try {
+                            return this.Bitmap([coordX, coordY], mask, IsSet(fill) ? fill : unset)
+                        } finally {
+                            mask.Close()
+                        }
+                    }
                     if strokeWidth > 0 && IsSet(anchor) {
                         Pillow.CheckStatus(DllCall(
                             Pillow.RequireDllPath() "\pillow_c_image_draw_text_font_anchor_stroke",
