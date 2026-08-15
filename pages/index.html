@@ -34,6 +34,7 @@
     <a href="reference/ImageTransform.html">ImageTransform</a>
     <a href="reference/ImageQt.html">ImageQt</a>
     <a href="reference/ImageTk.html">ImageTk</a>
+    <a href="reference/Numpy.html">Numpy / NumPy 互操作</a>
     <a href="reference/constants.html">Constants / 常量</a>
     <a href="reference/Pillow.html">Pillow (entry) / 入口</a>
     <a href="reference/boundaries.html">Boundaries / 行为边界</a>
@@ -94,13 +95,14 @@ img.Close()</pre>
     <tr><td><a href="reference/ImageTransform.html">ImageTransform</a></td><td>Affine / perspective / quad / mesh transform handlers.</td><td>仿射/透视/四边形/网格变换处理器。</td></tr>
     <tr><td><a href="reference/ImageQt.html">ImageQt</a></td><td>Qt interop (boundary — no Qt binding in this runtime).</td><td>Qt 互操作(边界——本运行时不带 Qt 绑定)。</td></tr>
     <tr><td><a href="reference/ImageTk.html">ImageTk</a></td><td>Tk interop (boundary — no Tk interpreter in this runtime).</td><td>Tk 互操作(边界——本运行时不带 Tk 解释器)。</td></tr>
+    <tr><td><a href="reference/Numpy.html">Numpy interop</a></td><td>NumPy linkage with <a href="https://github.com/MonoEven/cnumpy">cnumpy</a>: <code>Image.FromArray</code> / <code>image.AsArray()</code>.</td><td>与 <a href="https://github.com/MonoEven/cnumpy">cnumpy</a> 的 NumPy 联动:<code>Image.FromArray</code> / <code>image.AsArray()</code>。</td></tr>
     <tr><td><a href="reference/constants.html">Constants</a></td><td>Transpose, Transform, Resampling, Dither, Palette, Quantize enums.</td><td>Transpose、Transform、Resampling、Dither、Palette、Quantize 枚举。</td></tr>
     <tr><td><a href="reference/Pillow.html">Pillow</a></td><td>Entry class: Configure, ABI version, status helpers.</td><td>入口类:Configure、ABI 版本与状态辅助函数。</td></tr>
   </table>
 
   <h2>行为对齐 · Parity</h2>
-  <p class="en">Behavior is verified against a local Pillow 11.3.0 installation (<code>F:\Python\Python310\python.exe</code>) through oracle probes and a full AutoHotkey test suite: <b>2856/2856</b> tests passing, <b>524/524</b> DLL exports in parity, DLL SHA-256 <code>62A3B585DBE4C631B60BB7C87C3D55D60D79D756EA87767FE44C09FAF3CF3FED</code>. Every error message, boundary error and conversion rule is pinned against the Python implementation — not just the happy path.</p>
-  <p class="zh">行为以本机 Pillow 11.3.0(<code>F:\Python\Python310\python.exe</code>)为基准,通过 oracle 探针与完整 AutoHotkey 测试套件逐项验证:<b>2856/2856</b> 项测试通过、<b>524/524</b> 个 DLL 导出对齐,DLL SHA-256 <code>62A3B585DBE4C631B60BB7C87C3D55D60D79D756EA87767FE44C09FAF3CF3FED</code>。每条错误消息、边界报错与转换规则都对照 Python 实现逐一钉死——不止是正常路径。</p>
+  <p class="en">Behavior is verified against a local Pillow 11.3.0 installation (<code>F:\Python\Python310\python.exe</code>) through oracle probes and a full AutoHotkey test suite: <b>2867/2867</b> tests passing, <b>524/524</b> DLL exports in parity, DLL SHA-256 <code>4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481</code>. Every error message, boundary error and conversion rule is pinned against the Python implementation — not just the happy path.</p>
+  <p class="zh">行为以本机 Pillow 11.3.0(<code>F:\Python\Python310\python.exe</code>)为基准,通过 oracle 探针与完整 AutoHotkey 测试套件逐项验证:<b>2867/2867</b> 项测试通过、<b>524/524</b> 个 DLL 导出对齐,DLL SHA-256 <code>4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481</code>。每条错误消息、边界报错与转换规则都对照 Python 实现逐一钉死——不止是正常路径。</p>
   <p class="en">A small number of honest <a href="reference/boundaries.html">documented boundaries</a> remain: WebP/AVIF/JPEG2000 decoders, FPX, ImageQt/ImageTk, ImagePalette.random streams and the ImagePath map handler fail loudly with Pillow's exact messages instead of silently diverging.</p>
   <p class="zh">少量诚实的<a href="reference/boundaries.html">行为边界</a>被记录在案:WebP/AVIF/JPEG2000 解码器、FPX、ImageQt/ImageTk、ImagePalette.random 随机流与 ImagePath map 处理器——它们以 Pillow 的原始报错显式失败,绝不静默偏离。</p>
 

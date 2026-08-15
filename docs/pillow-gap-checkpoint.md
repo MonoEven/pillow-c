@@ -84,7 +84,10 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-SWEEP-001 (the final red-team sweep:
+Latest covered gap tail: BEHAV-NUMPY-001 (the cnumpy interop:
+numpy.asarray/Image.fromarray analogues with exact dtype/shape
+mappings, error shapes, and the I;16B big-endian boundary)
+after BEHAV-SWEEP-001 (the final red-team sweep:
 the non-BMP cmap merge, the GIF lossy palette-ordering boundary, and
 the disposition of every remaining family-level tracker row)
 after BEHAV-DRAWFONT-001 + BEHAV-FONTANCHOR-001
@@ -19898,6 +19901,35 @@ DLL keeps export parity `524/524` and its SHA-256 is
 `62A3B585DBE4C631B60BB7C87C3D55D60D79D756EA87767FE44C09FAF3CF3FED`.
 The ledger now has no open `gap`/`partial` family rows — only the
 documented boundaries and the covered trackers remain.
+```
+
+2026-08-15: `API-NUMPY-001` / `BEHAV-NUMPY-001` is GREEN — the NumPy
+interop with the user's [cnumpy](https://github.com/MonoEven/cnumpy)
+repo (v1.21.0-cnumpy). Facade-only interop surface: `Pillow.Image.AsArray(image)`
++ `image.AsArray()` (numpy.asarray analogue: exact dtype/shape per
+mode, P-mode palette dropped to indices, snapshot semantics — the
+array survives image close, bool mode "1" bytes 0/255 byte-exact
+against numpy) and `Pillow.Image.FromArray(obj, mode)` (Image.fromarray
+analogue: Pillow 11.3.0's exact typemap including bool→"1;8", i1→I;8,
+i2→I;16S, u2→I;16 result mode, u4/i4→I;32(S), f4/f8→F;32F/F;64F, the
+1-D (1,n) size rule, the ndmax 2/3/4 dimension errors, "Cannot handle
+this data type: (1, 1[, ...]), <typestr>" / "Too many dimensions:
+{n} > {m}." / "tuple index out of range" / "not enough image data"
+error shapes, the deprecated-mode byte-reinterpretation path, and
+strided-array C-order serialization). The native raw codec gained
+Pillow's `1;8`, `I;8`, `I;16S`, and `F;64F` decode modes in
+`pillow_c_raw.cpp` (no new exports; the facade FromBuffer mode gate
+was lifted). Boundaries: I;16B AsArray raises the documented
+big-endian-dtype boundary (cnumpy has no `>u2`), and missing-cnumpy
+raises the dependency error naming the repo. The interop target passes
+`11/11` in `62ms`; the full directory suite passes `2867/2867` in
+`23156ms` with zero failures, errors, or skips. Export parity stays
+`524/524` and the DLL SHA-256 is
+`4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481`.
+Tests live in `ahk/pillow_numpy.test.ahk` (includes the sibling cnumpy
+facade); oracle pins in `oracle/probe_numpy_interop.py` +
+`oracle/numpy_interop_pins.txt`; user docs on the pages site at
+`pages/reference/Numpy.html` (repository reference included).
 ```
 
 If any line above is no longer true, update this file first, then update

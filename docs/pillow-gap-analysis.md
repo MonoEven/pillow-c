@@ -46849,6 +46849,16 @@ Direct-diff candidate packets:
 | New JPEG keep/metadata precedence miss | `FMT-JPEG-003C` child | Only after a local Pillow oracle proves behavior beyond the covered COM-preserved, ICC/EXIF-not-implicit rule. |
 | Concrete GIF palette-stability/pathological animation miss | `FMT-GIF-003B` child | Only worth doing when a local Pillow oracle proves a real boundary. |
 
+## 2026-08-15 — BEHAV-NUMPY-001 / API-NUMPY-001 (GREEN): cnumpy interop
+
+| Gap | Area | Status | Evidence |
+| --- | --- | --- | --- |
+| API-NUMPY-001 | Facade API | done | NumPy interop with the user's [cnumpy](https://github.com/MonoEven/cnumpy) repo (v1.21.0-cnumpy). `Pillow.Image.AsArray(image)` + instance `image.AsArray()` implement numpy.asarray(im): exact dtype/shape per mode (1→bool with the byte-exact 0/255 numpy bytes, L/P→uint8, I→int32, F→float32, I;16→uint16, RGB/YCbCr/LAB/HSV→uint8 [H,W,3], RGBA/CMYK→uint8 [H,W,4], LA→uint8 [H,W,2]), P-mode palette dropped to indices, snapshot semantics (the AHK Buffer is held on the NdArray, the array survives image close). `Pillow.Image.FromArray(obj, mode)` implements Image.fromarray: Pillow 11.3.0's exact typemap (bool→"1;8" nonzero→255, u1→L/LA/RGB/RGBA by trailing shape, i1→I;8 sign-extended, i2→I;16S sign-extended, u2→result mode I;16 with direct 16-bit storage — the probe-verified Pillow 11.3 result mode, u4/i4→I;32(S), f4/f8→F;32F/F;64F double→float32), the 1-D (1,n) size rule, the ndmax 2 (1/L/I/P/F) / 3 (RGB) / 4 errors, the exact error shapes (`Cannot handle this data type: (1, 1[, dims…]), <typestr>` for i8/u8/f2/c8 and bad 3-D band counts, `Too many dimensions: {n} > {m}.`, `tuple index out of range` for 0-dim, `not enough image data` for short mode-param payloads), the deprecated mode parameter's byte-reinterpretation path (no DeprecationWarning, matching the facade's warning policy), and strided-array C-order serialization via AsContiguousArray. Boundaries: I;16B AsArray raises the documented big-endian boundary (cnumpy has no `>u2`); missing cnumpy raises the dependency error naming the repo. | `oracle/probe_numpy_interop.py` + `oracle/numpy_interop_pins.txt`; `ahk/pillow_numpy.test.ahk` (11 tests, includes the sibling cnumpy facade); `pages/reference/Numpy.html`. |
+| BEHAV-NUMPY-001 | Native raw codec | covered | `pillow_c_raw.cpp` gained Pillow's `1;8` (mode 1 unpacked byte input, nonzero→255), `I;8` (signed int8 → int32), `I;16S` (signed int16 LE → int32), and `F;64F` (float64 LE → float32) raw decode modes in `raw_decode_spec`/`decode_raw_pixel` (`RawCodecKind::One8/I8/I16SignedLittle/F64Little`, `read_f64_le`). No new exports: 524/524 parity kept. The facade `FromBuffer` mode gate (L/RGB/RGBA/RGBX only) was lifted — the native raw spec already validates. Interop target `11/11` in `62ms`; full directory suite `2867/2867` in `23156ms`, zero failures/errors/skips. DLL SHA-256 `4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481`. | Raw/facade numpy interop tests, rebuilt Release x64, export parity check. |
+
+No `gap`/`partial` rows were reopened; the two rows above record the new
+interop surface and its raw-codec support.
+
 ## Update Rule
 
 Whenever a feature moves from "remaining" to "covered":

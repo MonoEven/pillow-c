@@ -26,14 +26,18 @@ enum class RawCodecKind {
     ARGB,
     ABGR,
     I,
+    I8,
     I32Big,
     I32Native,
     I16Little,
     I16Big,
     I16Native,
+    I16SignedLittle,
     F,
     F32Big,
     F32Native,
+    F64Little,
+    One8,
     CMYK,
     YCbCr,
     HSV,
@@ -94,6 +98,22 @@ inline float read_f32_le(const std::uint8_t* data)
     return value;
 }
 
+inline double read_f64_le(const std::uint8_t* data)
+{
+    const std::uint64_t bits =
+        static_cast<std::uint64_t>(data[0]) |
+        (static_cast<std::uint64_t>(data[1]) << 8) |
+        (static_cast<std::uint64_t>(data[2]) << 16) |
+        (static_cast<std::uint64_t>(data[3]) << 24) |
+        (static_cast<std::uint64_t>(data[4]) << 32) |
+        (static_cast<std::uint64_t>(data[5]) << 40) |
+        (static_cast<std::uint64_t>(data[6]) << 48) |
+        (static_cast<std::uint64_t>(data[7]) << 56);
+    double value = 0.0;
+    std::memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
 inline void write_f32_le(std::uint8_t* data, float value)
 {
     std::uint32_t bits = 0;
@@ -122,6 +142,9 @@ RawCodecSpec raw_decode_spec(int target_mode, const char* raw_mode)
     case PILLOW_C_MODE_1:
         if (std::strcmp(raw_mode, "1") == 0) {
             return {RawCodecKind::One, 0};
+        }
+        if (std::strcmp(raw_mode, "1;8") == 0) {
+            return {RawCodecKind::One8, 1};
         }
         break;
     case PILLOW_C_MODE_P:
@@ -231,6 +254,9 @@ RawCodecSpec raw_decode_spec(int target_mode, const char* raw_mode)
         if (std::strcmp(raw_mode, "I;32N") == 0) {
             return {RawCodecKind::I32Native, 4};
         }
+        if (std::strcmp(raw_mode, "I;8") == 0) {
+            return {RawCodecKind::I8, 1};
+        }
         if (std::strcmp(raw_mode, "I;16") == 0) {
             return {RawCodecKind::I16Little, 2};
         }
@@ -239,6 +265,9 @@ RawCodecSpec raw_decode_spec(int target_mode, const char* raw_mode)
         }
         if (std::strcmp(raw_mode, "I;16N") == 0) {
             return {RawCodecKind::I16Native, 2};
+        }
+        if (std::strcmp(raw_mode, "I;16S") == 0) {
+            return {RawCodecKind::I16SignedLittle, 2};
         }
         break;
     case PILLOW_C_MODE_F:
@@ -250,6 +279,9 @@ RawCodecSpec raw_decode_spec(int target_mode, const char* raw_mode)
         }
         if (std::strcmp(raw_mode, "F;32NF") == 0) {
             return {RawCodecKind::F32Native, 4};
+        }
+        if (std::strcmp(raw_mode, "F;64F") == 0) {
+            return {RawCodecKind::F64Little, 8};
         }
         break;
     case PILLOW_C_MODE_I16:
@@ -442,6 +474,11 @@ bool checked_mode1_raw_size(const PillowCImage* image, std::size_t* row_bytes, s
 void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::uint8_t* dst, int target_mode)
 {
     switch (target_mode) {
+    case PILLOW_C_MODE_1:
+        if (spec.kind == RawCodecKind::One8) {
+            dst[0] = src[0] != 0 ? 255u : 0u;
+        }
+        return;
     case PILLOW_C_MODE_P:
         dst[0] = src[0];
         return;
@@ -541,6 +578,9 @@ void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::ui
             dst[2] = src[2];
             dst[3] = src[3];
             return;
+        case RawCodecKind::I8:
+            write_i32_le(dst, static_cast<std::int32_t>(static_cast<std::int8_t>(src[0])));
+            return;
         case RawCodecKind::I32Big:
             dst[0] = src[3];
             dst[1] = src[2];
@@ -569,6 +609,9 @@ void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::ui
         case RawCodecKind::I16Native:
             write_i32_le(dst, native_is_little_endian() ? read_u16_le(src) : read_u16_be(src));
             return;
+        case RawCodecKind::I16SignedLittle:
+            write_i32_le(dst, static_cast<std::int32_t>(static_cast<std::int16_t>(read_u16_le(src))));
+            return;
         default:
             return;
         }
@@ -586,6 +629,8 @@ void decode_raw_pixel(const RawCodecSpec& spec, const std::uint8_t* src, std::ui
             dst[1] = src[2];
             dst[2] = src[1];
             dst[3] = src[0];
+        } else if (spec.kind == RawCodecKind::F64Little) {
+            write_f32_le(dst, static_cast<float>(read_f64_le(src)));
         }
         return;
     case PILLOW_C_MODE_I16:

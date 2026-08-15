@@ -11,8 +11,24 @@ This is not a port of any existing AHK Pillow wrapper. Behavior is constrained b
 Bilingual (English / 中文) API documentation, modeled on the official Pillow docs and covering every public API down to its parameters, return values, error messages, and behavioral boundaries:
 
 - [pillow-c docs site](pages/index.html) — open locally or serve `pages/` via GitHub Pages
-  - [Image](pages/reference/Image.html) · [ImageDraw](pages/reference/ImageDraw.html) · [ImageFont](pages/reference/ImageFont.html) · [ImageFilter](pages/reference/ImageFilter.html) · [ImageChops](pages/reference/ImageChops.html) · [ImageOps](pages/reference/ImageOps.html) · [ImageStat](pages/reference/ImageStat.html) · [ImageMath](pages/reference/ImageMath.html) · [ImageCms](pages/reference/ImageCms.html) · [ImageColor](pages/reference/ImageColor.html) · [ImageEnhance](pages/reference/ImageEnhance.html) · [ImagePalette](pages/reference/ImagePalette.html) · [ImagePath](pages/reference/ImagePath.html) · [ImageDraw2](pages/reference/ImageDraw2.html) · [ImageSequence](pages/reference/ImageSequence.html) · [ImageGrab](pages/reference/ImageGrab.html) · [ImageFile](pages/reference/ImageFile.html) · [ImageTransform](pages/reference/ImageTransform.html) · [ImageQt](pages/reference/ImageQt.html) · [ImageTk](pages/reference/ImageTk.html) · [Constants](pages/reference/constants.html) · [Boundaries](pages/reference/boundaries.html)
+  - [Image](pages/reference/Image.html) · [ImageDraw](pages/reference/ImageDraw.html) · [ImageFont](pages/reference/ImageFont.html) · [ImageFilter](pages/reference/ImageFilter.html) · [ImageChops](pages/reference/ImageChops.html) · [ImageOps](pages/reference/ImageOps.html) · [ImageStat](pages/reference/ImageStat.html) · [ImageMath](pages/reference/ImageMath.html) · [ImageCms](pages/reference/ImageCms.html) · [ImageColor](pages/reference/ImageColor.html) · [ImageEnhance](pages/reference/ImageEnhance.html) · [ImagePalette](pages/reference/ImagePalette.html) · [ImagePath](pages/reference/ImagePath.html) · [ImageDraw2](pages/reference/ImageDraw2.html) · [ImageSequence](pages/reference/ImageSequence.html) · [ImageGrab](pages/reference/ImageGrab.html) · [ImageFile](pages/reference/ImageFile.html) · [ImageTransform](pages/reference/ImageTransform.html) · [ImageQt](pages/reference/ImageQt.html) · [ImageTk](pages/reference/ImageTk.html) · [Numpy interop](pages/reference/Numpy.html) · [Constants](pages/reference/constants.html) · [Boundaries](pages/reference/boundaries.html)
   - Engineer-facing ledgers: [Architecture](docs/architecture.md) · [Native ABI](docs/native-abi.md) · [Gap Checkpoint](docs/pillow-gap-checkpoint.md) · [Gap Analysis](docs/pillow-gap-analysis.md) · [Testing](docs/testing.md)
+
+## NumPy interop (cnumpy)
+
+pillow-c links with [**cnumpy**](https://github.com/MonoEven/cnumpy) (the companion NumPy-style native array library for AutoHotkey v2, `v1.21.0-cnumpy`): `Image.FromArray` is Pillow's `Image.fromarray`, and `image.AsArray()` is `numpy.asarray(im)`. dtype/shape mappings, byte layouts and error shapes are oracle-verified against local NumPy 1.25.0 + Pillow 11.3.0 (`oracle/probe_numpy_interop.py`).
+
+```autohotkey
+#Include "ahk\pillow.ahk"
+#Include "..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"   ; your cnumpy checkout
+
+Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
+img := Pillow.Image.Open("photo.jpg")
+a := img.AsArray()                    ; uint8 NdArray, [H, W, 3] — numpy.asarray(im)
+img.Close()
+b := Numpy.Zeros([64, 64, 4], 3)     ; uint8 RGBA
+im := Pillow.Image.FromArray(b)      ; mode RGBA — Image.fromarray
+```
 
 ## Quick Start
 
@@ -43,7 +59,7 @@ img.Close()
 
 ## Behavioral Parity
 
-Behavior is verified against local Pillow 11.3.0 (`F:\Python\Python310\python.exe`) through oracle probes plus the full AutoHotkey suite: **2856/2856** tests, **524/524** DLL exports in parity, Release x64 DLL SHA-256 `62A3B585DBE4C631B60BB7C87C3D55D60D79D756EA87767FE44C09FAF3CF3FED`. Error messages, option validation, conversion rules, metadata shapes, and numeric edge cases are pinned against the Python implementation. The few remaining honest boundaries (WebP/AVIF/JPEG2000 decoders, FPX, ImageQt/ImageTk, ImagePalette.random, the ImagePath map handler, …) fail loudly with Pillow's exact messages — see [Boundaries](pages/reference/boundaries.html).
+Behavior is verified against local Pillow 11.3.0 (`F:\Python\Python310\python.exe`) through oracle probes plus the full AutoHotkey suite: **2867/2867** tests, **524/524** DLL exports in parity, Release x64 DLL SHA-256 `4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481`. Error messages, option validation, conversion rules, metadata shapes, and numeric edge cases are pinned against the Python implementation. The few remaining honest boundaries (WebP/AVIF/JPEG2000 decoders, FPX, ImageQt/ImageTk, ImagePalette.random, the ImagePath map handler, I;16B big-endian AsArray, …) fail loudly with Pillow's exact messages — see [Boundaries](pages/reference/boundaries.html).
 
 ## Build
 
@@ -62,5 +78,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Tar
 ## Friendly Links
 
 - [MonoEven/stdlib-ahk](https://github.com/MonoEven/stdlib-ahk)
+- [MonoEven/cnumpy](https://github.com/MonoEven/cnumpy) — the NumPy interop partner
 - [Linux.do](https://linux.do/)
 - [AutoHotkey Community Forum](https://www.autohotkey.com/boards/)

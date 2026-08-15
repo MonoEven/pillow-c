@@ -9685,8 +9685,6 @@ class Pillow {
                 throw Error("Pillow.Image.FromBuffer currently supports only the raw decoder", -1)
             if !IsSet(rawmode)
                 rawmode := modeName
-            if !(modeName = "L" || modeName = "RGB" || modeName = "RGBA" || modeName = "RGBX")
-                throw Error("Pillow.Image.FromBuffer currently supports L, RGB, RGBA, and RGBX", -1)
 
             dataBuffer := Pillow.Image.BinaryBuffer(data, "Pillow.Image.FromBuffer")
             rawModeBytes := Pillow.Image.RawModeBuffer(rawmode)
@@ -9710,6 +9708,144 @@ class Pillow {
             image.BufferViewSource := aliasSource ? dataBuffer : 0
             return image
         }
+
+        ; =========================================================================
+        ; NumPy interop (cnumpy: https://github.com/MonoEven/cnumpy).
+        ; Pillow 11.3.0's Image.fromarray / numpy.asarray surface, oracle-verified
+        ; against the local NumPy 1.25.0 + Pillow pair (oracle/probe_numpy_interop.py).
+        ; =========================================================================
+
+        static RequireNumpy() {
+            try {
+                if (Numpy is Class)
+                    return Numpy
+            }
+            throw Error("Pillow numpy interop requires cnumpy (https://github.com/MonoEven/cnumpy): #Include its ahk\numpy.ahk", -1)
+        }
+
+        static RawmodeBytesPerPixel(rawmode) {
+            switch rawmode {
+            case "L", "P", "1;8", "I;8":
+                return 1
+            case "LA", "PA", "I;16", "I;16S":
+                return 2
+            case "RGB", "YCbCr", "LAB", "HSV", "BGR":
+                return 3
+            case "RGBA", "CMYK", "RGBX", "I", "I;32", "I;32S", "F", "F;32F":
+                return 4
+            case "F;64F":
+                return 8
+            default:
+                return 0
+            }
+        }
+
+        static FromArray(obj, mode := unset) {
+            np := Pillow.Image.RequireNumpy()
+            if !(IsObject(obj) && obj is np.NdArray)
+                throw Error("Pillow.Image.FromArray expects a cnumpy Numpy.NdArray", -1)
+            shape := obj.Shape
+            ndim := shape.Length
+            if !IsSet(mode) {
+                dtype := obj.Dtype
+                kind := np.DtypeKind(dtype)
+                itemsize := np.DtypeItemsize(dtype)
+                typestr := (itemsize = 1 ? "|" : "<") kind itemsize
+                if ndim <= 2 {
+                    if typestr = "|b1"
+                        mode := "1", rawmode := "1;8"
+                    else if typestr = "|u1"
+                        mode := "L", rawmode := "L"
+                    else if typestr = "|i1"
+                        mode := "I", rawmode := "I;8"
+                    else if typestr = "<u2"
+                        mode := "I;16", rawmode := "I;16"
+                    else if typestr = "<i2"
+                        mode := "I", rawmode := "I;16S"
+                    else if typestr = "<u4"
+                        mode := "I", rawmode := "I;32"
+                    else if typestr = "<i4"
+                        mode := "I", rawmode := "I;32S"
+                    else if typestr = "<f4"
+                        mode := "F", rawmode := "F;32F"
+                    else if typestr = "<f8"
+                        mode := "F", rawmode := "F;64F"
+                    else
+                        throw TypeError("Cannot handle this data type: (1, 1), " typestr, -1)
+                } else {
+                    suffix := "(1, 1"
+                    loop ndim - 2
+                        suffix .= ", " shape[A_Index + 2]
+                    suffix .= ")"
+                    if typestr = "|u1" && ndim = 3 && shape[3] = 2
+                        mode := "LA", rawmode := "LA"
+                    else if typestr = "|u1" && ndim = 3 && shape[3] = 3
+                        mode := "RGB", rawmode := "RGB"
+                    else if typestr = "|u1" && ndim = 3 && shape[3] = 4
+                        mode := "RGBA", rawmode := "RGBA"
+                    else
+                        throw TypeError("Cannot handle this data type: " suffix ", " typestr, -1)
+                }
+            } else {
+                rawmode := mode
+            }
+            if mode = "1" || mode = "L" || mode = "I" || mode = "P" || mode = "F"
+                ndmax := 2
+            else if mode = "RGB"
+                ndmax := 3
+            else
+                ndmax := 4
+            if ndim > ndmax
+                throw ValueError("Too many dimensions: " ndim " > " ndmax ".", -1)
+            if ndim = 0
+                throw Error("tuple index out of range", -1)
+            size := ndim = 1 ? [1, shape[1]] : [shape[2], shape[1]]
+            bytes := np.ToBytes(obj.CContiguous ? obj : obj.AsContiguousArray())
+            bpp := Pillow.Image.RawmodeBytesPerPixel(rawmode)
+            if bpp > 0 && bytes.Size < size[1] * size[2] * bpp
+                throw ValueError("not enough image data", -1)
+            return Pillow.Image.FromBuffer(mode, size, bytes, "raw", rawmode, 0, 1)
+        }
+
+        static AsArray(image) {
+            np := Pillow.Image.RequireNumpy()
+            if !(IsObject(image) && image is Pillow.Image)
+                throw Error("Pillow.Image.AsArray expects a Pillow.Image", -1)
+            image.RequireHandle()
+            mode := image.Mode
+            width := image.Width
+            height := image.Height
+            switch mode {
+            case "1":
+                dtype := 1, shapeSuffix := [height, width]
+            case "L", "P":
+                dtype := 3, shapeSuffix := [height, width]
+            case "I":
+                dtype := 6, shapeSuffix := [height, width]
+            case "F":
+                dtype := 12, shapeSuffix := [height, width]
+            case "I;16":
+                dtype := 5, shapeSuffix := [height, width]
+            case "I;16B":
+                throw Error("Pillow.Image.AsArray: I;16B big-endian dtype (numpy '>u2') is not representable in cnumpy (documented boundary)", -1)
+            case "RGB", "YCbCr", "LAB", "HSV":
+                dtype := 3, shapeSuffix := [height, width, 3]
+            case "RGBA", "CMYK":
+                dtype := 3, shapeSuffix := [height, width, 4]
+            case "LA":
+                dtype := 3, shapeSuffix := [height, width, 2]
+            default:
+                throw Error("Pillow.Image.AsArray: mode '" mode "' is not supported by the numpy interop (documented boundary)", -1)
+            }
+            buffer := image.InternalBytes()
+            arr := np.FromBuffer(buffer, dtype)
+            arr._pillowBase := buffer
+            arr := arr.Reshape(shapeSuffix)
+            arr._pillowBase := buffer
+            return arr
+        }
+
+        AsArray() => Pillow.Image.AsArray(this)
 
         FromBytes(bytes, decoder := unset, rawmode := unset, stride := 0, orientation := 1) {
             this.DetachBufferView()

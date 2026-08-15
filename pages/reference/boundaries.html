@@ -34,6 +34,7 @@
     <a href="ImageTransform.html">ImageTransform</a>
     <a href="ImageQt.html">ImageQt</a>
     <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">Numpy / NumPy 互操作</a>
     <a href="constants.html">Constants / 常量</a>
     <a href="Pillow.html">Pillow (entry) / 入口</a>
     <a href="boundaries.html" class="current">Boundaries / 行为边界</a>
@@ -137,7 +138,19 @@
     <p class="zh">MEDIANCUT/MAXCOVERAGE/FASTOCTREE 与有界 FLOYDSTEINBERG 切片已覆盖;<code>LIBIMAGEQUANT</code> 保留 Pillow 原样的 <code>dependency required by this method was not enabled at compile time</code>,ADAPTIVE/none 抖动交叉积不做字节级复刻。</p>
   </section>
 
-  <h2 id="misc">7. 其他记录在案的微边界 · Other Micro-boundaries</h2>
+  <h2 id="numpy">7. NumPy 互操作 · NumPy Interop</h2>
+  <section class="api" id="boundary.numpy">
+    <h3>I;16B 大端 dtype · I;16B big-endian</h3>
+    <p class="en"><code>image.AsArray()</code> on <code>I;16B</code> raises the documented boundary error (<code>Pillow.Image.AsArray: I;16B big-endian dtype (numpy '&gt;u2') is not representable in cnumpy (documented boundary)</code>) — cnumpy ships no big-endian dtype while Pillow's numpy gives <code>&gt;u2</code>. All other dtype/shape mappings are byte-exact against NumPy 1.25.0 + Pillow 11.3.0, including bool <code>0/255</code> bytes for mode <code>1</code>.</p>
+    <p class="zh"><code>I;16B</code> 图像的 <code>image.AsArray()</code> 抛已记录的边界错误(<code>Pillow.Image.AsArray: I;16B big-endian dtype (numpy '&gt;u2') is not representable in cnumpy (documented boundary)</code>)——cnumpy 没有大端 dtype,而 Pillow 的 numpy 给出 <code>&gt;u2</code>。其余全部 dtype/shape 映射与 NumPy 1.25.0 + Pillow 11.3.0 逐字节一致,包括 mode <code>1</code> 的 bool <code>0/255</code> 字节。</p>
+  </section>
+  <section class="api" id="boundary.numpydep">
+    <h3>cnumpy 依赖 · cnumpy dependency</h3>
+    <p class="en">The interop is dependency-linked, not hard-wired: without the <a href="https://github.com/MonoEven/cnumpy">cnumpy</a> facade included, the APIs raise <code>Pillow numpy interop requires cnumpy (https://github.com/MonoEven/cnumpy): #Include its ahk\numpy.ahk</code>. The interop itself is facade-level (no new DLL exports); <code>FromArray</code> routes through the raw codec seams extended with Pillow's <code>1;8</code>/<code>I;8</code>/<code>I;16S</code>/<code>F;64F</code> raw modes.</p>
+    <p class="zh">互操作是依赖联动而非硬绑定:未包含 <a href="https://github.com/MonoEven/cnumpy">cnumpy</a> 门面时,这些 API 抛出 <code>Pillow numpy interop requires cnumpy (https://github.com/MonoEven/cnumpy): #Include its ahk\numpy.ahk</code>。互操作本身在门面层实现(无新增 DLL 导出);<code>FromArray</code> 走按 Pillow <code>1;8</code>/<code>I;8</code>/<code>I;16S</code>/<code>F;64F</code> 原始模式扩展的原生原始编解码管线。</p>
+  </section>
+
+  <h2 id="misc">8. 其他记录在案的微边界 · Other Micro-boundaries</h2>
   <ul>
     <li><span class="en">I;16 histogram: Pillow's C path reads 2-byte storage through layout-dependent byte misreads — kept as a documented boundary.</span><span class="zh">I;16 直方图:Pillow 的 C 路径按内存布局误读双字节存储——保留为记录在案的边界。</span></li>
     <li><span class="en">I;16B non-NEAREST resize raises the boundary error (Pillow accepts and garbles via its endian bug; replicating corruption is declined).</span><span class="zh">I;16B 非 NEAREST 缩放抛边界错误(Pillow 接受并因端序缺陷产出乱码;拒绝复刻损坏)。</span></li>

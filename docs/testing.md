@@ -7364,3 +7364,21 @@ gradient-order palette, the documented median-cut ordering
 divergence). No new exports: parity stays `524/524` and the rebuilt
 DLL SHA-256 is
 `62A3B585DBE4C631B60BB7C87C3D55D60D79D756EA87767FE44C09FAF3CF3FED`.
+
+2026-08-15: `ahk/pillow_numpy.test.ahk` adds the cnumpy interop suite
+(BEHAV-NUMPY-001): 11 tests covering the numpy.asarray/Image.fromarray
+analogues (`Pillow.Image.AsArray` / `image.AsArray()` /
+`Pillow.Image.FromArray`) with oracle-pinned dtype/shape mappings,
+byte-exact round trips (L/RGB/RGBA/LA/I/F/I;16/1), Pillow's exact
+`Cannot handle this data type: ...` / `Too many dimensions: ...` /
+`tuple index out of range` / `not enough image data` error shapes,
+the deprecated mode-parameter byte reinterpretation, strided C-order
+serialization, the P-mode palette drop, buffer lifetime, and the
+I;16B big-endian boundary. The file `#Include`s the sibling cnumpy
+facade (`..\..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk`) and
+requires cnumpy v1.21.0-cnumpy's
+`build\x64\Release\cnumpy_ahk.dll`. Targeted run: `-Filter "numpy
+interop"` passes `11/11` in `62ms`; the full directory suite passes
+`2867/2867` in `23156ms` with zero failures, errors, or skips.
+Export parity stays `524/524` and the rebuilt DLL SHA-256 is
+`4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481`.
