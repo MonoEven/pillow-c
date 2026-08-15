@@ -137,12 +137,36 @@ Numpy.Cleanup()
 fromarray 的完整类型映射与 Pillow 11.3.0 逐字节一致：bool→[c]1[/c]（非零→255）、u1→L/LA/RGB/RGBA（按尾部形状）、i1→I;8、i2→I;16S（符号扩展）、u2→结果模式 [c]I;16[/c]（直接 16 位存储，这是探针验证出的 Pillow 真实结果模式）、u4/i4→I;32(S)、f4/f8→F;32F/F;64F（double→float32）。报错形态同样原样：int64 抛 [c]Cannot handle this data type: (1, 1), <i8[/c]，维数越界抛 [c]Too many dimensions: n > m.[/c]。仅 [c]I;16B[/c] 的大端 dtype（numpy 的 [c]>u2[/c]）因 cnumpy 无大端类型而记为文档化边界，显式失败。
 
 
-[b]5. 诚实的边界[/b]
+[b]5. ImagePut 联动[/b]
+
+[url=https://github.com/iseahound/ImagePut]ImagePut[/url] 是独立的 AHK 图像输入/输出库。pillow-c 现在提供可选桥接函数：[c]Pillow.Image.FromImagePut(source, mode := "RGBA")[/c] 与 [c]Pillow.Image.ToImagePut(image)[/c] / [c]image.ToImagePut()[/c]。桥接通过 [c]IsSet(ImagePut)[/c] 检测，因此是否包含 ImagePut 完全可选，不会给 pillow.ahk 增加加载期依赖。
+
+典型的 ImagePut 主导像素化流程（BOX 区域平均 + NEAREST 无插值）：
+
+[codebox=autohotkey file=imageput]
+#Include "third_party\ImagePut\ImagePut.ahk"
+#Include "ahk\pillow.ahk"
+
+Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
+
+myImage := ImagePutBuffer([0, 0, 200, 200])
+p := Pillow.Image.FromImagePut(myImage, "RGB")
+small := p.Resize([4, 4], Pillow.Resampling.BOX)
+pixelated := small.Resize([200, 200], Pillow.Resampling.NEAREST)
+result := pixelated.ToImagePut()
+ImagePutWindow({ image: result })
+pixelated.Close()
+small.Close()
+p.Close()
+[/codebox]
+
+
+[b]6. 诚实的边界[/b]
 
 其余一切都有边界说明：WebP/AVIF/JPEG2000 解码器、FPX（弃用的 olefile 插件）、ImageQt/ImageTk（本运行时不带 Qt/Tk）、ImagePalette.random（Python 全局随机流）、ImagePath 的 map 处理器——这些位置一律以 Pillow 的原样报错显式失败，绝不静默偏离。GDI 栅格化的字形墨迹、默认字体、JPEG 熵编码负载字节、GIF 中位切分调色板顺序、TIFF jpeg/group3/group4 保存拒绝等微边界全部记录在案。
 
 
-[b]6. 双语文档[/b]
+[b]7. 双语文档[/b]
 
 在线文档仿照 [url=https://pillow.readthedocs.io/en/stable/]Pillow 官方文档[/url] 结构。落地页是语言选择器，英文与中文是两棵完全独立的文档树——页面内不混排、不做语言切换；每棵树 24 个参考页、280 个 API 条目，每个 API 有签名、参数、返回值、报错形态与对齐说明，并附完整的行为边界页：
 
@@ -151,9 +175,10 @@ fromarray 的完整类型映射与 Pillow 11.3.0 逐字节一致：bool→[c]1[/
 博客与文档站点分离维护，工程台账（差距检查点、差距分析、原生 ABI、测试说明）在仓库 [c]docs\[/c] 下。
 
 
-[b]7. 链接[/b]
+[b]8. 链接[/b]
 
 - 仓库：[url=https://github.com/MonoEven/pillow-c]https://github.com/MonoEven/pillow-c[/url]
 - 在线双语文档：[url=https://monoeven.github.io/pillow-c/]https://monoeven.github.io/pillow-c/[/url]
 - NumPy 联动：[url=https://github.com/MonoEven/cnumpy]https://github.com/MonoEven/cnumpy[/url]
+- ImagePut 联动：[url=https://github.com/iseahound/ImagePut]https://github.com/iseahound/ImagePut[/url]
 - 测试框架：[url=https://github.com/MonoEven/stdlib-ahk]https://github.com/MonoEven/stdlib-ahk[/url]

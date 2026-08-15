@@ -17,5 +17,8 @@ third_party/
 
 # local-only showcase artwork (never pushed):
 _art.ahk
+_art_test.ahk
+showcase_art.ahk
+showcase_art.test.ahk
 pillow-c-art-report.txt
 pillow-c-art*

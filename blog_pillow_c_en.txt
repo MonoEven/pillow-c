@@ -137,12 +137,36 @@ Numpy.Cleanup()
 The full fromarray type map matches Pillow 11.3.0 byte for byte: bool → [c]1[/c] (nonzero → 255), u1 → L/LA/RGB/RGBA by trailing shape, i1 → I;8, i2 → I;16S (sign-extended), u2 → result mode [c]I;16[/c] (direct 16-bit storage — the probe-verified real Pillow result mode), u4/i4 → I;32(S), f4/f8 → F;32F/F;64F (double → float32). Error shapes match verbatim: int64 raises [c]Cannot handle this data type: (1, 1), <i8[/c]; dimension violations raise [c]Too many dimensions: n > m.[/c]. Only the [c]I;16B[/c] big-endian dtype (numpy's [c]>u2[/c]) is a documented boundary — cnumpy ships no big-endian dtype — and it fails loudly.
 
 
-[b]5. Honest boundaries[/b]
+[b]5. ImagePut interop[/b]
+
+[url=https://github.com/iseahound/ImagePut]ImagePut[/url] is an independent AHK image I/O library. pillow-c now has optional bridge functions: [c]Pillow.Image.FromImagePut(source, mode := "RGBA")[/c] and [c]Pillow.Image.ToImagePut(image)[/c] / [c]image.ToImagePut()[/c]. The bridge is detected with [c]IsSet(ImagePut)[/c], so including ImagePut is optional and no load-time dependency is added.
+
+Typical ImagePut-driven pixelation (BOX area average + NEAREST no-interpolation):
+
+[codebox=autohotkey file=imageput]
+#Include "third_party\ImagePut\ImagePut.ahk"
+#Include "ahk\pillow.ahk"
+
+Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
+
+myImage := ImagePutBuffer([0, 0, 200, 200])
+p := Pillow.Image.FromImagePut(myImage, "RGB")
+small := p.Resize([4, 4], Pillow.Resampling.BOX)
+pixelated := small.Resize([200, 200], Pillow.Resampling.NEAREST)
+result := pixelated.ToImagePut()
+ImagePutWindow({ image: result })
+pixelated.Close()
+small.Close()
+p.Close()
+[/codebox]
+
+
+[b]6. Honest boundaries[/b]
 
 Everything else carries explicit boundary documentation: WebP/AVIF/JPEG2000 decoders, FPX (the deprecated olefile plugin), ImageQt/ImageTk (no Qt/Tk in this runtime), ImagePalette.random (Python's global RNG stream), and the ImagePath map handler — each of these fails loudly with Pillow's exact message and never silently diverges. Micro-boundaries such as GDI-rasterized glyph ink, the default font, JPEG entropy payload bytes, GIF median-cut palette ordering, and TIFF jpeg/group3/group4 save rejection are all recorded.
 
 
-[b]6. Bilingual documentation[/b]
+[b]7. Bilingual documentation[/b]
 
 The online docs are modeled on the [url=https://pillow.readthedocs.io/en/stable/]official Pillow documentation[/url]. The landing page is a language chooser, and the site is two fully independent trees — English and 中文 — with no in-page language switching; each tree holds 24 reference pages and 280 API entries, each with signature, parameters, return values, error shapes, and parity notes, plus a complete behavioral-boundaries page:
 
@@ -151,9 +175,10 @@ The online docs are modeled on the [url=https://pillow.readthedocs.io/en/stable/
 The blog and the Pages site are maintained separately; the engineer ledgers (gap checkpoint, gap analysis, native ABI, testing notes) live under [c]docs\[/c].
 
 
-[b]7. Links[/b]
+[b]8. Links[/b]
 
 - Repository: [url=https://github.com/MonoEven/pillow-c]https://github.com/MonoEven/pillow-c[/url]
 - Bilingual online docs: [url=https://monoeven.github.io/pillow-c/]https://monoeven.github.io/pillow-c/[/url]
 - NumPy interop: [url=https://github.com/MonoEven/cnumpy]https://github.com/MonoEven/cnumpy[/url]
+- ImagePut interop: [url=https://github.com/iseahound/ImagePut]https://github.com/iseahound/ImagePut[/url]
 - Test framework: [url=https://github.com/MonoEven/stdlib-ahk]https://github.com/MonoEven/stdlib-ahk[/url]

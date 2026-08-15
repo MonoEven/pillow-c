@@ -23,6 +23,7 @@ Practice integration: [https://github.com/MonoEven/cnumpy](https://github.com/Mo
 - [Quick start](#quick-start)
 - [Drawing and filters](#drawing-and-filters)
 - [NumPy interop](#numpy-interop)
+- [ImagePut interop](#imageput-interop)
 - [Behavioral parity](#behavioral-parity)
 - [Build](#build)
 - [Test](#test)
@@ -133,6 +134,44 @@ im.Close()
 Numpy.Cleanup()
 ```
 
+## ImagePut interop
+
+[ImagePut](https://github.com/iseahound/ImagePut) is an optional companion
+library for AutoHotkey v2 that handles many image sources and destinations
+(files, URLs, clipboard, windows, screen regions, GDI+ bitmaps, ...).
+`pillow.ahk` detects it with `IsSet(ImagePut)`; no load-time dependency is
+added. When ImagePut is included, you can use pillow-c as the processing
+engine inside an ImagePut-driven workflow:
+
+```autohotkey
+#Include "third_party\ImagePut\ImagePut.ahk"
+#Include "ahk\pillow.ahk"
+
+Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
+
+; ImagePut handles input.
+myImage := ImagePutBuffer("image.png")
+
+; pillow-c performs the pixelation/averaging step.
+p := Pillow.Image.FromImagePut(myImage, "RGB")
+small := p.Resize([4, 4], Pillow.Resampling.BOX)
+pixelated := small.Resize([200, 200], Pillow.Resampling.NEAREST)
+
+; Hand the result back to ImagePut for display/save.
+result := pixelated.ToImagePut()
+ImagePutWindow({ image: result })
+; ImagePutFile(result, "pixelated.png")
+
+pixelated.Close()
+small.Close()
+p.Close()
+```
+
+The bridge functions are `Pillow.Image.FromImagePut(source, mode := "RGBA")`
+and `Pillow.Image.ToImagePut(image)` / `image.ToImagePut()`. They convert
+through ImagePut's 32-bit ARGB buffer layout, so the two libraries can share
+pixels without ImagePut being modified.
+
 ## Behavioral parity
 
 Behavior is verified against local Pillow 11.3.0
@@ -204,6 +243,7 @@ pages/                  API reference site (en/ and zh/ trees + chooser)
 
 - [MonoEven/stdlib-ahk](https://github.com/MonoEven/stdlib-ahk)
 - [MonoEven/cnumpy](https://github.com/MonoEven/cnumpy) — the NumPy interop partner
+- [iseahound/ImagePut](https://github.com/iseahound/ImagePut) — the ImagePut interop partner
 - [MonoEven/ahk-hack-library](https://github.com/MonoEven/ahk-hack-library)
 - [Linux.do](https://linux.do/)
 - [AutoHotkey Community Forum](https://www.autohotkey.com/boards/)

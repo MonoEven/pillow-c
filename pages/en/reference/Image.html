@@ -630,6 +630,24 @@ image.ToQPixmap()    ;  alias: toqpixmap()</pre>
     <tr><td>Other</td><td><code>RequireHandle</code>, <code>WrapDerivedHandle</code>, <code>GetInt</code>, <code>IcoFile</code> (sizes/getimage), <code>GetColorsNumeric</code>, <code>PaletteAlphaModeForPut</code>, <code>ResolveOpenFormats</code>, <code>SaveJpegQualityPresetInfo</code>, <code>Utf8StringFromBytes</code></td><td><span>Handle validation; ICO container parsing; shared option/string helpers.</span></td></tr>
     </table>
 
+  <h2 id="imageput-interop">ImagePut interop</h2>
+  <p>Optional bridge to <a href="https://github.com/iseahound/ImagePut">ImagePut</a>. The functions are present in <code>pillow.ahk</code> but only call into ImagePut when the user has <code>#Include</code>d ImagePut first; otherwise they raise a clear “requires ImagePut” error.</p>
+
+  <section class="api" id="Image.FromImagePut">
+    <h3>FromImagePut <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.FromImagePut(source, mode := "RGBA")</pre>
+    <p>Accepts any ImagePut-compatible input (file path, URL, clipboard, window, screen region, HBitmap, existing ImagePut buffer, ...), converts it through ImagePut's 32-bit ARGB buffer, and returns a new Pillow Image. If <code>mode</code> is not <code>"RGBA"</code>, the image is first imported as RGBA and then converted to the requested mode.</p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
+  </section>
+
+  <section class="api" id="Image.ToImagePut">
+    <h3>ToImagePut <span class="kind">static + method</span></h3>
+    <pre class="sig">Pillow.Image.ToImagePut(image)   ;  static
+image.ToImagePut()               ;  instance form</pre>
+    <p>Exports a Pillow Image to an ImagePut-compatible buffer object. Non-RGBA images are converted to RGBA internally; ImagePut's buffer is 32-bit ARGB, so this round-trip preserves alpha.</p>
+    <p class="returns"><span>Returns: an ImagePut <code>BitmapBuffer</code> object that can be passed to ImagePut functions such as <code>ImagePutWindow</code> / <code>ImagePutFile</code>.</span></p>
+  </section>
+
   <h2 id="examples">Examples</h2>
   <p>Rotate, paste and save (the Pillow tutorial shape):</p>
   

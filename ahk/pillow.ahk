@@ -9898,6 +9898,51 @@ class Pillow {
 
         AsArray() => Pillow.Image.AsArray(this)
 
+        ; =========================================================================
+        ; ImagePut interop (https://github.com/iseahound/ImagePut).
+        ; Optional: only active when the user has #Include ImagePut.ahk.
+        ; =========================================================================
+
+        static FromImagePut(source, mode := "RGBA") {
+            if !IsSet(ImagePut) || !(ImagePut is Class)
+                throw Error("Pillow ImagePut interop requires ImagePut (https://github.com/iseahound/ImagePut): #Include its ImagePut.ahk", -1)
+            ip := ImagePut("Buffer", source)
+            if !(IsObject(ip) && ip.HasProp("ptr") && ip.HasProp("size") && ip.HasProp("width") && ip.HasProp("height"))
+                throw Error("Pillow.Image.FromImagePut could not obtain an ImagePut buffer", -1)
+            data := Buffer(ip.size, 0)
+            DllCall("RtlMoveMemory", "Ptr", data.Ptr, "Ptr", ip.ptr, "UPtr", ip.size)
+            image := Pillow.Image.FromBytes("RGBA", [ip.width, ip.height], data, "raw", "BGRA", ip.stride)
+            if mode = "RGBA"
+                return image
+            try {
+                converted := image.Convert(mode)
+                image.Close()
+                return converted
+            } catch {
+                image.Close()
+                throw
+            }
+        }
+
+        static ToImagePut(image) {
+            if !(IsObject(image) && image is Pillow.Image)
+                throw Error("Pillow.Image.ToImagePut expects a Pillow.Image", -1)
+            if !IsSet(ImagePut) || !(ImagePut is Class)
+                throw Error("Pillow ImagePut interop requires ImagePut (https://github.com/iseahound/ImagePut): #Include its ImagePut.ahk", -1)
+            source := image
+            if image.Mode != "RGBA"
+                source := image.Convert("RGBA")
+            try {
+                bytes := source.ToBytes("raw", "BGRA")
+                return ImagePut("Buffer", { ptr: bytes.Ptr, size: bytes.Size, width: image.Width, height: image.Height })
+            } finally {
+                if source != image
+                    source.Close()
+            }
+        }
+
+        ToImagePut() => Pillow.Image.ToImagePut(this)
+
         FromBytes(bytes, decoder := unset, rawmode := unset, stride := 0, orientation := 1) {
             this.DetachBufferView()
             if IsSet(decoder) {

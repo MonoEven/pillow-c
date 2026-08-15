@@ -630,6 +630,24 @@ image.ToQPixmap()    ;  alias: toqpixmap()</pre>
     <tr><td>Other</td><td><code>RequireHandle</code>, <code>WrapDerivedHandle</code>, <code>GetInt</code>, <code>IcoFile</code> (sizes/getimage), <code>GetColorsNumeric</code>, <code>PaletteAlphaModeForPut</code>, <code>ResolveOpenFormats</code>, <code>SaveJpegQualityPresetInfo</code>, <code>Utf8StringFromBytes</code></td><td><span>句柄校验;ICO 容器解析;共用选项/字符串辅助。</span></td></tr>
     </table>
 
+  <h2 id="imageput-interop">ImagePut 互操作</h2>
+  <p>与 <a href="https://github.com/iseahound/ImagePut">ImagePut</a> 的可选桥接。这些函数始终存在于 <code>pillow.ahk</code> 中，但只有用户先 <code>#Include</code> ImagePut 后才会真正调用它；否则会抛出明确的“requires ImagePut”错误。</p>
+
+  <section class="api" id="Image.FromImagePut">
+    <h3>FromImagePut <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.FromImagePut(source, mode := "RGBA")</pre>
+    <p>接受任意 ImagePut 兼容输入（文件路径、URL、剪贴板、窗口、屏幕区域、HBitmap、已有 ImagePut buffer 等），通过 ImagePut 的 32-bit ARGB buffer 转换后返回新的 Pillow Image。如果 <code>mode</code> 不是 <code>"RGBA"</code>，会先以 RGBA 导入，再转换为请求的模式。</p>
+    <p class="returns"><span>返回：一个新的 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.ToImagePut">
+    <h3>ToImagePut <span class="kind">static + method</span></h3>
+    <pre class="sig">Pillow.Image.ToImagePut(image)   ;  static
+image.ToImagePut()               ;  instance form</pre>
+    <p>将 Pillow Image 导出为 ImagePut 兼容的 buffer 对象。非 RGBA 图像会在内部先转换为 RGBA；ImagePut buffer 是 32-bit ARGB，因此往返过程保留 alpha。</p>
+    <p class="returns"><span>返回：一个 ImagePut <code>BitmapBuffer</code> 对象，可传给 <code>ImagePutWindow</code> / <code>ImagePutFile</code> 等 ImagePut 函数。</span></p>
+  </section>
+
   <h2 id="examples">示例</h2>
   
   <p>旋转、粘贴与保存(Pillow 教程形态):</p>
