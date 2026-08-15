@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="both">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageFilter — pillow-c 文档 · Documentation</title>
+<link rel="stylesheet" href="../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">双语文档 · Bilingual Docs</div>
+  <nav>
+    <p class="nav-head">Home / 首页</p>
+    <a href="../index.html">Overview / 概述</a>
+    <p class="nav-head">Reference / 参考</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html" class="current">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="constants.html">Constants / 常量</a>
+    <a href="Pillow.html">Pillow (entry) / 入口</a>
+    <a href="boundaries.html">Boundaries / 行为边界</a>
+  </nav>
+  <div class="lang-switch">
+    <button data-lang="both">双语 Both</button>
+    <button data-lang="en">EN</button>
+    <button data-lang="zh">中文</button>
+  </div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » ImageFilter</div>
+  <h1>ImageFilter <span class="kind">module</span></h1>
+  <p class="en">The <code>ImageFilter</code> module contains prebuilt convolution kernels and filter classes. Apply a filter with <code>image.Filter(f)</code> or <code>f.Apply(image)</code>. Validation replicates Pillow's exact messages.</p>
+  <p class="zh"><code>ImageFilter</code> 模块提供预置卷积核与滤波器类。用 <code>image.Filter(f)</code> 或 <code>f.Apply(image)</code> 应用滤波器。校验信息与 Pillow 逐字一致。</p>
+
+  <h2 id="predefined">预置滤波器 · Predefined Filters</h2>
+  <p class="en">All prebuilt filters are zero-argument factory functions returning a filter object.</p>
+  <p class="zh">所有预置滤波器都是无参工厂函数,返回滤波器对象。</p>
+  <section class="api" id="ImageFilter.Blur">
+    <h3>BLUR / CONTOUR / DETAIL / EDGE_ENHANCE / EDGE_ENHANCE_MORE</h3>
+    <pre class="sig">Pillow.ImageFilter.BLUR()             ; 5×5 box blur
+Pillow.ImageFilter.CONTOUR()          ; 3×3 edge contour
+Pillow.ImageFilter.DETAIL()           ; 3×3 detail enhancement
+Pillow.ImageFilter.EDGE_ENHANCE()     ; 3×3 edge enhancement
+Pillow.ImageFilter.EDGE_ENHANCE_MORE()</pre>
+    <p class="en">Pillow's built-in convolution kernels, byte-for-byte identical coefficients.</p>
+    <p class="zh">Pillow 内置卷积核,系数逐字节一致。</p>
+  </section>
+  <section class="api" id="ImageFilter.Sharp">
+    <h3>EMBOSS / FIND_EDGES / SHARPEN / SMOOTH / SMOOTH_MORE</h3>
+    <pre class="sig">Pillow.ImageFilter.EMBOSS()
+Pillow.ImageFilter.FIND_EDGES()
+Pillow.ImageFilter.SHARPEN()
+Pillow.ImageFilter.SMOOTH()
+Pillow.ImageFilter.SMOOTH_MORE()</pre>
+    <p class="en">The remaining built-in kernels (emboss, edge find, sharpen, smooth).</p>
+    <p class="zh">其余内置核(浮雕、寻边、锐化、平滑)。</p>
+  </section>
+
+  <h2 id="classes">滤波器类 · Filter Classes</h2>
+  <section class="api" id="ImageFilter.Filter">
+    <h3>Filter / MultibandFilter <span class="kind">abstract base</span></h3>
+    <pre class="sig">Pillow.ImageFilter.Filter()          ; abstract — raises
+Pillow.ImageFilter.MultibandFilter() ; abstract — raises</pre>
+    <p class="en">Abstract bases. Instantiation raises Pillow's exact <code>Can't instantiate abstract class Filter with abstract method filter</code> (resp. MultibandFilter).</p>
+    <p class="zh">抽象基类。实例化抛 Pillow 原样的 <code>Can't instantiate abstract class Filter with abstract method filter</code>(MultibandFilter 同理)。</p>
+  </section>
+  <section class="api" id="ImageFilter.BuiltinFilter">
+    <h3>BuiltinFilter <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImageFilter.BuiltinFilter()</pre>
+    <p class="en">Concrete base for built-in kernels; its <code>filter()</code> raises Pillow's AttributeError for missing attributes.</p>
+    <p class="zh">内置核的具体基类;其 <code>filter()</code> 对缺失属性抛 Pillow 的 AttributeError。</p>
+  </section>
+  <section class="api" id="ImageFilter.Kernel">
+    <h3>Kernel</h3>
+    <pre class="sig">Pillow.ImageFilter.Kernel(size := unset, kernel := unset, scale := unset, offset := 0)</pre>
+    <p class="en">A user convolution kernel. <code>size</code> = <code>[w, h]</code>, <code>kernel</code> = coefficient array, <code>scale</code> = divisor (sum by default).</p>
+    <p class="zh">自定义卷积核。<code>size</code> = <code>[宽, 高]</code>,<code>kernel</code> = 系数数组,<code>scale</code> = 除数(默认取系数和)。</p>
+    <p class="note"><span class="en">Parity: <code>bad kernel size</code>, <code>not enough coefficients in kernel</code>, and the string/float TypeErrors match Pillow; <code>name</code>/<code>filterargs</code> are exposed.</span><span class="zh">对齐:<code>bad kernel size</code>、<code>not enough coefficients in kernel</code> 与字符串/浮点 TypeError 同 Pillow;<code>name</code>/<code>filterargs</code> 已暴露。</span></p>
+  </section>
+  <section class="api" id="ImageFilter.Rank">
+    <h3>RankFilter / MinFilter / MedianFilter / MaxFilter / ModeFilter</h3>
+    <pre class="sig">Pillow.ImageFilter.RankFilter(size := unset, rank := unset, name := "Rank")
+Pillow.ImageFilter.MinFilter(size := 3)
+Pillow.ImageFilter.MedianFilter(size := 3)
+Pillow.ImageFilter.MaxFilter(size := 3)
+Pillow.ImageFilter.ModeFilter(size := 3)</pre>
+    <p class="en">Rank-order filters over a square window: Nth value, minimum, median, maximum, most frequent.</p>
+    <p class="zh">方形窗口上的排序滤波器:第 N 值、最小值、中值、最大值、众数。</p>
+    <p class="note"><span class="en">Parity: <code>bad rank value</code> and <code>bad filter size</code> match Pillow exactly.</span><span class="zh">对齐:<code>bad rank value</code> 与 <code>bad filter size</code> 同 Pillow。</span></p>
+  </section>
+  <section class="api" id="ImageFilter.BoxBlur">
+    <h3>BoxBlur / GaussianBlur / UnsharpMask</h3>
+    <pre class="sig">Pillow.ImageFilter.BoxBlur(radius := unset)
+Pillow.ImageFilter.GaussianBlur(radius := 2)
+Pillow.ImageFilter.UnsharpMask(radius := 2, percent := 150, threshold := 3)</pre>
+    <p class="en">Blur and sharpen filters. UnsharpMask = original + (original − GaussianBlur) × percent/100 for differences above threshold.</p>
+    <p class="zh">模糊与锐化滤波器。UnsharpMask = 原图 + (原图 − 高斯模糊) × percent/100,仅对超过 threshold 的差异生效。</p>
+  </section>
+  <section class="api" id="ImageFilter.Color3DLUT">
+    <h3>Color3DLUT</h3>
+    <pre class="sig">Pillow.ImageFilter.Color3DLUT(size, table, channels := 3, targetMode := "")
+lut.Apply(image)   ; alias: lut.Transform(image)</pre>
+    <p class="en">Applies a 3-D lookup table to an image.</p>
+    <p class="zh">对图像应用三维查找表。</p>
+  </section>
+
+  <h2 id="internals">内部辅助 · Internal helpers</h2>
+  <p class="note"><span class="en"><code>ApplyKernelArgs</code>, <code>RadiusPair</code>, <code>SumCoefficients</code>, <code>CheckSize</code> and <code>FlattenTable</code> are kernel-argument plumbing shared by the filter classes — public for the facade's own use, not part of the Pillow-style user API.</span><span class="zh"><code>ApplyKernelArgs</code>、<code>RadiusPair</code>、<code>SumCoefficients</code>、<code>CheckSize</code> 与 <code>FlattenTable</code> 是滤波器类共用的核参数管道——对门面内部公开,不属于 Pillow 风格的用户 API。</span></p>
+
+  <h2 id="examples">示例 · Examples</h2>
+  <pre class="example">img := Pillow.Image.Open("photo.jpg")
+blurred := img.Filter(Pillow.ImageFilter.GaussianBlur(2))
+sharp   := img.Filter(Pillow.ImageFilter.UnsharpMask(2, 150, 3))
+k := Pillow.ImageFilter.Kernel([3, 3], [-1,-1,-1, -1,8,-1, -1,-1,-1], 1, 0)
+edges := img.Filter(k)
+img.Close()</pre>
+</div>
+<script src="../_static/pages.js"></script>
+</body>
+</html>

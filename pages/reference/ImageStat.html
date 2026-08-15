@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="both">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageStat — pillow-c 文档 · Documentation</title>
+<link rel="stylesheet" href="../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">双语文档 · Bilingual Docs</div>
+  <nav>
+    <p class="nav-head">Home / 首页</p>
+    <a href="../index.html">Overview / 概述</a>
+    <p class="nav-head">Reference / 参考</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html" class="current">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="constants.html">Constants / 常量</a>
+    <a href="Pillow.html">Pillow (entry) / 入口</a>
+    <a href="boundaries.html">Boundaries / 行为边界</a>
+  </nav>
+  <div class="lang-switch">
+    <button data-lang="both">双语 Both</button>
+    <button data-lang="en">EN</button>
+    <button data-lang="zh">中文</button>
+  </div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » ImageStat</div>
+  <h1>ImageStat <span class="kind">module</span></h1>
+  <p class="en">The <code>ImageStat</code> module computes per-band statistics from a histogram. <code>Stat</code> wraps either an <code>Image</code> (whose histogram is taken internally) or a precomputed raw histogram list; every statistic is a lazily computed, cached attribute that returns a per-band ARRAY — for an RGB image <code>Mean</code> returns <code>[rMean, gMean, bMean]</code>.</p>
+  <p class="zh"><code>ImageStat</code> 模块基于直方图计算逐通道统计量。<code>Stat</code> 包装一个 <code>Image</code>(内部取直方图)或预先计算好的原始直方图列表;每个统计量都是惰性计算并缓存的属性,返回逐通道数组——RGB 图像的 <code>Mean</code> 返回 <code>[rMean, gMean, bMean]</code>。</p>
+  <p class="note"><span class="en">Each attribute is computed on first access and cached (Pillow's <code>cached_property</code>); it is a per-band array whose length equals the band count (histogram length // 256).</span><span class="zh">每个属性在首次访问时计算并缓存(Pillow 的 <code>cached_property</code>);结果是逐通道数组,长度等于通道数(直方图长度 // 256)。</span></p>
+
+  <h2 id="constructor">构造 · Construction</h2>
+
+  <section class="api" id="ImageStat.Stat">
+    <h3>Stat <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImageStat.Stat(imageOrList, mask := unset)</pre>
+    <p class="en">Builds a statistics object over an image or a raw histogram list. If a mask is given, only the pixels covered by the mask are counted.</p>
+    <p class="zh">在图像或原始直方图列表上构建统计对象;若提供掩膜,仅统计掩膜覆盖的像素。</p>
+    <dl class="params">
+      <dt>imageOrList</dt><dd><span class="en">An <code>Image</code>, or a precomputed histogram list whose length must be a multiple of 256 (one 256-bin block per band).</span><span class="zh">一个 <code>Image</code>,或预先计算的直方图列表;列表长度必须是 256 的整数倍(每通道一个 256 箱块)。</span></dd>
+      <dt>mask</dt><dd><span class="en">Optional mask image: mode <code>"1"</code> or <code>"L"</code>, same size as the image; only masked pixels count. Requires image input — a list plus mask raises <code>Pillow.ImageStat.Stat mask requires image input</code>.</span><span class="zh">可选掩膜:模式 <code>"1"</code> 或 <code>"L"</code>,与图像同尺寸;仅统计掩膜内像素。要求图像输入——列表配掩膜抛 <code>Pillow.ImageStat.Stat mask requires image input</code>。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new <code>Stat</code>.</span><span class="zh">返回:新 <code>Stat</code>。</span></p>
+    <p class="note"><span class="en">Mask parity: a non-1/L mask raises Pillow's exact <code>bad transparency mask</code>; a size mismatch raises <code>images do not match</code>.</span><span class="zh">掩膜对齐:非 1/L 掩膜抛 Pillow 原样的 <code>bad transparency mask</code>;尺寸不符抛 <code>images do not match</code>。</span></p>
+    <p class="note"><span class="en">Like Pillow, the histogram groups pixels into 256 bins even for more-than-8-bit modes, so <code>I</code>/<code>F</code> mode <code>mean</code>/<code>median</code>/<code>rms</code> top out at 255 and <code>extrema</code> cannot exceed 255 — use <code>image.GetExtrema()</code> for exact per-band extrema. I;16 histograms keep Pillow's layout-dependent byte misread as a documented boundary (see <a href="boundaries.html">Boundaries</a>).</span><span class="zh">与 Pillow 相同,直方图即使超过 8 位/通道仍按 256 箱分组,故 <code>I</code>/<code>F</code> 模式的 <code>mean</code>/<code>median</code>/<code>rms</code> 上限为 255,<code>extrema</code> 最大值不超过 255——精确逐通道极值请用 <code>image.GetExtrema()</code>。I;16 直方图保留 Pillow 依赖内存布局的字节误读,记为边界(见<a href="boundaries.html">行为边界页</a>)。</span></p>
+  </section>
+
+  <section class="api" id="ImageStat.Global">
+    <h3>Global <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageStat.Global(imageOrList, mask := unset)</pre>
+    <p class="en">Pillow's <code>ImageStat.Global</code> is the plain alias <code>Global = Stat</code>. Because <code>global</code> is a reserved keyword in AutoHotkey, the facade exposes the alias as a static constructor method: it forwards its arguments to <code>Stat</code> and returns the new statistics object.</p>
+    <p class="zh">Pillow 的 <code>ImageStat.Global</code> 只是别名 <code>Global = Stat</code>。因 <code>global</code> 是 AutoHotkey 的保留关键字,门面将该别名暴露为静态构造方法:把参数转发给 <code>Stat</code> 并返回新的统计对象。</p>
+    <p class="returns"><span class="en">Returns: a new <code>Stat</code> (identical to <code>Pillow.ImageStat.Stat</code>).</span><span class="zh">返回:新 <code>Stat</code>(等同 <code>Pillow.ImageStat.Stat</code>)。</span></p>
+  </section>
+
+  <h2 id="attributes">属性 · Attributes</h2>
+
+  <section class="api" id="ImageStat.Extrema">
+    <h3>Extrema <span class="kind">property</span></h3>
+    <pre class="sig">stat.Extrema</pre>
+    <p class="en">Min/max values per band: an array of <code>[min, max]</code> pairs — the lowest and highest occupied histogram bins.</p>
+    <p class="zh">每通道极值:<code>[min, max]</code> 二元组数组——直方图中最低与最高被占用的箱。</p>
+  </section>
+
+  <section class="api" id="ImageStat.Count">
+    <h3>Count <span class="kind">property</span></h3>
+    <pre class="sig">stat.Count</pre>
+    <p class="en">Total number of pixels per band — the sum of the band's 256 histogram bins (integer array).</p>
+    <p class="zh">每通道像素总数——该通道 256 个直方图箱之和(整数数组)。</p>
+  </section>
+
+  <section class="api" id="ImageStat.Sum">
+    <h3>Sum <span class="kind">property</span></h3>
+    <pre class="sig">stat.Sum</pre>
+    <p class="en">Sum of pixel values per band: <code>Σ level × count[level]</code> over the band's 256 bins.</p>
+    <p class="zh">每通道像素值之和:对该通道 256 个箱求 <code>Σ level × count[level]</code>。</p>
+  </section>
+
+  <section class="api" id="ImageStat.Sum2">
+    <h3>Sum2 <span class="kind">property</span></h3>
+    <pre class="sig">stat.Sum2</pre>
+    <p class="en">Sum of squared pixel values per band: <code>Σ level² × count[level]</code>.</p>
+    <p class="zh">每通道像素值平方和:<code>Σ level² × count[level]</code>。</p>
+  </section>
+
+  <section class="api" id="ImageStat.Mean">
+    <h3>Mean <span class="kind">property</span></h3>
+    <pre class="sig">stat.Mean</pre>
+    <p class="en">Arithmetic mean pixel level per band: <code>sum / count</code>.</p>
+    <p class="zh">每通道像素算术平均:<code>sum / count</code>。</p>
+  </section>
+
+  <section class="api" id="ImageStat.Median">
+    <h3>Median <span class="kind">property</span></h3>
+    <pre class="sig">stat.Median</pre>
+    <p class="en">Median pixel level per band, found by walking the cumulative histogram until it exceeds <code>count // 2</code>.</p>
+    <p class="zh">每通道像素中位数:累加直方图直到超过 <code>count // 2</code> 时取该箱。</p>
+  </section>
+
+  <section class="api" id="ImageStat.Rms">
+    <h3>Rms <span class="kind">property</span></h3>
+    <pre class="sig">stat.Rms</pre>
+    <p class="en">Root-mean-square per band: <code>sqrt(sum2 / count)</code>.</p>
+    <p class="zh">每通道均方根:<code>sqrt(sum2 / count)</code>。</p>
+  </section>
+
+  <section class="api" id="ImageStat.Var">
+    <h3>Var <span class="kind">property</span></h3>
+    <pre class="sig">stat.Var</pre>
+    <p class="en">Variance per band: <code>(sum2 − sum² / count) / count</code>.</p>
+    <p class="zh">每通道方差:<code>(sum2 − sum² / count) / count</code>。</p>
+  </section>
+
+  <section class="api" id="ImageStat.StdDev">
+    <h3>StdDev <span class="kind">property</span></h3>
+    <pre class="sig">stat.StdDev</pre>
+    <p class="en">Standard deviation per band: <code>sqrt(var)</code>.</p>
+    <p class="zh">每通道标准差:<code>sqrt(var)</code>。</p>
+  </section>
+
+  <h2 id="internals">内部辅助 · Internal helpers</h2>
+  <p class="note"><span class="en"><code>Pillow.ImageStat.StrPut</code> is a buffer-write helper used by the facade; it is not part of the Pillow-style user API.</span><span class="zh"><code>Pillow.ImageStat.StrPut</code> 是门面使用的缓冲区写入辅助函数,不属于 Pillow 风格的用户 API。</span></p>
+
+  <h2 id="examples">示例 · Examples</h2>
+  <p class="en">Compute and print the mean and standard deviation of an RGB image:</p>
+  <p class="zh">计算并打印 RGB 图像的均值与标准差:</p>
+  <pre class="example">img := Pillow.Image.Open("photo.jpg")    ; RGB image
+st := Pillow.ImageStat.Stat(img)
+mean := st.Mean                          ; [rMean, gMean, bMean]
+std  := st.StdDev                        ; [rStddev, gStddev, bStddev]
+txt := ""
+loop mean.Length
+    txt .= "band " A_Index ": mean=" Round(mean[A_Index], 2)
+        .  "  stddev=" Round(std[A_Index], 2) "`n"
+MsgBox txt
+img.Close()</pre>
+</div>
+<script src="../_static/pages.js"></script>
+</body>
+</html>

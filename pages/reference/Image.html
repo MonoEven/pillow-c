@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="both">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image — pillow-c 文档 · Documentation</title>
+<link rel="stylesheet" href="../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">双语文档 · Bilingual Docs</div>
+  <nav>
+    <p class="nav-head">Home / 首页</p>
+    <a href="../index.html">Overview / 概述</a>
+    <p class="nav-head">Reference / 参考</p>
+    <a href="Image.html" class="current">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="constants.html">Constants / 常量</a>
+    <a href="Pillow.html">Pillow (entry) / 入口</a>
+    <a href="boundaries.html">Boundaries / 行为边界</a>
+  </nav>
+  <div class="lang-switch">
+    <button data-lang="both">双语 Both</button>
+    <button data-lang="en">EN</button>
+    <button data-lang="zh">中文</button>
+  </div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » Image</div>
+  <h1>Image <span class="kind">module</span></h1>
+  <p class="en">The <code>Image</code> class is the workhorse of the library: it wraps a native image handle owned by <code>pillow_c.dll</code> and provides Pillow&nbsp;11.3.0's full object surface — constructors, geometry, pixels, palette, filters, compositing, metadata and save/load. AHK arrays stand in for Python tuples (<code>[width, height]</code>, <code>[x, y]</code>, <code>[left, upper, right, lower]</code>), <code>unset</code> is the None analogue, errors are thrown as <code>Error</code> objects with Pillow's exact message strings, and <code>Info</code> is a <code>Map</code>.</p>
+  <p class="zh"><code>Image</code> 类是库的核心:它包装由 <code>pillow_c.dll</code> 持有的原生图像句柄,提供 Pillow&nbsp;11.3.0 的完整对象表面——构造、几何变换、像素、调色板、滤镜、合成、元数据与存取。AHK 数组对应 Python 元组(<code>[宽, 高]</code>、<code>[x, y]</code>、<code>[left, upper, right, lower]</code>),<code>unset</code> 对应 None,错误以携带 Pillow 原始报错文本的 <code>Error</code> 抛出,<code>Info</code> 为 <code>Map</code>。</p>
+  <p class="note"><span class="en">All methods also exist under their Pillow snake_case names (<code>resize</code>, <code>getbbox</code>, <code>putpixel</code>, …); this page lists the PascalCase primary names.</span><span class="zh">所有方法同时提供 Pillow 的 snake_case 别名(<code>resize</code>、<code>getbbox</code>、<code>putpixel</code>……);本页按 PascalCase 主名列示。</span></p>
+  <p class="note"><span class="en">Most methods return a <b>new</b> Image and leave this one unchanged (Pillow semantics). Operations that mutate in place are marked below.</span><span class="zh">多数方法返回<b>新</b> Image 且不改动本对象(Pillow 语义);就地修改的操作在下方单独标注。</span></p>
+
+  <h2 id="constructors">构造与打开 · Constructors &amp; Loading</h2>
+
+  <section class="api" id="Image.New">
+    <h3>New <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.New(modeName, size, color := unset)</pre>
+    <p class="en">Creates a new image of the given mode and size, optionally filled with a single color.</p>
+    <p class="zh">以给定模式与尺寸创建新图像,可选用单一颜色填充。</p>
+    <dl class="params">
+      <dt>modeName</dt><dd><span class="en">Mode string: <code>"1"</code>, <code>"L"</code>, <code>"P"</code>, <code>"RGB"</code>, <code>"RGBA"</code>, <code>"CMYK"</code>, <code>"I"</code>, <code>"F"</code>, <code>"I;16"</code>, …</span><span class="zh">模式字符串:<code>"1"</code>、<code>"L"</code>、<code>"P"</code>、<code>"RGB"</code>、<code>"RGBA"</code>、<code>"CMYK"</code>、<code>"I"</code>、<code>"F"</code>、<code>"I;16"</code>……</span></dd>
+      <dt>size</dt><dd><span class="en">Array <code>[width, height]</code> in pixels.</span><span class="zh">数组 <code>[宽, 高]</code>,单位为像素。</span></dd>
+      <dt>color</dt><dd><span class="en">Fill color: a name string, a <code>#rgb</code>/<code>#rrggbb</code> string, an integer (L/I), a float (F) or an array per band.</span><span class="zh">填充色:颜色名字符串、<code>#rgb</code>/<code>#rrggbb</code> 字符串、整数(L/I)、浮点数(F)或逐通道数组。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.Open">
+    <h3>Open <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.Open(path, formats := unset)</pre>
+    <p class="en">Opens and identifies an image file, decoding it lazily like Pillow (full decode happens on demand). Formats are detected by content, not by extension.</p>
+    <p class="zh">打开并识别图像文件,与 Pillow 一样惰性解码(按需完成解码)。格式按内容识别,不依赖扩展名。</p>
+    <dl class="params">
+      <dt>path</dt><dd><span class="en">Filesystem path to the image file.</span><span class="zh">图像文件的文件系统路径。</span></dd>
+      <dt>formats</dt><dd><span class="en">Optional list of format names or MIME types to try first (Pillow's <code>formats</code> argument).</span><span class="zh">可选的格式名或 MIME 类型列表,优先尝试(Pillow 的 <code>formats</code> 参数)。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+    <p class="note"><span class="en">Parity: raises <code>FileNotFoundError</code> for missing files and Pillow's quoted <code>UnidentifiedImageError</code> for unrecognized content; WebP/AVIF/JPEG2000 content raises the exact <code>decoder … not available</code> (see Boundaries).</span><span class="zh">对齐:文件缺失抛 <code>FileNotFoundError</code>,内容无法识别抛带引号的 <code>UnidentifiedImageError</code>;WebP/AVIF/JPEG2000 内容抛原样的 <code>decoder … not available</code>(见行为边界页)。</span></p>
+  </section>
+
+  <section class="api" id="Image.FromBytes">
+    <h3>FromBytes <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.FromBytes(modeName, size, bytes, decoder := unset, rawmode := unset, stride := 0, orientation := 1)</pre>
+    <p class="en">Builds an image from raw pixel bytes in memory (Pillow's <code>Image.frombytes</code>).</p>
+    <p class="zh">从内存中的原始像素字节构造图像(Pillow 的 <code>Image.frombytes</code>)。</p>
+    <dl class="params">
+      <dt>modeName</dt><dd><span class="en">Mode string.</span><span class="zh">模式字符串。</span></dd>
+      <dt>size</dt><dd><span class="en">Array <code>[width, height]</code>.</span><span class="zh">数组 <code>[宽, 高]</code>。</span></dd>
+      <dt>bytes</dt><dd><span class="en">Buffer of raw pixel data; its length must match the mode/size/stride.</span><span class="zh">原始像素数据缓冲区;长度必须与模式/尺寸/步长匹配。</span></dd>
+      <dt>decoder / rawmode</dt><dd><span class="en">Decoder name and raw mode (e.g. <code>"raw"</code> / <code>"RGB"</code>); default raw.</span><span class="zh">解码器名与原始模式(如 <code>"raw"</code> / <code>"RGB"</code>);默认 raw。</span></dd>
+      <dt>stride / orientation</dt><dd><span class="en">Row stride in bytes and storage orientation (1 = top-down).</span><span class="zh">行步长(字节)与存储方向(1 = 自顶向下)。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.FromBuffer">
+    <h3>FromBuffer <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.FromBuffer(modeName, size, data, decoder := "raw", rawmode := unset, stride := 0, orientation := 1)</pre>
+    <p class="en">Identical to <code>FromBytes</code> with the decoder defaulting to <code>"raw"</code> (Pillow's <code>Image.frombuffer</code>; Pillow's deprecated-mode warning does not apply here).</p>
+    <p class="zh">与 <code>FromBytes</code> 相同,解码器默认 <code>"raw"</code>(Pillow 的 <code>Image.frombuffer</code>;Pillow 的弃用模式警告在此不适用)。</p>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.FromBytesInstance">
+    <h3>FromBytes (instance) <span class="kind">method</span></h3>
+    <pre class="sig">image.FromBytes(bytes, decoder := unset, rawmode := unset, stride := 0, orientation := 1)</pre>
+    <p class="en">Loads pixel data from raw bytes into this image's storage.</p>
+    <p class="zh">把原始字节载入本图像的像素存储。</p>
+    <p class="returns"><span class="en">Returns: this image (mutates in place).</span><span class="zh">返回:本图像(就地修改)。</span></p>
+  </section>
+
+  <section class="api" id="Image.Load">
+    <h3>Load <span class="kind">method</span></h3>
+    <pre class="sig">image.Load()</pre>
+    <p class="en">Allocates pixel storage and decodes the file data (Pillow's <code>load()</code>). The facade decodes on demand, so this is usually implicit.</p>
+    <p class="zh">分配像素存储并解码文件数据(Pillow 的 <code>load()</code>)。门面按需解码,故通常无需显式调用。</p>
+    <p class="returns"><span class="en">Returns: a <code>PixelAccess</code> object.</span><span class="zh">返回:<code>PixelAccess</code> 对象。</span></p>
+  </section>
+
+  <section class="api" id="Image.PixelAccess">
+    <h3>PixelAccess <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.Image.PixelAccess(image)
+pa[x, y]          ; read  — GetPixel([x, y])
+pa[x, y] := value ; write — PutPixel([x, y], value)</pre>
+    <p class="en">Pillow's pixel-access object: indexing with <code>[x, y]</code> reads/writes one pixel through <code>GetPixel</code>/<code>PutPixel</code>, including negative-coordinate wrapping and float truncation.</p>
+    <p class="zh">Pillow 的像素访问对象:以 <code>[x, y]</code> 索引读写单个像素(内部走 <code>GetPixel</code>/<code>PutPixel</code>),含负数回绕与浮点截断。</p>
+  </section>
+
+  <section class="api" id="Image.Merge">
+    <h3>Merge <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.Merge(modeName, bands)</pre>
+    <p class="en">Merges single-band images into a new multi-band image (inverse of <code>Split</code>).</p>
+    <p class="zh">把若干单通道图像合并为多通道新图(<code>Split</code> 的逆操作)。</p>
+    <dl class="params">
+      <dt>modeName</dt><dd><span class="en">Target mode (e.g. <code>"RGB"</code> for 3 bands, <code>"RGBA"</code> for 4).</span><span class="zh">目标模式(如 3 通道用 <code>"RGB"</code>,4 通道用 <code>"RGBA"</code>)。</span></dd>
+      <dt>bands</dt><dd><span class="en">Array of single-band Images; the count must match the mode.</span><span class="zh">单通道 Image 数组;数量必须与模式匹配。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.Blend">
+    <h3>Blend <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.Blend(left, right, alpha)</pre>
+    <p class="en">Interpolates two same-mode/size images: <code>left * (1 - alpha) + right * alpha</code>.</p>
+    <p class="zh">对同模式同尺寸的两图插值:<code>left * (1 - alpha) + right * alpha</code>。</p>
+    <dl class="params">
+      <dt>alpha</dt><dd><span class="en">Number in 0.0…1.0; 0 returns left, 1 returns right.</span><span class="zh">0.0…1.0 之间的数;0 返回左图,1 返回右图。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.Composite">
+    <h3>Composite <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.Composite(image1, image2, mask)</pre>
+    <p class="en">Copies image1 where mask is 255 and image2 where mask is 0; intermediate mask values are not blended (unlike Blend).</p>
+    <p class="zh">mask 为 255 处取 image1、为 0 处取 image2;中间值不混合(与 Blend 不同)。</p>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.AlphaComposite">
+    <h3>AlphaComposite <span class="kind">static + method</span></h3>
+    <pre class="sig">Pillow.Image.AlphaComposite(dst, src)   ; static
+image.AlphaComposite(image, dest := unset, source := unset)   ; method</pre>
+    <p class="en">Composites an RGBA source over a destination using alpha: <code>out = src*a + dst*(1-a)</code>. The method form supports destination/source offsets.</p>
+    <p class="zh">按 alpha 把 RGBA 源图合成到目标上:<code>out = src*a + dst*(1-a)</code>。方法形式支持目标/源偏移。</p>
+    <dl class="params">
+      <dt>dest / source</dt><dd><span class="en">Optional <code>[x, y]</code> offsets; both must be given or both omitted.</span><span class="zh">可选 <code>[x, y]</code> 偏移;两者须同时给出或同时省略。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image (method form) / the composited result (static form).</span><span class="zh">返回:新 Image(方法形式)/ 合成结果(静态形式)。</span></p>
+  </section>
+
+  <section class="api" id="Image.LinearGradient">
+    <h3>LinearGradient / RadialGradient <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.LinearGradient(modeName)
+Pillow.Image.RadialGradient(modeName)</pre>
+    <p class="en">Returns a 256×256 gradient image in the given mode (0…255 along x for linear, from the center for radial).</p>
+    <p class="zh">返回给定模式的 256×256 渐变图(线性沿 x 轴 0…255;径向自中心向外)。</p>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.EffectMandelbrot">
+    <h3>EffectMandelbrot <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.EffectMandelbrot(size, extent, quality)</pre>
+    <p class="en">Generates a Mandelbrot set image.</p>
+    <p class="zh">生成 Mandelbrot 集图像。</p>
+    <dl class="params">
+      <dt>size</dt><dd><span class="en">Array <code>[width, height]</code>.</span><span class="zh">数组 <code>[宽, 高]</code>。</span></dd>
+      <dt>extent</dt><dd><span class="en">Array <code>[x0, y0, x1, y1]</code> of the complex-plane region.</span><span class="zh">复平面区域的数组 <code>[x0, y0, x1, y1]</code>。</span></dd>
+      <dt>quality</dt><dd><span class="en">Integer iteration quality.</span><span class="zh">整数迭代质量。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.EffectNoise">
+    <h3>EffectNoise <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.EffectNoise(size, sigma)</pre>
+    <p class="en">Generates a Gaussian-noise image of the given size.</p>
+    <p class="zh">生成给定尺寸的高斯噪声图像。</p>
+    <dl class="params">
+      <dt>sigma</dt><dd><span class="en">Standard deviation of the noise.</span><span class="zh">噪声标准差。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.EffectSpread">
+    <h3>EffectSpread <span class="kind">static + method</span></h3>
+    <pre class="sig">Pillow.Image.EffectSpread(image, distance)   ; static
+image.EffectSpread(distance)                  ; method</pre>
+    <p class="en">Randomly displaces each pixel within a <code>distance</code>-sized region (Pillow's <code>Image.effect_spread</code>).</p>
+    <p class="zh">把每个像素随机位移到 <code>distance</code> 大小的邻域内(Pillow 的 <code>Image.effect_spread</code>)。</p>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <h2 id="geometry">几何变换 · Geometry</h2>
+
+  <section class="api" id="Image.Crop">
+    <h3>Crop</h3>
+    <pre class="sig">image.Crop(box := unset)</pre>
+    <p class="en">Returns a rectangular region defined by a 4-tuple box. Omitting the box uses the bounding box of the non-zero region.</p>
+    <p class="zh">返回由四元矩形框定的区域。省略 box 时使用非零区域的包围盒。</p>
+    <dl class="params">
+      <dt>box</dt><dd><span class="en"><code>[left, upper, right, lower]</code>; coordinates may lie outside the image.</span><span class="zh"><code>[left, upper, right, lower]</code>;坐标可在图像之外。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+    <p class="note"><span class="en">Parity: box order errors raise <code>Coordinate 'right' is less than 'left'</code> / <code>Coordinate 'lower' is less than 'upper'</code> exactly.</span><span class="zh">对齐:顺序错误时原样抛出 <code>Coordinate 'right' is less than 'left'</code> / <code>Coordinate 'lower' is less than 'upper'</code>。</span></p>
+  </section>
+
+  <section class="api" id="Image.Resize">
+    <h3>Resize</h3>
+    <pre class="sig">image.Resize(size, resample := unset, box := unset, reducingGap := unset)</pre>
+    <p class="en">Returns a resized copy. Defaults to <code>Resampling.BICUBIC</code> (Pillow 11.3.0's rule: NEAREST only for <code>BGR;</code> modes).</p>
+    <p class="zh">返回调整大小后的副本。默认 <code>Resampling.BICUBIC</code>(Pillow 11.3.0 规则:仅 <code>BGR;</code> 模式默认 NEAREST)。</p>
+    <dl class="params">
+      <dt>size</dt><dd><span class="en">Array <code>[width, height]</code>.</span><span class="zh">数组 <code>[宽, 高]</code>。</span></dd>
+      <dt>resample</dt><dd><span class="en"><code>Resampling.NEAREST/BOX/BILINEAR/HAMMING/BICUBIC/LANCZOS</code>; invalid values raise <code>Unknown resampling filter (&lt;value&gt;). Use Image.Resampling…</code>.</span><span class="zh"><code>Resampling.NEAREST/BOX/BILINEAR/HAMMING/BICUBIC/LANCZOS</code>;非法值抛 <code>Unknown resampling filter (&lt;value&gt;). Use Image.Resampling…</code>。</span></dd>
+      <dt>box</dt><dd><span class="en">Optional source region <code>[left, upper, right, lower]</code>.</span><span class="zh">可选源区域 <code>[left, upper, right, lower]</code>。</span></dd>
+      <dt>reducingGap</dt><dd><span class="en">Downsize in steps of this factor first (Pillow's <code>reducing_gap</code>).</span><span class="zh">先按此倍数分步缩小(Pillow 的 <code>reducing_gap</code>)。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+    <p class="note"><span class="en">Parity: RGBA/LA non-NEAREST resizes premultiply by alpha (<code>+127</code>) and keep the premultiplied value where <code>a == 0</code>; mode <code>1</code>/<code>P</code> force NEAREST; I;16 uses Pillow's 16bpc two-pass sampler; non-NEAREST I;16B raises the documented boundary error.</span><span class="zh">对齐:RGBA/LA 非 NEAREST 缩放先按 alpha 预乘(<code>+127</code>),<code>a == 0</code> 处保留预乘值;<code>1</code>/<code>P</code> 模式强制 NEAREST;I;16 使用 Pillow 的 16bpc 两遍采样;I;16B 非 NEAREST 抛出已记录的边界错误。</span></p>
+  </section>
+
+  <section class="api" id="Image.Thumbnail">
+    <h3>Thumbnail</h3>
+    <pre class="sig">image.Thumbnail(size, resample := unset, reducingGap := 2.0)</pre>
+    <p class="en">Modifies this image in place to a thumbnail no larger than size, preserving the aspect ratio.</p>
+    <p class="zh">就地修改本图像为不超过 size 的缩略图,保持宽高比。</p>
+    <p class="returns"><span class="en">Returns: nothing (mutates in place).</span><span class="zh">返回:无(就地修改)。</span></p>
+  </section>
+
+  <section class="api" id="Image.Reduce">
+    <h3>Reduce</h3>
+    <pre class="sig">image.Reduce(factor, box := unset)</pre>
+    <p class="en">Returns a copy reduced <code>factor</code> times by block-averaging (integer factor &gt; 0).</p>
+    <p class="zh">以块平均方式把图像缩小 <code>factor</code> 倍并返回副本(正整数倍数)。</p>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.Rotate">
+    <h3>Rotate</h3>
+    <pre class="sig">image.Rotate(angle, resample := unset, expand := false, center := unset, translate := unset, fillcolor := unset)</pre>
+    <p class="en">Rotates counterclockwise by angle degrees.</p>
+    <p class="zh">逆时针旋转 angle 度。</p>
+    <dl class="params">
+      <dt>expand</dt><dd><span class="en">True enlarges the output to contain the whole rotated image.</span><span class="zh">为真时扩大输出以容纳整个旋转后的图像。</span></dd>
+      <dt>center</dt><dd><span class="en">Optional rotation center <code>[x, y]</code>; default is the image center.</span><span class="zh">可选旋转中心 <code>[x, y]</code>;默认图像中心。</span></dd>
+      <dt>translate</dt><dd><span class="en">Optional post-rotate translation <code>[x, y]</code>.</span><span class="zh">可选旋转后平移 <code>[x, y]</code>。</span></dd>
+      <dt>fillcolor</dt><dd><span class="en">Color for areas outside the rotated image.</span><span class="zh">旋转后空白区域的颜色。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.Transpose">
+    <h3>Transpose</h3>
+    <pre class="sig">image.Transpose(method)</pre>
+    <p class="en">Flips or rotates by multiples of 90° using a <code>Transpose</code> constant (FLIP_LEFT_RIGHT, FLIP_TOP_BOTTOM, ROTATE_90/180/270, TRANSPOSE, TRANSVERSE).</p>
+    <p class="zh">按 <code>Transpose</code> 常量翻转或旋转 90° 的整数倍(FLIP_LEFT_RIGHT、FLIP_TOP_BOTTOM、ROTATE_90/180/270、TRANSPOSE、TRANSVERSE)。</p>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+    <p class="note"><span class="en">Parity: invalid methods raise <code>No such transpose operation</code>.</span><span class="zh">对齐:非法值抛 <code>No such transpose operation</code>。</span></p>
+  </section>
+
+  <section class="api" id="Image.Transform">
+    <h3>Transform</h3>
+    <pre class="sig">image.Transform(size, method, data, resample := unset, fillcolor := unset)</pre>
+    <p class="en">Applies an affine/extent/perspective/quad/mesh transform (<code>Transform</code> constants; see the ImageTransform page for the data layouts).</p>
+    <p class="zh">应用仿射/范围/透视/四边形/网格变换(<code>Transform</code> 常量;数据布局见 ImageTransform 页)。</p>
+    <dl class="params">
+      <dt>size</dt><dd><span class="en">Output size <code>[width, height]</code>.</span><span class="zh">输出尺寸 <code>[宽, 高]</code>。</span></dd>
+      <dt>method</dt><dd><span class="en"><code>Transform.EXTENT/AFFINE/QUAD/PERSPECTIVE/MESH</code>.</span><span class="zh"><code>Transform.EXTENT/AFFINE/QUAD/PERSPECTIVE/MESH</code>。</span></dd>
+      <dt>data</dt><dd><span class="en">Array of numbers (coefficients / corners / mesh triplets).</span><span class="zh">数值数组(系数 / 角点 / 网格三元组)。</span></dd>
+      <dt>resample / fillcolor</dt><dd><span class="en">Resampling filter and background color.</span><span class="zh">重采样滤波器与背景色。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.Draft">
+    <h3>Draft</h3>
+    <pre class="sig">image.Draft(mode, size)</pre>
+    <p class="en">Configures the decoder to decode at reduced size (JPEG) or to prepare for a mode conversion; must be called right after opening.</p>
+    <p class="zh">配置解码器以缩小尺寸解码(JPEG)或为模式转换做准备;须在打开后立即调用。</p>
+    <dl class="params">
+      <dt>mode</dt><dd><span class="en">Requested mode.</span><span class="zh">请求的模式。</span></dd>
+      <dt>size</dt><dd><span class="en">Requested size.</span><span class="zh">请求的尺寸。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: nothing.</span><span class="zh">返回:无。</span></p>
+  </section>
+
+  <h2 id="pixels">像素与通道 · Pixels &amp; Bands</h2>
+
+  <section class="api" id="Image.GetPixel">
+    <h3>GetPixel / PutPixel</h3>
+    <pre class="sig">image.GetPixel(xy)        ; xy = [x, y]
+image.PutPixel(xy, value)</pre>
+    <p class="en">Reads/writes one pixel. Coordinates wrap negative values like Pillow (<code>-1</code> = last pixel) and floats truncate.</p>
+    <p class="zh">读写单个像素。坐标的负数回绕与 Pillow 一致(<code>-1</code> 为最后一个像素),浮点数截断。</p>
+    <dl class="params">
+      <dt>value</dt><dd><span class="en">Integer (L/I), array per band (RGB…), or a color string.</span><span class="zh">整数(L/I)、逐通道数组(RGB…)或颜色字符串。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">GetPixel returns: pixel value. PutPixel returns: nothing (mutates).</span><span class="zh">GetPixel 返回:像素值。PutPixel 返回:无(就地修改)。</span></p>
+    <p class="note"><span class="en">Parity: strings raise <code>an integer is required</code>; out-of-range raises <code>image index out of range</code>.</span><span class="zh">对齐:字符串抛 <code>an integer is required</code>;越界抛 <code>image index out of range</code>。</span></p>
+  </section>
+
+  <section class="api" id="Image.GetData">
+    <h3>GetData / PutData</h3>
+    <pre class="sig">image.GetData(band := unset)
+image.PutData(data, scale := 1.0, offset := 0.0)</pre>
+    <p class="en">Bulk pixel read/write. GetData returns an array of 256-entry histograms per band, or the histogram of one band. PutData writes an array of per-band histograms with an optional linear transform.</p>
+    <p class="zh">批量像素读写。GetData 返回每通道 256 项直方图组成的数组,或单通道的直方图。PutData 写入每通道直方图数组,可选线性变换。</p>
+    <p class="returns"><span class="en">Returns: array of histograms (GetData) / nothing (PutData).</span><span class="zh">返回:直方图数组(GetData)/ 无(PutData)。</span></p>
+  </section>
+
+  <section class="api" id="Image.Fill">
+    <h3>Fill</h3>
+    <pre class="sig">image.Fill(color)</pre>
+    <p class="en">Fills the whole image with one color (mutates in place).</p>
+    <p class="zh">用单一颜色填满整幅图像(就地修改)。</p>
+  </section>
+
+  <section class="api" id="Image.Point">
+    <h3>Point</h3>
+    <pre class="sig">image.Point(lut, modeName := unset)</pre>
+    <p class="en">Maps pixels through a lookup table: either one callable per band or a flat LUT array.</p>
+    <p class="zh">用查找表映射像素:每通道一个可调用对象,或扁平 LUT 数组。</p>
+    <dl class="params">
+      <dt>lut</dt><dd><span class="en">Callable(s) or LUT array; entries act as <code>round(src) → dst</code>.</span><span class="zh">可调用对象或 LUT 数组;条目按 <code>round(src) → dst</code> 生效。</span></dd>
+      <dt>modeName</dt><dd><span class="en">Optional output mode (e.g. <code>"1"</code> or <code>"L"</code>).</span><span class="zh">可选输出模式(如 <code>"1"</code> 或 <code>"L"</code>)。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+    <p class="note"><span class="en">Parity: a short LUT raises <code>wrong number of lut entries</code>; string entries raise <code>type str doesn't define __round__ method</code>.</span><span class="zh">对齐:LUT 过短抛 <code>wrong number of lut entries</code>;字符串条目抛 <code>type str doesn't define __round__ method</code>。</span></p>
+  </section>
+
+  <section class="api" id="Image.GetChannel">
+    <h3>GetChannel</h3>
+    <pre class="sig">image.GetChannel(channel)</pre>
+    <p class="en">Returns a copy of one channel as an <code>L</code> image. Channel 0 = red (first band); negative indices count from the last band.</p>
+    <p class="zh">返回单个通道的 <code>L</code> 模式副本。通道 0 = 红(第一通道);负数自末通道起计。</p>
+    <p class="returns"><span class="en">Returns: a new L-mode Image.</span><span class="zh">返回:新的 L 模式 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.Split">
+    <h3>Split / GetBands / BandNames</h3>
+    <pre class="sig">image.Split()       ; array of single-band copies
+image.GetBands()    ; array of channel names, e.g. ["R","G","B"]
+image.BandNames()   ; same as GetBands</pre>
+    <p class="en">Split returns one L copy per band. GetBands/BandNames return the band name list Pillow uses in error messages (<code>["R","G","B"]</code>, <code>["L"]</code>, <code>["C","M","Y","K"]</code>…).</p>
+    <p class="zh">Split 返回每通道一份 L 副本。GetBands/BandNames 返回 Pillow 在报错中使用的通道名列表(<code>["R","G","B"]</code>、<code>["L"]</code>、<code>["C","M","Y","K"]</code>……)。</p>
+  </section>
+
+  <h2 id="statistics">统计 · Statistics</h2>
+
+  <section class="api" id="Image.Histogram">
+    <h3>Histogram</h3>
+    <pre class="sig">image.Histogram(mask := unset)</pre>
+    <p class="en">Returns the histogram: one 256-entry list per band, flattened into a single array (Pillow layout).</p>
+    <p class="zh">返回直方图:每通道 256 项,与 Pillow 一样扁平拼接为一个数组。</p>
+    <dl class="params">
+      <dt>mask</dt><dd><span class="en">Optional 1/L-mode mask of the same size; only masked pixels count.</span><span class="zh">可选同尺寸 1/L 模式掩膜;仅统计掩膜内像素。</span></dd>
+    </dl>
+    <p class="note"><span class="en">Parity: a non-1/L mask raises <code>bad transparency mask</code>; size mismatches raise <code>images do not match</code>. I;16 histograms keep Pillow's layout-dependent byte misread as a documented boundary.</span><span class="zh">对齐:非 1/L 掩膜抛 <code>bad transparency mask</code>;尺寸不符抛 <code>images do not match</code>。I;16 直方图保留 Pillow 依赖内存布局的字节误读,记为边界。</span></p>
+  </section>
+
+  <section class="api" id="Image.Entropy">
+    <h3>Entropy</h3>
+    <pre class="sig">image.Entropy(mask := unset)</pre>
+    <p class="en">Returns the image entropy (in bits per pixel) computed from the histogram.</p>
+    <p class="zh">返回由直方图计算的图像熵(每像素比特数)。</p>
+  </section>
+
+  <section class="api" id="Image.GetExtrema">
+    <h3>GetExtrema</h3>
+    <pre class="sig">image.GetExtrema()</pre>
+    <p class="en">Returns min/max pixel values per band: an array of <code>[min, max]</code> pairs.</p>
+    <p class="zh">返回每通道像素极值:<code>[min, max]</code> 二元组数组。</p>
+    <p class="note"><span class="en">Parity: I;16B raises Pillow's <code>image has wrong mode</code>.</span><span class="zh">对齐:I;16B 抛 Pillow 的 <code>image has wrong mode</code>。</span></p>
+  </section>
+
+  <section class="api" id="Image.GetBbox">
+    <h3>GetBbox</h3>
+    <pre class="sig">image.GetBbox(alphaOnly := true)</pre>
+    <p class="en">Returns the bounding box of the non-zero region as <code>[left, upper, right, lower]</code>. With <code>alphaOnly := false</code> alpha is ignored; an all-zero image returns None (unset).</p>
+    <p class="zh">返回非零区域的包围盒 <code>[left, upper, right, lower]</code>。<code>alphaOnly := false</code> 时忽略 alpha;全零图像返回 None(unset)。</p>
+  </section>
+
+  <section class="api" id="Image.GetProjection">
+    <h3>GetProjection</h3>
+    <pre class="sig">image.GetProjection()</pre>
+    <p class="en">Returns two per-axis arrays counting non-zero pixels per column (x) and per row (y).</p>
+    <p class="zh">返回两个逐轴数组,统计每列(x)与每行(y)的非零像素数。</p>
+  </section>
+
+  <section class="api" id="Image.GetColors">
+    <h3>GetColors</h3>
+    <pre class="sig">image.GetColors(maxcolors := 256)</pre>
+    <p class="en">Returns an array of <code>[count, color]</code> pairs of the most frequent colors, or None (unset) above maxcolors.</p>
+    <p class="zh">返回最常见颜色的 <code>[计数, 颜色]</code> 数组;颜色数超过 maxcolors 时返回 None(unset)。</p>
+  </section>
+
+  <h2 id="palette">调色板与量化 · Palette &amp; Quantize</h2>
+
+  <section class="api" id="Image.GetPalette">
+    <h3>GetPalette / PutPalette</h3>
+    <pre class="sig">image.GetPalette(rawmode := "RGB")
+image.PutPalette(data, rawmode := "RGB")</pre>
+    <p class="en">Reads/writes the palette of a P-mode image. GetPalette returns the raw palette bytes (768 for RGB); PutPalette attaches a new palette.</p>
+    <p class="zh">读写 P 模式图像的调色板。GetPalette 返回原始调色板字节(RGB 为 768 字节);PutPalette 挂接新调色板。</p>
+  </section>
+
+  <section class="api" id="Image.Quantize">
+    <h3>Quantize</h3>
+    <pre class="sig">image.Quantize(colors := 256, method := unset, kmeans := 0, palette := unset, dither := unset)</pre>
+    <p class="en">Converts the image to P mode with at most <code>colors</code> colors.</p>
+    <p class="zh">把图像转换为至多 <code>colors</code> 色的 P 模式。</p>
+    <dl class="params">
+      <dt>method</dt><dd><span class="en"><code>Quantize.MEDIANCUT/MAXCOVERAGE/FASTOCTREE</code>; <code>LIBIMAGEQUANT</code> raises Pillow's exact <code>dependency required by this method was not enabled at compile time</code>.</span><span class="zh"><code>Quantize.MEDIANCUT/MAXCOVERAGE/FASTOCTREE</code>;<code>LIBIMAGEQUANT</code> 抛 Pillow 原样的 <code>dependency required by this method was not enabled at compile time</code>。</span></dd>
+      <dt>kmeans</dt><dd><span class="en">Number of k-means refinement iterations.</span><span class="zh">k-means 精化迭代次数。</span></dd>
+      <dt>palette</dt><dd><span class="en">Optional palette image to quantize to.</span><span class="zh">可选的量化目标调色板图像。</span></dd>
+      <dt>dither</dt><dd><span class="en"><code>Dither.NONE</code> or <code>Dither.FLOYDSTEINBERG</code>.</span><span class="zh"><code>Dither.NONE</code> 或 <code>Dither.FLOYDSTEINBERG</code>。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new P-mode Image.</span><span class="zh">返回:新的 P 模式 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.ApplyTransparency">
+    <h3>ApplyTransparency / RemapPalette</h3>
+    <pre class="sig">image.ApplyTransparency()   ; image.ApplyTransparency()
+image.RemapPalette(destImage)</pre>
+    <p class="en">ApplyTransparency replaces the P-mode transparency color with a real alpha band. RemapPalette remaps this image's colors through another P-mode image's palette.</p>
+    <p class="zh">ApplyTransparency 把 P 模式透明色替换为真正的 alpha 通道。RemapPalette 以另一 P 模式图像的调色板重映射本图颜色。</p>
+  </section>
+
+  <h2 id="composite">合成与粘贴 · Compositing</h2>
+
+  <section class="api" id="Image.Paste">
+    <h3>Paste</h3>
+    <pre class="sig">image.Paste(source, box := unset, mask := unset)</pre>
+    <p class="en">Pastes another image into this one (mutates in place). Box-less pastes require equal sizes; a 2-tuple box places the source's upper-left corner; a 4-tuple box resizes the source first.</p>
+    <p class="zh">把另一图像粘贴进本图像(就地修改)。省略 box 时两图须同尺寸;二元 box 定位源图左上角;四元 box 先把源图缩放到该区域。</p>
+    <dl class="params">
+      <dt>mask</dt><dd><span class="en">Optional 1/L/RGBA mask; 255 = paste, 0 = keep.</span><span class="zh">可选 1/L/RGBA 掩膜;255 = 粘贴,0 = 保留。</span></dd>
+    </dl>
+  </section>
+
+  <section class="api" id="Image.PutAlpha">
+    <h3>PutAlpha</h3>
+    <pre class="sig">image.PutAlpha(alpha)</pre>
+    <p class="en">Adds or replaces the alpha band from an L-mode image of the same size.</p>
+    <p class="zh">以同尺寸 L 模式图像添加或替换 alpha 通道。</p>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <h2 id="convert">转换与滤镜 · Conversion &amp; Filters</h2>
+
+  <section class="api" id="Image.Convert">
+    <h3>Convert</h3>
+    <pre class="sig">image.Convert(modeName := unset, matrixOrDither := unset, dither := unset, palette := unset, colors := unset)</pre>
+    <p class="en">Returns a converted copy. Omitting the mode copies the image (optionally converting the palette to RGBA).</p>
+    <p class="zh">返回转换后的副本。省略模式时复制图像(可选把调色板转为 RGBA)。</p>
+    <dl class="params">
+      <dt>modeName</dt><dd><span class="en">Target mode; a 4×4 or 4×3 matrix converts to L/RGB (12 values) or RGBA/CMYK (16 values) via <code>matrix · src + offset</code>.</span><span class="zh">目标模式;4×4 或 4×3 矩阵按 <code>matrix · src + offset</code> 转 L/RGB(12 值)或 RGBA/CMYK(16 值)。</span></dd>
+      <dt>matrixOrDither / dither</dt><dd><span class="en">Matrix or <code>Dither</code> constant; P→RGB conversions accept dithering.</span><span class="zh">矩阵或 <code>Dither</code> 常量;P→RGB 转换可抖动。</span></dd>
+      <dt>palette</dt><dd><span class="en">Target <code>Palette</code> constant or a sequence of colors when converting to P.</span><span class="zh">转 P 模式时的目标 <code>Palette</code> 常量或颜色序列。</span></dd>
+      <dt>colors</dt><dd><span class="en">Color count for ADAPTIVE palettes (default 256).</span><span class="zh">ADAPTIVE 调色板的颜色数(默认 256)。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="Image.Filter">
+    <h3>Filter</h3>
+    <pre class="sig">image.Filter(filter)</pre>
+    <p class="en">Applies an ImageFilter and returns the result. The argument must be an <code>ImageFilter.Filter</code> instance or class.</p>
+    <p class="zh">应用 ImageFilter 并返回结果。参数必须是 <code>ImageFilter.Filter</code> 实例或类。</p>
+    <p class="note"><span class="en">Parity: other arguments raise <code>filter argument should be ImageFilter.Filter instance or class</code>.</span><span class="zh">对齐:其他参数抛 <code>filter argument should be ImageFilter.Filter instance or class</code>。</span></p>
+  </section>
+
+  <h2 id="metadata">元数据与属性 · Metadata &amp; Attributes</h2>
+
+  <section class="api" id="Image.GetExif">
+    <h3>GetExif / GetXmp</h3>
+    <pre class="sig">image.GetExif()   ; an Image.Exif object
+image.GetXmp()    ; XMP metadata map, or None (unset)</pre>
+    <p class="en">GetExif returns an <code>Image.Exif</code> object built from the decoded EXIF data (Pillow's <code>getexif()</code>). GetXmp parses the embedded XMP packet into a nested map (or unset when absent).</p>
+    <p class="zh">GetExif 返回由已解码 EXIF 数据构造的 <code>Image.Exif</code> 对象(Pillow 的 <code>getexif()</code>)。GetXmp 把内嵌 XMP 包解析为嵌套 Map(缺省时为 unset)。</p>
+  </section>
+
+  <section class="api" id="Image.Exif">
+    <h3>Exif <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.Image.Exif.FromImage(image)
+exif.Has(tag)                       ; tag present?
+exif.Get(tag, defaultValue := unset) ; tag value
+exif.Delete(tag)                     ; remove a tag
+exif.ToBytes()                       ; serialized EXIF blob</pre>
+    <p class="en">Pillow's Exif object: <code>Has</code>/<code>Get</code>/<code>Delete</code> work on EXIF tags; <code>ToBytes</code> serializes back to the TIFF-header EXIF blob. Tag values are stored in the typed Maps (<code>AsciiTags</code>, <code>IntTags</code>, <code>RationalTags</code>, <code>ByteArrayTags</code>, <code>UndefinedTags</code>, …), and <code>Orientation</code>/<code>HasOrientation</code> mirror Pillow's fields.</p>
+    <p class="zh">Pillow 的 Exif 对象:<code>Has</code>/<code>Get</code>/<code>Delete</code> 操作 EXIF 标签;<code>ToBytes</code> 序列化回带 TIFF 头的 EXIF 数据块。标签值存于分类型的 Map(<code>AsciiTags</code>、<code>IntTags</code>、<code>RationalTags</code>、<code>ByteArrayTags</code>、<code>UndefinedTags</code>……),<code>Orientation</code>/<code>HasOrientation</code> 对应 Pillow 的同名字段。</p>
+    <p class="note"><span class="en">The typed tag readers (<code>ReadUintTag</code>, <code>ReadAsciiTag</code>, <code>ReadRationalTag</code>, …) and the <code>Normalize*</code>/<code>*TagType</code> helpers are the internal EXIF parsing machinery behind <code>FromImage</code>.</span><span class="zh">分类型标签读取器(<code>ReadUintTag</code>、<code>ReadAsciiTag</code>、<code>ReadRationalTag</code>……)与 <code>Normalize*</code>/<code>*TagType</code> 辅助是 <code>FromImage</code> 背后的内部 EXIF 解析机制。</span></p>
+  </section>
+
+  <section class="api" id="Image.GetIm">
+    <h3>GetIm / Im <span class="kind">method + property</span></h3>
+    <pre class="sig">image.GetIm()   ; native handle
+image.Im        ; same handle</pre>
+    <p class="en">Returns the underlying native image handle (the analogue of Pillow's <code>im</code> ImagingCore object). The native ABI covers the ImagingCore method surface.</p>
+    <p class="zh">返回底层原生图像句柄(Pillow <code>im</code> ImagingCore 对象的对应物)。原生 ABI 覆盖 ImagingCore 的方法表面。</p>
+  </section>
+
+  <section class="api" id="Image.Properties">
+    <h3>Properties <span class="kind">attributes</span></h3>
+    <table class="appendix">
+      <tr><th>Property</th><th>EN</th><th>中文</th></tr>
+      <tr><td><code>Mode</code></td><td>Mode string (<code>"RGB"</code>, …).</td><td>模式字符串(<code>"RGB"</code>……)。</td></tr>
+      <tr><td><code>Size</code></td><td>Array <code>[width, height]</code>.</td><td>数组 <code>[宽, 高]</code>。</td></tr>
+      <tr><td><code>Width</code> / <code>Height</code></td><td>Size in pixels.</td><td>像素尺寸。</td></tr>
+      <tr><td><code>Channels</code> / <code>Stride</code> / <code>ByteSize</code></td><td>Band count, row stride in bytes, total storage bytes.</td><td>通道数、行步长(字节)、存储总字节。</td></tr>
+      <tr><td><code>Format</code></td><td>File format of the source (<code>"JPEG"</code>, <code>"PNG"</code>, …, <code>""</code> for fresh images).</td><td>源文件格式(<code>"JPEG"</code>、<code>"PNG"</code>……;新建图为 <code>""</code>)。</td></tr>
+      <tr><td><code>FormatDescription</code></td><td>Long name (<code>"JPEG (ISO 10918)"</code>, …).</td><td>长名称(<code>"JPEG (ISO 10918)"</code>……)。</td></tr>
+      <tr><td><code>Info</code></td><td>Metadata <code>Map</code> (dpi, compression, transparency, exif, xmp, icc_profile, comment, …).</td><td>元数据 <code>Map</code>(dpi、compression、transparency、exif、xmp、icc_profile、comment……)。</td></tr>
+      <tr><td><code>Filename</code></td><td>Source path for opened images; AttributeError otherwise.</td><td>已打开图像的源路径;否则抛 AttributeError。</td></tr>
+      <tr><td><code>ReadOnly</code></td><td>True when pixel storage is read-only.</td><td>像素存储只读时为真。</td></tr>
+      <tr><td><code>NFrames</code> / <code>IsAnimated</code></td><td>Frame count and animation flag (Pillow's <code>n_frames</code>/<code>is_animated</code>).</td><td>帧数与动画标志(Pillow 的 <code>n_frames</code>/<code>is_animated</code>)。</td></tr>
+      <tr><td><code>HasTransparencyData</code></td><td>True when the source carries transparency.</td><td>源带透明数据时为真。</td></tr>
+      <tr><td><code>Quantization</code></td><td>JPEG-only dict with q-table related values; AttributeError elsewhere.</td><td>仅 JPEG 的量化信息字典;其他格式抛 AttributeError。</td></tr>
+      <tr><td><code>ico</code> / <code>disposal_method</code></td><td>ICO/GIF frame attributes where present.</td><td>ICO/GIF 帧属性(存在时)。</td></tr>
+    </table>
+  </section>
+
+  <section class="api" id="Image.TiffCompressionName">
+    <h3>TiffCompressionName <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.TiffCompressionName(value)</pre>
+    <p class="en">Maps a TIFF compression code to its Pillow name (<code>1→"raw"</code>, <code>5→"lzw"</code>, <code>6→"jpeg"</code>, <code>8→"deflate"</code>, <code>32773→"packbits"</code>, …), used for <code>Info["compression"]</code>.</p>
+    <p class="zh">把 TIFF 压缩码映射为 Pillow 名称(<code>1→"raw"</code>、<code>5→"lzw"</code>、<code>6→"jpeg"</code>、<code>8→"deflate"</code>、<code>32773→"packbits"</code>……),用于 <code>Info["compression"]</code>。</p>
+  </section>
+
+  <h2 id="save">保存与生命周期 · Saving &amp; Lifecycle</h2>
+
+  <section class="api" id="Image.Save">
+    <h3>Save</h3>
+    <pre class="sig">image.Save(path, format := unset, options := unset)</pre>
+    <p class="en">Saves the image to a file. The format is derived from the extension or given explicitly. Pillow's keyword options map to PascalCase option keys (<code>quality</code>→<code>quality</code>, <code>optimize</code>→<code>optimize</code>, <code>subsampling</code>, <code>dpi</code>, <code>compressLevel</code>, <code>iccProfile</code>, …).</p>
+    <p class="zh">把图像保存为文件。格式由扩展名推断或显式指定。Pillow 的关键字选项映射为 PascalCase 选项键(<code>quality</code>、<code>optimize</code>、<code>subsampling</code>、<code>dpi</code>、<code>compressLevel</code>、<code>iccProfile</code>……)。</p>
+    <dl class="params">
+      <dt>path</dt><dd><span class="en">Output path (also accepts a file object-like handle).</span><span class="zh">输出路径(也可接受类文件句柄)。</span></dd>
+      <dt>format</dt><dd><span class="en">Explicit format name when the extension is ambiguous.</span><span class="zh">扩展名不明时显式指定的格式名。</span></dd>
+      <dt>options</dt><dd><span class="en">Map of encoder options.</span><span class="zh">编码器选项 Map。</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: nothing.</span><span class="zh">返回:无。</span></p>
+  </section>
+
+  <section class="api" id="Image.ToBytes">
+    <h3>ToBytes / ToBitmap</h3>
+    <pre class="sig">image.ToBytes(encoder := unset, rawmode := unset, orientation := 1)
+image.ToBitmap(name := "image")</pre>
+    <p class="en">ToBytes encodes the image to a byte buffer (tobytes). ToBitmap saves a bitmap file usable by AutoHotkey's <code>Gui</code> (<code>name</code> = the file's base name).</p>
+    <p class="zh">ToBytes 把图像编码为字节缓冲(tobytes)。ToBitmap 保存 AutoHotkey <code>Gui</code> 可用的位图文件(<code>name</code> 为文件基名)。</p>
+  </section>
+
+  <section class="api" id="Image.Copy">
+    <h3>Copy</h3>
+    <pre class="sig">image.Copy()</pre>
+    <p class="en">Returns a full copy of this image (pixels and Info; file data is not duplicated).</p>
+    <p class="zh">返回本图像的完整副本(像素与 Info;文件数据不复制)。</p>
+  </section>
+
+  <section class="api" id="Image.Seek">
+    <h3>Seek / Tell</h3>
+    <pre class="sig">image.Seek(frame)
+image.Tell()   ; current frame index</pre>
+    <p class="en">Moves between frames of an animated image (GIF, ICO, TIFF, FLI, MNG…). Tell returns the current frame number.</p>
+    <p class="zh">在动画图像的帧间移动(GIF、ICO、TIFF、FLI、MNG……)。Tell 返回当前帧号。</p>
+  </section>
+
+  <section class="api" id="Image.Verify">
+    <h3>Verify</h3>
+    <pre class="sig">image.Verify()</pre>
+    <p class="en">Checks the file integrity without decoding pixels; raises on a corrupted file.</p>
+    <p class="zh">不解码像素而校验文件完整性;文件损坏时抛出。</p>
+  </section>
+
+  <section class="api" id="Image.Close">
+    <h3>Close</h3>
+    <pre class="sig">image.Close()</pre>
+    <p class="en">Releases the native image handle. The object becomes unusable (Pillow's closed-image error shape).</p>
+    <p class="zh">释放原生图像句柄。对象随即不可用(Pillow 的已关闭图像报错形态)。</p>
+  </section>
+
+  <section class="api" id="Image.Show">
+    <h3>Show / ToQImage / ToQPixmap</h3>
+    <pre class="sig">image.Show(title := unset)
+image.ToQImage()     ; alias served by AHK case-insensitivity: toqimage()
+image.ToQPixmap()    ; alias: toqpixmap()</pre>
+    <p class="en">Displays the image with a system viewer, or converts it to a Qt image/pixmap (boundaries in this runtime).</p>
+    <p class="zh">用系统查看器显示图像,或转换为 Qt 图像/画布(本运行时为边界)。</p>
+    <p class="warn"><span class="en">Boundary: the AHK runtime has no viewer registry and no Qt binding, so Show raises Pillow's <code>no viewers found</code> shape and ToQImage/ToQPixmap raise Pillow's exact <code>Qt bindings are not installed</code> instead of launching a viewer or building QImage/QPixmap objects. See <a href="boundaries.html">Boundaries</a>.</span><span class="zh">边界:AHK 运行时没有查看器注册表与 Qt 绑定,Show 抛 Pillow 形态的 <code>no viewers found</code>,ToQImage/ToQPixmap 抛 Pillow 原样的 <code>Qt bindings are not installed</code>,而非启动查看器或构造 QImage/QPixmap 对象。见<a href="boundaries.html">行为边界</a>。</span></p>
+  </section>
+
+  <section class="api" id="Image.GetChildImages">
+    <h3>GetChildImages</h3>
+    <pre class="sig">image.GetChildImages()</pre>
+    <p class="en">Returns sub-images (e.g. ICO sizes) — an empty array for the implemented handles, matching Pillow.</p>
+    <p class="zh">返回子图像(如 ICO 尺寸)——已实现句柄返回空数组,与 Pillow 一致。</p>
+  </section>
+
+  <h2 id="internals">内部辅助 · Internal helpers</h2>
+  <p class="en">The following members implement codec parsing, buffer plumbing and option routing. They are public for the facade's own use and pinned by the test suite, but are not part of the Pillow-style user API.</p>
+  <p class="zh">以下成员实现编解码解析、缓冲区管道与选项路由。它们对门面内部公开并被测试套件钉死,但不属于 Pillow 风格的用户 API。</p>
+  <table class="appendix">
+    <tr><th>Group</th><th>Members</th><th>EN / 中文</th></tr>
+    <tr><td>Open / sniff</td><td><code>ResolveOpenFormat(s)</code>, <code>ResolveSaveFormat</code>, <code>SniffCodecMagic</code>, <code>NormalizeFileFormat</code>, <code>FormatFromPath</code>, <code>FrameCountForOpen</code>, <code>StubAccepts</code>, <code>MpegAccepts</code></td><td><span class="en">Format detection and dispatch.</span><span class="zh">格式识别与分发。</span></td></tr>
+    <tr><td>Codec open helpers</td><td><code>DcxFrameCount</code>, <code>DdsOpenError</code>, <code>EpsOpenFailure</code>, <code>FitsRowBytes</code>, <code>FitsTruncatedCount</code>, <code>FliDuration</code>, <code>FliFrameCount</code>, <code>FliHeader</code>, <code>FtexDataStart</code>, <code>FtexFormatId</code>, <code>FtexTruncatedCount</code>, <code>FtexWidth</code>, <code>GbrInfo</code>, <code>IcnsRleLeftover</code>, <code>IcnsSizes</code>, <code>IcoPayloadFormat</code>, <code>IcoSizes</code>, <code>MpoHasIndex</code>, <code>OpenDibHandle</code>, <code>OpenImHandle</code>, <code>OpenIptc</code>, <code>OpenMcIdas</code>, <code>OpenSimpleTruncatedCount</code>, <code>OpenSpiderHandle</code>, <code>PixarWidth</code>, <code>PsdHeaderInfo</code>, <code>PsdIcc</code>, <code>SgiTruncatedCount</code>, <code>SunStride</code>, <code>XpmRgbUnknownKey</code>, <code>XpmTransparencyKey</code>, <code>XvThumbHeader</code>, <code>XvThumbTruncatedCount</code></td><td><span class="en">Per-format header parsing shared by Open.</span><span class="zh">Open 共用的各格式头解析。</span></td></tr>
+    <tr><td>Save helpers</td><td><code>SaveDib</code>, <code>SaveDpiPair</code>, <code>SaveGifAnimation</code>, <code>SaveGifCommentBuffer</code>, <code>SaveHotspotPair</code>, <code>SaveIcoSizePairs</code>, <code>SaveIm</code>, <code>SaveIntSequence</code>, <code>SaveJpegCommentBuffer</code>, <code>SaveJpegQTables</code>, <code>SaveJpegQualityPreset(Info)</code>, <code>SaveJpegSubsampling</code>, <code>SaveOption</code>, <code>SaveOptionBool</code>, <code>SavePalm</code>, <code>SavePdfInfoString</code>, <code>SavePngTextEntries</code>, <code>SaveSpider</code>, <code>SaveTiffAsciiNamedValue</code>, <code>SaveTiffCompression</code>, <code>SaveTiffFrames</code>, <code>SaveTiffInfoEntries</code>, <code>SaveTransparencyByteTable</code>, <code>SaveTransparencyRgbTuple</code></td><td><span class="en">Option parsing and payload assembly for Save.</span><span class="zh">Save 的选项解析与负载组装。</span></td></tr>
+    <tr><td>Buffers</td><td><code>ByteBuffer</code>, <code>IntBuffer</code>, <code>ColorBuffer</code>, <code>LutBuffer</code>, <code>PaletteBuffer</code>, <code>PaletteRgbaBuffer</code>, <code>PasteColorBuffer</code>, <code>RawModeBuffer</code>, <code>BinaryBuffer</code>, <code>NulTerminatedByteBuffer</code>, <code>Utf8Buffer</code>, <code>Latin1Buffer</code>, <code>BufferWithoutNul</code>, <code>BufferEqualsAscii</code>, <code>ReadAllBytes</code>, <code>ReadF32</code>, <code>ReadI32</code>, <code>WriteF32</code>, <code>WriteI32</code>, <code>Be32At</code>, <code>InternalBytes</code>, <code>DataPointer</code>, <code>DetachBufferView</code>, <code>RefreshBufferView</code>, <code>HandleArray</code>, <code>PixelBufferToValue</code>, <code>PixelValueBuffer</code></td><td><span class="en">AHK↔DLL buffer conversion.</span><span class="zh">AHK↔DLL 缓冲区转换。</span></td></tr>
+    <tr><td>Numeric helpers</td><td><code>RoundClipU8</code>, <code>TruncateClipU8</code>, <code>ClipTupleU8</code>, <code>RoundHalfEven</code>, <code>ChannelIndex</code>, <code>ModeAwareU8</code>, <code>ModeInfo</code>, <code>ModeOnePixelValue</code>, <code>GetModeBase</code>, <code>GetModeBands</code>, <code>GetModeBandNames</code>, <code>GetModeType</code>, <code>ColorCountsToArray</code>, <code>NumericColorCountsToArray</code>, <code>ProjectionBufferToArray</code>, <code>PaletteAlphaMode(ForPut)</code>, <code>NormalizePaletteRawmode</code>, <code>ConvertRgbPaletteValues</code>, <code>ConvertRgbaPaletteValues</code>, <code>ThumbnailRoundAspect</code>, <code>ReduceBox</code>, <code>ReduceFactor</code>, <code>CallablePointLut</code></td><td><span class="en">Mode/color arithmetic shared by the pixel APIs.</span><span class="zh">像素 API 共用的模式/颜色算术。</span></td></tr>
+    <tr><td>Transform internals</td><td><code>TransformAffine</code>, <code>TransformExtent</code>, <code>TransformFillBuffer</code>, <code>TransformMesh</code>, <code>TransformPerspective</code>, <code>TransformQuad</code>, <code>ThrowUnsupportedTransformResample</code>, <code>WritePutDataPixel</code>, <code>WritePutDataTuple</code></td><td><span class="en">Geometry transform plumbing.</span><span class="zh">几何变换管道。</span></td></tr>
+    <tr><td>Metadata helpers</td><td><code>ApplyFrameMetadata</code>, <code>ApplyIcoPayloadDibMetadata</code>, <code>ApplyNativeMetadata</code>, <code>CopyInfo</code>, <code>SetOptionalInfo</code>, <code>ExifFamilyBuffers</code>, <code>ExifOrientation</code>, <code>NativeGifComment</code>, <code>NativeJpegQTables</code>, <code>NativeJpegSubsampling</code>, <code>NativeMetadataBlob</code>, <code>ParseXmpBuffer</code>, <code>PatchTiffBigTiffExifEntries</code>, <code>PatchTiffExifEntries</code>, <code>XmpElementToMap</code>, <code>XmpNodeLocalName</code>, <code>IsPngPrivateChunkName</code>, <code>IsPngPrivateChunkType</code></td><td><span class="en">Info/EXIF/XMP assembly after decode.</span><span class="zh">解码后的 Info/EXIF/XMP 组装。</span></td></tr>
+    <tr><td>Other</td><td><code>RequireHandle</code>, <code>WrapDerivedHandle</code>, <code>GetInt</code>, <code>IcoFile</code> (sizes/getimage), <code>GetColorsNumeric</code>, <code>PaletteAlphaModeForPut</code>, <code>ResolveOpenFormats</code>, <code>SaveJpegQualityPresetInfo</code>, <code>Utf8StringFromBytes</code></td><td><span class="en">Handle validation; ICO container parsing; shared option/string helpers.</span><span class="zh">句柄校验;ICO 容器解析;共用选项/字符串辅助。</span></td></tr>
+  </table>
+
+  <h2 id="examples">示例 · Examples</h2>
+  <p class="en">Rotate, paste and save (the Pillow tutorial shape):</p>
+  <p class="zh">旋转、粘贴与保存(Pillow 教程形态):</p>
+  <pre class="example">img := Pillow.Image.Open("photo.jpg")
+rot := img.Rotate(45, Pillow.Resampling.BICUBIC, true, , , "white")
+rot.Paste(Pillow.Image.New("RGBA", [64, 64], "red"), [10, 10])
+rot.Save("out.png")
+rot.Close(), img.Close()</pre>
+  <p class="en">Thumbnail + gradient + histogram:</p>
+  <p class="zh">缩略图 + 渐变 + 直方图:</p>
+  <pre class="example">im := Pillow.Image.LinearGradient("L")
+im.Thumbnail([128, 128])
+hist := im.Histogram()          ; 256 entries for L
+thumb := Pillow.Image.Open("big.png")
+thumb.Thumbnail([300, 300])
+thumb.Save("thumb.png", , Map("optimize", true))</pre>
+</div>
+<script src="../_static/pages.js"></script>
+</body>
+</html>

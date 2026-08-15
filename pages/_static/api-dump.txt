@@ -1,0 +1,826 @@
+=== Transpose ===
+=== Transform ===
+=== Resampling ===
+=== Dither ===
+=== Palette ===
+=== Quantize ===
+=== ImageMath ===
+static UnsafeEval(expression, variables := unset) => Pillow.ImageMath.Eval(expression, variables)
+static Eval(expression, variables := unset) {
+static Tokenize(expression) {
+static NormalizeVariables(variables := unset) {
+static Compile(tokens, variables) {
+static AddConstant(value, isFloat, &constants, &kinds, &slotCount, &constantFloats) {
+static AddImage(image, &images, &kinds, &slotCount, &imageSlots, &firstImage, &width, &height) {
+static OperatorName(op) {
+static EmitBinary(name, output, &floatBitwiseOperator) {
+static EmitUnary(name, output) {
+static EmitCall(name, output) {
+static Linearize(node, program) {
+static ProgramBuffer(program) {
+static EvalTreeScalar(node, constants) {
+static ScalarBinary(op, left, right) {
+=== ImageMath/Operand ===
+__New(expr, variables := unset) {
+Add(other) {
+Sub(other) {
+Mul(other) {
+Div(other) {
+Mod(other) {
+LShift(other) {
+RShift(other) {
+BitAnd(other) {
+BitOr(other) {
+BitXor(other) {
+Neg() {
+BitNot() {
+static OperandScalar(value) {
+static OperandBinary(left, op, right) {
+static OperandUnary(value, op) {
+static OperandFunction(name, args*) {
+static ImagemathInt(self) {
+static imagemath_int(self) {
+static ImagemathFloat(self) {
+static imagemath_float(self) {
+static ImagemathEqual(self, other) {
+static imagemath_equal(self, other) {
+static ImagemathNotequal(self, other) {
+static imagemath_notequal(self, other) {
+static ImagemathMin(self, other) {
+static imagemath_min(self, other) {
+static ImagemathMax(self, other) {
+static imagemath_max(self, other) {
+static ImagemathConvert(self, mode) {
+static imagemath_convert(self, mode) {
+static OperandOps() {
+static LambdaEval(expression, options := unset, kwargs*) {
+static lambda_eval(expression, options := unset, kwargs*) {
+static SortedKeys(map) {
+=== ImageQt ===
+static ImageQt(im) => Pillow.ImageQt.RequireQt()
+static ToQImage(im) => Pillow.ImageQt.RequireQt()
+static ToQPixmap(im) => Pillow.ImageQt.RequireQt()
+static FromQImage(qim) => Pillow.ImageQt.RequireQt()
+static RequireQt() {
+=== ImageTk ===
+static PhotoImage(image := unset, args*) => Pillow.ImageTk.RequireTk()
+static BitmapImage(image := unset, args*) => Pillow.ImageTk.RequireTk()
+static RequireTk() {
+=== ImageFile ===
+__New(args*) => Pillow.ImageFile.RequireIncremental()
+=== ImageFile/ImageFile ===
+__New(args*) => Pillow.ImageFile.RequireIncremental()
+=== ImageFile/Parser ===
+__New() {
+Reset() {
+Feed(data) {
+Close() {
+__Enter() {
+__Exit(args*) {
+static ParserConcat(a, b) {
+DllCall("msvcrt\memcpy", "Ptr", out, "Ptr", a, "UPtr", a.Size, "CDecl Ptr")
+DllCall("msvcrt\memcpy", "Ptr", out.Ptr + a.Size, "Ptr", b, "UPtr", b.Size, "CDecl Ptr")
+static ParserWriteTemp(data) {
+static ParserProbeExtension(data) {
+static ParserDeleteTemp(path) {
+FileDelete(path)
+=== ImageFile/StubImageFile ===
+__New(args*) {
+=== ImageFile/StubHandler ===
+__New(args*) {
+=== ImageFile/PyCodec ===
+__New(args*) => Pillow.ImageFile.RequirePyCodecMode()
+=== ImageFile/PyDecoder ===
+__New(args*) => Pillow.ImageFile.RequirePyCodecMode()
+=== ImageFile/PyEncoder ===
+__New(args*) => Pillow.ImageFile.RequirePyCodecMode()
+=== ImageFile/PyCodecState ===
+static ReportOSError(code) {
+static RequireIncremental() {
+static RequirePyCodecMode() {
+=== ImagePalette ===
+__New(mode := "RGB", palette := unset) {
+property: Palette {
+property: Colors {
+Copy() {
+GetData() {
+ToBytes() {
+Tostring() => this.ToBytes()
+GetColor(color, image := unset) {
+Save(fp) {
+static ColorKey(color) {
+static Raw(rawmode, data) {
+static Negative(mode := "RGB") {
+static Random(mode := "RGB") {
+static Sepia(white := "#fff0c0") {
+static Wedge(mode := "RGB") {
+static Load(filename) {
+static PaletteLoadCaught(message) {
+static PaletteTokens(line) {
+static GimpPaletteParse(content) {
+static PaletteInt(text) {
+static GradientSegment(id, middle, pos) {
+static GimpGradientParse(content) {
+static PaletteFloat(text) {
+static PaletteParse(content) {
+static MakeLinearLut(black, white) {
+static MakeGammaLut(exp) {
+=== ImageTransform ===
+__New(args*) {
+=== ImageTransform/Transform ===
+__New(data) {
+GetData() {
+Transform(size, image, resample := unset, fillcolor := unset) {
+=== ImageTransform/AffineTransform ===
+=== ImageTransform/ExtentTransform ===
+=== ImageTransform/PerspectiveTransform ===
+=== ImageTransform/QuadTransform ===
+=== ImageTransform/MeshTransform ===
+=== ImagePath ===
+=== ImagePath/Path ===
+__New(xy) {
+Tolist(flat := true) {
+GetBbox() {
+Compact(distance) {
+Transform(matrix) {
+Map(fn) {
+=== ImageGrab ===
+static GrabClipboard() {
+static Grab(bbox := unset, includeLayeredWindows := false, allScreens := false) {
+=== ImageSequence ===
+static AllFrames(im, fn := unset) {
+static all_frames(im, fn := unset) {
+=== ImageSequence/Iterator ===
+__New(image) {
+__Enum(varCount) {
+GetFrame(index) {
+SeekForIteration(index) {
+static IsEndError(err) {
+=== PngImagePlugin ===
+=== PngImagePlugin/PngInfo ===
+__New() {
+AddText(key, value, zip := false) {
+add_text(key, value, zip := false) {
+AddIText(key, value, lang := "", tkey := "", zip := false) {
+add_itxt(key, value, lang := "", tkey := "", zip := false) {
+add(cid, data, after_idat := false) {
+=== ImageColor ===
+static GetRgb(color) {
+static GetColor(color, modeName) {
+static HexByte(hex) {
+static HsvToRgb(h, s, v) {
+static HlsToRgb(h, l, s) {
+static HueToRgb(m1, m2, h) {
+static RgbToHsv(rgb) {
+static ColorMap() {
+=== ImageOps ===
+static Invert(image) {
+static Grayscale(image) {
+static Mirror(image) {
+static Flip(image) {
+static ExifTranspose(image, in_place := false) {
+static exif_transpose(image, in_place := false) {
+static ExifOrientationTransposeMethod(orientation) {
+static Deform(image, deformer, resample := unset) {
+static Posterize(image, bits) {
+static Solarize(image, threshold := 128) {
+static Colorize(image, black, white, mid := unset, blackpoint := 0, whitepoint := 255, midpoint := 127) {
+static Equalize(image, mask := unset) {
+static Crop(image, border := 0) {
+static Expand(image, border := 0, fill := 0) {
+static Scale(image, factor, resample := unset) {
+static Contain(image, size, method := unset) {
+static Cover(image, size, method := unset) {
+static Fit(image, size, method := unset, bleed := 0.0, centering := unset) {
+static Pad(image, size, method := unset, color := unset, centering := unset) {
+static Autocontrast(image, cutoff := 0, ignore := unset, mask := unset, preserveTone := false) {
+static NativeProportionalResize(image, size, method, exportName) {
+static NativeUnaryImageOp(image, exportName) {
+static CheckLutTransformStatus(status, image, allowModeOne := false) {
+static CheckHistogramTransformStatus(status, image, masked := false, preserveTone := false) {
+static SupportsLutTransformMode(mode, allowModeOne := false) {
+static RequireImageHandle(image, operationName) {
+static BorderBox(border, operationName := "Expand") {
+static FillBuffer(image, fill, operationName := "Expand") {
+static RgbColorBuffer(color, operationName) {
+static CenteringPair(centering, operationName := "Pad") {
+static CutoffPair(cutoff) {
+static IgnoreBuffer(ignore) {
+static NormalizeIgnoreValue(value) {
+=== ImageChops ===
+static Blend(left, right, alpha) {
+static Composite(image1, image2, mask) {
+static CheckBinaryStatus(status, left, right) {
+static BinaryOperation(exportName, left, right, operationName) {
+static ScaledBinaryOperation(exportName, left, right, scale, offset, operationName) {
+static Constant(image, value) {
+static Duplicate(image) {
+static Invert(image) {
+static Difference(left, right) {
+static Multiply(left, right) {
+static Screen(left, right) {
+static Lighter(left, right) {
+static Darker(left, right) {
+static SoftLight(left, right) {
+static HardLight(left, right) {
+static Overlay(left, right) {
+static LogicalAnd(left, right) {
+static LogicalOr(left, right) {
+static LogicalXor(left, right) {
+static Offset(image, xoffset, yoffset := unset) {
+static Add(left, right, scale := 1.0, offset := 0) {
+static Subtract(left, right, scale := 1.0, offset := 0) {
+static AddModulo(left, right) {
+static SubtractModulo(left, right) {
+static add_modulo(left, right) {
+static hard_light(left, right) {
+static logical_and(left, right) {
+static logical_or(left, right) {
+static logical_xor(left, right) {
+static soft_light(left, right) {
+static subtract_modulo(left, right) {
+static RequireImageHandle(image, operationName) {
+=== ImageFilter ===
+=== ImageFilter/Filter ===
+__New() {
+=== ImageFilter/MultibandFilter ===
+__New() {
+=== ImageFilter/BuiltinFilter ===
+__New() {
+Apply(image) {
+__Get(name, params) {
+static ApplyKernelArgs(image, args) {
+=== ImageFilter/Kernel ===
+__New(size := unset, kernel := unset, scale := unset, offset := 0) {
+Apply(image) {
+=== ImageFilter/BuiltinKernel ===
+__New(name, size, scale, offset, kernel) {
+=== ImageFilter/RankFilter ===
+__New(size := unset, rank := unset, name := "Rank") {
+Apply(image) {
+=== ImageFilter/MinFilter ===
+__New(size := 3) {
+=== ImageFilter/MedianFilter ===
+__New(size := 3) {
+=== ImageFilter/MaxFilter ===
+__New(size := 3) {
+=== ImageFilter/ModeFilter ===
+__New(size := 3) {
+Apply(image) {
+=== ImageFilter/BoxBlur ===
+__New(radius := unset) {
+Apply(image) {
+=== ImageFilter/GaussianBlur ===
+__New(radius := 2) {
+Apply(image) {
+=== ImageFilter/UnsharpMask ===
+__New(radius := 2, percent := 150, threshold := 3) {
+Apply(image) {
+=== ImageFilter/Color3DLUT ===
+__New(size, table, channels := 3, targetMode := "") {
+Apply(image) {
+static CheckSize(size) {
+static FlattenTable(table, channels) {
+static BLUR() {
+static CONTOUR() {
+static DETAIL() {
+static EDGE_ENHANCE() {
+static EDGE_ENHANCE_MORE() {
+static EMBOSS() {
+static FIND_EDGES() {
+static SHARPEN() {
+static SMOOTH() {
+static SMOOTH_MORE() {
+static SumCoefficients(values) {
+static RadiusPair(radius, operationName) {
+=== ImageEnhance ===
+=== ImageEnhance/_Enhance ===
+Enhance(factor) {
+=== ImageEnhance/Color ===
+__New(image) {
+=== ImageEnhance/Contrast ===
+__New(image) {
+=== ImageEnhance/Brightness ===
+__New(image) {
+=== ImageEnhance/Sharpness ===
+__New(image) {
+static RequireImage(image, operationName) {
+static GrayscaleMeanRounded(image) {
+static ZeroColor(image) {
+=== ImageCms ===
+=== ImageCms/Direction ===
+=== ImageCms/Flags ===
+static GRIDPOINTS(n) {
+=== ImageCms/Intent ===
+=== ImageCms/PyCMSError ===
+static versions() {
+static get_display_profile(handle := 0) {
+static CreateProfile(colorSpace, colorTemp := 0) {
+static GetProfileName(profile) {
+static GetProfileDescription(profile) {
+static GetProfileInfo(profile) {
+static GetProfileCopyright(profile) {
+static GetProfileManufacturer(profile) {
+static GetProfileModel(profile) {
+static GetDefaultIntent(profile) {
+static IsIntentSupported(profile, intent, direction) {
+static GetOpenProfile(profile) {
+static BuildTransform(
+static BuildTransformFromOpenProfiles(
+static BuildProofTransform(
+static BuildProofTransformFromOpenProfiles(
+static ApplyTransform(image, transform, inPlace := false) {
+static ProfileToProfile(
+=== ImageCms/CmsProfile ===
+__New(handle) {
+__Delete() {
+Close() {
+RequireHandle() {
+is_intent_supported(intent, direction) {
+GetOptionalXyzTags() {
+GetRgbColorants() {
+GetRgbPrimaries() {
+GetHeaderIdentityRemainder() {
+GetOptionalSignatures() {
+GetOptionalTextTags() {
+GetConditionTags() {
+GetAttributesAndColorimetricIntent() {
+GetColorantTables() {
+GetClutState() {
+GetIntentSupport() {
+GetHeaderIdentity() {
+static SignatureText(signature) {
+static ConditionGeometry(code) {
+static ConditionIlluminantType(code) {
+GetName() {
+Serialize() {
+=== ImageCms/ImageCmsProfile ===
+Tobytes() {
+=== ImageCms/ImageCmsTransform ===
+__New(handle, inputMode, outputMode) {
+__Delete() {
+Close() {
+RequireHandle() {
+Apply(image) {
+ApplyInPlace(image) {
+OutputProfileBytes() {
+=== ImageFont ===
+static CheckStringLength(text) {
+static LoadDefault() {
+static load_default() {
+static Truetype(font, size := 10, index := 0, encoding := "", layoutEngine := unset) {
+static ResolveWindowsFont(fontPath) {
+static Load(filename) {
+static LoadPath(filename) {
+static load_path(filename) {
+static LoadDefaultImagefont() {
+=== ImageFont/ImageFont ===
+__New(handle, meta := unset) {
+__Delete() {
+Close() {
+RequireHandle() {
+GetMask(text, mode := "") {
+GetBbox(text, args*) {
+GetLength(text, args*) {
+=== ImageFont/FreeTypeFont ===
+__New(handle, meta := unset) {
+__Delete() {
+Close() {
+RequireHandle() {
+GetLength(text, mode := "", direction := unset, features := unset, language := unset) {
+GetMask(text, mode := "", ink := 0, direction := unset, features := unset, language := unset, strokeWidth := 0, anchor := unset, start := unset) {
+GetMask2(text, mode := "", ink := 0, args*) {
+GetBbox(text, anchor := unset, mode := "", direction := unset, features := unset, language := unset, strokeWidth := 0) {
+GetMetrics() {
+GetName() {
+FontVariant(font := unset, size := unset, index := unset, encoding := unset, layoutEngine := unset) {
+DuplicateHandle() {
+font_variant(font := unset, size := unset, index := unset, encoding := unset, layoutEngine := unset) {
+IsVariable() {
+GetVariationAxes() {
+get_variation_axes() {
+GetVariationNames() {
+get_variation_names() {
+SetVariationByAxes(axes) {
+set_variation_by_axes(axes) {
+SetVariationByName(name) {
+set_variation_by_name(name) {
+=== ImageFont/TransposedFont ===
+__New(font, orientation := unset) {
+GetMask(text, mode := "", args*) {
+GetBbox(text, anchor := unset) {
+GetLength(text) {
+=== ImageFont/Layout ===
+=== ImageDraw ===
+static Draw(image) {
+static Floodfill(image, xy, value, border := unset, thresh := 0.0) {
+static TextAlignId(align, operationName) {
+static CheckEmbeddedColorMode(mode, embeddedColor) {
+static CheckRaqmOptions(direction := unset, features := unset, language := unset) {
+static ResolveMultilineFont(font := unset, fontSize := unset, operationName := "") {
+static MultilineLineSpacing(bboxBottom, strokeWidth, spacing) {
+static SumFloats(values) {
+static MultilineLayoutParts(xy, text, font, anchor, lineSpacing, align) {
+static BboxAt(font, x, y, text, anchor, strokeWidth) {
+static UnionBbox(bbox, line) {
+static ValidateMultilineAnchor(anchor) {
+static StrokeWidth(strokeWidth, operationName) {
+=== ImageDraw/DrawHandle ===
+__New(image) {
+Rectangle(box, fill := unset, outline := unset, width := 1) {
+Ellipse(box, fill := unset, outline := unset, width := 1) {
+Circle(xy, radius, fill := unset, outline := unset, width := 1) {
+Arc(box, start, end, fill := unset, width := 1) {
+Chord(box, start, end, fill := unset, outline := unset, width := 1) {
+Pieslice(box, start, end, fill := unset, outline := unset, width := 1) {
+RoundedRectangle(box, radius := 0, fill := unset, outline := unset, width := 1, corners := unset) {
+rounded_rectangle(box, radius := 0, fill := unset, outline := unset, width := 1, corners := unset) {
+Bitmap(xy, bitmap, fill := unset) {
+Text(xy, text, fill := unset, font := unset, anchor := unset, strokeWidth := 0, strokeFill := unset, spacing := 4, align := "left", direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
+TextLength(text, font := unset, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
+TextBbox(xy, text, font := unset, anchor := unset, strokeWidth := 0, spacing := 4, align := "left", direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
+MultilineText(xy, text, fill := unset, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, strokeFill := unset, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
+multiline_text(xy, text, fill := unset, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, strokeFill := unset, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
+MultilineTextBbox(xy, text, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
+multiline_textbbox(xy, text, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset) {
+Line(xy, fill := unset, width := 0, joint := unset) {
+Point(xy, fill := unset) {
+RegularPolygon(boundingCircle, nSides, rotation := 0, fill := unset, outline := unset, width := 1) {
+regular_polygon(boundingCircle, n_sides, rotation := 0, fill := unset, outline := unset, width := 1) {
+Polygon(xy, fill := unset, outline := unset, width := 1) {
+static RegularPolygonVertices(boundingCircle, nSides, rotation) {
+static RegularPolygonVertex(centroidX, centroidY, radius, angle) {
+static FlattenPoints(xy, operationName, minPoints := 2) {
+static getdraw(im := unset, hints := unset) {
+=== ImageDraw2 ===
+=== ImageDraw2/Pen ===
+__New(color, width := 1, opacity := 255) {
+=== ImageDraw2/Brush ===
+__New(color, opacity := 255) {
+=== ImageDraw2/Font ===
+__New(color, file, size := 12) {
+static GetRgbColor(color) {
+=== ImageDraw2/Draw ===
+__New(image, size := unset, color := unset) {
+Flush() {
+Settransform(offset) {
+Render(op, xy, pen := unset, brush := unset, options := unset) {
+Arc(xy, pen := unset, start := 0, end := 360, brush := unset) {
+Chord(xy, pen := unset, start := 0, end := 360, brush := unset) {
+Ellipse(xy, pen := unset, brush := unset) {
+Line(xy, pen := unset, brush := unset) {
+Pieslice(xy, pen := unset, start := 0, end := 360, brush := unset) {
+Polygon(xy, pen := unset, brush := unset) {
+Rectangle(xy, pen := unset, brush := unset) {
+Text(xy, text, font) {
+Textbbox(xy, text, font) {
+Textlength(text, font) {
+=== ImageStat ===
+=== ImageStat/Stat ===
+__New(imageOrList, mask := unset) {
+static Global(imageOrList, mask := unset) {
+StrPut(modeName, data, "UTF-8")
+=== Image ===
+static ModeInfo(modeName) {
+static GetModeBands(modeName) {
+static GetModeBandNames(modeName) {
+static GetModeBase(modeName) {
+static GetModeType(modeName) {
+=== Image/PixelAccess ===
+__New(image) {
+=== Image/Exif ===
+__New(orientation := unset, hasOrientation := false, asciiTags := unset, intTags := unset, rationalTags := unset, shortArrayTags := unset, byteArrayTags := unset, signedRationalTags := unset, undefinedTags := unset, rationalArrayTags := unset) {
+static FromImage(image) {
+static NormalizeTag(tag) {
+static NormalizeAsciiTag(tag) {
+static NormalizeAsciiValue(value) {
+static NormalizeUintTag(tag) {
+static NormalizeUintValue(value, type) {
+static UintTagType(tag) {
+static NormalizeRationalTag(tag) {
+static NormalizeRationalValue(value) {
+static RationalTagType(tag) {
+static NormalizeSignedRationalTag(tag) {
+static NormalizeSignedRationalValue(value) {
+static SignedRationalTagType(tag) {
+static NormalizeShortArrayTag(tag) {
+static NormalizeShortArrayValue(tag, value) {
+static ShortArrayTagLength(tag) {
+static NormalizeByteArrayTag(tag) {
+static NormalizeByteArrayValue(value) {
+static ByteArrayTagCovered(tag) {
+static NormalizeUndefinedTag(tag) {
+static NormalizeUndefinedValue(value) {
+static UndefinedTagCovered(tag) {
+static NormalizeOrientation(value) {
+static ReadAsciiTag(exif, tag) {
+static ReadUintTag(exif, tag) {
+static ReadRationalTag(exif, tag) {
+static ReadRationalArrayTag(exif, tag) {
+static ReadSignedRationalArrayTag(exif, tag) {
+static ReadSignedRationalTag(exif, tag) {
+static ReadUshortArrayTag(exif, tag) {
+static ReadUintArrayTag(exif, tag) {
+static ReadByteArrayTag(exif, tag) {
+static ReadDoubleArrayTag(exif, tag) {
+static ReadFloatArrayTag(exif, tag) {
+static ReadUndefinedTag(exif, tag) {
+Has(tag) {
+Get(tag, defaultValue := unset) {
+Delete(tag) {
+ToBytes() {
+=== Image/IcoFile ===
+__New(image) {
+sizes() {
+getimage(size) {
+static IcoSizes(path) {
+static IcoPayloadFormat(path, width, height, requireRequestedSize) {
+static ApplyIcoPayloadDibMetadata(image, path, width, height, requireRequestedSize) {
+__New(handle) {
+__Delete() {
+__Get(name, params) {
+property: Filename {
+static LinearGradient(modeName) {
+static linear_gradient(modeName) {
+static RadialGradient(modeName) {
+static radial_gradient(modeName) {
+static EffectMandelbrot(size, extent, quality) {
+static effect_mandelbrot(size, extent, quality) {
+static EffectNoise(size, sigma) {
+static effect_noise(size, sigma) {
+static EffectSpread(image, distance) {
+static effect_spread(image, distance) {
+static Open(path, formats := unset) {
+static New(modeName, size, color := unset) {
+static FromBytes(modeName, size, bytes, decoder := unset, rawmode := unset, stride := 0, orientation := 1) {
+static FromBuffer(modeName, size, data, decoder := "raw", rawmode := unset, stride := 0, orientation := 1) {
+FromBytes(bytes, decoder := unset, rawmode := unset, stride := 0, orientation := 1) {
+static Eval(image, fn) {
+static Blend(left, right, alpha) {
+static Composite(image1, image2, mask) {
+static AlphaComposite(dst, src) {
+static alpha_composite(dst, src) {
+static Merge(modeName, bands) {
+static RoundClipU8(value) {
+static RoundHalfEven(value) {
+static TruncateClipU8(value) {
+static ClipTupleU8(value) {
+static ReadI32(buf, offset) {
+static WriteI32(buf, offset, value, operationName := "Pillow.Image") {
+NumPut("UInt", Integer(value) & 0xFFFFFFFF, buf, offset)
+static ReadF32(buf, offset) {
+static WriteF32(buf, offset, value, operationName := "Pillow.Image") {
+NumPut("Float", value + 0.0, buf, offset)
+static ByteBuffer(values, operationName) {
+static BinaryBuffer(value, operationName) {
+static NativeMetadataBlob(handle, exportName) {
+static XmpNodeLocalName(node) {
+static XmpElementToMap(node) {
+static ParseXmpBuffer(xmpBuffer) {
+static NativeJpegQTables(handle) {
+static NativeJpegSubsampling(handle) {
+static SavePdfInfoString(options, names*) {
+static SaveJpegCommentBuffer(commentOption, handle, useOpenedComment) {
+static SaveGifCommentBuffer(commentOption) {
+static NativeGifComment(path, frameIndex) {
+static NormalizePaletteRawmode(rawmode, operationName, allowExpanded := false) {
+static PaletteBuffer(values, rawmode, operationName) {
+static PaletteRgbaBuffer(values, rawmode, operationName) {
+static PaletteAlphaModeForPut(rawmode) {
+static ConvertRgbPaletteValues(values, rawmode, operationName) {
+static ConvertRgbaPaletteValues(values, rawmode, operationName) {
+static IntBuffer(values, operationName) {
+static RawModeBuffer(rawmode) {
+StrPut(rawmode, buf, "UTF-8")
+static Utf8Buffer(value) {
+StrPut(value, buf, "UTF-8")
+static Utf8StringFromBytes(buf, byteCount, operationName) {
+static BufferWithoutNul(buf, byteCount) {
+DllCall("msvcrt\memcpy", "Ptr", out, "Ptr", buf, "UPtr", byteCount, "CDecl")
+static BufferEqualsAscii(buf, text) {
+static Latin1Buffer(value, operationName) {
+static NulTerminatedByteBuffer(value, operationName) {
+static OpenImHandle(path, &outHandle) {
+loop (size > 100 ? 100 : size) {
+static ResolveOpenFormat(path, formats := unset) {
+static OpenSpiderHandle(path, &outHandle) {
+static ResolveOpenFormats(path, formats := unset) {
+static SniffCodecMagic(path, format) {
+static ResolveSaveFormat(path, format := unset) {
+static SgiTruncatedCount(path) {
+static DdsOpenError(status, path) {
+static OpenSimpleTruncatedCount(path, rowBytes, headerSize) {
+static PixarWidth(path) {
+static XvThumbHeader(path) {
+static XvThumbTruncatedCount(path, header) {
+static DcxFrameCount(path) {
+static FtexWidth(path) {
+static FtexDataStart(path) {
+static FtexTruncatedCount(path) {
+static FtexFormatId(path) {
+static SunStride(path) {
+static GbrInfo(path) {
+static FliHeader(path) {
+static FliDuration(path) {
+static FliFrameCount(path) {
+static MpegAccepts(path) {
+static FitsRowBytes(path) {
+static FitsTruncatedCount(path) {
+static XpmRgbUnknownKey(path) {
+static XpmTransparencyKey(path) {
+static Be32At(buf, offset) {
+return (NumGet(buf, offset, "UChar") << 24) | (NumGet(buf, offset + 1, "UChar") << 16) | (NumGet(buf, offset + 2, "UChar") << 8) | NumGet(buf, offset + 3, "UChar")
+static PsdHeaderInfo(path) {
+static PsdIcc(path) {
+static OpenMcIdas(path) {
+static OpenIptc(path) {
+DllCall("msvcrt\memcpy", "Ptr", payload, "Ptr", data.Ptr + payloadStart, "UPtr", payload.Size, "CDecl Ptr")
+static StubAccepts(path, format) {
+static IcnsSizes(path) {
+static IcnsRleLeftover(path) {
+static EpsOpenFailure(path) {
+static ReadAllBytes(path) {
+static MpoHasIndex(path) {
+static OpenDibHandle(path, &outHandle) {
+NumPut("UShort", 0x4D42, bfh, 0)
+NumPut("UInt", size + 14, bfh, 2)
+NumPut("UInt", 54 + paletteEntries * 4, bfh, 10)
+static FrameCountForOpen(pathBytes, format) {
+static FormatFromPath(path) {
+static NormalizeFileFormat(format) {
+static FormatDescription(format) {
+static HandleArray(images) {
+static SaveOption(options, names*) {
+static SaveOptionBool(options, defaultValue, names*) {
+static SaveIntSequence(value, imageCount, optionName) {
+static SaveDpiPair(value, requirePositive := true) {
+static SaveTiffCompression(value) {
+static SaveTiffAsciiNamedValue(value) {
+static SaveTiffInfoEntries(tiffInfo) {
+static SaveJpegSubsampling(value) {
+static SaveJpegQTables(value) {
+static SaveJpegQualityPreset(value) {
+static SaveJpegQualityPresetInfo(subsampling, luma, chroma) {
+static SaveTransparencyRgbTuple(value) {
+static SaveTransparencyByteTable(value) {
+static IsPngPrivateChunkType(typeBuffer) {
+static IsPngPrivateChunkName(typeName) {
+return (typeName is String)
+static SavePngTextEntries(value) {
+static SaveHotspotPair(value) {
+static SaveIcoSizePairs(value) {
+Close() {
+RequireHandle() {
+GetIm() {
+property: Im {
+ToQImage() {
+ToQPixmap() {
+Show(title := unset) {
+RefreshBufferView() {
+DetachBufferView() {
+Load() {
+Tell() {
+Seek(frame) {
+ApplyNativeMetadata() {
+ApplyFrameMetadata() {
+static SetOptionalInfo(info, key, value) {
+static TiffCompressionName(value) {
+property: NFrames {
+property: n_frames {
+property: IsAnimated {
+property: is_animated {
+property: ico {
+property: FormatDescription {
+property: format_description {
+property: HasTransparencyData {
+property: has_transparency_data {
+GetChildImages() {
+get_child_images() {
+property: disposal_method {
+Verify() {
+Draft(mode, size) {
+property: Mode {
+property: Quantization {
+property: ReadOnly {
+ExifOrientation() {
+GetExif() {
+GetXmp() {
+property: Width {
+property: Height {
+property: Size {
+property: Channels {
+property: Stride {
+property: ByteSize {
+GetInt(exportName) {
+ToBytes(encoder := unset, rawmode := unset, orientation := 1) {
+ToBitmap(name := "image") {
+Save(path, format := unset, options := unset) {
+SaveDib(path) {
+SaveIm(path) {
+SavePalm(path) {
+NumPut("UChar", cols >> 8, header, 0)
+NumPut("UChar", cols & 0xFF, header, 1)
+NumPut("UChar", rows >> 8, header, 2)
+NumPut("UChar", rows & 0xFF, header, 3)
+NumPut("UChar", rowbytes >> 8, header, 4)
+NumPut("UChar", rowbytes & 0xFF, header, 5)
+NumPut("UChar", 0x40, header, 6)
+NumPut("UChar", 0x00, header, 7)
+NumPut("UChar", 8, header, 8)
+NumPut("UChar", 1, header, 9)
+NumPut("UChar", 0, header, 10)
+NumPut("UChar", 0, header, 11)
+NumPut("UChar", 0, header, 12)
+NumPut("UChar", 0xFF, header, 13)
+NumPut("UChar", 0, header, 14)
+NumPut("UChar", 0, header, 15)
+NumPut("UChar", 0x01, colormap, 0)
+NumPut("UChar", 0x00, colormap, 1)
+SaveSpider(path) {
+NumPut("Float", 1.0, header, 0)
+NumPut("Float", h, header, 4)
+NumPut("Float", h, header, 8)
+NumPut("Float", 1.0, header, 16)
+NumPut("Float", w, header, 44)
+NumPut("Float", labrec, header, 48)
+NumPut("Float", labbyt, header, 84)
+NumPut("Float", lenbyt, header, 88)
+static ExifFamilyBuffers(exif) {
+static PatchTiffExifEntries(pathBytes, exif) {
+static PatchTiffBigTiffExifEntries(pathBytes, exif) {
+SaveTiffFrames(path, options) {
+SaveGifAnimation(path, options) {
+DataPointer() {
+GetData(band := unset) {
+InternalBytes() {
+PutPalette(data, rawmode := "RGB") {
+GetPalette(rawmode := "RGB") {
+ApplyTransparency() {
+apply_transparency() {
+PaletteAlphaMode() {
+RemapPalette(destMap, sourcePalette := unset) {
+remap_palette(destMap, sourcePalette := unset) {
+Quantize(colors := 256, method := unset, kmeans := 0, palette := unset, dither := unset) {
+PutData(data, scale := 1.0, offset := 0.0) {
+WritePutDataPixel(buf, pixelIndex, value, scale, offset) {
+WritePutDataTuple(buf, base, value) {
+Fill(color) {
+GetPixel(xy) {
+PutPixel(xy, value) {
+PixelBufferToValue(buf) {
+PixelValueBuffer(value) {
+NumPut("UChar", this.ModeAwareU8(value), buf, 0)
+ModeAwareU8(value) {
+static ModeOnePixelValue(value) {
+ColorBuffer(color) {
+NumPut("UChar", this.ModeAwareU8(color), buf, 0)
+PasteColorBuffer(color) {
+NumPut("UChar", this.ModeAwareU8(color), buf, 0)
+ThrowUnsupportedTransformResample(resample) {
+if (this.Mode = "I;16" || this.Mode = "I;16B") {
+TransformFillBuffer(color) {
+NumPut("UChar", this.ModeAwareU8(color), buf, 0)
+Point(lut, modeName := unset) {
+CallablePointLut(fn) {
+LutBuffer(lut) {
+GetChannel(channel) {
+Histogram(mask := unset) {
+Entropy(mask := unset) {
+GetExtrema() {
+GetBbox(alphaOnly := true) {
+GetProjection() {
+static ProjectionBufferToArray(buf) {
+GetColors(maxcolors := 256) {
+GetColorsNumeric(maxcolors) {
+ColorCountsToArray(counts, colors, count) {
+NumericColorCountsToArray(counts, values, count) {
+Split() {
+GetBands() {
+BandNames() {
+ChannelIndex(channel) {
+PutAlpha(alpha) {
+Copy() {
+WrapDerivedHandle(handle) {
+static CopyInfo(info) {
+Crop(box := unset) {
+Resize(size, resample := unset, box := unset, reducingGap := unset) {
+Thumbnail(size, resample := unset, reducingGap := 2.0) {
+static ThumbnailRoundAspect(number, key) {
+Reduce(factor, box := unset) {
+ReduceFactor(factor) {
+ReduceBox(box) {
+Filter(filter) {
+Transform(size, method, data, resample := unset, fillcolor := unset) {
+TransformExtent(size, extent, resample := unset, fillcolor := unset) {
+TransformPerspective(size, coefficients, resample := unset, fillcolor := unset) {
+TransformQuad(size, corners, resample := unset, fillcolor := unset) {
+TransformMesh(size, mesh, resample := unset, fillcolor := unset) {
+TransformAffine(size, matrix, resample := unset, fillcolor := unset) {
+Rotate(angle, resample := unset, expand := false, center := unset, translate := unset, fillcolor := unset) {
+AlphaComposite(image, dest := unset, source := unset) {
+alpha_composite(image, dest := unset, source := unset) {
+Paste(source, box := unset, mask := unset) {
+Transpose(method) {
+EffectSpread(distance) {
+effect_spread(distance) {
+Convert(modeName := unset, matrixOrDither := unset, dither := unset, palette := unset, colors := unset) {

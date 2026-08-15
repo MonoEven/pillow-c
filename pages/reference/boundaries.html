@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="both">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boundaries — pillow-c 文档 · Documentation</title>
+<link rel="stylesheet" href="../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">双语文档 · Bilingual Docs</div>
+  <nav>
+    <p class="nav-head">Home / 首页</p>
+    <a href="../index.html">Overview / 概述</a>
+    <p class="nav-head">Reference / 参考</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="constants.html">Constants / 常量</a>
+    <a href="Pillow.html">Pillow (entry) / 入口</a>
+    <a href="boundaries.html" class="current">Boundaries / 行为边界</a>
+  </nav>
+  <div class="lang-switch">
+    <button data-lang="both">双语 Both</button>
+    <button data-lang="en">EN</button>
+    <button data-lang="zh">中文</button>
+  </div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » Boundaries</div>
+  <h1>行为边界 · Behavioral Boundaries</h1>
+  <p class="en">pillow-c verifies 2856/2856 behavioral tests and 524/524 DLL exports against a local Pillow 11.3.0. A small set of honest, documented boundaries remain: places where this runtime either fails loudly with Pillow's exact message, or cannot replicate Python-stateful behavior. Everything else is oracle-verified parity — including error messages.</p>
+  <p class="zh">pillow-c 以本机 Pillow 11.3.0 为基准验证了 2856/2856 项行为测试与 524/524 个 DLL 导出。仍保留少量诚实、记录在案的边界:这些位置要么以 Pillow 的原样报错显式失败,要么无法复刻依赖 Python 全局状态的行为。其余一切——包括错误消息——都经过 oracle 逐项验证。</p>
+
+  <h2 id="formats">1. 依赖门控格式 · Dependency-gated Formats</h2>
+  <section class="api" id="boundary.webp">
+    <h3>WebP / AVIF / JPEG2000</h3>
+    <p class="en">Open and save fail loudly with <code>Pillow image file format is unsupported</code> (save-handler shape) and Pillow's exact <code>decoder webp not available</code> / <code>decoder avif not available</code> / <code>decoder jpeg2000 not available</code> for recognized magic bytes. The local Pillow build ships these codecs; this runtime does not.</p>
+    <p class="zh">打开与保存以 <code>Pillow image file format is unsupported</code>(保存处理器形态)显式失败;对已识别的魔数按 Pillow 原样抛 <code>decoder webp not available</code> / <code>decoder avif not available</code> / <code>decoder jpeg2000 not available</code>。本机 Pillow 自带这些编解码器;本运行时没有。</p>
+  </section>
+  <section class="api" id="boundary.fpx">
+    <h3>FPX</h3>
+    <p class="en">Bare <code>KeyError 'FPX'</code> — the deprecated olefile plugin shape is kept verbatim.</p>
+    <p class="zh">裸 <code>KeyError 'FPX'</code> —— 保留已弃用 olefile 插件的原始报错形态。</p>
+  </section>
+
+  <h2 id="gui">2. GUI 互操作 · GUI Interop</h2>
+  <section class="api" id="boundary.qttk">
+    <h3>ImageQt / ImageTk / Show</h3>
+    <p class="en">The runtime ships no Qt binding and no Tk interpreter: <code>ImageQt.ToQImage/ToQPixmap/ImageQt</code> raise Pillow's exact <code>Qt bindings are not installed</code>; <code>ImageTk.PhotoImage</code> raises <code>Too early to create image: no default root window</code>; <code>image.Show()</code> raises the Pillow-shaped <code>no viewers found</code>.</p>
+    <p class="zh">运行时不含 Qt 绑定与 Tk 解释器:<code>ImageQt.ToQImage/ToQPixmap/ImageQt</code> 抛 Pillow 原样的 <code>Qt bindings are not installed</code>;<code>ImageTk.PhotoImage</code> 抛 <code>Too early to create image: no default root window</code>;<code>image.Show()</code> 抛 Pillow 形态的 <code>no viewers found</code>。</p>
+  </section>
+
+  <h2 id="stateful">3. Python 有状态行为 · Python-stateful Behavior</h2>
+  <section class="api" id="boundary.random">
+    <h3>ImagePalette.Random</h3>
+    <p class="en">Pillow uses Python's global Mersenne-Twister stream. The facade returns palettes with identical shape and value ranges, but the exact stream is unmatchable.</p>
+    <p class="zh">Pillow 使用 Python 全局 Mersenne-Twister 随机流。门面返回形状与取值范围完全相同的调色板,但逐值随机流不可复刻。</p>
+  </section>
+  <section class="api" id="boundary.pathmap">
+    <h3>ImagePath.Path.Map</h3>
+    <p class="en">The callable <code>Map(fn)</code> returns None without mutating (the AHK None analogue is 0); Pillow's C <code>ImagingTransformHandler</code> form cannot exist in this runtime and stays a documented boundary.</p>
+    <p class="zh">可调用的 <code>Map(fn)</code> 返回 None 且不改动对象(AHK 的 None 对应物为 0);Pillow 的 C 层 <code>ImagingTransformHandler</code> 形态在本运行时无法存在,记为边界。</p>
+  </section>
+
+  <h2 id="render">4. 栅格化与绘制 · Rasterization &amp; Drawing</h2>
+  <section class="api" id="boundary.gdi">
+    <h3>GDI 字形墨迹 · GDI Glyph Ink</h3>
+    <p class="en">Truetype glyphs are rasterized through GDI: gray8 ink values are the documented rasterizer divergence (outlines/bbox ink do not apply gvar; the HVAR advance-delta engine IS replicated).</p>
+    <p class="zh">Truetype 字形经 GDI 栅格化:gray8 墨迹值为已记录的栅格化差异(轮廓/包围盒墨迹不应用 gvar;HVAR 字宽增量引擎已完整复刻)。</p>
+  </section>
+  <section class="api" id="boundary.defaultfont">
+    <h3>默认字体 · load_default</h3>
+    <p class="en">The bundled default font differs from Pillow's Aileron; default-font metrics match in shape but not byte-for-byte, and default-font drawing uses the native seams.</p>
+    <p class="zh">内置默认字体不同于 Pillow 的 Aileron;默认字体度量形态一致但非逐字节相同,默认字体绘图走原生管线。</p>
+  </section>
+  <section class="api" id="boundary.stroke">
+    <h3>Truetype 描边文字 · Stroked Truetype Text</h3>
+    <p class="en">Drawing stroked truetype text raises the facade's exact boundary error <code>Pillow.ImageDraw.Text truetype stroke is not supported by this runtime</code>.</p>
+    <p class="zh">绘制带描边的 truetype 文字抛门面的边界错误 <code>Pillow.ImageDraw.Text truetype stroke is not supported by this runtime</code>。</p>
+  </section>
+
+  <h2 id="codec">5. 编码器负载字节 · Encoder Payload Bytes</h2>
+  <section class="api" id="boundary.jpegbytes">
+    <h3>JPEG 负载字节 · JPEG Payload</h3>
+    <p class="en">JPEG structure, SOF/progressive flags, qtables, DPI and metadata match Pillow; the literal DHT/entropy payload bytes are not byte-identical (documented).</p>
+    <p class="zh">JPEG 结构、SOF/渐进标志、量化表、DPI 与元数据与 Pillow 一致;逐字节的 DHT/熵编码负载不做字节级对齐(已记录)。</p>
+  </section>
+  <section class="api" id="boundary.gifpal">
+    <h3>GIF 中位切分调色板顺序 · GIF Median-cut Ordering</h3>
+    <p class="en">GIF median-cut palettes cover the same colors; the palette ordering may differ from Pillow's (documented micro-boundary).</p>
+    <p class="zh">GIF 中位切分调色板覆盖同样的颜色;条目顺序可能与 Pillow 不同(已记录的微边界)。</p>
+  </section>
+  <section class="api" id="boundary.tiffsave">
+    <h3>TIFF jpeg / group3 / group4 保存 · TIFF Compression Save</h3>
+    <p class="en">Saving TIFF with <code>compression="jpeg"|"group3"|"group4"</code> raises the documented rejection boundary instead of silently writing a wrong stream.</p>
+    <p class="zh">以 <code>compression="jpeg"|"group3"|"group4"</code> 保存 TIFF 抛已记录的拒绝边界,绝不静默写出错误码流。</p>
+  </section>
+  <section class="api" id="boundary.pngdict">
+    <h3>PNG 字典 / 压缩 · PNG dictionary / compression</h3>
+    <p class="en"><code>dictionary</code> bytes are accepted-and-ignored (the DLL writes stored deflate blocks — the no-compressor boundary); <code>compress_type</code> 0-4 accepted with Pillow's exact 5+ OSError.</p>
+    <p class="zh"><code>dictionary</code> 字节被接受但忽略(DLL 写 stored deflate 块——无压缩器边界);<code>compress_type</code> 0-4 接受,5 及以上抛 Pillow 原样 OSError。</p>
+  </section>
+
+  <h2 id="engine">6. 排版与量化 · Layout &amp; Quantize</h2>
+  <section class="api" id="boundary.raqm">
+    <h3>无 libraqm · no-libraqm</h3>
+    <p class="en">Text-direction options (<code>direction</code>/<code>features</code>/<code>language</code>) raise Pillow's exact KeyError shape <code>'setting text direction, language or font features is not supported without libraqm'</code>.</p>
+    <p class="zh">文字方向选项(<code>direction</code>/<code>features</code>/<code>language</code>)抛 Pillow 原样的 KeyError 形态 <code>'setting text direction, language or font features is not supported without libraqm'</code>。</p>
+  </section>
+  <section class="api" id="boundary.rpn">
+    <h3>RPN 转 L · ImageMath convert-to-L</h3>
+    <p class="en">The RPN <code>convert("L")</code> seam reports mode <code>I</code> (documented divergence).</p>
+    <p class="zh">RPN 的 <code>convert("L")</code> 报告模式 <code>I</code>(已记录差异)。</p>
+  </section>
+  <section class="api" id="boundary.quant">
+    <h3>量化交叉积 · Quantize cross-products</h3>
+    <p class="en">MEDIANCUT/MAXCOVERAGE/FASTOCTREE and the bounded FLOYDSTEINBERG slices are covered; <code>LIBIMAGEQUANT</code> keeps Pillow's exact <code>dependency required by this method was not enabled at compile time</code>, and ADAPTIVE/none dither cross-products are not byte-exactly replicated.</p>
+    <p class="zh">MEDIANCUT/MAXCOVERAGE/FASTOCTREE 与有界 FLOYDSTEINBERG 切片已覆盖;<code>LIBIMAGEQUANT</code> 保留 Pillow 原样的 <code>dependency required by this method was not enabled at compile time</code>,ADAPTIVE/none 抖动交叉积不做字节级复刻。</p>
+  </section>
+
+  <h2 id="misc">7. 其他记录在案的微边界 · Other Micro-boundaries</h2>
+  <ul>
+    <li><span class="en">I;16 histogram: Pillow's C path reads 2-byte storage through layout-dependent byte misreads — kept as a documented boundary.</span><span class="zh">I;16 直方图:Pillow 的 C 路径按内存布局误读双字节存储——保留为记录在案的边界。</span></li>
+    <li><span class="en">I;16B non-NEAREST resize raises the boundary error (Pillow accepts and garbles via its endian bug; replicating corruption is declined).</span><span class="zh">I;16B 非 NEAREST 缩放抛边界错误(Pillow 接受并因端序缺陷产出乱码;拒绝复刻损坏)。</span></li>
+    <li><span class="en">ICO reopen of grayscale PNG payloads: documented WIC boundary (use RGBA sources).</span><span class="zh">ICO 灰度 PNG 负载的重新打开:已记录的 WIC 边界(请用 RGBA 源)。</span></li>
+    <li><span class="en">ICNS jp2 payloads keep Pillow's no-jp2 message.</span><span class="zh">ICNS jp2 负载保留 Pillow 的 no-jp2 报错。</span></li>
+    <li><span class="en">ImageFile incremental/plugin protocol (<code>Parser</code>, <code>StubImageFile</code>, <code>PyCodec</code>, …) fails loudly on construction with Pillow-shaped messages.</span><span class="zh">ImageFile 增量/插件协议(<code>Parser</code>、<code>StubImageFile</code>、<code>PyCodec</code>……)构造即按 Pillow 形态显式报错。</span></li>
+    <li><span class="en">TIFF sub-IFD tags are flattened into the EXIF blob instead of <code>get_ifd()</code> (documented divergence; <code>get_ifd()</code> itself a boundary).</span><span class="zh">TIFF 子 IFD 标签被扁平化进 EXIF 数据块,而非 <code>get_ifd()</code>(已记录差异;<code>get_ifd()</code> 本身为边界)。</span></li>
+    <li><span class="en">PNG true compression strategy / APNG: default-deflate single-frame PNGs only (future families).</span><span class="zh">PNG 真实压缩策略 / APNG:仅默认 deflate 单帧 PNG(未来家族)。</span></li>
+  </ul>
+  <p class="note"><span class="en">Everything not listed above — including all error messages, option validation, conversion rules, metadata shapes and numeric edge cases — is oracle-verified parity with Pillow 11.3.0. See the project ledger <a href="../../docs/pillow-gap-analysis.md">docs/pillow-gap-analysis.md</a>.</span><span class="zh">以上未列出的全部内容——包括所有错误消息、选项校验、转换规则、元数据形态与数值边界——均已通过 oracle 验证与 Pillow 11.3.0 对齐。详见项目台账 <a href="../../docs/pillow-gap-analysis.md">docs/pillow-gap-analysis.md</a>。</span></p>
+</div>
+<script src="../_static/pages.js"></script>
+</body>
+</html>

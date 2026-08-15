@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="both">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pillow-c 文档 · Documentation</title>
+<link rel="stylesheet" href="_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="index.html">pillow-c</a></div>
+  <div class="side-sub">双语文档 · Bilingual Docs</div>
+  <nav>
+    <p class="nav-head">Home / 首页</p>
+    <a href="index.html" class="current">Overview / 概述</a>
+    <p class="nav-head">Reference / 参考</p>
+    <a href="reference/Image.html">Image</a>
+    <a href="reference/ImageDraw.html">ImageDraw</a>
+    <a href="reference/ImageFont.html">ImageFont</a>
+    <a href="reference/ImageFilter.html">ImageFilter</a>
+    <a href="reference/ImageChops.html">ImageChops</a>
+    <a href="reference/ImageOps.html">ImageOps</a>
+    <a href="reference/ImageStat.html">ImageStat</a>
+    <a href="reference/ImageMath.html">ImageMath</a>
+    <a href="reference/ImageCms.html">ImageCms</a>
+    <a href="reference/ImageColor.html">ImageColor</a>
+    <a href="reference/ImageEnhance.html">ImageEnhance</a>
+    <a href="reference/ImagePalette.html">ImagePalette</a>
+    <a href="reference/ImagePath.html">ImagePath</a>
+    <a href="reference/ImageDraw2.html">ImageDraw2</a>
+    <a href="reference/ImageSequence.html">ImageSequence</a>
+    <a href="reference/ImageGrab.html">ImageGrab</a>
+    <a href="reference/ImageFile.html">ImageFile</a>
+    <a href="reference/ImageTransform.html">ImageTransform</a>
+    <a href="reference/ImageQt.html">ImageQt</a>
+    <a href="reference/ImageTk.html">ImageTk</a>
+    <a href="reference/constants.html">Constants / 常量</a>
+    <a href="reference/Pillow.html">Pillow (entry) / 入口</a>
+    <a href="reference/boundaries.html">Boundaries / 行为边界</a>
+  </nav>
+  <div class="lang-switch">
+    <button data-lang="both">双语 Both</button>
+    <button data-lang="en">EN</button>
+    <button data-lang="zh">中文</button>
+  </div>
+</div>
+<div class="content">
+  <h1>pillow-c <span style="font-size:16px;color:#777;font-weight:400;">— a Pillow-compatible image library for AutoHotkey v2</span></h1>
+
+  <p class="en">Welcome to the pillow-c documentation. <b>pillow-c</b> brings a Pillow&nbsp;11.3.0-compatible image processing API to AutoHotkey&nbsp;v2: a native <code>pillow_c.dll</code> owns image handles, pixel storage and bulk operations, while <code>ahk\pillow.ahk</code> provides the Python-like facade (<code>Pillow.Image</code>, <code>ImageDraw</code>, <code>ImageFont</code>, …). This documentation mirrors the structure of the <a href="https://pillow.readthedocs.io/en/stable/">official Pillow documentation</a> and describes every public API in both English and Chinese.</p>
+  <p class="zh">欢迎阅读 pillow-c 文档。<b>pillow-c</b> 为 AutoHotkey&nbsp;v2 带来了与 Pillow&nbsp;11.3.0 行为一致的图像处理 API:原生 <code>pillow_c.dll</code> 负责图像句柄、像素存储与批量运算,<code>ahk\pillow.ahk</code> 提供类 Python 的门面(<code>Pillow.Image</code>、<code>ImageDraw</code>、<code>ImageFont</code>……)。本文档仿照 <a href="https://pillow.readthedocs.io/en/stable/">Pillow 官方文档</a> 的结构,以中英双语逐 API 描述全部公开接口。</p>
+
+  <h2>安装与构建 · Installation &amp; Build</h2>
+  <p class="en">Copy <code>build\x64\Release\pillow_c.dll</code> and <code>ahk\pillow.ahk</code> into your project, then configure the DLL path once:</p>
+  <p class="zh">把 <code>build\x64\Release\pillow_c.dll</code> 与 <code>ahk\pillow.ahk</code> 放进你的工程,然后一次性配置 DLL 路径:</p>
+  <pre class="example">#Requires AutoHotkey v2.0
+#Include "ahk\pillow.ahk"
+
+Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
+img := Pillow.Image.Open("photo.png")   ; 打开 / open
+img := img.Resize([800, 600])           ; 调整大小 / resize
+img.Save("photo-800.jpg")               ; 另存 / save
+img.Close()</pre>
+  <p class="en">To build the DLL from source (Visual Studio 2022, x64 Release):</p>
+  <p class="zh">从源码构建 DLL(Visual Studio 2022,x64 Release):</p>
+  <pre class="example">& 'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe' .\src\pillow_c.vcxproj /p:Configuration=Release /p:Platform=x64 /m</pre>
+
+  <h2>基本概念 · Concepts</h2>
+  <p class="en">Just like Pillow, an image is identified by a <b>mode</b> and a <b>size</b>. Supported modes: <code>1</code> (1-bit), <code>L</code> (8-bit grayscale), <code>P</code> (palette), <code>RGB</code>, <code>RGBA</code>, <code>CMYK</code>, <code>YCbCr</code>, <code>LAB</code>, <code>HSV</code>, <code>I</code> (32-bit int), <code>F</code> (32-bit float), <code>I;16</code>/<code>I;16B</code>, and the <code>BGR;</code>/<code>BGR;15</code>/<code>BGR;16</code>/<code>BGR;24</code> raw variants. The coordinate system has its origin at the upper-left corner: <code>(0, 0)</code> is the top-left pixel, <code>x</code> grows rightward, <code>y</code> grows downward; a 4-tuple box is <code>[left, upper, right, lower]</code>.</p>
+  <p class="zh">与 Pillow 一样,图像由 <b>模式 (mode)</b> 与 <b>尺寸 (size)</b> 标识。支持的模式:<code>1</code>(1 位)、<code>L</code>(8 位灰度)、<code>P</code>(调色板)、<code>RGB</code>、<code>RGBA</code>、<code>CMYK</code>、<code>YCbCr</code>、<code>LAB</code>、<code>HSV</code>、<code>I</code>(32 位整数)、<code>F</code>(32 位浮点)、<code>I;16</code>/<code>I;16B</code>,以及 <code>BGR;</code>/<code>BGR;15</code>/<code>BGR;16</code>/<code>BGR;24</code> 原始变体。坐标系原点在左上角:<code>(0, 0)</code> 是左上角像素,<code>x</code> 向右、<code>y</code> 向下增长;四元矩形为 <code>[left, upper, right, lower]</code>。</p>
+
+  <h2>模块参考 · Reference</h2>
+  <p class="en">Every public API is documented on its own page, mirroring the Pillow reference manual:</p>
+  <p class="zh">每个公开 API 都在独立页面逐条说明,对应 Pillow 参考手册:</p>
+  <table class="appendix">
+    <tr><th>Module</th><th>EN</th><th>中文</th></tr>
+    <tr><td><a href="reference/Image.html">Image</a></td><td>The core image class: open, save, convert, resize, rotate, crop, paste, filters, pixels, palette, metadata.</td><td>核心图像类:打开、保存、转换、缩放、旋转、裁剪、粘贴、滤镜、像素、调色板与元数据。</td></tr>
+    <tr><td><a href="reference/ImageDraw.html">ImageDraw</a></td><td>2-D drawing: lines, arcs, ellipses, polygons, rectangles, text.</td><td>2D 绘图:直线、弧、椭圆、多边形、矩形与文字。</td></tr>
+    <tr><td><a href="reference/ImageFont.html">ImageFont</a></td><td>Font loading, truetype metrics, variation axes.</td><td>字体加载、truetype 度量与可变字体轴。</td></tr>
+    <tr><td><a href="reference/ImageFilter.html">ImageFilter</a></td><td>Built-in convolution and rank filters.</td><td>内置卷积与排序滤波器。</td></tr>
+    <tr><td><a href="reference/ImageChops.html">ImageChops</a></td><td>Channel operations: add, subtract, multiply, logical, screen, overlay.</td><td>通道运算:加、减、乘、逻辑、screen、overlay 等。</td></tr>
+    <tr><td><a href="reference/ImageOps.html">ImageOps</a></td><td>Whole-image operations: grayscale, invert, solarize, posterize, pad, fit, contain, cover.</td><td>整图操作:灰度、反色、曝光、色调分离、填充、适配、裁剪覆盖。</td></tr>
+    <tr><td><a href="reference/ImageStat.html">ImageStat</a></td><td>Global histogram and per-band statistics.</td><td>全局直方图与逐通道统计量。</td></tr>
+    <tr><td><a href="reference/ImageMath.html">ImageMath</a></td><td>Expression evaluation over images (Eval / LambdaEval).</td><td>图像表达式求值(Eval / LambdaEval)。</td></tr>
+    <tr><td><a href="reference/ImageCms.html">ImageCms</a></td><td>ICC profile management and color transforms.</td><td>ICC 色彩配置文件管理与色彩转换。</td></tr>
+    <tr><td><a href="reference/ImageColor.html">ImageColor</a></td><td>Color name/string parsing, HSL/HSV conversion.</td><td>颜色名/字符串解析与 HSL/HSV 转换。</td></tr>
+    <tr><td><a href="reference/ImageEnhance.html">ImageEnhance</a></td><td>Color, contrast, brightness and sharpness adjustment.</td><td>色彩、对比度、亮度与锐度调节。</td></tr>
+    <tr><td><a href="reference/ImagePalette.html">ImagePalette</a></td><td>Palette objects and palette builders.</td><td>调色板对象与调色板构造器。</td></tr>
+    <tr><td><a href="reference/ImagePath.html">ImagePath</a></td><td>Path object for polygon drawing.</td><td>多边形绘制所用的路径对象。</td></tr>
+    <tr><td><a href="reference/ImageDraw2.html">ImageDraw2</a></td><td>Pen/Brush style drawing (experimental module).</td><td>Pen/Brush 风格绘图(实验模块)。</td></tr>
+    <tr><td><a href="reference/ImageSequence.html">ImageSequence</a></td><td>Iterator over animated frames.</td><td>动画帧迭代器。</td></tr>
+    <tr><td><a href="reference/ImageGrab.html">ImageGrab</a></td><td>Screen capture.</td><td>屏幕截图。</td></tr>
+    <tr><td><a href="reference/ImageFile.html">ImageFile</a></td><td>File parser state, block constants.</td><td>文件解析状态与块常量。</td></tr>
+    <tr><td><a href="reference/ImageTransform.html">ImageTransform</a></td><td>Affine / perspective / quad / mesh transform handlers.</td><td>仿射/透视/四边形/网格变换处理器。</td></tr>
+    <tr><td><a href="reference/ImageQt.html">ImageQt</a></td><td>Qt interop (boundary — no Qt binding in this runtime).</td><td>Qt 互操作(边界——本运行时不带 Qt 绑定)。</td></tr>
+    <tr><td><a href="reference/ImageTk.html">ImageTk</a></td><td>Tk interop (boundary — no Tk interpreter in this runtime).</td><td>Tk 互操作(边界——本运行时不带 Tk 解释器)。</td></tr>
+    <tr><td><a href="reference/constants.html">Constants</a></td><td>Transpose, Transform, Resampling, Dither, Palette, Quantize enums.</td><td>Transpose、Transform、Resampling、Dither、Palette、Quantize 枚举。</td></tr>
+    <tr><td><a href="reference/Pillow.html">Pillow</a></td><td>Entry class: Configure, ABI version, status helpers.</td><td>入口类:Configure、ABI 版本与状态辅助函数。</td></tr>
+  </table>
+
+  <h2>行为对齐 · Parity</h2>
+  <p class="en">Behavior is verified against a local Pillow 11.3.0 installation (<code>F:\Python\Python310\python.exe</code>) through oracle probes and a full AutoHotkey test suite: <b>2856/2856</b> tests passing, <b>524/524</b> DLL exports in parity, DLL SHA-256 <code>62A3B585DBE4C631B60BB7C87C3D55D60D79D756EA87767FE44C09FAF3CF3FED</code>. Every error message, boundary error and conversion rule is pinned against the Python implementation — not just the happy path.</p>
+  <p class="zh">行为以本机 Pillow 11.3.0(<code>F:\Python\Python310\python.exe</code>)为基准,通过 oracle 探针与完整 AutoHotkey 测试套件逐项验证:<b>2856/2856</b> 项测试通过、<b>524/524</b> 个 DLL 导出对齐,DLL SHA-256 <code>62A3B585DBE4C631B60BB7C87C3D55D60D79D756EA87767FE44C09FAF3CF3FED</code>。每条错误消息、边界报错与转换规则都对照 Python 实现逐一钉死——不止是正常路径。</p>
+  <p class="en">A small number of honest <a href="reference/boundaries.html">documented boundaries</a> remain: WebP/AVIF/JPEG2000 decoders, FPX, ImageQt/ImageTk, ImagePalette.random streams and the ImagePath map handler fail loudly with Pillow's exact messages instead of silently diverging.</p>
+  <p class="zh">少量诚实的<a href="reference/boundaries.html">行为边界</a>被记录在案:WebP/AVIF/JPEG2000 解码器、FPX、ImageQt/ImageTk、ImagePalette.random 随机流与 ImagePath map 处理器——它们以 Pillow 的原始报错显式失败,绝不静默偏离。</p>
+
+  <h2>项目文档 · Project Docs</h2>
+  <p class="en">Engineer-facing ledgers and internals:</p>
+  <p class="zh">面向工程维护者的台账与内部资料:</p>
+  <ul>
+    <li><a href="../docs/architecture.md">Architecture / 架构</a></li>
+    <li><a href="../docs/native-abi.md">Native ABI / 原生 ABI</a></li>
+    <li><a href="../docs/pillow-gap-checkpoint.md">Gap checkpoint / 差距检查点</a></li>
+    <li><a href="../docs/pillow-gap-analysis.md">Gap analysis ledger / 差距分析台账</a></li>
+    <li><a href="../docs/testing.md">Testing / 测试说明</a></li>
+  </ul>
+</div>
+<script src="_static/pages.js"></script>
+</body>
+</html>

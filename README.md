@@ -6,6 +6,14 @@ The project centers on `pillow_c.dll`: a performance-first C/C++ DLL that owns i
 
 This is not a port of any existing AHK Pillow wrapper. Behavior is constrained by local Python 3.10.11 and Pillow 11.3.0.
 
+## Documentation
+
+Bilingual (English / 中文) API documentation, modeled on the official Pillow docs and covering every public API down to its parameters, return values, error messages, and behavioral boundaries:
+
+- [pillow-c docs site](pages/index.html) — open locally or serve `pages/` via GitHub Pages
+  - [Image](pages/reference/Image.html) · [ImageDraw](pages/reference/ImageDraw.html) · [ImageFont](pages/reference/ImageFont.html) · [ImageFilter](pages/reference/ImageFilter.html) · [ImageChops](pages/reference/ImageChops.html) · [ImageOps](pages/reference/ImageOps.html) · [ImageStat](pages/reference/ImageStat.html) · [ImageMath](pages/reference/ImageMath.html) · [ImageCms](pages/reference/ImageCms.html) · [ImageColor](pages/reference/ImageColor.html) · [ImageEnhance](pages/reference/ImageEnhance.html) · [ImagePalette](pages/reference/ImagePalette.html) · [ImagePath](pages/reference/ImagePath.html) · [ImageDraw2](pages/reference/ImageDraw2.html) · [ImageSequence](pages/reference/ImageSequence.html) · [ImageGrab](pages/reference/ImageGrab.html) · [ImageFile](pages/reference/ImageFile.html) · [ImageTransform](pages/reference/ImageTransform.html) · [ImageQt](pages/reference/ImageQt.html) · [ImageTk](pages/reference/ImageTk.html) · [Constants](pages/reference/constants.html) · [Boundaries](pages/reference/boundaries.html)
+  - Engineer-facing ledgers: [Architecture](docs/architecture.md) · [Native ABI](docs/native-abi.md) · [Gap Checkpoint](docs/pillow-gap-checkpoint.md) · [Gap Analysis](docs/pillow-gap-analysis.md) · [Testing](docs/testing.md)
+
 ## Quick Start
 
 The current Release DLL is committed for direct use:
@@ -27,10 +35,15 @@ Minimal AHK sketch:
 #Include "ahk\pillow.ahk"
 
 Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
-img := Pillow.Image.New("RGB", [2, 1])
-bytes := img.ToBytes()
+img := Pillow.Image.Open("photo.png")
+img := img.Resize([800, 600])
+img.Save("photo-800.jpg")
 img.Close()
 ```
+
+## Behavioral Parity
+
+Behavior is verified against local Pillow 11.3.0 (`F:\Python\Python310\python.exe`) through oracle probes plus the full AutoHotkey suite: **2856/2856** tests, **524/524** DLL exports in parity, Release x64 DLL SHA-256 `62A3B585DBE4C631B60BB7C87C3D55D60D79D756EA87767FE44C09FAF3CF3FED`. Error messages, option validation, conversion rules, metadata shapes, and numeric edge cases are pinned against the Python implementation. The few remaining honest boundaries (WebP/AVIF/JPEG2000 decoders, FPX, ImageQt/ImageTk, ImagePalette.random, the ImagePath map handler, …) fail loudly with Pillow's exact messages — see [Boundaries](pages/reference/boundaries.html).
 
 ## Build
 
@@ -45,17 +58,6 @@ Tests use `ahktest` from [MonoEven/stdlib-ahk](https://github.com/MonoEven/stdli
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 120
 ```
-
-## Docs
-
-Before continuing Pillow compatibility work, read the gap ledger first so the
-same audit does not need to be repeated every session.
-
-- [Architecture](docs/architecture.md)
-- [Native ABI](docs/native-abi.md)
-- [Pillow Gap Checkpoint](docs/pillow-gap-checkpoint.md)
-- [Pillow Gap Analysis](docs/pillow-gap-analysis.md)
-- [Testing](docs/testing.md)
 
 ## Friendly Links
 
