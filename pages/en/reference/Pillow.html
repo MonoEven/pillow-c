@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pillow (entry) — pillow-c documentation</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="../index.html">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">Numpy</a>
+    <a href="constants.html">Constants</a>
+    <a href="Pillow.html" class="current">Pillow (entry)</a>
+    <a href="boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/Pillow.html">中文</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » Pillow</div>
+  <h1>Pillow <span class="kind">entry class</span></h1>
+  <p class="en">The <code>Pillow</code> class is the facade root: it hosts the module classes (<code>Image</code>, <code>ImageDraw</code>, …), the constant enums, and the DLL plumbing.</p>
+  
+
+  <section class="api" id="Pillow.Configure">
+    <h3>Configure <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Configure(options := unset)</pre>
+    <p class="en">Configures the facade. Options: <code>DllPath</code> (path to <code>pillow_c.dll</code>). Call once before using any image API.</p>
+    
+    <pre class="example">Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })</pre>
+  </section>
+
+  <section class="api" id="Pillow.Abiversion">
+    <h3>AbiVersion <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.AbiVersion()</pre>
+    <p class="en">Returns the DLL ABI version number.</p>
+    
+  </section>
+
+  <section class="api" id="Pillow.Status">
+    <h3>CheckStatus / StatusMessage <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.CheckStatus(statusCode)      ;  raises on error statuses
+Pillow.StatusMessage(statusCode)    ;  status text</pre>
+    <p class="en">CheckStatus converts a native status code (<code>PILLOW_C_OK=0</code>, <code>NULL_POINTER=-1</code>, <code>INVALID_LENGTH=-2</code>, <code>INVALID_ARGUMENT=-3</code>, <code>ALLOCATION_FAILED=-4</code>) into a thrown Error or no-op; StatusMessage returns the human-readable text.</p>
+    
+  </section>
+
+  <section class="api" id="Pillow.ModeId">
+    <h3>ModeId / ModeName <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ModeId(modeName)   ;  "L" → 8, "RGB" → 3, "RGBA" → 4, "I" → 8(int), "F" → 9, ...
+Pillow.ModeName(mode)     ;  reverse mapping</pre>
+    <p class="en">Convert between mode strings and native mode ids.</p>
+    
+  </section>
+
+  <section class="api" id="Pillow.Dll">
+    <h3>RequireDllPath / EnsureDllLoaded / WrapImageHandle <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.RequireDllPath()              ;  configured DLL path (or raises)
+Pillow.EnsureDllLoaded()              ;  loads the DLL once
+Pillow.WrapImageHandle(handle)        ;  native handle → Pillow.Image</pre>
+    <p class="en">Internal plumbing: resolve/load the DLL and wrap a native image handle into a managed Image object.</p>
+    
+  </section>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

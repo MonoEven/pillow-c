@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImagePalette — pillow-c 文档</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">中文文档</div>
+  <nav>
+    <p class="nav-head">首页</p>
+    <a href="../index.html">概述</a>
+    <p class="nav-head">参考</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html" class="current">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">NumPy 互操作</a>
+    <a href="constants.html">常量</a>
+    <a href="Pillow.html">Pillow(入口)</a>
+    <a href="boundaries.html">行为边界</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../en/reference/ImagePalette.html">English</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">首页</a> » ImagePalette</div>
+  <h1>ImagePalette <span class="kind">模块</span></h1>
+  
+  <p class="zh"><code>ImagePalette</code> 模块把调色板存为扁平的字节序列,并提供调色板构造器与索引查找,对齐 Pillow 11.3.0 的 <code>PIL.ImagePalette</code>。调色板序列存为 AHK <code>Array</code>(Pillow 接受任意整数序列),惰性 <code>Colors</code> 映射使用逗号拼接的字符串键——因为 AHK 的 Map 键按身份比较(没有元组键)。</p>
+  <p class="note"><span class="zh">表面说明:<code>Pillow.ImagePalette(...)</code> 直接构造实例(Pillow 的 <code>ImagePalette.ImagePalette</code> 类)。<code>Random()</code> 与 Pillow 的形状、取值范围一致,但随机流(梅森旋转)不同;<code>Load()</code> 与 <code>PaletteFile</code>/<code>GimpPaletteFile</code>/<code>GimpGradientFile</code> 解析器类为已记录的显式失败边界——见<a href="boundaries.html">行为边界</a>。</span></p>
+
+  <h2 id="class">类与字段</h2>
+
+  <section class="api" id="ImagePalette.Constructor">
+    <h3>ImagePalette <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImagePalette(mode := "RGB", palette := unset)</pre>
+    
+    <p class="zh">构造调色板。<code>mode</code> 为通道布局字符串(<code>"RGB"</code>、<code>"RGBA"</code>……);<code>palette</code> 为可选的扁平字节 <code>Array</code>(默认空)。本门面的构造器省略 Pillow 末尾的 <code>size</code> 参数——字节数只由 <code>palette.Length</code> 决定。</p>
+    <dl class="params">
+      <dt>mode</dt><dd><span class="zh">通道布局字符串;默认 <code>"RGB"</code>。</span></dd>
+      <dt>palette</dt><dd><span class="zh">可选扁平整数序列;<code>unset</code> 得到空调色板。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:ImagePalette 实例。</span></p>
+  </section>
+
+  <section class="api" id="ImagePalette.Fields">
+    <h3>Fields <span class="kind">attributes</span></h3>
+    <table class="appendix">
+      <tr><th>Field</th><th>中文</th></tr>
+      <tr><td><code>Mode</code></td><td>原始模式标记;除非为原始调色板(<code>Raw()</code>),否则为空。</td></tr>
+      <tr><td><code>Palette</code></td><td>0/1 标志;<code>GetColor</code> 分配或 <code>Raw()</code> 后为 1。</td></tr>
+      <tr><td><code>Colors</code></td><td>惰性 <code>Map</code>:逗号拼接的颜色键 → 调色板索引(Pillow 的 <code>getcolor</code> 行为)。</td></tr>
+    </table>
+  </section>
+
+  <h2 id="methods">实例方法</h2>
+
+  <section class="api" id="ImagePalette.Copy">
+    <h3>Copy</h3>
+    <pre class="sig">palette.Copy()</pre>
+    
+    <p class="zh">返回独立副本(mode、rawmode、克隆的字节数组与 dirty 标志)。</p>
+    <p class="returns"><span class="zh">返回:新的 ImagePalette。</span></p>
+  </section>
+
+  <section class="api" id="ImagePalette.GetData">
+    <h3>GetData</h3>
+    <pre class="sig">palette.GetData()</pre>
+    
+    <p class="zh">原始调色板返回 <code>[Rawmode, Palette]</code>,否则返回 <code>[Mode, ToBytes()]</code>(Pillow 的 <code>getdata</code> 形态)。</p>
+    <p class="returns"><span class="zh">返回:<code>[模式字符串, 数据]</code>。</span></p>
+  </section>
+
+  <section class="api" id="ImagePalette.ToBytes">
+    <h3>ToBytes / Tostring</h3>
+    <pre class="sig">palette.ToBytes()
+palette.Tostring()   ;  alias of ToBytes (Pillow's tostring)</pre>
+    
+    <p class="zh">把调色板条目序列化为字节 <code>Buffer</code>。原始调色板(Rawmode 已设)抛 Pillow 原样的 <code>palette contains raw palette data</code>。</p>
+    <p class="returns"><span class="zh">返回:字节 <code>Buffer</code>。</span></p>
+  </section>
+
+  <section class="api" id="ImagePalette.Save">
+    <h3>Save</h3>
+    <pre class="sig">palette.Save(fp)</pre>
+    
+    <p class="zh">写出 Pillow 风格的调色板文件:<code># Palette</code> 头、<code># Mode: …</code> 行,然后是 256 行索引条目(缺失条目以 0 补齐)。<code>fp</code> 必须为文件路径字符串。</p>
+    <p class="returns"><span class="zh">返回:无(写文件)。</span></p>
+  </section>
+
+  <section class="api" id="ImagePalette.GetColor">
+    <h3>GetColor</h3>
+    <pre class="sig">palette.GetColor(color, image := unset)</pre>
+    
+    <p class="zh">返回某颜色的调色板索引,必要时分配新条目(Pillow 的 <code>getcolor</code>)。<code>color</code> 为通道数组,如 <code>[255, 0, 0]</code>。<code>RGB</code> 模式下 4 元素颜色必须 alpha 为 255(否则 <code>cannot add non-opaque RGBA color to RGB palette</code>);<code>RGBA</code> 模式下 3 元素颜色补 alpha 255。原始调色板(Rawmode 已设)抛 <code>palette contains raw palette data</code>。</p>
+    <dl class="params">
+      <dt>color</dt><dd><span class="zh">通道数组(3 或 4 元素)。</span></dd>
+      <dt>image</dt><dd><span class="zh">可选图像;其 <code>Info</code> 的 <code>background</code>/<code>transparency</code> 索引作为保留项被跳过。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:调色板索引(0–255)。</span></p>
+    <p class="note"><span class="zh">趣味对齐事实:参考输入下经 oracle 验证的 <code>GetColor</code> 分配序列为 <code>[1, 4, 15, 5, 18, 6, 21]</code>——Pillow 无论模式一律硬编码 <code>//3</code>,并跳过图像的 background/transparency 保留索引,两者均逐项复刻。超过 255 种不同颜色且无空闲直方图槽时抛 <code>cannot allocate more than 256 colors</code>。</span></p>
+  </section>
+
+  <h2 id="builders">模块调色板构造器</h2>
+
+  <section class="api" id="ImagePalette.Random">
+    <h3>Random <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImagePalette.Random(mode := "RGB")</pre>
+    
+    <p class="zh">构造 256 条目的随机调色板,通道值在 0–255。形状与取值范围与 Pillow 一致;逐值随机流不同(已记录边界)。</p>
+    <p class="returns"><span class="zh">返回:新的 ImagePalette。</span></p>
+    <p class="warn"><span class="zh">边界:Pillow 使用 Python 全局梅森旋转随机流;本运行时用 AHK 自身的随机源,形状与取值范围相同。见<a href="boundaries.html">行为边界</a>。</span></p>
+  </section>
+
+  <section class="api" id="ImagePalette.Raw">
+    <h3>Raw <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImagePalette.Raw(rawmode, data)</pre>
+    
+    <p class="zh">包装原始调色板字节:设置 <code>Rawmode</code>、把 <code>data</code> 存为字节数组并标记为 dirty。原始调色板不可序列化,也不可做颜色查找。</p>
+    <p class="returns"><span class="zh">返回:原始 ImagePalette。</span></p>
+  </section>
+
+  <section class="api" id="ImagePalette.Negative">
+    <h3>Negative <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImagePalette.Negative(mode := "RGB")</pre>
+    
+    <p class="zh">构造通道值自最大值向下递减的调色板(标准渐变的反相)。</p>
+    <p class="returns"><span class="zh">返回:新的 ImagePalette。</span></p>
+  </section>
+
+  <section class="api" id="ImagePalette.Sepia">
+    <h3>Sepia <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImagePalette.Sepia(white := "#fff0c0")</pre>
+    
+    <p class="zh">通过把三条线性 LUT 缩放到给定 <code>white</code> 颜色(Pillow 默认的暖白)来构造褐色调调色板。</p>
+    <p class="returns"><span class="zh">返回:<code>"RGB"</code> ImagePalette。</span></p>
+  </section>
+
+  <section class="api" id="ImagePalette.Wedge">
+    <h3>Wedge <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImagePalette.Wedge(mode := "RGB")</pre>
+    
+    <p class="zh">构造灰度渐变调色板:0–255 的每个索引在模式的各通道间重复。</p>
+    <p class="returns"><span class="zh">返回:新的 ImagePalette。</span></p>
+  </section>
+
+  <section class="api" id="ImagePalette.MakeLinearLut">
+    <h3>MakeLinearLut <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImagePalette.MakeLinearLut(black, white)</pre>
+    
+    <p class="zh">构造 256 条目的线性 LUT,自 <code>black</code> 到 <code>white</code>。<code>black</code> 非零时抛 Pillow 原样的 <code>unavailable when black is non-zero</code>。</p>
+    <p class="returns"><span class="zh">返回:256 元素整数 <code>Array</code>。</span></p>
+  </section>
+
+  <section class="api" id="ImagePalette.MakeGammaLut">
+    <h3>MakeGammaLut <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImagePalette.MakeGammaLut(exp)</pre>
+    
+    <p class="zh">构造 256 条目的伽马 LUT:每个索引 <code>i</code> 取 <code>round((i / 255) ** exp * 255)</code>。</p>
+    <p class="returns"><span class="zh">返回:256 元素整数 <code>Array</code>。</span></p>
+  </section>
+
+  <h2 id="load">加载边界</h2>
+
+  <section class="api" id="ImagePalette.Load">
+    <h3>Load <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImagePalette.Load(filename)</pre>
+    
+    <p class="zh">通过三段回退链(GimpPaletteFile → GimpGradientFile → PaletteFile)加载 GIMP 调色板、GIMP 渐变或 Teragon 风格调色板文件。文件缺失抛 <code>[Errno 2] No such file or directory: '…'</code>;当所有解析器都拒绝内容时,回退链抛 Pillow 原样的 <code>cannot load palette</code>。</p>
+    <dl class="params">
+      <dt>filename</dt><dd><span class="zh">调色板/渐变文件路径。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:<code>[字节, rawmode]</code>(<code>"RGB"</code> 或 <code>"RGBA"</code>)。</span></p>
+    <p class="warn"><span class="zh">边界:<code>PaletteFile</code>/<code>GimpPaletteFile</code>/<code>GimpGradientFile</code> 解析器类不作为类暴露——只有 <code>Load</code> 的回退链及其内部辅助函数。渐变的非 RGB 色彩空间(<code>cannot handle HSV colour space</code>)与过短的段行(<code>list index out of range</code>)原样上抛,与 Pillow 一致。见<a href="boundaries.html">行为边界</a>。</span></p>
+  </section>
+
+  <h2 id="internals">内部辅助</h2>
+  
+  <p class="zh">以下成员实现 <code>Load</code> 背后的 GIMP/Teragon 调色板与渐变解析。它们对门面内部公开并被测试套件钉死,但不属于 Pillow 风格的用户 API。</p>
+  <table class="appendix">
+    <tr><th>Member</th><th>中文</th></tr>
+    <tr><td><code>ColorKey(color)</code></td><td>GIMP 渐变段曲线(线性/弯曲/正弦/球面)。</td></tr>
+    <tr><td><code>GimpGradientParse(content)</code></td><td>GimpPaletteFile 的 <code>_read</code>(限量)→ <code>[字节, "RGB"]</code>。</td></tr>
+    <tr><td><code>PaletteFloat(text)</code></td><td>解析整数,失败抛 <code>Invalid value.</code></td></tr>
+    <tr><td><code>PaletteLoadCaught(message)</code></td><td>PaletteFile(Teragon 风格)→ <code>[字节, "RGB"]</code>。</td></tr>
+    <tr><td><code>PaletteTokens(line)</code></td><td>按折叠后的空白切分行。</td></tr>
+  </table>
+
+  <h2 id="examples">示例</h2>
+  
+  <p class="zh">把 Wedge 灰度调色板挂到 P 模式图像上:</p>
+  <pre class="example">pal := Pillow.ImagePalette.Wedge("RGB")   ; 256 级灰度
+img := Pillow.Image.New("P", [256, 16])
+img.PutPalette(pal.ToBytes(), "RGB")
+img.Save("wedge.png")
+img.Close()</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

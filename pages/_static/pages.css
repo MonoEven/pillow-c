@@ -18,6 +18,8 @@ body {
 .sidebar nav a.current { background: #2980b9; color: #fff; }
 .nav-head { padding: 10px 22px 4px; margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #9f9c9c; }
 .lang-switch { padding: 12px 22px; border-top: 1px solid #4d4a4a; }
+.lang-switch a.lang-alt { color: #e8e8e8; background: #4d4a4a; border: 1px solid #666; padding: 4px 10px; border-radius: 3px; font-size: 12px; text-decoration: none; }
+.lang-switch a.lang-alt:hover { background: #2980b9; border-color: #2980b9; color: #fff; }
 .lang-switch button { background: #4d4a4a; border: 1px solid #666; color: #e8e8e8; padding: 4px 10px; margin: 0 6px 6px 0; cursor: pointer; font-size: 12px; border-radius: 3px; }
 .lang-switch button.active { background: #2980b9; border-color: #2980b9; color: #fff; }
 .content { flex: 1 1 auto; max-width: 940px; padding: 26px 48px 90px; min-width: 0; }

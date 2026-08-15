@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageStat — pillow-c documentation</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="../index.html">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html" class="current">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">Numpy</a>
+    <a href="constants.html">Constants</a>
+    <a href="Pillow.html">Pillow (entry)</a>
+    <a href="boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/ImageStat.html">中文</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » ImageStat</div>
+  <h1>ImageStat <span class="kind">module</span></h1>
+  <p class="en">The <code>ImageStat</code> module computes per-band statistics from a histogram. <code>Stat</code> wraps either an <code>Image</code> (whose histogram is taken internally) or a precomputed raw histogram list; every statistic is a lazily computed, cached attribute that returns a per-band ARRAY — for an RGB image <code>Mean</code> returns <code>[rMean, gMean, bMean]</code>.</p>
+  
+  <p class="note"><span class="en">Each attribute is computed on first access and cached (Pillow's <code>cached_property</code>); it is a per-band array whose length equals the band count (histogram length // 256).</span></p>
+
+  <h2 id="constructor">Construction</h2>
+
+  <section class="api" id="ImageStat.Stat">
+    <h3>Stat <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImageStat.Stat(imageOrList, mask := unset)</pre>
+    <p class="en">Builds a statistics object over an image or a raw histogram list. If a mask is given, only the pixels covered by the mask are counted.</p>
+    
+    <dl class="params">
+      <dt>imageOrList</dt><dd><span class="en">An <code>Image</code>, or a precomputed histogram list whose length must be a multiple of 256 (one 256-bin block per band).</span></dd>
+      <dt>mask</dt><dd><span class="en">Optional mask image: mode <code>"1"</code> or <code>"L"</code>, same size as the image; only masked pixels count. Requires image input — a list plus mask raises <code>Pillow.ImageStat.Stat mask requires image input</code>.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new <code>Stat</code>.</span></p>
+    <p class="note"><span class="en">Mask parity: a non-1/L mask raises Pillow's exact <code>bad transparency mask</code>; a size mismatch raises <code>images do not match</code>.</span></p>
+    <p class="note"><span class="en">Like Pillow, the histogram groups pixels into 256 bins even for more-than-8-bit modes, so <code>I</code>/<code>F</code> mode <code>mean</code>/<code>median</code>/<code>rms</code> top out at 255 and <code>extrema</code> cannot exceed 255 — use <code>image.GetExtrema()</code> for exact per-band extrema. I;16 histograms keep Pillow's layout-dependent byte misread as a documented boundary (see <a href="boundaries.html">Boundaries</a>).</span></p>
+  </section>
+
+  <section class="api" id="ImageStat.Global">
+    <h3>Global <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageStat.Global(imageOrList, mask := unset)</pre>
+    <p class="en">Pillow's <code>ImageStat.Global</code> is the plain alias <code>Global = Stat</code>. Because <code>global</code> is a reserved keyword in AutoHotkey, the facade exposes the alias as a static constructor method: it forwards its arguments to <code>Stat</code> and returns the new statistics object.</p>
+    
+    <p class="returns"><span class="en">Returns: a new <code>Stat</code> (identical to <code>Pillow.ImageStat.Stat</code>).</span></p>
+  </section>
+
+  <h2 id="attributes">Attributes</h2>
+
+  <section class="api" id="ImageStat.Extrema">
+    <h3>Extrema <span class="kind">property</span></h3>
+    <pre class="sig">stat.Extrema</pre>
+    <p class="en">Min/max values per band: an array of <code>[min, max]</code> pairs — the lowest and highest occupied histogram bins.</p>
+    
+  </section>
+
+  <section class="api" id="ImageStat.Count">
+    <h3>Count <span class="kind">property</span></h3>
+    <pre class="sig">stat.Count</pre>
+    <p class="en">Total number of pixels per band — the sum of the band's 256 histogram bins (integer array).</p>
+    
+  </section>
+
+  <section class="api" id="ImageStat.Sum">
+    <h3>Sum <span class="kind">property</span></h3>
+    <pre class="sig">stat.Sum</pre>
+    <p class="en">Sum of pixel values per band: <code>Σ level × count[level]</code> over the band's 256 bins.</p>
+    
+  </section>
+
+  <section class="api" id="ImageStat.Sum2">
+    <h3>Sum2 <span class="kind">property</span></h3>
+    <pre class="sig">stat.Sum2</pre>
+    <p class="en">Sum of squared pixel values per band: <code>Σ level² × count[level]</code>.</p>
+    
+  </section>
+
+  <section class="api" id="ImageStat.Mean">
+    <h3>Mean <span class="kind">property</span></h3>
+    <pre class="sig">stat.Mean</pre>
+    <p class="en">Arithmetic mean pixel level per band: <code>sum / count</code>.</p>
+    
+  </section>
+
+  <section class="api" id="ImageStat.Median">
+    <h3>Median <span class="kind">property</span></h3>
+    <pre class="sig">stat.Median</pre>
+    <p class="en">Median pixel level per band, found by walking the cumulative histogram until it exceeds <code>count // 2</code>.</p>
+    
+  </section>
+
+  <section class="api" id="ImageStat.Rms">
+    <h3>Rms <span class="kind">property</span></h3>
+    <pre class="sig">stat.Rms</pre>
+    <p class="en">Root-mean-square per band: <code>sqrt(sum2 / count)</code>.</p>
+    
+  </section>
+
+  <section class="api" id="ImageStat.Var">
+    <h3>Var <span class="kind">property</span></h3>
+    <pre class="sig">stat.Var</pre>
+    <p class="en">Variance per band: <code>(sum2 − sum² / count) / count</code>.</p>
+    
+  </section>
+
+  <section class="api" id="ImageStat.StdDev">
+    <h3>StdDev <span class="kind">property</span></h3>
+    <pre class="sig">stat.StdDev</pre>
+    <p class="en">Standard deviation per band: <code>sqrt(var)</code>.</p>
+    
+  </section>
+
+  <h2 id="internals">Internal helpers</h2>
+  <p class="note"><span class="en"><code>Pillow.ImageStat.StrPut</code> is a buffer-write helper used by the facade; it is not part of the Pillow-style user API.</span></p>
+
+  <h2 id="examples">Examples</h2>
+  <p class="en">Compute and print the mean and standard deviation of an RGB image:</p>
+  
+  <pre class="example">img := Pillow.Image.Open("photo.jpg")    ;  RGB image
+st := Pillow.ImageStat.Stat(img)
+mean := st.Mean                          ;  [rMean, gMean, bMean]
+std  := st.StdDev                        ;  [rStddev, gStddev, bStddev]
+txt := ""
+loop mean.Length
+    txt .= "band " A_Index ": mean=" Round(mean[A_Index], 2)
+        .  "  stddev=" Round(std[A_Index], 2) "`n"
+MsgBox txt
+img.Close()</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

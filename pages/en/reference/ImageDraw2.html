@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageDraw2 — pillow-c documentation</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="../index.html">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html" class="current">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">Numpy</a>
+    <a href="constants.html">Constants</a>
+    <a href="Pillow.html">Pillow (entry)</a>
+    <a href="boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/ImageDraw2.html">中文</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » ImageDraw2</div>
+  <h1>ImageDraw2 <span class="kind">module</span></h1>
+  <p class="en">The experimental <code>ImageDraw2</code> module mirrors Pillow's WCK-style pendulum interface: a <code>Pen</code>/<code>Brush</code> pair plus a <code>Draw</code> handle that renders shapes and text onto an image. It is Pillow 11.3.0-compatible under the <code>Pillow.</code> namespace; <code>0</code> is the AHK None analogue and <code>unset</code> the "argument not given" sentinel.</p>
+  
+  <p class="note"><span class="en">Surface notes: shape rendering resolves a <code>Pen</code> to outline color + width and a <code>Brush</code> to fill color, then delegates to the underlying <code>ImageDraw.Draw</code> handle; the <code>opacity</code> field is stored on Pen/Brush for Pillow parity but is not composited by this facade. <code>Text</code> drawing stays on the documented native draw seam (the <a href="boundaries.html#boundary.defaultfont">API-DRAWFONT-001 boundary</a>).</span></p>
+
+  <section class="api" id="ImageDraw2.Pen">
+    <h3>Pen <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImageDraw2.Pen(color, width := 1, opacity := 255)</pre>
+    <p class="en">A stroke (outline) style: a color plus a line width and opacity. The color is resolved through <code>GetRgbColor</code> — color names and <code>#hex</code> strings only; a tuple raises Pillow's exact <code>'tuple' object has no attribute 'lower'</code> error.</p>
+    
+    <dl class="params">
+      <dt>color</dt><dd><span class="en">A color name or <code>#hex</code> string.</span></dd>
+      <dt>width</dt><dd><span class="en">Line width (default 1).</span></dd>
+      <dt>opacity</dt><dd><span class="en">Opacity 0–255 (default 255); stored for Pillow parity.</span></dd>
+    </dl>
+  </section>
+
+  <section class="api" id="ImageDraw2.Brush">
+    <h3>Brush <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImageDraw2.Brush(color, opacity := 255)</pre>
+    <p class="en">A fill style: a color plus opacity. The color resolves through <code>GetRgbColor</code> exactly like <code>Pen</code>.</p>
+    
+    <dl class="params">
+      <dt>color</dt><dd><span class="en">A color name or <code>#hex</code> string.</span></dd>
+      <dt>opacity</dt><dd><span class="en">Opacity 0–255 (default 255); stored for Pillow parity.</span></dd>
+    </dl>
+  </section>
+
+  <section class="api" id="ImageDraw2.Font">
+    <h3>Font <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImageDraw2.Font(color, file, size := 12)</pre>
+    <p class="en">A text style: a color plus a truetype font loaded via <code>ImageFont.Truetype(file, size)</code>.</p>
+    
+    <dl class="params">
+      <dt>color</dt><dd><span class="en">A color name or <code>#hex</code> string.</span></dd>
+      <dt>file</dt><dd><span class="en">Path to a truetype font file.</span></dd>
+      <dt>size</dt><dd><span class="en">Font size in pixels (default 12).</span></dd>
+    </dl>
+  </section>
+
+  <section class="api" id="ImageDraw2.Draw">
+    <h3>Draw <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImageDraw2.Draw(image, size := unset, color := unset)</pre>
+    <p class="en">Creates an ImageDraw2 drawing handle over an image. Pass a <code>Pillow.Image</code>, or a mode string together with <code>size</code> (and optional <code>color</code>) to create a new blank image.</p>
+    
+    <dl class="params">
+      <dt>image</dt><dd><span class="en">A <code>Pillow.Image</code>, or a mode string (e.g. <code>"RGB"</code>).</span></dd>
+      <dt>size</dt><dd><span class="en">Required when <code>image</code> is a mode string; the new image's <code>[width, height]</code>.</span></dd>
+      <dt>color</dt><dd><span class="en">Optional background color when creating from a mode string.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a Draw handle (exposes <code>Image</code> and <code>Draw</code> fields).</span></p>
+    <p class="note"><span class="en"><code>size</code>/<code>color</code> apply only when <code>image</code> is a mode string (they seed <code>Image.New(mode, size, color)</code>); when an actual Image is passed they are ignored.</span></p>
+  </section>
+
+  <section class="api" id="ImageDraw2.Draw.Flush">
+    <h3>Flush</h3>
+    <pre class="sig">draw.Flush()</pre>
+    <p class="en">Returns the underlying image (all drawing is in place on it).</p>
+    
+    <p class="returns"><span class="en">Returns: the Pillow.Image being drawn.</span></p>
+  </section>
+
+  <section class="api" id="ImageDraw2.Draw.Settransform">
+    <h3>Settransform</h3>
+    <pre class="sig">draw.Settransform(offset)</pre>
+    <p class="en">Applies a pixel offset to subsequent shape and text rendering: <code>(xoffset, yoffset)</code> becomes the affine <code>(1, 0, xoffset, 0, 1, yoffset)</code>.</p>
+    
+    <dl class="params">
+      <dt>offset</dt><dd><span class="en">A <code>[xoffset, yoffset]</code> pair.</span></dd>
+    </dl>
+  </section>
+
+  <section class="api" id="ImageDraw2.Draw.Render">
+    <h3>Render</h3>
+    <pre class="sig">draw.Render(op, xy, pen := unset, brush := unset, options := unset)</pre>
+    <p class="en">Low-level dispatcher: resolves <code>pen</code> to outline color + width and <code>brush</code> to fill color, applies the current transform to <code>xy</code>, then calls the underlying <code>ImageDraw.Draw</code> handle for <code>op</code>. The shape methods below delegate here.</p>
+    
+    <dl class="params">
+      <dt>op</dt><dd><span class="en">Operation name: <code>"arc"|"line"|"chord"|"ellipse"|"pieslice"|"polygon"|"rectangle"</code>.</span></dd>
+      <dt>xy</dt><dd><span class="en">Coordinates for the operation.</span></dd>
+      <dt>pen</dt><dd><span class="en">A <code>Pen</code> (outline) or <code>Brush</code> (fill), or unset.</span></dd>
+      <dt>brush</dt><dd><span class="en">A <code>Brush</code> (fill) or <code>Pen</code> (outline), or unset.</span></dd>
+      <dt>options</dt><dd><span class="en">Operation options (e.g. <code>{Start, End}</code> angles).</span></dd>
+    </dl>
+  </section>
+
+  <h2 id="shapes">Shapes</h2>
+  <p class="en">Each shape takes a <code>Pen</code> (outline) and/or a <code>Brush</code> (fill); <code>Arc</code>/<code>Chord</code>/<code>Pieslice</code> also take <code>start</code>/<code>end</code> angles in degrees. A <code>Pen</code> supplies the outline color and width; a <code>Brush</code> supplies the fill color.</p>
+  
+
+  <section class="api" id="ImageDraw2.Draw.Arc">
+    <h3>Arc / Chord / Pieslice</h3>
+    <pre class="sig">draw.Arc(xy, pen := unset, start := 0, end := 360, brush := unset)
+draw.Chord(xy, pen := unset, start := 0, end := 360, brush := unset)
+draw.Pieslice(xy, pen := unset, start := 0, end := 360, brush := unset)</pre>
+    <p class="en">Draws circular segments between <code>start</code> and <code>end</code> degrees. Arc outlines only; chord closes with a line; pieslice closes through the center.</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw2.Draw.Ellipse">
+    <h3>Ellipse</h3>
+    <pre class="sig">draw.Ellipse(xy, pen := unset, brush := unset)</pre>
+    <p class="en">Draws an ellipse inside the bounding box <code>xy</code>.</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw2.Draw.Line">
+    <h3>Line</h3>
+    <pre class="sig">draw.Line(xy, pen := unset, brush := unset)</pre>
+    <p class="en">Draws a polyline through the <code>[x, y]</code> points.</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw2.Draw.Polygon">
+    <h3>Polygon</h3>
+    <pre class="sig">draw.Polygon(xy, pen := unset, brush := unset)</pre>
+    <p class="en">Draws a polygon through the given vertices (closed automatically).</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw2.Draw.Rectangle">
+    <h3>Rectangle</h3>
+    <pre class="sig">draw.Rectangle(xy, pen := unset, brush := unset)</pre>
+    <p class="en">Draws a rectangle; <code>xy</code> = <code>[left, upper, right, lower]</code>.</p>
+    
+  </section>
+
+  <h2 id="text">Text</h2>
+
+  <section class="api" id="ImageDraw2.Draw.Text">
+    <h3>Text</h3>
+    <pre class="sig">draw.Text(xy, text, font)</pre>
+    <p class="en">Draws text at <code>xy</code> using a <code>Font</code> (color + truetype font). Requires a <code>Pillow.ImageDraw2.Font</code>.</p>
+    
+    <p class="returns"><span class="en">Returns: the Draw handle (chainable).</span></p>
+    <p class="note"><span class="en">Text drawing delegates to <code>ImageDraw.Text</code> and stays on the documented native draw seam (the <a href="boundaries.html#boundary.defaultfont">API-DRAWFONT-001 boundary</a>).</span></p>
+  </section>
+
+  <section class="api" id="ImageDraw2.Draw.Textbbox">
+    <h3>Textbbox</h3>
+    <pre class="sig">draw.Textbbox(xy, text, font)</pre>
+    <p class="en">Returns the bounding box of the text as drawn (delegates to <code>ImageDraw.TextBbox</code>).</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw2.Draw.Textlength">
+    <h3>Textlength</h3>
+    <pre class="sig">draw.Textlength(text, font)</pre>
+    <p class="en">Returns the pixel width of the text (delegates to <code>ImageDraw.TextLength</code>).</p>
+    
+  </section>
+
+  <h2 id="helper">Internal Helper</h2>
+  <section class="api" id="ImageDraw2.GetRgbColor">
+    <h3>GetRgbColor <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageDraw2.GetRgbColor(color)</pre>
+    <p class="en">Internal helper: resolves a color name or <code>#hex</code> string via <code>ImageColor.GetRgb</code>. Non-string values raise Pillow's exact <code>'tuple' object has no attribute 'lower'</code> error. Not part of the public drawing surface.</p>
+    
+  </section>
+
+  <h2 id="examples">Examples</h2>
+  <p class="en">Draw a rectangle with a Pen onto a new image:</p>
+  
+  <pre class="example">img := Pillow.Image.New("RGB", [200, 120], "white")
+d := Pillow.ImageDraw2.Draw(img)
+pen := Pillow.ImageDraw2.Pen("red", 3)
+d.Rectangle([[20, 20], [180, 100]], pen)
+out := d.Flush()          ;  the same img
+out.Save("draw2.png")
+out.Close()</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

@@ -79,11 +79,11 @@ canvas.Close()
 Gradients and statistics:
 
 ```autohotkey
-gray := Pillow.Image.LinearGradient("L")     ; 256×256, 0..255 along x
+gray := Pillow.Image.LinearGradient("L")     ; 256×256, value = y (top to bottom)
 hist := gray.Histogram()                     ; 256 entries for L
 ext  := gray.GetExtrema()                    ; [min, max]
 
-grad := Pillow.Image.RadialGradient("RGB")
+grad := Pillow.Image.RadialGradient("L")     ; value = distance from centre
 grad.Thumbnail([128, 128])
 grad.Save("gradient.png")
 ```
@@ -94,9 +94,9 @@ grad.Save("gradient.png")
 img := Pillow.Image.New("RGB", [240, 140], "white")
 d := Pillow.ImageDraw.Draw(img)
 d.Line([[0, 0], [239, 0], [239, 139], [0, 139], [0, 0]], "blue", 3)
-d.RoundedRectangle([[20, 20], [220, 120]], 12, "yellow", "red", 2)
+d.RoundedRectangle([20, 20, 220, 120], 12, "yellow", "red", 2)
 d.Ellipse([60, 40, 180, 100], "lime", "black", 1)
-d.Text([12, 118], "Hello 中文", "navy")
+d.Text([12, 118], "Hello", "navy")
 img.Save("draw.png")
 img.Close()
 
@@ -117,6 +117,9 @@ directly — `image.AsArray()` is `numpy.asarray(im)` and
 ```autohotkey
 #Include "..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"
 
+Numpy.DllPath := A_ScriptDir "\..\2026-07-19-cnumpy-foundation\build\x64\Release\cnumpy_ahk.dll"
+Numpy.Init()
+
 img := Pillow.Image.Open("photo.jpg")
 a := img.AsArray()                 ; uint8 NdArray, [H, W, 3]
 mean := a.Mean()                   ; cnumpy statistics
@@ -125,21 +128,24 @@ img.Close()                        ; the array snapshot stays valid
 b := Numpy.Zeros([64, 64, 4], 3)   ; uint8 RGBA
 im := Pillow.Image.FromArray(b)    ; mode RGBA
 im.Save("black.png")
+im.Close()
+
+Numpy.Cleanup()
 ```
 
 ## Behavioral parity
 
 Behavior is verified against local Pillow 11.3.0
 (`F:\Python\Python310\python.exe`) through oracle probes plus the full
-AutoHotkey suite: **2868/2868** tests, **524/524** DLL exports in parity,
+AutoHotkey suite: **2870/2870** tests, **524/524** DLL exports in parity,
 Release x64 DLL SHA-256
-`4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481`. Error
+`2E6F0ABBAC878ACC483E6EE2B81F8C5810CD1144174C7E291C0BCCAA887DCC1E`. Error
 messages, option validation, conversion rules, metadata shapes, and numeric
 edge cases are pinned against the Python implementation. The few remaining
 honest boundaries (WebP/AVIF/JPEG2000 decoders, FPX, ImageQt/ImageTk,
 ImagePalette.random, the ImagePath map handler, I;16B big-endian AsArray, ...)
 fail loudly with Pillow's exact messages — see
-[Boundaries](pages/reference/boundaries.html).
+[Boundaries](pages/en/reference/boundaries.html).
 
 ## Build
 
@@ -162,12 +168,14 @@ The repository separates the blog from the technical Pages site.
 - Blog: bilingual introduction posts in forum BBCode format.
   - `blog_pillow_c_en.txt`
   - `blog_pillow_c.txt`
-- Pages: the bilingual API reference modeled on the official Pillow docs —
-  every public API with parameters, return values, error messages, and
-  behavioral boundaries. Served at
+- Pages: the API reference modeled on the official Pillow docs — every
+  public API with parameters, return values, error messages, and
+  behavioral boundaries. English and Chinese are two fully separate site
+  trees: `pages/en/` and `pages/zh/`, with a language chooser at
   [https://monoeven.github.io/pillow-c/](https://monoeven.github.io/pillow-c/)
-  from the `pages/` directory (open `pages/index.html` locally, or enable
-  GitHub Pages with source `master` / path `/pages`).
+  (locally: open `pages/index.html` and pick a language). Served from the
+  `pages/` directory via the Pages workflow in
+  `.github/workflows/deploy-pages.yml`.
 
 Engineer-facing ledgers:
 
@@ -184,11 +192,12 @@ ahk/
   pillow.ahk            facade (single entry point)
   pillow.test.ahk       full behavior suite
   pillow_numpy.test.ahk cnumpy interop suite
+  pillow_demo.test.ahk  executes every README/blog example
 src/                    native C/C++ (pillow_c.dll)
 build/x64/Release/      committed Release DLL
 oracle/                 Pillow 11.3.0 + NumPy 1.25.0 behavior probes
 docs/                   engineer ledgers
-pages/                  bilingual API reference site
+pages/                  API reference site (en/ and zh/ trees + chooser)
 ```
 
 ## Friendly links

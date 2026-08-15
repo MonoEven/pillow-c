@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageOps — pillow-c 文档</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">中文文档</div>
+  <nav>
+    <p class="nav-head">首页</p>
+    <a href="../index.html">概述</a>
+    <p class="nav-head">参考</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html" class="current">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">NumPy 互操作</a>
+    <a href="constants.html">常量</a>
+    <a href="Pillow.html">Pillow(入口)</a>
+    <a href="boundaries.html">行为边界</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../en/reference/ImageOps.html">English</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">首页</a> » ImageOps</div>
+  <h1>ImageOps <span class="kind">模块</span></h1>
+  
+  <p class="zh"><code>ImageOps</code> 模块提供现成的图像处理函数——对比度、上色、均衡化、色调分离/曝光反转、EXIF 转置,以及保持宽高比的缩放(contain/cover/fit/pad)。方法以 PascalCase 主名对应 Pillow 的 <code>PIL.ImageOps</code>;同时提供 snake_case 别名 <code>exif_transpose</code>。</p>
+  <p class="note"><span class="zh">多数函数返回新 Image 且不改动输入;仅 <code>ExifTranspose(…, true)</code> 就地修改。重采样默认值与 Pillow 一致(resize 族为 BICUBIC,<code>Deform</code> 为 BILINEAR)。</span></p>
+
+  <h2 id="ops">点与颜色操作</h2>
+
+  <section class="api" id="ImageOps.Autocontrast">
+    <h3>Autocontrast <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Autocontrast(image, cutoff := 0, ignore := unset, mask := unset, preserveTone := false)</pre>
+    
+    <p class="zh">归一化图像对比度:计算(或由 <code>mask</code> 限定区域的)直方图,从最暗与最亮两端各裁掉 <code>cutoff</code> 百分比,再把最暗像素重映射为 0、最亮为 255。</p>
+    <dl class="params">
+      <dt>cutoff</dt><dd><span class="zh">在低端与高端裁掉的百分比;单个数字两端同用,或 <code>[low, high]</code>。</span></dd>
+      <dt>ignore</dt><dd><span class="zh">重映射前从直方图中剔除的背景像素值(单个或数组)。</span></dd>
+      <dt>mask</dt><dd><span class="zh">可选掩膜,仅用其像素参与直方图。</span></dd>
+      <dt>preserveTone</dt><dd><span class="zh">用 L 转换后的直方图以保留色调(Photoshop 风格)。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Colorize">
+    <h3>Colorize <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Colorize(image, black, white, mid := unset, blackpoint := 0, whitepoint := 255, midpoint := 127)</pre>
+    
+    <p class="zh">给 L 图像上色:黑像素映射为 <code>black</code>、白像素映射为 <code>white</code>,可选 <code>mid</code> 颜色做三点插值。返回 RGB 图像。</p>
+    <dl class="params">
+      <dt>black</dt><dd><span class="zh">黑色输入像素对应的颜色(<code>[r, g, b]</code> 或颜色名)。</span></dd>
+      <dt>white</dt><dd><span class="zh">白色输入像素对应的颜色。</span></dd>
+      <dt>mid</dt><dd><span class="zh">可选的中间调颜色,启用三点映射。</span></dd>
+      <dt>blackpoint / whitepoint / midpoint</dt><dd><span class="zh">整数映射位置;须满足 <code>blackpoint &lt;= midpoint &lt;= whitepoint</code>(无 <code>mid</code> 时为 <code>blackpoint &lt;= whitepoint</code>)。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新的 RGB Image。</span></p>
+    <p class="note"><span class="zh">要求输入为 L 模式;其他模式报错。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Equalize">
+    <h3>Equalize <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Equalize(image, mask := unset)</pre>
+    
+    <p class="zh">均衡图像直方图:用非线性映射把每个非 alpha 通道拉向均匀分布。</p>
+    <dl class="params">
+      <dt>mask</dt><dd><span class="zh">可选掩膜,仅其像素参与统计。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p class="note"><span class="zh">数值型 I/F 模式抛 Pillow 的 <code>not supported for mode …</code>。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Grayscale">
+    <h3>Grayscale <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Grayscale(image)</pre>
+    
+    <p class="zh">通过 L 转换把图像转为灰度(模式 L);L 图像仅复制。</p>
+    <p class="returns"><span class="zh">返回:新的 L 模式 Image。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Invert">
+    <h3>Invert <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Invert(image)</pre>
+    
+    <p class="zh">反相图像:每个通道变为 <code>255 - value</code>。支持 L、RGB 与 1 模式。</p>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p class="note"><span class="zh">对齐:与 <code>ImageChops.Invert</code> 不同,RGBA 及其他模式抛 Pillow 的 <code>not supported for mode …</code>。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Posterize">
+    <h3>Posterize <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Posterize(image, bits)</pre>
+    
+    <p class="zh">把每个颜色通道保留的位数降到 <code>bits</code>(1–8)。</p>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p class="note"><span class="zh">门面校验 <code>bits</code> 为 ≤ 8 的整数(原生最低到 −31)。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Solarize">
+    <h3>Solarize <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Solarize(image, threshold := 128)</pre>
+    
+    <p class="zh">把 ≥ <code>threshold</code> 的像素值反相,低于阈值的保持不变。</p>
+    <dl class="params">
+      <dt>threshold</dt><dd><span class="zh">反相的灰度阈值。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <h2 id="geometry">几何与尺寸</h2>
+
+  <section class="api" id="ImageOps.Contain">
+    <h3>Contain <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Contain(image, size, method := unset)</pre>
+    
+    <p class="zh">按比例缩放到能完整放入 <code>size</code>(两轴均不超过 <code>size</code>)。</p>
+    <dl class="params">
+      <dt>size</dt><dd><span class="zh">请求的输出尺寸 <code>[width, height]</code>。</span></dd>
+      <dt>method</dt><dd><span class="zh">重采样方法;默认 BICUBIC。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Cover">
+    <h3>Cover <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Cover(image, size, method := unset)</pre>
+    
+    <p class="zh">按比例缩放到覆盖 <code>size</code>(两轴均达到或超过 <code>size</code>)。</p>
+    <dl class="params">
+      <dt>size</dt><dd><span class="zh">请求的输出尺寸 <code>[width, height]</code>。</span></dd>
+      <dt>method</dt><dd><span class="zh">重采样方法;默认 BICUBIC。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Crop">
+    <h3>Crop <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Crop(image, border := 0)</pre>
+    
+    <p class="zh">从图像裁掉 <code>border</code> 像素。<code>border</code> 可为数字、<code>[x, y]</code> 或 <code>[left, top, right, bottom]</code>。</p>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Expand">
+    <h3>Expand <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Expand(image, border := 0, fill := 0)</pre>
+    
+    <p class="zh">在图像四周添加边框,以 <code>fill</code>(默认黑)填充。<code>border</code> 与 <code>Crop</code> 同形。</p>
+    <dl class="params">
+      <dt>fill</dt><dd><span class="zh">填充值(颜色名、元组或标量)。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Fit">
+    <h3>Fit <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Fit(image, size, method := unset, bleed := 0.0, centering := unset)</pre>
+    
+    <p class="zh">缩放并裁剪到精确 <code>size</code>、保持宽高比。<code>bleed</code> 从各边裁去比例(0 到 &lt; 0.5),<code>centering</code> 决定裁剪位置(默认 <code>[0.5, 0.5]</code>)。</p>
+    <dl class="params">
+      <dt>size</dt><dd><span class="zh">请求的输出尺寸 <code>[width, height]</code>。</span></dd>
+      <dt>bleed</dt><dd><span class="zh">从各边裁去的小数比例(默认 0)。</span></dd>
+      <dt>centering</dt><dd><span class="zh">裁剪位置 <code>[x, y]</code>,各分量 0–1;默认 <code>[0.5, 0.5]</code>。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Pad">
+    <h3>Pad <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Pad(image, size, method := unset, color := unset, centering := unset)</pre>
+    
+    <p class="zh">先等比缩放到 <code>size</code> 内(contain),再用 <code>color</code>(默认黑)填充剩余区域,位置由 <code>centering</code>(默认 <code>[0.5, 0.5]</code>)决定。</p>
+    <dl class="params">
+      <dt>size</dt><dd><span class="zh">请求的输出尺寸 <code>[width, height]</code>。</span></dd>
+      <dt>color</dt><dd><span class="zh">填充区域的背景色(默认黑)。</span></dd>
+      <dt>centering</dt><dd><span class="zh">缩放后图像的位置 <code>[x, y]</code>,取值 0–1。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Scale">
+    <h3>Scale <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Scale(image, factor, resample := unset)</pre>
+    
+    <p class="zh">按 <code>factor</code> 缩放:宽高乘以因子(round-half-even)后 resize(默认 BICUBIC)。<code>factor = 1</code> 返回副本;<code>factor &lt;= 0</code> 报错。</p>
+    <dl class="params">
+      <dt>factor</dt><dd><span class="zh">缩放系数(&gt; 1 放大,&lt; 1 缩小)。</span></dd>
+      <dt>resample</dt><dd><span class="zh">重采样方法;默认 BICUBIC。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <h2 id="transforms">变换</h2>
+
+  <section class="api" id="ImageOps.Deform">
+    <h3>Deform <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Deform(image, deformer, resample := unset)</pre>
+    
+    <p class="zh">通过暴露 <code>getmesh(image)</code> 的变形对象做 MESH 变换(默认重采样 BILINEAR)。</p>
+    <dl class="params">
+      <dt>deformer</dt><dd><span class="zh">任何带 <code>getmesh(image)</code> 方法并返回网格的对象。</span></dd>
+      <dt>resample</dt><dd><span class="zh">重采样滤镜;默认 BILINEAR。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.ExifTranspose">
+    <h3>ExifTranspose <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.ExifTranspose(image, in_place := false)   ;  alias: exif_transpose(image, in_place := false)</pre>
+    
+    <p class="zh">按 EXIF Orientation 标签(2–8)做转置。<code>in_place := true</code> 时就地修改且无返回;否则返回转置副本(orientation ≤ 1 时返回普通副本)。</p>
+    <dl class="params">
+      <dt>in_place</dt><dd><span class="zh">为 true 时就地转置且不返回。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新的转置 Image(orientation ≤ 1 时为副本);<code>in_place</code> 为 true 时无返回。</span></p>
+    <p class="note"><span class="zh">对齐:发生实际转置(orientation 2–8)后删除 EXIF Orientation 标签并重序列化 <code>Info["exif"]</code>(键保留,即使已为空),XMP 中的 <code>tiff:Orientation</code> 一并剥离,其余标签(如 Make)保留——与 Pillow 11.3.0 完全一致;orientation 为 1 或无 EXIF 时原样保留。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Flip">
+    <h3>Flip <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Flip(image)</pre>
+    
+    <p class="zh">垂直翻转(上下颠倒)。</p>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Mirror">
+    <h3>Mirror <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Mirror(image)</pre>
+    
+    <p class="zh">水平翻转(左右镜像)。</p>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+  </section>
+
+  <h2 id="internals">内部辅助</h2>
+  
+  <p class="zh">以下成员为门面内部管道并被测试套件钉死,不属于 Pillow 风格的用户 API。</p>
+  <table class="appendix">
+    <tr><th>Group</th><th>Members</th><th>中文</th></tr>
+    <tr><td>Argument parsing</td><td><span class="zh">把 border/centering/cutoff/ignore 参数规范化为固定数组。</span></td></tr>
+    <tr><td>Buffers</td><td><span class="zh">按图像模式构建原生颜色/忽略值缓冲区。</span></td></tr>
+    <tr><td>Native dispatch</td><td><span class="zh">共用的 DLL 分派与 Image 句柄校验。</span></td></tr>
+    <tr><td>Status &amp; mode</td><td><span class="zh">把原生状态码映射为错误;EXIF 方向 → Transpose 方法;LUT 模式支持。</span></td></tr>
+  </table>
+
+  <h2 id="examples">示例</h2>
+  
+  <p class="zh">对比度增强、直方图均衡与 EXIF 自动旋转:</p>
+  <pre class="example">img   := Pillow.Image.Open("scan.jpg")
+boost := Pillow.ImageOps.Autocontrast(img, 2)     ;  clip 2% off each end
+eq    := Pillow.ImageOps.Equalize(img)            ;  equalize the histogram
+fixed := Pillow.ImageOps.ExifTranspose(img)       ;  apply EXIF orientation
+fixed := Pillow.ImageOps.exif_transpose(img)      ;  snake_case alias
+boost.Save("autocontrast.png")
+eq.Save("equalized.png")
+fixed.Save("upright.png")
+img.Close()</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

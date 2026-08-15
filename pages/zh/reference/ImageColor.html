@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageColor — pillow-c 文档</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">中文文档</div>
+  <nav>
+    <p class="nav-head">首页</p>
+    <a href="../index.html">概述</a>
+    <p class="nav-head">参考</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html" class="current">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">NumPy 互操作</a>
+    <a href="constants.html">常量</a>
+    <a href="Pillow.html">Pillow(入口)</a>
+    <a href="boundaries.html">行为边界</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../en/reference/ImageColor.html">English</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">首页</a> » ImageColor</div>
+  <h1>ImageColor <span class="kind">模块</span></h1>
+  
+  <p class="zh">颜色字符串解析与色彩空间转换,对应 Pillow 的 <code>ImageColor</code>。<code>GetRgb</code> 把 CSS/SVG 颜色名、<code>#hex</code> 字符串以及函数式 <code>rgb()</code>/<code>rgba()</code>/<code>hsl()</code>/<code>hsb()</code>/<code>hsv()</code> 字符串解析为 RGB(A) 数组;<code>GetColor</code> 再把结果转换为目标图像模式;HSV/HSL 辅助函数复刻 Python <code>colorsys</code> 的公式。</p>
+
+  <h2 id="functions">模块函数</h2>
+
+  <section class="api" id="ImageColor.GetRgb">
+    <h3>GetRgb <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageColor.GetRgb(color)</pre>
+    
+    <p class="zh">Pillow 的 <code>getrgb</code>:把颜色字符串解析为 RGB(A) 数组。接受的格式包括 148 个 CSS/SVG 颜色名(即 <code>ColorMap</code> 表)、<code>#rgb</code>/<code>#rrggbb</code>/<code>#rgba</code>/<code>#rrggbbaa</code> 十六进制串,以及函数式 <code>rgb(r, g, b)</code>、<code>rgb(r%, g%, b%)</code>、<code>rgba(r, g, b, a)</code>、<code>hsl(h, s%, l%)</code> 与 <code>hsb(h, s%, b%)</code>/<code>hsv(h, s%, v%)</code> 串。</p>
+    <dl class="params">
+      <dt>color</dt><dd><span class="zh">颜色字符串(解析前转小写)。非字符串抛 <code>Pillow.ImageColor.GetRgb expects a color string</code>;超过 100 字符抛 Pillow 原样的 <code>color specifier is too long</code>。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:<code>[r, g, b]</code>;<code>#rgba</code>/<code>#rrggbbaa</code>/<code>rgba()</code> 形式返回 <code>[r, g, b, a]</code>。</span></p>
+    <p class="note"><span class="zh">对齐:未知字符串抛 Pillow 原样的 <code>unknown color specifier: '…'</code>(引号内为转小写后的输入),且每条正则与名称表均与 Pillow 11.3.0 一致。</span></p>
+  </section>
+
+  <section class="api" id="ImageColor.GetColor">
+    <h3>GetColor <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageColor.GetColor(color, modeName)</pre>
+    
+    <p class="zh">Pillow 的 <code>getcolor</code>:解析 <code>color</code>(接受与 <code>GetRgb</code> 相同的格式)并把结果转换为 <code>modeName</code>。</p>
+    <dl class="params">
+      <dt>color</dt><dd><span class="zh">颜色字符串;接受的格式与报错见 <code>GetRgb</code>。</span></dd>
+      <dt>modeName</dt><dd><span class="zh">目标 Pillow 模式(必填,无默认值):<code>"HSV"</code> 转换为 HSV 三元组;基模式 <code>"L"</code>(<code>"1"</code>/<code>"L"</code>/<code>"I"</code>/<code>"F"</code>/<code>"I;16"</code>… 与 <code>"LA"</code>)转换为灰度;末尾 <code>"A"</code>(<code>"RGBA"</code>)追加 alpha;否则原样返回 RGB 三元组。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:基 L 模式为灰度整数(<code>"LA"</code> 时为 <code>[gray, a]</code>);<code>"HSV"</code> 为 <code>[h, s, v]</code>(0–255);<code>"RGBA"</code> 为 <code>[r, g, b, a]</code>;否则为 <code>[r, g, b]</code>。AHK 数组对应 Pillow 的元组——不返回打包整数。</span></p>
+    <p class="note"><span class="zh">对齐:灰度系数 <code>(r*19595 + g*38470 + b*7471 + 0x8000) >> 16</code> 与末尾 <code>A</code> 规则与 Pillow 11.3.0 完全一致。</span></p>
+  </section>
+
+  <section class="api" id="ImageColor.HlsToRgb">
+    <h3>HlsToRgb <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageColor.HlsToRgb(h, l, s)</pre>
+    
+    <p class="zh">把色相/明度/饱和度浮点数转换为 <code>[r, g, b]</code>,复刻 Python 的 <code>colorsys.hls_to_rgb</code>。这是 <code>GetRgb</code> 中 <code>hsl()</code> 函数式字符串的后端。</p>
+    <dl class="params">
+      <dt>h</dt><dd><span class="zh">色相,0.0–1.0(越界时回绕)。</span></dd>
+      <dt>l</dt><dd><span class="zh">明度,0.0–1.0。</span></dd>
+      <dt>s</dt><dd><span class="zh">饱和度,0.0–1.0。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:<code>[r, g, b]</code> 整数,0–255。</span></p>
+  </section>
+
+  <section class="api" id="ImageColor.HsvToRgb">
+    <h3>HsvToRgb <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageColor.HsvToRgb(h, s, v)</pre>
+    
+    <p class="zh">把色相/饱和度/明度(值)浮点数转换为 <code>[r, g, b]</code>,复刻 Python 的 <code>colorsys.hsv_to_rgb</code>。这是 <code>GetRgb</code> 中 <code>hsb()</code>/<code>hsv()</code> 函数式字符串的后端。</p>
+    <dl class="params">
+      <dt>h</dt><dd><span class="zh">色相,0.0–1.0。</span></dd>
+      <dt>s</dt><dd><span class="zh">饱和度,0.0–1.0。</span></dd>
+      <dt>v</dt><dd><span class="zh">明度(值),0.0–1.0。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:<code>[r, g, b]</code> 整数,0–255。</span></p>
+  </section>
+
+  <section class="api" id="ImageColor.RgbToHsv">
+    <h3>RgbToHsv <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageColor.RgbToHsv(rgb)</pre>
+    
+    <p class="zh">把 <code>[r, g, b]</code> 数组转换为 Pillow HSV 模式约定的 <code>[h, s, v]</code>(各通道 0–255):即 Python 的 <code>colorsys.rgb_to_hsv</code> 再 ×255。这是 <code>GetColor</code> 在 <code>modeName := "HSV"</code> 时的后端。</p>
+    <dl class="params">
+      <dt>rgb</dt><dd><span class="zh"><code>[r, g, b]</code> 数组,各通道 0–255。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:<code>[h, s, v]</code> 整数,各 0–255。</span></p>
+  </section>
+
+  <h2 id="internals">内部辅助</h2>
+
+  <section class="api" id="ImageColor.ColorMap">
+    <h3>ColorMap <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageColor.ColorMap()</pre>
+    
+    <p class="zh">返回命名颜色表(静态 <code>Map</code>):Pillow 支持的 148 个 CSS4/X11 颜色名——与 Pillow 11.3.0 同一集合,含 <code>gray</code>/<code>grey</code> 与 <code>darkgray</code>/<code>darkgrey</code> 两种拼写——每个映射到 <code>#rrggbb</code> 字符串。内部:<code>GetRgb</code> 在此查名,再重新解析十六进制值。</p>
+    <p class="returns"><span class="zh">返回:名称 → <code>#rrggbb</code> 的 <code>Map</code>。</span></p>
+  </section>
+
+  <section class="api" id="ImageColor.HexByte">
+    <h3>HexByte <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageColor.HexByte(hex)</pre>
+    
+    <p class="zh">内部:把 1–2 位十六进制字符串解析为整数(<code>Integer("0x" hex)</code>)。</p>
+    <dl class="params">
+      <dt>hex</dt><dd><span class="zh">1–2 位小写十六进制字符。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:0–255 的整数。</span></p>
+  </section>
+
+  <section class="api" id="ImageColor.HueToRgb">
+    <h3>HueToRgb <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageColor.HueToRgb(m1, m2, h)</pre>
+    
+    <p class="zh">内部:Python <code>colorsys</code> 的 <code>_v</code> 辅助函数——<code>HlsToRgb</code> 使用的分段混合函数。</p>
+  </section>
+
+  <h2 id="examples">示例</h2>
+  
+  <p class="zh">解析颜色名、十六进制与 HSL,并转换到 HSV/灰度:</p>
+  <pre class="example">c1   := Pillow.ImageColor.GetRgb("#336699")            ;  [51, 102, 153]
+c2   := Pillow.ImageColor.GetRgb("hsl(120, 50%, 50%)") ;  [64, 191, 64]
+hsv  := Pillow.ImageColor.HsvToRgb(0, 1, 1)            ;  [255, 0, 0]
+gray := Pillow.ImageColor.GetColor("tomato", "L")      ;  142</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

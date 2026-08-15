@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImagePath — pillow-c 文档</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">中文文档</div>
+  <nav>
+    <p class="nav-head">首页</p>
+    <a href="../index.html">概述</a>
+    <p class="nav-head">参考</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html" class="current">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">NumPy 互操作</a>
+    <a href="constants.html">常量</a>
+    <a href="Pillow.html">Pillow(入口)</a>
+    <a href="boundaries.html">行为边界</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../en/reference/ImagePath.html">English</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">首页</a> » ImagePath</div>
+  <h1>ImagePath <span class="kind">模块</span></h1>
+  
+  <p class="zh"><code>ImagePath</code> 模块暴露 <code>Path</code> 类:一组 <code>[x, y]</code> 坐标(以浮点存储),描述供 <code>ImageDraw</code> 使用的多边形轮廓。得到的坐标点经 <code>path.Tolist()</code> 供给 <code>ImageDraw.Polygon</code>/<code>Line</code> 绘图。它在 <code>Pillow.</code> 命名空间下与 Pillow 11.3.0 兼容;在本运行时中,<code>0</code> 是 Python <code>None</code> 的 AHK 对应物,<code>unset</code> 表示“未传参”哨兵。</p>
+  <p class="note"><span class="zh">对齐:<code>Path</code> 只保存线段,因此 <code>Compact()</code> 是返回 <code>0</code>(None 对应物)的就地空操作;可调用的 <code>Map()</code> 返回 <code>0</code> 且不改动对象;Pillow 的 C 层 <code>ImagingTransformHandler</code> 形态是<a href="boundaries.html#boundary.pathmap">记录在案的边界</a>。</span></p>
+
+  <section class="api" id="ImagePath.Path">
+    <h3>Path <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImagePath.Path(xy)</pre>
+    
+    <p class="zh">由扁平坐标序列 <code>[x0, y0, x1, y1, …]</code> 或 <code>[x, y]</code> 对的数组构造路径。坐标以浮点存储。非对象的 <code>xy</code>、畸形坐标对、非数值坐标或长度为奇数的扁平序列都会报错。</p>
+    <dl class="params">
+      <dt>xy</dt><dd><span class="zh">扁平坐标序列或 <code>[x, y]</code> 对的数组。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:Path 对象。</span></p>
+  </section>
+
+  <section class="api" id="ImagePath.Path.Tolist">
+    <h3>Tolist</h3>
+    <pre class="sig">path.Tolist(flat := true)</pre>
+    
+    <p class="zh">将路径作为 <code>[x, y]</code> 坐标对的数组返回。</p>
+    <dl class="params">
+      <dt>flat</dt><dd><span class="zh">为与 Pillow 签名对齐而接受;当前被忽略——本门面始终返回坐标对数组形式。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:<code>[x, y]</code> 对的数组。</span></p>
+  </section>
+
+  <section class="api" id="ImagePath.Path.GetBbox">
+    <h3>GetBbox</h3>
+    <pre class="sig">path.GetBbox()</pre>
+    
+    <p class="zh">以浮点返回路径点的包围盒。</p>
+    <p class="returns"><span class="zh">返回:<code>[minx, miny, maxx, maxy]</code>;空路径返回 <code>[0.0, 0.0, 0.0, 0.0]</code>。</span></p>
+  </section>
+
+  <section class="api" id="ImagePath.Path.Compact">
+    <h3>Compact</h3>
+    <pre class="sig">path.Compact(distance)</pre>
+    
+    <p class="zh">就地压缩路径。由于本路径对象只保存线段(Pillow 的 <code>core.path</code> 只压缩曲线段),此为就地空操作。</p>
+    <dl class="params">
+      <dt>distance</dt><dd><span class="zh">被忽略(为签名对齐而接受)。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:<code>0</code>——已转换的段数(AHK 的 None 对应物)。</span></p>
+  </section>
+
+  <section class="api" id="ImagePath.Path.Transform">
+    <h3>Transform</h3>
+    <pre class="sig">path.Transform(matrix)</pre>
+    
+    <p class="zh">对每个点就地应用 6 值仿射变换 <code>[a, b, c, d, e, f]</code>:<code>x' = a·x + b·y + c</code>,<code>y' = d·x + e·y + f</code>。</p>
+    <dl class="params">
+      <dt>matrix</dt><dd><span class="zh">6 值数值序列 <code>[a, b, c, d, e, f]</code>。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:无(就地修改)。</span></p>
+    <p class="note"><span class="zh">对齐:长度非 6 时抛 Pillow 原样的 <code>transform() argument 1 must be sequence of length 6, not N</code>;非数值元素抛数值错误。</span></p>
+  </section>
+
+  <section class="api" id="ImagePath.Path.Map">
+    <h3>Map</h3>
+    <pre class="sig">path.Map(fn)</pre>
+    
+    <p class="zh">将可调用对象映射到路径。在本门面中,可调用形式返回 <code>0</code> 且不改动路径。</p>
+    <dl class="params">
+      <dt>fn</dt><dd><span class="zh">可调用对象(接受;本门面不调用)。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:<code>0</code>(AHK 的 None 对应物)。</span></p>
+    <p class="note"><span class="zh">对齐:Pillow 的可调用 <code>path.map(fn)</code> 返回 None 且不改动对象;C 层 <code>ImagingTransformHandler</code> 形态保留为<a href="boundaries.html#boundary.pathmap">记录在案的边界</a>。</span></p>
+  </section>
+
+  <h2 id="examples">示例</h2>
+  
+  <p class="zh">由坐标对构造路径,读取包围盒与坐标点,再对其做变换:</p>
+  <pre class="example">p := Pillow.ImagePath.Path([[10.0, 20.0], [30.0, 40.0], [50.0, 10.0]])
+bbox := p.GetBbox()                 ;  [10.0, 10.0, 50.0, 40.0]
+pts  := p.Tolist()                  ;  [[10.0, 20.0], [30.0, 40.0], [50.0, 10.0]]
+p.Transform([1, 0, 5, 0, 1, 0])     ;  shift +5 in x, in place
+pts  := p.Tolist()                  ;  [[15.0, 20.0], [35.0, 40.0], [55.0, 10.0]]
+p.Compact(2.0)                      ;  0 — lines only (the None analogue)
+p.Map(Func("Noop"))                 ;  0 — no mutation</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

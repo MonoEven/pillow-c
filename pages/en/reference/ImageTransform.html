@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageTransform — pillow-c documentation</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="../index.html">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html" class="current">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">Numpy</a>
+    <a href="constants.html">Constants</a>
+    <a href="Pillow.html">Pillow (entry)</a>
+    <a href="boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/ImageTransform.html">中文</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » ImageTransform</div>
+  <h1>ImageTransform <span class="kind">module</span></h1>
+  <p class="en">Pillow 11.3.0's <code>PIL.ImageTransform</code> class objects. Each subclass only carries a method constant (<code>Transform.EXTENT/AFFINE/QUAD/PERSPECTIVE/MESH</code>); the base <code>Transform</code> class stores the data and routes <code>Transform()</code> through the facade's <code>Image.Transform</code> seam. Pillow's module itself is not callable.</p>
+  
+
+  <section class="api" id="ImageTransform.module">
+    <h3>ImageTransform (module) <span class="kind">class</span></h3>
+    <pre class="sig">__New(args*) {
+    throw Error("Pillow ImageTransform module is not callable;  construct Pillow.ImageTransform.Transform subclasses", -1)
+}</pre>
+    <p class="en">Pillow's module is not callable, so constructing the module class fails loudly; build one of the <code>Transform</code> subclasses instead.</p>
+    
+    <p class="warn"><span class="en">Raises verbatim: <code>Pillow ImageTransform module is not callable; construct Pillow.ImageTransform.Transform subclasses</code>. See <a href="boundaries.html">Boundaries</a>.</span></p>
+  </section>
+
+  <section class="api" id="ImageTransform.Transform">
+    <h3>Transform <span class="kind">class</span></h3>
+    <pre class="sig">class Transform {
+    __New(data) {
+        this.Data := data
+    }
+    GetData() {
+        return [this.Method, this.Data]
+    }
+    Transform(size, image, resample := unset, fillcolor := unset) {
+        if IsSet(resample) && IsSet(fillcolor)
+            return image.Transform(size, this.Method, this.Data, resample, fillcolor)
+        if IsSet(resample)
+            return image.Transform(size, this.Method, this.Data, resample)
+        return image.Transform(size, this.Method, this.Data)
+    }
+}</pre>
+    <p class="en">Base transform object. <code>__New(data)</code> stores a number array — the coefficient/corner/mesh layout depends on the subclass's <code>Method</code>. <code>GetData()</code> returns <code>[method, data]</code>. <code>Transform(size, image, …)</code> forwards to <code>image.Transform(size, method, data, …)</code>, threading <code>resample</code> and <code>fillcolor</code> when present.</p>
+    
+    <dl class="params">
+      <dt>data</dt><dd><span class="en">Number array (coefficients / corners / mesh triplets per method).</span></dd>
+      <dt>size</dt><dd><span class="en">Output size <code>[width, height]</code>.</span></dd>
+      <dt>image</dt><dd><span class="en">Source Image.</span></dd>
+      <dt>resample / fillcolor</dt><dd><span class="en">Optional resampling filter and background color.</span></dd>
+    </dl>
+  </section>
+
+  <section class="api" id="ImageTransform.subclasses">
+    <h3>Method subclasses <span class="kind">classes</span></h3>
+    <pre class="sig">class AffineTransform extends Pillow.ImageTransform.Transform {
+    Method := Pillow.Transform.AFFINE
+}
+class ExtentTransform extends Pillow.ImageTransform.Transform {
+    Method := Pillow.Transform.EXTENT
+}
+class PerspectiveTransform extends Pillow.ImageTransform.Transform {
+    Method := Pillow.Transform.PERSPECTIVE
+}
+class QuadTransform extends Pillow.ImageTransform.Transform {
+    Method := Pillow.Transform.QUAD
+}
+class MeshTransform extends Pillow.ImageTransform.Transform {
+    Method := Pillow.Transform.MESH
+}</pre>
+    <p class="en">Each subclass pins its <code>Method</code> constant, so <code>GetData()</code>/<code>Transform()</code> route to the correct layout. Usage: <code>image.Transform(size, method, data, resample, fillcolor)</code> with the <code>Transform.*</code> constants.</p>
+    
+  </section>
+
+  <h2 id="layouts">Data Layouts</h2>
+  <table class="appendix">
+    <tr><th>Method</th><th>Data</th><th>EN</th></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+  </table>
+
+  <section class="api" id="ImageTransform.seam">
+    <h3>Native seam</h3>
+    <p class="en">The C <code>ImagingTransformHandler</code> seam (the map handler) is the documented boundary: Pillow's callable-map form cannot exist in this runtime and stays out of scope.</p>
+    
+    <p class="warn"><span class="en">See <a href="boundaries.html">Boundaries</a> for the documented <code>ImagingTransformHandler</code> boundary.</span></p>
+  </section>
+
+  <h2 id="examples">Examples</h2>
+  <p class="en">EXTENT (crop/stretch a source rectangle) and AFFINE (six-coefficient mapping) via <code>image.Transform</code>:</p>
+  
+  <pre class="example">img := Pillow.Image.Open("photo.jpg")
+
+;    EXTENT: map source region [x0,y0, x1,y1] onto a 200×200 output
+cropped := img.Transform([200, 200], Pillow.Transform.EXTENT, [40, 40, 360, 360])
+
+;    AFFINE: x' = ax+by+c, y' = dx+ey+f  (shear + translate here)
+warped := img.Transform([200, 200], Pillow.Transform.AFFINE, [1, 0.5, 0, 0, 1, 0],
+    Pillow.Resampling.BICUBIC, "white")
+
+;    Same via the ImageTransform class objects
+quad := Pillow.ImageTransform.QuadTransform([0, 0, 0, 200, 200, 200, 200, 0])
+result := quad.Transform([200, 200], img, Pillow.Resampling.BILINEAR)
+
+img.Close()</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

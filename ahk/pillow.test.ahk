@@ -11539,6 +11539,67 @@ PillowTestPythonStyleUnderscoreAliasesUseNativePaths(*) {
 
 AhkTest.Test("Pillow Python-style underscore aliases use native paths", PillowTestPythonStyleUnderscoreAliasesUseNativePaths)
 
+PillowTestEffectGradientsMatchPillowModes(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    ; Oracle: Pillow 11.3.0 ImagingFillLinearGradient / ImagingFillRadialGradient
+    ; (value = y for linear; d = (int)sqrt(dx^2+dy^2)*2 clamped >= 255 for
+    ; radial; modes 1/L/P/I/F; multi-char modes raise "image has wrong mode",
+    ; unknown single-char modes raise "unrecognized image mode").
+    linearL := 0
+    linear1 := 0
+    linearI := 0
+    linearF := 0
+    radialL := 0
+    radial1 := 0
+    radialF := 0
+    try {
+        linearL := Pillow.Image.LinearGradient("L")
+        AhkTest.AssertEqual(0, linearL.GetPixel([0, 0]))
+        AhkTest.AssertEqual(3, linearL.GetPixel([0, 3]))
+        AhkTest.AssertEqual(255, linearL.GetPixel([0, 255]))
+        AhkTest.AssertEqual(127, linearL.GetPixel([255, 127]))
+
+        linear1 := Pillow.Image.LinearGradient("1")
+        AhkTest.AssertEqual(0, linear1.GetPixel([0, 0]))
+        AhkTest.AssertEqual(3, linear1.GetPixel([0, 3]))
+        AhkTest.AssertEqual(255, linear1.GetPixel([0, 255]))
+
+        linearI := Pillow.Image.LinearGradient("I")
+        AhkTest.AssertEqual(3, linearI.GetPixel([0, 3]))
+        AhkTest.AssertEqual(255, linearI.GetPixel([0, 255]))
+
+        linearF := Pillow.Image.LinearGradient("F")
+        AhkTest.AssertEqual(3.0, linearF.GetPixel([0, 3]))
+        AhkTest.AssertEqual(255.0, linearF.GetPixel([0, 255]))
+
+        radialL := Pillow.Image.RadialGradient("L")
+        AhkTest.AssertEqual(0, radialL.GetPixel([128, 128]))
+        AhkTest.AssertEqual(255, radialL.GetPixel([0, 0]))
+        AhkTest.AssertEqual(254, radialL.GetPixel([255, 255]))
+
+        radial1 := Pillow.Image.RadialGradient("1")
+        AhkTest.AssertEqual(0, radial1.GetPixel([128, 128]))
+        AhkTest.AssertEqual(255, radial1.GetPixel([0, 0]))
+
+        radialF := Pillow.Image.RadialGradient("F")
+        AhkTest.AssertEqual(0.0, radialF.GetPixel([128, 128]))
+        AhkTest.AssertEqual(255.0, radialF.GetPixel([0, 0]))
+        AhkTest.AssertEqual(254.0, radialF.GetPixel([255, 255]))
+
+        AhkTest.AssertEqual("image has wrong mode", PillowTestFormatCaptureError(() => Pillow.Image.LinearGradient("RGB")))
+        AhkTest.AssertEqual("image has wrong mode", PillowTestFormatCaptureError(() => Pillow.Image.RadialGradient("LA")))
+        AhkTest.AssertEqual("unrecognized image mode", PillowTestFormatCaptureError(() => Pillow.Image.LinearGradient("X")))
+        AhkTest.AssertEqual("unrecognized image mode", PillowTestFormatCaptureError(() => Pillow.Image.RadialGradient("Q")))
+    } finally {
+        for image in [radialF, radial1, radialL, linearF, linearI, linear1, linearL] {
+            if IsObject(image)
+                image.Close()
+        }
+    }
+}
+
+AhkTest.Test("Pillow effect gradients match Pillow 11.3.0 modes and errors", PillowTestEffectGradientsMatchPillowModes)
+
 PillowTestPythonStyleGeneratorAndDrawAliasesUseNativePaths(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     linear := 0

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Numpy interop — pillow-c documentation</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="../index.html">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html" class="current">Numpy</a>
+    <a href="constants.html">Constants</a>
+    <a href="Pillow.html">Pillow (entry)</a>
+    <a href="boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/Numpy.html">中文</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » Numpy</div>
+  <h1>Numpy <span class="kind">NumPy interop</span></h1>
+  <p class="en">pillow-c interoperates with <b><a href="https://github.com/MonoEven/cnumpy">cnumpy</a></b> — the companion NumPy-style native array library for AutoHotkey v2 (<code>v1.21.0-cnumpy</code>, qualified against NumPy 1.25.0). This page mirrors Pillow's <i>Using with NumPy</i> chapter: <code>Image.FromArray</code> is <code>Image.fromarray</code>, and <code>image.AsArray()</code> is <code>numpy.asarray(im)</code>. Every dtype/shape rule, byte layout and error message is oracle-verified against local Pillow 11.3.0 + NumPy 1.25.0 (<code>oracle/probe_numpy_interop.py</code>).</p>
+  
+  <p class="note"><span class="en">Repository reference:cnumpy — <code>https://github.com/MonoEven/cnumpy</code>。The interop requires its facade: <code>#Include "..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"</code> (or your local cnumpy checkout) before using <code>AsArray</code>/<code>FromArray</code>; without it the facade raises <code>Pillow numpy interop requires cnumpy (https://github.com/MonoEven/cnumpy): #Include its ahk\numpy.ahk</code>.</span></p>
+
+  <h2 id="asarray">Image → cnumpy array</h2>
+  <section class="api" id="Pillow.Image.AsArray">
+    <h3>AsArray <span class="kind">static + method</span></h3>
+    <pre class="sig">Pillow.Image.AsArray(image)   ;  numpy.asarray(im) analogue
+image.AsArray()               ;  instance form</pre>
+    <p class="en">Returns a cnumpy <code>NdArray</code> over the image's pixel bytes, with numpy's exact dtype and shape. Like Pillow, only pixel values are transferred — a P-mode image loses its palette (indices only). The array is a snapshot copy: it stays valid after the image is closed.</p>
+    
+    <table class="appendix">
+      <tr><th>Mode</th><th>cnumpy dtype</th><th>numpy dtype</th><th>Shape</th></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+    </table>
+    <p class="warn"><span class="en">Boundary: <code>I;16B</code> raises the documented boundary error (<code>Pillow.Image.AsArray: I;16B big-endian dtype (numpy '&gt;u2') is not representable in cnumpy (documented boundary)</code>) because cnumpy has no big-endian dtype; Pillow's numpy gives <code>&gt;u2</code>.</span></p>
+  </section>
+
+  <h2 id="fromarray">cnumpy array → Image</h2>
+  <section class="api" id="Pillow.Image.FromArray">
+    <h3>FromArray <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.FromArray(obj, mode := unset)   ;  Image.fromarray analogue</pre>
+    <p class="en">Creates an image from a cnumpy <code>NdArray</code>, replicating Pillow 11.3.0's <code>fromarray</code> typemap exactly. Without <code>mode</code>, the mode is derived from the dtype and shape; with <code>mode</code>, the bytes are reinterpreted as that raw mode (Pillow's deprecated-mode-parameter behavior, without the deprecation warning).</p>
+    
+    <table class="appendix">
+      <tr><th>typestr(dtype / shape)</th><th>mode / rawmode</th><th>Notes</th></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+    </table>
+    <dl class="params">
+      <dt>obj</dt><dd><span class="en">A cnumpy <code>Numpy.NdArray</code>. Non-contiguous (sliced) arrays are serialized in C order first, like numpy's <code>tobytes()</code>.</span></dd>
+      <dt>mode</dt><dd><span class="en">Optional raw mode for byte reinterpretation.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="note"><span class="en">Parity — exact error shapes (oracle-verified):<br>
+    • unsupported dtype → <code>Cannot handle this data type: (1, 1[, dims…]), &lt;typestr&gt;</code> (int64/uint64/float16/complex and bad 3-D band counts);<br>
+    • dimensions → <code>Too many dimensions: {ndim} &gt; {ndmax}.</code> (ndmax: 2 for 1/L/I/P/F, 3 for RGB, 4 otherwise);<br>
+    • 0-dim arrays → <code>tuple index out of range</code>;1-D arrays become <code>[1, n]</code> images;<br>
+    • short data under an explicit mode → <code>not enough image data</code>.</span></p>
+  </section>
+
+  <h2 id="examples">Examples</h2>
+  <pre class="example">#Include "..\..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"
+Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
+
+
+img := Pillow.Image.Open("photo.jpg")
+a := img.AsArray()          ;  uint8, [H, W, 3]
+mean := a.Mean()            
+img.Close()                 
+
+
+b := Numpy.Zeros([64, 64, 4], 3)     ;  uint8 RGBA
+im := Pillow.Image.FromArray(b)      ;  mode RGBA
+im.Save("black.png")</pre>
+  <p class="en">Native support: <code>FromArray</code> routes through the raw codec seams (<code>1;8</code>, <code>I;8</code>, <code>I;16S</code>, <code>I;32(S)</code>, <code>F;32F</code>, <code>F;64F</code>) added in <code>src/pillow_c_raw.cpp</code>; no AHK per-element loops exist on either path.</p>
+  
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

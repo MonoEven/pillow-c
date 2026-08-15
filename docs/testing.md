@@ -7394,3 +7394,19 @@ survive, and the source image stays untouched. Target passes `1/1`
 in `157ms`; the full directory suite passes `2868/2868` in `24766ms`
 with zero failures, errors, or skips. Facade-only; the DLL is
 unchanged (`4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481`).
+
+2026-08-15: `BEHAV-GRADIENT-001` + `BEHAV-DEMO-001` — the README/blog
+example run exposed a real gradient divergence. New test
+`PillowTestEffectGradientsMatchPillowModes` pins Pillow 11.3.0's
+`ImagingFill*Gradient` behavior (modes 1/L/P/I/F; linear value = y;
+radial d = (int)sqrt(2*((x-128)^2+(y-128)^2)) clamped at >= 255; mode
+"1" stores the raw y byte; multi-char modes raise `image has wrong
+mode`, unknown single-char modes raise `unrecognized image mode`).
+New file `ahk/pillow_demo.test.ahk` executes every README/blog example
+verbatim under the project runner, including the cnumpy interop with
+the canonical `Numpy.DllPath` / `Numpy.Init()` / `Numpy.Cleanup()`
+style (`-Filter "demo example"`). Targeted runs pass `1/1` and `1/1`;
+the full directory suite passes `2870/2870` in `23860ms` with zero
+failures, errors, or skips. Export parity stays `524/524` and the
+rebuilt DLL SHA-256 is
+`2E6F0ABBAC878ACC483E6EE2B81F8C5810CD1144174C7E291C0BCCAA887DCC1E`.

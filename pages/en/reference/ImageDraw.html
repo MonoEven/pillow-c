@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageDraw — pillow-c documentation</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="../index.html">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html" class="current">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">Numpy</a>
+    <a href="constants.html">Constants</a>
+    <a href="Pillow.html">Pillow (entry)</a>
+    <a href="boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/ImageDraw.html">中文</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » ImageDraw</div>
+  <h1>ImageDraw <span class="kind">module</span></h1>
+  <p class="en">The <code>ImageDraw</code> module provides 2-D drawing onto an Image: <code>Draw(image)</code> returns a drawing handle whose methods mutate the image in place, exactly like Pillow's <code>ImageDraw.Draw</code>. All coordinates use the Image coordinate system (origin top-left). Snake_case aliases exist for every method (<code>rounded_rectangle</code>, <code>multiline_text</code>, …).</p>
+  
+  <p class="note"><span class="en">Surface notes: Pillow's <code>Draw.shape()</code> is not exposed on the handle, the instance form of flood fill is the module-level <code>Floodfill()</code>, and the deprecated <code>textsize()</code>/<code>multiline_textsize()</code> are superseded by <code>TextLength()</code>/<code>TextBbox()</code>.</span></p>
+
+  <h2 id="module">Module Functions</h2>
+
+  <section class="api" id="ImageDraw.Draw">
+    <h3>Draw <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageDraw.Draw(image)   ;  alias: getdraw(image)</pre>
+    <p class="en">Creates a drawing handle for the given image. The handle exposes the <code>Image</code> field (the image being drawn).</p>
+    
+    <p class="returns"><span class="en">Returns: a DrawHandle object.</span></p>
+  </section>
+
+  <section class="api" id="ImageDraw.Floodfill">
+    <h3>Floodfill <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageDraw.Floodfill(image, xy, value, border := unset, thresh := 0.0)</pre>
+    <p class="en">Fills the connected region around <code>xy</code> whose color distance from the seed is at most <code>thresh</code>; with a <code>border</code>, fills until pixels of the border color.</p>
+    
+    <dl class="params">
+      <dt>value</dt><dd><span class="en">Fill color.</span></dd>
+      <dt>border</dt><dd><span class="en">Optional border color (same shape as value).</span></dd>
+      <dt>thresh</dt><dd><span class="en">Max color-distance threshold (float).</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: nothing (mutates in place).</span></p>
+    <p class="note"><span class="en">Parity: numeric modes keep Pillow's exact scalar/tuple/border/threshold semantics, including I/F tuple values (<code>color must be int or single-element tuple</code>, <code>must be real number, not tuple</code>), incomparable tuple borders, and NaN/±∞ thresholds.</span></p>
+  </section>
+
+  <h2 id="shape">Shapes</h2>
+
+  <section class="api" id="ImageDraw.Rectangle">
+    <h3>Rectangle</h3>
+    <pre class="sig">handle.Rectangle(box, fill := unset, outline := unset, width := 1)</pre>
+    <p class="en">Draws a rectangle. Box = <code>[left, upper, right, lower]</code>; outline draws only the border of the given width.</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw.RoundedRectangle">
+    <h3>RoundedRectangle</h3>
+    <pre class="sig">handle.RoundedRectangle(box, radius := 0, fill := unset, outline := unset, width := 1, corners := unset)</pre>
+    <p class="en">Draws a rectangle with rounded corners. <code>radius</code> is the corner radius; <code>corners</code> selects which corners to round (4 booleans: TL, TR, BR, BL).</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw.Ellipse">
+    <h3>Ellipse / Circle</h3>
+    <pre class="sig">handle.Ellipse(box, fill := unset, outline := unset, width := 1)
+handle.Circle(xy, radius, fill := unset, outline := unset, width := 1)</pre>
+    <p class="en">Draws an ellipse inside the bounding box, or a circle centered at <code>xy</code>.</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw.Arc">
+    <h3>Arc / Chord / Pieslice</h3>
+    <pre class="sig">handle.Arc(box, start, end, fill := unset, width := 1)
+handle.Chord(box, start, end, fill := unset, outline := unset, width := 1)
+handle.Pieslice(box, start, end, fill := unset, outline := unset, width := 1)</pre>
+    <p class="en">Draws circular segments between angles <code>start</code> and <code>end</code> (degrees, counterclockwise from 3 o'clock). Arc draws the outline only; chord closes the segment with a line; pieslice closes it through the center.</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw.Line">
+    <h3>Line</h3>
+    <pre class="sig">handle.Line(xy, fill := unset, width := 0, joint := unset)</pre>
+    <p class="en">Draws a polyline through the <code>[x, y]</code> points; <code>joint</code> is <code>"curve"</code> or None.</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw.Point">
+    <h3>Point</h3>
+    <pre class="sig">handle.Point(xy, fill := unset)</pre>
+    <p class="en">Draws single points (one <code>[x, y]</code> or an array of them).</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw.Polygon">
+    <h3>Polygon</h3>
+    <pre class="sig">handle.Polygon(xy, fill := unset, outline := unset, width := 1)</pre>
+    <p class="en">Draws a polygon through the given vertices; the shape is closed automatically.</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw.RegularPolygon">
+    <h3>RegularPolygon</h3>
+    <pre class="sig">handle.RegularPolygon(boundingCircle, nSides, rotation := 0, fill := unset, outline := unset, width := 1)</pre>
+    <p class="en">Draws a regular polygon. <code>boundingCircle</code> = <code>[cx, cy, r]</code>, <code>nSides</code> ≥ 3, <code>rotation</code> in degrees.</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw.Bitmap">
+    <h3>Bitmap</h3>
+    <pre class="sig">handle.Bitmap(xy, bitmap)</pre>
+    <p class="en">Draws a 1-bit mask bitmap at <code>xy</code> with the current fill color (Pillow's <code>draw_bitmap</code>; used by the truetype text path).</p>
+    
+  </section>
+
+  <h2 id="text">Text</h2>
+  <p class="en">All text methods share these options: <code>fill</code> (color), <code>font</code> (an ImageFont; default font when omitted), <code>anchor</code> (horizontal a-m + vertical a-d, Pillow's em-box anchor math), <code>strokeWidth</code>/<code>strokeFill</code>, <code>spacing</code>, <code>align</code> (<code>"left"|"center"|"right"|"justify"</code>), <code>direction</code>/<code>features</code>/<code>language</code> (RAQM layout), <code>embeddedColor</code>, and <code>fontSize</code> (load_default size).</p>
+  
+
+  <section class="api" id="ImageDraw.Text">
+    <h3>Text</h3>
+    <pre class="sig">handle.Text(xy, text, fill := unset, font := unset, anchor := unset, strokeWidth := 0, strokeFill := unset, spacing := 4, align := "left", direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset)</pre>
+    <p class="en">Draws text at <code>xy</code> (the anchor point; default anchor <code>"la"</code>). Text containing <code>\n</code> delegates to the multiline layout.</p>
+    
+    <p class="note"><span class="en">Parity: with a TRUETYPE font the facade follows Pillow's own path — <code>font.getmask2(text, mode, ink)</code> + <code>draw_bitmap</code> at <code>int(xy) + offset</code> (the GDI gray8 mask is the documented rasterizer boundary); the default font keeps the native draw seams. Stroked truetype text (<code>strokeWidth &gt; 0</code>) raises the facade's boundary error. <code>direction</code>/<code>features</code>/<code>language</code> raise Pillow's exact <code>'setting text direction, language or font features is not supported without libraqm'</code> KeyError.</span></p>
+  </section>
+
+  <section class="api" id="ImageDraw.MultilineText">
+    <h3>MultilineText</h3>
+    <pre class="sig">handle.MultilineText(xy, text, fill := unset, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, strokeFill := unset, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset)</pre>
+    <p class="en">Draws multi-line text, replicating Pillow's <code>_prepare_multiline_text</code> exactly: anchor validation order, float spacing TypeErrors, left/center/right/justify (including the word spread), and the <code>m</code>/<code>d</code> anchor adjustments.</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw.TextLength">
+    <h3>TextLength</h3>
+    <pre class="sig">handle.TextLength(text, font := unset, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset)</pre>
+    <p class="en">Returns the width (in pixels) of the text as drawn. Multi-line text is rejected with Pillow's exact error.</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw.TextBbox">
+    <h3>TextBbox</h3>
+    <pre class="sig">handle.TextBbox(xy, text, font := unset, anchor := unset, strokeWidth := 0, spacing := 4, align := "left", direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset)</pre>
+    <p class="en">Returns the bounding box <code>[left, upper, right, lower]</code> of the text as drawn; the upper-left corner is added after anchoring (Pillow semantics).</p>
+    
+  </section>
+
+  <section class="api" id="ImageDraw.MultilineTextBbox">
+    <h3>MultilineTextBbox</h3>
+    <pre class="sig">handle.MultilineTextBbox(xy, text, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset)</pre>
+    <p class="en">Returns the bounding box of multi-line text, with Pillow's float addition semantics.</p>
+    
+  </section>
+
+  <h2 id="internals">Internal helpers</h2>
+  <p class="en">Text-layout plumbing shared by the text methods (public for the facade's own use, pinned by tests, not part of the Pillow-style user API):</p>
+  
+  <table class="appendix">
+    <tr><th>Helper</th><th>EN</th></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+  </table>
+
+  <h2 id="examples">Examples</h2>
+  <p class="en">Shapes and text (Pillow tutorial shape):</p>
+  
+  <pre class="example">img := Pillow.Image.New("RGB", [200, 120], "white")
+d := Pillow.ImageDraw.Draw(img)
+d.Line([[0, 0], [199, 0], [199, 119], [0, 119], [0, 0]], "blue", 3)
+d.RoundedRectangle([20, 20, 180, 100], 12, "yellow", "red", 2)
+d.Ellipse([60, 40, 140, 90], "lime", "black", 1)
+d.Text([10, 100], "Hello", "navy")
+img.Save("draw.png")
+img.Close()</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

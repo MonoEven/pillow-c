@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageEnhance — pillow-c documentation</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="../index.html">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html" class="current">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">Numpy</a>
+    <a href="constants.html">Constants</a>
+    <a href="Pillow.html">Pillow (entry)</a>
+    <a href="boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/ImageEnhance.html">中文</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » ImageEnhance</div>
+  <h1>ImageEnhance <span class="kind">module</span></h1>
+  <p class="en">The <code>ImageEnhance</code> module contains four enhancer classes (<code>Color</code>, <code>Contrast</code>, <code>Brightness</code>, <code>Sharpness</code>) that adjust an image by blending it with a degenerate version. Usage: <code>enhancer := Pillow.ImageEnhance.Contrast(img)</code> then <code>img2 := enhancer.Enhance(1.5)</code>.</p>
+  
+
+  <section class="api" id="ImageEnhance._Enhance">
+    <h3>_Enhance <span class="kind">base class</span></h3>
+    <pre class="sig">enhancer.Enhance(factor)</pre>
+    <p class="en">Shared base of the four enhancers. The constructor stores the source <code>image</code> and a precomputed <code>Degenerate</code> image; <code>Enhance(factor)</code> returns <code>Pillow.Image.Blend(Degenerate, Image, factor)</code>.</p>
+    
+    <dl class="params">
+      <dt>factor</dt><dd><span class="en">Numeric blend weight: <code>0.0</code> → degenerate image, <code>1.0</code> → original, <code>&gt;1</code> → enhanced. Non-numeric raises Pillow's exact <code>Pillow.ImageEnhance factor must be numeric</code>.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image (the blend result).</span></p>
+  </section>
+
+  <section class="api" id="ImageEnhance.Color">
+    <h3>Color <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImageEnhance.Color(image)</pre>
+    <p class="en">Blends the image toward its grayscale version: <code>Enhance(factor) = Blend(grayscale, image, factor)</code>. <code>0.0</code> → grayscale, <code>1.0</code> → original, <code>&gt;1</code> → exaggerated color saturation.</p>
+    
+    <dl class="params">
+      <dt>image</dt><dd><span class="en">A <code>Pillow.Image</code> (else Pillow's exact <code>Pillow.ImageEnhance.Color expects a Pillow.Image</code>).</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a <code>Color</code> enhancer instance.</span></p>
+    <p class="note"><span class="en">Degenerate image: <code>L</code>/<code>LA</code> → a copy; <code>RGB</code> → <code>Convert("L").Convert("RGB")</code>; <code>RGBA</code> → <code>Convert("LA").Convert("RGBA")</code>; <code>CMYK</code> → <code>Convert("L").Convert("CMYK")</code>. Any other mode raises Pillow's exact <code>Pillow.ImageEnhance.Color currently supports L LA RGB RGBA and CMYK</code>.</span></p>
+  </section>
+
+  <section class="api" id="ImageEnhance.Contrast">
+    <h3>Contrast <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImageEnhance.Contrast(image)</pre>
+    <p class="en">Blends toward a uniform image filled with the rounded histogram mean: <code>Enhance(factor) = Blend(mean_image, image, factor)</code>. <code>0.0</code> → uniform mean, <code>1.0</code> → original, <code>&gt;1</code> → more contrast.</p>
+    
+    <dl class="params">
+      <dt>image</dt><dd><span class="en">A <code>Pillow.Image</code> (else Pillow's exact <code>Pillow.ImageEnhance.Contrast expects a Pillow.Image</code>).</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a <code>Contrast</code> enhancer instance.</span></p>
+    <p class="note"><span class="en">Degenerate image: mean = rounded histogram mean (<code>GrayscaleMeanRounded</code>), built as an <code>L</code> image of that value then converted to the source mode; <code>RGBA</code> re-applies the alpha channel.</span></p>
+  </section>
+
+  <section class="api" id="ImageEnhance.Brightness">
+    <h3>Brightness <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImageEnhance.Brightness(image)</pre>
+    <p class="en">Blends toward black: <code>Enhance(factor) = Blend(black, image, factor)</code>. <code>0.0</code> → black, <code>1.0</code> → original, <code>&gt;1</code> → brighter.</p>
+    
+    <dl class="params">
+      <dt>image</dt><dd><span class="en">A <code>Pillow.Image</code> (else Pillow's exact <code>Pillow.ImageEnhance.Brightness expects a Pillow.Image</code>).</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a <code>Brightness</code> enhancer instance.</span></p>
+    <p class="note"><span class="en">Degenerate image: a zero-filled image in the source mode; <code>RGBA</code> keeps its alpha channel.</span></p>
+  </section>
+
+  <section class="api" id="ImageEnhance.Sharpness">
+    <h3>Sharpness <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImageEnhance.Sharpness(image)</pre>
+    <p class="en">Blends toward the SMOOTH-filtered image: <code>Enhance(factor) = Blend(smooth, image, factor)</code>. <code>0.0</code> → smoothed, <code>1.0</code> → original, <code>&gt;1</code> → sharper.</p>
+    
+    <dl class="params">
+      <dt>image</dt><dd><span class="en">A <code>Pillow.Image</code> (else Pillow's exact <code>Pillow.ImageEnhance.Sharpness expects a Pillow.Image</code>).</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a <code>Sharpness</code> enhancer instance.</span></p>
+    <p class="note"><span class="en">Degenerate image: <code>image.Filter(Pillow.ImageFilter.SMOOTH())</code>; <code>RGBA</code> re-applies the alpha channel.</span></p>
+  </section>
+
+  <h2 id="internals">Internal helpers</h2>
+  <p class="note"><span class="en"><code>RequireImage</code>, <code>GrayscaleMeanRounded</code> and <code>ZeroColor</code> are module helpers used by the enhancer constructors — public for the facade's own use, not part of the Pillow-style user API.</span></p>
+
+  <h2 id="examples">Examples</h2>
+  <p class="en">Raise brightness by 1.2 and sharpen by 2.0 on the same source image.</p>
+  
+  <pre class="example">img := Pillow.Image.Open("photo.jpg")
+b := Pillow.ImageEnhance.Brightness(img)
+brighter := b.Enhance(1.2)
+s := Pillow.ImageEnhance.Sharpness(img)
+sharper := s.Enhance(2.0)
+img.Close()</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

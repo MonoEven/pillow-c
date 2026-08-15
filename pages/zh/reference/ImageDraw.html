@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageDraw — pillow-c 文档</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">中文文档</div>
+  <nav>
+    <p class="nav-head">首页</p>
+    <a href="../index.html">概述</a>
+    <p class="nav-head">参考</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html" class="current">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">NumPy 互操作</a>
+    <a href="constants.html">常量</a>
+    <a href="Pillow.html">Pillow(入口)</a>
+    <a href="boundaries.html">行为边界</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../en/reference/ImageDraw.html">English</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">首页</a> » ImageDraw</div>
+  <h1>ImageDraw <span class="kind">模块</span></h1>
+  
+  <p class="zh"><code>ImageDraw</code> 模块提供图像上的 2D 绘图:<code>Draw(image)</code> 返回绘图句柄,其方法与 Pillow 的 <code>ImageDraw.Draw</code> 一样就地修改图像。所有坐标沿用 Image 坐标系(原点左上)。每个方法都有 snake_case 别名(<code>rounded_rectangle</code>、<code>multiline_text</code>……)。</p>
+  <p class="note"><span class="zh">表面说明:句柄上不暴露 Pillow 的 <code>Draw.shape()</code>;泛洪填充的实例形式即模块级 <code>Floodfill()</code>;已弃用的 <code>textsize()</code>/<code>multiline_textsize()</code> 由 <code>TextLength()</code>/<code>TextBbox()</code> 取代。</span></p>
+
+  <h2 id="module">模块函数</h2>
+
+  <section class="api" id="ImageDraw.Draw">
+    <h3>Draw <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageDraw.Draw(image)   ;  alias: getdraw(image)</pre>
+    
+    <p class="zh">为给定图像创建绘图句柄。句柄暴露 <code>Image</code> 字段(被绘制的图像)。</p>
+    <p class="returns"><span class="zh">返回:DrawHandle 对象。</span></p>
+  </section>
+
+  <section class="api" id="ImageDraw.Floodfill">
+    <h3>Floodfill <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageDraw.Floodfill(image, xy, value, border := unset, thresh := 0.0)</pre>
+    
+    <p class="zh">填充 <code>xy</code> 周围与种子色差不超过 <code>thresh</code> 的连通区域;给定 <code>border</code> 时填充到边框色为止。</p>
+    <dl class="params">
+      <dt>value</dt><dd><span class="zh">填充色。</span></dd>
+      <dt>border</dt><dd><span class="zh">可选边框色(与 value 同形态)。</span></dd>
+      <dt>thresh</dt><dd><span class="zh">最大色差阈值(浮点)。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:无(就地修改)。</span></p>
+    <p class="note"><span class="zh">对齐:数值模式完整复刻 Pillow 的标量/元组/边框/阈值语义,包括 I/F 元组值(<code>color must be int or single-element tuple</code>、<code>must be real number, not tuple</code>)、不可比较的元组边框与 NaN/±∞ 阈值。</span></p>
+  </section>
+
+  <h2 id="shape">形状绘制</h2>
+
+  <section class="api" id="ImageDraw.Rectangle">
+    <h3>Rectangle</h3>
+    <pre class="sig">handle.Rectangle(box, fill := unset, outline := unset, width := 1)</pre>
+    
+    <p class="zh">绘制矩形。box = <code>[left, upper, right, lower]</code>;outline 只描指定宽度的边框。</p>
+  </section>
+
+  <section class="api" id="ImageDraw.RoundedRectangle">
+    <h3>RoundedRectangle</h3>
+    <pre class="sig">handle.RoundedRectangle(box, radius := 0, fill := unset, outline := unset, width := 1, corners := unset)</pre>
+    
+    <p class="zh">绘制圆角矩形。<code>radius</code> 为圆角半径;<code>corners</code> 选择哪些角为圆角(4 个布尔:左上、右上、右下、左下)。</p>
+  </section>
+
+  <section class="api" id="ImageDraw.Ellipse">
+    <h3>Ellipse / Circle</h3>
+    <pre class="sig">handle.Ellipse(box, fill := unset, outline := unset, width := 1)
+handle.Circle(xy, radius, fill := unset, outline := unset, width := 1)</pre>
+    
+    <p class="zh">在包围盒内绘制椭圆,或以 <code>xy</code> 为圆心画圆。</p>
+  </section>
+
+  <section class="api" id="ImageDraw.Arc">
+    <h3>Arc / Chord / Pieslice</h3>
+    <pre class="sig">handle.Arc(box, start, end, fill := unset, width := 1)
+handle.Chord(box, start, end, fill := unset, outline := unset, width := 1)
+handle.Pieslice(box, start, end, fill := unset, outline := unset, width := 1)</pre>
+    
+    <p class="zh">在 <code>start</code> 与 <code>end</code> 角之间绘制圆弧段(角度制,自 3 点钟方向逆时针)。Arc 只描边;chord 以弦封闭;pieslice 经圆心封闭成扇形。</p>
+  </section>
+
+  <section class="api" id="ImageDraw.Line">
+    <h3>Line</h3>
+    <pre class="sig">handle.Line(xy, fill := unset, width := 0, joint := unset)</pre>
+    
+    <p class="zh">沿 <code>[x, y]</code> 点序列绘制折线;<code>joint</code> 为 <code>"curve"</code> 或无。</p>
+  </section>
+
+  <section class="api" id="ImageDraw.Point">
+    <h3>Point</h3>
+    <pre class="sig">handle.Point(xy, fill := unset)</pre>
+    
+    <p class="zh">绘制单个点(单个 <code>[x, y]</code> 或其数组)。</p>
+  </section>
+
+  <section class="api" id="ImageDraw.Polygon">
+    <h3>Polygon</h3>
+    <pre class="sig">handle.Polygon(xy, fill := unset, outline := unset, width := 1)</pre>
+    
+    <p class="zh">沿给定顶点绘制多边形;形状自动闭合。</p>
+  </section>
+
+  <section class="api" id="ImageDraw.RegularPolygon">
+    <h3>RegularPolygon</h3>
+    <pre class="sig">handle.RegularPolygon(boundingCircle, nSides, rotation := 0, fill := unset, outline := unset, width := 1)</pre>
+    
+    <p class="zh">绘制正多边形。<code>boundingCircle</code> = <code>[cx, cy, r]</code>,<code>nSides</code> ≥ 3,<code>rotation</code> 为角度。</p>
+  </section>
+
+  <section class="api" id="ImageDraw.Bitmap">
+    <h3>Bitmap</h3>
+    <pre class="sig">handle.Bitmap(xy, bitmap)</pre>
+    
+    <p class="zh">以当前填充色在 <code>xy</code> 处绘制 1 位掩膜位图(Pillow 的 <code>draw_bitmap</code>;truetype 文字路径使用)。</p>
+  </section>
+
+  <h2 id="text">文字</h2>
+  
+  <p class="zh">所有文字方法共享这些选项:<code>fill</code>(颜色)、<code>font</code>(ImageFont;省略时用默认字体)、<code>anchor</code>(水平 a-m 加垂直 a-d,Pillow 的 em-box 锚点算法)、<code>strokeWidth</code>/<code>strokeFill</code>、<code>spacing</code>、<code>align</code>(<code>"left"|"center"|"right"|"justify"</code>)、<code>direction</code>/<code>features</code>/<code>language</code>(RAQM 排版)、<code>embeddedColor</code> 与 <code>fontSize</code>(load_default 字号)。</p>
+
+  <section class="api" id="ImageDraw.Text">
+    <h3>Text</h3>
+    <pre class="sig">handle.Text(xy, text, fill := unset, font := unset, anchor := unset, strokeWidth := 0, strokeFill := unset, spacing := 4, align := "left", direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset)</pre>
+    
+    <p class="zh">在 <code>xy</code>(锚点;默认锚 <code>"la"</code>)处绘制文字。含 <code>\n</code> 的文字转交多行排版。</p>
+    <p class="note"><span class="zh">对齐:使用 TRUETYPE 字体时,门面走 Pillow 自身路径——<code>font.getmask2(text, mode, ink)</code> + 在 <code>int(xy) + offset</code> 处 <code>draw_bitmap</code>(GDI 灰度掩膜为已记录的栅格化边界);默认字体保留原生绘制管线。带描边的 truetype 文字(<code>strokeWidth &gt; 0</code>)抛门面的边界错误。<code>direction</code>/<code>features</code>/<code>language</code> 抛 Pillow 原样的 <code>'setting text direction, language or font features is not supported without libraqm'</code> KeyError。</span></p>
+  </section>
+
+  <section class="api" id="ImageDraw.MultilineText">
+    <h3>MultilineText</h3>
+    <pre class="sig">handle.MultilineText(xy, text, fill := unset, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, strokeFill := unset, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset)</pre>
+    
+    <p class="zh">绘制多行文字,精确复刻 Pillow 的 <code>_prepare_multiline_text</code>:锚点校验顺序、浮点 spacing 的 TypeError、left/center/right/justify(含词间扩展)与 <code>m</code>/<code>d</code> 锚点调整。</p>
+  </section>
+
+  <section class="api" id="ImageDraw.TextLength">
+    <h3>TextLength</h3>
+    <pre class="sig">handle.TextLength(text, font := unset, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset)</pre>
+    
+    <p class="zh">返回文字绘制后的宽度(像素)。多行文字按 Pillow 原样报错拒绝。</p>
+  </section>
+
+  <section class="api" id="ImageDraw.TextBbox">
+    <h3>TextBbox</h3>
+    <pre class="sig">handle.TextBbox(xy, text, font := unset, anchor := unset, strokeWidth := 0, spacing := 4, align := "left", direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset)</pre>
+    
+    <p class="zh">返回文字绘制后的包围盒 <code>[left, upper, right, lower]</code>;锚定后再加左上角坐标(Pillow 语义)。</p>
+  </section>
+
+  <section class="api" id="ImageDraw.MultilineTextBbox">
+    <h3>MultilineTextBbox</h3>
+    <pre class="sig">handle.MultilineTextBbox(xy, text, font := unset, spacing := 4, align := "left", anchor := unset, strokeWidth := 0, direction := unset, features := unset, language := unset, embeddedColor := false, fontSize := unset)</pre>
+    
+    <p class="zh">返回多行文字的包围盒,含 Pillow 的浮点加法语义。</p>
+  </section>
+
+  <h2 id="internals">内部辅助</h2>
+  
+  <p class="zh">文字方法共用的排版管道(对门面内部公开、被测试钉死,不属于 Pillow 风格的用户 API):</p>
+  <table class="appendix">
+    <tr><th>Helper</th><th>中文</th></tr>
+    <tr><td><code>CheckRaqmOptions</code></td><td><span class="zh">校验 <code>embeddedColor</code> 的目标模式。</span></td></tr>
+    <tr><td><code>MultilineLayoutParts</code> / <code>MultilineLineSpacing</code> / <code>BboxAt</code> / <code>UnionBbox</code> / <code>SumFloats</code></td><td><span class="zh">对齐字符串映射与锚点校验顺序。</span></td></tr>
+    <tr><td><code>ResolveMultilineFont</code> / <code>FlattenPoints</code> / <code>RegularPolygonVertex</code> / <code>RegularPolygonVertices</code></td><td><span class="zh">默认字体回退、点序列展平与正多边形顶点计算。</span></td></tr>
+  </table>
+
+  <h2 id="examples">示例</h2>
+  
+  <p class="zh">形状与文字(Pillow 教程形态):</p>
+  <pre class="example">img := Pillow.Image.New("RGB", [200, 120], "white")
+d := Pillow.ImageDraw.Draw(img)
+d.Line([[0, 0], [199, 0], [199, 119], [0, 119], [0, 0]], "blue", 3)
+d.RoundedRectangle([20, 20, 180, 100], 12, "yellow", "red", 2)
+d.Ellipse([60, 40, 140, 90], "lime", "black", 1)
+d.Text([10, 100], "Hello", "navy")
+img.Save("draw.png")
+img.Close()</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

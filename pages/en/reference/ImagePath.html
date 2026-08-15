@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImagePath — pillow-c documentation</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="../index.html">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html" class="current">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">Numpy</a>
+    <a href="constants.html">Constants</a>
+    <a href="Pillow.html">Pillow (entry)</a>
+    <a href="boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/ImagePath.html">中文</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » ImagePath</div>
+  <h1>ImagePath <span class="kind">module</span></h1>
+  <p class="en">The <code>ImagePath</code> module exposes the <code>Path</code> class: a sequence of <code>[x, y]</code> coordinates (stored as floats) that describes a polygon outline for <code>ImageDraw</code>. The resulting points feed <code>ImageDraw.Polygon</code>/<code>Line</code> drawing via <code>path.Tolist()</code>. It is Pillow 11.3.0-compatible under the <code>Pillow.</code> namespace; in this runtime <code>0</code> is the AHK analogue of Python's <code>None</code>, and <code>unset</code> is the "argument not given" sentinel.</p>
+  
+  <p class="note"><span class="en">Parity: <code>Path</code> holds line segments only, so <code>Compact()</code> is an in-place no-op returning <code>0</code> (the None analogue); the callable <code>Map()</code> returns <code>0</code> without mutating, and Pillow's C <code>ImagingTransformHandler</code> form is a <a href="boundaries.html#boundary.pathmap">documented boundary</a>.</span></p>
+
+  <section class="api" id="ImagePath.Path">
+    <h3>Path <span class="kind">class</span></h3>
+    <pre class="sig">Pillow.ImagePath.Path(xy)</pre>
+    <p class="en">Constructs a path from a flat coordinate sequence <code>[x0, y0, x1, y1, …]</code> or from an array of <code>[x, y]</code> pairs. Coordinates are stored as floats. A non-object <code>xy</code>, a malformed pair, a non-numeric coordinate, or a flat sequence of odd length raises an error.</p>
+    
+    <dl class="params">
+      <dt>xy</dt><dd><span class="en">A flat coordinate sequence or an array of <code>[x, y]</code> pairs.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a Path object.</span></p>
+  </section>
+
+  <section class="api" id="ImagePath.Path.Tolist">
+    <h3>Tolist</h3>
+    <pre class="sig">path.Tolist(flat := true)</pre>
+    <p class="en">Returns the path as an array of <code>[x, y]</code> coordinate pairs.</p>
+    
+    <dl class="params">
+      <dt>flat</dt><dd><span class="en">Accepted for Pillow signature parity; currently ignored — this facade always returns the pair-array form.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: an array of <code>[x, y]</code> pairs.</span></p>
+  </section>
+
+  <section class="api" id="ImagePath.Path.GetBbox">
+    <h3>GetBbox</h3>
+    <pre class="sig">path.GetBbox()</pre>
+    <p class="en">Returns the bounding box of the path's points as floats.</p>
+    
+    <p class="returns"><span class="en">Returns: <code>[minx, miny, maxx, maxy]</code>; an empty path returns <code>[0.0, 0.0, 0.0, 0.0]</code>.</span></p>
+  </section>
+
+  <section class="api" id="ImagePath.Path.Compact">
+    <h3>Compact</h3>
+    <pre class="sig">path.Compact(distance)</pre>
+    <p class="en">Compacts the path in place. Because this path object holds line segments only (Pillow's <code>core.path</code> compacts curve segments), this is an in-place no-op.</p>
+    
+    <dl class="params">
+      <dt>distance</dt><dd><span class="en">Ignored (accepted for signature parity).</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: <code>0</code> — the converted-segment count (the AHK None analogue).</span></p>
+  </section>
+
+  <section class="api" id="ImagePath.Path.Transform">
+    <h3>Transform</h3>
+    <pre class="sig">path.Transform(matrix)</pre>
+    <p class="en">Applies a 6-value affine transform <code>[a, b, c, d, e, f]</code> to every point in place: <code>x' = a·x + b·y + c</code>, <code>y' = d·x + e·y + f</code>.</p>
+    
+    <dl class="params">
+      <dt>matrix</dt><dd><span class="en">A 6-value numeric sequence <code>[a, b, c, d, e, f]</code>.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: nothing (mutates in place).</span></p>
+    <p class="note"><span class="en">Parity: any length other than 6 raises Pillow's exact error <code>transform() argument 1 must be sequence of length 6, not N</code>; non-numeric entries raise the numeric error.</span></p>
+  </section>
+
+  <section class="api" id="ImagePath.Path.Map">
+    <h3>Map</h3>
+    <pre class="sig">path.Map(fn)</pre>
+    <p class="en">Maps a callable over the path. In this facade the callable form returns <code>0</code> without mutating the path.</p>
+    
+    <dl class="params">
+      <dt>fn</dt><dd><span class="en">A callable (accepted; not invoked by this facade).</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: <code>0</code> (the AHK None analogue).</span></p>
+    <p class="note"><span class="en">Parity: Pillow's callable <code>path.map(fn)</code> returns None without mutating; the C <code>ImagingTransformHandler</code> form stays a <a href="boundaries.html#boundary.pathmap">documented boundary</a>.</span></p>
+  </section>
+
+  <h2 id="examples">Examples</h2>
+  <p class="en">Build a path from pairs, read its bounding box and points, then transform it:</p>
+  
+  <pre class="example">p := Pillow.ImagePath.Path([[10.0, 20.0], [30.0, 40.0], [50.0, 10.0]])
+bbox := p.GetBbox()                 ;  [10.0, 10.0, 50.0, 40.0]
+pts  := p.Tolist()                  ;  [[10.0, 20.0], [30.0, 40.0], [50.0, 10.0]]
+p.Transform([1, 0, 5, 0, 1, 0])     ;  shift +5 in x, in place
+pts  := p.Tolist()                  ;  [[15.0, 20.0], [35.0, 40.0], [55.0, 10.0]]
+p.Compact(2.0)                      ;  0 — lines only (the None analogue)
+p.Map(Func("Noop"))                 ;  0 — no mutation</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

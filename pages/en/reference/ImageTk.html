@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageTk — pillow-c documentation</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="../index.html">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html" class="current">ImageTk</a>
+    <a href="Numpy.html">Numpy</a>
+    <a href="constants.html">Constants</a>
+    <a href="Pillow.html">Pillow (entry)</a>
+    <a href="boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/ImageTk.html">中文</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » ImageTk</div>
+  <h1>ImageTk <span class="kind">module</span></h1>
+  <p class="en">The <code>ImageTk</code> module mirrors Pillow&nbsp;11.3.0's <code>PIL.ImageTk</code>: Tkinter-compatible image objects (<code>PhotoImage</code>, <code>BitmapImage</code>) used with a Tk <code>Canvas</code>, <code>Label</code> or <code>Button</code>.</p>
+  
+  <p class="note"><span class="en">This runtime ships no Tk interpreter, so constructing either class fails loudly with Pillow&nbsp;11.3.0's exact <code>Too early to create image: no default root window</code> message — the <code>RuntimeError</code> Tkinter raises before a root window exists. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
+
+  <section class="api" id="ImageTk.PhotoImage">
+    <h3>PhotoImage <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageTk.PhotoImage(image := unset, args*)</pre>
+    <p class="en">Pillow's <code>ImageTk.PhotoImage(image, size=None, **kw)</code> builds a Tkinter-compatible photo image (a Tk <code>PhotoImage</code>) from a Pillow <code>Image</code>, converting modes as Tk requires (e.g. RGBA → P with a transparency index).</p>
+    
+    <dl class="params">
+      <dt>image</dt><dd><span class="en">The Pillow Image to wrap (the only positional argument).</span></dd>
+      <dt>args*</dt><dd><span class="en">Additional Tkinter keywords (e.g. <code>size</code>); accepted for signature compatibility and ignored — the constructor fails before they are used.</span></dd>
+    </dl>
+    <p class="warn"><span class="en">Boundary: constructing raises Pillow's exact <code>Too early to create image: no default root window</code>. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
+  </section>
+
+  <section class="api" id="ImageTk.BitmapImage">
+    <h3>BitmapImage <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageTk.BitmapImage(image := unset, args*)</pre>
+    <p class="en">Pillow's <code>ImageTk.BitmapImage(image, size=None, **kw)</code> builds a Tkinter-compatible bitmap image (a Tk <code>BitmapImage</code>) for a 1-bit (mode <code>"1"</code>) Pillow <code>Image</code>.</p>
+    
+    <dl class="params">
+      <dt>image</dt><dd><span class="en">The 1-bit Pillow Image to wrap (the only positional argument).</span></dd>
+      <dt>args*</dt><dd><span class="en">Additional Tkinter keywords (e.g. <code>size</code>); accepted for signature compatibility and ignored — the constructor fails before they are used.</span></dd>
+    </dl>
+    <p class="warn"><span class="en">Boundary: constructing raises Pillow's exact <code>Too early to create image: no default root window</code>. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
+  </section>
+
+  <section class="api" id="ImageTk.RequireTk">
+    <h3>RequireTk <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageTk.RequireTk()</pre>
+    <p class="en">Internal helper: throws the boundary error <code>Too early to create image: no default root window</code>. Both constructors delegate to it.</p>
+    
+  </section>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

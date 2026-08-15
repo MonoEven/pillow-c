@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageMath — pillow-c documentation</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="../index.html">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html" class="current">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">Numpy</a>
+    <a href="constants.html">Constants</a>
+    <a href="Pillow.html">Pillow (entry)</a>
+    <a href="boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/ImageMath.html">中文</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » ImageMath</div>
+  <h1>ImageMath <span class="kind">module</span></h1>
+  <p class="en">The <code>ImageMath</code> module evaluates image expressions: a Python-like infix mini-language compiled to the native RPN engine, plus Pillow's <code>lambda_eval</code> helper and the <code>imagemath_*</code> single-image operations. Because AHK identifiers are case-insensitive, Pillow's <code>eval</code>/<code>unsafe_eval</code>/<code>lambda_eval</code> and <code>imagemath_*</code> names map onto the PascalCase and snake_case members listed here.</p>
+  
+  <p class="note"><span class="en"><code>variables</code> is the AHK analogue of Pillow's keyword arguments: a <code>Map</code> of name → <code>Image</code> or <code>Number</code>.</span></p>
+
+  <h2 id="eval">Evaluation &amp; lambda_eval</h2>
+
+  <section class="api" id="ImageMath.Eval">
+    <h3>Eval <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageMath.Eval(expression, variables := unset)</pre>
+    <p class="en">Compiles and evaluates an expression string (Pillow's <code>ImageMath.eval</code>, identical to <code>unsafe_eval</code>). When the expression references images the result is a new <code>Image</code>; a pure-scalar expression returns a <code>Number</code> (Integer or Float).</p>
+    
+    <dl class="params">
+      <dt>expression</dt><dd><span class="en">String expression; non-strings raise <code>Pillow.ImageMath expects a string expression</code>.</span></dd>
+      <dt>variables</dt><dd><span class="en">Map of name → <code>Image</code> (modes <code>L</code>/<code>I</code>/<code>F</code>) or <code>Number</code>. Any other container raises <code>Pillow.ImageMath variables must be a Map of name to Image or Number</code>; an unknown name raises <code>'name' not allowed</code>; a non-L/I/F image raises <code>unsupported mode: &lt;mode&gt;</code>.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: an <code>Image</code>, or an Integer/Float for scalar-only expressions.</span></p>
+    <p class="note"><span class="en">Parity: size mismatches raise <code>images do not match</code>; a float operand to a bitwise operator raises <code>bad operand type for '&lt;op&gt;'</code>.</span></p>
+  </section>
+
+  <section class="api" id="ImageMath.UnsafeEval">
+    <h3>UnsafeEval <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageMath.UnsafeEval(expression, variables := unset)</pre>
+    <p class="en">Direct alias of <code>Eval</code> (Pillow's <code>unsafe_eval</code>, which is itself the engine behind <code>eval</code>).</p>
+    
+  </section>
+
+  <section class="api" id="ImageMath.LambdaEval">
+    <h3>LambdaEval <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageMath.LambdaEval(expression, options := unset, kwargs*)</pre>
+    <p class="en">Pillow's <code>lambda_eval</code>: calls <code>expression</code> with the ops dictionary (<code>int</code>/<code>float</code>/<code>equal</code>/<code>notequal</code>/<code>min</code>/<code>max</code>/<code>convert</code> plus the AHK adaptation <code>add</code>/<code>sub</code>/<code>mul</code>/<code>div</code>/<code>mod</code>/<code>neg</code>) merged with <code>options</code> and keyword values; <code>Image</code> values become <code>Operand</code>s. An <code>Operand</code> result is evaluated through <code>Eval</code>; any other result is returned as-is.</p>
+    
+    <dl class="params">
+      <dt>expression</dt><dd><span class="en">A callable (Func/closure); anything else raises <code>Pillow.ImageMath.lambda_eval expects a callable expression</code>. It is invoked with a single <code>Map</code> argument (the merged ops + kwargs).</span></dd>
+      <dt>options</dt><dd><span class="en">Optional Map of extra names to inject; non-Maps raise <code>Pillow.ImageMath.lambda_eval options must be a Map</code>.</span></dd>
+      <dt>kwargs</dt><dd><span class="en">Flat <code>name, value, …</code> pairs (Pillow's <code>**kw</code>). <code>Image</code> values are wrapped as <code>Operand(name, Map(name, value))</code>.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: the evaluated <code>Image</code>/<code>Number</code>, or the callable's raw return value.</span></p>
+  </section>
+
+  <h2 id="syntax">Expression Syntax</h2>
+  <p class="en">The <code>Eval</code> compiler is a shunting-yard parser over a Python-like infix language. Plain parentheses are grouping — <code>(x + 1) * 2</code> — and a function name directly before <code>(</code> is a call.</p>
+  
+  <table class="appendix">
+    <tr><th>Operators</th><th>EN</th></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+  </table>
+  <table class="appendix">
+    <tr><th>Functions</th><th>EN</th></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+  </table>
+  <p class="note"><span class="en">Divergence: Pillow's <code>_Operand</code> exposes <code>**</code> (power); this AHK build has no <code>**</code> token in <code>Tokenize</code> nor power opcode in <code>Compile</code>, so <code>**</code> is not available in expressions or on the Operand methods.</span></p>
+
+  <h2 id="ops">Single-image Ops</h2>
+  <p class="en">Pillow's module-level <code>imagemath_*</code> helpers are static members here. Each builds an <code>Operand</code> expression (they do not evaluate) and takes an <code>Operand</code> or a <code>Number</code> (auto-wrapped).</p>
+  
+  <section class="api" id="ImageMath.ImagemathInt">
+    <h3>ImagemathInt / ImagemathFloat / ImagemathEqual / ImagemathNotequal / ImagemathMin / ImagemathMax / ImagemathConvert <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageMath.ImagemathInt(self)            ;  alias imagemath_int(self)
+Pillow.ImageMath.ImagemathFloat(self)          ;  alias imagemath_float(self)
+Pillow.ImageMath.ImagemathEqual(self, other)    ;  alias imagemath_equal(self, other)
+Pillow.ImageMath.ImagemathNotequal(self, other) ;  alias imagemath_notequal(self, other)
+Pillow.ImageMath.ImagemathMin(self, other)      ;  alias imagemath_min(self, other)
+Pillow.ImageMath.ImagemathMax(self, other)      ;  alias imagemath_max(self, other)
+Pillow.ImageMath.ImagemathConvert(self, mode)   ;  alias imagemath_convert(self, mode)</pre>
+    <p class="en">Build <code>Operand</code>s: <code>int(self)</code>, <code>float(self)</code>, <code>(self == other)</code>, <code>(self != other)</code>, <code>min(self, other)</code>, <code>max(self, other)</code> and <code>convert(self, 'mode')</code>. <code>mode</code> must be a string or <code>imagemath_convert</code> raises <code>Pillow.ImageMath.imagemath_convert mode expects a string</code>.</p>
+    
+    <p class="returns"><span class="en">Returns: an <code>Operand</code> (evaluate with <code>Eval</code>).</span></p>
+  </section>
+
+  <h2 id="operand">The Operand class</h2>
+  <section class="api" id="ImageMath.Operand">
+    <h3>Operand <span class="kind">class</span></h3>
+    <pre class="sig">op := Pillow.ImageMath.Operand(expr, variables := unset)
+op.Expr        ;  expression string
+op.Variables   ;  merged variable Map</pre>
+    <p class="en">Wraps an image operand expression for <code>lambda_eval</code>. The binary/unary operators are exposed as <b>methods</b> — AHK 2.1-alpha.30 does not dispatch operator meta-functions, so Pillow's <code>_Operand</code> operator surface (<code>+ - * / % ** &lt;&lt; &gt;&gt; &amp; | ^ ~</code> and unary <code>-</code>/<code>~</code>) is the method list below, and <code>lambda_eval</code> also receives them as the <code>add</code>/<code>sub</code>/<code>mul</code>/<code>div</code>/<code>mod</code>/<code>neg</code> functions.</p>
+    
+    <table class="appendix">
+      <tr><th>Method</th><th>EN</th></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+    </table>
+    <p class="note"><span class="en">Divergence: <code>**</code> (power) is absent (no <code>Pow</code> method). The ops dictionary returned by <code>OperandOps()</code> maps <code>int/float/equal/notequal/min/max/convert</code> to the <code>Imagemath*</code> builders and <code>add/sub/mul/div/mod/neg</code> to the binary/unary builders — the AHK adaptation of Pillow's operator surface.</span></p>
+  </section>
+
+  <p class="note"><span class="en">Parity boundary: the RPN <code>convert("L")</code> seam reports mode <code>I</code> — a documented divergence (the L values are clamped, but the returned image is labelled <code>I</code>). See <a href="boundaries.html#boundary.rpn">Boundaries</a>.</span></p>
+
+  <h2 id="internals">Internal Compiler Members</h2>
+  <p class="en">The tokenizer/parser/emitter that <code>Eval</code> uses. Public for the facade's own use and pinned by the test suite; not part of the Pillow-style user API.</p>
+  
+  <table class="appendix">
+    <tr><th>Member</th><th>EN</th></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+  </table>
+
+  <h2 id="examples">Examples</h2>
+  <p class="en">Evaluate an expression over two images, and run a <code>lambda_eval</code> conversion:</p>
+  
+  <pre class="example">img1 := Pillow.Image.Open("a.jpg")
+img2 := Pillow.Image.Open("b.jpg")
+;    Eval over two images — the variables Map is Pillow's kwargs.
+sum := Pillow.ImageMath.Eval("a + b", Map("a", img1, "b", img2))
+;    lambda_eval: the callable gets the ops dictionary + keyword Operands.
+;    Pillow equivalent: lambda_eval(lambda: convert(a, "L"), a=img1)
+gray := Pillow.ImageMath.LambdaEval(
+    (args) => args["convert"](args["a"], "L"),
+    , "a", img1)
+img1.Close(), img2.Close()</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

@@ -83,9 +83,9 @@ Drawing and filters:
 img := Pillow.Image.New("RGB", [240, 140], "white")
 d := Pillow.ImageDraw.Draw(img)
 d.Line([[0, 0], [239, 0], [239, 139], [0, 139], [0, 0]], "blue", 3)
-d.RoundedRectangle([[20, 20], [220, 120]], 12, "yellow", "red", 2)
+d.RoundedRectangle([20, 20, 220, 120], 12, "yellow", "red", 2)
 d.Ellipse([60, 40, 180, 100], "lime", "black", 1)
-d.Text([12, 118], "Hello 中文", "navy")
+d.Text([12, 118], "Hello", "navy")
 img.Save("draw.png")
 img.Close()
 
@@ -115,6 +115,9 @@ Together with [url=https://github.com/MonoEven/cnumpy]cnumpy[/url] (v1.21.0-cnum
 [codebox=autohotkey file=numpy]
 #Include "..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"
 
+Numpy.DllPath := A_ScriptDir "\..\2026-07-19-cnumpy-foundation\build\x64\Release\cnumpy_ahk.dll"
+Numpy.Init()
+
 img := Pillow.Image.Open("photo.jpg")
 a := img.AsArray()                ; uint8, [H, W, 3]
 mean := a.Mean()                  ; cnumpy statistics
@@ -123,6 +126,9 @@ img.Close()                       ; the array is a snapshot, still valid
 b := Numpy.Zeros([64, 64, 4], 3)  ; uint8 RGBA
 im := Pillow.Image.FromArray(b)   ; mode RGBA
 im.Save("black.png")
+im.Close()
+
+Numpy.Cleanup()
 [/codebox]
 
 The full fromarray type map matches Pillow 11.3.0 byte for byte: bool → [c]1[/c] (nonzero → 255), u1 → L/LA/RGB/RGBA by trailing shape, i1 → I;8, i2 → I;16S (sign-extended), u2 → result mode [c]I;16[/c] (direct 16-bit storage — the probe-verified real Pillow result mode), u4/i4 → I;32(S), f4/f8 → F;32F/F;64F (double → float32). Error shapes match verbatim: int64 raises [c]Cannot handle this data type: (1, 1), <i8[/c]; dimension violations raise [c]Too many dimensions: n > m.[/c]. Only the [c]I;16B[/c] big-endian dtype (numpy's [c]>u2[/c]) is a documented boundary — cnumpy ships no big-endian dtype — and it fails loudly.

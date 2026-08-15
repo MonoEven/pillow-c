@@ -9020,7 +9020,18 @@ class Pillow {
             }
         }
 
+        static CheckGradientMode(modeName) {
+            ; Pillow 11.3.0's ImagingFill*Gradient: strlen(mode) != 1 raises
+            ; ValueError "image has wrong mode"; an unknown single-char mode
+            ; fails ImagingNewDirty with "unrecognized image mode".
+            if !(modeName is String) || StrLen(modeName) != 1
+                throw Error("image has wrong mode", -1)
+            if !(modeName = "1" || modeName = "L" || modeName = "P" || modeName = "I" || modeName = "F")
+                throw Error("unrecognized image mode", -1)
+        }
+
         static LinearGradient(modeName) {
+            Pillow.Image.CheckGradientMode(modeName)
             outHandle := 0
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_linear_gradient",
@@ -9036,6 +9047,7 @@ class Pillow {
         }
 
         static RadialGradient(modeName) {
+            Pillow.Image.CheckGradientMode(modeName)
             outHandle := 0
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_radial_gradient",
@@ -9754,10 +9766,11 @@ class Pillow {
         ; =========================================================================
 
         static RequireNumpy() {
-            try {
-                if (Numpy is Class)
-                    return Numpy
-            }
+            ; IsSet() detects the global cnumpy class without reading an
+            ; uninitialized variable, so a missing include neither raises
+            ; #Warn Unset nor a load-time dialog.
+            if IsSet(Numpy) && (Numpy is Class)
+                return Numpy
             throw Error("Pillow numpy interop requires cnumpy (https://github.com/MonoEven/cnumpy): #Include its ahk\numpy.ahk", -1)
         }
 

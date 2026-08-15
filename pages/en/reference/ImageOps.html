@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageOps — pillow-c documentation</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="../index.html">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html" class="current">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">Numpy</a>
+    <a href="constants.html">Constants</a>
+    <a href="Pillow.html">Pillow (entry)</a>
+    <a href="boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/ImageOps.html">中文</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » ImageOps</div>
+  <h1>ImageOps <span class="kind">module</span></h1>
+  <p class="en">The <code>ImageOps</code> module provides ready-made image processing functions — contrast, colorization, equalization, posterize/solarize, EXIF transpose, and aspect-ratio resizing (contain/cover/fit/pad). Methods use PascalCase primary names mirroring Pillow's <code>PIL.ImageOps</code>; the snake_case alias <code>exif_transpose</code> is also provided.</p>
+  
+  <p class="note"><span class="en">Most functions return a new Image and leave the input untouched; only <code>ExifTranspose(…, true)</code> mutates in place. Resampling defaults mirror Pillow (BICUBIC for the resize family, BILINEAR for <code>Deform</code>).</span></p>
+
+  <h2 id="ops">Point &amp; color ops</h2>
+
+  <section class="api" id="ImageOps.Autocontrast">
+    <h3>Autocontrast <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Autocontrast(image, cutoff := 0, ignore := unset, mask := unset, preserveTone := false)</pre>
+    <p class="en">Normalizes image contrast: it computes a histogram (of the <code>mask</code> region when given), discards <code>cutoff</code> percent from both the darkest and lightest ends, then remaps so the darkest pixel becomes 0 and the lightest 255.</p>
+    
+    <dl class="params">
+      <dt>cutoff</dt><dd><span class="en">Percent to cut from the low and high ends; a single number applies to both, or <code>[low, high]</code>.</span></dd>
+      <dt>ignore</dt><dd><span class="en">Background pixel value(s) to zero out of the histogram before remapping.</span></dd>
+      <dt>mask</dt><dd><span class="en">Optional mask restricting the histogram to its pixels.</span></dd>
+      <dt>preserveTone</dt><dd><span class="en">Use an L-conversion histogram to preserve tone (Photoshop-style).</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Colorize">
+    <h3>Colorize <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Colorize(image, black, white, mid := unset, blackpoint := 0, whitepoint := 255, midpoint := 127)</pre>
+    <p class="en">Colorizes an L image: black pixels map to <code>black</code>, white pixels to <code>white</code>, with an optional <code>mid</code> color for three-point interpolation. Returns an RGB image.</p>
+    
+    <dl class="params">
+      <dt>black</dt><dd><span class="en">Color for black input pixels (<code>[r, g, b]</code> or a name).</span></dd>
+      <dt>white</dt><dd><span class="en">Color for white input pixels.</span></dd>
+      <dt>mid</dt><dd><span class="en">Optional midtone color for three-point mapping.</span></dd>
+      <dt>blackpoint / whitepoint / midpoint</dt><dd><span class="en">Integer mapping positions; must satisfy <code>blackpoint &lt;= midpoint &lt;= whitepoint</code> (or <code>blackpoint &lt;= whitepoint</code> without <code>mid</code>).</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new RGB Image.</span></p>
+    <p class="note"><span class="en">Requires an L-mode input; other modes raise an error.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Equalize">
+    <h3>Equalize <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Equalize(image, mask := unset)</pre>
+    <p class="en">Equalizes the image histogram: a non-linear mapping spreads each non-alpha band toward a uniform distribution of values.</p>
+    
+    <dl class="params">
+      <dt>mask</dt><dd><span class="en">Optional mask; only its pixels are included in the analysis.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="note"><span class="en">Numeric I/F modes raise Pillow's <code>not supported for mode …</code>.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Grayscale">
+    <h3>Grayscale <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Grayscale(image)</pre>
+    <p class="en">Converts the image to grayscale (mode L) via the L conversion; an L image is simply copied.</p>
+    
+    <p class="returns"><span class="en">Returns: a new L-mode Image.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Invert">
+    <h3>Invert <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Invert(image)</pre>
+    <p class="en">Negates the image: every channel becomes <code>255 - value</code>. Supported for L, RGB and 1 modes.</p>
+    
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="note"><span class="en">Parity: unlike <code>ImageChops.Invert</code>, this raises Pillow's <code>not supported for mode …</code> on RGBA and other modes.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Posterize">
+    <h3>Posterize <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Posterize(image, bits)</pre>
+    <p class="en">Reduces the number of bits kept for each color channel to <code>bits</code> (1–8).</p>
+    
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="note"><span class="en">The facade validates that <code>bits</code> is an integer ≤ 8 (native accepts down to −31).</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Solarize">
+    <h3>Solarize <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Solarize(image, threshold := 128)</pre>
+    <p class="en">Inverts every pixel value at or above <code>threshold</code>, leaving lower values unchanged.</p>
+    
+    <dl class="params">
+      <dt>threshold</dt><dd><span class="en">Gray level above which pixels are inverted.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+  </section>
+
+  <h2 id="geometry">Geometry &amp; sizing</h2>
+
+  <section class="api" id="ImageOps.Contain">
+    <h3>Contain <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Contain(image, size, method := unset)</pre>
+    <p class="en">Resizes the image to fit within <code>size</code> while keeping the aspect ratio (neither axis exceeds <code>size</code>).</p>
+    
+    <dl class="params">
+      <dt>size</dt><dd><span class="en">Requested output size <code>[width, height]</code>.</span></dd>
+      <dt>method</dt><dd><span class="en">Resampling method; default BICUBIC.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Cover">
+    <h3>Cover <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Cover(image, size, method := unset)</pre>
+    <p class="en">Resizes so the image covers <code>size</code> while keeping the aspect ratio (both axes meet or exceed <code>size</code>).</p>
+    
+    <dl class="params">
+      <dt>size</dt><dd><span class="en">Requested output size <code>[width, height]</code>.</span></dd>
+      <dt>method</dt><dd><span class="en">Resampling method; default BICUBIC.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Crop">
+    <h3>Crop <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Crop(image, border := 0)</pre>
+    <p class="en">Removes <code>border</code> pixels from the image. <code>border</code> may be a number, <code>[x, y]</code>, or <code>[left, top, right, bottom]</code>.</p>
+    
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Expand">
+    <h3>Expand <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Expand(image, border := 0, fill := 0)</pre>
+    <p class="en">Adds a border around the image, filled with <code>fill</code> (default black). <code>border</code> uses the same shapes as <code>Crop</code>.</p>
+    
+    <dl class="params">
+      <dt>fill</dt><dd><span class="en">Fill value (a color name, tuple, or scalar).</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Fit">
+    <h3>Fit <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Fit(image, size, method := unset, bleed := 0.0, centering := unset)</pre>
+    <p class="en">Resizes and crops to exactly <code>size</code>, preserving aspect ratio. <code>bleed</code> trims a fraction from every edge (0 to &lt; 0.5) and <code>centering</code> selects the crop position (default <code>[0.5, 0.5]</code>).</p>
+    
+    <dl class="params">
+      <dt>size</dt><dd><span class="en">Requested output size <code>[width, height]</code>.</span></dd>
+      <dt>bleed</dt><dd><span class="en">Decimal fraction trimmed from each edge (default 0).</span></dd>
+      <dt>centering</dt><dd><span class="en">Crop position <code>[x, y]</code>, each in 0–1; default <code>[0.5, 0.5]</code>.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Pad">
+    <h3>Pad <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Pad(image, size, method := unset, color := unset, centering := unset)</pre>
+    <p class="en">Resizes to fit within <code>size</code> (contain) then pads the remainder with <code>color</code> (default black), positioned by <code>centering</code> (default <code>[0.5, 0.5]</code>).</p>
+    
+    <dl class="params">
+      <dt>size</dt><dd><span class="en">Requested output size <code>[width, height]</code>.</span></dd>
+      <dt>color</dt><dd><span class="en">Background color of the padding (default black).</span></dd>
+      <dt>centering</dt><dd><span class="en">Position of the resized image <code>[x, y]</code> in 0–1.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Scale">
+    <h3>Scale <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Scale(image, factor, resample := unset)</pre>
+    <p class="en">Rescales by <code>factor</code>: width and height are multiplied using round-half-even, then resized (default BICUBIC). <code>factor = 1</code> returns a copy; <code>factor &lt;= 0</code> raises an error.</p>
+    
+    <dl class="params">
+      <dt>factor</dt><dd><span class="en">Expansion factor as a number (&gt; 1 enlarges, &lt; 1 shrinks).</span></dd>
+      <dt>resample</dt><dd><span class="en">Resampling method; default BICUBIC.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+  </section>
+
+  <h2 id="transforms">Transforms</h2>
+
+  <section class="api" id="ImageOps.Deform">
+    <h3>Deform <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Deform(image, deformer, resample := unset)</pre>
+    <p class="en">Deforms the image through a deformer object that exposes <code>getmesh(image)</code>; the mesh is applied with a MESH transform (default resample BILINEAR).</p>
+    
+    <dl class="params">
+      <dt>deformer</dt><dd><span class="en">Any object with a <code>getmesh(image)</code> method returning the mesh.</span></dd>
+      <dt>resample</dt><dd><span class="en">Resampling filter; default BILINEAR.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.ExifTranspose">
+    <h3>ExifTranspose <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.ExifTranspose(image, in_place := false)   ;  alias: exif_transpose(image, in_place := false)</pre>
+    <p class="en">Applies the EXIF Orientation tag (2–8) as a transpose. With <code>in_place := true</code> the image is mutated and nothing is returned; otherwise a transposed copy (or a plain copy when orientation ≤ 1) is returned.</p>
+    
+    <dl class="params">
+      <dt>in_place</dt><dd><span class="en">When true, transpose the image in place and return nothing.</span></dd>
+    </dl>
+    <p class="returns"><span class="en">Returns: a new transposed Image (or a copy when orientation ≤ 1); nothing when <code>in_place</code> is true.</span></p>
+    <p class="note"><span class="en">Parity: after a real transposition (orientation 2–8) the EXIF Orientation tag is deleted and <code>Info["exif"]</code> is re-serialized (the key stays present even when empty), the XMP <code>tiff:Orientation</code> is stripped, and other tags (e.g. Make) survive — all exactly like Pillow 11.3.0; orientation 1 or missing EXIF keeps everything untouched.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Flip">
+    <h3>Flip <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Flip(image)</pre>
+    <p class="en">Flips the image vertically (top ↔ bottom).</p>
+    
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+  </section>
+
+  <section class="api" id="ImageOps.Mirror">
+    <h3>Mirror <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageOps.Mirror(image)</pre>
+    <p class="en">Flips the image horizontally (left ↔ right).</p>
+    
+    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+  </section>
+
+  <h2 id="internals">Internal helpers</h2>
+  <p class="en">The following members are facade plumbing pinned by the test suite — not part of the Pillow-style user API.</p>
+  
+  <table class="appendix">
+    <tr><th>Group</th><th>Members</th><th>EN</th></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+  </table>
+
+  <h2 id="examples">Examples</h2>
+  <p class="en">Contrast boost, histogram equalization and EXIF auto-rotation:</p>
+  
+  <pre class="example">img   := Pillow.Image.Open("scan.jpg")
+boost := Pillow.ImageOps.Autocontrast(img, 2)     ;  clip 2% off each end
+eq    := Pillow.ImageOps.Equalize(img)            ;  equalize the histogram
+fixed := Pillow.ImageOps.ExifTranspose(img)       ;  apply EXIF orientation
+fixed := Pillow.ImageOps.exif_transpose(img)      ;  snake_case alias
+boost.Save("autocontrast.png")
+eq.Save("equalized.png")
+fixed.Save("upright.png")
+img.Close()</pre>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

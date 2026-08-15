@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pillow-c Documentation</title>
+<link rel="stylesheet" href="../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="index.html" class="current">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="reference/Image.html">Image</a>
+    <a href="reference/ImageDraw.html">ImageDraw</a>
+    <a href="reference/ImageFont.html">ImageFont</a>
+    <a href="reference/ImageFilter.html">ImageFilter</a>
+    <a href="reference/ImageChops.html">ImageChops</a>
+    <a href="reference/ImageOps.html">ImageOps</a>
+    <a href="reference/ImageStat.html">ImageStat</a>
+    <a href="reference/ImageMath.html">ImageMath</a>
+    <a href="reference/ImageCms.html">ImageCms</a>
+    <a href="reference/ImageColor.html">ImageColor</a>
+    <a href="reference/ImageEnhance.html">ImageEnhance</a>
+    <a href="reference/ImagePalette.html">ImagePalette</a>
+    <a href="reference/ImagePath.html">ImagePath</a>
+    <a href="reference/ImageDraw2.html">ImageDraw2</a>
+    <a href="reference/ImageSequence.html">ImageSequence</a>
+    <a href="reference/ImageGrab.html">ImageGrab</a>
+    <a href="reference/ImageFile.html">ImageFile</a>
+    <a href="reference/ImageTransform.html">ImageTransform</a>
+    <a href="reference/ImageQt.html">ImageQt</a>
+    <a href="reference/ImageTk.html">ImageTk</a>
+    <a href="reference/Numpy.html">Numpy</a>
+    <a href="reference/constants.html">Constants</a>
+    <a href="reference/Pillow.html">Pillow (entry)</a>
+    <a href="reference/boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../zh/index.html">中文</a></div>
+</div>
+<div class="content">
+  <h1>pillow-c <span style="font-size:16px;color:#777;font-weight:400;">— a Pillow-compatible image library for AutoHotkey v2</span></h1>
+
+  <p class="en">Welcome to the pillow-c documentation. <b>pillow-c</b> brings a Pillow&nbsp;11.3.0-compatible image processing API to AutoHotkey&nbsp;v2: a native <code>pillow_c.dll</code> owns image handles, pixel storage and bulk operations, while <code>ahk\pillow.ahk</code> provides the Python-like facade (<code>Pillow.Image</code>, <code>ImageDraw</code>, <code>ImageFont</code>, …). This documentation mirrors the structure of the <a href="https://pillow.readthedocs.io/en/stable/">official Pillow documentation</a> and describes every public API in both English and Chinese.</p>
+  
+
+  <h2>Installation &amp; Build</h2>
+  <p class="en">Copy <code>build\x64\Release\pillow_c.dll</code> and <code>ahk\pillow.ahk</code> into your project, then configure the DLL path once:</p>
+  
+  <pre class="example">#Requires AutoHotkey v2.0
+#Include "ahk\pillow.ahk"
+
+Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
+img := Pillow.Image.Open("photo.png")   ; open
+img := img.Resize([800, 600])           ; resize
+img.Save("photo-800.jpg")               ; save
+img.Close()</pre>
+  <p class="en">To build the DLL from source (Visual Studio 2022, x64 Release):</p>
+  
+  <pre class="example">& 'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe' .\src\pillow_c.vcxproj /p:Configuration=Release /p:Platform=x64 /m</pre>
+
+  <h2>Concepts</h2>
+  <p class="en">Just like Pillow, an image is identified by a <b>mode</b> and a <b>size</b>. Supported modes: <code>1</code> (1-bit), <code>L</code> (8-bit grayscale), <code>P</code> (palette), <code>RGB</code>, <code>RGBA</code>, <code>CMYK</code>, <code>YCbCr</code>, <code>LAB</code>, <code>HSV</code>, <code>I</code> (32-bit int), <code>F</code> (32-bit float), <code>I;16</code>/<code>I;16B</code>, and the <code>BGR;</code>/<code>BGR;15</code>/<code>BGR;16</code>/<code>BGR;24</code> raw variants. The coordinate system has its origin at the upper-left corner: <code>(0, 0)</code> is the top-left pixel, <code>x</code> grows rightward, <code>y</code> grows downward; a 4-tuple box is <code>[left, upper, right, lower]</code>.</p>
+  
+
+  <h2>Reference</h2>
+  <p class="en">Every public API is documented on its own page, mirroring the Pillow reference manual:</p>
+  
+  <table class="appendix">
+    <tr><th>Module</th><th>EN</th></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+  </table>
+
+  <h2>Parity</h2>
+  <p class="en">Behavior is verified against a local Pillow 11.3.0 installation (<code>F:\Python\Python310\python.exe</code>) through oracle probes and a full AutoHotkey test suite: <b>2867/2867</b> tests passing, <b>524/524</b> DLL exports in parity, DLL SHA-256 <code>4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481</code>. Every error message, boundary error and conversion rule is pinned against the Python implementation — not just the happy path.</p>
+  
+  <p class="en">A small number of honest <a href="reference/boundaries.html">documented boundaries</a> remain: WebP/AVIF/JPEG2000 decoders, FPX, ImageQt/ImageTk, ImagePalette.random streams and the ImagePath map handler fail loudly with Pillow's exact messages instead of silently diverging.</p>
+  
+
+  <h2>Project Docs</h2>
+  <p class="en">Engineer-facing ledgers and internals:</p>
+  
+  <ul>
+    <li><a href="https://github.com/MonoEven/pillow-c/blob/master/docs/architecture.md">Architecture</a></li>
+    <li><a href="https://github.com/MonoEven/pillow-c/blob/master/docs/native-abi.md">Native ABI</a></li>
+    <li><a href="https://github.com/MonoEven/pillow-c/blob/master/docs/pillow-gap-checkpoint.md">Gap checkpoint</a></li>
+    <li><a href="https://github.com/MonoEven/pillow-c/blob/master/docs/pillow-gap-analysis.md">Gap analysis ledger</a></li>
+    <li><a href="https://github.com/MonoEven/pillow-c/blob/master/docs/testing.md">Testing</a></li>
+  </ul>
+</div>
+<script src="../_static/pages.js"></script>
+</body>
+</html>

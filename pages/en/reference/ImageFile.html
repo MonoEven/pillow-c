@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageFile — pillow-c documentation</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">English Docs</div>
+  <nav>
+    <p class="nav-head">Home</p>
+    <a href="../index.html">Overview</a>
+    <p class="nav-head">Reference</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html" class="current">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">Numpy</a>
+    <a href="constants.html">Constants</a>
+    <a href="Pillow.html">Pillow (entry)</a>
+    <a href="boundaries.html">Boundaries</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/ImageFile.html">中文</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">Home</a> » ImageFile</div>
+  <h1>ImageFile <span class="kind">module</span></h1>
+  <p class="en">Pillow 11.3.0's <code>PIL.ImageFile</code> module surface. The native ABI decodes and encodes whole files, so the incremental feed/plugin protocol (<code>Parser</code>'s decoder-based path, <code>StubImageFile</code>, <code>StubHandler</code>, <code>PyCodec</code>, <code>PyDecoder</code>, <code>PyEncoder</code>) is a documented boundary. The constants (<code>MAXBLOCK</code>/<code>SAFEBLOCK</code>/<code>ERRORS</code>), the <code>LOAD_TRUNCATED_IMAGES</code> default, the whole-file <code>Parser</code> fallback, and the plain <code>PyCodecState</code> object are covered exactly.</p>
+  
+
+  <h2 id="constants">Constants</h2>
+
+  <section class="api" id="ImageFile.MAXBLOCK">
+    <h3>MAXBLOCK / SAFEBLOCK <span class="kind">constants</span></h3>
+    <pre class="sig">Pillow.ImageFile.MAXBLOCK := 65536
+Pillow.ImageFile.SAFEBLOCK := 1048576</pre>
+    <p class="en">Pillow's default chunk sizes for image I/O, identical to <code>PIL.ImageFile.MAXBLOCK</code> and <code>PIL.ImageFile.SAFEBLOCK</code>: <code>MAXBLOCK</code> is the per-read block cap, and <code>SAFEBLOCK</code> the conservative fallback used when a codec does not declare its own block size.</p>
+    
+  </section>
+
+  <section class="api" id="ImageFile.ERRORS">
+    <h3>ERRORS <span class="kind">Map</span></h3>
+    <pre class="sig">static ERRORS := Map(
+    -1, "image buffer overrun error",
+    -2, "decoding error",
+    -3, "unknown error",
+    -8, "bad configuration",
+    -9, "out of memory error"
+)</pre>
+    <p class="en">The negative error-code → message table, exactly as defined in the source. It mirrors <code>PIL.ImageFile.ERRORS</code>: the rows below are the codes the native ABI can surface; Pillow's table carries the same negative-code → human-message mapping used when a decoder returns a failure code.</p>
+    
+    <table class="appendix">
+      <tr><th>Code</th><th>Message</th></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+      <tr></tr>
+    </table>
+  </section>
+
+  <h2 id="truncated">Truncated Loading</h2>
+
+  <section class="api" id="ImageFile.LOAD_TRUNCATED_IMAGES">
+    <h3>LOAD_TRUNCATED_IMAGES <span class="kind">property</span></h3>
+    <pre class="sig">static LoadTruncatedImages {
+    get => Pillow.ImageFile._LoadTruncated
+    set {
+        if value
+            throw Error("Pillow.ImageFile.LOAD_TRUNCATED_IMAGES truncated-load tolerance is not supported: native decoders require complete files (the Pillow default is False)", -1)
+        Pillow.ImageFile._LoadTruncated := false
+    }
+}
+static _LoadTruncated := false</pre>
+    <p class="en">Read/write property whose default is <code>false</code>, matching Pillow's default. Setting it <code>true</code> is a documented fail-loud boundary: native decoders decode whole files strictly, so truncated tolerance cannot be honored and instead raises Pillow's exact rejection message.</p>
+    
+    <p class="warn"><span class="en">Boundary: reading back always yields <code>false</code>; a truthy assignment throws. See <a href="boundaries.html">Boundaries</a>.</span></p>
+  </section>
+
+  <h2 id="codecstate">Codec State</h2>
+
+  <section class="api" id="ImageFile.PyCodecState">
+    <h3>PyCodecState <span class="kind">class</span></h3>
+    <pre class="sig">class PyCodecState {
+    Xsize := 0
+    Ysize := 0
+    Xoff := 0
+    Yoff := 0
+}</pre>
+    <p class="en">Pillow 11.3.0's plain codec-state object: four integer fields, all defaulting to 0. AHK case-insensitivity serves the snake_case reads/writes (<code>xsize</code>/<code>ysize</code>/<code>xoff</code>/<code>yoff</code>) on top of the PascalCase fields.</p>
+    
+    <dl class="params">
+      <dt>Xsize / Ysize</dt><dd><span class="en">Decoded image dimensions.</span></dd>
+      <dt>Xoff / Yoff</dt><dd><span class="en">Offset into the decode target.</span></dd>
+    </dl>
+  </section>
+
+  <h2 id="stubs">Boundary Stubs</h2>
+  <p class="en">Pillow's incremental/plugin protocol cannot exist over the whole-file native ABI. These classes fail loudly on construction with Pillow-shaped messages instead of building inert shells.</p>
+  
+
+  <section class="api" id="ImageFile.ImageFile">
+    <h3>ImageFile (base object) <span class="kind">class</span></h3>
+    <pre class="sig">__New(args*) => Pillow.ImageFile.RequireIncremental()</pre>
+    <p class="en">Pillow's <code>ImageFile.ImageFile(fp, name)</code> base object. The AHK runtime has no file-object/incremental protocol, so construction fails loudly.</p>
+    
+    <p class="warn"><span class="en">Raises: <code>Pillow.ImageFile incremental decoding is not supported: the native ABI decodes whole files</code>. See <a href="boundaries.html">Boundaries</a>.</span></p>
+  </section>
+
+  <section class="api" id="ImageFile.Parser">
+    <h3>Parser <span class="kind">class</span></h3>
+    <pre class="sig">parser := Pillow.ImageFile.Parser()
+parser.Reset()
+parser.Feed(data)
+parser.Close()</pre>
+    <p class="en">Pillow 11.3.0's <code>ImageFile.Parser</code> feed/close consumer. The facade implements Pillow's own fallback path for non-incremental formats: it accumulates the fed buffers and reopens the whole stream through the eager <code>Open</code> at <code>Close()</code>. The observable feed/close/error surface matches Pillow.</p>
+    
+    <dl class="params">
+      <dt>Reset</dt><dd><span class="en">Pillow asserts the parser has not collected data yet; reuse raises <code>cannot reuse parsers</code>.</span></dd>
+      <dt>Feed</dt><dd><span class="en">Appends a buffer and attempts an eager open, swallowing not-yet-identifiable failures.</span></dd>
+      <dt>Close</dt><dd><span class="en">Reopens the accumulated stream and returns the Image; unparsable data raises <code>cannot parse this image</code>.</span></dd>
+    </dl>
+    <p class="warn"><span class="en">Boundary: the decoder-based incremental decode path stays a documented child — this facade routes through the whole-file fallback only. See <a href="boundaries.html">Boundaries</a>.</span></p>
+  </section>
+
+  <section class="api" id="ImageFile.StubImageFile">
+    <h3>StubImageFile <span class="kind">class</span></h3>
+    <pre class="sig">class StubImageFile {
+    __New(args*) {
+        throw Error("Can't instantiate abstract class StubImageFile with abstract methods _load, _open", -1)
+    }
+}</pre>
+    <p class="en">Pillow 11.3.0's abstract stub raises this exact <code>TypeError</code> (abstract <code>_load</code>/<code>_open</code>) when instantiated.</p>
+    
+    <p class="warn"><span class="en">Raises verbatim: <code>Can't instantiate abstract class StubImageFile with abstract methods _load, _open</code>. See <a href="boundaries.html">Boundaries</a>.</span></p>
+  </section>
+
+  <section class="api" id="ImageFile.StubHandler">
+    <h3>StubHandler <span class="kind">class</span></h3>
+    <pre class="sig">class StubHandler {
+    __New(args*) {
+        throw Error("Can't instantiate abstract class StubHandler with abstract method load", -1)
+    }
+}</pre>
+    <p class="en">Pillow 11.3.0's abstract stub raises this exact <code>TypeError</code> (abstract <code>load</code>) when instantiated.</p>
+    
+    <p class="warn"><span class="en">Raises verbatim: <code>Can't instantiate abstract class StubHandler with abstract method load</code>. See <a href="boundaries.html">Boundaries</a>.</span></p>
+  </section>
+
+  <section class="api" id="ImageFile.PyCodec">
+    <h3>PyCodec / PyDecoder / PyEncoder <span class="kind">classes</span></h3>
+    <pre class="sig">class PyCodec {
+    __New(args*) => Pillow.ImageFile.RequirePyCodecMode()
+}
+
+class PyDecoder {
+    __New(args*) => Pillow.ImageFile.RequirePyCodecMode()
+}
+
+class PyEncoder {
+    __New(args*) => Pillow.ImageFile.RequirePyCodecMode()
+}</pre>
+    <p class="en">Pillow 11.3.0's codec base classes. <code>PyCodec.__init__()</code> requires a <code>mode</code> argument, so constructing any of the three without it raises the exact missing-positional-argument error.</p>
+    
+    <p class="warn"><span class="en">Raises verbatim: <code>PyCodec.__init__() missing 1 required positional argument: 'mode'</code>. See <a href="boundaries.html">Boundaries</a>.</span></p>
+  </section>
+
+  <h2 id="deprecated">Deprecated Helpers</h2>
+
+  <section class="api" id="ImageFile.ReportOSError">
+    <h3>ReportOSError <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.ImageFile.ReportOSError(code)</pre>
+    <p class="en">Serves Pillow 11.3.0's deprecated <code>raise_oserror</code> helper (removal in Pillow 12), which only translates codec <code>decode()</code> return codes — a role the native ABI surfaces directly. AHK identifiers beginning with <code>Raise</code> lex as the <code>raise</code> keyword at call sites, and a parameter named <code>error</code> would shadow the <code>Error</code> class (AHK names are case-insensitive), so the facade member is <code>ReportOSError(code)</code>.</p>
+    
+    <p class="warn"><span class="en">Raises: <code>raise_oserror is a deprecated Pillow helper; codec errors surface directly from the native ABI</code>. See <a href="boundaries.html">Boundaries</a>.</span></p>
+  </section>
+
+  <p class="note"><span class="en"><code>ImageFileFormat</code> does not exist in Pillow 11.3.0 (no such name in the module) and therefore has no facade member here.</span></p>
+
+  <h2 id="internals">Internal helpers</h2>
+  <p class="en">These members implement the parser temp-file fallback and the fail-loud boundary guards. They are public for the facade's own use and pinned by the test suite, but are not part of the Pillow-style user API.</p>
+  
+  <table class="appendix">
+    <tr><th>Member</th><th>EN</th></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+    <tr></tr>
+  </table>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

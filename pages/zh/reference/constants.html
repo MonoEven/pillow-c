@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Constants — pillow-c 文档</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">中文文档</div>
+  <nav>
+    <p class="nav-head">首页</p>
+    <a href="../index.html">概述</a>
+    <p class="nav-head">参考</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html">NumPy 互操作</a>
+    <a href="constants.html" class="current">常量</a>
+    <a href="Pillow.html">Pillow(入口)</a>
+    <a href="boundaries.html">行为边界</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../en/reference/constants.html">English</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">首页</a> » Constants</div>
+  <h1>常量</h1>
+  
+  <p class="zh"><code>Pillow</code> 命名空间下的枚举类,数值与 Pillow 11.3.0 常量完全一致。</p>
+
+  <h2 id="transpose">Transpose</h2>
+  <pre class="sig">Pillow.Transpose.FLIP_LEFT_RIGHT := 0   ; 左右翻转
+Pillow.Transpose.FLIP_TOP_BOTTOM := 1   ; 上下翻转
+Pillow.Transpose.ROTATE_90 := 2         ; 逆时针 90°
+Pillow.Transpose.ROTATE_180 := 3        ; 旋转 180°
+Pillow.Transpose.ROTATE_270 := 4        ; 逆时针 270°
+Pillow.Transpose.TRANSPOSE := 5         ; 沿主对角线转置
+Pillow.Transpose.TRANSVERSE := 6        ; 沿副对角线转置</pre>
+
+  <h2 id="transform">Transform</h2>
+  <pre class="sig">Pillow.Transform.AFFINE := 0
+Pillow.Transform.EXTENT := 1
+Pillow.Transform.PERSPECTIVE := 2
+Pillow.Transform.QUAD := 3
+Pillow.Transform.MESH := 4</pre>
+
+  <h2 id="resampling">Resampling</h2>
+  <pre class="sig">Pillow.Resampling.NEAREST := 0
+Pillow.Resampling.BOX := 4
+Pillow.Resampling.BILINEAR := 2
+Pillow.Resampling.HAMMING := 5
+Pillow.Resampling.BICUBIC := 3
+Pillow.Resampling.LANCZOS := 1</pre>
+
+  <h2 id="dither">Dither</h2>
+  <pre class="sig">Pillow.Dither.NONE := 0
+Pillow.Dither.FLOYDSTEINBERG := 3</pre>
+
+  <h2 id="palette">Palette</h2>
+  <pre class="sig">Pillow.Palette.WEB := 0
+Pillow.Palette.ADAPTIVE := 1</pre>
+
+  <h2 id="quantize">Quantize</h2>
+  <pre class="sig">Pillow.Quantize.MEDIANCUT := 0
+Pillow.Quantize.MAXCOVERAGE := 1
+Pillow.Quantize.FASTOCTREE := 2
+Pillow.Quantize.LIBIMAGEQUANT := 3   ; 编译期边界,抛 Pillow 原样错误</pre>
+
+  <p class="note"><span class="zh">其他常量位于各自模块内:<code>ImageFont.Layout.BASIC/RAQM</code>、<code>ImageFile.MAXBLOCK/SAFEBLOCK/ERRORS</code>,以及 ImageCms 的 intent/flag 枚举(见各页面)。</span></p>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>

@@ -8,11 +8,27 @@
 
 namespace {
 constexpr int PILLOW_C_GRADIENT_SIZE = 256;
-constexpr double PILLOW_C_SQRT2 = 1.4142135623730950488;
 
 bool supports_gradient_mode(int mode)
 {
-    return mode == PILLOW_C_MODE_1 || mode == PILLOW_C_MODE_L || mode == PILLOW_C_MODE_P;
+    return mode == PILLOW_C_MODE_1 || mode == PILLOW_C_MODE_L || mode == PILLOW_C_MODE_P ||
+           mode == PILLOW_C_MODE_I || mode == PILLOW_C_MODE_F;
+}
+
+void write_gradient_sample(PillowCImage* target, int x, int y, int value)
+{
+    std::uint8_t* row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
+    switch (target->mode) {
+    case PILLOW_C_MODE_I:
+        pillow_c_write_i32_le(row + static_cast<std::size_t>(x) * 4u, static_cast<std::uint32_t>(value));
+        return;
+    case PILLOW_C_MODE_F:
+        pillow_c_write_f32_le(row + static_cast<std::size_t>(x) * 4u, static_cast<float>(value));
+        return;
+    default:
+        row[x] = static_cast<std::uint8_t>(value);
+        return;
+    }
 }
 
 int linear_gradient_image_into(int mode, PillowCImage* target)
@@ -23,13 +39,16 @@ int linear_gradient_image_into(int mode, PillowCImage* target)
     if (!supports_gradient_mode(mode)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (!pillow_c_image_shape_matches(target, PILLOW_C_GRADIENT_SIZE, PILLOW_C_GRADIENT_SIZE, mode, 1)) {
+    if (!pillow_c_image_shape_matches(target, PILLOW_C_GRADIENT_SIZE, PILLOW_C_GRADIENT_SIZE, mode, channels_for_mode(mode))) {
         return PILLOW_C_MISMATCH;
     }
 
+    // Pillow 11.3.0 Fill.c: linear gradient value is y (top to bottom),
+    // stored per mode (byte for 1/L/P, int32 for I, float32 for F).
     for (int y = 0; y < PILLOW_C_GRADIENT_SIZE; ++y) {
-        std::uint8_t* row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
-        std::fill_n(row, PILLOW_C_GRADIENT_SIZE, static_cast<std::uint8_t>(y));
+        for (int x = 0; x < PILLOW_C_GRADIENT_SIZE; ++x) {
+            write_gradient_sample(target, x, y, y);
+        }
     }
     target->palette_rgb.clear();
     target->palette_alpha.clear();
@@ -45,17 +64,19 @@ int radial_gradient_image_into(int mode, PillowCImage* target)
     if (!supports_gradient_mode(mode)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
-    if (!pillow_c_image_shape_matches(target, PILLOW_C_GRADIENT_SIZE, PILLOW_C_GRADIENT_SIZE, mode, 1)) {
+    if (!pillow_c_image_shape_matches(target, PILLOW_C_GRADIENT_SIZE, PILLOW_C_GRADIENT_SIZE, mode, channels_for_mode(mode))) {
         return PILLOW_C_MISMATCH;
     }
 
     for (int y = 0; y < PILLOW_C_GRADIENT_SIZE; ++y) {
-        std::uint8_t* row = target->pixels.data() + static_cast<std::size_t>(y) * target->stride;
         const double dy = static_cast<double>(y - 128);
         for (int x = 0; x < PILLOW_C_GRADIENT_SIZE; ++x) {
             const double dx = static_cast<double>(x - 128);
-            const int value = static_cast<int>(std::sqrt(dx * dx + dy * dy) * PILLOW_C_SQRT2);
-            row[x] = static_cast<std::uint8_t>(value > 255 ? 255 : value);
+            int value = static_cast<int>(std::sqrt((dx * dx + dy * dy) * 2.0));
+            if (value >= 255) {
+                value = 255;
+            }
+            write_gradient_sample(target, x, y, value);
         }
     }
     target->palette_rgb.clear();
@@ -275,7 +296,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_linear_gradient(
 
     std::size_t stride = 0;
     std::size_t size = 0;
-    if (!checked_image_size(PILLOW_C_GRADIENT_SIZE, PILLOW_C_GRADIENT_SIZE, 1, &stride, &size)) {
+    if (!checked_image_size(PILLOW_C_GRADIENT_SIZE, PILLOW_C_GRADIENT_SIZE, channels_for_mode(mode), &stride, &size)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
@@ -284,7 +305,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_linear_gradient(
             PILLOW_C_GRADIENT_SIZE,
             PILLOW_C_GRADIENT_SIZE,
             mode,
-            1,
+            channels_for_mode(mode),
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = linear_gradient_image_into(mode, image);
@@ -320,7 +341,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_radial_gradient(
 
     std::size_t stride = 0;
     std::size_t size = 0;
-    if (!checked_image_size(PILLOW_C_GRADIENT_SIZE, PILLOW_C_GRADIENT_SIZE, 1, &stride, &size)) {
+    if (!checked_image_size(PILLOW_C_GRADIENT_SIZE, PILLOW_C_GRADIENT_SIZE, channels_for_mode(mode), &stride, &size)) {
         return PILLOW_C_INVALID_ARGUMENT;
     }
 
@@ -329,7 +350,7 @@ extern "C" __declspec(dllexport) int pillow_c_image_radial_gradient(
             PILLOW_C_GRADIENT_SIZE,
             PILLOW_C_GRADIENT_SIZE,
             mode,
-            1,
+            channels_for_mode(mode),
             stride,
             std::vector<std::uint8_t>(size)};
         const int status = radial_gradient_image_into(mode, image);

@@ -19947,5 +19947,35 @@ target passes `1/1` in `157ms` and the full directory suite passes
 ImageOps docs page parity note was corrected in the same patch.
 ```
 
+2026-08-15: `BEHAV-GRADIENT-001` is GREEN — the README/blog example
+run exposed a real divergence: the facade `LinearGradient`/`RadialGradient`
+accepted any mode and the native gradients only supported 1/L/P, while
+Pillow 11.3.0's `ImagingFill*Gradient` supports 1/L/P/I/F (linear value =
+y top-to-bottom; radial d = (int)sqrt((dx^2+dy^2)*2.0) clamped at >= 255,
+both stored per mode as byte/int32/float32, mode "1" storing the raw y
+byte) and raises ValueError `image has wrong mode` for multi-char modes
+and `unrecognized image mode` for unknown single-char modes. The native
+`pillow_c_effects.cpp` gradient path now replicates all of it
+(channels_for_mode sizing, per-mode writers, Pillow's exact radial
+formula); the facade adds `Image.CheckGradientMode`; the new test
+`PillowTestEffectGradientsMatchPillowModes` pins every mode value and
+both error shapes. `BEHAV-DEMO-001` adds `ahk/pillow_demo.test.ahk`,
+which executes every README/blog example verbatim under the project
+runner (open/resize/save, gradients, drawing, filters, quantize, and the
+cnumpy interop with the canonical `Numpy.DllPath`/`Numpy.Init()`/
+`Numpy.Cleanup()` calling style — including AsArray [H,W,3], Mean,
+FromArray RGBA); `Pillow.Image.RequireNumpy` now uses `IsSet(Numpy)` so a
+missing cnumpy include no longer triggers #Warn Unset. `API-DOCS-SPLIT-001`
+splits the Pages site into two fully separate language trees
+(`pages/en/`, `pages/zh/`, chooser at `pages/index.html`, cross-language
+links in the sidebar, 0 broken links, en tree CJK-free) and `BLOG-001`
+ships the ahk-hack-style README examples plus the bilingual BBCode blog
+posts `blog_pillow_c.txt` / `blog_pillow_c_en.txt`. The demo target passes
+`1/1` in `109ms`; the gradient target passes `1/1` in `157ms`; the full
+directory suite passes `2870/2870` in `23860ms` with zero failures,
+errors, or skips. Export parity stays `524/524` and the rebuilt DLL
+SHA-256 is `2E6F0ABBAC878ACC483E6EE2B81F8C5810CD1144174C7E291C0BCCAA887DCC1E`.
+```
+
 If any line above is no longer true, update this file first, then update
 `docs/pillow-gap-analysis.md` in the same patch.

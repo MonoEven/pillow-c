@@ -83,9 +83,9 @@ canvas.Close()
 img := Pillow.Image.New("RGB", [240, 140], "white")
 d := Pillow.ImageDraw.Draw(img)
 d.Line([[0, 0], [239, 0], [239, 139], [0, 139], [0, 0]], "blue", 3)
-d.RoundedRectangle([[20, 20], [220, 120]], 12, "yellow", "red", 2)
+d.RoundedRectangle([20, 20, 220, 120], 12, "yellow", "red", 2)
 d.Ellipse([60, 40, 180, 100], "lime", "black", 1)
-d.Text([12, 118], "Hello 中文", "navy")
+d.Text([12, 118], "Hello", "navy")
 img.Save("draw.png")
 img.Close()
 
@@ -115,6 +115,9 @@ rgb.Close()
 [codebox=autohotkey file=numpy]
 #Include "..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"
 
+Numpy.DllPath := A_ScriptDir "\..\2026-07-19-cnumpy-foundation\build\x64\Release\cnumpy_ahk.dll"
+Numpy.Init()
+
 img := Pillow.Image.Open("photo.jpg")
 a := img.AsArray()                ; uint8，[H, W, 3]
 mean := a.Mean()                  ; cnumpy 统计
@@ -123,6 +126,9 @@ img.Close()                       ; 数组是快照，图像关闭后仍有效
 b := Numpy.Zeros([64, 64, 4], 3)  ; uint8 RGBA
 im := Pillow.Image.FromArray(b)   ; 模式 RGBA
 im.Save("black.png")
+im.Close()
+
+Numpy.Cleanup()
 [/codebox]
 
 fromarray 的完整类型映射与 Pillow 11.3.0 逐字节一致：bool→[c]1[/c]（非零→255）、u1→L/LA/RGB/RGBA（按尾部形状）、i1→I;8、i2→I;16S（符号扩展）、u2→结果模式 [c]I;16[/c]（直接 16 位存储，这是探针验证出的 Pillow 真实结果模式）、u4/i4→I;32(S)、f4/f8→F;32F/F;64F（double→float32）。报错形态同样原样：int64 抛 [c]Cannot handle this data type: (1, 1), <i8[/c]，维数越界抛 [c]Too many dimensions: n > m.[/c]。仅 [c]I;16B[/c] 的大端 dtype（numpy 的 [c]>u2[/c]）因 cnumpy 无大端类型而记为文档化边界，显式失败。

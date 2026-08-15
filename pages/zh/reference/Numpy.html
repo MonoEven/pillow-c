@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Numpy interop — pillow-c 文档</title>
+<link rel="stylesheet" href="../../_static/pages.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title"><a href="../index.html">pillow-c</a></div>
+  <div class="side-sub">中文文档</div>
+  <nav>
+    <p class="nav-head">首页</p>
+    <a href="../index.html">概述</a>
+    <p class="nav-head">参考</p>
+    <a href="Image.html">Image</a>
+    <a href="ImageDraw.html">ImageDraw</a>
+    <a href="ImageFont.html">ImageFont</a>
+    <a href="ImageFilter.html">ImageFilter</a>
+    <a href="ImageChops.html">ImageChops</a>
+    <a href="ImageOps.html">ImageOps</a>
+    <a href="ImageStat.html">ImageStat</a>
+    <a href="ImageMath.html">ImageMath</a>
+    <a href="ImageCms.html">ImageCms</a>
+    <a href="ImageColor.html">ImageColor</a>
+    <a href="ImageEnhance.html">ImageEnhance</a>
+    <a href="ImagePalette.html">ImagePalette</a>
+    <a href="ImagePath.html">ImagePath</a>
+    <a href="ImageDraw2.html">ImageDraw2</a>
+    <a href="ImageSequence.html">ImageSequence</a>
+    <a href="ImageGrab.html">ImageGrab</a>
+    <a href="ImageFile.html">ImageFile</a>
+    <a href="ImageTransform.html">ImageTransform</a>
+    <a href="ImageQt.html">ImageQt</a>
+    <a href="ImageTk.html">ImageTk</a>
+    <a href="Numpy.html" class="current">NumPy 互操作</a>
+    <a href="constants.html">常量</a>
+    <a href="Pillow.html">Pillow(入口)</a>
+    <a href="boundaries.html">行为边界</a>
+  </nav>
+  <div class="lang-switch"><a class="lang-alt" href="../../en/reference/Numpy.html">English</a></div>
+</div>
+<div class="content">
+  <div class="crumbs"><a href="../index.html">首页</a> » Numpy</div>
+  <h1>NumPy 互操作 <span class="kind">互操作</span></h1>
+  
+  <p class="zh">pillow-c 与 <b><a href="https://github.com/MonoEven/cnumpy">cnumpy</a></b> 联动——那是配套的 AutoHotkey v2 原生 NumPy 风格数组库(<code>v1.21.0-cnumpy</code>,以 NumPy 1.25.0 为基准)。本页对应 Pillow 的 <i>Using with NumPy</i> 章节:<code>Image.FromArray</code> 即 <code>Image.fromarray</code>,<code>image.AsArray()</code> 即 <code>numpy.asarray(im)</code>。所有 dtype/shape 规则、字节布局与报错文本均以本机 Pillow 11.3.0 + NumPy 1.25.0 为 oracle 逐项验证(<code>oracle/probe_numpy_interop.py</code>)。</p>
+  <p class="note"><span class="zh">互操作需要其门面:<code>#Include "..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"</code>(或你本地的 cnumpy 检出)后再使用 <code>AsArray</code>/<code>FromArray</code>;缺少时门面抛出 <code>Pillow numpy interop requires cnumpy (https://github.com/MonoEven/cnumpy): #Include its ahk\numpy.ahk</code>。</span></p>
+
+  <h2 id="asarray">图像 → cnumpy 数组</h2>
+  <section class="api" id="Pillow.Image.AsArray">
+    <h3>AsArray <span class="kind">static + method</span></h3>
+    <pre class="sig">Pillow.Image.AsArray(image)   ;  numpy.asarray(im) analogue
+image.AsArray()               ;  instance form</pre>
+    
+    <p class="zh">返回覆盖图像像素字节的 cnumpy <code>NdArray</code>,dtype 与 shape 与 numpy 完全一致。与 Pillow 一样只传输像素值——P 模式图像丢失调色板(只剩索引)。数组为快照副本:图像关闭后仍然有效。</p>
+    <table class="appendix">
+      <tr><th>Mode</th><th>cnumpy dtype</th><th>numpy dtype</th><th>Shape</th></tr>
+      <tr><td><code>1</code></td><td><code>|b1</code></td><td><code>[H, W]</code>(字节 0/255,与 numpy.asarray 一致)</td></tr>
+      <tr><td><code>L</code> / <code>P</code></td><td><code>|u1</code></td><td><code>[H, W]</code></td></tr>
+      <tr><td><code>I</code></td><td><code>&lt;i4</code></td><td><code>[H, W]</code></td></tr>
+      <tr><td><code>F</code></td><td><code>&lt;f4</code></td><td><code>[H, W]</code></td></tr>
+      <tr><td><code>I;16</code></td><td><code>&lt;u2</code></td><td><code>[H, W]</code></td></tr>
+      <tr><td><code>RGB</code> / <code>YCbCr</code> / <code>LAB</code> / <code>HSV</code></td><td><code>|u1</code></td><td><code>[H, W, 3]</code></td></tr>
+      <tr><td><code>RGBA</code> / <code>CMYK</code></td><td><code>|u1</code></td><td><code>[H, W, 4]</code></td></tr>
+      <tr><td><code>LA</code></td><td><code>|u1</code></td><td><code>[H, W, 2]</code></td></tr>
+    </table>
+    <p class="warn"><span class="zh">边界:<code>I;16B</code> 抛已记录的边界错误(<code>Pillow.Image.AsArray: I;16B big-endian dtype (numpy '&gt;u2') is not representable in cnumpy (documented boundary)</code>)——cnumpy 没有大端 dtype;Pillow 的 numpy 会给出 <code>&gt;u2</code>。</span></p>
+  </section>
+
+  <h2 id="fromarray">cnumpy 数组 → 图像</h2>
+  <section class="api" id="Pillow.Image.FromArray">
+    <h3>FromArray <span class="kind">static</span></h3>
+    <pre class="sig">Pillow.Image.FromArray(obj, mode := unset)   ;  Image.fromarray analogue</pre>
+    
+    <p class="zh">由 cnumpy <code>NdArray</code> 创建图像,精确复刻 Pillow 11.3.0 的 <code>fromarray</code> 类型映射。不给 <code>mode</code> 时按 dtype 与 shape 推导模式;给 <code>mode</code> 时按该原始模式重新解读字节(Pillow 已弃用 mode 参数的行为,不含弃用警告)。</p>
+    <table class="appendix">
+      <tr><th>typestr(dtype / shape)</th><th>mode / rawmode</th><th>说明</th></tr>
+      <tr><td><code>|b1</code>,2D</td><td><span class="zh">非零 → 255(逐字节输入)。</span></td></tr>
+      <tr><td><code>|u1</code>,2D</td><td></td></tr>
+      <tr><td><code>|i1</code></td><td><span class="zh">符号扩展为 int32。</span></td></tr>
+      <tr><td><code>&lt;u2</code></td><td><span class="zh">直接 16 位存储(Pillow 11.3 的实际结果模式)。</span></td></tr>
+      <tr><td><code>&lt;i2</code></td><td><span class="zh">符号扩展为 int32。</span></td></tr>
+      <tr><td><code>&lt;u4</code> / <code>&lt;i4</code></td><td></td></tr>
+      <tr><td><code>&lt;f4</code> / <code>&lt;f8</code></td><td><span class="zh">f8 把 double 转为 float32。</span></td></tr>
+      <tr><td><code>|u1</code>,(…, 2)</td><td></td></tr>
+      <tr><td><code>|u1</code>,(…, 3)</td><td></td></tr>
+      <tr><td><code>|u1</code>,(…, 4)</td><td></td></tr>
+    </table>
+    <dl class="params">
+      <dt>obj</dt><dd><span class="zh">cnumpy 的 <code>Numpy.NdArray</code>。非连续(切片)数组先按 C 序序列化,同 numpy 的 <code>tobytes()</code>。</span></dd>
+      <dt>mode</dt><dd><span class="zh">可选:字节重解读所用的原始模式。</span></dd>
+    </dl>
+    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p class="note"><span class="zh">对齐——精确报错形态(oracle 验证):<br>
+    • 不支持的 dtype → <code>Cannot handle this data type: (1, 1[, dims…]), &lt;typestr&gt;</code>(int64/uint64/float16/复数与错误的 3D 通道数);<br>
+    • 维数 → <code>Too many dimensions: {ndim} &gt; {ndmax}.</code>(ndmax:1/L/I/P/F 为 2,RGB 为 3,其余为 4);<br>
+    • 0 维数组 → <code>tuple index out of range</code>;1 维数组生成 <code>[1, n]</code> 图像;<br>
+    • 显式 mode 下数据不足 → <code>not enough image data</code>。</span></p>
+  </section>
+
+  <h2 id="examples">示例</h2>
+  <pre class="example">#Include "..\..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"
+Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
+
+;    numpy.asarray(im):像素数组(快照副本)
+img := Pillow.Image.Open("photo.jpg")
+a := img.AsArray()          ;  uint8, [H, W, 3]
+mean := a.Mean()            ;  cnumpy 统计
+img.Close()                 ;  数组仍可用
+
+;    Image.fromarray:数组 → 图像
+b := Numpy.Zeros([64, 64, 4], 3)     ;  uint8 RGBA
+im := Pillow.Image.FromArray(b)      ;  mode RGBA
+im.Save("black.png")</pre>
+  
+  <p class="zh">原生支撑:<code>FromArray</code> 走原始编解码管线(<code>src/pillow_c_raw.cpp</code> 新增的 <code>1;8</code>、<code>I;8</code>、<code>I;16S</code>、<code>I;32(S)</code>、<code>F;32F</code>、<code>F;64F</code>);两条路径都没有 AHK 逐元素循环。</p>
+</div>
+<script src="../../_static/pages.js"></script>
+</body>
+</html>
