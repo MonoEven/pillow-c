@@ -39,8 +39,7 @@
     <a href="Pillow.html">Pillow(入口)</a>
     <a href="boundaries.html">行为边界</a>
   </nav>
-  <div class="lang-switch"><a class="lang-alt" href="../../en/reference/Image.html">English</a></div>
-</div>
+  </div>
 <div class="content">
   <div class="crumbs"><a href="../index.html">首页</a> » Image</div>
   <h1>Image <span class="kind">模块</span></h1>
@@ -173,7 +172,7 @@ image.AlphaComposite(image, dest := unset, source := unset)   ;  method</pre>
     <pre class="sig">Pillow.Image.LinearGradient(modeName)
 Pillow.Image.RadialGradient(modeName)</pre>
     
-    <p class="zh">返回给定模式的 256×256 渐变图(线性沿 x 轴 0…255;径向自中心向外)。</p>
+    <p class="zh">返回 256×256 渐变图。支持模式:<code>1</code>、<code>L</code>、<code>P</code>、<code>I</code>、<code>F</code>(多字符模式抛 Pillow 原样的 <code>image has wrong mode</code>,未知单字符模式抛 <code>unrecognized image mode</code>)。线性:值为 y,自上而下。径向:值 = (int)sqrt(((x−128)²+(y−128)²)×2),≥255 时截断,自中心向外。</p>
     <p class="returns"><span class="zh">返回:新 Image。</span></p>
   </section>
 
@@ -389,7 +388,7 @@ image.BandNames()   ;  same as GetBands</pre>
     <h3>GetExtrema</h3>
     <pre class="sig">image.GetExtrema()</pre>
     
-    <p class="zh">返回每通道像素极值:<code>[min, max]</code> 二元组数组。</p>
+    <p class="zh">返回像素极值:单通道模式(<code>L</code>、<code>I</code>、<code>F</code>……)返回扁平 <code>[min, max]</code> 数组;多通道模式返回逐通道的 <code>[min, max]</code> 二元组数组(Pillow getextrema 的形态)。</p>
     <p class="note"><span class="zh">对齐:I;16B 抛 Pillow 的 <code>image has wrong mode</code>。</span></p>
   </section>
 

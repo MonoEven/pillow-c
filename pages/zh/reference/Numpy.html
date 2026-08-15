@@ -39,8 +39,7 @@
     <a href="Pillow.html">Pillow(入口)</a>
     <a href="boundaries.html">行为边界</a>
   </nav>
-  <div class="lang-switch"><a class="lang-alt" href="../../en/reference/Numpy.html">English</a></div>
-</div>
+  </div>
 <div class="content">
   <div class="crumbs"><a href="../index.html">首页</a> » Numpy</div>
   <h1>NumPy 互操作 <span class="kind">互操作</span></h1>
@@ -103,17 +102,22 @@ image.AsArray()               ;  instance form</pre>
   <h2 id="examples">示例</h2>
   <pre class="example">#Include "..\..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"
 Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
+Numpy.DllPath := A_ScriptDir "\..\..\2026-07-19-cnumpy-foundation\build\x64\Release\cnumpy_ahk.dll"
+Numpy.Init()
 
-;    numpy.asarray(im):像素数组(快照副本)
+; numpy.asarray(im):像素数组(快照副本)
 img := Pillow.Image.Open("photo.jpg")
-a := img.AsArray()          ;  uint8, [H, W, 3]
-mean := a.Mean()            ;  cnumpy 统计
-img.Close()                 ;  数组仍可用
+a := img.AsArray()          ; uint8,[H, W, 3]
+mean := a.Mean()            ; cnumpy 统计
+img.Close()                 ; 数组仍可用
 
-;    Image.fromarray:数组 → 图像
-b := Numpy.Zeros([64, 64, 4], 3)     ;  uint8 RGBA
-im := Pillow.Image.FromArray(b)      ;  mode RGBA
-im.Save("black.png")</pre>
+; Image.fromarray:数组 → 图像
+b := Numpy.Zeros([64, 64, 4], 3)     ; uint8 RGBA
+im := Pillow.Image.FromArray(b)      ; mode RGBA
+im.Save("black.png")
+im.Close()
+
+Numpy.Cleanup()</pre>
   
   <p class="zh">原生支撑:<code>FromArray</code> 走原始编解码管线(<code>src/pillow_c_raw.cpp</code> 新增的 <code>1;8</code>、<code>I;8</code>、<code>I;16S</code>、<code>I;32(S)</code>、<code>F;32F</code>、<code>F;64F</code>);两条路径都没有 AHK 逐元素循环。</p>
 </div>

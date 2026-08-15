@@ -897,12 +897,12 @@ class Pillow {
         static ParserWriteTemp(data) {
             ext := Pillow.ImageFile.ParserProbeExtension(data)
             path := A_Temp "\pillow-c-parser-" DllCall("GetTickCount64", "Int64") "-" Random(100000, 999999) ext
-            file := FileOpen(path, "w")
+            fp := FileOpen(path, "w")
             try {
                 if data.Size > 0
-                    file.RawWrite(data, data.Size)
+                    fp.RawWrite(data, data.Size)
             } finally {
-                file.Close()
+                fp.Close()
             }
             return path
         }
@@ -5309,25 +5309,25 @@ class Pillow {
             }
             if glyphImage = ""
                 throw Error("cannot find glyph data file " root ".{gif|pbm|png}", -1)
-            file := FileOpen(filename, "r")
+            fp := FileOpen(filename, "r")
             firstLine := ""
             infoLines := []
             metrics := Buffer(0, 0)
             try {
-                firstLine := file.ReadLine()
+                firstLine := fp.ReadLine()
                 if firstLine != "PILfont"
                     throw Error("Not a PILfont file", -1)
-                file.ReadLine() ; the fontdescriptor line is split and ignored
-                while !file.AtEOF {
-                    line := file.ReadLine()
+                fp.ReadLine() ; the fontdescriptor line is split and ignored
+                while !fp.AtEOF {
+                    line := fp.ReadLine()
                     if line = "DATA"
                         break
                     infoLines.Push(line "`n") ; Pillow keeps the raw bytes with LF
                 }
                 metrics := Buffer(5120, 0)
-                file.RawRead(metrics, 5120)
+                fp.RawRead(metrics, 5120)
             } finally {
-                file.Close()
+                fp.Close()
             }
             handle := 0
             Pillow.CheckStatus(DllCall(
@@ -7186,9 +7186,9 @@ class Pillow {
         }
 
         class Font {
-            __New(color, file, size := 12) {
+            __New(color, fp, size := 12) {
                 this.Color := Pillow.ImageDraw2.GetRgbColor(color)
-                this.Font := Pillow.ImageFont.Truetype(file, size)
+                this.Font := Pillow.ImageFont.Truetype(fp, size)
             }
         }
 
@@ -8673,10 +8673,10 @@ class Pillow {
                 index := 0
                 for tag, value in this.IntTags {
                     index += 1
-                    type := Pillow.Image.Exif.UintTagType(tag)
+                    typeCode := Pillow.Image.Exif.UintTagType(tag)
                     NumPut("Int", tag, intTags, (index - 1) * 4)
                     NumPut("UInt", value, intValues, (index - 1) * 4)
-                    NumPut("Int", type, intTypes, (index - 1) * 4)
+                    NumPut("Int", typeCode, intTypes, (index - 1) * 4)
                 }
                 rationalTags := rationalCount ? Buffer(rationalCount * 4, 0) : 0
                 rationalNumerators := rationalCount ? Buffer(rationalCount * 4, 0) : 0
@@ -9425,11 +9425,11 @@ class Pillow {
                     if lastStatus = -29 {
                         psdInfo := Pillow.Image.PsdHeaderInfo(path)
                         payload := 0
-                        file := FileOpen(path, "r")
+                        fp := FileOpen(path, "r")
                         try {
-                            payload := file.Length - psdInfo["DataStart"]
+                            payload := fp.Length - psdInfo["DataStart"]
                         } finally {
-                            file.Close()
+                            fp.Close()
                         }
                         if psdInfo["Width"] > 0 && payload > 0
                             throw Error("image file is truncated (" Mod(payload, psdInfo["Width"]) " bytes not processed)", -1)
@@ -9508,12 +9508,12 @@ class Pillow {
                     if lastStatus = -53
                         throw Error("'ImagingCore' object has no attribute 'rotate'", -1)
                     if lastStatus = -54 {
-                        file := FileOpen(path, "r")
+                        fp := FileOpen(path, "r")
                         pcdLength := 0
                         try {
-                            pcdLength := file.Length
+                            pcdLength := fp.Length
                         } finally {
-                            file.Close()
+                            fp.Close()
                         }
                         pcdUnprocessed := Mod(Max(0, pcdLength - 196608), 2304)
                         throw Error("image file is truncated (" pcdUnprocessed " bytes not processed)", -1)
@@ -9888,11 +9888,11 @@ class Pillow {
             default:
                 throw Error("Pillow.Image.AsArray: mode '" mode "' is not supported by the numpy interop (documented boundary)", -1)
             }
-            buffer := image.InternalBytes()
-            arr := np.FromBuffer(buffer, dtype)
-            arr._pillowBase := buffer
+            buf := image.InternalBytes()
+            arr := np.FromBuffer(buf, dtype)
+            arr._pillowBase := buf
             arr := arr.Reshape(shapeSuffix)
-            arr._pillowBase := buffer
+            arr._pillowBase := buf
             return arr
         }
 
@@ -10811,12 +10811,12 @@ class Pillow {
             ; BEHAV-ERRMSGS-002: the byte signatures Pillow's WebP/AVIF/
             ; JPEG2000 plugins accept, so a valid file without the codec
             ; raises "decoder <name> not available" like Pillow.
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return false
             try {
                 header := Buffer(16, 0)
-                if file.RawRead(header, 16) < 12
+                if fp.RawRead(header, 16) < 12
                     return false
                 if format = "WEBP" {
                     return NumGet(header, 0, "UChar") = 0x52 && NumGet(header, 1, "UChar") = 0x49
@@ -10837,7 +10837,7 @@ class Pillow {
                     && NumGet(header, 4, "UChar") = 0x6A && NumGet(header, 5, "UChar") = 0x50
                     && NumGet(header, 6, "UChar") = 0x20 && NumGet(header, 7, "UChar") = 0x20
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
@@ -10860,16 +10860,16 @@ class Pillow {
             ; BEHAV-SGI-001: Pillow's raw decoder reports the leftover
             ; bytes of the failing band tile modulo the row width
             ; (probed: remaining % xsize for the first short band).
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return 0
             try {
                 header := Buffer(12, 0)
-                file.RawRead(header, 12)
+                fp.RawRead(header, 12)
                 xsize := (NumGet(header, 6, "UChar") << 8) | NumGet(header, 7, "UChar")
                 ysize := (NumGet(header, 8, "UChar") << 8) | NumGet(header, 9, "UChar")
                 zsize := (NumGet(header, 10, "UChar") << 8) | NumGet(header, 11, "UChar")
-                payload := file.Length - 512
+                payload := fp.Length - 512
                 pagesize := xsize * ysize
                 tile := 0
                 while tile < zsize {
@@ -10880,7 +10880,7 @@ class Pillow {
                 }
                 return 0
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
@@ -10888,13 +10888,13 @@ class Pillow {
             ; BEHAV-DDS-001: rebuild Pillow's exact DDS open error
             ; messages from the file header (the native decoder returns
             ; local status codes for each shape).
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return "pillow_c: status " status
             try {
                 header := Buffer(148, 0)
-                file.RawRead(header, Min(file.Length, 148))
-                total := file.Length
+                fp.RawRead(header, Min(fp.Length, 148))
+                total := fp.Length
                 pfflags := NumGet(header, 80, "UInt")
                 fourcc := NumGet(header, 84, "UInt")
                 bitcount := NumGet(header, 88, "UInt")
@@ -10928,7 +10928,7 @@ class Pillow {
                     return "division by zero"
                 return "pillow_c: status " status
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
@@ -10936,31 +10936,31 @@ class Pillow {
             ; BEHAV-OPEN-001: Pillow's raw decoder reports the leftover
             ; bytes of the short payload modulo the row width
             ; (probed: remaining % row bytes for PIXAR/XVTHUMB).
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return 0
             try {
-                payload := file.Length - headerSize
+                payload := fp.Length - headerSize
                 if payload <= 0
                     return 0
                 if rowBytes <= 0
                     return 0
                 return Mod(payload, rowBytes)
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static PixarWidth(path) {
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return 0
             try {
                 header := Buffer(512, 0)
-                file.RawRead(header, Min(file.Length, 512))
+                fp.RawRead(header, Min(fp.Length, 512))
                 return NumGet(header, 418, "UShort")
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
@@ -10968,15 +10968,15 @@ class Pillow {
             ; BEHAV-OPEN-001: rescan the XV thumbnail header ("P7 332",
             ; then "#" comments, then "W H") to recover W and the payload
             ; offset for the truncated-count message.
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return { Width: 0, PayloadOffset: 0 }
             try {
-                line := file.ReadLine()
+                line := fp.ReadLine()
                 if SubStr(line, 1, 6) != "P7 332"
                     return { Width: 0, PayloadOffset: 0 }
                 loop {
-                    line := file.ReadLine()
+                    line := fp.ReadLine()
                     if line = ""
                         return { Width: 0, PayloadOffset: 0 }
                     if SubStr(line, 1, 1) = "#"
@@ -10989,37 +10989,37 @@ class Pillow {
                             break
                         }
                     }
-                    return { Width: width > 0 ? width : 0, PayloadOffset: file.Pos }
+                    return { Width: width > 0 ? width : 0, PayloadOffset: fp.Pos }
                 }
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static XvThumbTruncatedCount(path, header) {
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return 0
             try {
-                payload := file.Length - header.PayloadOffset
+                payload := fp.Length - header.PayloadOffset
                 if payload <= 0 || header.Width <= 0
                     return 0
                 return Mod(payload, header.Width)
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static DcxFrameCount(path) {
             ; BEHAV-OPEN-001: the DCX component directory is up to 1024
             ; LE32 offsets terminated by 0; n_frames = the entry count.
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return 0
             try {
                 header := Buffer(4100, 0)
-                file.RawRead(header, Min(file.Length, 4100))
-                if file.Length < 8 || NumGet(header, 0, "UInt") != 0x3ADE68B1
+                fp.RawRead(header, Min(fp.Length, 4100))
+                if fp.Length < 8 || NumGet(header, 0, "UInt") != 0x3ADE68B1
                     return 0
                 count := 0
                 loop 1024 {
@@ -11030,90 +11030,90 @@ class Pillow {
                 }
                 return count
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static FtexWidth(path) {
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return 0
             try {
                 head := Buffer(24, 0)
-                file.RawRead(head, Min(file.Length, 24))
+                fp.RawRead(head, Min(fp.Length, 24))
                 return NumGet(head, 8, "Int")
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static FtexDataStart(path) {
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return 0
             try {
                 head := Buffer(32, 0)
-                file.RawRead(head, Min(file.Length, 32))
+                fp.RawRead(head, Min(fp.Length, 32))
                 return NumGet(head, 28, "UInt") + 4
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static FtexTruncatedCount(path) {
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return 0
             try {
-                payload := file.Length - Pillow.Image.FtexDataStart(path)
+                payload := fp.Length - Pillow.Image.FtexDataStart(path)
                 rowBytes := Pillow.Image.FtexWidth(path) * 3
                 if payload <= 0 || rowBytes <= 0
                     return 0
                 return Mod(payload, rowBytes)
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static FtexFormatId(path) {
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return -1
             try {
                 head := Buffer(32, 0)
-                file.RawRead(head, Min(file.Length, 32))
+                fp.RawRead(head, Min(fp.Length, 32))
                 return NumGet(head, 24, "Int")
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static SunStride(path) {
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return 0
             try {
                 head := Buffer(32, 0)
-                file.RawRead(head, Min(file.Length, 32))
+                fp.RawRead(head, Min(fp.Length, 32))
                 width := (NumGet(head, 4, "UChar") << 24) | (NumGet(head, 5, "UChar") << 16) | (NumGet(head, 6, "UChar") << 8) | NumGet(head, 7, "UChar")
                 depth := (NumGet(head, 12, "UChar") << 24) | (NumGet(head, 13, "UChar") << 16) | (NumGet(head, 14, "UChar") << 8) | NumGet(head, 15, "UChar")
                 if width <= 0 || depth <= 0
                     return 0
                 return ((width * depth + 15) // 16) * 2
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static GbrInfo(path) {
             ; BEHAV-OPEN-002: Pillow exposes info["comment"] (and
             ; info["spacing"] for version 2) from the GBR header.
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return Map()
             try {
                 head := Buffer(28, 0)
-                file.RawRead(head, Min(file.Length, 28))
+                fp.RawRead(head, Min(fp.Length, 28))
                 headerSize := (NumGet(head, 0, "UChar") << 24) | (NumGet(head, 1, "UChar") << 16) | (NumGet(head, 2, "UChar") << 8) | NumGet(head, 3, "UChar")
                 version := (NumGet(head, 4, "UChar") << 24) | (NumGet(head, 5, "UChar") << 16) | (NumGet(head, 6, "UChar") << 8) | NumGet(head, 7, "UChar")
                 if headerSize < 20 || !(version = 1 || version = 2)
@@ -11121,8 +11121,8 @@ class Pillow {
                 commentLength := headerSize - (version = 1 ? 20 : 28)
                 if commentLength <= 0
                     return Map()
-                file.Pos := version = 1 ? 20 : 28
-                comment := file.Read(commentLength)
+                fp.Pos := version = 1 ? 20 : 28
+                comment := fp.Read(commentLength)
                 if SubStr(comment, -1) = "`n"
                     comment := SubStr(comment, 1, -1)
                 info := Map()
@@ -11131,26 +11131,26 @@ class Pillow {
                     info["spacing"] := (NumGet(head, 24, "UChar") << 24) | (NumGet(head, 25, "UChar") << 16) | (NumGet(head, 26, "UChar") << 8) | NumGet(head, 27, "UChar")
                 return info
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static FliHeader(path) {
             ; BEHAV-OPEN-005: the FLI/FLC 128-byte header fields used by
             ; FliImagePlugin._open (magic, n_frames, duration).
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return Map("Magic", 0, "NFrames", 1, "Duration", 0)
             try {
                 head := Buffer(24, 0)
-                file.RawRead(head, Min(file.Length, 24))
+                fp.RawRead(head, Min(fp.Length, 24))
                 return Map(
                     "Magic", NumGet(head, 4, "UShort"),
                     "NFrames", NumGet(head, 6, "UShort"),
                     "Duration", NumGet(head, 16, "Int")
                 )
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
@@ -11174,28 +11174,28 @@ class Pillow {
             ; BEHAV-OPEN-008: the 0x000001B3 sequence header plus the
             ; 12+12 size bits (7 bytes total) — shorter streams raise
             ; the identification error through the i8 IndexError wrap.
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return false
             try {
-                if file.Length < 7
+                if fp.Length < 7
                     return false
                 head := Buffer(7, 0)
-                file.RawRead(head, 7)
+                fp.RawRead(head, 7)
                 return NumGet(head, 0, "UChar") = 0x00
                     && NumGet(head, 1, "UChar") = 0x00
                     && NumGet(head, 2, "UChar") = 0x01
                     && NumGet(head, 3, "UChar") = 0xB3
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static FitsRowBytes(path) {
             ; BEHAV-OPEN-002: NAXIS1 * bytes-per-sample plus the data
             ; offset for the truncation row-modulo count.
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return Map("RowBytes", 0, "DataStart", 0)
             try {
                 bitpix := 0
@@ -11203,15 +11203,15 @@ class Pillow {
                 dataStart := 0
                 sawEnd := false
                 loop {
-                    recordStart := file.Pos
-                    record := file.Read(80)
+                    recordStart := fp.Pos
+                    record := fp.Read(80)
                     if StrLen(record) = 0
                         return Map("RowBytes", 0, "DataStart", 0)
                     recordLen := StrLen(record)
                     keyword := StrReplace(SubStr(record, 1, 8), " ", "")
                     isUnitStart := keyword = "SIMPLE" || keyword = "XTENSION"
                     if keyword = "END" {
-                        file.Pos := Ceil(file.Pos / 2880) * 2880
+                        fp.Pos := Ceil(fp.Pos / 2880) * 2880
                         sawEnd := true
                         continue
                     }
@@ -11250,22 +11250,22 @@ class Pillow {
                 sampleBytes := bitpix = 8 ? 1 : (bitpix = 16 ? 2 : (bitpix = 32 ? 4 : (bitpix = -32 ? 4 : 8)))
                 return Map("RowBytes", naxis1 > 0 ? naxis1 * sampleBytes : 0, "DataStart", dataStart)
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static FitsTruncatedCount(path) {
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return 0
             try {
                 info := Pillow.Image.FitsRowBytes(path)
-                payload := file.Length - info["DataStart"]
+                payload := fp.Length - info["DataStart"]
                 if payload <= 0 || info["RowBytes"] <= 0
                     return 0
                 return Mod(payload, info["RowBytes"])
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
@@ -11274,25 +11274,25 @@ class Pillow {
             ; key up in a dict — an unknown key raises KeyError whose
             ; message is the key's bytes repr. Rescan the file to find
             ; the first unknown key.
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return ""
             try {
-                file.ReadLine()
+                fp.ReadLine()
                 loop {
-                    line := file.ReadLine()
+                    line := fp.ReadLine()
                     if line = ""
                         return ""
                     if SubStr(line, 1, 1) = '"' && RegExMatch(SubStr(line, 2), "^\d+ \d+ \d+ \d+")
                         break
                 }
                 bpp := 0
-                parts := StrSplit(Trim(StrReplace(file.ReadLine(), '"', "")), " ")
+                parts := StrSplit(Trim(StrReplace(fp.ReadLine(), '"', "")), " ")
                 if parts.Length >= 4
                     bpp := Integer(parts[4])
                 keys := Map()
                 loop {
-                    line := file.ReadLine()
+                    line := fp.ReadLine()
                     if line = ""
                         return ""
                     if SubStr(line, 1, 1) != '"'
@@ -11300,7 +11300,7 @@ class Pillow {
                     keys[SubStr(line, 2, bpp)] := true
                 }
                 loop {
-                    line := file.ReadLine()
+                    line := fp.ReadLine()
                     if line = ""
                         return ""
                     if Trim(line, " `t`r`n") = "/* pixels */"
@@ -11317,27 +11317,27 @@ class Pillow {
                     }
                 }
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static XpmTransparencyKey(path) {
             ; BEHAV-OPEN-002: Pillow stores info["transparency"] as the
             ; key of the first "c None" palette entry.
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return ""
             try {
-                file.ReadLine()
+                fp.ReadLine()
                 loop {
-                    line := file.ReadLine()
+                    line := fp.ReadLine()
                     if line = ""
                         return ""
                     if SubStr(line, 1, 1) = '"' && RegExMatch(SubStr(line, 2), "^\d+ \d+ \d+ \d+")
                         break
                 }
                 loop {
-                    line := file.ReadLine()
+                    line := fp.ReadLine()
                     if line = ""
                         return ""
                     if SubStr(line, 1, 1) != '"'
@@ -11347,7 +11347,7 @@ class Pillow {
                         return SubStr(line, 2, nonePos - 2)
                 }
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
@@ -11358,75 +11358,75 @@ class Pillow {
         static PsdHeaderInfo(path) {
             ; BEHAV-OPEN-004: the width and the image-descriptor data
             ; offset for the truncation count.
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return Map("Width", 0, "DataStart", 0)
             try {
                 head := Buffer(26, 0)
-                file.RawRead(head, Min(file.Length, 26))
+                fp.RawRead(head, Min(fp.Length, 26))
                 width := Pillow.Image.Be32At(head, 18)
                 pos := 26
                 block := Buffer(4, 0)
-                file.Pos := pos
-                file.RawRead(block, 4)
+                fp.Pos := pos
+                fp.RawRead(block, 4)
                 colorSize := Pillow.Image.Be32At(block, 0)
                 pos += 4 + colorSize
-                file.Pos := pos
-                file.RawRead(block, 4)
+                fp.Pos := pos
+                fp.RawRead(block, 4)
                 resourceSize := Pillow.Image.Be32At(block, 0)
                 pos += 4 + resourceSize
-                file.Pos := pos
-                file.RawRead(block, 4)
+                fp.Pos := pos
+                fp.RawRead(block, 4)
                 layerSize := Pillow.Image.Be32At(block, 0)
                 pos += 4 + layerSize
                 return Map("Width", width, "DataStart", pos + 2)
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static PsdIcc(path) {
             ; BEHAV-OPEN-004: Pillow exposes info["icc_profile"] from
             ; the image-resource block id 1039.
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return 0
             try {
                 head := Buffer(26, 0)
-                file.RawRead(head, Min(file.Length, 26))
+                fp.RawRead(head, Min(fp.Length, 26))
                 pos := 26
                 block := Buffer(4, 0)
-                file.Pos := pos
-                file.RawRead(block, 4)
+                fp.Pos := pos
+                fp.RawRead(block, 4)
                 pos += 4 + Pillow.Image.Be32At(block, 0)
-                file.Pos := pos
-                file.RawRead(block, 4)
+                fp.Pos := pos
+                fp.RawRead(block, 4)
                 resourceSize := Pillow.Image.Be32At(block, 0)
                 pos += 4
                 end := pos + resourceSize
                 while pos + 4 <= end {
-                    file.Pos := pos + 4
+                    fp.Pos := pos + 4
                     small := Buffer(3, 0)
-                    file.RawRead(small, 3)
+                    fp.RawRead(small, 3)
                     id := (NumGet(small, 0, "UChar") << 8) | NumGet(small, 1, "UChar")
                     nameLen := NumGet(small, 2, "UChar")
                     pad := nameLen & 1 ? 0 : 1
                     lenField := Buffer(4, 0)
-                    file.Pos := pos + 7 + nameLen + pad
-                    file.RawRead(lenField, 4)
+                    fp.Pos := pos + 7 + nameLen + pad
+                    fp.RawRead(lenField, 4)
                     dataLen := Pillow.Image.Be32At(lenField, 0)
                     dataStart := pos + 11 + nameLen + pad
                     if id = 1039 {
                         icc := Buffer(dataLen, 0)
-                        file.Pos := dataStart
-                        file.RawRead(icc, dataLen)
+                        fp.Pos := dataStart
+                        fp.RawRead(icc, dataLen)
                         return icc
                     }
                     pos := dataStart + dataLen + (dataLen & 1 ? 1 : 0)
                 }
                 return 0
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
@@ -11622,11 +11622,11 @@ class Pillow {
             ; re-opens the extracted bytes as a JPEG).
             tempPath := A_Temp "\pillow-ahk-iptc-" A_TickCount "-" Random(1, 1000000) ".jpg"
             try {
-                file := FileOpen(tempPath, "w")
+                fp := FileOpen(tempPath, "w")
                 try
-                    file.RawWrite(payload, payload.Size)
+                    fp.RawWrite(payload, payload.Size)
                 finally
-                    file.Close()
+                    fp.Close()
                 image := Pillow.Image.Open(tempPath)
                 try {
                     FileDelete(tempPath)
@@ -11647,12 +11647,12 @@ class Pillow {
             ; BEHAV-OPEN-001: HDF5/BUFR/GRIB stub plugins accept only the
             ; exact magic (HDF5 8 bytes; BUFR "BUFR"/"ZCZC"; GRIB "GRIB"
             ; with byte 7 == 1).
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return false
             try {
                 head := Buffer(8, 0)
-                file.RawRead(head, Min(file.Length, 8))
+                fp.RawRead(head, Min(fp.Length, 8))
                 if format = "HDF5"
                     return NumGet(head, 0, "UInt64") = 0x0A1A0A0D46444889
                 if format = "BUFR"
@@ -11661,7 +11661,7 @@ class Pillow {
                     return NumGet(head, 0, "UInt") = 0x42495247 && NumGet(head, 7, "UChar") = 1
                 return false
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
@@ -11694,13 +11694,13 @@ class Pillow {
             ; count of the first short RLE band as "Error reading channel
             ; [N left]". Re-derive N by replaying the best slot's RGB32
             ; chunk decode (uncompressed payloads never hit this error).
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return 0
             try {
-                size := file.Length
+                size := fp.Length
                 header := Buffer(8, 0)
-                file.RawRead(header, 8)
+                fp.RawRead(header, 8)
                 if size < 8 || StrGet(header, 4, "UTF-8") != "icns"
                     return 0
                 fileLength := (NumGet(header, 4, "UChar") << 24) | (NumGet(header, 5, "UChar") << 16) | (NumGet(header, 6, "UChar") << 8) | NumGet(header, 7, "UChar")
@@ -11722,15 +11722,15 @@ class Pillow {
                 offset := 8
                 while offset < fileLength {
                     chunkHeader := Buffer(8, 0)
-                    file.RawRead(chunkHeader, 8)
-                    if file.Pos < offset + 8
+                    fp.RawRead(chunkHeader, 8)
+                    if fp.Pos < offset + 8
                         break
                     blockSize := (NumGet(chunkHeader, 4, "UChar") << 24) | (NumGet(chunkHeader, 5, "UChar") << 16) | (NumGet(chunkHeader, 6, "UChar") << 8) | NumGet(chunkHeader, 7, "UChar")
                     if blockSize < 8
                         break
                     chunks[StrGet(chunkHeader, 4, "UTF-8")] := offset
                     offset += 8 + blockSize - 8
-                    file.Seek(offset)
+                    fp.Seek(offset)
                 }
                 best := unset
                 for s in slots {
@@ -11747,20 +11747,20 @@ class Pillow {
                 rgbKey := best[5]
                 if rgbKey = "" || !chunks.Has(rgbKey)
                     return 0
-                file.Seek(chunks[rgbKey])
+                fp.Seek(chunks[rgbKey])
                 chunkHeader := Buffer(8, 0)
-                file.RawRead(chunkHeader, 8)
+                fp.RawRead(chunkHeader, 8)
                 payloadSize := ((NumGet(chunkHeader, 4, "UChar") << 24) | (NumGet(chunkHeader, 5, "UChar") << 16) | (NumGet(chunkHeader, 6, "UChar") << 8) | NumGet(chunkHeader, 7, "UChar")) - 8
                 if rgbKey = "it32" {
                     skip := Buffer(4, 0)
-                    file.RawRead(skip, 4)
+                    fp.RawRead(skip, 4)
                     payloadSize -= 4
                 }
                 sizesq := best[1] * best[2]
                 if payloadSize = sizesq * 3
                     return 0
                 data := Buffer(payloadSize, 0)
-                file.RawRead(data, payloadSize)
+                fp.RawRead(data, payloadSize)
                 pos := 0
                 loop 3 {
                     bytesLeft := sizesq
@@ -11787,7 +11787,7 @@ class Pillow {
                 }
                 return 0
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
@@ -11795,21 +11795,21 @@ class Pillow {
             ; BEHAV-EPS-001: replay Pillow's EpsImageFile._open header
             ; scan. Returns "" for a valid header (the caller raises the
             ; Ghostscript error) or Pillow's exact open-time message.
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return "cannot identify image file '" path "'"
             try {
-                if file.Length < 4
+                if fp.Length < 4
                     return "cannot identify image file '" path "'"
                 head := Buffer(4, 0)
-                file.RawRead(head, 4)
+                fp.RawRead(head, 4)
                 if StrGet(head, 4, "UTF-8") = "%!PS" {
-                    file.Seek(0)
+                    fp.Seek(0)
                 } else if NumGet(head, 0, "UInt") = 0xC6D3D0C5 {
                     ; binary preview: skip to the %!PS offset (i32le)
                     ext := Buffer(8, 0)
-                    file.RawRead(ext, 8)
-                    file.Seek(NumGet(ext, 0, "Int"))
+                    fp.RawRead(ext, 8)
+                    fp.Seek(NumGet(ext, 0, "Int"))
                 } else {
                     return "cannot identify image file '" path "'"
                 }
@@ -11821,9 +11821,9 @@ class Pillow {
                 readingTrailer := false
                 trailerReached := false
                 stopLoop := false
-                while !stopLoop && !file.AtEOF {
-                    line := file.ReadLine()
-                    if line = "" && file.AtEOF
+                while !stopLoop && !fp.AtEOF {
+                    line := fp.ReadLine()
+                    if line = "" && fp.AtEOF
                         break
                     if StrLen(line) > 255 && SubStr(line, 1, 1) = "%"
                         return "cannot identify image file '" path "'"
@@ -11942,20 +11942,20 @@ class Pillow {
                     return "cannot determine EPS bounding box"
                 return ""
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
         static ReadAllBytes(path) {
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 throw Error("Pillow.Image.ReadAllBytes failed to open " path, -1)
             try {
-                out := Buffer(file.Length, 0)
-                file.RawRead(out, out.Size)
+                out := Buffer(fp.Length, 0)
+                fp.RawRead(out, out.Size)
                 return out
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
@@ -11963,14 +11963,14 @@ class Pillow {
             ; BEHAV-MPO-001: Pillow's JPEG factory reports format MPO
             ; only when the APP2 "MPF\0" index marker is present; a
             ; plain JPEG saved with an .mpo extension reports JPEG.
-            file := FileOpen(path, "r")
-            if !file
+            fp := FileOpen(path, "r")
+            if !fp
                 return false
             try {
-                if file.Length < 32
+                if fp.Length < 32
                     return false
-                data := Buffer(Min(file.Length, 65536), 0)
-                file.RawRead(data, data.Size)
+                data := Buffer(Min(fp.Length, 65536), 0)
+                fp.RawRead(data, data.Size)
                 loop data.Size - 3 {
                     if NumGet(data, A_Index - 1, "UChar") = 0x4D
                         && NumGet(data, A_Index, "UChar") = 0x50
@@ -11980,7 +11980,7 @@ class Pillow {
                 }
                 return false
             } finally {
-                file.Close()
+                fp.Close()
             }
         }
 
@@ -14508,11 +14508,11 @@ class Pillow {
                     NumPut("UChar", 0, out, 31)
                     NumPut("UInt", 8, out, 32)
                     DllCall("msvcrt\memcpy", "Ptr", out.Ptr + 36, "Ptr", ifd.Ptr, "UPtr", ifd.Size, "CDecl Ptr")
-                    file := FileOpen(path, "w")
+                    fp := FileOpen(path, "w")
                     try
-                        file.RawWrite(out, out.Size)
+                        fp.RawWrite(out, out.Size)
                     finally
-                        file.Close()
+                        fp.Close()
                 } finally {
                     for image in owned
                         image.Close()
@@ -18238,13 +18238,13 @@ class Pillow {
         }
 
         RemapPalette(destMap, sourcePalette := unset) {
-            map := Pillow.Image.IntBuffer(destMap, "Pillow.Image.RemapPalette")
+            lut := Pillow.Image.IntBuffer(destMap, "Pillow.Image.RemapPalette")
             palette := IsSet(sourcePalette) ? Pillow.Image.ByteBuffer(sourcePalette, "Pillow.Image.RemapPalette source_palette") : 0
             outHandle := 0
             Pillow.CheckStatus(DllCall(
                 Pillow.RequireDllPath() "\pillow_c_image_remap_palette",
                 "Ptr", this.RequireHandle(),
-                "Ptr", map,
+                "Ptr", lut,
                 "UPtr", destMap.Length,
                 "Ptr", IsObject(palette) ? palette.Ptr : 0,
                 "UPtr", IsObject(palette) ? palette.Size : 0,

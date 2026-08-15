@@ -39,8 +39,7 @@
     <a href="Pillow.html">Pillow (entry)</a>
     <a href="boundaries.html">Boundaries</a>
   </nav>
-  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/Image.html">中文</a></div>
-</div>
+  </div>
 <div class="content">
   <div class="crumbs"><a href="../index.html">Home</a> » Image</div>
   <h1>Image <span class="kind">module</span></h1>
@@ -172,7 +171,7 @@ image.AlphaComposite(image, dest := unset, source := unset)   ;  method</pre>
     <h3>LinearGradient / RadialGradient <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.LinearGradient(modeName)
 Pillow.Image.RadialGradient(modeName)</pre>
-    <p class="en">Returns a 256×256 gradient image in the given mode (0…255 along x for linear, from the center for radial).</p>
+    <p class="en">Returns a 256×256 gradient image. Supported modes: <code>1</code>, <code>L</code>, <code>P</code>, <code>I</code>, <code>F</code> (multi-character modes raise Pillow's exact <code>image has wrong mode</code>, unknown single-character modes raise <code>unrecognized image mode</code>). Linear: value = y, top to bottom. Radial: value = (int)sqrt(((x−128)²+(y−128)²)×2) clamped at ≥ 255, centre to edge.</p>
     
     <p class="returns"><span class="en">Returns: a new Image.</span></p>
   </section>
@@ -388,7 +387,7 @@ image.BandNames()   ;  same as GetBands</pre>
   <section class="api" id="Image.GetExtrema">
     <h3>GetExtrema</h3>
     <pre class="sig">image.GetExtrema()</pre>
-    <p class="en">Returns min/max pixel values per band: an array of <code>[min, max]</code> pairs.</p>
+    <p class="en">Returns min/max pixel values: for single-band modes (<code>L</code>, <code>I</code>, <code>F</code>, …) a flat <code>[min, max]</code> array; for multi-band modes an array of <code>[min, max]</code> pairs, one per band (Pillow's getextrema shape).</p>
     
     <p class="note"><span class="en">Parity: I;16B raises Pillow's <code>image has wrong mode</code>.</span></p>
   </section>

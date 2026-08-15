@@ -6,18 +6,51 @@
 <title>pillow-c — 文档 · Documentation</title>
 <link rel="stylesheet" href="_static/pages.css">
 <style>
-.choose { display: flex; gap: 28px; align-items: center; justify-content: center; min-height: 80vh; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
-.choose a { text-decoration: none; border: 2px solid #2980b9; border-radius: 10px; padding: 34px 56px; font-size: 26px; color: #2980b9; background: #f3f6f6; }
-.choose a:hover { background: #2980b9; color: #fff; }
-.choose small { display: block; font-size: 13px; margin-top: 8px; color: #777; }
-h1 { text-align: center; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; color: #222; padding-top: 8vh; margin: 0 0 -14vh 0; }
+body.landing { display: block; background: linear-gradient(160deg, #f3f6f6 0%, #eef2f7 55%, #e9eef5 100%); font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif; min-height: 100vh; }
+.landing .hero { text-align: center; padding: 9vh 24px 4vh; }
+.landing .hero .logo { font-size: 54px; font-weight: 700; color: #1f2d3d; letter-spacing: .5px; }
+.landing .hero .logo b { color: #2980b9; }
+.landing .hero .tagline { margin-top: 14px; font-size: 17px; color: #4a5a6a; line-height: 1.7; }
+.landing .hero .tagline .en { color: #7d8b99; font-size: 15px; }
+.landing .cards { display: flex; gap: 26px; justify-content: center; flex-wrap: wrap; padding: 4vh 24px 5vh; }
+.landing .card { width: 320px; background: #fff; border-radius: 14px; padding: 30px 30px 26px; text-decoration: none; color: inherit; box-shadow: 0 6px 24px rgba(31,45,61,.08); border-top: 4px solid #2980b9; transition: transform .18s ease, box-shadow .18s ease; }
+.landing .card:hover { transform: translateY(-5px); box-shadow: 0 14px 34px rgba(31,45,61,.14); }
+.landing .card h2 { border: 0; margin: 0 0 10px; font-size: 24px; color: #1f2d3d; }
+.landing .card p { margin: 0; color: #5a6a7a; font-size: 14px; line-height: 1.75; }
+.landing .card .lang-tag { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: #2980b9; background: #eaf3fb; border-radius: 999px; padding: 3px 12px; margin-bottom: 14px; }
+.landing .card.zh { border-top-color: #c0392b; }
+.landing .card.zh .lang-tag { color: #c0392b; background: #fdf0ee; }
+.landing .links { text-align: center; padding: 0 24px 8vh; color: #5a6a7a; font-size: 14px; }
+.landing .links a { color: #2980b9; text-decoration: none; margin: 0 10px; }
+.landing .links a:hover { text-decoration: underline; }
+.landing .foot { text-align: center; color: #9aa7b4; font-size: 12.5px; padding-bottom: 4vh; }
 </style>
 </head>
-<body>
-<h1>pillow-c 文档 · Documentation</h1>
-<div class="choose">
-  <a href="en/index.html">English<small>Bilingual reference site — English version</small></a>
-  <a href="zh/index.html">中文<small>双语参考站点 — 中文版</small></a>
-</div>
+<body class="landing">
+  <div class="hero">
+    <div class="logo">pillow<b>-c</b></div>
+    <p class="tagline">
+      为 AutoHotkey v2 打造的 Pillow 11.3.0 兼容图像处理库<br>
+      <span class="en">A Pillow 11.3.0-compatible image library for AutoHotkey v2</span>
+    </p>
+  </div>
+  <div class="cards">
+    <a class="card en" href="en/index.html">
+      <span class="lang-tag">ENGLISH</span>
+      <h2>English Docs</h2>
+      <p>Every public API with parameters, return values, error messages, and behavioral boundaries — modeled on the official Pillow documentation.</p>
+    </a>
+    <a class="card zh" href="zh/index.html">
+      <span class="lang-tag">中文</span>
+      <h2>中文文档</h2>
+      <p>逐 API 记录签名、参数、返回值、报错形态与行为边界,结构仿照 Pillow 官方文档。</p>
+    </a>
+  </div>
+  <div class="links">
+    <a href="https://github.com/MonoEven/pillow-c">GitHub</a> ·
+    <a href="https://github.com/MonoEven/cnumpy">cnumpy</a> ·
+    <a href="https://github.com/MonoEven/ahk-hack-library">ahk-hack</a>
+  </div>
+  <div class="foot">pillow-c · 2868+ 项行为测试通过 · 524/524 导出对齐</div>
 </body>
 </html>

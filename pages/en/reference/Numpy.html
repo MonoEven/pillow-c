@@ -39,8 +39,7 @@
     <a href="Pillow.html">Pillow (entry)</a>
     <a href="boundaries.html">Boundaries</a>
   </nav>
-  <div class="lang-switch"><a class="lang-alt" href="../../zh/reference/Numpy.html">中文</a></div>
-</div>
+  </div>
 <div class="content">
   <div class="crumbs"><a href="../index.html">Home</a> » Numpy</div>
   <h1>Numpy <span class="kind">NumPy interop</span></h1>
@@ -103,17 +102,20 @@ image.AsArray()               ;  instance form</pre>
   <h2 id="examples">Examples</h2>
   <pre class="example">#Include "..\..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"
 Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
-
+Numpy.DllPath := A_ScriptDir "\..\..\2026-07-19-cnumpy-foundation\build\x64\Release\cnumpy_ahk.dll"
+Numpy.Init()
 
 img := Pillow.Image.Open("photo.jpg")
-a := img.AsArray()          ;  uint8, [H, W, 3]
-mean := a.Mean()            
-img.Close()                 
+a := img.AsArray()          ; uint8, [H, W, 3] — numpy.asarray(im)
+mean := a.Mean()            ; cnumpy statistics
+img.Close()                 ; the array snapshot stays valid
 
+b := Numpy.Zeros([64, 64, 4], 3)     ; uint8 RGBA
+im := Pillow.Image.FromArray(b)      ; mode RGBA — Image.fromarray
+im.Save("black.png")
+im.Close()
 
-b := Numpy.Zeros([64, 64, 4], 3)     ;  uint8 RGBA
-im := Pillow.Image.FromArray(b)      ;  mode RGBA
-im.Save("black.png")</pre>
+Numpy.Cleanup()</pre>
   <p class="en">Native support: <code>FromArray</code> routes through the raw codec seams (<code>1;8</code>, <code>I;8</code>, <code>I;16S</code>, <code>I;32(S)</code>, <code>F;32F</code>, <code>F;64F</code>) added in <code>src/pillow_c_raw.cpp</code>; no AHK per-element loops exist on either path.</p>
   
 </div>
