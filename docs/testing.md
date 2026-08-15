@@ -7352,3 +7352,15 @@ em-box/advance anchor surface (`m`/`r` over the total advance,
 anchor) against local Pillow 11.3.0. No new exports: parity stays
 `524/524` and the rebuilt DLL SHA-256 is
 `DDB0BF2F4EE07AFA8BE3C5D413EEC10CD1A5236AD3EE8D3B358564B17185F980`.
+
+2026-08-15 BEHAV-SWEEP-001 verification: the facade
+`Pillow red-team sweep tail: non-BMP cmap and GIF lossy palette`
+target passes `1/1` in `94ms`; the full directory suite passes
+`2856/2856` in `23109ms` with zero failures, errors, or skips. The
+sweep pins the seguiemj non-BMP glyph advances against Pillow
+(`U+1F600` 32.953125, mixed 45.171875 — the format-12 cmap merge)
+and the GIF lossy palette structure (256 exact-color entries, the
+gradient-order palette, the documented median-cut ordering
+divergence). No new exports: parity stays `524/524` and the rebuilt
+DLL SHA-256 is
+`62A3B585DBE4C631B60BB7C87C3D55D60D79D756EA87767FE44C09FAF3CF3FED`.

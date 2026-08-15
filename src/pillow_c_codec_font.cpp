@@ -605,24 +605,33 @@ bool parse_cmap_table(
     std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
         return a.priority < b.priority;
     });
+    // Merge the best format-4 (BMP) and format-12 (supplementary-plane)
+    // subtables — the format-4 entries win on overlap, and the format-12
+    // entries add the non-BMP codepoints.
+    std::unordered_map<std::uint32_t, std::uint16_t> format4_map;
+    std::unordered_map<std::uint32_t, std::uint16_t> format12_map;
+    bool has_format4 = false;
+    bool has_format12 = false;
     for (const Candidate& candidate : candidates) {
         if (!reader.has(candidate.offset, 2)) {
             continue;
         }
         const std::uint16_t format = reader.u16be(candidate.offset);
         const std::size_t subtable_length = base_offset + table.length - candidate.offset;
-        bool parsed = false;
-        if (format == 4) {
-            parsed = parse_cmap_format4(reader.base + candidate.offset, subtable_length, out);
-        } else if (format == 12) {
-            parsed = parse_cmap_format12(reader.base + candidate.offset, subtable_length, out);
+        if (format == 4 && !has_format4) {
+            has_format4 = parse_cmap_format4(reader.base + candidate.offset, subtable_length, &format4_map);
+        } else if (format == 12 && !has_format12) {
+            has_format12 = parse_cmap_format12(reader.base + candidate.offset, subtable_length, &format12_map);
         }
-        if (parsed && !out->empty()) {
-            return true;
-        }
-        out->clear();
     }
-    return false;
+    if (!has_format4 && !has_format12) {
+        return false;
+    }
+    *out = std::move(format4_map);
+    for (const auto& entry : format12_map) {
+        out->insert(entry);
+    }
+    return !out->empty();
 }
 
 bool parse_name_table(

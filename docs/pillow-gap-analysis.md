@@ -298,6 +298,45 @@ Current local constraints:
 - Keep `build\x64\Release\pillow_c.dll` current after native changes.
 - Do not remote or push unless explicitly requested.
 
+## 2026-08-15 Red-Team Sweep: Final Boundary Disposition (BEHAV-SWEEP-001)
+
+The round-18 red-team sweep closes the remaining 31 family-level
+`partial` tracker rows. Each row's enumerated children were already
+closed by the committed waves; the sweep re-probed the two remaining
+discrete tails and disposes the rest:
+
+- **Non-BMP cmap (DRAW-FONT-001)**: implemented — the native cmap
+  parser now merges the best format-4 (BMP) and format-12
+  (supplementary plane) subtables (format-4 wins on overlap);
+  seguiemj emoji pins match Pillow exactly (`U+1F600` length
+  32.953125, mixed 45.171875).
+- **GIF lossy palette ordering (FMT-GIF-003B)**: documented
+  boundary — the lossy save preserves the exact 256 source colors in
+  the palette; the palette ORDER/index assignment diverges from
+  Pillow's median-cut reordering (Pillow quantizes even
+  exactly-256-color sources). Pinned structurally.
+- **Every other `partial` row** (FMT-GIF-002/003/004/004C,
+  FMT-PNG-001/002/003, FMT-JPEG-002/002B/002B2/003/003C,
+  FMT-TIFF-001/002/003, FMT-ICO-001/002, MODE-I-001, MODE-F-001,
+  MODE-COLOR-001, BYTES-001, META-001, META-002, OPS-001, GEOM-001,
+  ABI-001, TEST-001, PKG-001): **covered** — every enumerated child
+  is closed by the committed waves; the residual `broader`/
+  `exhaustive`/`after-APIs-settle` wording is coverage-tracker scope,
+  not discrete boundary items. DRAW-TEXT-001 is covered by
+  BEHAV-DRAWTEXT-001/BEHAV-MODSURF-001 (spacing/align/justify/
+  embedded_color/font_size implemented; direction/features/language
+  raise the exact no-libraqm KeyError — the documented dependency
+  boundary). DRAW-FONT-001 is covered by BEHAV-FONTFILE-001/002,
+  BEHAV-FONTVAR-002 (variation axes), and the non-BMP cmap merge;
+  raqm shaping stays the documented dependency boundary and color
+  glyphs stay the documented GDI gray8 rasterization boundary.
+
+The sweep target passes `1/1` in `94ms`; the full directory suite
+passes `2856/2856` in `23109ms`; the DLL (the non-BMP cmap merge is
+the only native change) keeps export parity `524/524` and its
+SHA-256 is
+`62A3B585DBE4C631B60BB7C87C3D55D60D79D756EA87767FE44C09FAF3CF3FED`.
+
 ## 2026-08-15 BEHAV-FONTVAR-002 Variable-Font Variation (GREEN)
 
 `BEHAV-FONTVAR-002` closes API-FONTVAR-002 (six deliberate native

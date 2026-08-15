@@ -84,7 +84,10 @@ no longer claimed. The honest split:
   SUPERSEDED by AUDIT-003; the detailed section lives at the top of
   docs/pillow-gap-analysis.md with the red-team probes preserved in
   oracle/audit3-redteam/.
-Latest covered gap tail: BEHAV-DRAWFONT-001 + BEHAV-FONTANCHOR-001
+Latest covered gap tail: BEHAV-SWEEP-001 (the final red-team sweep:
+the non-BMP cmap merge, the GIF lossy palette-ordering boundary, and
+the disposition of every remaining family-level tracker row)
+after BEHAV-DRAWFONT-001 + BEHAV-FONTANCHOR-001
 (the truetype draw mask path and Pillow's exact em-box/advance
 anchor math)
 after BEHAV-FONTVAR-002 (the variable-font
@@ -484,11 +487,10 @@ Current work packet:
   clean; source/DLL exports remain `453/453`; and the rebuilt DLL SHA-256 is
   `A8F32EC557E2880BAB4D6B0F5ED75C8AF18A7AB6AA45191D045E05902D6D81BE`.
   No export, facade lifetime rule, fallback, or AHK pixel loop changed.
-- Selected next gap: the red-team follow-ups audit sweep — every
-  remaining documented boundary re-probed against the local Pillow
-  11.3.0 build for the works-in-Pillow / errors-in-Pillow /
-  unmatchable-stateful classification before the final ledger
-  sign-off.
+- Selected next gap: the ledger sign-off — the sweep dispositions
+  above close the last family-level rows; the remaining work is the
+  final read-through of the boundary ledger against the sweep
+  disposition table before marking the objective complete.
 - Completed compatibility baseline: single-frame, two-frame, and three-frame
   uncompressed big-endian `I;16B` full metadata, plus compressed `I;16B`
   normalization.
@@ -19876,6 +19878,26 @@ pins are restored with the oracle values. The facade target passes
 `524/524` and the DLL SHA-256 is
 `DDB0BF2F4EE07AFA8BE3C5D413EEC10CD1A5236AD3EE8D3B358564B17185F980`.
 Both follow-up rows are now DONE.
+```
+
+2026-08-15: `BEHAV-SWEEP-001` is GREEN as the final red-team sweep.
+The remaining 31 family-level `partial` tracker rows are disposed:
+the non-BMP cmap gap is implemented (the native cmap parser merges
+the best format-4 BMP and format-12 supplementary-plane subtables —
+seguiemj emoji pins match Pillow exactly), the GIF lossy save keeps
+the exact 256 source colors with the palette ORDER/index assignment
+documented as the median-cut reordering boundary, and every other
+row's enumerated children are confirmed closed by the committed
+waves (their `broader`/`exhaustive` tails are coverage-tracker
+scope, not boundary items). DRAW-TEXT-001 and DRAW-FONT-001 close
+with the session's waves plus the exact no-libraqm KeyError and the
+GDI gray8/color-glyph dependency boundaries. The sweep target
+passes `1/1` in `94ms`; the full directory suite passes
+`2856/2856` in `23109ms` with zero failures, errors, or skips. The
+DLL keeps export parity `524/524` and its SHA-256 is
+`62A3B585DBE4C631B60BB7C87C3D55D60D79D756EA87767FE44C09FAF3CF3FED`.
+The ledger now has no open `gap`/`partial` family rows — only the
+documented boundaries and the covered trackers remain.
 ```
 
 If any line above is no longer true, update this file first, then update
