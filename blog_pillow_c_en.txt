@@ -27,7 +27,10 @@ Project layout:
 build\x64\Release\pillow_c.dll   committed Release DLL
 ahk\pillow.ahk                   facade (single entry point)
 ahk\pillow.test.ahk              behavior suite
+ahk\pillow_c.test.ahk            native ABI / codec suite
 ahk\pillow_numpy.test.ahk        cnumpy interop suite
+ahk\pillow_demo.test.ahk         runs every README/blog example verbatim
+pillow_c_demo.ahk                standalone demo (no test framework)
 src\                             DLL sources
 oracle\                          Pillow/NumPy behavior probes
 docs\                            engineer ledgers
@@ -52,8 +55,8 @@ Formats reach byte-level fidelity: JPEG SOF/q-tables/DPI/progressive flags and m
 
 The font side includes a full variable-font engine: fvar axes, named instances, avar segment maps, HVAR advance deltas (with FreeType's region scalars) and 26.6 fixed-point arithmetic — the bahnschrift pins match bit for bit; non-BMP glyph advances (the format-12 cmap merge) match Pillow exactly.
 
-Current verification: full suite [b]2868/2868[/b] passing (23156ms scale), export parity [b]524/524[/b], Release x64 DLL SHA-256
-[c]4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481[/c].
+Current verification: full suite [b]2871/2871[/b] passing (26656ms scale), export parity [b]524/524[/b], Release x64 DLL SHA-256
+[c]2E6F0ABBAC878ACC483E6EE2B81F8C5810CD1144174C7E291C0BCCAA887DCC1E[/c].
 
 
 [b]3. Basic usage[/b]
@@ -141,7 +144,7 @@ Everything else carries explicit boundary documentation: WebP/AVIF/JPEG2000 deco
 
 [b]6. Bilingual documentation[/b]
 
-The online docs are modeled on the [url=https://pillow.readthedocs.io/en/stable/]official Pillow documentation[/url]: 24 pages, 276 API entries, each with signature, parameters, return values, error shapes, and parity notes, switchable between bilingual / EN / 中文, plus a complete behavioral-boundaries page:
+The online docs are modeled on the [url=https://pillow.readthedocs.io/en/stable/]official Pillow documentation[/url]. The landing page is a language chooser, and the site is two fully independent trees — English and 中文 — with no in-page language switching; each tree holds 24 reference pages and 280 API entries, each with signature, parameters, return values, error shapes, and parity notes, plus a complete behavioral-boundaries page:
 
 [url=https://monoeven.github.io/pillow-c/]https://monoeven.github.io/pillow-c/[/url]
 

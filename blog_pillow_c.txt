@@ -27,7 +27,10 @@
 build\x64\Release\pillow_c.dll   已提交的 Release DLL
 ahk\pillow.ahk                   门面（唯一入口）
 ahk\pillow.test.ahk              行为套件
+ahk\pillow_c.test.ahk            原生 ABI/编解码套件
 ahk\pillow_numpy.test.ahk        cnumpy 联动套件
+ahk\pillow_demo.test.ahk         README/博客示例逐字执行
+pillow_c_demo.ahk                独立演示脚本（无测试框架）
 src\                             DLL 源码
 oracle\                          Pillow/NumPy 行为探针
 docs\                            工程台账
@@ -50,10 +53,10 @@ Save(..., "WEBP")     -> encoder WebP not available
 
 格式层做到了字节级：JPEG 的 SOF/量化表/DPI/渐进标志与元数据、GIF 的调色板与动图帧、TIFF 的 BigTIFF/压缩/EXIF 子 IFD、PNG 的分块与文本、ICO/ICNS 的容器结构、EPS/PDF/PSD/FLI/PCD 等长尾格式的头部解析，全部对照 Pillow 原样实现。RGBA 缩放的 alpha 预乘(+127)与 a==0 处的保留规则、I;16 的 16bpc 两遍采样、mode "1" 的位打包、LAB 的通道异或存储这些边角行为也都逐条钉死。
 
-字体方向包括可变字体引擎：fvar 轴、命名实例、avar 分段映射、HVAR 字宽增量(含 FreeType 的区域标量)与 26.6 定点算术，bahnschrift 的钉死值逐位一致；非 BMP 字符(cmaj 表 format-12 合并)的字宽与 Pillow 完全一致。
+字体方向包括可变字体引擎：fvar 轴、命名实例、avar 分段映射、HVAR 字宽增量(含 FreeType 的区域标量)与 26.6 定点算术，bahnschrift 的钉死值逐位一致；非 BMP 字符(cmap 表 format-12 合并)的字宽与 Pillow 完全一致。
 
-当前验证数据：完整套件 [b]2868/2868[/b] 通过(23156ms 级)，导出对齐 [b]524/524[/b]，Release x64 DLL SHA-256 为
-[c]4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481[/c]。
+当前验证数据：完整套件 [b]2871/2871[/b] 通过(26656ms 级)，导出对齐 [b]524/524[/b]，Release x64 DLL SHA-256 为
+[c]2E6F0ABBAC878ACC483E6EE2B81F8C5810CD1144174C7E291C0BCCAA887DCC1E[/c]。
 
 
 [b]3. 基础用法[/b]
@@ -141,7 +144,7 @@ fromarray 的完整类型映射与 Pillow 11.3.0 逐字节一致：bool→[c]1[/
 
 [b]6. 双语文档[/b]
 
-在线文档仿照 [url=https://pillow.readthedocs.io/en/stable/]Pillow 官方文档[/url] 结构：24 个页面、276 个 API 条目，每个 API 有签名、参数、返回值、报错形态与对齐说明，中英双语可切换（双语 / EN / 中文），并附完整的行为边界页：
+在线文档仿照 [url=https://pillow.readthedocs.io/en/stable/]Pillow 官方文档[/url] 结构。落地页是语言选择器，英文与中文是两棵完全独立的文档树——页面内不混排、不做语言切换；每棵树 24 个参考页、280 个 API 条目，每个 API 有签名、参数、返回值、报错形态与对齐说明，并附完整的行为边界页：
 
 [url=https://monoeven.github.io/pillow-c/]https://monoeven.github.io/pillow-c/[/url]
 
