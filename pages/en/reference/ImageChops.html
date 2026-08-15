@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -43,49 +43,49 @@
 <div class="content">
   <div class="crumbs"><a href="../index.html">Home</a> » ImageChops</div>
   <h1>ImageChops <span class="kind">module</span></h1>
-  <p class="en">The <code>ImageChops</code> module contains channel ("chops") operations — arithmetic, bitwise, and blend operations on images. Binary operations require both images to share the same mode and size, and every function returns a <b>new</b> Image while leaving its inputs unchanged (Pillow semantics).</p>
+  <p>The <code>ImageChops</code> module contains channel ("chops") operations — arithmetic, bitwise, and blend operations on images. Binary operations require both images to share the same mode and size, and every function returns a <b>new</b> Image while leaving its inputs unchanged (Pillow semantics).</p>
   
-  <p class="note"><span class="en">Naming: primary names are PascalCase. AHK method lookup is case-insensitive, so Pillow's underscore-free snake_case names (<code>blend</code>, <code>difference</code>, <code>multiply</code>, <code>lighter</code>, …) resolve to the same methods automatically; the seven underscore forms — <code>add_modulo</code>, <code>hard_light</code>, <code>logical_and</code>, <code>logical_or</code>, <code>logical_xor</code>, <code>soft_light</code>, <code>subtract_modulo</code> — are declared as explicit aliases.</span></p>
-  <p class="note"><span class="en">Parity: for binary ops a mode/size mismatch raises Pillow's status error; when both operands are <code>I</code> or <code>F</code> mode the error surfaces as Pillow's exact <code>image has wrong mode</code>.</span></p>
+  <p class="note"><span>Naming: primary names are PascalCase. AHK method lookup is case-insensitive, so Pillow's underscore-free snake_case names (<code>blend</code>, <code>difference</code>, <code>multiply</code>, <code>lighter</code>, …) resolve to the same methods automatically; the seven underscore forms — <code>add_modulo</code>, <code>hard_light</code>, <code>logical_and</code>, <code>logical_or</code>, <code>logical_xor</code>, <code>soft_light</code>, <code>subtract_modulo</code> — are declared as explicit aliases.</span></p>
+  <p class="note"><span>Parity: for binary ops a mode/size mismatch raises Pillow's status error; when both operands are <code>I</code> or <code>F</code> mode the error surfaces as Pillow's exact <code>image has wrong mode</code>.</span></p>
 
   <h2 id="unary">Unary Operations</h2>
 
   <section class="api" id="ImageChops.Constant">
     <h3>Constant <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Constant(image, value)</pre>
-    <p class="en">Returns an image with the same mode and size as <code>image</code>, filled with a single value.</p>
+    <p>Returns an image with the same mode and size as <code>image</code>, filled with a single value.</p>
     
     <dl class="params">
-      <dt>value</dt><dd><span class="en">Integer fill value; a non-integer raises <code>Pillow.ImageChops.Constant value must be an integer</code>.</span></dd>
+      <dt>value</dt><dd><span>Integer fill value; a non-integer raises <code>Pillow.ImageChops.Constant value must be an integer</code>.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.Duplicate">
     <h3>Duplicate <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Duplicate(image)</pre>
-    <p class="en">Returns a full copy of the image (Pillow's <code>ImageChops.duplicate</code>, equivalent to <code>image.Copy()</code>).</p>
+    <p>Returns a full copy of the image (Pillow's <code>ImageChops.duplicate</code>, equivalent to <code>image.Copy()</code>).</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.Invert">
     <h3>Invert <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Invert(image)</pre>
-    <p class="en">Inverts each pixel: <code>out = MAX − a</code>, where MAX is the maximum value of the mode (255 for L/RGB, 1 for mode <code>"1"</code>, …).</p>
+    <p>Inverts each pixel: <code>out = MAX − a</code>, where MAX is the maximum value of the mode (255 for L/RGB, 1 for mode <code>"1"</code>, …).</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.Offset">
     <h3>Offset <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Offset(image, xoffset, yoffset := unset)</pre>
-    <p class="en">Shifts the image by <code>(xoffset, yoffset)</code> pixels; the emptied region is filled with 0. When <code>yoffset</code> is omitted it defaults to <code>xoffset</code>.</p>
+    <p>Shifts the image by <code>(xoffset, yoffset)</code> pixels; the emptied region is filled with 0. When <code>yoffset</code> is omitted it defaults to <code>xoffset</code>.</p>
     
     <dl class="params">
-      <dt>xoffset / yoffset</dt><dd><span class="en">Integer pixel offsets (positive shifts right/down); non-integers raise a validation error.</span></dd>
+      <dt>xoffset / yoffset</dt><dd><span>Integer pixel offsets (positive shifts right/down); non-integers raise a validation error.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <h2 id="arithmetic">Arithmetic</h2>
@@ -93,63 +93,63 @@
   <section class="api" id="ImageChops.Add">
     <h3>Add <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Add(left, right, scale := 1.0, offset := 0)</pre>
-    <p class="en">Adds two images: <code>out = (left + right) / scale + offset</code>.</p>
+    <p>Adds two images: <code>out = (left + right) / scale + offset</code>.</p>
     
     <dl class="params">
-      <dt>scale / offset</dt><dd><span class="en">Numeric divisor and addend; non-numeric values raise a validation error.</span></dd>
+      <dt>scale / offset</dt><dd><span>Numeric divisor and addend; non-numeric values raise a validation error.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.Subtract">
     <h3>Subtract <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Subtract(left, right, scale := 1.0, offset := 0)</pre>
-    <p class="en">Subtracts two images: <code>out = (left − right) / scale + offset</code>.</p>
+    <p>Subtracts two images: <code>out = (left − right) / scale + offset</code>.</p>
     
     <dl class="params">
-      <dt>scale / offset</dt><dd><span class="en">Numeric divisor and addend; non-numeric values raise a validation error.</span></dd>
+      <dt>scale / offset</dt><dd><span>Numeric divisor and addend; non-numeric values raise a validation error.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.AddModulo">
     <h3>AddModulo <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.AddModulo(left, right)</pre>
-    <p class="en">Adds two images and wraps the result around the mode's range (modulo 256 for 8-bit modes).</p>
+    <p>Adds two images and wraps the result around the mode's range (modulo 256 for 8-bit modes).</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.SubtractModulo">
     <h3>SubtractModulo <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.SubtractModulo(left, right)</pre>
-    <p class="en">Subtracts two images and wraps the result around the mode's range (modulo 256 for 8-bit modes).</p>
+    <p>Subtracts two images and wraps the result around the mode's range (modulo 256 for 8-bit modes).</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.Difference">
     <h3>Difference <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Difference(left, right)</pre>
-    <p class="en">Absolute per-pixel difference: <code>out = abs(left − right)</code>.</p>
+    <p>Absolute per-pixel difference: <code>out = abs(left − right)</code>.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.Multiply">
     <h3>Multiply <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Multiply(left, right)</pre>
-    <p class="en">Multiplies two images: <code>out = left * right / 255</code>.</p>
+    <p>Multiplies two images: <code>out = left * right / 255</code>.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.Screen">
     <h3>Screen <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Screen(left, right)</pre>
-    <p class="en">Screen blend: <code>out = 255 − ((255 − left) * (255 − right) / 255)</code>.</p>
+    <p>Screen blend: <code>out = 255 − ((255 − left) * (255 − right) / 255)</code>.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <h2 id="blend">Blend Modes</h2>
@@ -157,95 +157,95 @@
   <section class="api" id="ImageChops.Blend">
     <h3>Blend <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Blend(left, right, alpha)</pre>
-    <p class="en">Linear interpolation between two same-size images: <code>out = left * (1 − alpha) + right * alpha</code>. Delegates to <code>Pillow.Image.Blend</code>.</p>
+    <p>Linear interpolation between two same-size images: <code>out = left * (1 − alpha) + right * alpha</code>. Delegates to <code>Pillow.Image.Blend</code>.</p>
     
     <dl class="params">
-      <dt>alpha</dt><dd><span class="en">Number in 0.0…1.0; 0 returns left, 1 returns right.</span></dd>
+      <dt>alpha</dt><dd><span>Number in 0.0…1.0; 0 returns left, 1 returns right.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.Composite">
     <h3>Composite <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Composite(image1, image2, mask)</pre>
-    <p class="en">Copies <code>image1</code> where <code>mask</code> is 255 and <code>image2</code> where it is 0; intermediate mask values are not blended (unlike Blend). Delegates to <code>Pillow.Image.Composite</code>.</p>
+    <p>Copies <code>image1</code> where <code>mask</code> is 255 and <code>image2</code> where it is 0; intermediate mask values are not blended (unlike Blend). Delegates to <code>Pillow.Image.Composite</code>.</p>
     
     <dl class="params">
-      <dt>mask</dt><dd><span class="en">A <code>1</code>/<code>L</code>/<code>LA</code>/<code>RGBA</code> mode image; any other mode raises <code>bad transparency mask</code>.</span></dd>
+      <dt>mask</dt><dd><span>A <code>1</code>/<code>L</code>/<code>LA</code>/<code>RGBA</code> mode image; any other mode raises <code>bad transparency mask</code>.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.Darker">
     <h3>Darker <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Darker(left, right)</pre>
-    <p class="en">Per-pixel minimum: <code>out = min(left, right)</code>.</p>
+    <p>Per-pixel minimum: <code>out = min(left, right)</code>.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.Lighter">
     <h3>Lighter <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Lighter(left, right)</pre>
-    <p class="en">Per-pixel maximum: <code>out = max(left, right)</code>.</p>
+    <p>Per-pixel maximum: <code>out = max(left, right)</code>.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.Overlay">
     <h3>Overlay <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Overlay(left, right)</pre>
-    <p class="en">Overlay blend: Screen for bright values and Multiply for dark ones, combining the two images.</p>
+    <p>Overlay blend: Screen for bright values and Multiply for dark ones, combining the two images.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.SoftLight">
     <h3>SoftLight <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.SoftLight(left, right)</pre>
-    <p class="en">Soft-light blend using Pillow's standard formula (a gentler version of HardLight).</p>
+    <p>Soft-light blend using Pillow's standard formula (a gentler version of HardLight).</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.HardLight">
     <h3>HardLight <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.HardLight(left, right)</pre>
-    <p class="en">Hard-light blend using Pillow's standard formula: like Overlay but with the operands swapped.</p>
+    <p>Hard-light blend using Pillow's standard formula: like Overlay but with the operands swapped.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <h2 id="logical">Logical Operations</h2>
-  <p class="en">The logical operations work on mode-<code>"1"</code> images (0 / 255): each applies the bitwise operation per pixel, then yields 255 where the result is nonzero and 0 otherwise.</p>
+  <p>The logical operations work on mode-<code>"1"</code> images (0 / 255): each applies the bitwise operation per pixel, then yields 255 where the result is nonzero and 0 otherwise.</p>
   
 
   <section class="api" id="ImageChops.LogicalAnd">
     <h3>LogicalAnd <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.LogicalAnd(left, right)</pre>
-    <p class="en">Bitwise AND: 255 where <code>left &amp; right</code> is nonzero, else 0.</p>
+    <p>Bitwise AND: 255 where <code>left &amp; right</code> is nonzero, else 0.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.LogicalOr">
     <h3>LogicalOr <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.LogicalOr(left, right)</pre>
-    <p class="en">Bitwise OR: 255 where <code>left | right</code> is nonzero, else 0.</p>
+    <p>Bitwise OR: 255 where <code>left | right</code> is nonzero, else 0.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageChops.LogicalXor">
     <h3>LogicalXor <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.LogicalXor(left, right)</pre>
-    <p class="en">Bitwise XOR: 255 where <code>left ^ right</code> is nonzero, else 0.</p>
+    <p>Bitwise XOR: 255 where <code>left ^ right</code> is nonzero, else 0.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <h2 id="internals">Internal helpers</h2>
-  <p class="en">The following members implement the DLL plumbing shared by the operations above. They are public for the facade's own use, but are not part of the Pillow-style user API.</p>
+  <p>The following members implement the DLL plumbing shared by the operations above. They are public for the facade's own use, but are not part of the Pillow-style user API.</p>
   
   <table class="appendix">
     <tr><th>Helper</th><th>EN</th></tr>
@@ -256,7 +256,7 @@
   </table>
 
   <h2 id="examples">Examples</h2>
-  <p class="en">Darken two opened images, then take their absolute difference and save it.</p>
+  <p>Darken two opened images, then take their absolute difference and save it.</p>
   
   <pre class="example">img1 := Pillow.Image.Open("photo1.jpg")
 img2 := Pillow.Image.Open("photo2.jpg")
@@ -266,6 +266,5 @@ diff  := Pillow.ImageChops.Difference(img1, img2)  ;  abs(a - b)
 diff.Save("diff.png")
 img1.Close(), img2.Close(), dark.Close(), lite.Close(), diff.Close()</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

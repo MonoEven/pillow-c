@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,9 +44,9 @@
   <div class="crumbs"><a href="../index.html">首页</a> » ImageCms</div>
   <h1>ImageCms <span class="kind">模块</span></h1>
   
-  <p class="zh"><code>ImageCms</code> 模块是 Little CMS 2 色彩管理层,兼容 Pillow 11.3.0(<code>PIL.ImageCms</code>):打开与创建 ICC 配置文件、构建配置文件间的色彩转换、把转换应用于图像,并查询配置文件的 intent 支持。输入/输出模式为 Pillow 模式字符串;本门面的转换校验接受原生层实现的 <code>RGB</code>/<code>LAB</code> 组合(RGB→LAB、LAB→RGB、RGB→RGB、LAB→LAB)。</p>
-  <p class="note"><span class="zh">命名:主名为 PascalCase。AHK 方法查找不区分大小写,故 Pillow 的 snake_case 名(<code>getOpenProfile</code>、<code>createProfile</code>、<code>buildTransform</code>、<code>profileToProfile</code>、<code>versions</code>……)自动解析到同名主方法。错误文本与 Pillow 11.3.0 对齐:配置文件类型错误抛 <code>Invalid type for Profile</code>(Pillow 的 <code>PyCMSError</code>);不支持的模式/intent/flags 组合抛 <code>cannot build transform</code> 或 <code>cannot build proof transform</code>;越界的 intent/flags 抛 Pillow 原样的 <code>renderingIntent must be an integer between 0 and 3</code> / <code>flags must be an integer between 0 and 100663295</code>。深层原生失败以 <code>pillow_c: &lt;status&gt;</code> 呈现(例如无法读取的 ICC 文件报 <code>pillow_c: invalid argument</code>,而非 Pillow 的 <code>OSError</code>)。</span></p>
-  <p class="note"><span class="zh">Oracle 对齐:ICC 字节内容、intent 支持与色彩运算均以 Pillow 11.3.0 为基准逐一验证(恒等 RGB→RGB 转换、带 <code>SOFTPROOFING</code> 标志的软打样,以及配置文件序列化)。</span></p>
+  <p><code>ImageCms</code> 模块是 Little CMS 2 色彩管理层,兼容 Pillow 11.3.0(<code>PIL.ImageCms</code>):打开与创建 ICC 配置文件、构建配置文件间的色彩转换、把转换应用于图像,并查询配置文件的 intent 支持。输入/输出模式为 Pillow 模式字符串;本门面的转换校验接受原生层实现的 <code>RGB</code>/<code>LAB</code> 组合(RGB→LAB、LAB→RGB、RGB→RGB、LAB→LAB)。</p>
+  <p class="note"><span>命名:主名为 PascalCase。AHK 方法查找不区分大小写,故 Pillow 的 snake_case 名(<code>getOpenProfile</code>、<code>createProfile</code>、<code>buildTransform</code>、<code>profileToProfile</code>、<code>versions</code>……)自动解析到同名主方法。错误文本与 Pillow 11.3.0 对齐:配置文件类型错误抛 <code>Invalid type for Profile</code>(Pillow 的 <code>PyCMSError</code>);不支持的模式/intent/flags 组合抛 <code>cannot build transform</code> 或 <code>cannot build proof transform</code>;越界的 intent/flags 抛 Pillow 原样的 <code>renderingIntent must be an integer between 0 and 3</code> / <code>flags must be an integer between 0 and 100663295</code>。深层原生失败以 <code>pillow_c: &lt;status&gt;</code> 呈现(例如无法读取的 ICC 文件报 <code>pillow_c: invalid argument</code>,而非 Pillow 的 <code>OSError</code>)。</span></p>
+  <p class="note"><span>Oracle 对齐:ICC 字节内容、intent 支持与色彩运算均以 Pillow 11.3.0 为基准逐一验证(恒等 RGB→RGB 转换、带 <code>SOFTPROOFING</code> 标志的软打样,以及配置文件序列化)。</span></p>
 
   <h2 id="enums">枚举</h2>
 
@@ -56,14 +56,14 @@ Pillow.ImageCms.Intent.RELATIVE_COLORIMETRIC := 1   ; 相对色度
 Pillow.ImageCms.Intent.SATURATION := 2              ; 饱和
 Pillow.ImageCms.Intent.ABSOLUTE_COLORIMETRIC := 3   ; 绝对色度</pre>
   
-  <p class="zh">传给转换构造器的渲染意图;数值与 Pillow 11.3.0 完全一致。</p>
+  <p>传给转换构造器的渲染意图;数值与 Pillow 11.3.0 完全一致。</p>
 
   <h3 id="direction">Direction</h3>
   <pre class="sig">Pillow.ImageCms.Direction.INPUT := 0
 Pillow.ImageCms.Direction.OUTPUT := 1
 Pillow.ImageCms.Direction.PROOF := 2</pre>
   
-  <p class="zh">供 <code>IsIntentSupported</code> / <code>is_intent_supported</code> 使用,查询 intent 支持的转换方向。</p>
+  <p>供 <code>IsIntentSupported</code> / <code>is_intent_supported</code> 使用,查询 intent 支持的转换方向。</p>
 
   <h3 id="flags">Flags</h3>
   <pre class="sig">Pillow.ImageCms.Flags.NONE := 0
@@ -87,12 +87,12 @@ Pillow.ImageCms.Flags.NODEFAULTRESOURCEDEF := 16777216
 Pillow.ImageCms.Flags.COPY_ALPHA := 67108864
 Pillow.ImageCms.Flags.GRIDPOINTS(n)   ;  helper: Integer(n) &lt;&lt; 16 (Pillow's GRIDPOINTS)</pre>
   
-  <p class="zh">lcms2 转换标志;数值与 Pillow 11.3.0 一致。<code>GRIDPOINTS(n)</code> 为返回 <code>n &lt;&lt; 16</code> 的可调用助手。<code>BuildProofTransform</code> 默认 <code>SOFTPROOFING</code>(0x4000),其支持的 flags 组合为 <code>SOFTPROOFING</code> 与 <code>SOFTPROOFING | GAMUTCHECK</code>(0x5000)。</p>
+  <p>lcms2 转换标志;数值与 Pillow 11.3.0 一致。<code>GRIDPOINTS(n)</code> 为返回 <code>n &lt;&lt; 16</code> 的可调用助手。<code>BuildProofTransform</code> 默认 <code>SOFTPROOFING</code>(0x4000),其支持的 flags 组合为 <code>SOFTPROOFING</code> 与 <code>SOFTPROOFING | GAMUTCHECK</code>(0x5000)。</p>
 
   <h3 id="pycmserror">PyCMSError</h3>
   <pre class="sig">Pillow.ImageCms.PyCMSError extends Error</pre>
   
-  <p class="zh">Pillow 的 <code>PyCMSError</code> 继承 <code>Exception</code>;AHK 对应类继承 <code>Error</code>,并携带相同的消息文本(见上方模块说明)。</p>
+  <p>Pillow 的 <code>PyCMSError</code> 继承 <code>Exception</code>;AHK 对应类继承 <code>Error</code>,并携带相同的消息文本(见上方模块说明)。</p>
 
   <h2 id="profiles">配置文件对象</h2>
 
@@ -100,133 +100,133 @@ Pillow.ImageCms.Flags.GRIDPOINTS(n)   ;  helper: Integer(n) &lt;&lt; 16 (Pillow'
     <h3>GetOpenProfile <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetOpenProfile(profile)</pre>
     
-    <p class="zh">从文件路径字符串、<code>File</code> 对象、内存字节 <code>Buffer</code> 或已有配置文件(引用计数重新包装)打开 ICC 配置文件。返回 <code>ImageCmsProfile</code>(<code>CmsProfile</code> 的子类,额外提供 <code>Tobytes()</code>)。含非 ASCII 字符的路径走宽字符路径 API。</p>
+    <p>从文件路径字符串、<code>File</code> 对象、内存字节 <code>Buffer</code> 或已有配置文件(引用计数重新包装)打开 ICC 配置文件。返回 <code>ImageCmsProfile</code>(<code>CmsProfile</code> 的子类,额外提供 <code>Tobytes()</code>)。含非 ASCII 字符的路径走宽字符路径 API。</p>
     <dl class="params">
-      <dt>profile</dt><dd><span class="zh">路径字符串、<code>File</code>、字节 <code>Buffer</code> 或 <code>CmsProfile</code>;其他类型抛 <code>Invalid type for Profile</code>。</span></dd>
+      <dt>profile</dt><dd><span>路径字符串、<code>File</code>、字节 <code>Buffer</code> 或 <code>CmsProfile</code>;其他类型抛 <code>Invalid type for Profile</code>。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:<code>ImageCmsProfile</code>。</span></p>
+    <p class="returns"><span>返回:<code>ImageCmsProfile</code>。</span></p>
   </section>
 
   <section class="api" id="ImageCms.CreateProfile">
     <h3>CreateProfile <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.CreateProfile(colorSpace, colorTemp := 0)</pre>
     
-    <p class="zh">创建即时配置文件:<code>"sRGB"</code>(内置 sRGB)、<code>"LAB"</code>(Lab 配置文件,可选白点色温)或 <code>"XYZ"</code>。其他色彩空间抛 <code>Color space not supported for on-the-fly profile creation (&lt;colorSpace&gt;)</code>。<code>"LAB"</code> 时若 <code>colorTemp</code> 非数值抛 <code>Color temperature must be numeric, `&lt;colorTemp&gt;` not valid</code>。</p>
+    <p>创建即时配置文件:<code>"sRGB"</code>(内置 sRGB)、<code>"LAB"</code>(Lab 配置文件,可选白点色温)或 <code>"XYZ"</code>。其他色彩空间抛 <code>Color space not supported for on-the-fly profile creation (&lt;colorSpace&gt;)</code>。<code>"LAB"</code> 时若 <code>colorTemp</code> 非数值抛 <code>Color temperature must be numeric, `&lt;colorTemp&gt;` not valid</code>。</p>
     <dl class="params">
-      <dt>colorSpace</dt><dd><span class="zh"><code>"sRGB"</code>、<code>"LAB"</code> 或 <code>"XYZ"</code>。</span></dd>
-      <dt>colorTemp</dt><dd><span class="zh">可选数值白点色温(开尔文),用于 <code>"LAB"</code>;0 取 D50 默认。</span></dd>
+      <dt>colorSpace</dt><dd><span><code>"sRGB"</code>、<code>"LAB"</code> 或 <code>"XYZ"</code>。</span></dd>
+      <dt>colorTemp</dt><dd><span>可选数值白点色温(开尔文),用于 <code>"LAB"</code>;0 取 D50 默认。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:<code>CmsProfile</code>(无 <code>Tobytes()</code>,请用 <code>Serialize()</code>)。</span></p>
+    <p class="returns"><span>返回:<code>CmsProfile</code>(无 <code>Tobytes()</code>,请用 <code>Serialize()</code>)。</span></p>
   </section>
 
   <h3 id="profile-accessors">模块级访问器</h3>
   
-  <p class="zh">这些静态函数接收配置文件参数并返回单个标签值,对齐 Pillow 的 <code>getProfileName</code>/<code>getProfileInfo</code>/…… 形态。</p>
+  <p>这些静态函数接收配置文件参数并返回单个标签值,对齐 Pillow 的 <code>getProfileName</code>/<code>getProfileInfo</code>/…… 形态。</p>
 
   <section class="api" id="ImageCms.GetProfileName">
     <h3>GetProfileName <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetProfileName(profile)</pre>
     
-    <p class="zh">返回配置文件名称(描述)字符串。参数类型错误抛 <code>Invalid type for Profile</code>。</p>
-    <p class="returns"><span class="zh">返回:字符串。</span></p>
+    <p>返回配置文件名称(描述)字符串。参数类型错误抛 <code>Invalid type for Profile</code>。</p>
+    <p class="returns"><span>返回:字符串。</span></p>
   </section>
 
   <section class="api" id="ImageCms.GetProfileDescription">
     <h3>GetProfileDescription <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetProfileDescription(profile)</pre>
     
-    <p class="zh"><code>GetProfileName</code> 的别名(返回相同值)。</p>
-    <p class="returns"><span class="zh">返回:字符串。</span></p>
+    <p><code>GetProfileName</code> 的别名(返回相同值)。</p>
+    <p class="returns"><span>返回:字符串。</span></p>
   </section>
 
   <section class="api" id="ImageCms.GetProfileInfo">
     <h3>GetProfileInfo <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetProfileInfo(profile)</pre>
     
-    <p class="zh">返回配置文件的自由格式信息字符串(多数配置文件与描述文本相同)。</p>
-    <p class="returns"><span class="zh">返回:字符串。</span></p>
+    <p>返回配置文件的自由格式信息字符串(多数配置文件与描述文本相同)。</p>
+    <p class="returns"><span>返回:字符串。</span></p>
   </section>
 
   <section class="api" id="ImageCms.GetProfileCopyright">
     <h3>GetProfileCopyright <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetProfileCopyright(profile)</pre>
     
-    <p class="zh">返回嵌入在配置文件中的版权文本。</p>
-    <p class="returns"><span class="zh">返回:字符串。</span></p>
+    <p>返回嵌入在配置文件中的版权文本。</p>
+    <p class="returns"><span>返回:字符串。</span></p>
   </section>
 
   <section class="api" id="ImageCms.GetProfileManufacturer">
     <h3>GetProfileManufacturer <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetProfileManufacturer(profile)</pre>
     
-    <p class="zh">返回嵌入在配置文件中的制造商文本。</p>
-    <p class="returns"><span class="zh">返回:字符串。</span></p>
+    <p>返回嵌入在配置文件中的制造商文本。</p>
+    <p class="returns"><span>返回:字符串。</span></p>
   </section>
 
   <section class="api" id="ImageCms.GetProfileModel">
     <h3>GetProfileModel <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetProfileModel(profile)</pre>
     
-    <p class="zh">返回嵌入在配置文件中的型号文本。</p>
-    <p class="returns"><span class="zh">返回:字符串。</span></p>
+    <p>返回嵌入在配置文件中的型号文本。</p>
+    <p class="returns"><span>返回:字符串。</span></p>
   </section>
 
   <section class="api" id="ImageCms.IsIntentSupported">
     <h3>IsIntentSupported <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.IsIntentSupported(profile, intent, direction)</pre>
     
-    <p class="zh">查询配置文件是否支持某 intent 在某方向(<code>Pillow.ImageCms.Direction.*</code> 之一)上的转换。</p>
+    <p>查询配置文件是否支持某 intent 在某方向(<code>Pillow.ImageCms.Direction.*</code> 之一)上的转换。</p>
     <dl class="params">
-      <dt>intent</dt><dd><span class="zh"><code>Pillow.ImageCms.Intent.*</code> 之一(0…3)。</span></dd>
-      <dt>direction</dt><dd><span class="zh"><code>Pillow.ImageCms.Direction.*</code> 之一(0…2)。</span></dd>
+      <dt>intent</dt><dd><span><code>Pillow.ImageCms.Intent.*</code> 之一(0…3)。</span></dd>
+      <dt>direction</dt><dd><span><code>Pillow.ImageCms.Direction.*</code> 之一(0…2)。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:支持为 1,不支持为 −1。</span></p>
+    <p class="returns"><span>返回:支持为 1,不支持为 −1。</span></p>
   </section>
 
   <h3 id="cmsprofile">CmsProfile 实例</h3>
   
-  <p class="zh"><code>Pillow.ImageCms.CmsProfile</code> 包装原生 lcms 配置文件句柄。每个实例拥有自己的句柄(<code>Close()</code> 或析构时释放)。<code>GetOpenProfile</code>/<code>get_display_profile</code> 返回 <code>ImageCmsProfile</code>(额外提供 <code>Tobytes()</code>);<code>CreateProfile</code> 返回普通 <code>CmsProfile</code>。</p>
+  <p><code>Pillow.ImageCms.CmsProfile</code> 包装原生 lcms 配置文件句柄。每个实例拥有自己的句柄(<code>Close()</code> 或析构时释放)。<code>GetOpenProfile</code>/<code>get_display_profile</code> 返回 <code>ImageCmsProfile</code>(额外提供 <code>Tobytes()</code>);<code>CreateProfile</code> 返回普通 <code>CmsProfile</code>。</p>
 
   <section class="api" id="ImageCms.CmsProfile.Serialize">
     <h3>Serialize / Tobytes</h3>
     <pre class="sig">profile.Serialize()     ;  CmsProfile (all instances)
 profile.Tobytes()       ;  ImageCmsProfile only (Pillow's tobytes)</pre>
     
-    <p class="zh">把配置文件序列化为 ICC 字节表示。<code>Tobytes()</code> 为 Pillow 风格别名,仅存在于 <code>ImageCmsProfile</code>。</p>
-    <p class="returns"><span class="zh">返回:ICC 内容的字节 <code>Buffer</code>。</span></p>
+    <p>把配置文件序列化为 ICC 字节表示。<code>Tobytes()</code> 为 Pillow 风格别名,仅存在于 <code>ImageCmsProfile</code>。</p>
+    <p class="returns"><span>返回:ICC 内容的字节 <code>Buffer</code>。</span></p>
   </section>
 
   <section class="api" id="ImageCms.CmsProfile.GetName">
     <h3>GetName</h3>
     <pre class="sig">profile.GetName()</pre>
     
-    <p class="zh">返回配置文件名称字符串(供模块级 <code>GetProfileName</code> 使用)。</p>
-    <p class="returns"><span class="zh">返回:字符串。</span></p>
+    <p>返回配置文件名称字符串(供模块级 <code>GetProfileName</code> 使用)。</p>
+    <p class="returns"><span>返回:字符串。</span></p>
   </section>
 
   <section class="api" id="ImageCms.CmsProfile.is_intent_supported">
     <h3>is_intent_supported</h3>
     <pre class="sig">profile.is_intent_supported(intent, direction)</pre>
     
-    <p class="zh"><code>IsIntentSupported</code> 的实例形式:委托给 <code>Pillow.ImageCms.IsIntentSupported(this, intent, direction)</code>。</p>
-    <p class="returns"><span class="zh">返回:支持为 1,不支持为 −1。</span></p>
+    <p><code>IsIntentSupported</code> 的实例形式:委托给 <code>Pillow.ImageCms.IsIntentSupported(this, intent, direction)</code>。</p>
+    <p class="returns"><span>返回:支持为 1,不支持为 −1。</span></p>
   </section>
 
   <section class="api" id="ImageCms.CmsProfile.Properties">
     <h3>Properties <span class="kind">attributes</span></h3>
     
-    <p class="zh"><code>CmsProfile</code> 上的只读标签 getter。多数为惰性(计算一次后缓存);缺失标签在注明处以 <code>0</code>/空呈现。</p>
+    <p><code>CmsProfile</code> 上的只读标签 getter。多数为惰性(计算一次后缓存);缺失标签在注明处以 <code>0</code>/空呈现。</p>
     <table class="appendix">
       <tr><th>Property</th><th>中文</th></tr>
-      <tr><td><code>profile_description</code></td><td><span class="zh">版权字符串。</span></td></tr>
-      <tr><td><code>manufacturer</code> / <code>model</code></td><td><span class="zh">默认 intent(<code>GetDefaultIntent</code>)。</span></td></tr>
-      <tr><td><code>creation_date</code></td><td><span class="zh">头部签名字符串。</span></td></tr>
-      <tr><td><code>version</code> / <code>icc_version</code></td><td><span class="zh">是否为矩阵/shaper(1/0)。</span></td></tr>
-      <tr><td><code>media_white_point</code> / <code>media_black_point</code> / <code>luminance</code> / <code>chromaticity</code> / <code>media_white_point_temperature</code></td><td><span class="zh">RGB colorant 的 XYZ/xyY 对;缺失时为 <code>0</code>。</span></td></tr>
-      <tr><td><code>red_primary</code> / <code>green_primary</code> / <code>blue_primary</code></td><td><span class="zh">适配矩阵对;缺失时为 <code>0</code>。</span></td></tr>
-      <tr><td><code>clut</code> / <code>intent_supported</code></td><td><span class="zh">头部属性与色度 intent 签名。</span></td></tr>
-      <tr><td><code>colorant_table</code> / <code>colorant_table_out</code></td><td><span class="zh">头部标识余量字段。</span></td></tr>
-      <tr><td><code>screening_description</code> / <code>target</code> / <code>technology</code></td><td><span class="zh">测量/观察条件 Map。</span></td></tr>
+      <tr><td><code>profile_description</code></td><td><span>版权字符串。</span></td></tr>
+      <tr><td><code>manufacturer</code> / <code>model</code></td><td><span>默认 intent(<code>GetDefaultIntent</code>)。</span></td></tr>
+      <tr><td><code>creation_date</code></td><td><span>头部签名字符串。</span></td></tr>
+      <tr><td><code>version</code> / <code>icc_version</code></td><td><span>是否为矩阵/shaper(1/0)。</span></td></tr>
+      <tr><td><code>media_white_point</code> / <code>media_black_point</code> / <code>luminance</code> / <code>chromaticity</code> / <code>media_white_point_temperature</code></td><td><span>RGB colorant 的 XYZ/xyY 对;缺失时为 <code>0</code>。</span></td></tr>
+      <tr><td><code>red_primary</code> / <code>green_primary</code> / <code>blue_primary</code></td><td><span>适配矩阵对;缺失时为 <code>0</code>。</span></td></tr>
+      <tr><td><code>clut</code> / <code>intent_supported</code></td><td><span>头部属性与色度 intent 签名。</span></td></tr>
+      <tr><td><code>colorant_table</code> / <code>colorant_table_out</code></td><td><span>头部标识余量字段。</span></td></tr>
+      <tr><td><code>screening_description</code> / <code>target</code> / <code>technology</code></td><td><span>测量/观察条件 Map。</span></td></tr>
     </table>
   </section>
 
@@ -236,101 +236,101 @@ profile.Tobytes()       ;  ImageCmsProfile only (Pillow's tobytes)</pre>
     <h3>BuildTransform <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.BuildTransform(inputProfile, outputProfile, inputMode, outputMode, renderingIntent := 0, flags := 0)</pre>
     
-    <p class="zh">构建两个配置文件之间的色彩转换。先以 Pillow 原样消息校验 intent 与 flags,再校验模式对(仅 <code>RGB</code>/<code>LAB</code> 组合)。不支持的组合抛 <code>cannot build transform</code>。转换在构建时快照输出配置文件的 ICC 字节,且不拥有配置文件对象,因此转换构建完成后即可关闭配置文件。</p>
+    <p>构建两个配置文件之间的色彩转换。先以 Pillow 原样消息校验 intent 与 flags,再校验模式对(仅 <code>RGB</code>/<code>LAB</code> 组合)。不支持的组合抛 <code>cannot build transform</code>。转换在构建时快照输出配置文件的 ICC 字节,且不拥有配置文件对象,因此转换构建完成后即可关闭配置文件。</p>
     <dl class="params">
-      <dt>inputProfile / outputProfile</dt><dd><span class="zh">两个 <code>CmsProfile</code> 实例;类型错误抛 <code>Invalid type for Profile</code>。</span></dd>
-      <dt>inputMode / outputMode</dt><dd><span class="zh">Pillow 模式字符串(<code>"RGB"</code> 或 <code>"LAB"</code>);有效组合为 RGB→LAB、LAB→RGB、RGB→RGB、LAB→LAB。</span></dd>
-      <dt>renderingIntent</dt><dd><span class="zh">0…3(默认 0 = PERCEPTUAL)。</span></dd>
-      <dt>flags</dt><dd><span class="zh">0 或 <code>BLACKPOINTCOMPENSATION</code>(8192)。</span></dd>
+      <dt>inputProfile / outputProfile</dt><dd><span>两个 <code>CmsProfile</code> 实例;类型错误抛 <code>Invalid type for Profile</code>。</span></dd>
+      <dt>inputMode / outputMode</dt><dd><span>Pillow 模式字符串(<code>"RGB"</code> 或 <code>"LAB"</code>);有效组合为 RGB→LAB、LAB→RGB、RGB→RGB、LAB→LAB。</span></dd>
+      <dt>renderingIntent</dt><dd><span>0…3(默认 0 = PERCEPTUAL)。</span></dd>
+      <dt>flags</dt><dd><span>0 或 <code>BLACKPOINTCOMPENSATION</code>(8192)。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:<code>ImageCmsTransform</code>。</span></p>
+    <p class="returns"><span>返回:<code>ImageCmsTransform</code>。</span></p>
   </section>
 
   <section class="api" id="ImageCms.BuildTransformFromOpenProfiles">
     <h3>BuildTransformFromOpenProfiles <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.BuildTransformFromOpenProfiles(inputProfile, outputProfile, inputMode, outputMode, renderingIntent := 0, flags := 0)</pre>
     
-    <p class="zh"><code>BuildTransform</code> 的别名(Pillow 的 <code>buildTransformFromOpenProfiles</code> 即 <code>buildTransform</code> 的别名)。</p>
-    <p class="returns"><span class="zh">返回:<code>ImageCmsTransform</code>。</span></p>
+    <p><code>BuildTransform</code> 的别名(Pillow 的 <code>buildTransformFromOpenProfiles</code> 即 <code>buildTransform</code> 的别名)。</p>
+    <p class="returns"><span>返回:<code>ImageCmsTransform</code>。</span></p>
   </section>
 
   <section class="api" id="ImageCms.BuildProofTransform">
     <h3>BuildProofTransform <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.BuildProofTransform(inputProfile, outputProfile, proofProfile, inputMode, outputMode, renderingIntent := 0, proofRenderingIntent := 3, flags := 0x4000)</pre>
     
-    <p class="zh">经 proof 配置文件构建软打样转换。默认 <code>proofRenderingIntent := 3</code>(ABSOLUTE_COLORIMETRIC)、<code>flags := 0x4000</code>(SOFTPROOFING);支持的 flags 组合为 <code>SOFTPROOFING</code> 与 <code>SOFTPROOFING | GAMUTCHECK</code>(0x5000)。不支持的组合抛 <code>cannot build proof transform</code>。</p>
+    <p>经 proof 配置文件构建软打样转换。默认 <code>proofRenderingIntent := 3</code>(ABSOLUTE_COLORIMETRIC)、<code>flags := 0x4000</code>(SOFTPROOFING);支持的 flags 组合为 <code>SOFTPROOFING</code> 与 <code>SOFTPROOFING | GAMUTCHECK</code>(0x5000)。不支持的组合抛 <code>cannot build proof transform</code>。</p>
     <dl class="params">
-      <dt>inputProfile / outputProfile / proofProfile</dt><dd><span class="zh">三个 <code>CmsProfile</code> 实例;类型错误抛 <code>Invalid type for Profile</code>。</span></dd>
-      <dt>inputMode / outputMode</dt><dd><span class="zh"><code>"RGB"</code>/<code>"LAB"</code> 模式对(RGB→LAB、LAB→RGB、RGB→RGB、LAB→LAB)。</span></dd>
-      <dt>renderingIntent / proofRenderingIntent</dt><dd><span class="zh">0…3;<code>proofRenderingIntent</code> 必须为 3(ABSOLUTE_COLORIMETRIC)。</span></dd>
-      <dt>flags</dt><dd><span class="zh"><code>SOFTPROOFING</code>(默认)或 <code>SOFTPROOFING | GAMUTCHECK</code>。</span></dd>
+      <dt>inputProfile / outputProfile / proofProfile</dt><dd><span>三个 <code>CmsProfile</code> 实例;类型错误抛 <code>Invalid type for Profile</code>。</span></dd>
+      <dt>inputMode / outputMode</dt><dd><span><code>"RGB"</code>/<code>"LAB"</code> 模式对(RGB→LAB、LAB→RGB、RGB→RGB、LAB→LAB)。</span></dd>
+      <dt>renderingIntent / proofRenderingIntent</dt><dd><span>0…3;<code>proofRenderingIntent</code> 必须为 3(ABSOLUTE_COLORIMETRIC)。</span></dd>
+      <dt>flags</dt><dd><span><code>SOFTPROOFING</code>(默认)或 <code>SOFTPROOFING | GAMUTCHECK</code>。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:<code>ImageCmsTransform</code>。</span></p>
+    <p class="returns"><span>返回:<code>ImageCmsTransform</code>。</span></p>
   </section>
 
   <section class="api" id="ImageCms.BuildProofTransformFromOpenProfiles">
     <h3>BuildProofTransformFromOpenProfiles <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.BuildProofTransformFromOpenProfiles(inputProfile, outputProfile, proofProfile, inputMode, outputMode, renderingIntent := 0, proofRenderingIntent := 3, flags := 0x4000)</pre>
     
-    <p class="zh"><code>BuildProofTransform</code> 的别名(Pillow 的 <code>buildProofTransformFromOpenProfiles</code> 即 <code>buildProofTransform</code> 的别名)。</p>
-    <p class="returns"><span class="zh">返回:<code>ImageCmsTransform</code>。</span></p>
+    <p><code>BuildProofTransform</code> 的别名(Pillow 的 <code>buildProofTransformFromOpenProfiles</code> 即 <code>buildProofTransform</code> 的别名)。</p>
+    <p class="returns"><span>返回:<code>ImageCmsTransform</code>。</span></p>
   </section>
 
   <h3 id="transform-instance">ImageCmsTransform 实例</h3>
   
-  <p class="zh">已构建的转换提供 <code>input_mode</code> / <code>output_mode</code> 属性与下列方法。它拥有自己的原生转换句柄(<code>Close()</code> 或析构时释放)。</p>
+  <p>已构建的转换提供 <code>input_mode</code> / <code>output_mode</code> 属性与下列方法。它拥有自己的原生转换句柄(<code>Close()</code> 或析构时释放)。</p>
 
   <section class="api" id="ImageCms.ImageCmsTransform.Apply">
     <h3>Apply</h3>
     <pre class="sig">transform.Apply(image)</pre>
     
-    <p class="zh">把转换应用于图像并返回 <code>output_mode</code> 下的新图像。图像模式必须等于 <code>input_mode</code>,否则抛 <code>mode mismatch</code>。结果的 <code>icc_profile</code> info 被设为输出配置文件字节。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>把转换应用于图像并返回 <code>output_mode</code> 下的新图像。图像模式必须等于 <code>input_mode</code>,否则抛 <code>mode mismatch</code>。结果的 <code>icc_profile</code> info 被设为输出配置文件字节。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageCms.ImageCmsTransform.ApplyInPlace">
     <h3>ApplyInPlace</h3>
     <pre class="sig">transform.ApplyInPlace(image)</pre>
     
-    <p class="zh">就地应用转换;要求 <code>input_mode == output_mode</code> 且图像模式匹配,否则抛 <code>mode mismatch</code>。</p>
-    <p class="returns"><span class="zh">返回:无(原地修改图像)。</span></p>
+    <p>就地应用转换;要求 <code>input_mode == output_mode</code> 且图像模式匹配,否则抛 <code>mode mismatch</code>。</p>
+    <p class="returns"><span>返回:无(原地修改图像)。</span></p>
   </section>
 
   <section class="api" id="ImageCms.ImageCmsTransform.OutputProfileBytes">
     <h3>OutputProfileBytes</h3>
     <pre class="sig">transform.OutputProfileBytes()</pre>
     
-    <p class="zh">返回输出配置文件的 ICC 字节——构建转换时捕获的快照。</p>
-    <p class="returns"><span class="zh">返回:字节 <code>Buffer</code>。</span></p>
+    <p>返回输出配置文件的 ICC 字节——构建转换时捕获的快照。</p>
+    <p class="returns"><span>返回:字节 <code>Buffer</code>。</span></p>
   </section>
 
   <section class="api" id="ImageCms.ApplyTransform">
     <h3>ApplyTransform <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.ApplyTransform(image, transform, inPlace := false)</pre>
     
-    <p class="zh">把转换应用于图像:<code>inPlace</code> 为真时走 <code>transform.ApplyInPlace(image)</code>,否则走 <code>transform.Apply(image)</code>。参数类型错误抛 <code>Invalid image type</code> / <code>Invalid transform type</code>。</p>
+    <p>把转换应用于图像:<code>inPlace</code> 为真时走 <code>transform.ApplyInPlace(image)</code>,否则走 <code>transform.Apply(image)</code>。参数类型错误抛 <code>Invalid image type</code> / <code>Invalid transform type</code>。</p>
     <dl class="params">
-      <dt>image</dt><dd><span class="zh"><code>Pillow.Image</code> 图像。</span></dd>
-      <dt>transform</dt><dd><span class="zh"><code>ImageCmsTransform</code> 转换。</span></dd>
-      <dt>inPlace</dt><dd><span class="zh">为真则原地修改;默认假则返回新图像。</span></dd>
+      <dt>image</dt><dd><span><code>Pillow.Image</code> 图像。</span></dd>
+      <dt>transform</dt><dd><span><code>ImageCmsTransform</code> 转换。</span></dd>
+      <dt>inPlace</dt><dd><span>为真则原地修改;默认假则返回新图像。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:新 Image(<code>inPlace</code> 时无返回值)。</span></p>
+    <p class="returns"><span>返回:新 Image(<code>inPlace</code> 时无返回值)。</span></p>
   </section>
 
   <section class="api" id="ImageCms.ProfileToProfile">
     <h3>ProfileToProfile <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.ProfileToProfile(image, inputProfile, outputProfile, renderingIntent := 0, outputMode := unset, inPlace := false, flags := 0)</pre>
     
-    <p class="zh">一步把图像从 <code>inputProfile</code> 转换到 <code>outputProfile</code>。与 Pillow(默认 <code>outputMode</code> 取图像模式)不同,本门面要求显式传入 <code>outputMode</code>:省略时抛 <code>cannot build transform</code>。就地模式要求 <code>image.Mode == outputMode</code>。</p>
+    <p>一步把图像从 <code>inputProfile</code> 转换到 <code>outputProfile</code>。与 Pillow(默认 <code>outputMode</code> 取图像模式)不同,本门面要求显式传入 <code>outputMode</code>:省略时抛 <code>cannot build transform</code>。就地模式要求 <code>image.Mode == outputMode</code>。</p>
     <dl class="params">
-      <dt>image</dt><dd><span class="zh"><code>Pillow.Image</code> 图像。</span></dd>
-      <dt>inputProfile / outputProfile</dt><dd><span class="zh">两个 <code>CmsProfile</code> 实例。</span></dd>
-      <dt>renderingIntent</dt><dd><span class="zh">0…3(默认 0)。</span></dd>
-      <dt>outputMode</dt><dd><span class="zh">必填的 Pillow 模式字符串(<code>"RGB"</code>/<code>"LAB"</code>)。</span></dd>
-      <dt>inPlace</dt><dd><span class="zh">为真则原地修改(模式须匹配);假则返回新图像。</span></dd>
-      <dt>flags</dt><dd><span class="zh">0 或 <code>BLACKPOINTCOMPENSATION</code>(8192)。</span></dd>
+      <dt>image</dt><dd><span><code>Pillow.Image</code> 图像。</span></dd>
+      <dt>inputProfile / outputProfile</dt><dd><span>两个 <code>CmsProfile</code> 实例。</span></dd>
+      <dt>renderingIntent</dt><dd><span>0…3(默认 0)。</span></dd>
+      <dt>outputMode</dt><dd><span>必填的 Pillow 模式字符串(<code>"RGB"</code>/<code>"LAB"</code>)。</span></dd>
+      <dt>inPlace</dt><dd><span>为真则原地修改(模式须匹配);假则返回新图像。</span></dd>
+      <dt>flags</dt><dd><span>0 或 <code>BLACKPOINTCOMPENSATION</code>(8192)。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:新 Image(<code>inPlace</code> 时无返回值)。</span></p>
+    <p class="returns"><span>返回:新 Image(<code>inPlace</code> 时无返回值)。</span></p>
   </section>
 
   <h2 id="misc">其他</h2>
@@ -339,44 +339,44 @@ profile.Tobytes()       ;  ImageCmsProfile only (Pillow's tobytes)</pre>
     <h3>GetDefaultIntent <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetDefaultIntent(profile)</pre>
     
-    <p class="zh">返回配置文件的默认渲染意图(0…3)。亦作为 <code>rendering_intent</code> 属性暴露。</p>
-    <p class="returns"><span class="zh">返回:整数 intent(0…3)。</span></p>
+    <p>返回配置文件的默认渲染意图(0…3)。亦作为 <code>rendering_intent</code> 属性暴露。</p>
+    <p class="returns"><span>返回:整数 intent(0…3)。</span></p>
   </section>
 
   <section class="api" id="ImageCms.get_display_profile">
     <h3>get_display_profile <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.get_display_profile(handle := 0)</pre>
     
-    <p class="zh">返回与窗口 DC(<code>handle</code>)关联的 ICM 配置文件;<code>handle</code> 为 0 时取屏幕 DC(Pillow 11.3.0 的 <code>get_display_profile</code>)。窗口无效或缺少配置文件时返回 <code>0</code>(None)。</p>
-    <p class="returns"><span class="zh">返回:<code>ImageCmsProfile</code>;无则 <code>0</code>。</span></p>
+    <p>返回与窗口 DC(<code>handle</code>)关联的 ICM 配置文件;<code>handle</code> 为 0 时取屏幕 DC(Pillow 11.3.0 的 <code>get_display_profile</code>)。窗口无效或缺少配置文件时返回 <code>0</code>(None)。</p>
+    <p class="returns"><span>返回:<code>ImageCmsProfile</code>;无则 <code>0</code>。</span></p>
   </section>
 
   <section class="api" id="ImageCms.versions">
     <h3>versions <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.versions()</pre>
     
-    <p class="zh">Pillow 11.3.0 的 <code>versions()</code> 元组(Pillow 12 起弃用):<code>[VERSION, littlecms 版本, python 版本, Pillow 版本]</code>。报告值与本地 Pillow 构建一致。</p>
-    <p class="returns"><span class="zh">返回:<code>["1.0.0 pil", "2.17", "3.10.11", "11.3.0"]</code>。</span></p>
+    <p>Pillow 11.3.0 的 <code>versions()</code> 元组(Pillow 12 起弃用):<code>[VERSION, littlecms 版本, python 版本, Pillow 版本]</code>。报告值与本地 Pillow 构建一致。</p>
+    <p class="returns"><span>返回:<code>["1.0.0 pil", "2.17", "3.10.11", "11.3.0"]</code>。</span></p>
   </section>
 
   <h2 id="internals">内部访问器附录</h2>
   
-  <p class="zh">下列 <code>CmsProfile</code> 访问器支撑上述属性。它们对门面内部公开,但不属于 Pillow 风格的用户 API;缺失标签时返回 <code>0</code>/空,并缓存结果。</p>
+  <p>下列 <code>CmsProfile</code> 访问器支撑上述属性。它们对门面内部公开,但不属于 Pillow 风格的用户 API;缺失标签时返回 <code>0</code>/空,并缓存结果。</p>
   <table class="appendix">
     <tr><th>Accessor</th><th>中文</th></tr>
-    <tr><td><code>GetHeaderIdentity()</code></td><td><span class="zh">Map:creation_date、header_flags、header_manufacturer、header_model、profile_id。</span></td></tr>
-    <tr><td><code>GetRgbColorants()</code></td><td><span class="zh">RGB primary 的 XYZ/xyY 对数组。</span></td></tr>
-    <tr><td><code>GetColorantTables()</code></td><td><span class="zh">intent(0…3)→ 各方向布尔的 Map。</span></td></tr>
-    <tr><td><code>GetIntentSupport()</code></td><td><span class="zh">Map:attributes、colorimetric_intent。</span></td></tr>
-    <tr><td><code>GetOptionalXyzTags()</code></td><td><span class="zh">感知/饱和色域与技术签名数组。</span></td></tr>
-    <tr><td><code>GetOptionalTextTags()</code></td><td><span class="zh">测量/观察条件 Map 与描述数组。</span></td></tr>
-    <tr><td><code>SignatureText(signature)</code></td><td><span class="zh">静态:数值码 → 几何/光源字符串。</span></td></tr>
-    <tr><td><code>Close()</code> / <code>RequireHandle()</code></td><td><span class="zh">释放句柄 / 返回句柄;已关闭时抛 <code>Pillow.ImageCms profile is closed</code>。</span></td></tr>
+    <tr><td><code>GetHeaderIdentity()</code></td><td><span>Map:creation_date、header_flags、header_manufacturer、header_model、profile_id。</span></td></tr>
+    <tr><td><code>GetRgbColorants()</code></td><td><span>RGB primary 的 XYZ/xyY 对数组。</span></td></tr>
+    <tr><td><code>GetColorantTables()</code></td><td><span>intent(0…3)→ 各方向布尔的 Map。</span></td></tr>
+    <tr><td><code>GetIntentSupport()</code></td><td><span>Map:attributes、colorimetric_intent。</span></td></tr>
+    <tr><td><code>GetOptionalXyzTags()</code></td><td><span>感知/饱和色域与技术签名数组。</span></td></tr>
+    <tr><td><code>GetOptionalTextTags()</code></td><td><span>测量/观察条件 Map 与描述数组。</span></td></tr>
+    <tr><td><code>SignatureText(signature)</code></td><td><span>静态:数值码 → 几何/光源字符串。</span></td></tr>
+    <tr><td><code>Close()</code> / <code>RequireHandle()</code></td><td><span>释放句柄 / 返回句柄;已关闭时抛 <code>Pillow.ImageCms profile is closed</code>。</span></td></tr>
   </table>
 
   <h2 id="examples">示例</h2>
   
-  <p class="zh">打开 sRGB 与 AdobeRGB 配置文件,构建 RGB→RGB 转换并应用,然后序列化配置文件字节。</p>
+  <p>打开 sRGB 与 AdobeRGB 配置文件,构建 RGB→RGB 转换并应用,然后序列化配置文件字节。</p>
   <pre class="example">;   Open two ICC profiles
 srgb     := Pillow.ImageCms.GetOpenProfile("sRGB.icc")
 adobergb := Pillow.ImageCms.GetOpenProfile("AdobeRGB.icc")
@@ -397,6 +397,5 @@ im.Info["icc_profile"] := adobergb.Serialize()
 ;   Clean up
 out.Close(), im.Close(), transform.Close(), srgb.Close(), adobergb.Close()</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

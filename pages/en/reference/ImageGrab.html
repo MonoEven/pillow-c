@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -43,32 +43,32 @@
 <div class="content">
   <div class="crumbs"><a href="../index.html">Home</a> » ImageGrab</div>
   <h1>ImageGrab <span class="kind">module</span></h1>
-  <p class="en">The <code>ImageGrab</code> module captures the screen or the clipboard into an <code>Image</code>. On this facade it is a Windows-only seam backed by the native GDI/BitBlt path (<code>pillow_c_image_grab</code>).</p>
+  <p>The <code>ImageGrab</code> module captures the screen or the clipboard into an <code>Image</code>. On this facade it is a Windows-only seam backed by the native GDI/BitBlt path (<code>pillow_c_image_grab</code>).</p>
   
 
   <section class="api" id="ImageGrab.Grab">
     <h3>Grab <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageGrab.Grab(bbox := unset, includeLayeredWindows := false, allScreens := false)</pre>
-    <p class="en">Captures a screen region as an RGB <code>Image</code>. <code>bbox</code> is a 4-value rectangle in <code>[left, top, right, bottom]</code> order (x1/y1/x2/y2, matching Pillow's Windows grab): the source assigns <code>left/top/right/bottom</code> from <code>bbox[1..4]</code> and rejects <code>right &lt; left</code> or <code>bottom &lt; top</code>.</p>
+    <p>Captures a screen region as an RGB <code>Image</code>. <code>bbox</code> is a 4-value rectangle in <code>[left, top, right, bottom]</code> order (x1/y1/x2/y2, matching Pillow's Windows grab): the source assigns <code>left/top/right/bottom</code> from <code>bbox[1..4]</code> and rejects <code>right &lt; left</code> or <code>bottom &lt; top</code>.</p>
     
     <dl class="params">
-      <dt>bbox</dt><dd><span class="en">Optional 4-value <code>[left, top, right, bottom]</code> rectangle; when <code>unset</code>, the whole screen is captured.</span></dd>
-      <dt>includeLayeredWindows</dt><dd><span class="en">Whether to include layered windows (Windows flag).</span></dd>
-      <dt>allScreens</dt><dd><span class="en">Capture the virtual desktop spanning all monitors instead of the primary screen.</span></dd>
+      <dt>bbox</dt><dd><span>Optional 4-value <code>[left, top, right, bottom]</code> rectangle; when <code>unset</code>, the whole screen is captured.</span></dd>
+      <dt>includeLayeredWindows</dt><dd><span>Whether to include layered windows (Windows flag).</span></dd>
+      <dt>allScreens</dt><dd><span>Capture the virtual desktop spanning all monitors instead of the primary screen.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: an RGB <code>Image</code> of the captured region.</span></p>
-    <p class="note"><span class="en">Without <code>bbox</code>: <code>allScreens := true</code> takes the virtual-screen rectangle from <code>GetSystemMetrics</code> (76/77/78/79); otherwise the primary screen is taken from <code>GetSystemMetrics</code> (0/1) with <code>left</code>/<code>top</code> at 0. Coordinates are the logical pixels those metrics report; a native capture failure (status -3) raises Pillow's <code>screen grab failed</code>.</span></p>
+    <p class="returns"><span>Returns: an RGB <code>Image</code> of the captured region.</span></p>
+    <p class="note"><span>Without <code>bbox</code>: <code>allScreens := true</code> takes the virtual-screen rectangle from <code>GetSystemMetrics</code> (76/77/78/79); otherwise the primary screen is taken from <code>GetSystemMetrics</code> (0/1) with <code>left</code>/<code>top</code> at 0. Coordinates are the logical pixels those metrics report; a native capture failure (status -3) raises Pillow's <code>screen grab failed</code>.</span></p>
   </section>
 
   <section class="api" id="ImageGrab.GrabClipboard">
     <h3>GrabClipboard <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageGrab.GrabClipboard()</pre>
-    <p class="en">Captures an image from the Windows clipboard via <code>pillow_c_image_grab_clipboard</code>. Returns the <code>Image</code>, or <code>0</code> (this runtime's <code>None</code> analogue) when the clipboard holds no image.</p>
+    <p>Captures an image from the Windows clipboard via <code>pillow_c_image_grab_clipboard</code>. Returns the <code>Image</code>, or <code>0</code> (this runtime's <code>None</code> analogue) when the clipboard holds no image.</p>
     
   </section>
 
   <h2 id="examples">Examples</h2>
-  <p class="en">Capture the primary screen and a region, then save each as PNG:</p>
+  <p>Capture the primary screen and a region, then save each as PNG:</p>
   
   <pre class="example">img := Pillow.ImageGrab.Grab()
 img.Save("screenshot.png")
@@ -78,6 +78,5 @@ region := Pillow.ImageGrab.Grab([100, 100, 500, 400])   ;  [left, top, right, bo
 region.Save("region.png")
 region.Close()</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

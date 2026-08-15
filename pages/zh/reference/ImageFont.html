@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,7 +44,7 @@
   <div class="crumbs"><a href="../index.html">首页</a> » ImageFont</div>
   <h1>ImageFont <span class="kind">模块</span></h1>
   
-  <p class="zh">字体加载与度量,对应 Pillow 的 <code>ImageFont</code>:<code>Truetype</code> 把 TrueType/OpenType 文件加载为 <code>FreeTypeFont</code> 对象,其方法负责文字的度量与栅格化,并包含完整的可变字体表面(fvar 轴、命名实例、avar + HVAR 字宽增量)。</p>
+  <p>字体加载与度量,对应 Pillow 的 <code>ImageFont</code>:<code>Truetype</code> 把 TrueType/OpenType 文件加载为 <code>FreeTypeFont</code> 对象,其方法负责文字的度量与栅格化,并包含完整的可变字体表面(fvar 轴、命名实例、avar + HVAR 字宽增量)。</p>
 
   <h2 id="module">模块函数</h2>
 
@@ -52,26 +52,26 @@
     <h3>Truetype <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageFont.Truetype(font, size := 10, index := 0, encoding := "", layoutEngine := unset)</pre>
     
-    <p class="zh">加载 TrueType/OpenType 字体。<code>size</code> 为磅值;<code>index</code> 选择字体集合中的字面;<code>encoding</code> 选择 Unicode cmap;<code>layoutEngine</code> 接受 <code>Layout.BASIC</code>/<code>Layout.RAQM</code>。</p>
+    <p>加载 TrueType/OpenType 字体。<code>size</code> 为磅值;<code>index</code> 选择字体集合中的字面;<code>encoding</code> 选择 Unicode cmap;<code>layoutEngine</code> 接受 <code>Layout.BASIC</code>/<code>Layout.RAQM</code>。</p>
     <dl class="params">
-      <dt>font</dt><dd><span class="zh">.ttf/.otf/.ttc 文件路径或文件句柄;文件缺失抛 <code>cannot open resource</code>。</span></dd>
+      <dt>font</dt><dd><span>.ttf/.otf/.ttc 文件路径或文件句柄;文件缺失抛 <code>cannot open resource</code>。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:FreeTypeFont 对象。</span></p>
+    <p class="returns"><span>返回:FreeTypeFont 对象。</span></p>
   </section>
 
   <section class="api" id="ImageFont.LoadPath">
     <h3>LoadPath / Load <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageFont.LoadPath(filename)   ;  alias: Load(filename), load_path(filename)</pre>
     
-    <p class="zh">从路径加载字体(同 Pillow 的 <code>load_path</code>)。</p>
+    <p>从路径加载字体(同 Pillow 的 <code>load_path</code>)。</p>
   </section>
 
   <section class="api" id="ImageFont.LoadDefault">
     <h3>LoadDefault <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageFont.LoadDefault()   ;  alias: load_default()</pre>
     
-    <p class="zh">加载 Pillow 的默认位图字体。</p>
-    <p class="warn"><span class="zh">边界:内置默认字体与 Pillow 的 Aileron 不同(运行时自带默认字形集),故默认字体度量形态一致但非逐字节相同;用默认字体绘图走原生管线。见<a href="boundaries.html">行为边界</a>。</span></p>
+    <p>加载 Pillow 的默认位图字体。</p>
+    <p class="warn"><span>边界:内置默认字体与 Pillow 的 Aileron 不同(运行时自带默认字形集),故默认字体度量形态一致但非逐字节相同;用默认字体绘图走原生管线。见<a href="boundaries.html">行为边界</a>。</span></p>
   </section>
 
   <h2 id="freetype">FreeTypeFont 对象</h2>
@@ -80,81 +80,81 @@
     <h3>GetMetrics</h3>
     <pre class="sig">font.GetMetrics()</pre>
     
-    <p class="zh">返回含字面度量的 Map:<code>ascent</code>、<code>descent</code>(像素,FreeType 规则)。</p>
+    <p>返回含字面度量的 Map:<code>ascent</code>、<code>descent</code>(像素,FreeType 规则)。</p>
   </section>
 
   <section class="api" id="ImageFont.GetName">
     <h3>GetName</h3>
     <pre class="sig">font.GetName()</pre>
     
-    <p class="zh">返回字体家族名(如 <code>"DejaVu Sans"</code>)。</p>
+    <p>返回字体家族名(如 <code>"DejaVu Sans"</code>)。</p>
   </section>
 
   <section class="api" id="ImageFont.GetLength">
     <h3>GetLength</h3>
     <pre class="sig">font.GetLength(text, mode := "", direction := unset, features := unset, language := unset)</pre>
     
-    <p class="zh">返回文字的前进宽度(像素)。多行文字遵循 Pillow 的最长行规则。</p>
+    <p>返回文字的前进宽度(像素)。多行文字遵循 Pillow 的最长行规则。</p>
   </section>
 
   <section class="api" id="ImageFont.GetBbox">
     <h3>GetBbox</h3>
     <pre class="sig">font.GetBbox(text, anchor := unset, mode := "", direction := unset, features := unset, language := unset, strokeWidth := 0)</pre>
     
-    <p class="zh">返回相对锚点的墨迹包围盒 <code>[left, top, right, bottom]</code>;<code>strokeWidth</code> 按 Pillow 方式扩大包围盒。</p>
-    <p class="note"><span class="zh">门面说明:<code>anchor</code> 在此为第二个位置参数(Pillow 为倒数第二个);<code>mode</code>/<code>direction</code>/<code>features</code>/<code>language</code> 接受但忽略。锚点算法复刻 Pillow 的 em-box 规则(水平 m→居中、r→右缘;垂直 a→0、t→墨迹顶、m→居中、s/b→墨迹底、d→下沉)。</span></p>
+    <p>返回相对锚点的墨迹包围盒 <code>[left, top, right, bottom]</code>;<code>strokeWidth</code> 按 Pillow 方式扩大包围盒。</p>
+    <p class="note"><span>门面说明:<code>anchor</code> 在此为第二个位置参数(Pillow 为倒数第二个);<code>mode</code>/<code>direction</code>/<code>features</code>/<code>language</code> 接受但忽略。锚点算法复刻 Pillow 的 em-box 规则(水平 m→居中、r→右缘;垂直 a→0、t→墨迹顶、m→居中、s/b→墨迹底、d→下沉)。</span></p>
   </section>
 
   <section class="api" id="ImageFont.GetMask">
     <h3>GetMask</h3>
     <pre class="sig">font.GetMask(text, mode := "", ink := 0, direction := unset, features := unset, language := unset, strokeWidth := 0, anchor := unset, start := unset)</pre>
     
-    <p class="zh">把文字渲染为 Image:模式 <code>""</code>/<code>"L"</code>/<code>"1"</code>/未知 → L(模式 "1" 含单色取整度量);<code>"RGBA"</code> → alpha 随 ink 缩放的 RGBA。</p>
-    <p class="note"><span class="zh">边界:字形由 GDI 栅格化(gray8 墨迹值为已记录的栅格化差异);<code>strokeWidth</code>/<code>anchor</code>/<code>start</code> 接受但忽略(FreeType 描边边界)。</span></p>
+    <p>把文字渲染为 Image:模式 <code>""</code>/<code>"L"</code>/<code>"1"</code>/未知 → L(模式 "1" 含单色取整度量);<code>"RGBA"</code> → alpha 随 ink 缩放的 RGBA。</p>
+    <p class="note"><span>边界:字形由 GDI 栅格化(gray8 墨迹值为已记录的栅格化差异);<code>strokeWidth</code>/<code>anchor</code>/<code>start</code> 接受但忽略(FreeType 描边边界)。</span></p>
   </section>
 
   <section class="api" id="ImageFont.GetMask2">
     <h3>GetMask2</h3>
     <pre class="sig">font.GetMask2(text, mode := "", ink := 0, args*)</pre>
     
-    <p class="zh">Pillow 的 <code>getmask2</code>:返回 <code>[mask, offset]</code>,offset 为包围盒左上角。</p>
+    <p>Pillow 的 <code>getmask2</code>:返回 <code>[mask, offset]</code>,offset 为包围盒左上角。</p>
   </section>
 
   <section class="api" id="ImageFont.FontVariant">
     <h3>FontVariant</h3>
     <pre class="sig">font.FontVariant(font := unset, size := unset, index := unset, encoding := unset, layoutEngine := unset)</pre>
     
-    <p class="zh">返回覆盖了指定属性的字体副本(Pillow 的 <code>font_variant</code>)。</p>
+    <p>返回覆盖了指定属性的字体副本(Pillow 的 <code>font_variant</code>)。</p>
   </section>
 
   <section class="api" id="ImageFont.GetVariationAxes">
     <h3>GetVariationAxes</h3>
     <pre class="sig">font.GetVariationAxes()   ;  alias: get_variation_axes()</pre>
     
-    <p class="zh">返回可变字体 fvar 轴,为 Map 数组:<code>name</code>(字节)、<code>minimum</code>、<code>default</code>、<code>maximum</code>。</p>
+    <p>返回可变字体 fvar 轴,为 Map 数组:<code>name</code>(字节)、<code>minimum</code>、<code>default</code>、<code>maximum</code>。</p>
   </section>
 
   <section class="api" id="ImageFont.GetVariationNames">
     <h3>GetVariationNames</h3>
     <pre class="sig">font.GetVariationNames()   ;  alias: get_variation_names()</pre>
     
-    <p class="zh">返回命名实例(如 <code>"Regular"</code>、<code>"Bold"</code>)的字节串数组。</p>
+    <p>返回命名实例(如 <code>"Regular"</code>、<code>"Bold"</code>)的字节串数组。</p>
   </section>
 
   <section class="api" id="ImageFont.SetVariationByAxes">
     <h3>SetVariationByAxes</h3>
     <pre class="sig">font.SetVariationByAxes(axes)   ;  alias: set_variation_by_axes()</pre>
     
-    <p class="zh">按每轴数值数组设置变体坐标(长度须精确匹配)。</p>
-    <p class="note"><span class="zh">对齐:完整复刻引擎——avar 分段映射、HVAR 变体数据存储(格式 0/1,FreeType 区域标量)与 26.6 定点字宽增量;报错形态与 Pillow 一致(<code>argument must be a list</code>、非可变字体的 <code>invalid argument</code> OSError)。</span></p>
+    <p>按每轴数值数组设置变体坐标(长度须精确匹配)。</p>
+    <p class="note"><span>对齐:完整复刻引擎——avar 分段映射、HVAR 变体数据存储(格式 0/1,FreeType 区域标量)与 26.6 定点字宽增量;报错形态与 Pillow 一致(<code>argument must be a list</code>、非可变字体的 <code>invalid argument</code> OSError)。</span></p>
   </section>
 
   <section class="api" id="ImageFont.SetVariationByName">
     <h3>SetVariationByName</h3>
     <pre class="sig">font.SetVariationByName(name)   ;  alias: set_variation_by_name()</pre>
     
-    <p class="zh">选择命名实例。</p>
-    <p class="note"><span class="zh">对齐:未知名称抛 Pillow 原样的 <code>b'&lt;name&gt;' is not in list</code>。</span></p>
+    <p>选择命名实例。</p>
+    <p class="note"><span>对齐:未知名称抛 Pillow 原样的 <code>b'&lt;name&gt;' is not in list</code>。</span></p>
   </section>
 
   <h2 id="other">TransposedFont 与 Layout</h2>
@@ -163,8 +163,8 @@
     <h3>TransposedFont <span class="kind">class</span></h3>
     <pre class="sig">Pillow.ImageFont.TransposedFont(font, orientation := unset)</pre>
     
-    <p class="zh">以 EXIF 方向包装字体;暴露 <code>GetMask</code>、<code>GetBbox</code>、<code>GetLength</code>(方向存储、精确的 <code>(0, 0, w, h)</code> getbbox 归一化与 90/270 宽高互换、getlength 委托)。</p>
-    <p class="note"><span class="zh">对齐:90/270 的 GetLength 抛 <code>text length is undefined for text rotated by 90 or 270 degrees</code>。</span></p>
+    <p>以 EXIF 方向包装字体;暴露 <code>GetMask</code>、<code>GetBbox</code>、<code>GetLength</code>(方向存储、精确的 <code>(0, 0, w, h)</code> getbbox 归一化与 90/270 宽高互换、getlength 委托)。</p>
+    <p class="note"><span>对齐:90/270 的 GetLength 抛 <code>text length is undefined for text rotated by 90 or 270 degrees</code>。</span></p>
   </section>
 
   <section class="api" id="ImageFont.Layout">
@@ -172,15 +172,15 @@
     <pre class="sig">Pillow.ImageFont.Layout.BASIC := 0
 Pillow.ImageFont.Layout.RAQM   := 1</pre>
     
-    <p class="zh">排版引擎常量;RAQM 被接受,但本运行时为无 libraqm 构建(文字方向选项抛 Pillow 的 KeyError 形态)。</p>
+    <p>排版引擎常量;RAQM 被接受,但本运行时为无 libraqm 构建(文字方向选项抛 Pillow 的 KeyError 形态)。</p>
   </section>
 
   <h2 id="internals">内部辅助</h2>
-  <p class="note"><span class="zh"><code>CheckStringLength</code>(超长文字按 Pillow 报错拒绝)、<code>LoadDefaultImagefont</code>(加载内置默认位图字体)与 <code>ResolveWindowsFont</code>(Windows 字体路径解析)为门面内部函数——对门面公开使用,不属于 Pillow 风格的用户 API。FreeTypeFont 上的 <code>Close</code>、<code>RequireHandle</code>、<code>DuplicateHandle</code> 与 <code>IsVariable</code> 是公开表面背后的原生句柄生命周期辅助。</span></p>
+  <p class="note"><span><code>CheckStringLength</code>(超长文字按 Pillow 报错拒绝)、<code>LoadDefaultImagefont</code>(加载内置默认位图字体)与 <code>ResolveWindowsFont</code>(Windows 字体路径解析)为门面内部函数——对门面公开使用,不属于 Pillow 风格的用户 API。FreeTypeFont 上的 <code>Close</code>、<code>RequireHandle</code>、<code>DuplicateHandle</code> 与 <code>IsVariable</code> 是公开表面背后的原生句柄生命周期辅助。</span></p>
 
   <h2 id="examples">示例</h2>
   
-  <p class="zh">加载可变字体、度量与渲染:</p>
+  <p>加载可变字体、度量与渲染:</p>
   <pre class="example">font := Pillow.ImageFont.Truetype("C:\Windows\Fonts\bahnschrift.ttf", 24)
 axes := font.GetVariationAxes()          ;  e.g. [{"name": b"wght", "minimum": 300, ...}]
 font.SetVariationByName("Bold")
@@ -188,6 +188,5 @@ mask := font.GetMask2("Hi")              ;  [L-image, offset]
 bb   := font.GetBbox("Hi")               ;  [left, top, right, bottom]
 len  := font.GetLength("Hi")</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

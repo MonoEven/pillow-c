@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,9 +44,9 @@
   <div class="crumbs"><a href="../index.html">首页</a> » ImageChops</div>
   <h1>ImageChops <span class="kind">模块</span></h1>
   
-  <p class="zh"><code>ImageChops</code> 模块提供通道("chops")运算——图像间的算术、按位与混合运算。二元运算要求两幅图像模式与尺寸一致,且每个函数都返回<b>新</b> Image、不修改输入(Pillow 语义)。</p>
-  <p class="note"><span class="zh">命名:主名为 PascalCase。AHK 方法查找不区分大小写,故 Pillow 不含下划线的 snake_case 名(<code>blend</code>、<code>difference</code>、<code>multiply</code>、<code>lighter</code>……)自动解析到同名主方法;七个含下划线形式(<code>add_modulo</code>、<code>hard_light</code>、<code>logical_and</code>、<code>logical_or</code>、<code>logical_xor</code>、<code>soft_light</code>、<code>subtract_modulo</code>)以显式别名声明。</span></p>
-  <p class="note"><span class="zh">对齐:二元运算的模式/尺寸不符抛 Pillow 的状态错误;当两操作数均为 <code>I</code> 或 <code>F</code> 模式时,错误以 Pillow 原样的 <code>image has wrong mode</code> 呈现。</span></p>
+  <p><code>ImageChops</code> 模块提供通道("chops")运算——图像间的算术、按位与混合运算。二元运算要求两幅图像模式与尺寸一致,且每个函数都返回<b>新</b> Image、不修改输入(Pillow 语义)。</p>
+  <p class="note"><span>命名:主名为 PascalCase。AHK 方法查找不区分大小写,故 Pillow 不含下划线的 snake_case 名(<code>blend</code>、<code>difference</code>、<code>multiply</code>、<code>lighter</code>……)自动解析到同名主方法;七个含下划线形式(<code>add_modulo</code>、<code>hard_light</code>、<code>logical_and</code>、<code>logical_or</code>、<code>logical_xor</code>、<code>soft_light</code>、<code>subtract_modulo</code>)以显式别名声明。</span></p>
+  <p class="note"><span>对齐:二元运算的模式/尺寸不符抛 Pillow 的状态错误;当两操作数均为 <code>I</code> 或 <code>F</code> 模式时,错误以 Pillow 原样的 <code>image has wrong mode</code> 呈现。</span></p>
 
   <h2 id="unary">单图运算</h2>
 
@@ -54,38 +54,38 @@
     <h3>Constant <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Constant(image, value)</pre>
     
-    <p class="zh">返回与 <code>image</code> 同模式同尺寸、以单一数值填充的图像。</p>
+    <p>返回与 <code>image</code> 同模式同尺寸、以单一数值填充的图像。</p>
     <dl class="params">
-      <dt>value</dt><dd><span class="zh">整数填充值;非整数抛 <code>Pillow.ImageChops.Constant value must be an integer</code>。</span></dd>
+      <dt>value</dt><dd><span>整数填充值;非整数抛 <code>Pillow.ImageChops.Constant value must be an integer</code>。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.Duplicate">
     <h3>Duplicate <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Duplicate(image)</pre>
     
-    <p class="zh">返回图像的完整副本(Pillow 的 <code>ImageChops.duplicate</code>,等价于 <code>image.Copy()</code>)。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>返回图像的完整副本(Pillow 的 <code>ImageChops.duplicate</code>,等价于 <code>image.Copy()</code>)。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.Invert">
     <h3>Invert <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Invert(image)</pre>
     
-    <p class="zh">反转每个像素:<code>out = MAX − a</code>,其中 MAX 为该模式的最大值(L/RGB 为 255、<code>"1"</code> 模式为 1……)。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>反转每个像素:<code>out = MAX − a</code>,其中 MAX 为该模式的最大值(L/RGB 为 255、<code>"1"</code> 模式为 1……)。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.Offset">
     <h3>Offset <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Offset(image, xoffset, yoffset := unset)</pre>
     
-    <p class="zh">把图像平移 <code>(xoffset, yoffset)</code> 像素;腾出的区域以 0 填充。省略 <code>yoffset</code> 时默认取 <code>xoffset</code>。</p>
+    <p>把图像平移 <code>(xoffset, yoffset)</code> 像素;腾出的区域以 0 填充。省略 <code>yoffset</code> 时默认取 <code>xoffset</code>。</p>
     <dl class="params">
-      <dt>xoffset / yoffset</dt><dd><span class="zh">整数像素偏移(正值为向右/向下);非整数抛校验错误。</span></dd>
+      <dt>xoffset / yoffset</dt><dd><span>整数像素偏移(正值为向右/向下);非整数抛校验错误。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <h2 id="arithmetic">算术运算</h2>
@@ -94,62 +94,62 @@
     <h3>Add <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Add(left, right, scale := 1.0, offset := 0)</pre>
     
-    <p class="zh">两图相加:<code>out = (left + right) / scale + offset</code>。</p>
+    <p>两图相加:<code>out = (left + right) / scale + offset</code>。</p>
     <dl class="params">
-      <dt>scale / offset</dt><dd><span class="zh">数值除数与加数;非数值抛校验错误。</span></dd>
+      <dt>scale / offset</dt><dd><span>数值除数与加数;非数值抛校验错误。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.Subtract">
     <h3>Subtract <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Subtract(left, right, scale := 1.0, offset := 0)</pre>
     
-    <p class="zh">两图相减:<code>out = (left − right) / scale + offset</code>。</p>
+    <p>两图相减:<code>out = (left − right) / scale + offset</code>。</p>
     <dl class="params">
-      <dt>scale / offset</dt><dd><span class="zh">数值除数与加数;非数值抛校验错误。</span></dd>
+      <dt>scale / offset</dt><dd><span>数值除数与加数;非数值抛校验错误。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.AddModulo">
     <h3>AddModulo <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.AddModulo(left, right)</pre>
     
-    <p class="zh">两图相加并对模式范围取模回绕(8 位模式按 256 取模)。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>两图相加并对模式范围取模回绕(8 位模式按 256 取模)。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.SubtractModulo">
     <h3>SubtractModulo <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.SubtractModulo(left, right)</pre>
     
-    <p class="zh">两图相减并对模式范围取模回绕(8 位模式按 256 取模)。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>两图相减并对模式范围取模回绕(8 位模式按 256 取模)。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.Difference">
     <h3>Difference <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Difference(left, right)</pre>
     
-    <p class="zh">逐像素取绝对差:<code>out = abs(left − right)</code>。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>逐像素取绝对差:<code>out = abs(left − right)</code>。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.Multiply">
     <h3>Multiply <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Multiply(left, right)</pre>
     
-    <p class="zh">两图相乘:<code>out = left * right / 255</code>。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>两图相乘:<code>out = left * right / 255</code>。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.Screen">
     <h3>Screen <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Screen(left, right)</pre>
     
-    <p class="zh">滤色混合:<code>out = 255 − ((255 − left) * (255 − right) / 255)</code>。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>滤色混合:<code>out = 255 − ((255 − left) * (255 − right) / 255)</code>。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <h2 id="blend">混合</h2>
@@ -158,104 +158,104 @@
     <h3>Blend <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Blend(left, right, alpha)</pre>
     
-    <p class="zh">两幅同尺寸图像线性插值:<code>out = left * (1 − alpha) + right * alpha</code>。委托给 <code>Pillow.Image.Blend</code>。</p>
+    <p>两幅同尺寸图像线性插值:<code>out = left * (1 − alpha) + right * alpha</code>。委托给 <code>Pillow.Image.Blend</code>。</p>
     <dl class="params">
-      <dt>alpha</dt><dd><span class="zh">0.0…1.0 之间的数;0 返回左图,1 返回右图。</span></dd>
+      <dt>alpha</dt><dd><span>0.0…1.0 之间的数;0 返回左图,1 返回右图。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.Composite">
     <h3>Composite <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Composite(image1, image2, mask)</pre>
     
-    <p class="zh"><code>mask</code> 为 255 处取 <code>image1</code>、为 0 处取 <code>image2</code>;中间值不混合(与 Blend 不同)。委托给 <code>Pillow.Image.Composite</code>。</p>
+    <p><code>mask</code> 为 255 处取 <code>image1</code>、为 0 处取 <code>image2</code>;中间值不混合(与 Blend 不同)。委托给 <code>Pillow.Image.Composite</code>。</p>
     <dl class="params">
-      <dt>mask</dt><dd><span class="zh"><code>1</code>/<code>L</code>/<code>LA</code>/<code>RGBA</code> 模式图像;其他模式抛 <code>bad transparency mask</code>。</span></dd>
+      <dt>mask</dt><dd><span><code>1</code>/<code>L</code>/<code>LA</code>/<code>RGBA</code> 模式图像;其他模式抛 <code>bad transparency mask</code>。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.Darker">
     <h3>Darker <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Darker(left, right)</pre>
     
-    <p class="zh">逐像素取较小值:<code>out = min(left, right)</code>。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>逐像素取较小值:<code>out = min(left, right)</code>。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.Lighter">
     <h3>Lighter <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Lighter(left, right)</pre>
     
-    <p class="zh">逐像素取较大值:<code>out = max(left, right)</code>。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>逐像素取较大值:<code>out = max(left, right)</code>。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.Overlay">
     <h3>Overlay <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.Overlay(left, right)</pre>
     
-    <p class="zh">叠加混合:亮部取滤色、暗部取正片叠底,综合两幅图像。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>叠加混合:亮部取滤色、暗部取正片叠底,综合两幅图像。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.SoftLight">
     <h3>SoftLight <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.SoftLight(left, right)</pre>
     
-    <p class="zh">柔光混合,使用 Pillow 标准公式(HardLight 的柔和版本)。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>柔光混合,使用 Pillow 标准公式(HardLight 的柔和版本)。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.HardLight">
     <h3>HardLight <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.HardLight(left, right)</pre>
     
-    <p class="zh">强光混合,使用 Pillow 标准公式:与 Overlay 相同但两操作数对调。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>强光混合,使用 Pillow 标准公式:与 Overlay 相同但两操作数对调。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <h2 id="logical">按位逻辑</h2>
   
-  <p class="zh">逻辑运算作用于 <code>"1"</code> 模式图像(0 / 255):逐像素按位运算,结果非零处为 255、否则为 0。</p>
+  <p>逻辑运算作用于 <code>"1"</code> 模式图像(0 / 255):逐像素按位运算,结果非零处为 255、否则为 0。</p>
 
   <section class="api" id="ImageChops.LogicalAnd">
     <h3>LogicalAnd <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.LogicalAnd(left, right)</pre>
     
-    <p class="zh">按位与:<code>left &amp; right</code> 非零处为 255,否则为 0。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>按位与:<code>left &amp; right</code> 非零处为 255,否则为 0。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.LogicalOr">
     <h3>LogicalOr <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.LogicalOr(left, right)</pre>
     
-    <p class="zh">按位或:<code>left | right</code> 非零处为 255,否则为 0。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>按位或:<code>left | right</code> 非零处为 255,否则为 0。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <section class="api" id="ImageChops.LogicalXor">
     <h3>LogicalXor <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageChops.LogicalXor(left, right)</pre>
     
-    <p class="zh">按位异或:<code>left ^ right</code> 非零处为 255,否则为 0。</p>
-    <p class="returns"><span class="zh">返回:新 Image。</span></p>
+    <p>按位异或:<code>left ^ right</code> 非零处为 255,否则为 0。</p>
+    <p class="returns"><span>返回:新 Image。</span></p>
   </section>
 
   <h2 id="internals">内部辅助</h2>
   
-  <p class="zh">以下成员实现上述运算共用的 DLL 管道。它们对门面内部公开,但不属于 Pillow 风格的用户 API。</p>
+  <p>以下成员实现上述运算共用的 DLL 管道。它们对门面内部公开,但不属于 Pillow 风格的用户 API。</p>
   <table class="appendix">
     <tr><th>Helper</th><th>中文</th></tr>
-    <tr><td><code>BinaryOperation(exportName, left, right, operationName)</code></td><td><span class="zh">以 scale/offset 执行原生带缩放二元运算(Add/Subtract)。</span></td></tr>
-    <tr><td><code>CheckBinaryStatus(status, left, right)</code></td><td><span class="zh">校验 <code>Pillow.Image</code> 参数并返回其原生句柄。</span></td></tr>
+    <tr><td><code>BinaryOperation(exportName, left, right, operationName)</code></td><td><span>以 scale/offset 执行原生带缩放二元运算(Add/Subtract)。</span></td></tr>
+    <tr><td><code>CheckBinaryStatus(status, left, right)</code></td><td><span>校验 <code>Pillow.Image</code> 参数并返回其原生句柄。</span></td></tr>
   </table>
 
   <h2 id="examples">示例</h2>
   
-  <p class="zh">打开两幅图像并取较暗者,再计算两者绝对差并保存。</p>
+  <p>打开两幅图像并取较暗者,再计算两者绝对差并保存。</p>
   <pre class="example">img1 := Pillow.Image.Open("photo1.jpg")
 img2 := Pillow.Image.Open("photo2.jpg")
 dark  := Pillow.ImageChops.Darker(img1, img2)      ; 逐像素较小值
@@ -264,6 +264,5 @@ diff  := Pillow.ImageChops.Difference(img1, img2)  ;  abs(a - b)
 diff.Save("diff.png")
 img1.Close(), img2.Close(), dark.Close(), lite.Close(), diff.Close()</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,32 +44,32 @@
   <div class="crumbs"><a href="../index.html">首页</a> » ImageGrab</div>
   <h1>ImageGrab <span class="kind">模块</span></h1>
   
-  <p class="zh"><code>ImageGrab</code> 模块把屏幕或剪贴板内容捕获为 <code>Image</code>。在此 facade 中它是仅限 Windows 的接缝,由原生 GDI/BitBlt 路径(<code>pillow_c_image_grab</code>)支撑。</p>
+  <p><code>ImageGrab</code> 模块把屏幕或剪贴板内容捕获为 <code>Image</code>。在此 facade 中它是仅限 Windows 的接缝,由原生 GDI/BitBlt 路径(<code>pillow_c_image_grab</code>)支撑。</p>
 
   <section class="api" id="ImageGrab.Grab">
     <h3>Grab <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageGrab.Grab(bbox := unset, includeLayeredWindows := false, allScreens := false)</pre>
     
-    <p class="zh">把屏幕区域捕获为 RGB <code>Image</code>。<code>bbox</code> 是按 <code>[left, top, right, bottom]</code>(x1/y1/x2/y2,同 Pillow 的 Windows grab)排列的四值矩形:源码从 <code>bbox[1..4]</code> 取 <code>left/top/right/bottom</code>,并拒绝 <code>right &lt; left</code> 或 <code>bottom &lt; top</code>。</p>
+    <p>把屏幕区域捕获为 RGB <code>Image</code>。<code>bbox</code> 是按 <code>[left, top, right, bottom]</code>(x1/y1/x2/y2,同 Pillow 的 Windows grab)排列的四值矩形:源码从 <code>bbox[1..4]</code> 取 <code>left/top/right/bottom</code>,并拒绝 <code>right &lt; left</code> 或 <code>bottom &lt; top</code>。</p>
     <dl class="params">
-      <dt>bbox</dt><dd><span class="zh">可选的四值 <code>[left, top, right, bottom]</code> 矩形;<code>unset</code> 时捕获整个屏幕。</span></dd>
-      <dt>includeLayeredWindows</dt><dd><span class="zh">是否包含分层窗口(Windows 标志)。</span></dd>
-      <dt>allScreens</dt><dd><span class="zh">捕获跨所有显示器的虚拟桌面,而非主屏幕。</span></dd>
+      <dt>bbox</dt><dd><span>可选的四值 <code>[left, top, right, bottom]</code> 矩形;<code>unset</code> 时捕获整个屏幕。</span></dd>
+      <dt>includeLayeredWindows</dt><dd><span>是否包含分层窗口(Windows 标志)。</span></dd>
+      <dt>allScreens</dt><dd><span>捕获跨所有显示器的虚拟桌面,而非主屏幕。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:捕获区域的 RGB <code>Image</code>。</span></p>
-    <p class="note"><span class="zh">未提供 <code>bbox</code> 时:<code>allScreens := true</code> 取 <code>GetSystemMetrics</code>(76/77/78/79)的虚拟屏幕矩形;否则取 <code>GetSystemMetrics</code>(0/1)的主屏幕,<code>left</code>/<code>top</code> 为 0。坐标为这些度量返回的逻辑像素;原生捕获失败(status -3)抛 Pillow 的 <code>screen grab failed</code>。</span></p>
+    <p class="returns"><span>返回:捕获区域的 RGB <code>Image</code>。</span></p>
+    <p class="note"><span>未提供 <code>bbox</code> 时:<code>allScreens := true</code> 取 <code>GetSystemMetrics</code>(76/77/78/79)的虚拟屏幕矩形;否则取 <code>GetSystemMetrics</code>(0/1)的主屏幕,<code>left</code>/<code>top</code> 为 0。坐标为这些度量返回的逻辑像素;原生捕获失败(status -3)抛 Pillow 的 <code>screen grab failed</code>。</span></p>
   </section>
 
   <section class="api" id="ImageGrab.GrabClipboard">
     <h3>GrabClipboard <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageGrab.GrabClipboard()</pre>
     
-    <p class="zh">通过 <code>pillow_c_image_grab_clipboard</code> 从 Windows 剪贴板捕获图像。返回 <code>Image</code>;剪贴板没有图像时返回 <code>0</code>(此运行时的 <code>None</code> 对应物)。</p>
+    <p>通过 <code>pillow_c_image_grab_clipboard</code> 从 Windows 剪贴板捕获图像。返回 <code>Image</code>;剪贴板没有图像时返回 <code>0</code>(此运行时的 <code>None</code> 对应物)。</p>
   </section>
 
   <h2 id="examples">示例</h2>
   
-  <p class="zh">捕获主屏幕与一块区域,并分别保存为 PNG:</p>
+  <p>捕获主屏幕与一块区域,并分别保存为 PNG:</p>
   <pre class="example">img := Pillow.ImageGrab.Grab()
 img.Save("screenshot.png")
 img.Close()
@@ -78,6 +78,5 @@ region := Pillow.ImageGrab.Grab([100, 100, 500, 400])   ;  [left, top, right, bo
 region.Save("region.png")
 region.Close()</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

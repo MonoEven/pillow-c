@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,40 +44,39 @@
   <div class="crumbs"><a href="../index.html">首页</a> » ImageTk</div>
   <h1>ImageTk <span class="kind">模块</span></h1>
   
-  <p class="zh"><code>ImageTk</code> 模块对应 Pillow&nbsp;11.3.0 的 <code>PIL.ImageTk</code>:用于 Tk <code>Canvas</code>、<code>Label</code> 或 <code>Button</code> 的 Tkinter 兼容图像对象(<code>PhotoImage</code>、<code>BitmapImage</code>)。</p>
-  <p class="note"><span class="zh">本运行时不含 Tk 解释器,因此构造任一类都显式失败,抛出 Pillow&nbsp;11.3.0 的原样报错 <code>Too early to create image: no default root window</code>(即根窗口尚不存在时 Tkinter 抛出的 <code>RuntimeError</code>)。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
+  <p><code>ImageTk</code> 模块对应 Pillow&nbsp;11.3.0 的 <code>PIL.ImageTk</code>:用于 Tk <code>Canvas</code>、<code>Label</code> 或 <code>Button</code> 的 Tkinter 兼容图像对象(<code>PhotoImage</code>、<code>BitmapImage</code>)。</p>
+  <p class="note"><span>本运行时不含 Tk 解释器,因此构造任一类都显式失败,抛出 Pillow&nbsp;11.3.0 的原样报错 <code>Too early to create image: no default root window</code>(即根窗口尚不存在时 Tkinter 抛出的 <code>RuntimeError</code>)。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
 
   <section class="api" id="ImageTk.PhotoImage">
     <h3>PhotoImage <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageTk.PhotoImage(image := unset, args*)</pre>
     
-    <p class="zh">Pillow 的 <code>ImageTk.PhotoImage(image, size=None, **kw)</code> 由 Pillow <code>Image</code> 构造 Tkinter 兼容的照片图像(Tk 的 <code>PhotoImage</code>),并按 Tk 的要求转换模式(如 RGBA → 带透明索引的 P)。</p>
+    <p>Pillow 的 <code>ImageTk.PhotoImage(image, size=None, **kw)</code> 由 Pillow <code>Image</code> 构造 Tkinter 兼容的照片图像(Tk 的 <code>PhotoImage</code>),并按 Tk 的要求转换模式(如 RGBA → 带透明索引的 P)。</p>
     <dl class="params">
-      <dt>image</dt><dd><span class="zh">要包装的 Pillow Image(唯一的位置参数)。</span></dd>
-      <dt>args*</dt><dd><span class="zh">额外的 Tkinter 关键字(如 <code>size</code>);仅为签名兼容而接受并被忽略——构造在用到它们之前即失败。</span></dd>
+      <dt>image</dt><dd><span>要包装的 Pillow Image(唯一的位置参数)。</span></dd>
+      <dt>args*</dt><dd><span>额外的 Tkinter 关键字(如 <code>size</code>);仅为签名兼容而接受并被忽略——构造在用到它们之前即失败。</span></dd>
     </dl>
-    <p class="warn"><span class="zh">边界:构造抛 Pillow 原样的 <code>Too early to create image: no default root window</code>。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
+    <p class="warn"><span>边界:构造抛 Pillow 原样的 <code>Too early to create image: no default root window</code>。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
   </section>
 
   <section class="api" id="ImageTk.BitmapImage">
     <h3>BitmapImage <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageTk.BitmapImage(image := unset, args*)</pre>
     
-    <p class="zh">Pillow 的 <code>ImageTk.BitmapImage(image, size=None, **kw)</code> 为 1 位(模式 <code>"1"</code>)Pillow <code>Image</code> 构造 Tkinter 兼容的位图图像(Tk 的 <code>BitmapImage</code>)。</p>
+    <p>Pillow 的 <code>ImageTk.BitmapImage(image, size=None, **kw)</code> 为 1 位(模式 <code>"1"</code>)Pillow <code>Image</code> 构造 Tkinter 兼容的位图图像(Tk 的 <code>BitmapImage</code>)。</p>
     <dl class="params">
-      <dt>image</dt><dd><span class="zh">要包装的 1 位 Pillow Image(唯一的位置参数)。</span></dd>
-      <dt>args*</dt><dd><span class="zh">额外的 Tkinter 关键字(如 <code>size</code>);仅为签名兼容而接受并被忽略——构造在用到它们之前即失败。</span></dd>
+      <dt>image</dt><dd><span>要包装的 1 位 Pillow Image(唯一的位置参数)。</span></dd>
+      <dt>args*</dt><dd><span>额外的 Tkinter 关键字(如 <code>size</code>);仅为签名兼容而接受并被忽略——构造在用到它们之前即失败。</span></dd>
     </dl>
-    <p class="warn"><span class="zh">边界:构造抛 Pillow 原样的 <code>Too early to create image: no default root window</code>。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
+    <p class="warn"><span>边界:构造抛 Pillow 原样的 <code>Too early to create image: no default root window</code>。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
   </section>
 
   <section class="api" id="ImageTk.RequireTk">
     <h3>RequireTk <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageTk.RequireTk()</pre>
     
-    <p class="zh">内部辅助:抛出边界错误 <code>Too early to create image: no default root window</code>。两个构造函数都委托给它。</p>
+    <p>内部辅助:抛出边界错误 <code>Too early to create image: no default root window</code>。两个构造函数都委托给它。</p>
   </section>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

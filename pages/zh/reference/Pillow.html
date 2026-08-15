@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,13 +44,13 @@
   <div class="crumbs"><a href="../index.html">首页</a> » Pillow</div>
   <h1>Pillow <span class="kind">entry class</span></h1>
   
-  <p class="zh"><code>Pillow</code> 类是门面根:承载各模块类(<code>Image</code>、<code>ImageDraw</code>……)、常量枚举与 DLL 管道。</p>
+  <p><code>Pillow</code> 类是门面根:承载各模块类(<code>Image</code>、<code>ImageDraw</code>……)、常量枚举与 DLL 管道。</p>
 
   <section class="api" id="Pillow.Configure">
     <h3>Configure <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Configure(options := unset)</pre>
     
-    <p class="zh">配置门面。选项:<code>DllPath</code>(<code>pillow_c.dll</code> 的路径)。使用任何图像 API 前调用一次。</p>
+    <p>配置门面。选项:<code>DllPath</code>(<code>pillow_c.dll</code> 的路径)。使用任何图像 API 前调用一次。</p>
     <pre class="example">Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })</pre>
   </section>
 
@@ -58,7 +58,7 @@
     <h3>AbiVersion <span class="kind">static</span></h3>
     <pre class="sig">Pillow.AbiVersion()</pre>
     
-    <p class="zh">返回 DLL ABI 版本号。</p>
+    <p>返回 DLL ABI 版本号。</p>
   </section>
 
   <section class="api" id="Pillow.Status">
@@ -66,7 +66,7 @@
     <pre class="sig">Pillow.CheckStatus(statusCode)      ;  raises on error statuses
 Pillow.StatusMessage(statusCode)    ;  status text</pre>
     
-    <p class="zh">CheckStatus 把原生状态码(<code>PILLOW_C_OK=0</code>、<code>NULL_POINTER=-1</code>、<code>INVALID_LENGTH=-2</code>、<code>INVALID_ARGUMENT=-3</code>、<code>ALLOCATION_FAILED=-4</code>)转为抛出的 Error 或空操作;StatusMessage 返回可读文本。</p>
+    <p>CheckStatus 把原生状态码(<code>PILLOW_C_OK=0</code>、<code>NULL_POINTER=-1</code>、<code>INVALID_LENGTH=-2</code>、<code>INVALID_ARGUMENT=-3</code>、<code>ALLOCATION_FAILED=-4</code>)转为抛出的 Error 或空操作;StatusMessage 返回可读文本。</p>
   </section>
 
   <section class="api" id="Pillow.ModeId">
@@ -74,7 +74,7 @@ Pillow.StatusMessage(statusCode)    ;  status text</pre>
     <pre class="sig">Pillow.ModeId(modeName)   ;  "L" → 8, "RGB" → 3, "RGBA" → 4, "I" → 8(int), "F" → 9, ...
 Pillow.ModeName(mode)     ;  reverse mapping</pre>
     
-    <p class="zh">在模式字符串与原生模式 id 之间转换。</p>
+    <p>在模式字符串与原生模式 id 之间转换。</p>
   </section>
 
   <section class="api" id="Pillow.Dll">
@@ -83,9 +83,8 @@ Pillow.ModeName(mode)     ;  reverse mapping</pre>
 Pillow.EnsureDllLoaded()              ;  loads the DLL once
 Pillow.WrapImageHandle(handle)        ;  native handle → Pillow.Image</pre>
     
-    <p class="zh">内部管道:解析/加载 DLL,并把原生图像句柄包装为受管理的 Image 对象。</p>
+    <p>内部管道:解析/加载 DLL,并把原生图像句柄包装为受管理的 Image 对象。</p>
   </section>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

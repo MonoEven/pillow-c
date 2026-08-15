@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,7 +44,7 @@
   <div class="crumbs"><a href="../index.html">首页</a> » ImageFile</div>
   <h1>ImageFile <span class="kind">模块</span></h1>
   
-  <p class="zh">Pillow 11.3.0 的 <code>PIL.ImageFile</code> 模块表面。原生 ABI 整体解码/编码文件,因此增量馈送/插件协议(<code>Parser</code> 基于解码器的路径、<code>StubImageFile</code>、<code>StubHandler</code>、<code>PyCodec</code>、<code>PyDecoder</code>、<code>PyEncoder</code>)属于已记录的行为边界。常量(<code>MAXBLOCK</code>/<code>SAFEBLOCK</code>/<code>ERRORS</code>)、<code>LOAD_TRUNCATED_IMAGES</code> 默认值、整文件 <code>Parser</code> 回退路径以及普通对象 <code>PyCodecState</code> 均已精确覆盖。</p>
+  <p>Pillow 11.3.0 的 <code>PIL.ImageFile</code> 模块表面。原生 ABI 整体解码/编码文件,因此增量馈送/插件协议(<code>Parser</code> 基于解码器的路径、<code>StubImageFile</code>、<code>StubHandler</code>、<code>PyCodec</code>、<code>PyDecoder</code>、<code>PyEncoder</code>)属于已记录的行为边界。常量(<code>MAXBLOCK</code>/<code>SAFEBLOCK</code>/<code>ERRORS</code>)、<code>LOAD_TRUNCATED_IMAGES</code> 默认值、整文件 <code>Parser</code> 回退路径以及普通对象 <code>PyCodecState</code> 均已精确覆盖。</p>
 
   <h2 id="constants">常量</h2>
 
@@ -53,7 +53,7 @@
     <pre class="sig">Pillow.ImageFile.MAXBLOCK := 65536
 Pillow.ImageFile.SAFEBLOCK := 1048576</pre>
     
-    <p class="zh">Pillow 图像 I/O 的默认分块大小,与 <code>PIL.ImageFile.MAXBLOCK</code>、<code>PIL.ImageFile.SAFEBLOCK</code> 完全一致:<code>MAXBLOCK</code> 为单次读取块上限,<code>SAFEBLOCK</code> 是编解码器未声明自身块大小时使用的保守回退值。</p>
+    <p>Pillow 图像 I/O 的默认分块大小,与 <code>PIL.ImageFile.MAXBLOCK</code>、<code>PIL.ImageFile.SAFEBLOCK</code> 完全一致:<code>MAXBLOCK</code> 为单次读取块上限,<code>SAFEBLOCK</code> 是编解码器未声明自身块大小时使用的保守回退值。</p>
   </section>
 
   <section class="api" id="ImageFile.ERRORS">
@@ -66,7 +66,7 @@ Pillow.ImageFile.SAFEBLOCK := 1048576</pre>
     -9, "out of memory error"
 )</pre>
     
-    <p class="zh">负错误码 → 消息对照表,与源码中的定义完全一致。它镜像 <code>PIL.ImageFile.ERRORS</code>:以下各行是原生 ABI 能够暴露的错误码;Pillow 的该表即是在解码器返回失败码时使用的“负错误码 → 人类可读消息”映射。</p>
+    <p>负错误码 → 消息对照表,与源码中的定义完全一致。它镜像 <code>PIL.ImageFile.ERRORS</code>:以下各行是原生 ABI 能够暴露的错误码;Pillow 的该表即是在解码器返回失败码时使用的“负错误码 → 人类可读消息”映射。</p>
     <table class="appendix">
       <tr><th>Code</th><th>Message</th><th>中文</th></tr>
       <tr><td><code>-1</code></td><td>图像缓冲区越界错误</td></tr>
@@ -91,8 +91,8 @@ Pillow.ImageFile.SAFEBLOCK := 1048576</pre>
 }
 static _LoadTruncated := false</pre>
     
-    <p class="zh">读写属性,默认 <code>false</code>,与 Pillow 默认一致。将其设为 <code>true</code> 是已记录的显式失败边界:原生解码器严格整体解码文件,无法提供截断容忍,故抛出 Pillow 原样的拒绝消息。</p>
-    <p class="warn"><span class="zh">边界:读回始终为 <code>false</code>;赋真值即抛出。见<a href="boundaries.html">行为边界</a>。</span></p>
+    <p>读写属性,默认 <code>false</code>,与 Pillow 默认一致。将其设为 <code>true</code> 是已记录的显式失败边界:原生解码器严格整体解码文件,无法提供截断容忍,故抛出 Pillow 原样的拒绝消息。</p>
+    <p class="warn"><span>边界:读回始终为 <code>false</code>;赋真值即抛出。见<a href="boundaries.html">行为边界</a>。</span></p>
   </section>
 
   <h2 id="codecstate">编解码状态</h2>
@@ -106,23 +106,23 @@ static _LoadTruncated := false</pre>
     Yoff := 0
 }</pre>
     
-    <p class="zh">Pillow 11.3.0 的普通编解码状态对象:四个整数字段,均默认 0。AHK 大小写不敏感使 snake_case 读写(<code>xsize</code>/<code>ysize</code>/<code>xoff</code>/<code>yoff</code>)直接映射到 PascalCase 字段。</p>
+    <p>Pillow 11.3.0 的普通编解码状态对象:四个整数字段,均默认 0。AHK 大小写不敏感使 snake_case 读写(<code>xsize</code>/<code>ysize</code>/<code>xoff</code>/<code>yoff</code>)直接映射到 PascalCase 字段。</p>
     <dl class="params">
-      <dt>Xsize / Ysize</dt><dd><span class="zh">解码后图像的宽高。</span></dd>
-      <dt>Xoff / Yoff</dt><dd><span class="zh">解码目标内的偏移。</span></dd>
+      <dt>Xsize / Ysize</dt><dd><span>解码后图像的宽高。</span></dd>
+      <dt>Xoff / Yoff</dt><dd><span>解码目标内的偏移。</span></dd>
     </dl>
   </section>
 
   <h2 id="stubs">边界存根</h2>
   
-  <p class="zh">Pillow 的增量/插件协议无法建立在整文件原生 ABI 之上。这些类在构造时即以 Pillow 形态显式报错,绝不构造惰性空壳。</p>
+  <p>Pillow 的增量/插件协议无法建立在整文件原生 ABI 之上。这些类在构造时即以 Pillow 形态显式报错,绝不构造惰性空壳。</p>
 
   <section class="api" id="ImageFile.ImageFile">
     <h3>ImageFile (base object) <span class="kind">class</span></h3>
     <pre class="sig">__New(args*) => Pillow.ImageFile.RequireIncremental()</pre>
     
-    <p class="zh">Pillow 的 <code>ImageFile.ImageFile(fp, name)</code> 基对象。AHK 运行时没有文件对象/增量协议,故构造即显式失败。</p>
-    <p class="warn"><span class="zh">抛出:<code>Pillow.ImageFile incremental decoding is not supported: the native ABI decodes whole files</code>。见<a href="boundaries.html">行为边界</a>。</span></p>
+    <p>Pillow 的 <code>ImageFile.ImageFile(fp, name)</code> 基对象。AHK 运行时没有文件对象/增量协议,故构造即显式失败。</p>
+    <p class="warn"><span>抛出:<code>Pillow.ImageFile incremental decoding is not supported: the native ABI decodes whole files</code>。见<a href="boundaries.html">行为边界</a>。</span></p>
   </section>
 
   <section class="api" id="ImageFile.Parser">
@@ -132,13 +132,13 @@ parser.Reset()
 parser.Feed(data)
 parser.Close()</pre>
     
-    <p class="zh">Pillow 11.3.0 的 <code>ImageFile.Parser</code> feed/close 消费器。门面实现了 Pillow 面向非增量格式的回退路径:累积馈送缓冲区,并在 <code>Close()</code> 时经急切的 <code>Open</code> 重开整条数据流。可观察的 feed/close/error 表面与 Pillow 一致。</p>
+    <p>Pillow 11.3.0 的 <code>ImageFile.Parser</code> feed/close 消费器。门面实现了 Pillow 面向非增量格式的回退路径:累积馈送缓冲区,并在 <code>Close()</code> 时经急切的 <code>Open</code> 重开整条数据流。可观察的 feed/close/error 表面与 Pillow 一致。</p>
     <dl class="params">
-      <dt>Reset</dt><dd><span class="zh">Pillow 断言解析器尚未收集数据;复用抛 <code>cannot reuse parsers</code>。</span></dd>
-      <dt>Feed</dt><dd><span class="zh">追加缓冲区并尝试急切开图,吞掉“尚不可识别”的失败。</span></dd>
-      <dt>Close</dt><dd><span class="zh">重开累积数据流并返回 Image;不可解析的数据抛 <code>cannot parse this image</code>。</span></dd>
+      <dt>Reset</dt><dd><span>Pillow 断言解析器尚未收集数据;复用抛 <code>cannot reuse parsers</code>。</span></dd>
+      <dt>Feed</dt><dd><span>追加缓冲区并尝试急切开图,吞掉“尚不可识别”的失败。</span></dd>
+      <dt>Close</dt><dd><span>重开累积数据流并返回 Image;不可解析的数据抛 <code>cannot parse this image</code>。</span></dd>
     </dl>
-    <p class="warn"><span class="zh">边界:基于解码器的增量解码路径仍为已记录的子边界——门面仅走整文件回退路径。见<a href="boundaries.html">行为边界</a>。</span></p>
+    <p class="warn"><span>边界:基于解码器的增量解码路径仍为已记录的子边界——门面仅走整文件回退路径。见<a href="boundaries.html">行为边界</a>。</span></p>
   </section>
 
   <section class="api" id="ImageFile.StubImageFile">
@@ -149,8 +149,8 @@ parser.Close()</pre>
     }
 }</pre>
     
-    <p class="zh">Pillow 11.3.0 的抽象存根在实例化时抛出这一原样 <code>TypeError</code>(抽象方法 <code>_load</code>/<code>_open</code>)。</p>
-    <p class="warn"><span class="zh">原样抛出:<code>Can't instantiate abstract class StubImageFile with abstract methods _load, _open</code>。见<a href="boundaries.html">行为边界</a>。</span></p>
+    <p>Pillow 11.3.0 的抽象存根在实例化时抛出这一原样 <code>TypeError</code>(抽象方法 <code>_load</code>/<code>_open</code>)。</p>
+    <p class="warn"><span>原样抛出:<code>Can't instantiate abstract class StubImageFile with abstract methods _load, _open</code>。见<a href="boundaries.html">行为边界</a>。</span></p>
   </section>
 
   <section class="api" id="ImageFile.StubHandler">
@@ -161,8 +161,8 @@ parser.Close()</pre>
     }
 }</pre>
     
-    <p class="zh">Pillow 11.3.0 的抽象存根在实例化时抛出这一原样 <code>TypeError</code>(抽象方法 <code>load</code>)。</p>
-    <p class="warn"><span class="zh">原样抛出:<code>Can't instantiate abstract class StubHandler with abstract method load</code>。见<a href="boundaries.html">行为边界</a>。</span></p>
+    <p>Pillow 11.3.0 的抽象存根在实例化时抛出这一原样 <code>TypeError</code>(抽象方法 <code>load</code>)。</p>
+    <p class="warn"><span>原样抛出:<code>Can't instantiate abstract class StubHandler with abstract method load</code>。见<a href="boundaries.html">行为边界</a>。</span></p>
   </section>
 
   <section class="api" id="ImageFile.PyCodec">
@@ -179,8 +179,8 @@ class PyEncoder {
     __New(args*) => Pillow.ImageFile.RequirePyCodecMode()
 }</pre>
     
-    <p class="zh">Pillow 11.3.0 的编解码基类。<code>PyCodec.__init__()</code> 需要 <code>mode</code> 参数,因此在缺少它时构造这三者之一都会抛出原样的缺失位置参数错误。</p>
-    <p class="warn"><span class="zh">原样抛出:<code>PyCodec.__init__() missing 1 required positional argument: 'mode'</code>。见<a href="boundaries.html">行为边界</a>。</span></p>
+    <p>Pillow 11.3.0 的编解码基类。<code>PyCodec.__init__()</code> 需要 <code>mode</code> 参数,因此在缺少它时构造这三者之一都会抛出原样的缺失位置参数错误。</p>
+    <p class="warn"><span>原样抛出:<code>PyCodec.__init__() missing 1 required positional argument: 'mode'</code>。见<a href="boundaries.html">行为边界</a>。</span></p>
   </section>
 
   <h2 id="deprecated">弃用辅助</h2>
@@ -189,15 +189,15 @@ class PyEncoder {
     <h3>ReportOSError <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageFile.ReportOSError(code)</pre>
     
-    <p class="zh">服务于 Pillow 11.3.0 已弃用的 <code>raise_oserror</code> 辅助(Pillow 12 移除),后者仅翻译编解码器 <code>decode()</code> 返回码——该角色由原生 ABI 直接暴露。以 <code>Raise</code> 开头的 AHK 标识符在调用处会被词法解析为 <code>raise</code> 关键字,名为 <code>error</code> 的参数会遮蔽 <code>Error</code> 类(AHK 名称大小写不敏感),因此门面成员命名为 <code>ReportOSError(code)</code>。</p>
-    <p class="warn"><span class="zh">抛出:<code>raise_oserror is a deprecated Pillow helper; codec errors surface directly from the native ABI</code>。见<a href="boundaries.html">行为边界</a>。</span></p>
+    <p>服务于 Pillow 11.3.0 已弃用的 <code>raise_oserror</code> 辅助(Pillow 12 移除),后者仅翻译编解码器 <code>decode()</code> 返回码——该角色由原生 ABI 直接暴露。以 <code>Raise</code> 开头的 AHK 标识符在调用处会被词法解析为 <code>raise</code> 关键字,名为 <code>error</code> 的参数会遮蔽 <code>Error</code> 类(AHK 名称大小写不敏感),因此门面成员命名为 <code>ReportOSError(code)</code>。</p>
+    <p class="warn"><span>抛出:<code>raise_oserror is a deprecated Pillow helper; codec errors surface directly from the native ABI</code>。见<a href="boundaries.html">行为边界</a>。</span></p>
   </section>
 
-  <p class="note"><span class="zh">Pillow 11.3.0 中不存在 <code>ImageFileFormat</code>(模块内无此名称),因此本门面也不提供该成员。</span></p>
+  <p class="note"><span>Pillow 11.3.0 中不存在 <code>ImageFileFormat</code>(模块内无此名称),因此本门面也不提供该成员。</span></p>
 
   <h2 id="internals">内部辅助</h2>
   
-  <p class="zh">以下成员实现解析器临时文件回退与显式失败边界守卫。它们对门面内部公开并被测试套件钉死,但不属于 Pillow 风格的用户 API。</p>
+  <p>以下成员实现解析器临时文件回退与显式失败边界守卫。它们对门面内部公开并被测试套件钉死,但不属于 Pillow 风格的用户 API。</p>
   <table class="appendix">
     <tr><th>Member</th><th>中文</th></tr>
     <tr><td><code>RequireIncremental()</code></td><td>抛出 PyCodec 缺失 <code>mode</code> 错误。</td></tr>
@@ -205,6 +205,5 @@ class PyEncoder {
     <tr><td><code>ParserProbeExtension(data)</code></td><td>删除解析器临时文件。</td></tr>
   </table>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

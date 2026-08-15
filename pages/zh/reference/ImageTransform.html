@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,7 +44,7 @@
   <div class="crumbs"><a href="../index.html">首页</a> » ImageTransform</div>
   <h1>ImageTransform <span class="kind">模块</span></h1>
   
-  <p class="zh">Pillow 11.3.0 的 <code>PIL.ImageTransform</code> 类对象。每个子类仅携带一个方法常量(<code>Transform.EXTENT/AFFINE/QUAD/PERSPECTIVE/MESH</code>);基类 <code>Transform</code> 存储数据并把 <code>Transform()</code> 路由到门面的 <code>Image.Transform</code> 接缝。Pillow 的该模块本身不可调用。</p>
+  <p>Pillow 11.3.0 的 <code>PIL.ImageTransform</code> 类对象。每个子类仅携带一个方法常量(<code>Transform.EXTENT/AFFINE/QUAD/PERSPECTIVE/MESH</code>);基类 <code>Transform</code> 存储数据并把 <code>Transform()</code> 路由到门面的 <code>Image.Transform</code> 接缝。Pillow 的该模块本身不可调用。</p>
 
   <section class="api" id="ImageTransform.module">
     <h3>ImageTransform (module) <span class="kind">class</span></h3>
@@ -52,8 +52,8 @@
     throw Error("Pillow ImageTransform module is not callable;  construct Pillow.ImageTransform.Transform subclasses", -1)
 }</pre>
     
-    <p class="zh">Pillow 的该模块不可调用,故构造模块类即显式失败;应改为构造某个 <code>Transform</code> 子类。</p>
-    <p class="warn"><span class="zh">原样抛出:<code>Pillow ImageTransform module is not callable; construct Pillow.ImageTransform.Transform subclasses</code>。见<a href="boundaries.html">行为边界</a>。</span></p>
+    <p>Pillow 的该模块不可调用,故构造模块类即显式失败;应改为构造某个 <code>Transform</code> 子类。</p>
+    <p class="warn"><span>原样抛出:<code>Pillow ImageTransform module is not callable; construct Pillow.ImageTransform.Transform subclasses</code>。见<a href="boundaries.html">行为边界</a>。</span></p>
   </section>
 
   <section class="api" id="ImageTransform.Transform">
@@ -74,12 +74,12 @@
     }
 }</pre>
     
-    <p class="zh">基变换对象。<code>__New(data)</code> 存储一个数值数组——系数/角点/网格的布局取决于子类的 <code>Method</code>。<code>GetData()</code> 返回 <code>[method, data]</code>。<code>Transform(size, image, …)</code> 转发到 <code>image.Transform(size, method, data, …)</code>,并在给出 <code>resample</code> 与 <code>fillcolor</code> 时透传。</p>
+    <p>基变换对象。<code>__New(data)</code> 存储一个数值数组——系数/角点/网格的布局取决于子类的 <code>Method</code>。<code>GetData()</code> 返回 <code>[method, data]</code>。<code>Transform(size, image, …)</code> 转发到 <code>image.Transform(size, method, data, …)</code>,并在给出 <code>resample</code> 与 <code>fillcolor</code> 时透传。</p>
     <dl class="params">
-      <dt>data</dt><dd><span class="zh">数值数组(依方法为系数 / 角点 / 网格三元组)。</span></dd>
-      <dt>size</dt><dd><span class="zh">输出尺寸 <code>[宽, 高]</code>。</span></dd>
-      <dt>image</dt><dd><span class="zh">源 Image。</span></dd>
-      <dt>resample / fillcolor</dt><dd><span class="zh">可选的重采样滤波器与背景色。</span></dd>
+      <dt>data</dt><dd><span>数值数组(依方法为系数 / 角点 / 网格三元组)。</span></dd>
+      <dt>size</dt><dd><span>输出尺寸 <code>[宽, 高]</code>。</span></dd>
+      <dt>image</dt><dd><span>源 Image。</span></dd>
+      <dt>resample / fillcolor</dt><dd><span>可选的重采样滤波器与背景色。</span></dd>
     </dl>
   </section>
 
@@ -101,29 +101,29 @@ class MeshTransform extends Pillow.ImageTransform.Transform {
     Method := Pillow.Transform.MESH
 }</pre>
     
-    <p class="zh">每个子类钉死自身的 <code>Method</code> 常量,使 <code>GetData()</code>/<code>Transform()</code> 路由到正确布局。用法:<code>image.Transform(size, method, data, resample, fillcolor)</code>,配合 <code>Transform.*</code> 常量。</p>
+    <p>每个子类钉死自身的 <code>Method</code> 常量,使 <code>GetData()</code>/<code>Transform()</code> 路由到正确布局。用法:<code>image.Transform(size, method, data, resample, fillcolor)</code>,配合 <code>Transform.*</code> 常量。</p>
   </section>
 
   <h2 id="layouts">数据布局</h2>
   <table class="appendix">
     <tr><th>Method</th><th>Data</th><th>中文</th></tr>
-    <tr><td><code>EXTENT</code></td><td><span class="zh">映射到输出上的源区域(裁剪/拉伸/镜像)。</span></td></tr>
-    <tr><td><code>AFFINE</code></td><td><span class="zh"><code>x' = ax+by+c</code>,<code>y' = dx+ey+f</code>。</span></td></tr>
-    <tr><td><code>QUAD</code></td><td><span class="zh">输出→源四边形的四个角点。</span></td></tr>
-    <tr><td><code>PERSPECTIVE</code></td><td><span class="zh">8 个系数,分母为 <code>gx+hy+1</code>。</span></td></tr>
-    <tr><td><code>MESH</code></td><td><span class="zh">每个输出网格单元一个四边形;Pillow 要求 MESH 提供重采样滤波器。</span></td></tr>
+    <tr><td><code>EXTENT</code></td><td><span>映射到输出上的源区域(裁剪/拉伸/镜像)。</span></td></tr>
+    <tr><td><code>AFFINE</code></td><td><span><code>x' = ax+by+c</code>,<code>y' = dx+ey+f</code>。</span></td></tr>
+    <tr><td><code>QUAD</code></td><td><span>输出→源四边形的四个角点。</span></td></tr>
+    <tr><td><code>PERSPECTIVE</code></td><td><span>8 个系数,分母为 <code>gx+hy+1</code>。</span></td></tr>
+    <tr><td><code>MESH</code></td><td><span>每个输出网格单元一个四边形;Pillow 要求 MESH 提供重采样滤波器。</span></td></tr>
   </table>
 
   <section class="api" id="ImageTransform.seam">
     <h3>原生接缝</h3>
     
-    <p class="zh">C 层 <code>ImagingTransformHandler</code> 接缝(map 处理器)是已记录的边界:Pillow 的可调用 map 形态在本运行时无法存在,超出范围。</p>
-    <p class="warn"><span class="zh">关于已记录的 <code>ImagingTransformHandler</code> 边界,见<a href="boundaries.html">行为边界</a>。</span></p>
+    <p>C 层 <code>ImagingTransformHandler</code> 接缝(map 处理器)是已记录的边界:Pillow 的可调用 map 形态在本运行时无法存在,超出范围。</p>
+    <p class="warn"><span>关于已记录的 <code>ImagingTransformHandler</code> 边界,见<a href="boundaries.html">行为边界</a>。</span></p>
   </section>
 
   <h2 id="examples">示例</h2>
   
-  <p class="zh">经 <code>image.Transform</code> 的 EXTENT(裁剪/拉伸源矩形)与 AFFINE(六系数映射):</p>
+  <p>经 <code>image.Transform</code> 的 EXTENT(裁剪/拉伸源矩形)与 AFFINE(六系数映射):</p>
   <pre class="example">img := Pillow.Image.Open("photo.jpg")
 
 ;    EXTENT: map source region [x0,y0, x1,y1] onto a 200×200 output
@@ -139,6 +139,5 @@ result := quad.Transform([200, 200], img, Pillow.Resampling.BILINEAR)
 
 img.Close()</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

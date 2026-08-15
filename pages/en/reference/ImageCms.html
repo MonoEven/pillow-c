@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -43,10 +43,10 @@
 <div class="content">
   <div class="crumbs"><a href="../index.html">Home</a> » ImageCms</div>
   <h1>ImageCms <span class="kind">module</span></h1>
-  <p class="en">The <code>ImageCms</code> module is the Little CMS 2 color-management layer, Pillow 11.3.0-compatible (<code>PIL.ImageCms</code>): it opens and creates ICC profiles, builds color transforms between them, applies transforms to images, and reports profile intent support. Input/output modes are Pillow mode strings; this facade's transform validation accepts the <code>RGB</code>/<code>LAB</code> combinations (RGB→LAB, LAB→RGB, RGB→RGB, LAB→LAB) that the native layer implements.</p>
+  <p>The <code>ImageCms</code> module is the Little CMS 2 color-management layer, Pillow 11.3.0-compatible (<code>PIL.ImageCms</code>): it opens and creates ICC profiles, builds color transforms between them, applies transforms to images, and reports profile intent support. Input/output modes are Pillow mode strings; this facade's transform validation accepts the <code>RGB</code>/<code>LAB</code> combinations (RGB→LAB, LAB→RGB, RGB→RGB, LAB→LAB) that the native layer implements.</p>
   
-  <p class="note"><span class="en">Naming: primary names are PascalCase. AHK method lookup is case-insensitive, so Pillow's snake_case names (<code>getOpenProfile</code>, <code>createProfile</code>, <code>buildTransform</code>, <code>profileToProfile</code>, <code>versions</code>, …) resolve to the same methods automatically. Error text is pinned to Pillow 11.3.0: a wrong-typed profile raises <code>Invalid type for Profile</code> (Pillow's <code>PyCMSError</code>); an unsupported mode/intent/flags combination raises <code>cannot build transform</code> or <code>cannot build proof transform</code>; out-of-range intent/flags raise Pillow's exact <code>renderingIntent must be an integer between 0 and 3</code> / <code>flags must be an integer between 0 and 100663295</code>. Deep native failures surface as <code>pillow_c: &lt;status&gt;</code> (e.g. an unreadable ICC file reports <code>pillow_c: invalid argument</code>, not Pillow's <code>OSError</code>).</span></p>
-  <p class="note"><span class="en">Oracle parity: ICC byte content, intent support, and color arithmetic are oracle-verified against Pillow 11.3.0 (identity RGB→RGB transforms, soft-proofing with the <code>SOFTPROOFING</code> flags, and profile serialization).</span></p>
+  <p class="note"><span>Naming: primary names are PascalCase. AHK method lookup is case-insensitive, so Pillow's snake_case names (<code>getOpenProfile</code>, <code>createProfile</code>, <code>buildTransform</code>, <code>profileToProfile</code>, <code>versions</code>, …) resolve to the same methods automatically. Error text is pinned to Pillow 11.3.0: a wrong-typed profile raises <code>Invalid type for Profile</code> (Pillow's <code>PyCMSError</code>); an unsupported mode/intent/flags combination raises <code>cannot build transform</code> or <code>cannot build proof transform</code>; out-of-range intent/flags raise Pillow's exact <code>renderingIntent must be an integer between 0 and 3</code> / <code>flags must be an integer between 0 and 100663295</code>. Deep native failures surface as <code>pillow_c: &lt;status&gt;</code> (e.g. an unreadable ICC file reports <code>pillow_c: invalid argument</code>, not Pillow's <code>OSError</code>).</span></p>
+  <p class="note"><span>Oracle parity: ICC byte content, intent support, and color arithmetic are oracle-verified against Pillow 11.3.0 (identity RGB→RGB transforms, soft-proofing with the <code>SOFTPROOFING</code> flags, and profile serialization).</span></p>
 
   <h2 id="enums">Enums</h2>
 
@@ -55,14 +55,14 @@
 Pillow.ImageCms.Intent.RELATIVE_COLORIMETRIC := 1   ; relative colorimetric
 Pillow.ImageCms.Intent.SATURATION := 2              ; saturation
 Pillow.ImageCms.Intent.ABSOLUTE_COLORIMETRIC := 3   ; absolute colorimetric</pre>
-  <p class="en">Rendering intents passed to the transform builders; values match Pillow 11.3.0 exactly.</p>
+  <p>Rendering intents passed to the transform builders; values match Pillow 11.3.0 exactly.</p>
   
 
   <h3 id="direction">Direction</h3>
   <pre class="sig">Pillow.ImageCms.Direction.INPUT := 0
 Pillow.ImageCms.Direction.OUTPUT := 1
 Pillow.ImageCms.Direction.PROOF := 2</pre>
-  <p class="en">Used by <code>IsIntentSupported</code> / <code>is_intent_supported</code> to ask which direction an intent supports.</p>
+  <p>Used by <code>IsIntentSupported</code> / <code>is_intent_supported</code> to ask which direction an intent supports.</p>
   
 
   <h3 id="flags">Flags</h3>
@@ -86,12 +86,12 @@ Pillow.ImageCms.Flags.NONEGATIVES := 32768
 Pillow.ImageCms.Flags.NODEFAULTRESOURCEDEF := 16777216
 Pillow.ImageCms.Flags.COPY_ALPHA := 67108864
 Pillow.ImageCms.Flags.GRIDPOINTS(n)   ;  helper: Integer(n) &lt;&lt; 16 (Pillow's GRIDPOINTS)</pre>
-  <p class="en">lcms2 transform flags; values match Pillow 11.3.0. <code>GRIDPOINTS(n)</code> is a callable helper returning <code>n &lt;&lt; 16</code>. <code>BuildProofTransform</code> defaults to <code>SOFTPROOFING</code> (0x4000), and its supported flag combos are <code>SOFTPROOFING</code> and <code>SOFTPROOFING | GAMUTCHECK</code> (0x5000).</p>
+  <p>lcms2 transform flags; values match Pillow 11.3.0. <code>GRIDPOINTS(n)</code> is a callable helper returning <code>n &lt;&lt; 16</code>. <code>BuildProofTransform</code> defaults to <code>SOFTPROOFING</code> (0x4000), and its supported flag combos are <code>SOFTPROOFING</code> and <code>SOFTPROOFING | GAMUTCHECK</code> (0x5000).</p>
   
 
   <h3 id="pycmserror">PyCMSError</h3>
   <pre class="sig">Pillow.ImageCms.PyCMSError extends Error</pre>
-  <p class="en">Pillow's <code>PyCMSError</code> subclasses <code>Exception</code>; the AHK analogue extends <code>Error</code> and carries the same messages (see the module note above).</p>
+  <p>Pillow's <code>PyCMSError</code> subclasses <code>Exception</code>; the AHK analogue extends <code>Error</code> and carries the same messages (see the module note above).</p>
   
 
   <h2 id="profiles">Profile Objects</h2>
@@ -99,122 +99,122 @@ Pillow.ImageCms.Flags.GRIDPOINTS(n)   ;  helper: Integer(n) &lt;&lt; 16 (Pillow'
   <section class="api" id="ImageCms.GetOpenProfile">
     <h3>GetOpenProfile <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetOpenProfile(profile)</pre>
-    <p class="en">Opens an ICC profile from a file path string, a <code>File</code> object, an in-memory byte <code>Buffer</code>, or an existing profile (which it re-wraps via reference counting). Returns an <code>ImageCmsProfile</code> (a <code>CmsProfile</code> subclass that adds <code>Tobytes()</code>). A path containing non-ASCII characters is opened via the wide-character path API.</p>
+    <p>Opens an ICC profile from a file path string, a <code>File</code> object, an in-memory byte <code>Buffer</code>, or an existing profile (which it re-wraps via reference counting). Returns an <code>ImageCmsProfile</code> (a <code>CmsProfile</code> subclass that adds <code>Tobytes()</code>). A path containing non-ASCII characters is opened via the wide-character path API.</p>
     
     <dl class="params">
-      <dt>profile</dt><dd><span class="en">Path string, <code>File</code>, byte <code>Buffer</code>, or <code>CmsProfile</code>; any other type raises <code>Invalid type for Profile</code>.</span></dd>
+      <dt>profile</dt><dd><span>Path string, <code>File</code>, byte <code>Buffer</code>, or <code>CmsProfile</code>; any other type raises <code>Invalid type for Profile</code>.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: an <code>ImageCmsProfile</code>.</span></p>
+    <p class="returns"><span>Returns: an <code>ImageCmsProfile</code>.</span></p>
   </section>
 
   <section class="api" id="ImageCms.CreateProfile">
     <h3>CreateProfile <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.CreateProfile(colorSpace, colorTemp := 0)</pre>
-    <p class="en">Creates an on-the-fly profile: <code>"sRGB"</code> (a built-in sRGB profile), <code>"LAB"</code> (an Lab profile, optionally with a white-point color temperature), or <code>"XYZ"</code>. Any other color space raises <code>Color space not supported for on-the-fly profile creation (&lt;colorSpace&gt;)</code>. For <code>"LAB"</code> a non-numeric <code>colorTemp</code> raises <code>Color temperature must be numeric, `&lt;colorTemp&gt;` not valid</code>.</p>
+    <p>Creates an on-the-fly profile: <code>"sRGB"</code> (a built-in sRGB profile), <code>"LAB"</code> (an Lab profile, optionally with a white-point color temperature), or <code>"XYZ"</code>. Any other color space raises <code>Color space not supported for on-the-fly profile creation (&lt;colorSpace&gt;)</code>. For <code>"LAB"</code> a non-numeric <code>colorTemp</code> raises <code>Color temperature must be numeric, `&lt;colorTemp&gt;` not valid</code>.</p>
     
     <dl class="params">
-      <dt>colorSpace</dt><dd><span class="en"><code>"sRGB"</code>, <code>"LAB"</code>, or <code>"XYZ"</code>.</span></dd>
-      <dt>colorTemp</dt><dd><span class="en">Optional numeric white-point temperature (Kelvin) for <code>"LAB"</code>; 0 gives the D50 default.</span></dd>
+      <dt>colorSpace</dt><dd><span><code>"sRGB"</code>, <code>"LAB"</code>, or <code>"XYZ"</code>.</span></dd>
+      <dt>colorTemp</dt><dd><span>Optional numeric white-point temperature (Kelvin) for <code>"LAB"</code>; 0 gives the D50 default.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a <code>CmsProfile</code> (no <code>Tobytes()</code> — use <code>Serialize()</code>).</span></p>
+    <p class="returns"><span>Returns: a <code>CmsProfile</code> (no <code>Tobytes()</code> — use <code>Serialize()</code>).</span></p>
   </section>
 
   <h3 id="profile-accessors">Module-level accessors</h3>
-  <p class="en">These static functions take a profile argument and return a single tag value, matching Pillow's <code>getProfileName</code>/<code>getProfileInfo</code>/… shape.</p>
+  <p>These static functions take a profile argument and return a single tag value, matching Pillow's <code>getProfileName</code>/<code>getProfileInfo</code>/… shape.</p>
   
 
   <section class="api" id="ImageCms.GetProfileName">
     <h3>GetProfileName <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetProfileName(profile)</pre>
-    <p class="en">Returns the profile's name (description) string. A wrong-typed argument raises <code>Invalid type for Profile</code>.</p>
+    <p>Returns the profile's name (description) string. A wrong-typed argument raises <code>Invalid type for Profile</code>.</p>
     
-    <p class="returns"><span class="en">Returns: a string.</span></p>
+    <p class="returns"><span>Returns: a string.</span></p>
   </section>
 
   <section class="api" id="ImageCms.GetProfileDescription">
     <h3>GetProfileDescription <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetProfileDescription(profile)</pre>
-    <p class="en">Alias of <code>GetProfileName</code> (returns the same value).</p>
+    <p>Alias of <code>GetProfileName</code> (returns the same value).</p>
     
-    <p class="returns"><span class="en">Returns: a string.</span></p>
+    <p class="returns"><span>Returns: a string.</span></p>
   </section>
 
   <section class="api" id="ImageCms.GetProfileInfo">
     <h3>GetProfileInfo <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetProfileInfo(profile)</pre>
-    <p class="en">Returns the profile's free-form info string (the same text as the description for most profiles).</p>
+    <p>Returns the profile's free-form info string (the same text as the description for most profiles).</p>
     
-    <p class="returns"><span class="en">Returns: a string.</span></p>
+    <p class="returns"><span>Returns: a string.</span></p>
   </section>
 
   <section class="api" id="ImageCms.GetProfileCopyright">
     <h3>GetProfileCopyright <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetProfileCopyright(profile)</pre>
-    <p class="en">Returns the copyright text embedded in the profile.</p>
+    <p>Returns the copyright text embedded in the profile.</p>
     
-    <p class="returns"><span class="en">Returns: a string.</span></p>
+    <p class="returns"><span>Returns: a string.</span></p>
   </section>
 
   <section class="api" id="ImageCms.GetProfileManufacturer">
     <h3>GetProfileManufacturer <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetProfileManufacturer(profile)</pre>
-    <p class="en">Returns the manufacturer text embedded in the profile.</p>
+    <p>Returns the manufacturer text embedded in the profile.</p>
     
-    <p class="returns"><span class="en">Returns: a string.</span></p>
+    <p class="returns"><span>Returns: a string.</span></p>
   </section>
 
   <section class="api" id="ImageCms.GetProfileModel">
     <h3>GetProfileModel <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetProfileModel(profile)</pre>
-    <p class="en">Returns the model text embedded in the profile.</p>
+    <p>Returns the model text embedded in the profile.</p>
     
-    <p class="returns"><span class="en">Returns: a string.</span></p>
+    <p class="returns"><span>Returns: a string.</span></p>
   </section>
 
   <section class="api" id="ImageCms.IsIntentSupported">
     <h3>IsIntentSupported <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.IsIntentSupported(profile, intent, direction)</pre>
-    <p class="en">Queries whether the profile supports an intent in a given direction (one of <code>Pillow.ImageCms.Direction.*</code>).</p>
+    <p>Queries whether the profile supports an intent in a given direction (one of <code>Pillow.ImageCms.Direction.*</code>).</p>
     
     <dl class="params">
-      <dt>intent</dt><dd><span class="en">One of <code>Pillow.ImageCms.Intent.*</code> (0…3).</span></dd>
-      <dt>direction</dt><dd><span class="en">One of <code>Pillow.ImageCms.Direction.*</code> (0…2).</span></dd>
+      <dt>intent</dt><dd><span>One of <code>Pillow.ImageCms.Intent.*</code> (0…3).</span></dd>
+      <dt>direction</dt><dd><span>One of <code>Pillow.ImageCms.Direction.*</code> (0…2).</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: 1 when supported, −1 when not.</span></p>
+    <p class="returns"><span>Returns: 1 when supported, −1 when not.</span></p>
   </section>
 
   <h3 id="cmsprofile">CmsProfile instance</h3>
-  <p class="en"><code>Pillow.ImageCms.CmsProfile</code> wraps a native lcms profile handle. Each instance owns its handle (freed on <code>Close()</code> or destruction). Profiles returned by <code>GetOpenProfile</code>/<code>get_display_profile</code> are <code>ImageCmsProfile</code> (adds <code>Tobytes()</code>); those returned by <code>CreateProfile</code> are plain <code>CmsProfile</code>.</p>
+  <p><code>Pillow.ImageCms.CmsProfile</code> wraps a native lcms profile handle. Each instance owns its handle (freed on <code>Close()</code> or destruction). Profiles returned by <code>GetOpenProfile</code>/<code>get_display_profile</code> are <code>ImageCmsProfile</code> (adds <code>Tobytes()</code>); those returned by <code>CreateProfile</code> are plain <code>CmsProfile</code>.</p>
   
 
   <section class="api" id="ImageCms.CmsProfile.Serialize">
     <h3>Serialize / Tobytes</h3>
     <pre class="sig">profile.Serialize()     ;  CmsProfile (all instances)
 profile.Tobytes()       ;  ImageCmsProfile only (Pillow's tobytes)</pre>
-    <p class="en">Serializes the profile to its ICC byte representation. <code>Tobytes()</code> is the Pillow-style alias, present only on <code>ImageCmsProfile</code>.</p>
+    <p>Serializes the profile to its ICC byte representation. <code>Tobytes()</code> is the Pillow-style alias, present only on <code>ImageCmsProfile</code>.</p>
     
-    <p class="returns"><span class="en">Returns: a byte <code>Buffer</code> of the ICC content.</span></p>
+    <p class="returns"><span>Returns: a byte <code>Buffer</code> of the ICC content.</span></p>
   </section>
 
   <section class="api" id="ImageCms.CmsProfile.GetName">
     <h3>GetName</h3>
     <pre class="sig">profile.GetName()</pre>
-    <p class="en">Returns the profile name string (used by the module-level <code>GetProfileName</code>).</p>
+    <p>Returns the profile name string (used by the module-level <code>GetProfileName</code>).</p>
     
-    <p class="returns"><span class="en">Returns: a string.</span></p>
+    <p class="returns"><span>Returns: a string.</span></p>
   </section>
 
   <section class="api" id="ImageCms.CmsProfile.is_intent_supported">
     <h3>is_intent_supported</h3>
     <pre class="sig">profile.is_intent_supported(intent, direction)</pre>
-    <p class="en">Instance form of <code>IsIntentSupported</code>: delegates to <code>Pillow.ImageCms.IsIntentSupported(this, intent, direction)</code>.</p>
+    <p>Instance form of <code>IsIntentSupported</code>: delegates to <code>Pillow.ImageCms.IsIntentSupported(this, intent, direction)</code>.</p>
     
-    <p class="returns"><span class="en">Returns: 1 when supported, −1 when not.</span></p>
+    <p class="returns"><span>Returns: 1 when supported, −1 when not.</span></p>
   </section>
 
   <section class="api" id="ImageCms.CmsProfile.Properties">
     <h3>Properties <span class="kind">attributes</span></h3>
-    <p class="en">Read-only tag getters on <code>CmsProfile</code>. Most are lazy (computed once, then cached); missing tags report <code>0</code>/empty where noted.</p>
+    <p>Read-only tag getters on <code>CmsProfile</code>. Most are lazy (computed once, then cached); missing tags report <code>0</code>/empty where noted.</p>
     
     <table class="appendix">
       <tr><th>Property</th><th>EN</th></tr>
@@ -244,102 +244,102 @@ profile.Tobytes()       ;  ImageCmsProfile only (Pillow's tobytes)</pre>
   <section class="api" id="ImageCms.BuildTransform">
     <h3>BuildTransform <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.BuildTransform(inputProfile, outputProfile, inputMode, outputMode, renderingIntent := 0, flags := 0)</pre>
-    <p class="en">Builds a color transform between two profiles. Validates the intent and flags first with Pillow's exact messages, then the mode pair (<code>RGB</code>/<code>LAB</code> combinations only). Unsupported combinations raise <code>cannot build transform</code>. The transform snapshots the output profile's ICC bytes at build time and does not own the profile objects, so the profiles may be closed once the transform is built.</p>
+    <p>Builds a color transform between two profiles. Validates the intent and flags first with Pillow's exact messages, then the mode pair (<code>RGB</code>/<code>LAB</code> combinations only). Unsupported combinations raise <code>cannot build transform</code>. The transform snapshots the output profile's ICC bytes at build time and does not own the profile objects, so the profiles may be closed once the transform is built.</p>
     
     <dl class="params">
-      <dt>inputProfile / outputProfile</dt><dd><span class="en">Two <code>CmsProfile</code> instances; wrong types raise <code>Invalid type for Profile</code>.</span></dd>
-      <dt>inputMode / outputMode</dt><dd><span class="en">Pillow mode strings (<code>"RGB"</code> or <code>"LAB"</code>); valid pairs are RGB→LAB, LAB→RGB, RGB→RGB, LAB→LAB.</span></dd>
-      <dt>renderingIntent</dt><dd><span class="en">0…3 (default 0 = PERCEPTUAL).</span></dd>
-      <dt>flags</dt><dd><span class="en">0 or <code>BLACKPOINTCOMPENSATION</code> (8192).</span></dd>
+      <dt>inputProfile / outputProfile</dt><dd><span>Two <code>CmsProfile</code> instances; wrong types raise <code>Invalid type for Profile</code>.</span></dd>
+      <dt>inputMode / outputMode</dt><dd><span>Pillow mode strings (<code>"RGB"</code> or <code>"LAB"</code>); valid pairs are RGB→LAB, LAB→RGB, RGB→RGB, LAB→LAB.</span></dd>
+      <dt>renderingIntent</dt><dd><span>0…3 (default 0 = PERCEPTUAL).</span></dd>
+      <dt>flags</dt><dd><span>0 or <code>BLACKPOINTCOMPENSATION</code> (8192).</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: an <code>ImageCmsTransform</code>.</span></p>
+    <p class="returns"><span>Returns: an <code>ImageCmsTransform</code>.</span></p>
   </section>
 
   <section class="api" id="ImageCms.BuildTransformFromOpenProfiles">
     <h3>BuildTransformFromOpenProfiles <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.BuildTransformFromOpenProfiles(inputProfile, outputProfile, inputMode, outputMode, renderingIntent := 0, flags := 0)</pre>
-    <p class="en">Alias of <code>BuildTransform</code> (Pillow's <code>buildTransformFromOpenProfiles</code> is an alias of <code>buildTransform</code>).</p>
+    <p>Alias of <code>BuildTransform</code> (Pillow's <code>buildTransformFromOpenProfiles</code> is an alias of <code>buildTransform</code>).</p>
     
-    <p class="returns"><span class="en">Returns: an <code>ImageCmsTransform</code>.</span></p>
+    <p class="returns"><span>Returns: an <code>ImageCmsTransform</code>.</span></p>
   </section>
 
   <section class="api" id="ImageCms.BuildProofTransform">
     <h3>BuildProofTransform <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.BuildProofTransform(inputProfile, outputProfile, proofProfile, inputMode, outputMode, renderingIntent := 0, proofRenderingIntent := 3, flags := 0x4000)</pre>
-    <p class="en">Builds a soft-proofing transform through a proof profile. Defaults to <code>proofRenderingIntent := 3</code> (ABSOLUTE_COLORIMETRIC) and <code>flags := 0x4000</code> (SOFTPROOFING); supported flag combos are <code>SOFTPROOFING</code> and <code>SOFTPROOFING | GAMUTCHECK</code> (0x5000). Unsupported combinations raise <code>cannot build proof transform</code>.</p>
+    <p>Builds a soft-proofing transform through a proof profile. Defaults to <code>proofRenderingIntent := 3</code> (ABSOLUTE_COLORIMETRIC) and <code>flags := 0x4000</code> (SOFTPROOFING); supported flag combos are <code>SOFTPROOFING</code> and <code>SOFTPROOFING | GAMUTCHECK</code> (0x5000). Unsupported combinations raise <code>cannot build proof transform</code>.</p>
     
     <dl class="params">
-      <dt>inputProfile / outputProfile / proofProfile</dt><dd><span class="en">Three <code>CmsProfile</code> instances; wrong types raise <code>Invalid type for Profile</code>.</span></dd>
-      <dt>inputMode / outputMode</dt><dd><span class="en"><code>"RGB"</code>/<code>"LAB"</code> mode pair (RGB→LAB, LAB→RGB, RGB→RGB, LAB→LAB).</span></dd>
-      <dt>renderingIntent / proofRenderingIntent</dt><dd><span class="en">0…3; <code>proofRenderingIntent</code> must be 3 (ABSOLUTE_COLORIMETRIC).</span></dd>
-      <dt>flags</dt><dd><span class="en"><code>SOFTPROOFING</code> (default) or <code>SOFTPROOFING | GAMUTCHECK</code>.</span></dd>
+      <dt>inputProfile / outputProfile / proofProfile</dt><dd><span>Three <code>CmsProfile</code> instances; wrong types raise <code>Invalid type for Profile</code>.</span></dd>
+      <dt>inputMode / outputMode</dt><dd><span><code>"RGB"</code>/<code>"LAB"</code> mode pair (RGB→LAB, LAB→RGB, RGB→RGB, LAB→LAB).</span></dd>
+      <dt>renderingIntent / proofRenderingIntent</dt><dd><span>0…3; <code>proofRenderingIntent</code> must be 3 (ABSOLUTE_COLORIMETRIC).</span></dd>
+      <dt>flags</dt><dd><span><code>SOFTPROOFING</code> (default) or <code>SOFTPROOFING | GAMUTCHECK</code>.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: an <code>ImageCmsTransform</code>.</span></p>
+    <p class="returns"><span>Returns: an <code>ImageCmsTransform</code>.</span></p>
   </section>
 
   <section class="api" id="ImageCms.BuildProofTransformFromOpenProfiles">
     <h3>BuildProofTransformFromOpenProfiles <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.BuildProofTransformFromOpenProfiles(inputProfile, outputProfile, proofProfile, inputMode, outputMode, renderingIntent := 0, proofRenderingIntent := 3, flags := 0x4000)</pre>
-    <p class="en">Alias of <code>BuildProofTransform</code> (Pillow's <code>buildProofTransformFromOpenProfiles</code> is an alias of <code>buildProofTransform</code>).</p>
+    <p>Alias of <code>BuildProofTransform</code> (Pillow's <code>buildProofTransformFromOpenProfiles</code> is an alias of <code>buildProofTransform</code>).</p>
     
-    <p class="returns"><span class="en">Returns: an <code>ImageCmsTransform</code>.</span></p>
+    <p class="returns"><span>Returns: an <code>ImageCmsTransform</code>.</span></p>
   </section>
 
   <h3 id="transform-instance">ImageCmsTransform instance</h3>
-  <p class="en">A built transform exposes <code>input_mode</code> / <code>output_mode</code> properties and the methods below. It owns its native transform handle (freed on <code>Close()</code> or destruction).</p>
+  <p>A built transform exposes <code>input_mode</code> / <code>output_mode</code> properties and the methods below. It owns its native transform handle (freed on <code>Close()</code> or destruction).</p>
   
 
   <section class="api" id="ImageCms.ImageCmsTransform.Apply">
     <h3>Apply</h3>
     <pre class="sig">transform.Apply(image)</pre>
-    <p class="en">Applies the transform to an image and returns a new image in <code>output_mode</code>. The image's mode must equal <code>input_mode</code>, else <code>mode mismatch</code>. The result's <code>icc_profile</code> info is set to the output profile bytes.</p>
+    <p>Applies the transform to an image and returns a new image in <code>output_mode</code>. The image's mode must equal <code>input_mode</code>, else <code>mode mismatch</code>. The result's <code>icc_profile</code> info is set to the output profile bytes.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="ImageCms.ImageCmsTransform.ApplyInPlace">
     <h3>ApplyInPlace</h3>
     <pre class="sig">transform.ApplyInPlace(image)</pre>
-    <p class="en">Applies the transform to the image in place; requires <code>input_mode == output_mode</code> and a matching image mode, else <code>mode mismatch</code>.</p>
+    <p>Applies the transform to the image in place; requires <code>input_mode == output_mode</code> and a matching image mode, else <code>mode mismatch</code>.</p>
     
-    <p class="returns"><span class="en">Returns: nothing (mutates the image).</span></p>
+    <p class="returns"><span>Returns: nothing (mutates the image).</span></p>
   </section>
 
   <section class="api" id="ImageCms.ImageCmsTransform.OutputProfileBytes">
     <h3>OutputProfileBytes</h3>
     <pre class="sig">transform.OutputProfileBytes()</pre>
-    <p class="en">Returns the output profile's ICC bytes — the snapshot captured when the transform was built.</p>
+    <p>Returns the output profile's ICC bytes — the snapshot captured when the transform was built.</p>
     
-    <p class="returns"><span class="en">Returns: a byte <code>Buffer</code>.</span></p>
+    <p class="returns"><span>Returns: a byte <code>Buffer</code>.</span></p>
   </section>
 
   <section class="api" id="ImageCms.ApplyTransform">
     <h3>ApplyTransform <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.ApplyTransform(image, transform, inPlace := false)</pre>
-    <p class="en">Applies a transform to an image, dispatching to <code>transform.ApplyInPlace(image)</code> when <code>inPlace</code> is true, otherwise <code>transform.Apply(image)</code>. Wrong argument types raise <code>Invalid image type</code> / <code>Invalid transform type</code>.</p>
+    <p>Applies a transform to an image, dispatching to <code>transform.ApplyInPlace(image)</code> when <code>inPlace</code> is true, otherwise <code>transform.Apply(image)</code>. Wrong argument types raise <code>Invalid image type</code> / <code>Invalid transform type</code>.</p>
     
     <dl class="params">
-      <dt>image</dt><dd><span class="en">A <code>Pillow.Image</code>.</span></dd>
-      <dt>transform</dt><dd><span class="en">An <code>ImageCmsTransform</code>.</span></dd>
-      <dt>inPlace</dt><dd><span class="en">True to mutate the image; false (default) to return a new one.</span></dd>
+      <dt>image</dt><dd><span>A <code>Pillow.Image</code>.</span></dd>
+      <dt>transform</dt><dd><span>An <code>ImageCmsTransform</code>.</span></dd>
+      <dt>inPlace</dt><dd><span>True to mutate the image; false (default) to return a new one.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image (or nothing when <code>inPlace</code>).</span></p>
+    <p class="returns"><span>Returns: a new Image (or nothing when <code>inPlace</code>).</span></p>
   </section>
 
   <section class="api" id="ImageCms.ProfileToProfile">
     <h3>ProfileToProfile <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.ProfileToProfile(image, inputProfile, outputProfile, renderingIntent := 0, outputMode := unset, inPlace := false, flags := 0)</pre>
-    <p class="en">Transforms an image from <code>inputProfile</code> to <code>outputProfile</code> in one call. Unlike Pillow (which defaults <code>outputMode</code> to the image's mode), this facade requires <code>outputMode</code>: omitting it raises <code>cannot build transform</code>. In-place mode requires <code>image.Mode == outputMode</code>.</p>
+    <p>Transforms an image from <code>inputProfile</code> to <code>outputProfile</code> in one call. Unlike Pillow (which defaults <code>outputMode</code> to the image's mode), this facade requires <code>outputMode</code>: omitting it raises <code>cannot build transform</code>. In-place mode requires <code>image.Mode == outputMode</code>.</p>
     
     <dl class="params">
-      <dt>image</dt><dd><span class="en">A <code>Pillow.Image</code>.</span></dd>
-      <dt>inputProfile / outputProfile</dt><dd><span class="en">Two <code>CmsProfile</code> instances.</span></dd>
-      <dt>renderingIntent</dt><dd><span class="en">0…3 (default 0).</span></dd>
-      <dt>outputMode</dt><dd><span class="en">Required Pillow mode string (<code>"RGB"</code>/<code>"LAB"</code>).</span></dd>
-      <dt>inPlace</dt><dd><span class="en">True to mutate the image (mode must match); false to return a new image.</span></dd>
-      <dt>flags</dt><dd><span class="en">0 or <code>BLACKPOINTCOMPENSATION</code> (8192).</span></dd>
+      <dt>image</dt><dd><span>A <code>Pillow.Image</code>.</span></dd>
+      <dt>inputProfile / outputProfile</dt><dd><span>Two <code>CmsProfile</code> instances.</span></dd>
+      <dt>renderingIntent</dt><dd><span>0…3 (default 0).</span></dd>
+      <dt>outputMode</dt><dd><span>Required Pillow mode string (<code>"RGB"</code>/<code>"LAB"</code>).</span></dd>
+      <dt>inPlace</dt><dd><span>True to mutate the image (mode must match); false to return a new image.</span></dd>
+      <dt>flags</dt><dd><span>0 or <code>BLACKPOINTCOMPENSATION</code> (8192).</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image (or nothing when <code>inPlace</code>).</span></p>
+    <p class="returns"><span>Returns: a new Image (or nothing when <code>inPlace</code>).</span></p>
   </section>
 
   <h2 id="misc">Miscellaneous</h2>
@@ -347,29 +347,29 @@ profile.Tobytes()       ;  ImageCmsProfile only (Pillow's tobytes)</pre>
   <section class="api" id="ImageCms.GetDefaultIntent">
     <h3>GetDefaultIntent <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.GetDefaultIntent(profile)</pre>
-    <p class="en">Returns the profile's default rendering intent (0…3). Also exposed as the <code>rendering_intent</code> property.</p>
+    <p>Returns the profile's default rendering intent (0…3). Also exposed as the <code>rendering_intent</code> property.</p>
     
-    <p class="returns"><span class="en">Returns: an integer intent (0…3).</span></p>
+    <p class="returns"><span>Returns: an integer intent (0…3).</span></p>
   </section>
 
   <section class="api" id="ImageCms.get_display_profile">
     <h3>get_display_profile <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.get_display_profile(handle := 0)</pre>
-    <p class="en">Returns the ICM profile associated with a window DC (<code>handle</code>), or the screen DC when <code>handle</code> is 0 (Pillow 11.3.0's <code>get_display_profile</code>). An invalid window or a missing profile returns <code>0</code> (None).</p>
+    <p>Returns the ICM profile associated with a window DC (<code>handle</code>), or the screen DC when <code>handle</code> is 0 (Pillow 11.3.0's <code>get_display_profile</code>). An invalid window or a missing profile returns <code>0</code> (None).</p>
     
-    <p class="returns"><span class="en">Returns: an <code>ImageCmsProfile</code>, or <code>0</code> when none.</span></p>
+    <p class="returns"><span>Returns: an <code>ImageCmsProfile</code>, or <code>0</code> when none.</span></p>
   </section>
 
   <section class="api" id="ImageCms.versions">
     <h3>versions <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageCms.versions()</pre>
-    <p class="en">Pillow 11.3.0's <code>versions()</code> tuple (deprecated in Pillow 12): <code>[VERSION, littlecms version, python version, Pillow version]</code>. Reported values match the local Pillow build.</p>
+    <p>Pillow 11.3.0's <code>versions()</code> tuple (deprecated in Pillow 12): <code>[VERSION, littlecms version, python version, Pillow version]</code>. Reported values match the local Pillow build.</p>
     
-    <p class="returns"><span class="en">Returns: <code>["1.0.0 pil", "2.17", "3.10.11", "11.3.0"]</code>.</span></p>
+    <p class="returns"><span>Returns: <code>["1.0.0 pil", "2.17", "3.10.11", "11.3.0"]</code>.</span></p>
   </section>
 
   <h2 id="internals">Internal accessors (appendix)</h2>
-  <p class="en">The following <code>CmsProfile</code> accessors back the properties above. They are public for the facade's own use but are not part of the Pillow-style user API; each returns <code>0</code>/empty for missing tags and caches its result.</p>
+  <p>The following <code>CmsProfile</code> accessors back the properties above. They are public for the facade's own use but are not part of the Pillow-style user API; each returns <code>0</code>/empty for missing tags and caches its result.</p>
   
   <table class="appendix">
     <tr><th>Accessor</th><th>EN</th></tr>
@@ -391,7 +391,7 @@ profile.Tobytes()       ;  ImageCmsProfile only (Pillow's tobytes)</pre>
   </table>
 
   <h2 id="examples">Examples</h2>
-  <p class="en">Open sRGB and AdobeRGB profiles, build an RGB→RGB transform, apply it, and serialize the profile bytes.</p>
+  <p>Open sRGB and AdobeRGB profiles, build an RGB→RGB transform, apply it, and serialize the profile bytes.</p>
   
   <pre class="example">
 srgb     := Pillow.ImageCms.GetOpenProfile("sRGB.icc")
@@ -413,6 +413,5 @@ im.Info["icc_profile"] := adobergb.Serialize()
 
 out.Close(), im.Close(), transform.Close(), srgb.Close(), adobergb.Close()</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

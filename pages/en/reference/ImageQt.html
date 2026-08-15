@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -43,65 +43,64 @@
 <div class="content">
   <div class="crumbs"><a href="../index.html">Home</a> » ImageQt</div>
   <h1>ImageQt <span class="kind">module</span></h1>
-  <p class="en">The <code>ImageQt</code> module mirrors Pillow&nbsp;11.3.0's <code>PIL.ImageQt</code>: helpers that move pixel data between a Pillow <code>Image</code> and Qt's <code>QImage</code>/<code>QPixmap</code> types as provided by PyQt6 or PySide6.</p>
+  <p>The <code>ImageQt</code> module mirrors Pillow&nbsp;11.3.0's <code>PIL.ImageQt</code>: helpers that move pixel data between a Pillow <code>Image</code> and Qt's <code>QImage</code>/<code>QPixmap</code> types as provided by PyQt6 or PySide6.</p>
   
-  <p class="note"><span class="en">This runtime ships no Qt binding, so every interop function below fails loudly with Pillow&nbsp;11.3.0's exact message <code>Qt bindings are not installed</code> — the <code>ImportError</code> Pillow raises when neither PyQt6 nor PySide6 is importable. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
+  <p class="note"><span>This runtime ships no Qt binding, so every interop function below fails loudly with Pillow&nbsp;11.3.0's exact message <code>Qt bindings are not installed</code> — the <code>ImportError</code> Pillow raises when neither PyQt6 nor PySide6 is importable. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
 
   <section class="api" id="ImageQt.ImageQt">
     <h3>ImageQt <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageQt.ImageQt(im)</pre>
-    <p class="en">Pillow's <code>ImageQt.ImageQt(im)</code> converts a Pillow <code>Image</code> into a Qt <code>QImage</code> subclass (PyQt6's or PySide6's <code>QImage</code>), sharing the underlying pixel buffer. It is the module's primary interop entry point.</p>
+    <p>Pillow's <code>ImageQt.ImageQt(im)</code> converts a Pillow <code>Image</code> into a Qt <code>QImage</code> subclass (PyQt6's or PySide6's <code>QImage</code>), sharing the underlying pixel buffer. It is the module's primary interop entry point.</p>
     
     <dl class="params">
-      <dt>im</dt><dd><span class="en">The Pillow Image to wrap.</span></dd>
+      <dt>im</dt><dd><span>The Pillow Image to wrap.</span></dd>
     </dl>
-    <p class="warn"><span class="en">Boundary: raises Pillow's exact <code>Qt bindings are not installed</code>. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
+    <p class="warn"><span>Boundary: raises Pillow's exact <code>Qt bindings are not installed</code>. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
   </section>
 
   <section class="api" id="ImageQt.ToQImage">
     <h3>ToQImage <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageQt.ToQImage(im)</pre>
-    <p class="en">Pillow's <code>ImageQt.toqimage(im)</code> converts an <code>Image</code> to a Qt <code>QImage</code> in RGBA8888 form, suitable for handing to Qt widgets.</p>
+    <p>Pillow's <code>ImageQt.toqimage(im)</code> converts an <code>Image</code> to a Qt <code>QImage</code> in RGBA8888 form, suitable for handing to Qt widgets.</p>
     
     <dl class="params">
-      <dt>im</dt><dd><span class="en">The Pillow Image to convert.</span></dd>
+      <dt>im</dt><dd><span>The Pillow Image to convert.</span></dd>
     </dl>
-    <p class="warn"><span class="en">Boundary: raises Pillow's exact <code>Qt bindings are not installed</code>. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
+    <p class="warn"><span>Boundary: raises Pillow's exact <code>Qt bindings are not installed</code>. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
   </section>
 
   <section class="api" id="ImageQt.ToQPixmap">
     <h3>ToQPixmap <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageQt.ToQPixmap(im)</pre>
-    <p class="en">Pillow's <code>ImageQt.toqpixmap(im)</code> converts an <code>Image</code> to a Qt <code>QPixmap</code> (via <code>toqimage</code>), for drawing onto Qt surfaces.</p>
+    <p>Pillow's <code>ImageQt.toqpixmap(im)</code> converts an <code>Image</code> to a Qt <code>QPixmap</code> (via <code>toqimage</code>), for drawing onto Qt surfaces.</p>
     
     <dl class="params">
-      <dt>im</dt><dd><span class="en">The Pillow Image to convert.</span></dd>
+      <dt>im</dt><dd><span>The Pillow Image to convert.</span></dd>
     </dl>
-    <p class="warn"><span class="en">Boundary: raises Pillow's exact <code>Qt bindings are not installed</code>. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
+    <p class="warn"><span>Boundary: raises Pillow's exact <code>Qt bindings are not installed</code>. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
   </section>
 
   <section class="api" id="ImageQt.FromQImage">
     <h3>FromQImage <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageQt.FromQImage(qim)</pre>
-    <p class="en">Pillow's <code>ImageQt.fromqimage(qim)</code> converts a Qt <code>QImage</code> back into a Pillow <code>Image</code> (the reverse of <code>toqimage</code>).</p>
+    <p>Pillow's <code>ImageQt.fromqimage(qim)</code> converts a Qt <code>QImage</code> back into a Pillow <code>Image</code> (the reverse of <code>toqimage</code>).</p>
     
     <dl class="params">
-      <dt>qim</dt><dd><span class="en">The Qt QImage to convert.</span></dd>
+      <dt>qim</dt><dd><span>The Qt QImage to convert.</span></dd>
     </dl>
-    <p class="warn"><span class="en">Boundary: raises Pillow's exact <code>Qt bindings are not installed</code>. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
+    <p class="warn"><span>Boundary: raises Pillow's exact <code>Qt bindings are not installed</code>. See <a href="boundaries.html#boundary.qttk">Boundaries</a>.</span></p>
   </section>
 
   <section class="api" id="ImageQt.RequireQt">
     <h3>RequireQt <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageQt.RequireQt()</pre>
-    <p class="en">Internal helper: throws the boundary error <code>Qt bindings are not installed</code>. All four interop functions above delegate to it.</p>
+    <p>Internal helper: throws the boundary error <code>Qt bindings are not installed</code>. All four interop functions above delegate to it.</p>
     
   </section>
 
   <h2 id="related">Related</h2>
-  <p class="en">The <code>Image</code> instance methods <code>ToQImage()</code>, <code>ToQPixmap()</code> and <code>Show()</code> sit on the same dependency boundary — see <a href="Image.html#Image.Show">Image.Show</a> on the Image page.</p>
+  <p>The <code>Image</code> instance methods <code>ToQImage()</code>, <code>ToQPixmap()</code> and <code>Show()</code> sit on the same dependency boundary — see <a href="Image.html#Image.Show">Image.Show</a> on the Image page.</p>
   
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

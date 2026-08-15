@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,18 +44,18 @@
   <div class="crumbs"><a href="../index.html">首页</a> » ImageDraw2</div>
   <h1>ImageDraw2 <span class="kind">模块</span></h1>
   
-  <p class="zh">实验性的 <code>ImageDraw2</code> 模块镜像 Pillow 的 WCK 风格摆锤接口:由 <code>Pen</code>/<code>Brush</code> 搭配一个 <code>Draw</code> 句柄,把形状与文字渲染到图像上。它在 <code>Pillow.</code> 命名空间下与 Pillow 11.3.0 兼容;<code>0</code> 是 AHK 的 None 对应物,<code>unset</code> 是“未传参”哨兵。</p>
-  <p class="note"><span class="zh">表面说明:形状渲染把 <code>Pen</code> 解析为轮廓色 + 线宽、把 <code>Brush</code> 解析为填充色,然后转交底层 <code>ImageDraw.Draw</code> 句柄;<code>opacity</code> 字段为对齐 Pillow 而存储在 Pen/Brush 上,但本门面不合成它。<code>Text</code> 绘制停留在已记录的原生绘制管线(<a href="boundaries.html#boundary.defaultfont">API-DRAWFONT-001 边界</a>)。</span></p>
+  <p>实验性的 <code>ImageDraw2</code> 模块镜像 Pillow 的 WCK 风格摆锤接口:由 <code>Pen</code>/<code>Brush</code> 搭配一个 <code>Draw</code> 句柄,把形状与文字渲染到图像上。它在 <code>Pillow.</code> 命名空间下与 Pillow 11.3.0 兼容;<code>0</code> 是 AHK 的 None 对应物,<code>unset</code> 是“未传参”哨兵。</p>
+  <p class="note"><span>表面说明:形状渲染把 <code>Pen</code> 解析为轮廓色 + 线宽、把 <code>Brush</code> 解析为填充色,然后转交底层 <code>ImageDraw.Draw</code> 句柄;<code>opacity</code> 字段为对齐 Pillow 而存储在 Pen/Brush 上,但本门面不合成它。<code>Text</code> 绘制停留在已记录的原生绘制管线(<a href="boundaries.html#boundary.defaultfont">API-DRAWFONT-001 边界</a>)。</span></p>
 
   <section class="api" id="ImageDraw2.Pen">
     <h3>Pen <span class="kind">class</span></h3>
     <pre class="sig">Pillow.ImageDraw2.Pen(color, width := 1, opacity := 255)</pre>
     
-    <p class="zh">描边(轮廓)样式:颜色加线宽与不透明度。颜色经 <code>GetRgbColor</code> 解析——只接受颜色名与 <code>#hex</code> 字符串;元组抛 Pillow 原样的 <code>'tuple' object has no attribute 'lower'</code> 错误。</p>
+    <p>描边(轮廓)样式:颜色加线宽与不透明度。颜色经 <code>GetRgbColor</code> 解析——只接受颜色名与 <code>#hex</code> 字符串;元组抛 Pillow 原样的 <code>'tuple' object has no attribute 'lower'</code> 错误。</p>
     <dl class="params">
-      <dt>color</dt><dd><span class="zh">颜色名或 <code>#hex</code> 字符串。</span></dd>
-      <dt>width</dt><dd><span class="zh">线宽(默认 1)。</span></dd>
-      <dt>opacity</dt><dd><span class="zh">不透明度 0–255(默认 255);为对齐 Pillow 而存储。</span></dd>
+      <dt>color</dt><dd><span>颜色名或 <code>#hex</code> 字符串。</span></dd>
+      <dt>width</dt><dd><span>线宽(默认 1)。</span></dd>
+      <dt>opacity</dt><dd><span>不透明度 0–255(默认 255);为对齐 Pillow 而存储。</span></dd>
     </dl>
   </section>
 
@@ -63,10 +63,10 @@
     <h3>Brush <span class="kind">class</span></h3>
     <pre class="sig">Pillow.ImageDraw2.Brush(color, opacity := 255)</pre>
     
-    <p class="zh">填充样式:颜色加不透明度。颜色与 <code>Pen</code> 一样经 <code>GetRgbColor</code> 解析。</p>
+    <p>填充样式:颜色加不透明度。颜色与 <code>Pen</code> 一样经 <code>GetRgbColor</code> 解析。</p>
     <dl class="params">
-      <dt>color</dt><dd><span class="zh">颜色名或 <code>#hex</code> 字符串。</span></dd>
-      <dt>opacity</dt><dd><span class="zh">不透明度 0–255(默认 255);为对齐 Pillow 而存储。</span></dd>
+      <dt>color</dt><dd><span>颜色名或 <code>#hex</code> 字符串。</span></dd>
+      <dt>opacity</dt><dd><span>不透明度 0–255(默认 255);为对齐 Pillow 而存储。</span></dd>
     </dl>
   </section>
 
@@ -74,11 +74,11 @@
     <h3>Font <span class="kind">class</span></h3>
     <pre class="sig">Pillow.ImageDraw2.Font(color, file, size := 12)</pre>
     
-    <p class="zh">文字样式:颜色加上经 <code>ImageFont.Truetype(file, size)</code> 加载的 truetype 字体。</p>
+    <p>文字样式:颜色加上经 <code>ImageFont.Truetype(file, size)</code> 加载的 truetype 字体。</p>
     <dl class="params">
-      <dt>color</dt><dd><span class="zh">颜色名或 <code>#hex</code> 字符串。</span></dd>
-      <dt>file</dt><dd><span class="zh">truetype 字体文件路径。</span></dd>
-      <dt>size</dt><dd><span class="zh">字号(像素,默认 12)。</span></dd>
+      <dt>color</dt><dd><span>颜色名或 <code>#hex</code> 字符串。</span></dd>
+      <dt>file</dt><dd><span>truetype 字体文件路径。</span></dd>
+      <dt>size</dt><dd><span>字号(像素,默认 12)。</span></dd>
     </dl>
   </section>
 
@@ -86,31 +86,31 @@
     <h3>Draw <span class="kind">class</span></h3>
     <pre class="sig">Pillow.ImageDraw2.Draw(image, size := unset, color := unset)</pre>
     
-    <p class="zh">在图像上创建 ImageDraw2 绘图句柄。传入 <code>Pillow.Image</code>,或传入模式字符串并搭配 <code>size</code>(以及可选的 <code>color</code>)来新建空白图像。</p>
+    <p>在图像上创建 ImageDraw2 绘图句柄。传入 <code>Pillow.Image</code>,或传入模式字符串并搭配 <code>size</code>(以及可选的 <code>color</code>)来新建空白图像。</p>
     <dl class="params">
-      <dt>image</dt><dd><span class="zh"><code>Pillow.Image</code>,或模式字符串(如 <code>"RGB"</code>)。</span></dd>
-      <dt>size</dt><dd><span class="zh">当 <code>image</code> 为模式字符串时必填;新图像的 <code>[width, height]</code>。</span></dd>
-      <dt>color</dt><dd><span class="zh">由模式字符串创建时的可选背景色。</span></dd>
+      <dt>image</dt><dd><span><code>Pillow.Image</code>,或模式字符串(如 <code>"RGB"</code>)。</span></dd>
+      <dt>size</dt><dd><span>当 <code>image</code> 为模式字符串时必填;新图像的 <code>[width, height]</code>。</span></dd>
+      <dt>color</dt><dd><span>由模式字符串创建时的可选背景色。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:Draw 句柄(暴露 <code>Image</code> 与 <code>Draw</code> 字段)。</span></p>
-    <p class="note"><span class="zh"><code>size</code>/<code>color</code> 仅在 <code>image</code> 为模式字符串时生效(它们用于 <code>Image.New(mode, size, color)</code>);传入实际 Image 时二者被忽略。</span></p>
+    <p class="returns"><span>返回:Draw 句柄(暴露 <code>Image</code> 与 <code>Draw</code> 字段)。</span></p>
+    <p class="note"><span><code>size</code>/<code>color</code> 仅在 <code>image</code> 为模式字符串时生效(它们用于 <code>Image.New(mode, size, color)</code>);传入实际 Image 时二者被忽略。</span></p>
   </section>
 
   <section class="api" id="ImageDraw2.Draw.Flush">
     <h3>Flush</h3>
     <pre class="sig">draw.Flush()</pre>
     
-    <p class="zh">返回底层图像(所有绘制都就地作用于它)。</p>
-    <p class="returns"><span class="zh">返回:被绘制的 Pillow.Image。</span></p>
+    <p>返回底层图像(所有绘制都就地作用于它)。</p>
+    <p class="returns"><span>返回:被绘制的 Pillow.Image。</span></p>
   </section>
 
   <section class="api" id="ImageDraw2.Draw.Settransform">
     <h3>Settransform</h3>
     <pre class="sig">draw.Settransform(offset)</pre>
     
-    <p class="zh">对后续形状与文字渲染应用像素偏移:<code>(xoffset, yoffset)</code> 转换为仿射 <code>(1, 0, xoffset, 0, 1, yoffset)</code>。</p>
+    <p>对后续形状与文字渲染应用像素偏移:<code>(xoffset, yoffset)</code> 转换为仿射 <code>(1, 0, xoffset, 0, 1, yoffset)</code>。</p>
     <dl class="params">
-      <dt>offset</dt><dd><span class="zh"><code>[xoffset, yoffset]</code> 坐标对。</span></dd>
+      <dt>offset</dt><dd><span><code>[xoffset, yoffset]</code> 坐标对。</span></dd>
     </dl>
   </section>
 
@@ -118,19 +118,19 @@
     <h3>Render</h3>
     <pre class="sig">draw.Render(op, xy, pen := unset, brush := unset, options := unset)</pre>
     
-    <p class="zh">底层调度器:把 <code>pen</code> 解析为轮廓色 + 线宽、把 <code>brush</code> 解析为填充色,对 <code>xy</code> 应用当前变换,然后为 <code>op</code> 调用底层 <code>ImageDraw.Draw</code> 句柄。下面的形状方法都转交到这里。</p>
+    <p>底层调度器:把 <code>pen</code> 解析为轮廓色 + 线宽、把 <code>brush</code> 解析为填充色,对 <code>xy</code> 应用当前变换,然后为 <code>op</code> 调用底层 <code>ImageDraw.Draw</code> 句柄。下面的形状方法都转交到这里。</p>
     <dl class="params">
-      <dt>op</dt><dd><span class="zh">操作名:<code>"arc"|"line"|"chord"|"ellipse"|"pieslice"|"polygon"|"rectangle"</code>。</span></dd>
-      <dt>xy</dt><dd><span class="zh">操作的坐标。</span></dd>
-      <dt>pen</dt><dd><span class="zh"><code>Pen</code>(轮廓)或 <code>Brush</code>(填充),或 unset。</span></dd>
-      <dt>brush</dt><dd><span class="zh"><code>Brush</code>(填充)或 <code>Pen</code>(轮廓),或 unset。</span></dd>
-      <dt>options</dt><dd><span class="zh">操作选项(如 <code>{Start, End}</code> 角度)。</span></dd>
+      <dt>op</dt><dd><span>操作名:<code>"arc"|"line"|"chord"|"ellipse"|"pieslice"|"polygon"|"rectangle"</code>。</span></dd>
+      <dt>xy</dt><dd><span>操作的坐标。</span></dd>
+      <dt>pen</dt><dd><span><code>Pen</code>(轮廓)或 <code>Brush</code>(填充),或 unset。</span></dd>
+      <dt>brush</dt><dd><span><code>Brush</code>(填充)或 <code>Pen</code>(轮廓),或 unset。</span></dd>
+      <dt>options</dt><dd><span>操作选项(如 <code>{Start, End}</code> 角度)。</span></dd>
     </dl>
   </section>
 
   <h2 id="shapes">形状</h2>
   
-  <p class="zh">每个形状接收 <code>Pen</code>(轮廓)和/或 <code>Brush</code>(填充);<code>Arc</code>/<code>Chord</code>/<code>Pieslice</code> 还接收以度计的 <code>start</code>/<code>end</code> 角度。<code>Pen</code> 提供轮廓色与线宽;<code>Brush</code> 提供填充色。</p>
+  <p>每个形状接收 <code>Pen</code>(轮廓)和/或 <code>Brush</code>(填充);<code>Arc</code>/<code>Chord</code>/<code>Pieslice</code> 还接收以度计的 <code>start</code>/<code>end</code> 角度。<code>Pen</code> 提供轮廓色与线宽;<code>Brush</code> 提供填充色。</p>
 
   <section class="api" id="ImageDraw2.Draw.Arc">
     <h3>Arc / Chord / Pieslice</h3>
@@ -138,35 +138,35 @@
 draw.Chord(xy, pen := unset, start := 0, end := 360, brush := unset)
 draw.Pieslice(xy, pen := unset, start := 0, end := 360, brush := unset)</pre>
     
-    <p class="zh">在 <code>start</code> 与 <code>end</code> 度之间绘制圆弧段。Arc 只描边;chord 以弦封闭;pieslice 经圆心封闭成扇形。</p>
+    <p>在 <code>start</code> 与 <code>end</code> 度之间绘制圆弧段。Arc 只描边;chord 以弦封闭;pieslice 经圆心封闭成扇形。</p>
   </section>
 
   <section class="api" id="ImageDraw2.Draw.Ellipse">
     <h3>Ellipse</h3>
     <pre class="sig">draw.Ellipse(xy, pen := unset, brush := unset)</pre>
     
-    <p class="zh">在包围盒 <code>xy</code> 内绘制椭圆。</p>
+    <p>在包围盒 <code>xy</code> 内绘制椭圆。</p>
   </section>
 
   <section class="api" id="ImageDraw2.Draw.Line">
     <h3>Line</h3>
     <pre class="sig">draw.Line(xy, pen := unset, brush := unset)</pre>
     
-    <p class="zh">沿 <code>[x, y]</code> 点序列绘制折线。</p>
+    <p>沿 <code>[x, y]</code> 点序列绘制折线。</p>
   </section>
 
   <section class="api" id="ImageDraw2.Draw.Polygon">
     <h3>Polygon</h3>
     <pre class="sig">draw.Polygon(xy, pen := unset, brush := unset)</pre>
     
-    <p class="zh">沿给定顶点绘制多边形(自动闭合)。</p>
+    <p>沿给定顶点绘制多边形(自动闭合)。</p>
   </section>
 
   <section class="api" id="ImageDraw2.Draw.Rectangle">
     <h3>Rectangle</h3>
     <pre class="sig">draw.Rectangle(xy, pen := unset, brush := unset)</pre>
     
-    <p class="zh">绘制矩形;<code>xy</code> = <code>[left, upper, right, lower]</code>。</p>
+    <p>绘制矩形;<code>xy</code> = <code>[left, upper, right, lower]</code>。</p>
   </section>
 
   <h2 id="text">文字</h2>
@@ -175,23 +175,23 @@ draw.Pieslice(xy, pen := unset, start := 0, end := 360, brush := unset)</pre>
     <h3>Text</h3>
     <pre class="sig">draw.Text(xy, text, font)</pre>
     
-    <p class="zh">用 <code>Font</code>(颜色 + truetype 字体)在 <code>xy</code> 处绘制文字。要求 <code>Pillow.ImageDraw2.Font</code>。</p>
-    <p class="returns"><span class="zh">返回:Draw 句柄(可链式调用)。</span></p>
-    <p class="note"><span class="zh">文字绘制转交 <code>ImageDraw.Text</code>,并停留在已记录的原生绘制管线(<a href="boundaries.html#boundary.defaultfont">API-DRAWFONT-001 边界</a>)。</span></p>
+    <p>用 <code>Font</code>(颜色 + truetype 字体)在 <code>xy</code> 处绘制文字。要求 <code>Pillow.ImageDraw2.Font</code>。</p>
+    <p class="returns"><span>返回:Draw 句柄(可链式调用)。</span></p>
+    <p class="note"><span>文字绘制转交 <code>ImageDraw.Text</code>,并停留在已记录的原生绘制管线(<a href="boundaries.html#boundary.defaultfont">API-DRAWFONT-001 边界</a>)。</span></p>
   </section>
 
   <section class="api" id="ImageDraw2.Draw.Textbbox">
     <h3>Textbbox</h3>
     <pre class="sig">draw.Textbbox(xy, text, font)</pre>
     
-    <p class="zh">返回文字绘制后的包围盒(转交 <code>ImageDraw.TextBbox</code>)。</p>
+    <p>返回文字绘制后的包围盒(转交 <code>ImageDraw.TextBbox</code>)。</p>
   </section>
 
   <section class="api" id="ImageDraw2.Draw.Textlength">
     <h3>Textlength</h3>
     <pre class="sig">draw.Textlength(text, font)</pre>
     
-    <p class="zh">返回文字的像素宽度(转交 <code>ImageDraw.TextLength</code>)。</p>
+    <p>返回文字的像素宽度(转交 <code>ImageDraw.TextLength</code>)。</p>
   </section>
 
   <h2 id="helper">内部辅助</h2>
@@ -199,12 +199,12 @@ draw.Pieslice(xy, pen := unset, start := 0, end := 360, brush := unset)</pre>
     <h3>GetRgbColor <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageDraw2.GetRgbColor(color)</pre>
     
-    <p class="zh">内部辅助:经 <code>ImageColor.GetRgb</code> 解析颜色名或 <code>#hex</code> 字符串。非字符串值抛 Pillow 原样的 <code>'tuple' object has no attribute 'lower'</code> 错误。不属于公开绘图接口。</p>
+    <p>内部辅助:经 <code>ImageColor.GetRgb</code> 解析颜色名或 <code>#hex</code> 字符串。非字符串值抛 Pillow 原样的 <code>'tuple' object has no attribute 'lower'</code> 错误。不属于公开绘图接口。</p>
   </section>
 
   <h2 id="examples">示例</h2>
   
-  <p class="zh">用 Pen 在新图像上绘制矩形:</p>
+  <p>用 Pen 在新图像上绘制矩形:</p>
   <pre class="example">img := Pillow.Image.New("RGB", [200, 120], "white")
 d := Pillow.ImageDraw2.Draw(img)
 pen := Pillow.ImageDraw2.Pen("red", 3)
@@ -213,6 +213,5 @@ out := d.Flush()          ;  the same img
 out.Save("draw2.png")
 out.Close()</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

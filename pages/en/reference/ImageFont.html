@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -43,7 +43,7 @@
 <div class="content">
   <div class="crumbs"><a href="../index.html">Home</a> » ImageFont</div>
   <h1>ImageFont <span class="kind">module</span></h1>
-  <p class="en">Font loading and metrics, mirroring Pillow's <code>ImageFont</code>: <code>Truetype</code> loads a TrueType/OpenType file into a <code>FreeTypeFont</code> object whose methods measure and rasterize text, including the full variable-font variation surface (fvar axes, named instances, avar + HVAR advance deltas).</p>
+  <p>Font loading and metrics, mirroring Pillow's <code>ImageFont</code>: <code>Truetype</code> loads a TrueType/OpenType file into a <code>FreeTypeFont</code> object whose methods measure and rasterize text, including the full variable-font variation surface (fvar axes, named instances, avar + HVAR advance deltas).</p>
   
 
   <h2 id="module">Module Functions</h2>
@@ -51,27 +51,27 @@
   <section class="api" id="ImageFont.Truetype">
     <h3>Truetype <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageFont.Truetype(font, size := 10, index := 0, encoding := "", layoutEngine := unset)</pre>
-    <p class="en">Loads a TrueType/OpenType font. <code>size</code> in points; <code>index</code> selects a face inside a collection; <code>encoding</code> selects a Unicode cmap; <code>layoutEngine</code> accepts <code>Layout.BASIC</code>/<code>Layout.RAQM</code>.</p>
+    <p>Loads a TrueType/OpenType font. <code>size</code> in points; <code>index</code> selects a face inside a collection; <code>encoding</code> selects a Unicode cmap; <code>layoutEngine</code> accepts <code>Layout.BASIC</code>/<code>Layout.RAQM</code>.</p>
     
     <dl class="params">
-      <dt>font</dt><dd><span class="en">Path to a .ttf/.otf/.ttc file or a file handle; missing files raise <code>cannot open resource</code>.</span></dd>
+      <dt>font</dt><dd><span>Path to a .ttf/.otf/.ttc file or a file handle; missing files raise <code>cannot open resource</code>.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a FreeTypeFont object.</span></p>
+    <p class="returns"><span>Returns: a FreeTypeFont object.</span></p>
   </section>
 
   <section class="api" id="ImageFont.LoadPath">
     <h3>LoadPath / Load <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageFont.LoadPath(filename)   ;  alias: Load(filename), load_path(filename)</pre>
-    <p class="en">Loads a font from a path (like Pillow's <code>load_path</code>).</p>
+    <p>Loads a font from a path (like Pillow's <code>load_path</code>).</p>
     
   </section>
 
   <section class="api" id="ImageFont.LoadDefault">
     <h3>LoadDefault <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageFont.LoadDefault()   ;  alias: load_default()</pre>
-    <p class="en">Loads Pillow's default bitmap font.</p>
+    <p>Loads Pillow's default bitmap font.</p>
     
-    <p class="warn"><span class="en">Boundary: the bundled default font differs from Pillow's Aileron (the runtime ships its own default glyph set), so default-font metrics match in shape but not byte-for-byte; drawing text with the default font uses the native seams. See <a href="boundaries.html">Boundaries</a>.</span></p>
+    <p class="warn"><span>Boundary: the bundled default font differs from Pillow's Aileron (the runtime ships its own default glyph set), so default-font metrics match in shape but not byte-for-byte; drawing text with the default font uses the native seams. See <a href="boundaries.html">Boundaries</a>.</span></p>
   </section>
 
   <h2 id="freetype">The FreeTypeFont Object</h2>
@@ -79,82 +79,82 @@
   <section class="api" id="ImageFont.GetMetrics">
     <h3>GetMetrics</h3>
     <pre class="sig">font.GetMetrics()</pre>
-    <p class="en">Returns a Map with the face metrics: <code>ascent</code>, <code>descent</code> (pixels, FreeType rule).</p>
+    <p>Returns a Map with the face metrics: <code>ascent</code>, <code>descent</code> (pixels, FreeType rule).</p>
     
   </section>
 
   <section class="api" id="ImageFont.GetName">
     <h3>GetName</h3>
     <pre class="sig">font.GetName()</pre>
-    <p class="en">Returns the font family name (e.g. <code>"DejaVu Sans"</code>).</p>
+    <p>Returns the font family name (e.g. <code>"DejaVu Sans"</code>).</p>
     
   </section>
 
   <section class="api" id="ImageFont.GetLength">
     <h3>GetLength</h3>
     <pre class="sig">font.GetLength(text, mode := "", direction := unset, features := unset, language := unset)</pre>
-    <p class="en">Returns the advance width of the text in pixels. Multi-line text follows Pillow's longest-line rule.</p>
+    <p>Returns the advance width of the text in pixels. Multi-line text follows Pillow's longest-line rule.</p>
     
   </section>
 
   <section class="api" id="ImageFont.GetBbox">
     <h3>GetBbox</h3>
     <pre class="sig">font.GetBbox(text, anchor := unset, mode := "", direction := unset, features := unset, language := unset, strokeWidth := 0)</pre>
-    <p class="en">Returns the ink bounding box <code>[left, top, right, bottom]</code> relative to the anchor; <code>strokeWidth</code> expands the box like Pillow.</p>
+    <p>Returns the ink bounding box <code>[left, top, right, bottom]</code> relative to the anchor; <code>strokeWidth</code> expands the box like Pillow.</p>
     
-    <p class="note"><span class="en">Facade note: <code>anchor</code> is the positional second parameter here (Pillow passes it second-to-last); <code>mode</code>/<code>direction</code>/<code>features</code>/<code>language</code> are accepted-and-ignored. Anchor math replicates Pillow's exact em-box rules (horizontal m → center, r → right edge; vertical a → 0, t → ink top, m → center, s/b → ink bottom, d → descent).</span></p>
+    <p class="note"><span>Facade note: <code>anchor</code> is the positional second parameter here (Pillow passes it second-to-last); <code>mode</code>/<code>direction</code>/<code>features</code>/<code>language</code> are accepted-and-ignored. Anchor math replicates Pillow's exact em-box rules (horizontal m → center, r → right edge; vertical a → 0, t → ink top, m → center, s/b → ink bottom, d → descent).</span></p>
   </section>
 
   <section class="api" id="ImageFont.GetMask">
     <h3>GetMask</h3>
     <pre class="sig">font.GetMask(text, mode := "", ink := 0, direction := unset, features := unset, language := unset, strokeWidth := 0, anchor := unset, start := unset)</pre>
-    <p class="en">Renders the text to an Image: mode <code>""</code>/<code>"L"</code>/<code>"1"</code>/unknown → L (mode "1" with mono-rounded metrics); <code>"RGBA"</code> → RGBA whose alpha scales with ink.</p>
+    <p>Renders the text to an Image: mode <code>""</code>/<code>"L"</code>/<code>"1"</code>/unknown → L (mode "1" with mono-rounded metrics); <code>"RGBA"</code> → RGBA whose alpha scales with ink.</p>
     
-    <p class="note"><span class="en">Boundaries: glyphs are GDI-rasterized (gray8 ink values are the documented rasterizer divergence); <code>strokeWidth</code>/<code>anchor</code>/<code>start</code> are accepted-and-ignored (FreeType-stroke boundary).</span></p>
+    <p class="note"><span>Boundaries: glyphs are GDI-rasterized (gray8 ink values are the documented rasterizer divergence); <code>strokeWidth</code>/<code>anchor</code>/<code>start</code> are accepted-and-ignored (FreeType-stroke boundary).</span></p>
   </section>
 
   <section class="api" id="ImageFont.GetMask2">
     <h3>GetMask2</h3>
     <pre class="sig">font.GetMask2(text, mode := "", ink := 0, args*)</pre>
-    <p class="en">Pillow's <code>getmask2</code>: returns <code>[mask, offset]</code> where offset is the bbox top-left corner.</p>
+    <p>Pillow's <code>getmask2</code>: returns <code>[mask, offset]</code> where offset is the bbox top-left corner.</p>
     
   </section>
 
   <section class="api" id="ImageFont.FontVariant">
     <h3>FontVariant</h3>
     <pre class="sig">font.FontVariant(font := unset, size := unset, index := unset, encoding := unset, layoutEngine := unset)</pre>
-    <p class="en">Returns a copy of the font with overridden attributes (Pillow's <code>font_variant</code>).</p>
+    <p>Returns a copy of the font with overridden attributes (Pillow's <code>font_variant</code>).</p>
     
   </section>
 
   <section class="api" id="ImageFont.GetVariationAxes">
     <h3>GetVariationAxes</h3>
     <pre class="sig">font.GetVariationAxes()   ;  alias: get_variation_axes()</pre>
-    <p class="en">Returns the variable-font fvar axes as an array of Maps: <code>name</code> (bytes), <code>minimum</code>, <code>default</code>, <code>maximum</code>.</p>
+    <p>Returns the variable-font fvar axes as an array of Maps: <code>name</code> (bytes), <code>minimum</code>, <code>default</code>, <code>maximum</code>.</p>
     
   </section>
 
   <section class="api" id="ImageFont.GetVariationNames">
     <h3>GetVariationNames</h3>
     <pre class="sig">font.GetVariationNames()   ;  alias: get_variation_names()</pre>
-    <p class="en">Returns the named instances (e.g. <code>"Regular"</code>, <code>"Bold"</code>) as an array of byte strings.</p>
+    <p>Returns the named instances (e.g. <code>"Regular"</code>, <code>"Bold"</code>) as an array of byte strings.</p>
     
   </section>
 
   <section class="api" id="ImageFont.SetVariationByAxes">
     <h3>SetVariationByAxes</h3>
     <pre class="sig">font.SetVariationByAxes(axes)   ;  alias: set_variation_by_axes()</pre>
-    <p class="en">Sets the variation coordinates from an array of per-axis values (exact length required).</p>
+    <p>Sets the variation coordinates from an array of per-axis values (exact length required).</p>
     
-    <p class="note"><span class="en">Parity: the full engine is replicated — avar segment maps, HVAR item variation stores (format 0/1, FreeType's region scalars) and per-glyph advance deltas through 26.6 arithmetic; error shapes match Pillow (<code>argument must be a list</code>, non-variable <code>invalid argument</code> OSError).</span></p>
+    <p class="note"><span>Parity: the full engine is replicated — avar segment maps, HVAR item variation stores (format 0/1, FreeType's region scalars) and per-glyph advance deltas through 26.6 arithmetic; error shapes match Pillow (<code>argument must be a list</code>, non-variable <code>invalid argument</code> OSError).</span></p>
   </section>
 
   <section class="api" id="ImageFont.SetVariationByName">
     <h3>SetVariationByName</h3>
     <pre class="sig">font.SetVariationByName(name)   ;  alias: set_variation_by_name()</pre>
-    <p class="en">Selects a named instance.</p>
+    <p>Selects a named instance.</p>
     
-    <p class="note"><span class="en">Parity: unknown names raise Pillow's exact <code>b'&lt;name&gt;' is not in list</code>.</span></p>
+    <p class="note"><span>Parity: unknown names raise Pillow's exact <code>b'&lt;name&gt;' is not in list</code>.</span></p>
   </section>
 
   <h2 id="other">TransposedFont &amp; Layout</h2>
@@ -162,24 +162,24 @@
   <section class="api" id="ImageFont.TransposedFont">
     <h3>TransposedFont <span class="kind">class</span></h3>
     <pre class="sig">Pillow.ImageFont.TransposedFont(font, orientation := unset)</pre>
-    <p class="en">Wraps a font with an EXIF orientation; exposes <code>GetMask</code>, <code>GetBbox</code>, <code>GetLength</code> (orientation storage, the exact <code>(0, 0, w, h)</code> getbbox normalization with the 90/270 width/height swap, getlength delegation).</p>
+    <p>Wraps a font with an EXIF orientation; exposes <code>GetMask</code>, <code>GetBbox</code>, <code>GetLength</code> (orientation storage, the exact <code>(0, 0, w, h)</code> getbbox normalization with the 90/270 width/height swap, getlength delegation).</p>
     
-    <p class="note"><span class="en">Parity: 90/270 GetLength raises <code>text length is undefined for text rotated by 90 or 270 degrees</code>.</span></p>
+    <p class="note"><span>Parity: 90/270 GetLength raises <code>text length is undefined for text rotated by 90 or 270 degrees</code>.</span></p>
   </section>
 
   <section class="api" id="ImageFont.Layout">
     <h3>Layout <span class="kind">constants</span></h3>
     <pre class="sig">Pillow.ImageFont.Layout.BASIC := 0
 Pillow.ImageFont.Layout.RAQM   := 1</pre>
-    <p class="en">Layout engine constants; RAQM is accepted but the runtime is a no-libraqm build (text-direction options raise Pillow's KeyError shape).</p>
+    <p>Layout engine constants; RAQM is accepted but the runtime is a no-libraqm build (text-direction options raise Pillow's KeyError shape).</p>
     
   </section>
 
   <h2 id="internals">Internal helpers</h2>
-  <p class="note"><span class="en"><code>CheckStringLength</code> (rejects over-long text with Pillow's error), <code>LoadDefaultImagefont</code> (loads the bundled default bitmap font) and <code>ResolveWindowsFont</code> (Windows font-path resolution) are facade internals — public for the facade's own use, not part of the Pillow-style user API. On FreeTypeFont, <code>Close</code>, <code>RequireHandle</code>, <code>DuplicateHandle</code> and <code>IsVariable</code> are the native-handle lifecycle helpers behind the public surface.</span></p>
+  <p class="note"><span><code>CheckStringLength</code> (rejects over-long text with Pillow's error), <code>LoadDefaultImagefont</code> (loads the bundled default bitmap font) and <code>ResolveWindowsFont</code> (Windows font-path resolution) are facade internals — public for the facade's own use, not part of the Pillow-style user API. On FreeTypeFont, <code>Close</code>, <code>RequireHandle</code>, <code>DuplicateHandle</code> and <code>IsVariable</code> are the native-handle lifecycle helpers behind the public surface.</span></p>
 
   <h2 id="examples">Examples</h2>
-  <p class="en">Load a variable font, measure and render:</p>
+  <p>Load a variable font, measure and render:</p>
   
   <pre class="example">font := Pillow.ImageFont.Truetype("C:\Windows\Fonts\bahnschrift.ttf", 24)
 axes := font.GetVariationAxes()          ;  e.g. [{"name": b"wght", "minimum": 300, ...}]
@@ -188,6 +188,5 @@ mask := font.GetMask2("Hi")              ;  [L-image, offset]
 bb   := font.GetBbox("Hi")               ;  [left, top, right, bottom]
 len  := font.GetLength("Hi")</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

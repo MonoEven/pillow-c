@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -43,76 +43,76 @@
 <div class="content">
   <div class="crumbs"><a href="../index.html">Home</a> » Image</div>
   <h1>Image <span class="kind">module</span></h1>
-  <p class="en">The <code>Image</code> class is the workhorse of the library: it wraps a native image handle owned by <code>pillow_c.dll</code> and provides Pillow&nbsp;11.3.0's full object surface — constructors, geometry, pixels, palette, filters, compositing, metadata and save/load. AHK arrays stand in for Python tuples (<code>[width, height]</code>, <code>[x, y]</code>, <code>[left, upper, right, lower]</code>), <code>unset</code> is the None analogue, errors are thrown as <code>Error</code> objects with Pillow's exact message strings, and <code>Info</code> is a <code>Map</code>.</p>
+  <p>The <code>Image</code> class is the workhorse of the library: it wraps a native image handle owned by <code>pillow_c.dll</code> and provides Pillow&nbsp;11.3.0's full object surface — constructors, geometry, pixels, palette, filters, compositing, metadata and save/load. AHK arrays stand in for Python tuples (<code>[width, height]</code>, <code>[x, y]</code>, <code>[left, upper, right, lower]</code>), <code>unset</code> is the None analogue, errors are thrown as <code>Error</code> objects with Pillow's exact message strings, and <code>Info</code> is a <code>Map</code>.</p>
   
-  <p class="note"><span class="en">All methods also exist under their Pillow snake_case names (<code>resize</code>, <code>getbbox</code>, <code>putpixel</code>, …); this page lists the PascalCase primary names.</span></p>
-  <p class="note"><span class="en">Most methods return a <b>new</b> Image and leave this one unchanged (Pillow semantics). Operations that mutate in place are marked below.</span></p>
+  <p class="note"><span>All methods also exist under their Pillow snake_case names (<code>resize</code>, <code>getbbox</code>, <code>putpixel</code>, …); this page lists the PascalCase primary names.</span></p>
+  <p class="note"><span>Most methods return a <b>new</b> Image and leave this one unchanged (Pillow semantics). Operations that mutate in place are marked below.</span></p>
 
   <h2 id="constructors">Constructors &amp; Loading</h2>
 
   <section class="api" id="Image.New">
     <h3>New <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.New(modeName, size, color := unset)</pre>
-    <p class="en">Creates a new image of the given mode and size, optionally filled with a single color.</p>
+    <p>Creates a new image of the given mode and size, optionally filled with a single color.</p>
     
     <dl class="params">
-      <dt>modeName</dt><dd><span class="en">Mode string: <code>"1"</code>, <code>"L"</code>, <code>"P"</code>, <code>"RGB"</code>, <code>"RGBA"</code>, <code>"CMYK"</code>, <code>"I"</code>, <code>"F"</code>, <code>"I;16"</code>, …</span></dd>
-      <dt>size</dt><dd><span class="en">Array <code>[width, height]</code> in pixels.</span></dd>
-      <dt>color</dt><dd><span class="en">Fill color: a name string, a <code>#rgb</code>/<code>#rrggbb</code> string, an integer (L/I), a float (F) or an array per band.</span></dd>
+      <dt>modeName</dt><dd><span>Mode string: <code>"1"</code>, <code>"L"</code>, <code>"P"</code>, <code>"RGB"</code>, <code>"RGBA"</code>, <code>"CMYK"</code>, <code>"I"</code>, <code>"F"</code>, <code>"I;16"</code>, …</span></dd>
+      <dt>size</dt><dd><span>Array <code>[width, height]</code> in pixels.</span></dd>
+      <dt>color</dt><dd><span>Fill color: a name string, a <code>#rgb</code>/<code>#rrggbb</code> string, an integer (L/I), a float (F) or an array per band.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.Open">
     <h3>Open <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.Open(path, formats := unset)</pre>
-    <p class="en">Opens and identifies an image file, decoding it lazily like Pillow (full decode happens on demand). Formats are detected by content, not by extension.</p>
+    <p>Opens and identifies an image file, decoding it lazily like Pillow (full decode happens on demand). Formats are detected by content, not by extension.</p>
     
     <dl class="params">
-      <dt>path</dt><dd><span class="en">Filesystem path to the image file.</span></dd>
-      <dt>formats</dt><dd><span class="en">Optional list of format names or MIME types to try first (Pillow's <code>formats</code> argument).</span></dd>
+      <dt>path</dt><dd><span>Filesystem path to the image file.</span></dd>
+      <dt>formats</dt><dd><span>Optional list of format names or MIME types to try first (Pillow's <code>formats</code> argument).</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
-    <p class="note"><span class="en">Parity: raises <code>FileNotFoundError</code> for missing files and Pillow's quoted <code>UnidentifiedImageError</code> for unrecognized content; WebP/AVIF/JPEG2000 content raises the exact <code>decoder … not available</code> (see Boundaries).</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
+    <p class="note"><span>Parity: raises <code>FileNotFoundError</code> for missing files and Pillow's quoted <code>UnidentifiedImageError</code> for unrecognized content; WebP/AVIF/JPEG2000 content raises the exact <code>decoder … not available</code> (see Boundaries).</span></p>
   </section>
 
   <section class="api" id="Image.FromBytes">
     <h3>FromBytes <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.FromBytes(modeName, size, bytes, decoder := unset, rawmode := unset, stride := 0, orientation := 1)</pre>
-    <p class="en">Builds an image from raw pixel bytes in memory (Pillow's <code>Image.frombytes</code>).</p>
+    <p>Builds an image from raw pixel bytes in memory (Pillow's <code>Image.frombytes</code>).</p>
     
     <dl class="params">
-      <dt>modeName</dt><dd><span class="en">Mode string.</span></dd>
-      <dt>size</dt><dd><span class="en">Array <code>[width, height]</code>.</span></dd>
-      <dt>bytes</dt><dd><span class="en">Buffer of raw pixel data; its length must match the mode/size/stride.</span></dd>
-      <dt>decoder / rawmode</dt><dd><span class="en">Decoder name and raw mode (e.g. <code>"raw"</code> / <code>"RGB"</code>); default raw.</span></dd>
-      <dt>stride / orientation</dt><dd><span class="en">Row stride in bytes and storage orientation (1 = top-down).</span></dd>
+      <dt>modeName</dt><dd><span>Mode string.</span></dd>
+      <dt>size</dt><dd><span>Array <code>[width, height]</code>.</span></dd>
+      <dt>bytes</dt><dd><span>Buffer of raw pixel data; its length must match the mode/size/stride.</span></dd>
+      <dt>decoder / rawmode</dt><dd><span>Decoder name and raw mode (e.g. <code>"raw"</code> / <code>"RGB"</code>); default raw.</span></dd>
+      <dt>stride / orientation</dt><dd><span>Row stride in bytes and storage orientation (1 = top-down).</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.FromBuffer">
     <h3>FromBuffer <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.FromBuffer(modeName, size, data, decoder := "raw", rawmode := unset, stride := 0, orientation := 1)</pre>
-    <p class="en">Identical to <code>FromBytes</code> with the decoder defaulting to <code>"raw"</code> (Pillow's <code>Image.frombuffer</code>; Pillow's deprecated-mode warning does not apply here).</p>
+    <p>Identical to <code>FromBytes</code> with the decoder defaulting to <code>"raw"</code> (Pillow's <code>Image.frombuffer</code>; Pillow's deprecated-mode warning does not apply here).</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.FromBytesInstance">
     <h3>FromBytes (instance) <span class="kind">method</span></h3>
     <pre class="sig">image.FromBytes(bytes, decoder := unset, rawmode := unset, stride := 0, orientation := 1)</pre>
-    <p class="en">Loads pixel data from raw bytes into this image's storage.</p>
+    <p>Loads pixel data from raw bytes into this image's storage.</p>
     
-    <p class="returns"><span class="en">Returns: this image (mutates in place).</span></p>
+    <p class="returns"><span>Returns: this image (mutates in place).</span></p>
   </section>
 
   <section class="api" id="Image.Load">
     <h3>Load <span class="kind">method</span></h3>
     <pre class="sig">image.Load()</pre>
-    <p class="en">Allocates pixel storage and decodes the file data (Pillow's <code>load()</code>). The facade decodes on demand, so this is usually implicit.</p>
+    <p>Allocates pixel storage and decodes the file data (Pillow's <code>load()</code>). The facade decodes on demand, so this is usually implicit.</p>
     
-    <p class="returns"><span class="en">Returns: a <code>PixelAccess</code> object.</span></p>
+    <p class="returns"><span>Returns: a <code>PixelAccess</code> object.</span></p>
   </section>
 
   <section class="api" id="Image.PixelAccess">
@@ -120,93 +120,93 @@
     <pre class="sig">Pillow.Image.PixelAccess(image)
 pa[x, y]          ;  read  — GetPixel([x, y])
 pa[x, y] := value ;  write — PutPixel([x, y], value)</pre>
-    <p class="en">Pillow's pixel-access object: indexing with <code>[x, y]</code> reads/writes one pixel through <code>GetPixel</code>/<code>PutPixel</code>, including negative-coordinate wrapping and float truncation.</p>
+    <p>Pillow's pixel-access object: indexing with <code>[x, y]</code> reads/writes one pixel through <code>GetPixel</code>/<code>PutPixel</code>, including negative-coordinate wrapping and float truncation.</p>
     
   </section>
 
   <section class="api" id="Image.Merge">
     <h3>Merge <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.Merge(modeName, bands)</pre>
-    <p class="en">Merges single-band images into a new multi-band image (inverse of <code>Split</code>).</p>
+    <p>Merges single-band images into a new multi-band image (inverse of <code>Split</code>).</p>
     
     <dl class="params">
-      <dt>modeName</dt><dd><span class="en">Target mode (e.g. <code>"RGB"</code> for 3 bands, <code>"RGBA"</code> for 4).</span></dd>
-      <dt>bands</dt><dd><span class="en">Array of single-band Images; the count must match the mode.</span></dd>
+      <dt>modeName</dt><dd><span>Target mode (e.g. <code>"RGB"</code> for 3 bands, <code>"RGBA"</code> for 4).</span></dd>
+      <dt>bands</dt><dd><span>Array of single-band Images; the count must match the mode.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.Blend">
     <h3>Blend <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.Blend(left, right, alpha)</pre>
-    <p class="en">Interpolates two same-mode/size images: <code>left * (1 - alpha) + right * alpha</code>.</p>
+    <p>Interpolates two same-mode/size images: <code>left * (1 - alpha) + right * alpha</code>.</p>
     
     <dl class="params">
-      <dt>alpha</dt><dd><span class="en">Number in 0.0…1.0; 0 returns left, 1 returns right.</span></dd>
+      <dt>alpha</dt><dd><span>Number in 0.0…1.0; 0 returns left, 1 returns right.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.Composite">
     <h3>Composite <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.Composite(image1, image2, mask)</pre>
-    <p class="en">Copies image1 where mask is 255 and image2 where mask is 0; intermediate mask values are not blended (unlike Blend).</p>
+    <p>Copies image1 where mask is 255 and image2 where mask is 0; intermediate mask values are not blended (unlike Blend).</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.AlphaComposite">
     <h3>AlphaComposite <span class="kind">static + method</span></h3>
     <pre class="sig">Pillow.Image.AlphaComposite(dst, src)   ;  static
 image.AlphaComposite(image, dest := unset, source := unset)   ;  method</pre>
-    <p class="en">Composites an RGBA source over a destination using alpha: <code>out = src*a + dst*(1-a)</code>. The method form supports destination/source offsets.</p>
+    <p>Composites an RGBA source over a destination using alpha: <code>out = src*a + dst*(1-a)</code>. The method form supports destination/source offsets.</p>
     
     <dl class="params">
-      <dt>dest / source</dt><dd><span class="en">Optional <code>[x, y]</code> offsets; both must be given or both omitted.</span></dd>
+      <dt>dest / source</dt><dd><span>Optional <code>[x, y]</code> offsets; both must be given or both omitted.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image (method form) / the composited result (static form).</span></p>
+    <p class="returns"><span>Returns: a new Image (method form) / the composited result (static form).</span></p>
   </section>
 
   <section class="api" id="Image.LinearGradient">
     <h3>LinearGradient / RadialGradient <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.LinearGradient(modeName)
 Pillow.Image.RadialGradient(modeName)</pre>
-    <p class="en">Returns a 256×256 gradient image. Supported modes: <code>1</code>, <code>L</code>, <code>P</code>, <code>I</code>, <code>F</code> (multi-character modes raise Pillow's exact <code>image has wrong mode</code>, unknown single-character modes raise <code>unrecognized image mode</code>). Linear: value = y, top to bottom. Radial: value = (int)sqrt(((x−128)²+(y−128)²)×2) clamped at ≥ 255, centre to edge.</p>
+    <p>Returns a 256×256 gradient image. Supported modes: <code>1</code>, <code>L</code>, <code>P</code>, <code>I</code>, <code>F</code> (multi-character modes raise Pillow's exact <code>image has wrong mode</code>, unknown single-character modes raise <code>unrecognized image mode</code>). Linear: value = y, top to bottom. Radial: value = (int)sqrt(((x−128)²+(y−128)²)×2) clamped at ≥ 255, centre to edge.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.EffectMandelbrot">
     <h3>EffectMandelbrot <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.EffectMandelbrot(size, extent, quality)</pre>
-    <p class="en">Generates a Mandelbrot set image.</p>
+    <p>Generates a Mandelbrot set image.</p>
     
     <dl class="params">
-      <dt>size</dt><dd><span class="en">Array <code>[width, height]</code>.</span></dd>
-      <dt>extent</dt><dd><span class="en">Array <code>[x0, y0, x1, y1]</code> of the complex-plane region.</span></dd>
-      <dt>quality</dt><dd><span class="en">Integer iteration quality.</span></dd>
+      <dt>size</dt><dd><span>Array <code>[width, height]</code>.</span></dd>
+      <dt>extent</dt><dd><span>Array <code>[x0, y0, x1, y1]</code> of the complex-plane region.</span></dd>
+      <dt>quality</dt><dd><span>Integer iteration quality.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.EffectNoise">
     <h3>EffectNoise <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.EffectNoise(size, sigma)</pre>
-    <p class="en">Generates a Gaussian-noise image of the given size.</p>
+    <p>Generates a Gaussian-noise image of the given size.</p>
     
     <dl class="params">
-      <dt>sigma</dt><dd><span class="en">Standard deviation of the noise.</span></dd>
+      <dt>sigma</dt><dd><span>Standard deviation of the noise.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.EffectSpread">
     <h3>EffectSpread <span class="kind">static + method</span></h3>
     <pre class="sig">Pillow.Image.EffectSpread(image, distance)   ;  static
 image.EffectSpread(distance)                  ;  method</pre>
-    <p class="en">Randomly displaces each pixel within a <code>distance</code>-sized region (Pillow's <code>Image.effect_spread</code>).</p>
+    <p>Randomly displaces each pixel within a <code>distance</code>-sized region (Pillow's <code>Image.effect_spread</code>).</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <h2 id="geometry">Geometry</h2>
@@ -214,93 +214,93 @@ image.EffectSpread(distance)                  ;  method</pre>
   <section class="api" id="Image.Crop">
     <h3>Crop</h3>
     <pre class="sig">image.Crop(box := unset)</pre>
-    <p class="en">Returns a rectangular region defined by a 4-tuple box. Omitting the box uses the bounding box of the non-zero region.</p>
+    <p>Returns a rectangular region defined by a 4-tuple box. Omitting the box uses the bounding box of the non-zero region.</p>
     
     <dl class="params">
-      <dt>box</dt><dd><span class="en"><code>[left, upper, right, lower]</code>; coordinates may lie outside the image.</span></dd>
+      <dt>box</dt><dd><span><code>[left, upper, right, lower]</code>; coordinates may lie outside the image.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
-    <p class="note"><span class="en">Parity: box order errors raise <code>Coordinate 'right' is less than 'left'</code> / <code>Coordinate 'lower' is less than 'upper'</code> exactly.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
+    <p class="note"><span>Parity: box order errors raise <code>Coordinate 'right' is less than 'left'</code> / <code>Coordinate 'lower' is less than 'upper'</code> exactly.</span></p>
   </section>
 
   <section class="api" id="Image.Resize">
     <h3>Resize</h3>
     <pre class="sig">image.Resize(size, resample := unset, box := unset, reducingGap := unset)</pre>
-    <p class="en">Returns a resized copy. Defaults to <code>Resampling.BICUBIC</code> (Pillow 11.3.0's rule: NEAREST only for <code>BGR;</code> modes).</p>
+    <p>Returns a resized copy. Defaults to <code>Resampling.BICUBIC</code> (Pillow 11.3.0's rule: NEAREST only for <code>BGR;</code> modes).</p>
     
     <dl class="params">
-      <dt>size</dt><dd><span class="en">Array <code>[width, height]</code>.</span></dd>
-      <dt>resample</dt><dd><span class="en"><code>Resampling.NEAREST/BOX/BILINEAR/HAMMING/BICUBIC/LANCZOS</code>; invalid values raise <code>Unknown resampling filter (&lt;value&gt;). Use Image.Resampling…</code>.</span></dd>
-      <dt>box</dt><dd><span class="en">Optional source region <code>[left, upper, right, lower]</code>.</span></dd>
-      <dt>reducingGap</dt><dd><span class="en">Downsize in steps of this factor first (Pillow's <code>reducing_gap</code>).</span></dd>
+      <dt>size</dt><dd><span>Array <code>[width, height]</code>.</span></dd>
+      <dt>resample</dt><dd><span><code>Resampling.NEAREST/BOX/BILINEAR/HAMMING/BICUBIC/LANCZOS</code>; invalid values raise <code>Unknown resampling filter (&lt;value&gt;). Use Image.Resampling…</code>.</span></dd>
+      <dt>box</dt><dd><span>Optional source region <code>[left, upper, right, lower]</code>.</span></dd>
+      <dt>reducingGap</dt><dd><span>Downsize in steps of this factor first (Pillow's <code>reducing_gap</code>).</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
-    <p class="note"><span class="en">Parity: RGBA/LA non-NEAREST resizes premultiply by alpha (<code>+127</code>) and keep the premultiplied value where <code>a == 0</code>; mode <code>1</code>/<code>P</code> force NEAREST; I;16 uses Pillow's 16bpc two-pass sampler; non-NEAREST I;16B raises the documented boundary error.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
+    <p class="note"><span>Parity: RGBA/LA non-NEAREST resizes premultiply by alpha (<code>+127</code>) and keep the premultiplied value where <code>a == 0</code>; mode <code>1</code>/<code>P</code> force NEAREST; I;16 uses Pillow's 16bpc two-pass sampler; non-NEAREST I;16B raises the documented boundary error.</span></p>
   </section>
 
   <section class="api" id="Image.Thumbnail">
     <h3>Thumbnail</h3>
     <pre class="sig">image.Thumbnail(size, resample := unset, reducingGap := 2.0)</pre>
-    <p class="en">Modifies this image in place to a thumbnail no larger than size, preserving the aspect ratio.</p>
+    <p>Modifies this image in place to a thumbnail no larger than size, preserving the aspect ratio.</p>
     
-    <p class="returns"><span class="en">Returns: nothing (mutates in place).</span></p>
+    <p class="returns"><span>Returns: nothing (mutates in place).</span></p>
   </section>
 
   <section class="api" id="Image.Reduce">
     <h3>Reduce</h3>
     <pre class="sig">image.Reduce(factor, box := unset)</pre>
-    <p class="en">Returns a copy reduced <code>factor</code> times by block-averaging (integer factor &gt; 0).</p>
+    <p>Returns a copy reduced <code>factor</code> times by block-averaging (integer factor &gt; 0).</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.Rotate">
     <h3>Rotate</h3>
     <pre class="sig">image.Rotate(angle, resample := unset, expand := false, center := unset, translate := unset, fillcolor := unset)</pre>
-    <p class="en">Rotates counterclockwise by angle degrees.</p>
+    <p>Rotates counterclockwise by angle degrees.</p>
     
     <dl class="params">
-      <dt>expand</dt><dd><span class="en">True enlarges the output to contain the whole rotated image.</span></dd>
-      <dt>center</dt><dd><span class="en">Optional rotation center <code>[x, y]</code>; default is the image center.</span></dd>
-      <dt>translate</dt><dd><span class="en">Optional post-rotate translation <code>[x, y]</code>.</span></dd>
-      <dt>fillcolor</dt><dd><span class="en">Color for areas outside the rotated image.</span></dd>
+      <dt>expand</dt><dd><span>True enlarges the output to contain the whole rotated image.</span></dd>
+      <dt>center</dt><dd><span>Optional rotation center <code>[x, y]</code>; default is the image center.</span></dd>
+      <dt>translate</dt><dd><span>Optional post-rotate translation <code>[x, y]</code>.</span></dd>
+      <dt>fillcolor</dt><dd><span>Color for areas outside the rotated image.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.Transpose">
     <h3>Transpose</h3>
     <pre class="sig">image.Transpose(method)</pre>
-    <p class="en">Flips or rotates by multiples of 90° using a <code>Transpose</code> constant (FLIP_LEFT_RIGHT, FLIP_TOP_BOTTOM, ROTATE_90/180/270, TRANSPOSE, TRANSVERSE).</p>
+    <p>Flips or rotates by multiples of 90° using a <code>Transpose</code> constant (FLIP_LEFT_RIGHT, FLIP_TOP_BOTTOM, ROTATE_90/180/270, TRANSPOSE, TRANSVERSE).</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
-    <p class="note"><span class="en">Parity: invalid methods raise <code>No such transpose operation</code>.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
+    <p class="note"><span>Parity: invalid methods raise <code>No such transpose operation</code>.</span></p>
   </section>
 
   <section class="api" id="Image.Transform">
     <h3>Transform</h3>
     <pre class="sig">image.Transform(size, method, data, resample := unset, fillcolor := unset)</pre>
-    <p class="en">Applies an affine/extent/perspective/quad/mesh transform (<code>Transform</code> constants; see the ImageTransform page for the data layouts).</p>
+    <p>Applies an affine/extent/perspective/quad/mesh transform (<code>Transform</code> constants; see the ImageTransform page for the data layouts).</p>
     
     <dl class="params">
-      <dt>size</dt><dd><span class="en">Output size <code>[width, height]</code>.</span></dd>
-      <dt>method</dt><dd><span class="en"><code>Transform.EXTENT/AFFINE/QUAD/PERSPECTIVE/MESH</code>.</span></dd>
-      <dt>data</dt><dd><span class="en">Array of numbers (coefficients / corners / mesh triplets).</span></dd>
-      <dt>resample / fillcolor</dt><dd><span class="en">Resampling filter and background color.</span></dd>
+      <dt>size</dt><dd><span>Output size <code>[width, height]</code>.</span></dd>
+      <dt>method</dt><dd><span><code>Transform.EXTENT/AFFINE/QUAD/PERSPECTIVE/MESH</code>.</span></dd>
+      <dt>data</dt><dd><span>Array of numbers (coefficients / corners / mesh triplets).</span></dd>
+      <dt>resample / fillcolor</dt><dd><span>Resampling filter and background color.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.Draft">
     <h3>Draft</h3>
     <pre class="sig">image.Draft(mode, size)</pre>
-    <p class="en">Configures the decoder to decode at reduced size (JPEG) or to prepare for a mode conversion; must be called right after opening.</p>
+    <p>Configures the decoder to decode at reduced size (JPEG) or to prepare for a mode conversion; must be called right after opening.</p>
     
     <dl class="params">
-      <dt>mode</dt><dd><span class="en">Requested mode.</span></dd>
-      <dt>size</dt><dd><span class="en">Requested size.</span></dd>
+      <dt>mode</dt><dd><span>Requested mode.</span></dd>
+      <dt>size</dt><dd><span>Requested size.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: nothing.</span></p>
+    <p class="returns"><span>Returns: nothing.</span></p>
   </section>
 
   <h2 id="pixels">Pixels &amp; Bands</h2>
@@ -309,50 +309,50 @@ image.EffectSpread(distance)                  ;  method</pre>
     <h3>GetPixel / PutPixel</h3>
     <pre class="sig">image.GetPixel(xy)        ;  xy = [x, y]
 image.PutPixel(xy, value)</pre>
-    <p class="en">Reads/writes one pixel. Coordinates wrap negative values like Pillow (<code>-1</code> = last pixel) and floats truncate.</p>
+    <p>Reads/writes one pixel. Coordinates wrap negative values like Pillow (<code>-1</code> = last pixel) and floats truncate.</p>
     
     <dl class="params">
-      <dt>value</dt><dd><span class="en">Integer (L/I), array per band (RGB…), or a color string.</span></dd>
+      <dt>value</dt><dd><span>Integer (L/I), array per band (RGB…), or a color string.</span></dd>
     </dl>
-    <p class="returns"><span class="en">GetPixel returns: pixel value. PutPixel returns: nothing (mutates).</span></p>
-    <p class="note"><span class="en">Parity: strings raise <code>an integer is required</code>; out-of-range raises <code>image index out of range</code>.</span></p>
+    <p class="returns"><span>GetPixel returns: pixel value. PutPixel returns: nothing (mutates).</span></p>
+    <p class="note"><span>Parity: strings raise <code>an integer is required</code>; out-of-range raises <code>image index out of range</code>.</span></p>
   </section>
 
   <section class="api" id="Image.GetData">
     <h3>GetData / PutData</h3>
     <pre class="sig">image.GetData(band := unset)
 image.PutData(data, scale := 1.0, offset := 0.0)</pre>
-    <p class="en">Bulk pixel read/write. GetData returns an array of 256-entry histograms per band, or the histogram of one band. PutData writes an array of per-band histograms with an optional linear transform.</p>
+    <p>Bulk pixel read/write. GetData returns an array of 256-entry histograms per band, or the histogram of one band. PutData writes an array of per-band histograms with an optional linear transform.</p>
     
-    <p class="returns"><span class="en">Returns: array of histograms (GetData) / nothing (PutData).</span></p>
+    <p class="returns"><span>Returns: array of histograms (GetData) / nothing (PutData).</span></p>
   </section>
 
   <section class="api" id="Image.Fill">
     <h3>Fill</h3>
     <pre class="sig">image.Fill(color)</pre>
-    <p class="en">Fills the whole image with one color (mutates in place).</p>
+    <p>Fills the whole image with one color (mutates in place).</p>
     
   </section>
 
   <section class="api" id="Image.Point">
     <h3>Point</h3>
     <pre class="sig">image.Point(lut, modeName := unset)</pre>
-    <p class="en">Maps pixels through a lookup table: either one callable per band or a flat LUT array.</p>
+    <p>Maps pixels through a lookup table: either one callable per band or a flat LUT array.</p>
     
     <dl class="params">
-      <dt>lut</dt><dd><span class="en">Callable(s) or LUT array; entries act as <code>round(src) → dst</code>.</span></dd>
-      <dt>modeName</dt><dd><span class="en">Optional output mode (e.g. <code>"1"</code> or <code>"L"</code>).</span></dd>
+      <dt>lut</dt><dd><span>Callable(s) or LUT array; entries act as <code>round(src) → dst</code>.</span></dd>
+      <dt>modeName</dt><dd><span>Optional output mode (e.g. <code>"1"</code> or <code>"L"</code>).</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
-    <p class="note"><span class="en">Parity: a short LUT raises <code>wrong number of lut entries</code>; string entries raise <code>type str doesn't define __round__ method</code>.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
+    <p class="note"><span>Parity: a short LUT raises <code>wrong number of lut entries</code>; string entries raise <code>type str doesn't define __round__ method</code>.</span></p>
   </section>
 
   <section class="api" id="Image.GetChannel">
     <h3>GetChannel</h3>
     <pre class="sig">image.GetChannel(channel)</pre>
-    <p class="en">Returns a copy of one channel as an <code>L</code> image. Channel 0 = red (first band); negative indices count from the last band.</p>
+    <p>Returns a copy of one channel as an <code>L</code> image. Channel 0 = red (first band); negative indices count from the last band.</p>
     
-    <p class="returns"><span class="en">Returns: a new L-mode Image.</span></p>
+    <p class="returns"><span>Returns: a new L-mode Image.</span></p>
   </section>
 
   <section class="api" id="Image.Split">
@@ -360,7 +360,7 @@ image.PutData(data, scale := 1.0, offset := 0.0)</pre>
     <pre class="sig">image.Split()       ;  array of single-band copies
 image.GetBands()    ;  array of channel names, e.g. ["R","G","B"]
 image.BandNames()   ;  same as GetBands</pre>
-    <p class="en">Split returns one L copy per band. GetBands/BandNames return the band name list Pillow uses in error messages (<code>["R","G","B"]</code>, <code>["L"]</code>, <code>["C","M","Y","K"]</code>…).</p>
+    <p>Split returns one L copy per band. GetBands/BandNames return the band name list Pillow uses in error messages (<code>["R","G","B"]</code>, <code>["L"]</code>, <code>["C","M","Y","K"]</code>…).</p>
     
   </section>
 
@@ -369,47 +369,47 @@ image.BandNames()   ;  same as GetBands</pre>
   <section class="api" id="Image.Histogram">
     <h3>Histogram</h3>
     <pre class="sig">image.Histogram(mask := unset)</pre>
-    <p class="en">Returns the histogram: one 256-entry list per band, flattened into a single array (Pillow layout).</p>
+    <p>Returns the histogram: one 256-entry list per band, flattened into a single array (Pillow layout).</p>
     
     <dl class="params">
-      <dt>mask</dt><dd><span class="en">Optional 1/L-mode mask of the same size; only masked pixels count.</span></dd>
+      <dt>mask</dt><dd><span>Optional 1/L-mode mask of the same size; only masked pixels count.</span></dd>
     </dl>
-    <p class="note"><span class="en">Parity: a non-1/L mask raises <code>bad transparency mask</code>; size mismatches raise <code>images do not match</code>. I;16 histograms keep Pillow's layout-dependent byte misread as a documented boundary.</span></p>
+    <p class="note"><span>Parity: a non-1/L mask raises <code>bad transparency mask</code>; size mismatches raise <code>images do not match</code>. I;16 histograms keep Pillow's layout-dependent byte misread as a documented boundary.</span></p>
   </section>
 
   <section class="api" id="Image.Entropy">
     <h3>Entropy</h3>
     <pre class="sig">image.Entropy(mask := unset)</pre>
-    <p class="en">Returns the image entropy (in bits per pixel) computed from the histogram.</p>
+    <p>Returns the image entropy (in bits per pixel) computed from the histogram.</p>
     
   </section>
 
   <section class="api" id="Image.GetExtrema">
     <h3>GetExtrema</h3>
     <pre class="sig">image.GetExtrema()</pre>
-    <p class="en">Returns min/max pixel values: for single-band modes (<code>L</code>, <code>I</code>, <code>F</code>, …) a flat <code>[min, max]</code> array; for multi-band modes an array of <code>[min, max]</code> pairs, one per band (Pillow's getextrema shape).</p>
+    <p>Returns min/max pixel values: for single-band modes (<code>L</code>, <code>I</code>, <code>F</code>, …) a flat <code>[min, max]</code> array; for multi-band modes an array of <code>[min, max]</code> pairs, one per band (Pillow's getextrema shape).</p>
     
-    <p class="note"><span class="en">Parity: I;16B raises Pillow's <code>image has wrong mode</code>.</span></p>
+    <p class="note"><span>Parity: I;16B raises Pillow's <code>image has wrong mode</code>.</span></p>
   </section>
 
   <section class="api" id="Image.GetBbox">
     <h3>GetBbox</h3>
     <pre class="sig">image.GetBbox(alphaOnly := true)</pre>
-    <p class="en">Returns the bounding box of the non-zero region as <code>[left, upper, right, lower]</code>. With <code>alphaOnly := false</code> alpha is ignored; an all-zero image returns None (unset).</p>
+    <p>Returns the bounding box of the non-zero region as <code>[left, upper, right, lower]</code>. With <code>alphaOnly := false</code> alpha is ignored; an all-zero image returns None (unset).</p>
     
   </section>
 
   <section class="api" id="Image.GetProjection">
     <h3>GetProjection</h3>
     <pre class="sig">image.GetProjection()</pre>
-    <p class="en">Returns two per-axis arrays counting non-zero pixels per column (x) and per row (y).</p>
+    <p>Returns two per-axis arrays counting non-zero pixels per column (x) and per row (y).</p>
     
   </section>
 
   <section class="api" id="Image.GetColors">
     <h3>GetColors</h3>
     <pre class="sig">image.GetColors(maxcolors := 256)</pre>
-    <p class="en">Returns an array of <code>[count, color]</code> pairs of the most frequent colors, or None (unset) above maxcolors.</p>
+    <p>Returns an array of <code>[count, color]</code> pairs of the most frequent colors, or None (unset) above maxcolors.</p>
     
   </section>
 
@@ -419,29 +419,29 @@ image.BandNames()   ;  same as GetBands</pre>
     <h3>GetPalette / PutPalette</h3>
     <pre class="sig">image.GetPalette(rawmode := "RGB")
 image.PutPalette(data, rawmode := "RGB")</pre>
-    <p class="en">Reads/writes the palette of a P-mode image. GetPalette returns the raw palette bytes (768 for RGB); PutPalette attaches a new palette.</p>
+    <p>Reads/writes the palette of a P-mode image. GetPalette returns the raw palette bytes (768 for RGB); PutPalette attaches a new palette.</p>
     
   </section>
 
   <section class="api" id="Image.Quantize">
     <h3>Quantize</h3>
     <pre class="sig">image.Quantize(colors := 256, method := unset, kmeans := 0, palette := unset, dither := unset)</pre>
-    <p class="en">Converts the image to P mode with at most <code>colors</code> colors.</p>
+    <p>Converts the image to P mode with at most <code>colors</code> colors.</p>
     
     <dl class="params">
-      <dt>method</dt><dd><span class="en"><code>Quantize.MEDIANCUT/MAXCOVERAGE/FASTOCTREE</code>; <code>LIBIMAGEQUANT</code> raises Pillow's exact <code>dependency required by this method was not enabled at compile time</code>.</span></dd>
-      <dt>kmeans</dt><dd><span class="en">Number of k-means refinement iterations.</span></dd>
-      <dt>palette</dt><dd><span class="en">Optional palette image to quantize to.</span></dd>
-      <dt>dither</dt><dd><span class="en"><code>Dither.NONE</code> or <code>Dither.FLOYDSTEINBERG</code>.</span></dd>
+      <dt>method</dt><dd><span><code>Quantize.MEDIANCUT/MAXCOVERAGE/FASTOCTREE</code>; <code>LIBIMAGEQUANT</code> raises Pillow's exact <code>dependency required by this method was not enabled at compile time</code>.</span></dd>
+      <dt>kmeans</dt><dd><span>Number of k-means refinement iterations.</span></dd>
+      <dt>palette</dt><dd><span>Optional palette image to quantize to.</span></dd>
+      <dt>dither</dt><dd><span><code>Dither.NONE</code> or <code>Dither.FLOYDSTEINBERG</code>.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new P-mode Image.</span></p>
+    <p class="returns"><span>Returns: a new P-mode Image.</span></p>
   </section>
 
   <section class="api" id="Image.ApplyTransparency">
     <h3>ApplyTransparency / RemapPalette</h3>
     <pre class="sig">image.ApplyTransparency()   ;  image.ApplyTransparency()
 image.RemapPalette(destImage)</pre>
-    <p class="en">ApplyTransparency replaces the P-mode transparency color with a real alpha band. RemapPalette remaps this image's colors through another P-mode image's palette.</p>
+    <p>ApplyTransparency replaces the P-mode transparency color with a real alpha band. RemapPalette remaps this image's colors through another P-mode image's palette.</p>
     
   </section>
 
@@ -450,19 +450,19 @@ image.RemapPalette(destImage)</pre>
   <section class="api" id="Image.Paste">
     <h3>Paste</h3>
     <pre class="sig">image.Paste(source, box := unset, mask := unset)</pre>
-    <p class="en">Pastes another image into this one (mutates in place). Box-less pastes require equal sizes; a 2-tuple box places the source's upper-left corner; a 4-tuple box resizes the source first.</p>
+    <p>Pastes another image into this one (mutates in place). Box-less pastes require equal sizes; a 2-tuple box places the source's upper-left corner; a 4-tuple box resizes the source first.</p>
     
     <dl class="params">
-      <dt>mask</dt><dd><span class="en">Optional 1/L/RGBA mask; 255 = paste, 0 = keep.</span></dd>
+      <dt>mask</dt><dd><span>Optional 1/L/RGBA mask; 255 = paste, 0 = keep.</span></dd>
     </dl>
   </section>
 
   <section class="api" id="Image.PutAlpha">
     <h3>PutAlpha</h3>
     <pre class="sig">image.PutAlpha(alpha)</pre>
-    <p class="en">Adds or replaces the alpha band from an L-mode image of the same size.</p>
+    <p>Adds or replaces the alpha band from an L-mode image of the same size.</p>
     
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <h2 id="convert">Conversion &amp; Filters</h2>
@@ -470,23 +470,23 @@ image.RemapPalette(destImage)</pre>
   <section class="api" id="Image.Convert">
     <h3>Convert</h3>
     <pre class="sig">image.Convert(modeName := unset, matrixOrDither := unset, dither := unset, palette := unset, colors := unset)</pre>
-    <p class="en">Returns a converted copy. Omitting the mode copies the image (optionally converting the palette to RGBA).</p>
+    <p>Returns a converted copy. Omitting the mode copies the image (optionally converting the palette to RGBA).</p>
     
     <dl class="params">
-      <dt>modeName</dt><dd><span class="en">Target mode; a 4×4 or 4×3 matrix converts to L/RGB (12 values) or RGBA/CMYK (16 values) via <code>matrix · src + offset</code>.</span></dd>
-      <dt>matrixOrDither / dither</dt><dd><span class="en">Matrix or <code>Dither</code> constant; P→RGB conversions accept dithering.</span></dd>
-      <dt>palette</dt><dd><span class="en">Target <code>Palette</code> constant or a sequence of colors when converting to P.</span></dd>
-      <dt>colors</dt><dd><span class="en">Color count for ADAPTIVE palettes (default 256).</span></dd>
+      <dt>modeName</dt><dd><span>Target mode; a 4×4 or 4×3 matrix converts to L/RGB (12 values) or RGBA/CMYK (16 values) via <code>matrix · src + offset</code>.</span></dd>
+      <dt>matrixOrDither / dither</dt><dd><span>Matrix or <code>Dither</code> constant; P→RGB conversions accept dithering.</span></dd>
+      <dt>palette</dt><dd><span>Target <code>Palette</code> constant or a sequence of colors when converting to P.</span></dd>
+      <dt>colors</dt><dd><span>Color count for ADAPTIVE palettes (default 256).</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: a new Image.</span></p>
+    <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
   <section class="api" id="Image.Filter">
     <h3>Filter</h3>
     <pre class="sig">image.Filter(filter)</pre>
-    <p class="en">Applies an ImageFilter and returns the result. The argument must be an <code>ImageFilter.Filter</code> instance or class.</p>
+    <p>Applies an ImageFilter and returns the result. The argument must be an <code>ImageFilter.Filter</code> instance or class.</p>
     
-    <p class="note"><span class="en">Parity: other arguments raise <code>filter argument should be ImageFilter.Filter instance or class</code>.</span></p>
+    <p class="note"><span>Parity: other arguments raise <code>filter argument should be ImageFilter.Filter instance or class</code>.</span></p>
   </section>
 
   <h2 id="metadata">Metadata &amp; Attributes</h2>
@@ -495,7 +495,7 @@ image.RemapPalette(destImage)</pre>
     <h3>GetExif / GetXmp</h3>
     <pre class="sig">image.GetExif()   ;  an Image.Exif object
 image.GetXmp()    ;  XMP metadata map, or None (unset)</pre>
-    <p class="en">GetExif returns an <code>Image.Exif</code> object built from the decoded EXIF data (Pillow's <code>getexif()</code>). GetXmp parses the embedded XMP packet into a nested map (or unset when absent).</p>
+    <p>GetExif returns an <code>Image.Exif</code> object built from the decoded EXIF data (Pillow's <code>getexif()</code>). GetXmp parses the embedded XMP packet into a nested map (or unset when absent).</p>
     
   </section>
 
@@ -506,16 +506,16 @@ exif.Has(tag)                       ;  tag present?
 exif.Get(tag, defaultValue := unset) ;  tag value
 exif.Delete(tag)                     ;  remove a tag
 exif.ToBytes()                       ;  serialized EXIF blob</pre>
-    <p class="en">Pillow's Exif object: <code>Has</code>/<code>Get</code>/<code>Delete</code> work on EXIF tags; <code>ToBytes</code> serializes back to the TIFF-header EXIF blob. Tag values are stored in the typed Maps (<code>AsciiTags</code>, <code>IntTags</code>, <code>RationalTags</code>, <code>ByteArrayTags</code>, <code>UndefinedTags</code>, …), and <code>Orientation</code>/<code>HasOrientation</code> mirror Pillow's fields.</p>
+    <p>Pillow's Exif object: <code>Has</code>/<code>Get</code>/<code>Delete</code> work on EXIF tags; <code>ToBytes</code> serializes back to the TIFF-header EXIF blob. Tag values are stored in the typed Maps (<code>AsciiTags</code>, <code>IntTags</code>, <code>RationalTags</code>, <code>ByteArrayTags</code>, <code>UndefinedTags</code>, …), and <code>Orientation</code>/<code>HasOrientation</code> mirror Pillow's fields.</p>
     
-    <p class="note"><span class="en">The typed tag readers (<code>ReadUintTag</code>, <code>ReadAsciiTag</code>, <code>ReadRationalTag</code>, …) and the <code>Normalize*</code>/<code>*TagType</code> helpers are the internal EXIF parsing machinery behind <code>FromImage</code>.</span></p>
+    <p class="note"><span>The typed tag readers (<code>ReadUintTag</code>, <code>ReadAsciiTag</code>, <code>ReadRationalTag</code>, …) and the <code>Normalize*</code>/<code>*TagType</code> helpers are the internal EXIF parsing machinery behind <code>FromImage</code>.</span></p>
   </section>
 
   <section class="api" id="Image.GetIm">
     <h3>GetIm / Im <span class="kind">method + property</span></h3>
     <pre class="sig">image.GetIm()   ;  native handle
 image.Im        ;  same handle</pre>
-    <p class="en">Returns the underlying native image handle (the analogue of Pillow's <code>im</code> ImagingCore object). The native ABI covers the ImagingCore method surface.</p>
+    <p>Returns the underlying native image handle (the analogue of Pillow's <code>im</code> ImagingCore object). The native ABI covers the ImagingCore method surface.</p>
     
   </section>
 
@@ -542,7 +542,7 @@ image.Im        ;  same handle</pre>
   <section class="api" id="Image.TiffCompressionName">
     <h3>TiffCompressionName <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.TiffCompressionName(value)</pre>
-    <p class="en">Maps a TIFF compression code to its Pillow name (<code>1→"raw"</code>, <code>5→"lzw"</code>, <code>6→"jpeg"</code>, <code>8→"deflate"</code>, <code>32773→"packbits"</code>, …), used for <code>Info["compression"]</code>.</p>
+    <p>Maps a TIFF compression code to its Pillow name (<code>1→"raw"</code>, <code>5→"lzw"</code>, <code>6→"jpeg"</code>, <code>8→"deflate"</code>, <code>32773→"packbits"</code>, …), used for <code>Info["compression"]</code>.</p>
     
   </section>
 
@@ -551,28 +551,28 @@ image.Im        ;  same handle</pre>
   <section class="api" id="Image.Save">
     <h3>Save</h3>
     <pre class="sig">image.Save(path, format := unset, options := unset)</pre>
-    <p class="en">Saves the image to a file. The format is derived from the extension or given explicitly. Pillow's keyword options map to PascalCase option keys (<code>quality</code>→<code>quality</code>, <code>optimize</code>→<code>optimize</code>, <code>subsampling</code>, <code>dpi</code>, <code>compressLevel</code>, <code>iccProfile</code>, …).</p>
+    <p>Saves the image to a file. The format is derived from the extension or given explicitly. Pillow's keyword options map to PascalCase option keys (<code>quality</code>→<code>quality</code>, <code>optimize</code>→<code>optimize</code>, <code>subsampling</code>, <code>dpi</code>, <code>compressLevel</code>, <code>iccProfile</code>, …).</p>
     
     <dl class="params">
-      <dt>path</dt><dd><span class="en">Output path (also accepts a file object-like handle).</span></dd>
-      <dt>format</dt><dd><span class="en">Explicit format name when the extension is ambiguous.</span></dd>
-      <dt>options</dt><dd><span class="en">Map of encoder options.</span></dd>
+      <dt>path</dt><dd><span>Output path (also accepts a file object-like handle).</span></dd>
+      <dt>format</dt><dd><span>Explicit format name when the extension is ambiguous.</span></dd>
+      <dt>options</dt><dd><span>Map of encoder options.</span></dd>
     </dl>
-    <p class="returns"><span class="en">Returns: nothing.</span></p>
+    <p class="returns"><span>Returns: nothing.</span></p>
   </section>
 
   <section class="api" id="Image.ToBytes">
     <h3>ToBytes / ToBitmap</h3>
     <pre class="sig">image.ToBytes(encoder := unset, rawmode := unset, orientation := 1)
 image.ToBitmap(name := "image")</pre>
-    <p class="en">ToBytes encodes the image to a byte buffer (tobytes). ToBitmap saves a bitmap file usable by AutoHotkey's <code>Gui</code> (<code>name</code> = the file's base name).</p>
+    <p>ToBytes encodes the image to a byte buffer (tobytes). ToBitmap saves a bitmap file usable by AutoHotkey's <code>Gui</code> (<code>name</code> = the file's base name).</p>
     
   </section>
 
   <section class="api" id="Image.Copy">
     <h3>Copy</h3>
     <pre class="sig">image.Copy()</pre>
-    <p class="en">Returns a full copy of this image (pixels and Info; file data is not duplicated).</p>
+    <p>Returns a full copy of this image (pixels and Info; file data is not duplicated).</p>
     
   </section>
 
@@ -580,21 +580,21 @@ image.ToBitmap(name := "image")</pre>
     <h3>Seek / Tell</h3>
     <pre class="sig">image.Seek(frame)
 image.Tell()   ;  current frame index</pre>
-    <p class="en">Moves between frames of an animated image (GIF, ICO, TIFF, FLI, MNG…). Tell returns the current frame number.</p>
+    <p>Moves between frames of an animated image (GIF, ICO, TIFF, FLI, MNG…). Tell returns the current frame number.</p>
     
   </section>
 
   <section class="api" id="Image.Verify">
     <h3>Verify</h3>
     <pre class="sig">image.Verify()</pre>
-    <p class="en">Checks the file integrity without decoding pixels; raises on a corrupted file.</p>
+    <p>Checks the file integrity without decoding pixels; raises on a corrupted file.</p>
     
   </section>
 
   <section class="api" id="Image.Close">
     <h3>Close</h3>
     <pre class="sig">image.Close()</pre>
-    <p class="en">Releases the native image handle. The object becomes unusable (Pillow's closed-image error shape).</p>
+    <p>Releases the native image handle. The object becomes unusable (Pillow's closed-image error shape).</p>
     
   </section>
 
@@ -603,20 +603,20 @@ image.Tell()   ;  current frame index</pre>
     <pre class="sig">image.Show(title := unset)
 image.ToQImage()     ;  alias served by AHK case-insensitivity: toqimage()
 image.ToQPixmap()    ;  alias: toqpixmap()</pre>
-    <p class="en">Displays the image with a system viewer, or converts it to a Qt image/pixmap (boundaries in this runtime).</p>
+    <p>Displays the image with a system viewer, or converts it to a Qt image/pixmap (boundaries in this runtime).</p>
     
-    <p class="warn"><span class="en">Boundary: the AHK runtime has no viewer registry and no Qt binding, so Show raises Pillow's <code>no viewers found</code> shape and ToQImage/ToQPixmap raise Pillow's exact <code>Qt bindings are not installed</code> instead of launching a viewer or building QImage/QPixmap objects. See <a href="boundaries.html">Boundaries</a>.</span></p>
+    <p class="warn"><span>Boundary: the AHK runtime has no viewer registry and no Qt binding, so Show raises Pillow's <code>no viewers found</code> shape and ToQImage/ToQPixmap raise Pillow's exact <code>Qt bindings are not installed</code> instead of launching a viewer or building QImage/QPixmap objects. See <a href="boundaries.html">Boundaries</a>.</span></p>
   </section>
 
   <section class="api" id="Image.GetChildImages">
     <h3>GetChildImages</h3>
     <pre class="sig">image.GetChildImages()</pre>
-    <p class="en">Returns sub-images (e.g. ICO sizes) — an empty array for the implemented handles, matching Pillow.</p>
+    <p>Returns sub-images (e.g. ICO sizes) — an empty array for the implemented handles, matching Pillow.</p>
     
   </section>
 
   <h2 id="internals">Internal helpers</h2>
-  <p class="en">The following members implement codec parsing, buffer plumbing and option routing. They are public for the facade's own use and pinned by the test suite, but are not part of the Pillow-style user API.</p>
+  <p>The following members implement codec parsing, buffer plumbing and option routing. They are public for the facade's own use and pinned by the test suite, but are not part of the Pillow-style user API.</p>
   
   <table class="appendix">
     <tr><th>Group</th><th>Members</th><th>EN</th></tr>
@@ -631,14 +631,14 @@ image.ToQPixmap()    ;  alias: toqpixmap()</pre>
   </table>
 
   <h2 id="examples">Examples</h2>
-  <p class="en">Rotate, paste and save (the Pillow tutorial shape):</p>
+  <p>Rotate, paste and save (the Pillow tutorial shape):</p>
   
   <pre class="example">img := Pillow.Image.Open("photo.jpg")
 rot := img.Rotate(45, Pillow.Resampling.BICUBIC, true, , , "white")
 rot.Paste(Pillow.Image.New("RGBA", [64, 64], "red"), [10, 10])
 rot.Save("out.png")
 rot.Close(), img.Close()</pre>
-  <p class="en">Thumbnail + gradient + histogram:</p>
+  <p>Thumbnail + gradient + histogram:</p>
   
   <pre class="example">im := Pillow.Image.LinearGradient("L")
 im.Thumbnail([128, 128])
@@ -647,6 +647,5 @@ thumb := Pillow.Image.Open("big.png")
 thumb.Thumbnail([300, 300])
 thumb.Save("thumb.png", , Map("optimize", true))</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

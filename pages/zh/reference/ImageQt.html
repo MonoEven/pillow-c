@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,64 +44,63 @@
   <div class="crumbs"><a href="../index.html">首页</a> » ImageQt</div>
   <h1>ImageQt <span class="kind">模块</span></h1>
   
-  <p class="zh"><code>ImageQt</code> 模块对应 Pillow&nbsp;11.3.0 的 <code>PIL.ImageQt</code>:在 Pillow <code>Image</code> 与 Qt 的 <code>QImage</code>/<code>QPixmap</code> 类型(由 PyQt6 或 PySide6 提供)之间搬运像素数据的辅助函数。</p>
-  <p class="note"><span class="zh">本运行时不含 Qt 绑定,因此下方每个互操作函数都显式失败,抛出 Pillow&nbsp;11.3.0 的原样报错 <code>Qt bindings are not installed</code>(即 PyQt6 与 PySide6 均不可导入时 Pillow 抛出的 <code>ImportError</code>)。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
+  <p><code>ImageQt</code> 模块对应 Pillow&nbsp;11.3.0 的 <code>PIL.ImageQt</code>:在 Pillow <code>Image</code> 与 Qt 的 <code>QImage</code>/<code>QPixmap</code> 类型(由 PyQt6 或 PySide6 提供)之间搬运像素数据的辅助函数。</p>
+  <p class="note"><span>本运行时不含 Qt 绑定,因此下方每个互操作函数都显式失败,抛出 Pillow&nbsp;11.3.0 的原样报错 <code>Qt bindings are not installed</code>(即 PyQt6 与 PySide6 均不可导入时 Pillow 抛出的 <code>ImportError</code>)。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
 
   <section class="api" id="ImageQt.ImageQt">
     <h3>ImageQt <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageQt.ImageQt(im)</pre>
     
-    <p class="zh">Pillow 的 <code>ImageQt.ImageQt(im)</code> 把 Pillow <code>Image</code> 转换为 Qt 的 <code>QImage</code> 子类(PyQt6 或 PySide6 的 <code>QImage</code>),共享底层像素缓冲,是本模块的主要互操作入口。</p>
+    <p>Pillow 的 <code>ImageQt.ImageQt(im)</code> 把 Pillow <code>Image</code> 转换为 Qt 的 <code>QImage</code> 子类(PyQt6 或 PySide6 的 <code>QImage</code>),共享底层像素缓冲,是本模块的主要互操作入口。</p>
     <dl class="params">
-      <dt>im</dt><dd><span class="zh">要包装的 Pillow Image。</span></dd>
+      <dt>im</dt><dd><span>要包装的 Pillow Image。</span></dd>
     </dl>
-    <p class="warn"><span class="zh">边界:抛 Pillow 原样的 <code>Qt bindings are not installed</code>。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
+    <p class="warn"><span>边界:抛 Pillow 原样的 <code>Qt bindings are not installed</code>。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
   </section>
 
   <section class="api" id="ImageQt.ToQImage">
     <h3>ToQImage <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageQt.ToQImage(im)</pre>
     
-    <p class="zh">Pillow 的 <code>ImageQt.toqimage(im)</code> 把 <code>Image</code> 转换为 RGBA8888 形态的 Qt <code>QImage</code>,可直接交给 Qt 控件。</p>
+    <p>Pillow 的 <code>ImageQt.toqimage(im)</code> 把 <code>Image</code> 转换为 RGBA8888 形态的 Qt <code>QImage</code>,可直接交给 Qt 控件。</p>
     <dl class="params">
-      <dt>im</dt><dd><span class="zh">要转换的 Pillow Image。</span></dd>
+      <dt>im</dt><dd><span>要转换的 Pillow Image。</span></dd>
     </dl>
-    <p class="warn"><span class="zh">边界:抛 Pillow 原样的 <code>Qt bindings are not installed</code>。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
+    <p class="warn"><span>边界:抛 Pillow 原样的 <code>Qt bindings are not installed</code>。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
   </section>
 
   <section class="api" id="ImageQt.ToQPixmap">
     <h3>ToQPixmap <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageQt.ToQPixmap(im)</pre>
     
-    <p class="zh">Pillow 的 <code>ImageQt.toqpixmap(im)</code> 把 <code>Image</code> 转换为 Qt <code>QPixmap</code>(经 <code>toqimage</code>),用于绘制到 Qt 表面上。</p>
+    <p>Pillow 的 <code>ImageQt.toqpixmap(im)</code> 把 <code>Image</code> 转换为 Qt <code>QPixmap</code>(经 <code>toqimage</code>),用于绘制到 Qt 表面上。</p>
     <dl class="params">
-      <dt>im</dt><dd><span class="zh">要转换的 Pillow Image。</span></dd>
+      <dt>im</dt><dd><span>要转换的 Pillow Image。</span></dd>
     </dl>
-    <p class="warn"><span class="zh">边界:抛 Pillow 原样的 <code>Qt bindings are not installed</code>。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
+    <p class="warn"><span>边界:抛 Pillow 原样的 <code>Qt bindings are not installed</code>。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
   </section>
 
   <section class="api" id="ImageQt.FromQImage">
     <h3>FromQImage <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageQt.FromQImage(qim)</pre>
     
-    <p class="zh">Pillow 的 <code>ImageQt.fromqimage(qim)</code> 把 Qt <code>QImage</code> 转回 Pillow <code>Image</code>(<code>toqimage</code> 的逆操作)。</p>
+    <p>Pillow 的 <code>ImageQt.fromqimage(qim)</code> 把 Qt <code>QImage</code> 转回 Pillow <code>Image</code>(<code>toqimage</code> 的逆操作)。</p>
     <dl class="params">
-      <dt>qim</dt><dd><span class="zh">要转换的 Qt QImage。</span></dd>
+      <dt>qim</dt><dd><span>要转换的 Qt QImage。</span></dd>
     </dl>
-    <p class="warn"><span class="zh">边界:抛 Pillow 原样的 <code>Qt bindings are not installed</code>。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
+    <p class="warn"><span>边界:抛 Pillow 原样的 <code>Qt bindings are not installed</code>。见<a href="boundaries.html#boundary.qttk">行为边界</a>。</span></p>
   </section>
 
   <section class="api" id="ImageQt.RequireQt">
     <h3>RequireQt <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageQt.RequireQt()</pre>
     
-    <p class="zh">内部辅助:抛出边界错误 <code>Qt bindings are not installed</code>。上述四个互操作函数都委托给它。</p>
+    <p>内部辅助:抛出边界错误 <code>Qt bindings are not installed</code>。上述四个互操作函数都委托给它。</p>
   </section>
 
   <h2 id="related">相关</h2>
   
-  <p class="zh"><code>Image</code> 实例方法 <code>ToQImage()</code>、<code>ToQPixmap()</code> 与 <code>Show()</code> 位于同一依赖边界——见 Image 页的 <a href="Image.html#Image.Show">Image.Show</a>。</p>
+  <p><code>Image</code> 实例方法 <code>ToQImage()</code>、<code>ToQPixmap()</code> 与 <code>Show()</code> 位于同一依赖边界——见 Image 页的 <a href="Image.html#Image.Show">Image.Show</a>。</p>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -43,13 +43,13 @@
 <div class="content">
   <div class="crumbs"><a href="../index.html">Home</a> » Pillow</div>
   <h1>Pillow <span class="kind">entry class</span></h1>
-  <p class="en">The <code>Pillow</code> class is the facade root: it hosts the module classes (<code>Image</code>, <code>ImageDraw</code>, …), the constant enums, and the DLL plumbing.</p>
+  <p>The <code>Pillow</code> class is the facade root: it hosts the module classes (<code>Image</code>, <code>ImageDraw</code>, …), the constant enums, and the DLL plumbing.</p>
   
 
   <section class="api" id="Pillow.Configure">
     <h3>Configure <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Configure(options := unset)</pre>
-    <p class="en">Configures the facade. Options: <code>DllPath</code> (path to <code>pillow_c.dll</code>). Call once before using any image API.</p>
+    <p>Configures the facade. Options: <code>DllPath</code> (path to <code>pillow_c.dll</code>). Call once before using any image API.</p>
     
     <pre class="example">Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })</pre>
   </section>
@@ -57,7 +57,7 @@
   <section class="api" id="Pillow.Abiversion">
     <h3>AbiVersion <span class="kind">static</span></h3>
     <pre class="sig">Pillow.AbiVersion()</pre>
-    <p class="en">Returns the DLL ABI version number.</p>
+    <p>Returns the DLL ABI version number.</p>
     
   </section>
 
@@ -65,7 +65,7 @@
     <h3>CheckStatus / StatusMessage <span class="kind">static</span></h3>
     <pre class="sig">Pillow.CheckStatus(statusCode)      ;  raises on error statuses
 Pillow.StatusMessage(statusCode)    ;  status text</pre>
-    <p class="en">CheckStatus converts a native status code (<code>PILLOW_C_OK=0</code>, <code>NULL_POINTER=-1</code>, <code>INVALID_LENGTH=-2</code>, <code>INVALID_ARGUMENT=-3</code>, <code>ALLOCATION_FAILED=-4</code>) into a thrown Error or no-op; StatusMessage returns the human-readable text.</p>
+    <p>CheckStatus converts a native status code (<code>PILLOW_C_OK=0</code>, <code>NULL_POINTER=-1</code>, <code>INVALID_LENGTH=-2</code>, <code>INVALID_ARGUMENT=-3</code>, <code>ALLOCATION_FAILED=-4</code>) into a thrown Error or no-op; StatusMessage returns the human-readable text.</p>
     
   </section>
 
@@ -73,7 +73,7 @@ Pillow.StatusMessage(statusCode)    ;  status text</pre>
     <h3>ModeId / ModeName <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ModeId(modeName)   ;  "L" → 8, "RGB" → 3, "RGBA" → 4, "I" → 8(int), "F" → 9, ...
 Pillow.ModeName(mode)     ;  reverse mapping</pre>
-    <p class="en">Convert between mode strings and native mode ids.</p>
+    <p>Convert between mode strings and native mode ids.</p>
     
   </section>
 
@@ -82,10 +82,9 @@ Pillow.ModeName(mode)     ;  reverse mapping</pre>
     <pre class="sig">Pillow.RequireDllPath()              ;  configured DLL path (or raises)
 Pillow.EnsureDllLoaded()              ;  loads the DLL once
 Pillow.WrapImageHandle(handle)        ;  native handle → Pillow.Image</pre>
-    <p class="en">Internal plumbing: resolve/load the DLL and wrap a native image handle into a managed Image object.</p>
+    <p>Internal plumbing: resolve/load the DLL and wrap a native image handle into a managed Image object.</p>
     
   </section>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

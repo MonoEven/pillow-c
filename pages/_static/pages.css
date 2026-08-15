@@ -52,14 +52,3 @@ code { background: #f3f6f6; padding: 1px 4px; border-radius: 3px; font-family: C
 .kind { font-size: 11px; font-weight: 400; color: #777; margin-left: 8px; text-transform: uppercase; letter-spacing: .06em; }
 .toc { background: #f3f6f6; border: 1px solid #e1e4e5; border-radius: 4px; padding: 10px 18px; font-size: 13.5px; margin: 14px 0; }
 .toc a { color: #2980b9; text-decoration: none; }
-/* bilingual toggling */
-html[data-lang="both"] .en::before { content: "EN "; font-weight: 700; color: #2980b9; }
-html[data-lang="both"] .zh::before { content: "中文 "; font-weight: 700; color: #c0392b; }
-html[data-lang="both"] dd .en, html[data-lang="both"] dd .zh { display: block; }
-html[data-lang="en"] .zh { display: none; }
-html[data-lang="zh"] .en { display: none; }
-@media (max-width: 820px) {
-  body { flex-direction: column; }
-  .sidebar { width: 100%; flex: auto; position: static; max-height: none; }
-  .content { padding: 18px 16px 60px; }
-}

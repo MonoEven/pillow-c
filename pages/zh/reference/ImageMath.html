@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -44,8 +44,8 @@
   <div class="crumbs"><a href="../index.html">首页</a> » ImageMath</div>
   <h1>ImageMath <span class="kind">模块</span></h1>
   
-  <p class="zh"><code>ImageMath</code> 模块求值图像表达式:一套类 Python 的中缀小语言被编译到原生 RPN 引擎,外加 Pillow 的 <code>lambda_eval</code> 辅助函数与 <code>imagemath_*</code> 单图像操作。由于 AHK 标识符不区分大小写,Pillow 的 <code>eval</code>/<code>unsafe_eval</code>/<code>lambda_eval</code> 与 <code>imagemath_*</code> 名称都映射到下文列出的 PascalCase 与 snake_case 成员。</p>
-  <p class="note"><span class="zh"><code>variables</code> 是 Pillow 关键字参数的 AHK 对应物:一个 name → <code>Image</code> 或 <code>Number</code> 的 <code>Map</code>。</span></p>
+  <p><code>ImageMath</code> 模块求值图像表达式:一套类 Python 的中缀小语言被编译到原生 RPN 引擎,外加 Pillow 的 <code>lambda_eval</code> 辅助函数与 <code>imagemath_*</code> 单图像操作。由于 AHK 标识符不区分大小写,Pillow 的 <code>eval</code>/<code>unsafe_eval</code>/<code>lambda_eval</code> 与 <code>imagemath_*</code> 名称都映射到下文列出的 PascalCase 与 snake_case 成员。</p>
+  <p class="note"><span><code>variables</code> 是 Pillow 关键字参数的 AHK 对应物:一个 name → <code>Image</code> 或 <code>Number</code> 的 <code>Map</code>。</span></p>
 
   <h2 id="eval">求值与 lambda</h2>
 
@@ -53,38 +53,38 @@
     <h3>Eval <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageMath.Eval(expression, variables := unset)</pre>
     
-    <p class="zh">编译并求值一个表达式字符串(Pillow 的 <code>ImageMath.eval</code>,与 <code>unsafe_eval</code> 相同)。表达式引用图像时返回新的 <code>Image</code>;纯标量表达式返回 <code>Number</code>(Integer 或 Float)。</p>
+    <p>编译并求值一个表达式字符串(Pillow 的 <code>ImageMath.eval</code>,与 <code>unsafe_eval</code> 相同)。表达式引用图像时返回新的 <code>Image</code>;纯标量表达式返回 <code>Number</code>(Integer 或 Float)。</p>
     <dl class="params">
-      <dt>expression</dt><dd><span class="zh">字符串表达式;非字符串抛 <code>Pillow.ImageMath expects a string expression</code>。</span></dd>
-      <dt>variables</dt><dd><span class="zh">name → <code>Image</code>(<code>L</code>/<code>I</code>/<code>F</code> 模式)或 <code>Number</code> 的 Map。其他容器抛 <code>Pillow.ImageMath variables must be a Map of name to Image or Number</code>;未知名称抛 <code>'name' not allowed</code>;非 L/I/F 图像抛 <code>unsupported mode: &lt;模式&gt;</code>。</span></dd>
+      <dt>expression</dt><dd><span>字符串表达式;非字符串抛 <code>Pillow.ImageMath expects a string expression</code>。</span></dd>
+      <dt>variables</dt><dd><span>name → <code>Image</code>(<code>L</code>/<code>I</code>/<code>F</code> 模式)或 <code>Number</code> 的 Map。其他容器抛 <code>Pillow.ImageMath variables must be a Map of name to Image or Number</code>;未知名称抛 <code>'name' not allowed</code>;非 L/I/F 图像抛 <code>unsupported mode: &lt;模式&gt;</code>。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:<code>Image</code>;纯标量表达式返回 Integer/Float。</span></p>
-    <p class="note"><span class="zh">对齐:尺寸不符抛 <code>images do not match</code>;位运算遇到浮点操作数抛 <code>bad operand type for '&lt;op&gt;'</code>。</span></p>
+    <p class="returns"><span>返回:<code>Image</code>;纯标量表达式返回 Integer/Float。</span></p>
+    <p class="note"><span>对齐:尺寸不符抛 <code>images do not match</code>;位运算遇到浮点操作数抛 <code>bad operand type for '&lt;op&gt;'</code>。</span></p>
   </section>
 
   <section class="api" id="ImageMath.UnsafeEval">
     <h3>UnsafeEval <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageMath.UnsafeEval(expression, variables := unset)</pre>
     
-    <p class="zh"><code>Eval</code> 的直接别名(Pillow 的 <code>unsafe_eval</code>,后者即 <code>eval</code> 背后的引擎)。</p>
+    <p><code>Eval</code> 的直接别名(Pillow 的 <code>unsafe_eval</code>,后者即 <code>eval</code> 背后的引擎)。</p>
   </section>
 
   <section class="api" id="ImageMath.LambdaEval">
     <h3>LambdaEval <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageMath.LambdaEval(expression, options := unset, kwargs*)</pre>
     
-    <p class="zh">Pillow 的 <code>lambda_eval</code>:用 ops 字典(<code>int</code>/<code>float</code>/<code>equal</code>/<code>notequal</code>/<code>min</code>/<code>max</code>/<code>convert</code>,加上 AHK 适配的 <code>add</code>/<code>sub</code>/<code>mul</code>/<code>div</code>/<code>mod</code>/<code>neg</code>)合并 <code>options</code> 与关键字值后调用 <code>expression</code>;<code>Image</code> 值变为 <code>Operand</code>。<code>Operand</code> 结果经 <code>Eval</code> 求值;其他结果原样返回。</p>
+    <p>Pillow 的 <code>lambda_eval</code>:用 ops 字典(<code>int</code>/<code>float</code>/<code>equal</code>/<code>notequal</code>/<code>min</code>/<code>max</code>/<code>convert</code>,加上 AHK 适配的 <code>add</code>/<code>sub</code>/<code>mul</code>/<code>div</code>/<code>mod</code>/<code>neg</code>)合并 <code>options</code> 与关键字值后调用 <code>expression</code>;<code>Image</code> 值变为 <code>Operand</code>。<code>Operand</code> 结果经 <code>Eval</code> 求值;其他结果原样返回。</p>
     <dl class="params">
-      <dt>expression</dt><dd><span class="zh">可调用对象(Func/闭包);否则抛 <code>Pillow.ImageMath.lambda_eval expects a callable expression</code>。以单个 <code>Map</code>(合并后的 ops + 关键字)作为参数调用。</span></dd>
-      <dt>options</dt><dd><span class="zh">可选的额外名称注入 Map;非 Map 抛 <code>Pillow.ImageMath.lambda_eval options must be a Map</code>。</span></dd>
-      <dt>kwargs</dt><dd><span class="zh">扁平的 <code>name, value, …</code> 对(Pillow 的 <code>**kw</code>)。<code>Image</code> 值被包装为 <code>Operand(name, Map(name, value))</code>。</span></dd>
+      <dt>expression</dt><dd><span>可调用对象(Func/闭包);否则抛 <code>Pillow.ImageMath.lambda_eval expects a callable expression</code>。以单个 <code>Map</code>(合并后的 ops + 关键字)作为参数调用。</span></dd>
+      <dt>options</dt><dd><span>可选的额外名称注入 Map;非 Map 抛 <code>Pillow.ImageMath.lambda_eval options must be a Map</code>。</span></dd>
+      <dt>kwargs</dt><dd><span>扁平的 <code>name, value, …</code> 对(Pillow 的 <code>**kw</code>)。<code>Image</code> 值被包装为 <code>Operand(name, Map(name, value))</code>。</span></dd>
     </dl>
-    <p class="returns"><span class="zh">返回:求值后的 <code>Image</code>/<code>Number</code>,或可调用对象的原始返回值。</span></p>
+    <p class="returns"><span>返回:求值后的 <code>Image</code>/<code>Number</code>,或可调用对象的原始返回值。</span></p>
   </section>
 
   <h2 id="syntax">表达式语法</h2>
   
-  <p class="zh"><code>Eval</code> 编译器是对类 Python 中缀语言的调车场解析器。普通括号为分组——<code>(x + 1) * 2</code>——紧跟 <code>(</code> 的函数名是调用。</p>
+  <p><code>Eval</code> 编译器是对类 Python 中缀语言的调车场解析器。普通括号为分组——<code>(x + 1) * 2</code>——紧跟 <code>(</code> 的函数名是调用。</p>
   <table class="appendix">
     <tr><th>运算符</th><th>中文</th></tr>
     <tr><td><code>+ - * / %</code></td><td>位与/或/异或/移位(仅整数)。</td></tr>
@@ -95,11 +95,11 @@
     <tr><td><code>abs(x)</code> <code>float(x)</code> <code>int(x)</code></td><td>逐元素取最小 / 最大。</td></tr>
     <tr><td><code>convert(x, 'mode')</code></td><td>转换到 <code>'L'</code>、<code>'I'</code> 或 <code>'F'</code>(单引号);其他模式抛 <code>unsupported mode: &lt;模式&gt;</code>。</td></tr>
   </table>
-  <p class="note"><span class="zh">差异:Pillow 的 <code>_Operand</code> 提供 <code>**</code>(幂);本 AHK 构建在 <code>Tokenize</code> 中没有 <code>**</code> 词元、<code>Compile</code> 中也没有幂操作码,因此表达式与 Operand 方法都不提供 <code>**</code>。</span></p>
+  <p class="note"><span>差异:Pillow 的 <code>_Operand</code> 提供 <code>**</code>(幂);本 AHK 构建在 <code>Tokenize</code> 中没有 <code>**</code> 词元、<code>Compile</code> 中也没有幂操作码,因此表达式与 Operand 方法都不提供 <code>**</code>。</span></p>
 
   <h2 id="ops">单图像操作</h2>
   
-  <p class="zh">Pillow 的模块级 <code>imagemath_*</code> 辅助函数在此为静态成员。每个都构造 <code>Operand</code> 表达式(不求值),参数为 <code>Operand</code> 或 <code>Number</code>(自动包装)。</p>
+  <p>Pillow 的模块级 <code>imagemath_*</code> 辅助函数在此为静态成员。每个都构造 <code>Operand</code> 表达式(不求值),参数为 <code>Operand</code> 或 <code>Number</code>(自动包装)。</p>
   <section class="api" id="ImageMath.ImagemathInt">
     <h3>ImagemathInt / ImagemathFloat / ImagemathEqual / ImagemathNotequal / ImagemathMin / ImagemathMax / ImagemathConvert <span class="kind">static</span></h3>
     <pre class="sig">Pillow.ImageMath.ImagemathInt(self)            ;  alias imagemath_int(self)
@@ -110,8 +110,8 @@ Pillow.ImageMath.ImagemathMin(self, other)      ;  alias imagemath_min(self, oth
 Pillow.ImageMath.ImagemathMax(self, other)      ;  alias imagemath_max(self, other)
 Pillow.ImageMath.ImagemathConvert(self, mode)   ;  alias imagemath_convert(self, mode)</pre>
     
-    <p class="zh">构造 <code>Operand</code>:<code>int(self)</code>、<code>float(self)</code>、<code>(self == other)</code>、<code>(self != other)</code>、<code>min(self, other)</code>、<code>max(self, other)</code> 与 <code>convert(self, 'mode')</code>。<code>mode</code> 必须为字符串,否则 <code>imagemath_convert</code> 抛 <code>Pillow.ImageMath.imagemath_convert mode expects a string</code>。</p>
-    <p class="returns"><span class="zh">返回:<code>Operand</code>(用 <code>Eval</code> 求值)。</span></p>
+    <p>构造 <code>Operand</code>:<code>int(self)</code>、<code>float(self)</code>、<code>(self == other)</code>、<code>(self != other)</code>、<code>min(self, other)</code>、<code>max(self, other)</code> 与 <code>convert(self, 'mode')</code>。<code>mode</code> 必须为字符串,否则 <code>imagemath_convert</code> 抛 <code>Pillow.ImageMath.imagemath_convert mode expects a string</code>。</p>
+    <p class="returns"><span>返回:<code>Operand</code>(用 <code>Eval</code> 求值)。</span></p>
   </section>
 
   <h2 id="operand">Operand 类</h2>
@@ -121,20 +121,20 @@ Pillow.ImageMath.ImagemathConvert(self, mode)   ;  alias imagemath_convert(self,
 op.Expr        ;  expression string
 op.Variables   ;  merged variable Map</pre>
     
-    <p class="zh">为 <code>lambda_eval</code> 包装图像操作数表达式。二元/一元运算符以<b>方法</b>形式暴露——AHK 2.1-alpha.30 不派发运算符元函数,故 Pillow <code>_Operand</code> 的运算符表面(<code>+ - * / % ** &lt;&lt; &gt;&gt; &amp; | ^ ~</code> 与一元 <code>-</code>/<code>~</code>)即下列方法,<code>lambda_eval</code> 也以 <code>add</code>/<code>sub</code>/<code>mul</code>/<code>div</code>/<code>mod</code>/<code>neg</code> 函数收到它们。</p>
+    <p>为 <code>lambda_eval</code> 包装图像操作数表达式。二元/一元运算符以<b>方法</b>形式暴露——AHK 2.1-alpha.30 不派发运算符元函数,故 Pillow <code>_Operand</code> 的运算符表面(<code>+ - * / % ** &lt;&lt; &gt;&gt; &amp; | ^ ~</code> 与一元 <code>-</code>/<code>~</code>)即下列方法,<code>lambda_eval</code> 也以 <code>add</code>/<code>sub</code>/<code>mul</code>/<code>div</code>/<code>mod</code>/<code>neg</code> 函数收到它们。</p>
     <table class="appendix">
       <tr><th>Method</th><th>中文</th></tr>
       <tr><td><code>Add(other)</code> / <code>Sub(other)</code> / <code>Mul(other)</code> / <code>Div(other)</code> / <code>Mod(other)</code></td><td>二元 <code>&lt;&lt;</code> / <code>&gt;&gt;</code>。</td></tr>
       <tr><td><code>BitAnd(other)</code> / <code>BitOr(other)</code> / <code>BitXor(other)</code></td><td>一元 <code>-</code> / <code>~</code>。</td></tr>
     </table>
-    <p class="note"><span class="zh">差异:缺少 <code>**</code>(无 <code>Pow</code> 方法)。<code>OperandOps()</code> 返回的 ops 字典把 <code>int/float/equal/notequal/min/max/convert</code> 映射到 <code>Imagemath*</code> 构造器,把 <code>add/sub/mul/div/mod/neg</code> 映射到二元/一元构造器——即 Pillow 运算符表面的 AHK 适配。</span></p>
+    <p class="note"><span>差异:缺少 <code>**</code>(无 <code>Pow</code> 方法)。<code>OperandOps()</code> 返回的 ops 字典把 <code>int/float/equal/notequal/min/max/convert</code> 映射到 <code>Imagemath*</code> 构造器,把 <code>add/sub/mul/div/mod/neg</code> 映射到二元/一元构造器——即 Pillow 运算符表面的 AHK 适配。</span></p>
   </section>
 
-  <p class="note"><span class="zh">对齐边界:RPN 的 <code>convert("L")</code> 报告模式 <code>I</code>——已记录的差异(L 值被截断,但返回图像标记为 <code>I</code>)。见<a href="boundaries.html#boundary.rpn">行为边界</a>。</span></p>
+  <p class="note"><span>对齐边界:RPN 的 <code>convert("L")</code> 报告模式 <code>I</code>——已记录的差异(L 值被截断,但返回图像标记为 <code>I</code>)。见<a href="boundaries.html#boundary.rpn">行为边界</a>。</span></p>
 
   <h2 id="internals">内部编译器成员</h2>
   
-  <p class="zh"><code>Eval</code> 使用的词法/语法/发射器。对门面内部公开并被测试套件钉死;不属于 Pillow 风格的用户 API。</p>
+  <p><code>Eval</code> 使用的词法/语法/发射器。对门面内部公开并被测试套件钉死;不属于 Pillow 风格的用户 API。</p>
   <table class="appendix">
     <tr><th>Member</th><th>中文</th></tr>
     <tr><td><code>Tokenize(expression)</code></td><td>调车场解析 → AST 与槽表。</td></tr>
@@ -151,7 +151,7 @@ op.Variables   ;  merged variable Map</pre>
 
   <h2 id="examples">示例</h2>
   
-  <p class="zh">对两幅图像求值表达式,并执行一次 <code>lambda_eval</code> 转换:</p>
+  <p>对两幅图像求值表达式,并执行一次 <code>lambda_eval</code> 转换:</p>
   <pre class="example">img1 := Pillow.Image.Open("a.jpg")
 img2 := Pillow.Image.Open("b.jpg")
 ;    Eval over two images — the variables Map is Pillow's kwargs.
@@ -163,6 +163,5 @@ gray := Pillow.ImageMath.LambdaEval(
     , "a", img1)
 img1.Close(), img2.Close()</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

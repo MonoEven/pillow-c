@@ -14,3 +14,8 @@ docs/codex-goal-plan.md
 
 third_party/
 .codex-tiff-001ay-oracle.tif
+
+# local-only showcase artwork (never pushed):
+_art.ahk
+pillow-c-art-report.txt
+pillow-c-art*

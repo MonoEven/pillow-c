@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -43,120 +43,119 @@
 <div class="content">
   <div class="crumbs"><a href="../index.html">Home</a> » Boundaries</div>
   <h1>Behavioral Boundaries</h1>
-  <p class="en">pillow-c verifies 2856/2856 behavioral tests and 524/524 DLL exports against a local Pillow 11.3.0. A small set of honest, documented boundaries remain: places where this runtime either fails loudly with Pillow's exact message, or cannot replicate Python-stateful behavior. Everything else is oracle-verified parity — including error messages.</p>
+  <p>pillow-c verifies 2856/2856 behavioral tests and 524/524 DLL exports against a local Pillow 11.3.0. A small set of honest, documented boundaries remain: places where this runtime either fails loudly with Pillow's exact message, or cannot replicate Python-stateful behavior. Everything else is oracle-verified parity — including error messages.</p>
   
 
   <h2 id="formats">Dependency-gated Formats</h2>
   <section class="api" id="boundary.webp">
     <h3>WebP / AVIF / JPEG2000</h3>
-    <p class="en">Open and save fail loudly with <code>Pillow image file format is unsupported</code> (save-handler shape) and Pillow's exact <code>decoder webp not available</code> / <code>decoder avif not available</code> / <code>decoder jpeg2000 not available</code> for recognized magic bytes. The local Pillow build ships these codecs; this runtime does not.</p>
+    <p>Open and save fail loudly with <code>Pillow image file format is unsupported</code> (save-handler shape) and Pillow's exact <code>decoder webp not available</code> / <code>decoder avif not available</code> / <code>decoder jpeg2000 not available</code> for recognized magic bytes. The local Pillow build ships these codecs; this runtime does not.</p>
     
   </section>
   <section class="api" id="boundary.fpx">
     <h3>FPX</h3>
-    <p class="en">Bare <code>KeyError 'FPX'</code> — the deprecated olefile plugin shape is kept verbatim.</p>
+    <p>Bare <code>KeyError 'FPX'</code> — the deprecated olefile plugin shape is kept verbatim.</p>
     
   </section>
 
   <h2 id="gui">GUI Interop</h2>
   <section class="api" id="boundary.qttk">
     <h3>ImageQt / ImageTk / Show</h3>
-    <p class="en">The runtime ships no Qt binding and no Tk interpreter: <code>ImageQt.ToQImage/ToQPixmap/ImageQt</code> raise Pillow's exact <code>Qt bindings are not installed</code>; <code>ImageTk.PhotoImage</code> raises <code>Too early to create image: no default root window</code>; <code>image.Show()</code> raises the Pillow-shaped <code>no viewers found</code>.</p>
+    <p>The runtime ships no Qt binding and no Tk interpreter: <code>ImageQt.ToQImage/ToQPixmap/ImageQt</code> raise Pillow's exact <code>Qt bindings are not installed</code>; <code>ImageTk.PhotoImage</code> raises <code>Too early to create image: no default root window</code>; <code>image.Show()</code> raises the Pillow-shaped <code>no viewers found</code>.</p>
     
   </section>
 
   <h2 id="stateful">Python-stateful Behavior</h2>
   <section class="api" id="boundary.random">
     <h3>ImagePalette.Random</h3>
-    <p class="en">Pillow uses Python's global Mersenne-Twister stream. The facade returns palettes with identical shape and value ranges, but the exact stream is unmatchable.</p>
+    <p>Pillow uses Python's global Mersenne-Twister stream. The facade returns palettes with identical shape and value ranges, but the exact stream is unmatchable.</p>
     
   </section>
   <section class="api" id="boundary.pathmap">
     <h3>ImagePath.Path.Map</h3>
-    <p class="en">The callable <code>Map(fn)</code> returns None without mutating (the AHK None analogue is 0); Pillow's C <code>ImagingTransformHandler</code> form cannot exist in this runtime and stays a documented boundary.</p>
+    <p>The callable <code>Map(fn)</code> returns None without mutating (the AHK None analogue is 0); Pillow's C <code>ImagingTransformHandler</code> form cannot exist in this runtime and stays a documented boundary.</p>
     
   </section>
 
   <h2 id="render">Rasterization &amp; Drawing</h2>
   <section class="api" id="boundary.gdi">
     <h3>GDI Glyph Ink</h3>
-    <p class="en">Truetype glyphs are rasterized through GDI: gray8 ink values are the documented rasterizer divergence (outlines/bbox ink do not apply gvar; the HVAR advance-delta engine IS replicated).</p>
+    <p>Truetype glyphs are rasterized through GDI: gray8 ink values are the documented rasterizer divergence (outlines/bbox ink do not apply gvar; the HVAR advance-delta engine IS replicated).</p>
     
   </section>
   <section class="api" id="boundary.defaultfont">
     <h3>load_default</h3>
-    <p class="en">The bundled default font differs from Pillow's Aileron; default-font metrics match in shape but not byte-for-byte, and default-font drawing uses the native seams.</p>
+    <p>The bundled default font differs from Pillow's Aileron; default-font metrics match in shape but not byte-for-byte, and default-font drawing uses the native seams.</p>
     
   </section>
   <section class="api" id="boundary.stroke">
     <h3>Stroked Truetype Text</h3>
-    <p class="en">Drawing stroked truetype text raises the facade's exact boundary error <code>Pillow.ImageDraw.Text truetype stroke is not supported by this runtime</code>.</p>
+    <p>Drawing stroked truetype text raises the facade's exact boundary error <code>Pillow.ImageDraw.Text truetype stroke is not supported by this runtime</code>.</p>
     
   </section>
 
   <h2 id="codec">Encoder Payload Bytes</h2>
   <section class="api" id="boundary.jpegbytes">
     <h3>JPEG Payload</h3>
-    <p class="en">JPEG structure, SOF/progressive flags, qtables, DPI and metadata match Pillow; the literal DHT/entropy payload bytes are not byte-identical (documented).</p>
+    <p>JPEG structure, SOF/progressive flags, qtables, DPI and metadata match Pillow; the literal DHT/entropy payload bytes are not byte-identical (documented).</p>
     
   </section>
   <section class="api" id="boundary.gifpal">
     <h3>GIF Median-cut Ordering</h3>
-    <p class="en">GIF median-cut palettes cover the same colors; the palette ordering may differ from Pillow's (documented micro-boundary).</p>
+    <p>GIF median-cut palettes cover the same colors; the palette ordering may differ from Pillow's (documented micro-boundary).</p>
     
   </section>
   <section class="api" id="boundary.tiffsave">
     <h3>TIFF Compression Save</h3>
-    <p class="en">Saving TIFF with <code>compression="jpeg"|"group3"|"group4"</code> raises the documented rejection boundary instead of silently writing a wrong stream.</p>
+    <p>Saving TIFF with <code>compression="jpeg"|"group3"|"group4"</code> raises the documented rejection boundary instead of silently writing a wrong stream.</p>
     
   </section>
   <section class="api" id="boundary.pngdict">
     <h3>PNG dictionary / compression</h3>
-    <p class="en"><code>dictionary</code> bytes are accepted-and-ignored (the DLL writes stored deflate blocks — the no-compressor boundary); <code>compress_type</code> 0-4 accepted with Pillow's exact 5+ OSError.</p>
+    <p><code>dictionary</code> bytes are accepted-and-ignored (the DLL writes stored deflate blocks — the no-compressor boundary); <code>compress_type</code> 0-4 accepted with Pillow's exact 5+ OSError.</p>
     
   </section>
 
   <h2 id="engine">Layout &amp; Quantize</h2>
   <section class="api" id="boundary.raqm">
     <h3>no-libraqm</h3>
-    <p class="en">Text-direction options (<code>direction</code>/<code>features</code>/<code>language</code>) raise Pillow's exact KeyError shape <code>'setting text direction, language or font features is not supported without libraqm'</code>.</p>
+    <p>Text-direction options (<code>direction</code>/<code>features</code>/<code>language</code>) raise Pillow's exact KeyError shape <code>'setting text direction, language or font features is not supported without libraqm'</code>.</p>
     
   </section>
   <section class="api" id="boundary.rpn">
     <h3>ImageMath convert-to-L</h3>
-    <p class="en">The RPN <code>convert("L")</code> seam reports mode <code>I</code> (documented divergence).</p>
+    <p>The RPN <code>convert("L")</code> seam reports mode <code>I</code> (documented divergence).</p>
     
   </section>
   <section class="api" id="boundary.quant">
     <h3>Quantize cross-products</h3>
-    <p class="en">MEDIANCUT/MAXCOVERAGE/FASTOCTREE and the bounded FLOYDSTEINBERG slices are covered; <code>LIBIMAGEQUANT</code> keeps Pillow's exact <code>dependency required by this method was not enabled at compile time</code>, and ADAPTIVE/none dither cross-products are not byte-exactly replicated.</p>
+    <p>MEDIANCUT/MAXCOVERAGE/FASTOCTREE and the bounded FLOYDSTEINBERG slices are covered; <code>LIBIMAGEQUANT</code> keeps Pillow's exact <code>dependency required by this method was not enabled at compile time</code>, and ADAPTIVE/none dither cross-products are not byte-exactly replicated.</p>
     
   </section>
 
   <h2 id="numpy">NumPy Interop</h2>
   <section class="api" id="boundary.numpy">
     <h3>I;16B big-endian</h3>
-    <p class="en"><code>image.AsArray()</code> on <code>I;16B</code> raises the documented boundary error (<code>Pillow.Image.AsArray: I;16B big-endian dtype (numpy '&gt;u2') is not representable in cnumpy (documented boundary)</code>) — cnumpy ships no big-endian dtype while Pillow's numpy gives <code>&gt;u2</code>. All other dtype/shape mappings are byte-exact against NumPy 1.25.0 + Pillow 11.3.0, including bool <code>0/255</code> bytes for mode <code>1</code>.</p>
+    <p><code>image.AsArray()</code> on <code>I;16B</code> raises the documented boundary error (<code>Pillow.Image.AsArray: I;16B big-endian dtype (numpy '&gt;u2') is not representable in cnumpy (documented boundary)</code>) — cnumpy ships no big-endian dtype while Pillow's numpy gives <code>&gt;u2</code>. All other dtype/shape mappings are byte-exact against NumPy 1.25.0 + Pillow 11.3.0, including bool <code>0/255</code> bytes for mode <code>1</code>.</p>
     
   </section>
   <section class="api" id="boundary.numpydep">
     <h3>cnumpy dependency</h3>
-    <p class="en">The interop is dependency-linked, not hard-wired: without the <a href="https://github.com/MonoEven/cnumpy">cnumpy</a> facade included, the APIs raise <code>Pillow numpy interop requires cnumpy (https://github.com/MonoEven/cnumpy): #Include its ahk\numpy.ahk</code>. The interop itself is facade-level (no new DLL exports); <code>FromArray</code> routes through the raw codec seams extended with Pillow's <code>1;8</code>/<code>I;8</code>/<code>I;16S</code>/<code>F;64F</code> raw modes.</p>
+    <p>The interop is dependency-linked, not hard-wired: without the <a href="https://github.com/MonoEven/cnumpy">cnumpy</a> facade included, the APIs raise <code>Pillow numpy interop requires cnumpy (https://github.com/MonoEven/cnumpy): #Include its ahk\numpy.ahk</code>. The interop itself is facade-level (no new DLL exports); <code>FromArray</code> routes through the raw codec seams extended with Pillow's <code>1;8</code>/<code>I;8</code>/<code>I;16S</code>/<code>F;64F</code> raw modes.</p>
     
   </section>
 
   <h2 id="misc">Other Micro-boundaries</h2>
   <ul>
-    <li><span class="en">I;16 histogram: Pillow's C path reads 2-byte storage through layout-dependent byte misreads — kept as a documented boundary.</span></li>
-    <li><span class="en">I;16B non-NEAREST resize raises the boundary error (Pillow accepts and garbles via its endian bug; replicating corruption is declined).</span></li>
-    <li><span class="en">ICO reopen of grayscale PNG payloads: documented WIC boundary (use RGBA sources).</span></li>
-    <li><span class="en">ICNS jp2 payloads keep Pillow's no-jp2 message.</span></li>
-    <li><span class="en">ImageFile incremental/plugin protocol (<code>Parser</code>, <code>StubImageFile</code>, <code>PyCodec</code>, …) fails loudly on construction with Pillow-shaped messages.</span></li>
-    <li><span class="en">TIFF sub-IFD tags are flattened into the EXIF blob instead of <code>get_ifd()</code> (documented divergence; <code>get_ifd()</code> itself a boundary).</span></li>
-    <li><span class="en">PNG true compression strategy / APNG: default-deflate single-frame PNGs only (future families).</span></li>
+    <li><span>I;16 histogram: Pillow's C path reads 2-byte storage through layout-dependent byte misreads — kept as a documented boundary.</span></li>
+    <li><span>I;16B non-NEAREST resize raises the boundary error (Pillow accepts and garbles via its endian bug; replicating corruption is declined).</span></li>
+    <li><span>ICO reopen of grayscale PNG payloads: documented WIC boundary (use RGBA sources).</span></li>
+    <li><span>ICNS jp2 payloads keep Pillow's no-jp2 message.</span></li>
+    <li><span>ImageFile incremental/plugin protocol (<code>Parser</code>, <code>StubImageFile</code>, <code>PyCodec</code>, …) fails loudly on construction with Pillow-shaped messages.</span></li>
+    <li><span>TIFF sub-IFD tags are flattened into the EXIF blob instead of <code>get_ifd()</code> (documented divergence; <code>get_ifd()</code> itself a boundary).</span></li>
+    <li><span>PNG true compression strategy / APNG: default-deflate single-frame PNGs only (future families).</span></li>
   </ul>
-  <p class="note"><span class="en">Everything not listed above — including all error messages, option validation, conversion rules, metadata shapes and numeric edge cases — is oracle-verified parity with Pillow 11.3.0. See the project ledger <a href="https://github.com/MonoEven/pillow-c/blob/master/docs/pillow-gap-analysis.md">docs/pillow-gap-analysis.md</a>.</span></p>
+  <p class="note"><span>Everything not listed above — including all error messages, option validation, conversion rules, metadata shapes and numeric edge cases — is oracle-verified parity with Pillow 11.3.0. See the project ledger <a href="https://github.com/MonoEven/pillow-c/blob/master/docs/pillow-gap-analysis.md">docs/pillow-gap-analysis.md</a>.</span></p>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>

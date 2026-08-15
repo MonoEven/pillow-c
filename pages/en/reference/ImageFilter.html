@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -43,11 +43,11 @@
 <div class="content">
   <div class="crumbs"><a href="../index.html">Home</a> » ImageFilter</div>
   <h1>ImageFilter <span class="kind">module</span></h1>
-  <p class="en">The <code>ImageFilter</code> module contains prebuilt convolution kernels and filter classes. Apply a filter with <code>image.Filter(f)</code> or <code>f.Apply(image)</code>. Validation replicates Pillow's exact messages.</p>
+  <p>The <code>ImageFilter</code> module contains prebuilt convolution kernels and filter classes. Apply a filter with <code>image.Filter(f)</code> or <code>f.Apply(image)</code>. Validation replicates Pillow's exact messages.</p>
   
 
   <h2 id="predefined">Predefined Filters</h2>
-  <p class="en">All prebuilt filters are zero-argument factory functions returning a filter object.</p>
+  <p>All prebuilt filters are zero-argument factory functions returning a filter object.</p>
   
   <section class="api" id="ImageFilter.Blur">
     <h3>BLUR / CONTOUR / DETAIL / EDGE_ENHANCE / EDGE_ENHANCE_MORE</h3>
@@ -56,7 +56,7 @@ Pillow.ImageFilter.CONTOUR()          ;  3×3 edge contour
 Pillow.ImageFilter.DETAIL()           ;  3×3 detail enhancement
 Pillow.ImageFilter.EDGE_ENHANCE()     ;  3×3 edge enhancement
 Pillow.ImageFilter.EDGE_ENHANCE_MORE()</pre>
-    <p class="en">Pillow's built-in convolution kernels, byte-for-byte identical coefficients.</p>
+    <p>Pillow's built-in convolution kernels, byte-for-byte identical coefficients.</p>
     
   </section>
   <section class="api" id="ImageFilter.Sharp">
@@ -66,7 +66,7 @@ Pillow.ImageFilter.FIND_EDGES()
 Pillow.ImageFilter.SHARPEN()
 Pillow.ImageFilter.SMOOTH()
 Pillow.ImageFilter.SMOOTH_MORE()</pre>
-    <p class="en">The remaining built-in kernels (emboss, edge find, sharpen, smooth).</p>
+    <p>The remaining built-in kernels (emboss, edge find, sharpen, smooth).</p>
     
   </section>
 
@@ -75,21 +75,21 @@ Pillow.ImageFilter.SMOOTH_MORE()</pre>
     <h3>Filter / MultibandFilter <span class="kind">abstract base</span></h3>
     <pre class="sig">Pillow.ImageFilter.Filter()          ;  abstract — raises
 Pillow.ImageFilter.MultibandFilter() ;  abstract — raises</pre>
-    <p class="en">Abstract bases. Instantiation raises Pillow's exact <code>Can't instantiate abstract class Filter with abstract method filter</code> (resp. MultibandFilter).</p>
+    <p>Abstract bases. Instantiation raises Pillow's exact <code>Can't instantiate abstract class Filter with abstract method filter</code> (resp. MultibandFilter).</p>
     
   </section>
   <section class="api" id="ImageFilter.BuiltinFilter">
     <h3>BuiltinFilter <span class="kind">class</span></h3>
     <pre class="sig">Pillow.ImageFilter.BuiltinFilter()</pre>
-    <p class="en">Concrete base for built-in kernels; its <code>filter()</code> raises Pillow's AttributeError for missing attributes.</p>
+    <p>Concrete base for built-in kernels; its <code>filter()</code> raises Pillow's AttributeError for missing attributes.</p>
     
   </section>
   <section class="api" id="ImageFilter.Kernel">
     <h3>Kernel</h3>
     <pre class="sig">Pillow.ImageFilter.Kernel(size := unset, kernel := unset, scale := unset, offset := 0)</pre>
-    <p class="en">A user convolution kernel. <code>size</code> = <code>[w, h]</code>, <code>kernel</code> = coefficient array, <code>scale</code> = divisor (sum by default).</p>
+    <p>A user convolution kernel. <code>size</code> = <code>[w, h]</code>, <code>kernel</code> = coefficient array, <code>scale</code> = divisor (sum by default).</p>
     
-    <p class="note"><span class="en">Parity: <code>bad kernel size</code>, <code>not enough coefficients in kernel</code>, and the string/float TypeErrors match Pillow; <code>name</code>/<code>filterargs</code> are exposed.</span></p>
+    <p class="note"><span>Parity: <code>bad kernel size</code>, <code>not enough coefficients in kernel</code>, and the string/float TypeErrors match Pillow; <code>name</code>/<code>filterargs</code> are exposed.</span></p>
   </section>
   <section class="api" id="ImageFilter.Rank">
     <h3>RankFilter / MinFilter / MedianFilter / MaxFilter / ModeFilter</h3>
@@ -98,28 +98,28 @@ Pillow.ImageFilter.MinFilter(size := 3)
 Pillow.ImageFilter.MedianFilter(size := 3)
 Pillow.ImageFilter.MaxFilter(size := 3)
 Pillow.ImageFilter.ModeFilter(size := 3)</pre>
-    <p class="en">Rank-order filters over a square window: Nth value, minimum, median, maximum, most frequent.</p>
+    <p>Rank-order filters over a square window: Nth value, minimum, median, maximum, most frequent.</p>
     
-    <p class="note"><span class="en">Parity: <code>bad rank value</code> and <code>bad filter size</code> match Pillow exactly.</span></p>
+    <p class="note"><span>Parity: <code>bad rank value</code> and <code>bad filter size</code> match Pillow exactly.</span></p>
   </section>
   <section class="api" id="ImageFilter.BoxBlur">
     <h3>BoxBlur / GaussianBlur / UnsharpMask</h3>
     <pre class="sig">Pillow.ImageFilter.BoxBlur(radius := unset)
 Pillow.ImageFilter.GaussianBlur(radius := 2)
 Pillow.ImageFilter.UnsharpMask(radius := 2, percent := 150, threshold := 3)</pre>
-    <p class="en">Blur and sharpen filters. UnsharpMask = original + (original − GaussianBlur) × percent/100 for differences above threshold.</p>
+    <p>Blur and sharpen filters. UnsharpMask = original + (original − GaussianBlur) × percent/100 for differences above threshold.</p>
     
   </section>
   <section class="api" id="ImageFilter.Color3DLUT">
     <h3>Color3DLUT</h3>
     <pre class="sig">Pillow.ImageFilter.Color3DLUT(size, table, channels := 3, targetMode := "")
 lut.Apply(image)   ;  alias: lut.Transform(image)</pre>
-    <p class="en">Applies a 3-D lookup table to an image.</p>
+    <p>Applies a 3-D lookup table to an image.</p>
     
   </section>
 
   <h2 id="internals">Internal helpers</h2>
-  <p class="note"><span class="en"><code>ApplyKernelArgs</code>, <code>RadiusPair</code>, <code>SumCoefficients</code>, <code>CheckSize</code> and <code>FlattenTable</code> are kernel-argument plumbing shared by the filter classes — public for the facade's own use, not part of the Pillow-style user API.</span></p>
+  <p class="note"><span><code>ApplyKernelArgs</code>, <code>RadiusPair</code>, <code>SumCoefficients</code>, <code>CheckSize</code> and <code>FlattenTable</code> are kernel-argument plumbing shared by the filter classes — public for the facade's own use, not part of the Pillow-style user API.</span></p>
 
   <h2 id="examples">Examples</h2>
   <pre class="example">img := Pillow.Image.Open("photo.jpg")
@@ -129,6 +129,5 @@ k := Pillow.ImageFilter.Kernel([3, 3], [-1,-1,-1, -1,8,-1, -1,-1,-1], 1, 0)
 edges := img.Filter(k)
 img.Close()</pre>
 </div>
-<script src="../../_static/pages.js"></script>
 </body>
 </html>
