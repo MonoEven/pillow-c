@@ -46859,6 +46859,12 @@ Direct-diff candidate packets:
 No `gap`/`partial` rows were reopened; the two rows above record the new
 interop surface and its raw-codec support.
 
+### API-EXIFTRANS-001 (docs-review catch, GREEN)
+
+| Gap | Area | Status | Evidence |
+| --- | --- | --- | --- |
+| API-EXIFTRANS-001 | Facade API | done | The ImageOps docs review surfaced a real unrecorded divergence: the facade `ExifTranspose` transposed pixels only, while Pillow 11.3.0 removes the orientation data after a real transposition. Closed with the exact Pillow rules (`oracle/probe_exiftranspose.py`): orientation 2–8 deletes the EXIF Orientation tag and re-serializes `Info["exif"]` (key present even when the exif becomes empty), strips `tiff:Orientation="N"` / `<tiff:Orientation>N</tiff:Orientation>` from XMP info values (str and Buffer forms), keeps other tags (Make), and leaves orientation 1 / missing EXIF untouched. `ImageOps.StripExifOrientation`/`StripXmpOrientationText` helpers added; facade-only, no rebuild. Target `1/1` in `157ms`; full directory suite `2868/2868` in `24766ms`, zero failures/errors/skips. | `oracle/probe_exiftranspose.py`; `PillowTestImageOpsExifTransposeStripsOrientationData`; ImageOps.html parity note corrected. |
+
 ## Update Rule
 
 Whenever a feature moves from "remaining" to "covered":

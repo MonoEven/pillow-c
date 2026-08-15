@@ -11672,6 +11672,79 @@ PillowTestImageOpsExifTransposeAppliesJpegOrientation(*) {
 
 AhkTest.Test("Pillow ImageOps.exif_transpose applies JPEG EXIF orientation", PillowTestImageOpsExifTransposeAppliesJpegOrientation)
 
+PillowTestImageOpsExifTransposeStripsOrientationData(*) {
+    Pillow.Configure({ DllPath: PillowTestDllPath() })
+    source := Pillow.Image.FromBytes("RGB", [2, 3], PillowTestBuffer([
+        10, 20, 30, 40, 50, 60,
+        70, 80, 90, 100, 110, 120,
+        130, 140, 150, 160, 170, 180,
+    ]))
+    plainPath := PillowTestTempJpegPath("exif-strip-source")
+    exifPath := PillowTestTempJpegPath("exif-strip-o6")
+    makePath := PillowTestTempJpegPath("exif-strip-make")
+    onePath := PillowTestTempJpegPath("exif-strip-o1")
+    makeSavePath := PillowTestTempJpegPath("exif-strip-make2")
+    opened := 0
+    transposed := 0
+    inPlace := 0
+    makeImage := 0
+    oneImage := 0
+    try {
+        source.Save(plainPath, "JPEG")
+        ; orientation-only EXIF: Pillow re-serializes info["exif"] without
+        ; the Orientation tag after a real transposition (key stays present).
+        PillowTestWriteJpegWithExifOrientation(plainPath, exifPath, 6)
+        opened := Pillow.Image.Open(exifPath)
+        transposed := Pillow.ImageOps.ExifTranspose(opened)
+        AhkTest.AssertTrue(transposed.Info.Has("exif"))
+        exif := transposed.GetExif()
+        AhkTest.AssertTrue(!exif.Has(274))
+        AhkTest.AssertTrue(!exif.HasOrientation)
+        AhkTest.AssertEqual(0, exif.Orientation)
+        ; the source image keeps its orientation metadata untouched
+        AhkTest.AssertTrue(opened.GetExif().Has(274))
+
+        inPlace := Pillow.Image.Open(exifPath)
+        Pillow.ImageOps.ExifTranspose(inPlace, true)
+        AhkTest.AssertTrue(!inPlace.GetExif().Has(274))
+        AhkTest.AssertEqual([3, 2], inPlace.Size)
+
+        ; orientation + Make: only Orientation is deleted, Make survives
+        PillowTestWriteJpegWithExifOrientation(plainPath, makePath, 6)
+        makeImage := Pillow.Image.Open(makePath)
+        makeExif := makeImage.GetExif()
+        makeExif[271] := "TestMake"
+        makeImage.Save(makeSavePath, "JPEG", { exif: makeExif })
+        makeImage.Close()
+        makeImage := Pillow.Image.Open(makeSavePath)
+        transposedMake := Pillow.ImageOps.ExifTranspose(makeImage)
+        transposedExif := transposedMake.GetExif()
+        AhkTest.AssertTrue(!transposedExif.Has(274))
+        AhkTest.AssertTrue(transposedExif.Has(271))
+        AhkTest.AssertEqual("TestMake", transposedExif.Get(271))
+        transposedMake.Close()
+        makeImage.Close()
+
+        ; orientation 1 (no transposition): the tag is KEPT like Pillow
+        PillowTestWriteJpegWithExifOrientation(plainPath, onePath, 1)
+        oneImage := Pillow.Image.Open(onePath)
+        oneResult := Pillow.ImageOps.ExifTranspose(oneImage)
+        AhkTest.AssertTrue(oneResult.GetExif().Has(274))
+        AhkTest.AssertEqual(1, oneResult.GetExif().Get(274))
+        oneResult.Close()
+        oneImage.Close()
+    } finally {
+        for image in [oneImage, makeImage, inPlace, transposed, opened, source] {
+            if IsObject(image)
+                image.Close()
+        }
+        for path in [makeSavePath, onePath, makePath, exifPath, plainPath]
+            PillowTestDeleteFile(path)
+    }
+}
+
+AhkTest.Test("Pillow ImageOps.exif_transpose strips orientation data like Pillow", PillowTestImageOpsExifTransposeStripsOrientationData)
+
 PillowTestImageGetExifObjectSavesOrientationToJpegAndPng(*) {
     Pillow.Configure({ DllPath: PillowTestDllPath() })
     source := Pillow.Image.FromBytes("RGB", [2, 1], PillowTestBuffer([10, 20, 30, 40, 50, 60]))

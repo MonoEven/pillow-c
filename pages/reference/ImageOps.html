@@ -238,7 +238,7 @@
       <dt>in_place</dt><dd><span class="en">When true, transpose the image in place and return nothing.</span><span class="zh">为 true 时就地转置且不返回。</span></dd>
     </dl>
     <p class="returns"><span class="en">Returns: a new transposed Image (or a copy when orientation ≤ 1); nothing when <code>in_place</code> is true.</span><span class="zh">返回:新的转置 Image(orientation ≤ 1 时为副本);<code>in_place</code> 为 true 时无返回。</span></p>
-    <p class="note"><span class="en">Parity: the facade transposes but does not strip the EXIF Orientation tag (Pillow removes it).</span><span class="zh">对齐:门面仅转置,不删除 EXIF Orientation 标签(Pillow 会删除)。</span></p>
+    <p class="note"><span class="en">Parity: after a real transposition (orientation 2–8) the EXIF Orientation tag is deleted and <code>Info["exif"]</code> is re-serialized (the key stays present even when empty), the XMP <code>tiff:Orientation</code> is stripped, and other tags (e.g. Make) survive — all exactly like Pillow 11.3.0; orientation 1 or missing EXIF keeps everything untouched.</span><span class="zh">对齐:发生实际转置(orientation 2–8)后删除 EXIF Orientation 标签并重序列化 <code>Info["exif"]</code>(键保留,即使已为空),XMP 中的 <code>tiff:Orientation</code> 一并剥离,其余标签(如 Make)保留——与 Pillow 11.3.0 完全一致;orientation 为 1 或无 EXIF 时原样保留。</span></p>
   </section>
 
   <section class="api" id="ImageOps.Flip">

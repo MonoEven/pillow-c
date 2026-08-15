@@ -19932,5 +19932,20 @@ facade); oracle pins in `oracle/probe_numpy_interop.py` +
 `pages/reference/Numpy.html` (repository reference included).
 ```
 
+2026-08-15: `API-EXIFTRANS-001` is GREEN — a docs-review catch closed
+a real unrecorded divergence: the facade `ImageOps.ExifTranspose` used
+to transpose pixels only, while Pillow 11.3.0 also removes the
+orientation data after a real transposition. The facade now replicates
+Pillow exactly (`oracle/probe_exiftranspose.py`): for orientation 2–8
+it deletes the EXIF Orientation tag and re-serializes `Info["exif"]`
+(the key stays present even when the exif becomes empty), strips
+`tiff:Orientation="N"` / `<tiff:Orientation>N</tiff:Orientation>` from
+the XMP info values, and keeps other tags (Make) intact; orientation 1
+or missing EXIF is left untouched. Facade-only change (no rebuild); the
+target passes `1/1` in `157ms` and the full directory suite passes
+`2868/2868` in `24766ms` with zero failures, errors, or skips. The
+ImageOps docs page parity note was corrected in the same patch.
+```
+
 If any line above is no longer true, update this file first, then update
 `docs/pillow-gap-analysis.md` in the same patch.

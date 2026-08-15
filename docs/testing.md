@@ -7382,3 +7382,15 @@ interop"` passes `11/11` in `62ms`; the full directory suite passes
 `2867/2867` in `23156ms` with zero failures, errors, or skips.
 Export parity stays `524/524` and the rebuilt DLL SHA-256 is
 `4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481`.
+
+2026-08-15: `API-EXIFTRANS-001` — the ImageOps docs review caught a
+real unrecorded divergence (the facade `ExifTranspose` transposed
+pixels but never removed the orientation data). New test
+`PillowTestImageOpsExifTransposeStripsOrientationData` pins Pillow
+11.3.0's exact rules (oracle `oracle/probe_exiftranspose.py`):
+orientation 2–8 deletes the EXIF Orientation tag and re-serializes
+`Info["exif"]`, orientation 1 keeps the tag, other tags (Make)
+survive, and the source image stays untouched. Target passes `1/1`
+in `157ms`; the full directory suite passes `2868/2868` in `24766ms`
+with zero failures, errors, or skips. Facade-only; the DLL is
+unchanged (`4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481`).

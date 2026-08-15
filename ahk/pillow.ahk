@@ -2159,9 +2159,47 @@ class Pillow {
                 image.Handle := transposed.RequireHandle()
                 transposed.Handle := 0
                 Pillow.CheckStatus(DllCall(Pillow.RequireDllPath() "\pillow_c_image_free", "Ptr", oldHandle, "Int"))
+                Pillow.ImageOps.StripExifOrientation(image)
                 return
             }
-            return image.Transpose(method)
+            result := image.Transpose(method)
+            Pillow.ImageOps.StripExifOrientation(result)
+            return result
+        }
+
+        static StripExifOrientation(image) {
+            ; Pillow 11.3.0 exif_transpose: after a real transposition
+            ; (orientation 2..8), delete the EXIF Orientation tag and
+            ; re-serialize info["exif"] (even when it becomes empty), then
+            ; strip tiff:Orientation from the XMP info values.
+            if image.Info.Has("exif") {
+                exif := image.GetExif()
+                if exif.Has(274) {
+                    exif.Delete(274)
+                    image.Info["exif"] := exif.ToBytes()
+                }
+            }
+            for key in ["XML:com.adobe.xmp", "xmp"] {
+                if image.Info.Has(key) {
+                    value := image.Info[key]
+                    if value is String {
+                        stripped := Pillow.ImageOps.StripXmpOrientationText(value)
+                        image.Info[key] := stripped
+                    } else if value is Buffer {
+                        text := StrGet(value.Ptr, value.Size, "UTF-8")
+                        stripped := Pillow.ImageOps.StripXmpOrientationText(text)
+                        size := StrPut(stripped, "UTF-8")
+                        out := Buffer(size - 1, 0)
+                        StrPut(stripped, out, size - 1, "UTF-8")
+                        image.Info[key] := out
+                    }
+                }
+            }
+        }
+
+        static StripXmpOrientationText(text) {
+            text := RegExReplace(text, 'tiff:Orientation="\d"', "")
+            return RegExReplace(text, '<tiff:Orientation>\d</tiff:Orientation>', "")
         }
 
         static exif_transpose(image, in_place := false) {
