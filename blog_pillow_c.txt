@@ -1,0 +1,150 @@
+[b]AutoHotkey 图像处理库（pillow-c）[/b]
+
+仓库：[url=https://github.com/MonoEven/pillow-c]https://github.com/MonoEven/pillow-c[/url]
+
+在线双语文档：[url=https://monoeven.github.io/pillow-c/]https://monoeven.github.io/pillow-c/[/url]
+
+这个库解决一个问题：让 AutoHotkey v2 拥有一个与 [c]Pillow 11.3.0[/c] 行为一致的图像处理 API。所谓一致不只是函数名长得像，而是错误消息、转换规则、元数据形态、像素字节全部对齐——测试里钉死的不是"能用"，而是"和 Python 里跑出来的一模一样"。实现方式是原生 DLL 持有图像句柄与像素存储，AHK 侧只做参数转换和生命周期管理。
+
+行为基准是本机 Python 3.10.11 + Pillow 11.3.0（[c]F:\Python\Python310\python.exe[/c]），NumPy 联动部分以 NumPy 1.25.0 为基准，通过 oracle 探针逐项生成钉死值。
+
+
+[b]1. 架构[/b]
+
+项目中心是 [c]pillow_c.dll[/c]：一个性能优先的 C/C++ DLL，拥有全部图像句柄、像素缓冲区和批量运算，对外是 524 个导出的 C ABI。[c]ahk\pillow.ahk[/c] 是薄门面，提供 Python 风格的类与调用习惯：
+
+- [c]Pillow.Image[/c]：打开、保存、转换、缩放、旋转、裁剪、粘贴、滤镜、像素、调色板、量化、EXIF/XMP 元数据；
+- [c]ImageDraw[/c] / [c]ImageDraw2[/c] / [c]ImageFont[/c]：图形、文字、truetype 度量、可变字体轴；
+- [c]ImageChops[/c] / [c]ImageOps[/c] / [c]ImageFilter[/c] / [c]ImageEnhance[/c]：通道运算、整图变换、卷积核、增强器；
+- [c]ImageStat[/c] / [c]ImageMath[/c] / [c]ImageCms[/c] / [c]ImageColor[/c] / [c]ImagePalette[/c] / [c]ImagePath[/c] / [c]ImageSequence[/c] / [c]ImageGrab[/c] / [c]ImageFile[/c] / [c]ImageTransform[/c]；
+- 与 [url=https://github.com/MonoEven/cnumpy]cnumpy[/url] 的 NumPy 联动。
+
+模式覆盖 [c]1[/c]、[c]L[/c]、[c]P[/c]、[c]RGB[/c]、[c]RGBA[/c]、[c]CMYK[/c]、[c]YCbCr[/c]、[c]LAB[/c]、[c]HSV[/c]、[c]I[/c]、[c]F[/c]、[c]I;16[/c]、[c]I;16B[/c]、[c]LA[/c] 及 BGR 系列。坐标原点在左上角，四元矩形是 [c][left, upper, right, lower][/c]，AHK 数组对应 Python 元组。
+
+项目结构：
+
+[codebox=text file=layout]
+build\x64\Release\pillow_c.dll   已提交的 Release DLL
+ahk\pillow.ahk                   门面（唯一入口）
+ahk\pillow.test.ahk              行为套件
+ahk\pillow_numpy.test.ahk        cnumpy 联动套件
+src\                             DLL 源码
+oracle\                          Pillow/NumPy 行为探针
+docs\                            工程台账
+pages\                           双语 API 文档站点
+[/codebox]
+
+
+[b]2. 行为对齐怎么做[/b]
+
+每做一个功能，先写一个 Python 探针脚本，把本机 Pillow 11.3.0 的真实输出——包括异常类型和消息全文——钉成固定值，再让 AHK 测试逐条断言同一批值。所以测试覆盖的不只是正常路径：
+
+[codebox=text file=parity-examples]
+Resize([8, 8], -99)   -> ValueError: Unknown resampling filter (-99).
+                         Use Image.Resampling.NEAREST (0), ...
+GetPixel([99, 99])    -> IndexError: image index out of range
+FromArray(int64)      -> TypeError: Cannot handle this data type:
+                         (1, 1), <i8
+Save(..., "WEBP")     -> encoder WebP not available
+[/codebox]
+
+格式层做到了字节级：JPEG 的 SOF/量化表/DPI/渐进标志与元数据、GIF 的调色板与动图帧、TIFF 的 BigTIFF/压缩/EXIF 子 IFD、PNG 的分块与文本、ICO/ICNS 的容器结构、EPS/PDF/PSD/FLI/PCD 等长尾格式的头部解析，全部对照 Pillow 原样实现。RGBA 缩放的 alpha 预乘(+127)与 a==0 处的保留规则、I;16 的 16bpc 两遍采样、mode "1" 的位打包、LAB 的通道异或存储这些边角行为也都逐条钉死。
+
+字体方向包括可变字体引擎：fvar 轴、命名实例、avar 分段映射、HVAR 字宽增量(含 FreeType 的区域标量)与 26.6 定点算术，bahnschrift 的钉死值逐位一致；非 BMP 字符(cmaj 表 format-12 合并)的字宽与 Pillow 完全一致。
+
+当前验证数据：完整套件 [b]2868/2868[/b] 通过(23156ms 级)，导出对齐 [b]524/524[/b]，Release x64 DLL SHA-256 为
+[c]4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481[/c]。
+
+
+[b]3. 基础用法[/b]
+
+打开、缩放、保存：
+
+[codebox=autohotkey file=basic]
+#Requires AutoHotkey v2.0
+#Include "ahk\pillow.ahk"
+
+Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
+
+img := Pillow.Image.Open("photo.png")
+img := img.Resize([800, 600])          ; 默认 BICUBIC，同 Pillow 规则
+img.Save("photo-800.jpg")
+img.Close()
+
+canvas := Pillow.Image.New("RGB", [320, 200], "white")
+canvas.PutPixel([10, 10], "red")
+MsgBox canvas.GetPixel([10, 10]).Length   ; 3
+canvas.Close()
+[/codebox]
+
+绘图与滤镜：
+
+[codebox=autohotkey file=draw]
+img := Pillow.Image.New("RGB", [240, 140], "white")
+d := Pillow.ImageDraw.Draw(img)
+d.Line([[0, 0], [239, 0], [239, 139], [0, 139], [0, 0]], "blue", 3)
+d.RoundedRectangle([[20, 20], [220, 120]], 12, "yellow", "red", 2)
+d.Ellipse([60, 40, 180, 100], "lime", "black", 1)
+d.Text([12, 118], "Hello 中文", "navy")
+img.Save("draw.png")
+img.Close()
+
+photo := Pillow.Image.Open("photo.jpg")
+blurred := photo.Filter(Pillow.ImageFilter.GaussianBlur(2))
+sharp   := photo.Filter(Pillow.ImageFilter.UnsharpMask(2, 150, 3))
+k := Pillow.ImageFilter.Kernel([3, 3], [-1,-1,-1, -1,8,-1, -1,-1,-1], 1, 0)
+edges := photo.Filter(k)
+photo.Close()
+[/codebox]
+
+量化与 GIF 动图走 Pillow 的原始语义(中位切分/最大覆盖/快速八叉树，LIBIMAGEQUANT 保留 Pillow 原样的编译期报错)：
+
+[codebox=autohotkey file=quantize]
+rgb := Pillow.Image.Open("photo.jpg")
+p := rgb.Quantize(256, Pillow.Quantize.MEDIANCUT)
+p.Save("photo-256.gif")
+p.Close()
+rgb.Close()
+[/codebox]
+
+
+[b]4. NumPy 联动（cnumpy）[/b]
+
+配合 [url=https://github.com/MonoEven/cnumpy]cnumpy[/url]（v1.21.0-cnumpy，以 NumPy 1.25.0 为基准）使用：[c]image.AsArray()[/c] 即 [c]numpy.asarray(im)[/c]，[c]Pillow.Image.FromArray[/c] 即 [c]Image.fromarray[/c]，dtype/shape/字节全部逐位对齐：
+
+[codebox=autohotkey file=numpy]
+#Include "..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"
+
+img := Pillow.Image.Open("photo.jpg")
+a := img.AsArray()                ; uint8，[H, W, 3]
+mean := a.Mean()                  ; cnumpy 统计
+img.Close()                       ; 数组是快照，图像关闭后仍有效
+
+b := Numpy.Zeros([64, 64, 4], 3)  ; uint8 RGBA
+im := Pillow.Image.FromArray(b)   ; 模式 RGBA
+im.Save("black.png")
+[/codebox]
+
+fromarray 的完整类型映射与 Pillow 11.3.0 逐字节一致：bool→[c]1[/c]（非零→255）、u1→L/LA/RGB/RGBA（按尾部形状）、i1→I;8、i2→I;16S（符号扩展）、u2→结果模式 [c]I;16[/c]（直接 16 位存储，这是探针验证出的 Pillow 真实结果模式）、u4/i4→I;32(S)、f4/f8→F;32F/F;64F（double→float32）。报错形态同样原样：int64 抛 [c]Cannot handle this data type: (1, 1), <i8[/c]，维数越界抛 [c]Too many dimensions: n > m.[/c]。仅 [c]I;16B[/c] 的大端 dtype（numpy 的 [c]>u2[/c]）因 cnumpy 无大端类型而记为文档化边界，显式失败。
+
+
+[b]5. 诚实的边界[/b]
+
+其余一切都有边界说明：WebP/AVIF/JPEG2000 解码器、FPX（弃用的 olefile 插件）、ImageQt/ImageTk（本运行时不带 Qt/Tk）、ImagePalette.random（Python 全局随机流）、ImagePath 的 map 处理器——这些位置一律以 Pillow 的原样报错显式失败，绝不静默偏离。GDI 栅格化的字形墨迹、默认字体、JPEG 熵编码负载字节、GIF 中位切分调色板顺序、TIFF jpeg/group3/group4 保存拒绝等微边界全部记录在案。
+
+
+[b]6. 双语文档[/b]
+
+在线文档仿照 [url=https://pillow.readthedocs.io/en/stable/]Pillow 官方文档[/url] 结构：24 个页面、276 个 API 条目，每个 API 有签名、参数、返回值、报错形态与对齐说明，中英双语可切换（双语 / EN / 中文），并附完整的行为边界页：
+
+[url=https://monoeven.github.io/pillow-c/]https://monoeven.github.io/pillow-c/[/url]
+
+博客与文档站点分离维护，工程台账（差距检查点、差距分析、原生 ABI、测试说明）在仓库 [c]docs\[/c] 下。
+
+
+[b]7. 链接[/b]
+
+- 仓库：[url=https://github.com/MonoEven/pillow-c]https://github.com/MonoEven/pillow-c[/url]
+- 在线双语文档：[url=https://monoeven.github.io/pillow-c/]https://monoeven.github.io/pillow-c/[/url]
+- NumPy 联动：[url=https://github.com/MonoEven/cnumpy]https://github.com/MonoEven/cnumpy[/url]
+- 测试框架：[url=https://github.com/MonoEven/stdlib-ahk]https://github.com/MonoEven/stdlib-ahk[/url]

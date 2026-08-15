@@ -1,0 +1,150 @@
+[b]AutoHotkey Image Processing Library (pillow-c)[/b]
+
+Repository: [url=https://github.com/MonoEven/pillow-c]https://github.com/MonoEven/pillow-c[/url]
+
+Bilingual online docs: [url=https://monoeven.github.io/pillow-c/]https://monoeven.github.io/pillow-c/[/url]
+
+This library solves one problem: give AutoHotkey v2 an image-processing API that behaves identically to [c]Pillow 11.3.0[/c]. Identical means not just similar function names — the error messages, conversion rules, metadata shapes, and pixel bytes all have to match. The tests do not pin "it works"; they pin "it produces exactly what Python produces". The implementation keeps image handles and pixel storage in a native DLL while the AHK side handles argument conversion and lifetime management.
+
+The behavioral baseline is the local Python 3.10.11 + Pillow 11.3.0 ([c]F:\Python\Python310\python.exe[/c]); the NumPy interop is qualified against NumPy 1.25.0. Oracle probes generate the pinned expected values.
+
+
+[b]1. Architecture[/b]
+
+The center of the project is [c]pillow_c.dll[/c]: a performance-first C/C++ DLL that owns every image handle, pixel buffer, and bulk operation behind a stable C ABI of 524 exports. [c]ahk\pillow.ahk[/c] is the thin facade providing the Python-like classes and call habits:
+
+- [c]Pillow.Image[/c]: open, save, convert, resize, rotate, crop, paste, filters, pixels, palette, quantize, EXIF/XMP metadata;
+- [c]ImageDraw[/c] / [c]ImageDraw2[/c] / [c]ImageFont[/c]: shapes, text, truetype metrics, variable-font variation axes;
+- [c]ImageChops[/c] / [c]ImageOps[/c] / [c]ImageFilter[/c] / [c]ImageEnhance[/c]: channel ops, whole-image transforms, kernels, enhancers;
+- [c]ImageStat[/c] / [c]ImageMath[/c] / [c]ImageCms[/c] / [c]ImageColor[/c] / [c]ImagePalette[/c] / [c]ImagePath[/c] / [c]ImageSequence[/c] / [c]ImageGrab[/c] / [c]ImageFile[/c] / [c]ImageTransform[/c];
+- NumPy interop with [url=https://github.com/MonoEven/cnumpy]cnumpy[/url].
+
+Supported modes: [c]1[/c], [c]L[/c], [c]P[/c], [c]RGB[/c], [c]RGBA[/c], [c]CMYK[/c], [c]YCbCr[/c], [c]LAB[/c], [c]HSV[/c], [c]I[/c], [c]F[/c], [c]I;16[/c], [c]I;16B[/c], [c]LA[/c], and the BGR family. The origin is the upper-left corner; a 4-tuple box is [c][left, upper, right, lower][/c]; AHK arrays stand in for Python tuples.
+
+Project layout:
+
+[codebox=text file=layout]
+build\x64\Release\pillow_c.dll   committed Release DLL
+ahk\pillow.ahk                   facade (single entry point)
+ahk\pillow.test.ahk              behavior suite
+ahk\pillow_numpy.test.ahk        cnumpy interop suite
+src\                             DLL sources
+oracle\                          Pillow/NumPy behavior probes
+docs\                            engineer ledgers
+pages\                           bilingual API reference site
+[/codebox]
+
+
+[b]2. How behavioral parity is proven[/b]
+
+Before implementing anything, a Python probe records the real output of the local Pillow 11.3.0 — including exception types and full message text — as fixed pins. The AHK tests then assert the same values one by one. The suite therefore covers far more than the happy path:
+
+[codebox=text file=parity-examples]
+Resize([8, 8], -99)   -> ValueError: Unknown resampling filter (-99).
+                         Use Image.Resampling.NEAREST (0), ...
+GetPixel([99, 99])    -> IndexError: image index out of range
+FromArray(int64)      -> TypeError: Cannot handle this data type:
+                         (1, 1), <i8
+Save(..., "WEBP")     -> encoder WebP not available
+[/codebox]
+
+Formats reach byte-level fidelity: JPEG SOF/q-tables/DPI/progressive flags and metadata, GIF palettes and animation frames, TIFF BigTIFF/compression/EXIF sub-IFDs, PNG chunks and text, ICO/ICNS container structures, and the long-tail headers of EPS/PDF/PSD/FLI/PCD. Edge behaviors are pinned too: RGBA resize alpha premultiplication (+127) with the value kept where a==0, the I;16 16bpc two-pass sampler, mode "1" bit packing, and LAB channel XOR storage.
+
+The font side includes a full variable-font engine: fvar axes, named instances, avar segment maps, HVAR advance deltas (with FreeType's region scalars) and 26.6 fixed-point arithmetic — the bahnschrift pins match bit for bit; non-BMP glyph advances (the format-12 cmap merge) match Pillow exactly.
+
+Current verification: full suite [b]2868/2868[/b] passing (23156ms scale), export parity [b]524/524[/b], Release x64 DLL SHA-256
+[c]4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481[/c].
+
+
+[b]3. Basic usage[/b]
+
+Open, resize, save:
+
+[codebox=autohotkey file=basic]
+#Requires AutoHotkey v2.0
+#Include "ahk\pillow.ahk"
+
+Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
+
+img := Pillow.Image.Open("photo.png")
+img := img.Resize([800, 600])          ; defaults to BICUBIC, Pillow's rule
+img.Save("photo-800.jpg")
+img.Close()
+
+canvas := Pillow.Image.New("RGB", [320, 200], "white")
+canvas.PutPixel([10, 10], "red")
+MsgBox canvas.GetPixel([10, 10]).Length   ; 3
+canvas.Close()
+[/codebox]
+
+Drawing and filters:
+
+[codebox=autohotkey file=draw]
+img := Pillow.Image.New("RGB", [240, 140], "white")
+d := Pillow.ImageDraw.Draw(img)
+d.Line([[0, 0], [239, 0], [239, 139], [0, 139], [0, 0]], "blue", 3)
+d.RoundedRectangle([[20, 20], [220, 120]], 12, "yellow", "red", 2)
+d.Ellipse([60, 40, 180, 100], "lime", "black", 1)
+d.Text([12, 118], "Hello 中文", "navy")
+img.Save("draw.png")
+img.Close()
+
+photo := Pillow.Image.Open("photo.jpg")
+blurred := photo.Filter(Pillow.ImageFilter.GaussianBlur(2))
+sharp   := photo.Filter(Pillow.ImageFilter.UnsharpMask(2, 150, 3))
+k := Pillow.ImageFilter.Kernel([3, 3], [-1,-1,-1, -1,8,-1, -1,-1,-1], 1, 0)
+edges := photo.Filter(k)
+photo.Close()
+[/codebox]
+
+Quantize and GIF animations follow Pillow's original semantics (median cut / max coverage / fast octree; LIBIMAGEQUANT keeps Pillow's exact compile-time error):
+
+[codebox=autohotkey file=quantize]
+rgb := Pillow.Image.Open("photo.jpg")
+p := rgb.Quantize(256, Pillow.Quantize.MEDIANCUT)
+p.Save("photo-256.gif")
+p.Close()
+rgb.Close()
+[/codebox]
+
+
+[b]4. NumPy interop (cnumpy)[/b]
+
+Together with [url=https://github.com/MonoEven/cnumpy]cnumpy[/url] (v1.21.0-cnumpy, qualified against NumPy 1.25.0): [c]image.AsArray()[/c] is [c]numpy.asarray(im)[/c] and [c]Pillow.Image.FromArray[/c] is [c]Image.fromarray[/c], with dtype/shape/bytes matching bit for bit:
+
+[codebox=autohotkey file=numpy]
+#Include "..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"
+
+img := Pillow.Image.Open("photo.jpg")
+a := img.AsArray()                ; uint8, [H, W, 3]
+mean := a.Mean()                  ; cnumpy statistics
+img.Close()                       ; the array is a snapshot, still valid
+
+b := Numpy.Zeros([64, 64, 4], 3)  ; uint8 RGBA
+im := Pillow.Image.FromArray(b)   ; mode RGBA
+im.Save("black.png")
+[/codebox]
+
+The full fromarray type map matches Pillow 11.3.0 byte for byte: bool → [c]1[/c] (nonzero → 255), u1 → L/LA/RGB/RGBA by trailing shape, i1 → I;8, i2 → I;16S (sign-extended), u2 → result mode [c]I;16[/c] (direct 16-bit storage — the probe-verified real Pillow result mode), u4/i4 → I;32(S), f4/f8 → F;32F/F;64F (double → float32). Error shapes match verbatim: int64 raises [c]Cannot handle this data type: (1, 1), <i8[/c]; dimension violations raise [c]Too many dimensions: n > m.[/c]. Only the [c]I;16B[/c] big-endian dtype (numpy's [c]>u2[/c]) is a documented boundary — cnumpy ships no big-endian dtype — and it fails loudly.
+
+
+[b]5. Honest boundaries[/b]
+
+Everything else carries explicit boundary documentation: WebP/AVIF/JPEG2000 decoders, FPX (the deprecated olefile plugin), ImageQt/ImageTk (no Qt/Tk in this runtime), ImagePalette.random (Python's global RNG stream), and the ImagePath map handler — each of these fails loudly with Pillow's exact message and never silently diverges. Micro-boundaries such as GDI-rasterized glyph ink, the default font, JPEG entropy payload bytes, GIF median-cut palette ordering, and TIFF jpeg/group3/group4 save rejection are all recorded.
+
+
+[b]6. Bilingual documentation[/b]
+
+The online docs are modeled on the [url=https://pillow.readthedocs.io/en/stable/]official Pillow documentation[/url]: 24 pages, 276 API entries, each with signature, parameters, return values, error shapes, and parity notes, switchable between bilingual / EN / 中文, plus a complete behavioral-boundaries page:
+
+[url=https://monoeven.github.io/pillow-c/]https://monoeven.github.io/pillow-c/[/url]
+
+The blog and the Pages site are maintained separately; the engineer ledgers (gap checkpoint, gap analysis, native ABI, testing notes) live under [c]docs\[/c].
+
+
+[b]7. Links[/b]
+
+- Repository: [url=https://github.com/MonoEven/pillow-c]https://github.com/MonoEven/pillow-c[/url]
+- Bilingual online docs: [url=https://monoeven.github.io/pillow-c/]https://monoeven.github.io/pillow-c/[/url]
+- NumPy interop: [url=https://github.com/MonoEven/cnumpy]https://github.com/MonoEven/cnumpy[/url]
+- Test framework: [url=https://github.com/MonoEven/stdlib-ahk]https://github.com/MonoEven/stdlib-ahk[/url]

@@ -1,65 +1,145 @@
 # pillow-c
 
-`pillow-c` is the native acceleration layer for bringing a Pillow-like API to AutoHotkey v2.
+![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+![AutoHotkey](https://img.shields.io/badge/AutoHotkey-v2-green.svg)
+![Platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey.svg)
 
-The project centers on `pillow_c.dll`: a performance-first C/C++ DLL that owns image handles, pixel storage, and bulk image operations. AHK code should stay thin: argument conversion, lifetime management, exceptions, and Python-like ergonomics.
+A Pillow 11.3.0-compatible image processing library for AutoHotkey v2: a native
+`pillow_c.dll` owns image handles, pixel storage, and bulk operations, while
+`ahk/pillow.ahk` provides the Python-like facade (`Pillow.Image`, `ImageDraw`,
+`ImageFont`, `ImageFilter`, `ImageOps`, `ImageCms`, ...). Behavior is qualified
+against the local Python 3.10.11 + Pillow 11.3.0 installation — including exact
+error messages, not just the happy path.
 
-This is not a port of any existing AHK Pillow wrapper. Behavior is constrained by local Python 3.10.11 and Pillow 11.3.0.
+Repository: [https://github.com/MonoEven/pillow-c](https://github.com/MonoEven/pillow-c)
 
-## Documentation
+Technical pages: [https://monoeven.github.io/pillow-c/](https://monoeven.github.io/pillow-c/)
 
-Bilingual (English / 中文) API documentation, modeled on the official Pillow docs and covering every public API down to its parameters, return values, error messages, and behavioral boundaries:
+Practice integration: [https://github.com/MonoEven/cnumpy](https://github.com/MonoEven/cnumpy)
 
-- [pillow-c docs site](pages/index.html) — open locally or serve `pages/` via GitHub Pages
-  - [Image](pages/reference/Image.html) · [ImageDraw](pages/reference/ImageDraw.html) · [ImageFont](pages/reference/ImageFont.html) · [ImageFilter](pages/reference/ImageFilter.html) · [ImageChops](pages/reference/ImageChops.html) · [ImageOps](pages/reference/ImageOps.html) · [ImageStat](pages/reference/ImageStat.html) · [ImageMath](pages/reference/ImageMath.html) · [ImageCms](pages/reference/ImageCms.html) · [ImageColor](pages/reference/ImageColor.html) · [ImageEnhance](pages/reference/ImageEnhance.html) · [ImagePalette](pages/reference/ImagePalette.html) · [ImagePath](pages/reference/ImagePath.html) · [ImageDraw2](pages/reference/ImageDraw2.html) · [ImageSequence](pages/reference/ImageSequence.html) · [ImageGrab](pages/reference/ImageGrab.html) · [ImageFile](pages/reference/ImageFile.html) · [ImageTransform](pages/reference/ImageTransform.html) · [ImageQt](pages/reference/ImageQt.html) · [ImageTk](pages/reference/ImageTk.html) · [Numpy interop](pages/reference/Numpy.html) · [Constants](pages/reference/constants.html) · [Boundaries](pages/reference/boundaries.html)
-  - Engineer-facing ledgers: [Architecture](docs/architecture.md) · [Native ABI](docs/native-abi.md) · [Gap Checkpoint](docs/pillow-gap-checkpoint.md) · [Gap Analysis](docs/pillow-gap-analysis.md) · [Testing](docs/testing.md)
+## Contents
 
-## NumPy interop (cnumpy)
+- [What it does](#what-it-does)
+- [Quick start](#quick-start)
+- [Drawing and filters](#drawing-and-filters)
+- [NumPy interop](#numpy-interop)
+- [Behavioral parity](#behavioral-parity)
+- [Build](#build)
+- [Test](#test)
+- [Blog and Pages](#blog-and-pages)
+- [Project layout](#project-layout)
+- [Friendly links](#friendly-links)
 
-pillow-c links with [**cnumpy**](https://github.com/MonoEven/cnumpy) (the companion NumPy-style native array library for AutoHotkey v2, `v1.21.0-cnumpy`): `Image.FromArray` is Pillow's `Image.fromarray`, and `image.AsArray()` is `numpy.asarray(im)`. dtype/shape mappings, byte layouts and error shapes are oracle-verified against local NumPy 1.25.0 + Pillow 11.3.0 (`oracle/probe_numpy_interop.py`).
+## What it does
 
-```autohotkey
-#Include "ahk\pillow.ahk"
-#Include "..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"   ; your cnumpy checkout
+The center of the project is `build\x64\Release\pillow_c.dll` — a
+performance-first C/C++ DLL that owns every image handle, pixel buffer, and
+bulk operation, with a stable C ABI of 524 exports. The AHK side stays thin:
+argument conversion, lifetime management, exceptions, and Python-like
+ergonomics. The facade mirrors Pillow 11.3.0's object model:
 
-Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
-img := Pillow.Image.Open("photo.jpg")
-a := img.AsArray()                    ; uint8 NdArray, [H, W, 3] — numpy.asarray(im)
-img.Close()
-b := Numpy.Zeros([64, 64, 4], 3)     ; uint8 RGBA
-im := Pillow.Image.FromArray(b)      ; mode RGBA — Image.fromarray
-```
+- `Pillow.Image`: open/save, convert, resize, rotate, crop, paste, filters,
+  pixels, palette, quantize, EXIF/XMP metadata;
+- `ImageDraw` / `ImageDraw2` / `ImageFont`: shapes, text, truetype metrics,
+  variable-font variation axes;
+- `ImageChops` / `ImageOps` / `ImageFilter` / `ImageEnhance`: channel ops,
+  whole-image transforms, kernels, enhancers;
+- `ImageStat` / `ImageMath` / `ImageCms` / `ImageColor` / `ImagePalette` /
+  `ImagePath` / `ImageSequence` / `ImageGrab` / `ImageFile` / `ImageTransform`;
+- NumPy interop with [cnumpy](https://github.com/MonoEven/cnumpy):
+  `Image.fromarray` / `numpy.asarray(im)` analogues.
 
-## Quick Start
+This is not a port of any existing AHK Pillow wrapper; it is an independent
+implementation constrained by the local Pillow 11.3.0 behavior.
 
-The current Release DLL is committed for direct use:
+## Quick start
 
-```text
-build\x64\Release\pillow_c.dll
-```
-
-AHK facade entry point:
-
-```text
-ahk\pillow.ahk
-```
-
-Minimal AHK sketch:
+The Release DLL is committed for direct use. Configure the path once, then use
+the facade exactly like Pillow:
 
 ```autohotkey
 #Requires AutoHotkey v2.0
 #Include "ahk\pillow.ahk"
 
 Pillow.Configure({ DllPath: A_ScriptDir "\build\x64\Release\pillow_c.dll" })
+
+; open, resize, save
 img := Pillow.Image.Open("photo.png")
 img := img.Resize([800, 600])
 img.Save("photo-800.jpg")
 img.Close()
+
+; create and inspect
+canvas := Pillow.Image.New("RGB", [320, 200], "white")
+canvas.PutPixel([10, 10], "red")
+MsgBox canvas.GetPixel([10, 10]).Length      ; 3 (RGB tuple)
+canvas.Close()
 ```
 
-## Behavioral Parity
+Gradients and statistics:
 
-Behavior is verified against local Pillow 11.3.0 (`F:\Python\Python310\python.exe`) through oracle probes plus the full AutoHotkey suite: **2867/2867** tests, **524/524** DLL exports in parity, Release x64 DLL SHA-256 `4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481`. Error messages, option validation, conversion rules, metadata shapes, and numeric edge cases are pinned against the Python implementation. The few remaining honest boundaries (WebP/AVIF/JPEG2000 decoders, FPX, ImageQt/ImageTk, ImagePalette.random, the ImagePath map handler, I;16B big-endian AsArray, …) fail loudly with Pillow's exact messages — see [Boundaries](pages/reference/boundaries.html).
+```autohotkey
+gray := Pillow.Image.LinearGradient("L")     ; 256×256, 0..255 along x
+hist := gray.Histogram()                     ; 256 entries for L
+ext  := gray.GetExtrema()                    ; [min, max]
+
+grad := Pillow.Image.RadialGradient("RGB")
+grad.Thumbnail([128, 128])
+grad.Save("gradient.png")
+```
+
+## Drawing and filters
+
+```autohotkey
+img := Pillow.Image.New("RGB", [240, 140], "white")
+d := Pillow.ImageDraw.Draw(img)
+d.Line([[0, 0], [239, 0], [239, 139], [0, 139], [0, 0]], "blue", 3)
+d.RoundedRectangle([[20, 20], [220, 120]], 12, "yellow", "red", 2)
+d.Ellipse([60, 40, 180, 100], "lime", "black", 1)
+d.Text([12, 118], "Hello 中文", "navy")
+img.Save("draw.png")
+img.Close()
+
+photo := Pillow.Image.Open("photo.jpg")
+blurred := photo.Filter(Pillow.ImageFilter.GaussianBlur(2))
+sharp   := photo.Filter(Pillow.ImageFilter.UnsharpMask(2, 150, 3))
+k := Pillow.ImageFilter.Kernel([3, 3], [-1,-1,-1, -1,8,-1, -1,-1,-1], 1, 0)
+edges := photo.Filter(k)
+photo.Close()
+```
+
+## NumPy interop
+
+Include the cnumpy facade from your checkout and the two libraries talk
+directly — `image.AsArray()` is `numpy.asarray(im)` and
+`Pillow.Image.FromArray` is `Image.fromarray`, byte-exact against NumPy 1.25.0:
+
+```autohotkey
+#Include "..\2026-07-19-cnumpy-foundation\ahk\numpy.ahk"
+
+img := Pillow.Image.Open("photo.jpg")
+a := img.AsArray()                 ; uint8 NdArray, [H, W, 3]
+mean := a.Mean()                   ; cnumpy statistics
+img.Close()                        ; the array snapshot stays valid
+
+b := Numpy.Zeros([64, 64, 4], 3)   ; uint8 RGBA
+im := Pillow.Image.FromArray(b)    ; mode RGBA
+im.Save("black.png")
+```
+
+## Behavioral parity
+
+Behavior is verified against local Pillow 11.3.0
+(`F:\Python\Python310\python.exe`) through oracle probes plus the full
+AutoHotkey suite: **2868/2868** tests, **524/524** DLL exports in parity,
+Release x64 DLL SHA-256
+`4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481`. Error
+messages, option validation, conversion rules, metadata shapes, and numeric
+edge cases are pinned against the Python implementation. The few remaining
+honest boundaries (WebP/AVIF/JPEG2000 decoders, FPX, ImageQt/ImageTk,
+ImagePalette.random, the ImagePath map handler, I;16B big-endian AsArray, ...)
+fail loudly with Pillow's exact messages — see
+[Boundaries](pages/reference/boundaries.html).
 
 ## Build
 
@@ -75,9 +155,46 @@ Tests use `ahktest` from [MonoEven/stdlib-ahk](https://github.com/MonoEven/stdli
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-ahktest.ps1 -Target .\tasks\2026-06-07-pillow-c-foundation\ahk -Report .codex\pillow-c-report.txt -TimeoutSeconds 120
 ```
 
-## Friendly Links
+## Blog and Pages
+
+The repository separates the blog from the technical Pages site.
+
+- Blog: bilingual introduction posts in forum BBCode format.
+  - `blog_pillow_c_en.txt`
+  - `blog_pillow_c.txt`
+- Pages: the bilingual API reference modeled on the official Pillow docs —
+  every public API with parameters, return values, error messages, and
+  behavioral boundaries. Served at
+  [https://monoeven.github.io/pillow-c/](https://monoeven.github.io/pillow-c/)
+  from the `pages/` directory (open `pages/index.html` locally, or enable
+  GitHub Pages with source `master` / path `/pages`).
+
+Engineer-facing ledgers:
+
+- [Architecture](docs/architecture.md)
+- [Native ABI](docs/native-abi.md)
+- [Gap Checkpoint](docs/pillow-gap-checkpoint.md)
+- [Gap Analysis](docs/pillow-gap-analysis.md)
+- [Testing](docs/testing.md)
+
+## Project layout
+
+```text
+ahk/
+  pillow.ahk            facade (single entry point)
+  pillow.test.ahk       full behavior suite
+  pillow_numpy.test.ahk cnumpy interop suite
+src/                    native C/C++ (pillow_c.dll)
+build/x64/Release/      committed Release DLL
+oracle/                 Pillow 11.3.0 + NumPy 1.25.0 behavior probes
+docs/                   engineer ledgers
+pages/                  bilingual API reference site
+```
+
+## Friendly links
 
 - [MonoEven/stdlib-ahk](https://github.com/MonoEven/stdlib-ahk)
 - [MonoEven/cnumpy](https://github.com/MonoEven/cnumpy) — the NumPy interop partner
+- [MonoEven/ahk-hack-library](https://github.com/MonoEven/ahk-hack-library)
 - [Linux.do](https://linux.do/)
 - [AutoHotkey Community Forum](https://www.autohotkey.com/boards/)
