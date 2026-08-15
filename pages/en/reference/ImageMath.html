@@ -87,17 +87,17 @@
   
   <table class="appendix">
     <tr><th>Operators</th><th>EN</th></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-  </table>
+    <tr><td><code>+ - * / %</code></td><td>Arithmetic (add, subtract, multiply, divide, modulo).</td></tr>
+    <tr><td><code>&amp; | ^ &lt;&lt; &gt;&gt;</code></td><td>Bitwise and/or/xor/shifts (integers only).</td></tr>
+    <tr><td><code>== != &lt; &lt;= &gt; &gt;=</code></td><td>Comparisons → 1/0.</td></tr>
+    <tr><td><code>-x</code> / <code>~x</code></td><td>Unary negation / bitwise invert.</td></tr>
+    </table>
   <table class="appendix">
     <tr><th>Functions</th><th>EN</th></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-  </table>
+    <tr><td><code>abs(x)</code> <code>float(x)</code> <code>int(x)</code></td><td>Absolute value, to-F, to-I conversion.</td></tr>
+    <tr><td><code>min(a, b)</code> <code>max(a, b)</code></td><td>Element-wise minimum / maximum.</td></tr>
+    <tr><td><code>convert(x, 'mode')</code></td><td>Convert to <code>'L'</code>, <code>'I'</code> or <code>'F'</code> (single-quoted); other modes raise <code>unsupported mode: &lt;mode&gt;</code>.</td></tr>
+    </table>
   <p class="note"><span>Divergence: Pillow's <code>_Operand</code> exposes <code>**</code> (power); this AHK build has no <code>**</code> token in <code>Tokenize</code> nor power opcode in <code>Compile</code>, so <code>**</code> is not available in expressions or on the Operand methods.</span></p>
 
   <h2 id="ops">Single-image Ops</h2>
@@ -127,11 +127,11 @@ op.Variables   ;  merged variable Map</pre>
     
     <table class="appendix">
       <tr><th>Method</th><th>EN</th></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-    </table>
+      <tr><td><code>Add(other)</code> / <code>Sub(other)</code> / <code>Mul(other)</code> / <code>Div(other)</code> / <code>Mod(other)</code></td><td>Binary <code>+ - * / %</code>.</td></tr>
+      <tr><td><code>LShift(other)</code> / <code>RShift(other)</code></td><td>Binary <code>&lt;&lt;</code> / <code>&gt;&gt;</code>.</td></tr>
+      <tr><td><code>BitAnd(other)</code> / <code>BitOr(other)</code> / <code>BitXor(other)</code></td><td>Binary <code>&amp;</code> / <code>|</code> / <code>^</code>.</td></tr>
+      <tr><td><code>Neg()</code> / <code>BitNot()</code></td><td>Unary <code>-</code> / <code>~</code>.</td></tr>
+      </table>
     <p class="note"><span>Divergence: <code>**</code> (power) is absent (no <code>Pow</code> method). The ops dictionary returned by <code>OperandOps()</code> maps <code>int/float/equal/notequal/min/max/convert</code> to the <code>Imagemath*</code> builders and <code>add/sub/mul/div/mod/neg</code> to the binary/unary builders — the AHK adaptation of Pillow's operator surface.</span></p>
   </section>
 
@@ -142,26 +142,26 @@ op.Variables   ;  merged variable Map</pre>
   
   <table class="appendix">
     <tr><th>Member</th><th>EN</th></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-  </table>
+    <tr><td><code>Tokenize(expression)</code></td><td>Lexer: numbers, names, single-quoted strings, operators, parens, commas.</td></tr>
+    <tr><td><code>Compile(tokens, variables)</code></td><td>Shunting-yard parser → AST + slot tables.</td></tr>
+    <tr><td><code>EmitBinary(name, output, &amp;floatBitwiseOperator)</code></td><td>Emit a binary opcode node; rejects float bitwise operands.</td></tr>
+    <tr><td><code>EmitUnary(name, output)</code></td><td>Emit a unary <code>-</code>/<code>~</code> node.</td></tr>
+    <tr><td><code>EmitCall(name, output)</code></td><td>Emit an <code>abs/float/int/min/max/convert</code> call node.</td></tr>
+    <tr><td><code>EvalTreeScalar(node, constants)</code></td><td>Evaluate a pure-scalar tree in AHK.</td></tr>
+    <tr><td><code>NormalizeVariables(variables := unset)</code></td><td>Validate and return the variables Map.</td></tr>
+    <tr><td><code>ProgramBuffer(program)</code></td><td>Pack the linearized RPN program into a byte Buffer.</td></tr>
+    <tr><td><code>SortedKeys(map)</code></td><td>Insertion-sort Map keys by string order.</td></tr>
+    <tr><td><code>OperandBinary(left, op, right)</code></td><td>Build <code>(l op r)</code>, merging variable tables.</td></tr>
+    <tr><td><code>OperandUnary(value, op)</code></td><td>Build <code>(op expr)</code>.</td></tr>
+    <tr><td><code>OperandScalar(value)</code></td><td>Coerce a Number/Operand to an Operand.</td></tr>
+    <tr><td><code>OperandFunction(name, args*)</code></td><td>Build <code>name(arg, …)</code>.</td></tr>
+    <tr><td><code>OperandOps()</code></td><td>The ops Map passed to lambda callables.</td></tr>
+    <tr><td><code>OperatorName(op)</code></td><td>Bitwise op → Pillow name (<code>and/or/xor/lshift/rshift</code>).</td></tr>
+    <tr><td><code>ScalarBinary(op, left, right)</code></td><td>Scalar binary arithmetic for the pure-scalar path.</td></tr>
+    <tr><td><code>AddConstant(value, isFloat, …)</code></td><td>Allocate a constant slot.</td></tr>
+    <tr><td><code>AddImage(image, …)</code></td><td>Allocate an image slot; records the first image's size.</td></tr>
+    <tr><td><code>Linearize(node, program)</code></td><td>Flatten the AST to RPN opcodes.</td></tr>
+    </table>
 
   <h2 id="examples">Examples</h2>
   <p>Evaluate an expression over two images, and run a <code>lambda_eval</code> conversion:</p>

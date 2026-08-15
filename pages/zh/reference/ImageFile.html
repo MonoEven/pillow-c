@@ -69,12 +69,12 @@ Pillow.ImageFile.SAFEBLOCK := 1048576</pre>
     <p>负错误码 → 消息对照表,与源码中的定义完全一致。它镜像 <code>PIL.ImageFile.ERRORS</code>:以下各行是原生 ABI 能够暴露的错误码;Pillow 的该表即是在解码器返回失败码时使用的“负错误码 → 人类可读消息”映射。</p>
     <table class="appendix">
       <tr><th>Code</th><th>Message</th><th>中文</th></tr>
-      <tr><td><code>-1</code></td><td>图像缓冲区越界错误</td></tr>
-      <tr><td><code>-2</code></td><td>解码错误</td></tr>
-      <tr><td><code>-3</code></td><td>未知错误</td></tr>
-      <tr><td><code>-8</code></td><td>配置错误</td></tr>
-      <tr><td><code>-9</code></td><td>内存不足错误</td></tr>
-    </table>
+      <tr><td><code>-1</code></td><td><code>image buffer overrun error</code></td><td>图像缓冲区越界错误</td></tr>
+      <tr><td><code>-2</code></td><td><code>decoding error</code></td><td>解码错误</td></tr>
+      <tr><td><code>-3</code></td><td><code>unknown error</code></td><td>未知错误</td></tr>
+      <tr><td><code>-8</code></td><td><code>bad configuration</code></td><td>配置错误</td></tr>
+      <tr><td><code>-9</code></td><td><code>out of memory error</code></td><td>内存不足错误</td></tr>
+      </table>
   </section>
 
   <h2 id="truncated">截断加载</h2>

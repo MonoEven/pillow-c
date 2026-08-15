@@ -65,12 +65,12 @@
     <h3>Fields <span class="kind">attributes</span></h3>
     <table class="appendix">
       <tr><th>Field</th><th>EN</th></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-    </table>
+      <tr><td><code>Mode</code></td><td>Channel layout string (<code>"RGB"</code> by default).</td></tr>
+      <tr><td><code>Rawmode</code></td><td>Raw-mode marker; empty unless the palette is raw (<code>Raw()</code>).</td></tr>
+      <tr><td><code>Palette</code></td><td>The flat byte <code>Array</code>; setting it resets the color cache.</td></tr>
+      <tr><td><code>Dirty</code></td><td>0/1 flag; 1 after <code>GetColor</code> allocates or <code>Raw()</code>.</td></tr>
+      <tr><td><code>Colors</code></td><td>Lazy <code>Map</code> of comma-joined color keys → palette index (Pillow's <code>getcolor</code> behavior).</td></tr>
+      </table>
   </section>
 
   <h2 id="methods">Instance Methods</h2>
@@ -199,16 +199,16 @@ palette.Tostring()   ;  alias of ToBytes (Pillow's tostring)</pre>
   
   <table class="appendix">
     <tr><th>Member</th><th>EN</th></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-  </table>
+    <tr><td><code>ColorKey(color)</code></td><td>Comma-joins channel values into a color-map key.</td></tr>
+    <tr><td><code>GradientSegment(id, middle, pos)</code></td><td>GIMP gradient segment curve (linear/curved/sine/sphere).</td></tr>
+    <tr><td><code>GimpGradientParse(content)</code></td><td>GimpGradientFile + <code>getpalette(256)</code> → <code>[bytes, "RGBA"]</code>.</td></tr>
+    <tr><td><code>GimpPaletteParse(content)</code></td><td>GimpPaletteFile <code>_read</code> (limit) → <code>[bytes, "RGB"]</code>.</td></tr>
+    <tr><td><code>PaletteFloat(text)</code></td><td>Parses a float, else <code>Invalid value.</code></td></tr>
+    <tr><td><code>PaletteInt(text)</code></td><td>Parses an int, else <code>Invalid value.</code></td></tr>
+    <tr><td><code>PaletteLoadCaught(message)</code></td><td>True when a parser error should fall through to the next.</td></tr>
+    <tr><td><code>PaletteParse(content)</code></td><td>PaletteFile (Teragon-style) → <code>[bytes, "RGB"]</code>.</td></tr>
+    <tr><td><code>PaletteTokens(line)</code></td><td>Splits a line on collapsed whitespace.</td></tr>
+    </table>
 
   <h2 id="examples">Examples</h2>
   <p>Attach a Wedge grayscale palette to a P-mode image:</p>

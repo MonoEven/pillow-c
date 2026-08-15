@@ -249,11 +249,11 @@
   
   <table class="appendix">
     <tr><th>Helper</th><th>EN</th></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-  </table>
+    <tr><td><code>BinaryOperation(exportName, left, right, operationName)</code></td><td><span>Runs a native binary op and wraps the output handle.</span></td></tr>
+    <tr><td><code>ScaledBinaryOperation(exportName, left, right, scale, offset, operationName)</code></td><td><span>Runs a native scaled binary op (Add/Subtract) with a scale and offset.</span></td></tr>
+    <tr><td><code>CheckBinaryStatus(status, left, right)</code></td><td><span>Maps a native status to Pillow's error, special-casing I/F mode mismatches.</span></td></tr>
+    <tr><td><code>RequireImageHandle(image, operationName)</code></td><td><span>Validates a <code>Pillow.Image</code> argument and returns its native handle.</span></td></tr>
+    </table>
 
   <h2 id="examples">Examples</h2>
   <p>Darken two opened images, then take their absolute difference and save it.</p>

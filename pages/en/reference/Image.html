@@ -523,20 +523,20 @@ image.Im        ;  same handle</pre>
     <h3>Properties <span class="kind">attributes</span></h3>
     <table class="appendix">
       <tr><th>Property</th><th>EN</th></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-    </table>
+      <tr><td><code>Mode</code></td><td>Mode string (<code>"RGB"</code>, …).</td></tr>
+      <tr><td><code>Size</code></td><td>Array <code>[width, height]</code>.</td></tr>
+      <tr><td><code>Width</code> / <code>Height</code></td><td>Size in pixels.</td></tr>
+      <tr><td><code>Channels</code> / <code>Stride</code> / <code>ByteSize</code></td><td>Band count, row stride in bytes, total storage bytes.</td></tr>
+      <tr><td><code>Format</code></td><td>File format of the source (<code>"JPEG"</code>, <code>"PNG"</code>, …, <code>""</code> for fresh images).</td></tr>
+      <tr><td><code>FormatDescription</code></td><td>Long name (<code>"JPEG (ISO 10918)"</code>, …).</td></tr>
+      <tr><td><code>Info</code></td><td>Metadata <code>Map</code> (dpi, compression, transparency, exif, xmp, icc_profile, comment, …).</td></tr>
+      <tr><td><code>Filename</code></td><td>Source path for opened images; AttributeError otherwise.</td></tr>
+      <tr><td><code>ReadOnly</code></td><td>True when pixel storage is read-only.</td></tr>
+      <tr><td><code>NFrames</code> / <code>IsAnimated</code></td><td>Frame count and animation flag (Pillow's <code>n_frames</code>/<code>is_animated</code>).</td></tr>
+      <tr><td><code>HasTransparencyData</code></td><td>True when the source carries transparency.</td></tr>
+      <tr><td><code>Quantization</code></td><td>JPEG-only dict with q-table related values; AttributeError elsewhere.</td></tr>
+      <tr><td><code>ico</code> / <code>disposal_method</code></td><td>ICO/GIF frame attributes where present.</td></tr>
+      </table>
   </section>
 
   <section class="api" id="Image.TiffCompressionName">
@@ -620,15 +620,15 @@ image.ToQPixmap()    ;  alias: toqpixmap()</pre>
   
   <table class="appendix">
     <tr><th>Group</th><th>Members</th><th>EN</th></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-  </table>
+    <tr><td>Open / sniff</td><td><code>ResolveOpenFormat(s)</code>, <code>ResolveSaveFormat</code>, <code>SniffCodecMagic</code>, <code>NormalizeFileFormat</code>, <code>FormatFromPath</code>, <code>FrameCountForOpen</code>, <code>StubAccepts</code>, <code>MpegAccepts</code></td><td><span>Format detection and dispatch.</span></td></tr>
+    <tr><td>Codec open helpers</td><td><code>DcxFrameCount</code>, <code>DdsOpenError</code>, <code>EpsOpenFailure</code>, <code>FitsRowBytes</code>, <code>FitsTruncatedCount</code>, <code>FliDuration</code>, <code>FliFrameCount</code>, <code>FliHeader</code>, <code>FtexDataStart</code>, <code>FtexFormatId</code>, <code>FtexTruncatedCount</code>, <code>FtexWidth</code>, <code>GbrInfo</code>, <code>IcnsRleLeftover</code>, <code>IcnsSizes</code>, <code>IcoPayloadFormat</code>, <code>IcoSizes</code>, <code>MpoHasIndex</code>, <code>OpenDibHandle</code>, <code>OpenImHandle</code>, <code>OpenIptc</code>, <code>OpenMcIdas</code>, <code>OpenSimpleTruncatedCount</code>, <code>OpenSpiderHandle</code>, <code>PixarWidth</code>, <code>PsdHeaderInfo</code>, <code>PsdIcc</code>, <code>SgiTruncatedCount</code>, <code>SunStride</code>, <code>XpmRgbUnknownKey</code>, <code>XpmTransparencyKey</code>, <code>XvThumbHeader</code>, <code>XvThumbTruncatedCount</code></td><td><span>Per-format header parsing shared by Open.</span></td></tr>
+    <tr><td>Save helpers</td><td><code>SaveDib</code>, <code>SaveDpiPair</code>, <code>SaveGifAnimation</code>, <code>SaveGifCommentBuffer</code>, <code>SaveHotspotPair</code>, <code>SaveIcoSizePairs</code>, <code>SaveIm</code>, <code>SaveIntSequence</code>, <code>SaveJpegCommentBuffer</code>, <code>SaveJpegQTables</code>, <code>SaveJpegQualityPreset(Info)</code>, <code>SaveJpegSubsampling</code>, <code>SaveOption</code>, <code>SaveOptionBool</code>, <code>SavePalm</code>, <code>SavePdfInfoString</code>, <code>SavePngTextEntries</code>, <code>SaveSpider</code>, <code>SaveTiffAsciiNamedValue</code>, <code>SaveTiffCompression</code>, <code>SaveTiffFrames</code>, <code>SaveTiffInfoEntries</code>, <code>SaveTransparencyByteTable</code>, <code>SaveTransparencyRgbTuple</code></td><td><span>Option parsing and payload assembly for Save.</span></td></tr>
+    <tr><td>Buffers</td><td><code>ByteBuffer</code>, <code>IntBuffer</code>, <code>ColorBuffer</code>, <code>LutBuffer</code>, <code>PaletteBuffer</code>, <code>PaletteRgbaBuffer</code>, <code>PasteColorBuffer</code>, <code>RawModeBuffer</code>, <code>BinaryBuffer</code>, <code>NulTerminatedByteBuffer</code>, <code>Utf8Buffer</code>, <code>Latin1Buffer</code>, <code>BufferWithoutNul</code>, <code>BufferEqualsAscii</code>, <code>ReadAllBytes</code>, <code>ReadF32</code>, <code>ReadI32</code>, <code>WriteF32</code>, <code>WriteI32</code>, <code>Be32At</code>, <code>InternalBytes</code>, <code>DataPointer</code>, <code>DetachBufferView</code>, <code>RefreshBufferView</code>, <code>HandleArray</code>, <code>PixelBufferToValue</code>, <code>PixelValueBuffer</code></td><td><span>AHK↔DLL buffer conversion.</span></td></tr>
+    <tr><td>Numeric helpers</td><td><code>RoundClipU8</code>, <code>TruncateClipU8</code>, <code>ClipTupleU8</code>, <code>RoundHalfEven</code>, <code>ChannelIndex</code>, <code>ModeAwareU8</code>, <code>ModeInfo</code>, <code>ModeOnePixelValue</code>, <code>GetModeBase</code>, <code>GetModeBands</code>, <code>GetModeBandNames</code>, <code>GetModeType</code>, <code>ColorCountsToArray</code>, <code>NumericColorCountsToArray</code>, <code>ProjectionBufferToArray</code>, <code>PaletteAlphaMode(ForPut)</code>, <code>NormalizePaletteRawmode</code>, <code>ConvertRgbPaletteValues</code>, <code>ConvertRgbaPaletteValues</code>, <code>ThumbnailRoundAspect</code>, <code>ReduceBox</code>, <code>ReduceFactor</code>, <code>CallablePointLut</code></td><td><span>Mode/color arithmetic shared by the pixel APIs.</span></td></tr>
+    <tr><td>Transform internals</td><td><code>TransformAffine</code>, <code>TransformExtent</code>, <code>TransformFillBuffer</code>, <code>TransformMesh</code>, <code>TransformPerspective</code>, <code>TransformQuad</code>, <code>ThrowUnsupportedTransformResample</code>, <code>WritePutDataPixel</code>, <code>WritePutDataTuple</code></td><td><span>Geometry transform plumbing.</span></td></tr>
+    <tr><td>Metadata helpers</td><td><code>ApplyFrameMetadata</code>, <code>ApplyIcoPayloadDibMetadata</code>, <code>ApplyNativeMetadata</code>, <code>CopyInfo</code>, <code>SetOptionalInfo</code>, <code>ExifFamilyBuffers</code>, <code>ExifOrientation</code>, <code>NativeGifComment</code>, <code>NativeJpegQTables</code>, <code>NativeJpegSubsampling</code>, <code>NativeMetadataBlob</code>, <code>ParseXmpBuffer</code>, <code>PatchTiffBigTiffExifEntries</code>, <code>PatchTiffExifEntries</code>, <code>XmpElementToMap</code>, <code>XmpNodeLocalName</code>, <code>IsPngPrivateChunkName</code>, <code>IsPngPrivateChunkType</code></td><td><span>Info/EXIF/XMP assembly after decode.</span></td></tr>
+    <tr><td>Other</td><td><code>RequireHandle</code>, <code>WrapDerivedHandle</code>, <code>GetInt</code>, <code>IcoFile</code> (sizes/getimage), <code>GetColorsNumeric</code>, <code>PaletteAlphaModeForPut</code>, <code>ResolveOpenFormats</code>, <code>SaveJpegQualityPresetInfo</code>, <code>Utf8StringFromBytes</code></td><td><span>Handle validation; ICO container parsing; shared option/string helpers.</span></td></tr>
+    </table>
 
   <h2 id="examples">Examples</h2>
   <p>Rotate, paste and save (the Pillow tutorial shape):</p>

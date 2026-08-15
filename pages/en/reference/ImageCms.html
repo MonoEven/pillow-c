@@ -218,25 +218,25 @@ profile.Tobytes()       ;  ImageCmsProfile only (Pillow's tobytes)</pre>
     
     <table class="appendix">
       <tr><th>Property</th><th>EN</th></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-    </table>
+      <tr><td><code>profile_description</code></td><td><span>Description string (RTrim'd).</span></td></tr>
+      <tr><td><code>copyright</code></td><td><span>Copyright string.</span></td></tr>
+      <tr><td><code>manufacturer</code> / <code>model</code></td><td><span>Text, or <code>0</code> when empty.</span></td></tr>
+      <tr><td><code>rendering_intent</code></td><td><span>Default intent (<code>GetDefaultIntent</code>).</span></td></tr>
+      <tr><td><code>creation_date</code></td><td><span>Map of year/month/day/hour/minute/second.</span></td></tr>
+      <tr><td><code>connection_space</code> / <code>device_class</code> / <code>xcolor_space</code></td><td><span>Header signature strings.</span></td></tr>
+      <tr><td><code>version</code> / <code>icc_version</code></td><td><span>Profile version (float) and encoded version (uint).</span></td></tr>
+      <tr><td><code>is_matrix_shaper</code></td><td><span>1/0 whether the profile is matrix/shaper.</span></td></tr>
+      <tr><td><code>media_white_point</code> / <code>media_black_point</code> / <code>luminance</code> / <code>chromaticity</code> / <code>media_white_point_temperature</code></td><td><span>White/black point and chromaticity data; <code>0</code> when absent.</span></td></tr>
+      <tr><td><code>red_colorant</code> / <code>green_colorant</code> / <code>blue_colorant</code></td><td><span>RGB colorant XYZ/xyY pairs; <code>0</code> when absent.</span></td></tr>
+      <tr><td><code>red_primary</code> / <code>green_primary</code> / <code>blue_primary</code></td><td><span>RGB primary XYZ/xyY pairs; <code>0</code> when absent.</span></td></tr>
+      <tr><td><code>chromatic_adaptation</code></td><td><span>Adaptation matrix pair; <code>0</code> when absent.</span></td></tr>
+      <tr><td><code>clut</code> / <code>intent_supported</code></td><td><span>Maps keyed by intent (0…3) → per-direction bool arrays.</span></td></tr>
+      <tr><td><code>attributes</code> / <code>colorimetric_intent</code></td><td><span>Header attributes and colorimetric-intent signature.</span></td></tr>
+      <tr><td><code>colorant_table</code> / <code>colorant_table_out</code></td><td><span>Colorant name arrays; <code>0</code> when absent.</span></td></tr>
+      <tr><td><code>header_flags</code> / <code>header_manufacturer</code> / <code>header_model</code> / <code>profile_id</code></td><td><span>Header identity remainder fields.</span></td></tr>
+      <tr><td><code>screening_description</code> / <code>target</code> / <code>technology</code></td><td><span>Optional signatures/text tags.</span></td></tr>
+      <tr><td><code>icc_measurement_condition</code> / <code>icc_viewing_condition</code> / <code>viewing_condition</code></td><td><span>Measurement/viewing-condition maps.</span></td></tr>
+      </table>
   </section>
 
   <h2 id="transforms">Transforms</h2>
@@ -373,22 +373,22 @@ profile.Tobytes()       ;  ImageCmsProfile only (Pillow's tobytes)</pre>
   
   <table class="appendix">
     <tr><th>Accessor</th><th>EN</th></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-  </table>
+    <tr><td><code>GetHeaderIdentity()</code></td><td><span>Map: connection_space, device_class, xcolor_space, is_matrix_shaper, version, icc_version.</span></td></tr>
+    <tr><td><code>GetHeaderIdentityRemainder()</code></td><td><span>Map: creation_date, header_flags, header_manufacturer, header_model, profile_id.</span></td></tr>
+    <tr><td><code>GetRgbColorants()</code></td><td><span>Array of RGB colorant XYZ/xyY pairs.</span></td></tr>
+    <tr><td><code>GetRgbPrimaries()</code></td><td><span>Array of RGB primary XYZ/xyY pairs.</span></td></tr>
+    <tr><td><code>GetColorantTables()</code></td><td><span>Array of colorant name arrays (in/out).</span></td></tr>
+    <tr><td><code>GetClutState()</code></td><td><span>Map intent (0…3) → per-direction bools.</span></td></tr>
+    <tr><td><code>GetIntentSupport()</code></td><td><span>Map intent (0…3) → per-direction support bools.</span></td></tr>
+    <tr><td><code>GetAttributesAndColorimetricIntent()</code></td><td><span>Map: attributes, colorimetric_intent.</span></td></tr>
+    <tr><td><code>GetOptionalXyzTags()</code></td><td><span>Array of media black point / luminance XYZ pairs.</span></td></tr>
+    <tr><td><code>GetOptionalSignatures()</code></td><td><span>Array of perceptual/saturation gamut and technology signatures.</span></td></tr>
+    <tr><td><code>GetOptionalTextTags()</code></td><td><span>Array of screening description / target strings.</span></td></tr>
+    <tr><td><code>GetConditionTags()</code></td><td><span>Array of measurement/viewing-condition maps and description.</span></td></tr>
+    <tr><td><code>SignatureText(signature)</code></td><td><span>Static: 32-bit signature → 4-char string.</span></td></tr>
+    <tr><td><code>ConditionGeometry(code)</code> / <code>ConditionIlluminantType(code)</code></td><td><span>Static: numeric code → geometry/illuminant string.</span></td></tr>
+    <tr><td><code>Close()</code> / <code>RequireHandle()</code></td><td><span>Free the handle / return it, throwing <code>Pillow.ImageCms profile is closed</code> once closed.</span></td></tr>
+    </table>
 
   <h2 id="examples">Examples</h2>
   <p>Open sRGB and AdobeRGB profiles, build an RGB→RGB transform, apply it, and serialize the profile bytes.</p>

@@ -56,15 +56,15 @@ image.AsArray()               ;  instance form</pre>
     
     <table class="appendix">
       <tr><th>Mode</th><th>cnumpy dtype</th><th>numpy dtype</th><th>Shape</th></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-    </table>
+      <tr><td><code>1</code></td><td>bool (1)</td><td><code>|b1</code></td><td><code>[H, W]</code> (bytes 0/255, like numpy.asarray)</td></tr>
+      <tr><td><code>L</code> / <code>P</code></td><td>uint8 (3)</td><td><code>|u1</code></td><td><code>[H, W]</code></td></tr>
+      <tr><td><code>I</code></td><td>int32 (6)</td><td><code>&lt;i4</code></td><td><code>[H, W]</code></td></tr>
+      <tr><td><code>F</code></td><td>float32 (12)</td><td><code>&lt;f4</code></td><td><code>[H, W]</code></td></tr>
+      <tr><td><code>I;16</code></td><td>uint16 (5)</td><td><code>&lt;u2</code></td><td><code>[H, W]</code></td></tr>
+      <tr><td><code>RGB</code> / <code>YCbCr</code> / <code>LAB</code> / <code>HSV</code></td><td>uint8 (3)</td><td><code>|u1</code></td><td><code>[H, W, 3]</code></td></tr>
+      <tr><td><code>RGBA</code> / <code>CMYK</code></td><td>uint8 (3)</td><td><code>|u1</code></td><td><code>[H, W, 4]</code></td></tr>
+      <tr><td><code>LA</code></td><td>uint8 (3)</td><td><code>|u1</code></td><td><code>[H, W, 2]</code></td></tr>
+      </table>
     <p class="warn"><span>Boundary: <code>I;16B</code> raises the documented boundary error (<code>Pillow.Image.AsArray: I;16B big-endian dtype (numpy '&gt;u2') is not representable in cnumpy (documented boundary)</code>) because cnumpy has no big-endian dtype; Pillow's numpy gives <code>&gt;u2</code>.</span></p>
   </section>
 
@@ -76,17 +76,17 @@ image.AsArray()               ;  instance form</pre>
     
     <table class="appendix">
       <tr><th>typestr(dtype / shape)</th><th>mode / rawmode</th><th>Notes</th></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-    </table>
+      <tr><td><code>|b1</code>,2D</td><td><code>1</code> / <code>1;8</code></td><td><span>nonzero → 255 (unpacked byte input).</span></td></tr>
+      <tr><td><code>|u1</code>,2D</td><td><code>L</code> / <code>L</code></td><td></td></tr>
+      <tr><td><code>|i1</code></td><td><code>I</code> / <code>I;8</code></td><td><span>sign-extended to int32.</span></td></tr>
+      <tr><td><code>&lt;u2</code></td><td><code>I;16</code> / <code>I;16</code></td><td><span>direct 16-bit storage (Pillow 11.3 result mode).</span></td></tr>
+      <tr><td><code>&lt;i2</code></td><td><code>I</code> / <code>I;16S</code></td><td><span>sign-extended to int32.</span></td></tr>
+      <tr><td><code>&lt;u4</code> / <code>&lt;i4</code></td><td><code>I</code> / <code>I;32</code>, <code>I;32S</code></td><td></td></tr>
+      <tr><td><code>&lt;f4</code> / <code>&lt;f8</code></td><td><code>F</code> / <code>F;32F</code>, <code>F;64F</code></td><td><span>f8 converts double → float32.</span></td></tr>
+      <tr><td><code>|u1</code>,(…, 2)</td><td><code>LA</code> / <code>LA</code></td><td></td></tr>
+      <tr><td><code>|u1</code>,(…, 3)</td><td><code>RGB</code> / <code>RGB</code></td><td></td></tr>
+      <tr><td><code>|u1</code>,(…, 4)</td><td><code>RGBA</code> / <code>RGBA</code></td><td></td></tr>
+      </table>
     <dl class="params">
       <dt>obj</dt><dd><span>A cnumpy <code>Numpy.NdArray</code>. Non-contiguous (sliced) arrays are serialized in C order first, like numpy's <code>tobytes()</code>.</span></dd>
       <dt>mode</dt><dd><span>Optional raw mode for byte reinterpretation.</span></dd>

@@ -257,11 +257,11 @@
   <p>以下成员为门面内部管道并被测试套件钉死,不属于 Pillow 风格的用户 API。</p>
   <table class="appendix">
     <tr><th>Group</th><th>Members</th><th>中文</th></tr>
-    <tr><td>Argument parsing</td><td><span>把 border/centering/cutoff/ignore 参数规范化为固定数组。</span></td></tr>
-    <tr><td>Buffers</td><td><span>按图像模式构建原生颜色/忽略值缓冲区。</span></td></tr>
-    <tr><td>Native dispatch</td><td><span>共用的 DLL 分派与 Image 句柄校验。</span></td></tr>
-    <tr><td>Status &amp; mode</td><td><span>把原生状态码映射为错误;EXIF 方向 → Transpose 方法;LUT 模式支持。</span></td></tr>
-  </table>
+    <tr><td>Argument parsing</td><td><code>BorderBox</code>, <code>CenteringPair</code>, <code>CutoffPair</code>, <code>NormalizeIgnoreValue</code></td><td><span>把 border/centering/cutoff/ignore 参数规范化为固定数组。</span></td></tr>
+    <tr><td>Buffers</td><td><code>FillBuffer</code>, <code>IgnoreBuffer</code>, <code>RgbColorBuffer</code></td><td><span>按图像模式构建原生颜色/忽略值缓冲区。</span></td></tr>
+    <tr><td>Native dispatch</td><td><code>NativeProportionalResize</code>, <code>NativeUnaryImageOp</code>, <code>RequireImageHandle</code></td><td><span>共用的 DLL 分派与 Image 句柄校验。</span></td></tr>
+    <tr><td>Status &amp; mode</td><td><code>CheckHistogramTransformStatus</code>, <code>CheckLutTransformStatus</code>, <code>ExifOrientationTransposeMethod</code>, <code>SupportsLutTransformMode</code></td><td><span>把原生状态码映射为错误;EXIF 方向 → Transpose 方法;LUT 模式支持。</span></td></tr>
+    </table>
 
   <h2 id="examples">示例</h2>
   

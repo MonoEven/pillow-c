@@ -107,12 +107,12 @@ class MeshTransform extends Pillow.ImageTransform.Transform {
   <h2 id="layouts">数据布局</h2>
   <table class="appendix">
     <tr><th>Method</th><th>Data</th><th>中文</th></tr>
-    <tr><td><code>EXTENT</code></td><td><span>映射到输出上的源区域(裁剪/拉伸/镜像)。</span></td></tr>
-    <tr><td><code>AFFINE</code></td><td><span><code>x' = ax+by+c</code>,<code>y' = dx+ey+f</code>。</span></td></tr>
-    <tr><td><code>QUAD</code></td><td><span>输出→源四边形的四个角点。</span></td></tr>
-    <tr><td><code>PERSPECTIVE</code></td><td><span>8 个系数,分母为 <code>gx+hy+1</code>。</span></td></tr>
-    <tr><td><code>MESH</code></td><td><span>每个输出网格单元一个四边形;Pillow 要求 MESH 提供重采样滤波器。</span></td></tr>
-  </table>
+    <tr><td><code>EXTENT</code></td><td><code>[x0, y0, x1, y1]</code></td><td><span>映射到输出上的源区域(裁剪/拉伸/镜像)。</span></td></tr>
+    <tr><td><code>AFFINE</code></td><td><code>[a, b, c, d, e, f]</code></td><td><span><code>x' = ax+by+c</code>,<code>y' = dx+ey+f</code>。</span></td></tr>
+    <tr><td><code>QUAD</code></td><td><code>[x0,y0, x1,y1, x2,y2, x3,y3]</code></td><td><span>输出→源四边形的四个角点。</span></td></tr>
+    <tr><td><code>PERSPECTIVE</code></td><td><code>[a,b,c,d,e,f,g,h]</code></td><td><span>8 个系数,分母为 <code>gx+hy+1</code>。</span></td></tr>
+    <tr><td><code>MESH</code></td><td>repeated <code>[x0,y0, x1,y1, x2,y2, x3,y3]</code></td><td><span>每个输出网格单元一个四边形;Pillow 要求 MESH 提供重采样滤波器。</span></td></tr>
+    </table>
 
   <section class="api" id="ImageTransform.seam">
     <h3>原生接缝</h3>

@@ -69,12 +69,12 @@ Pillow.ImageFile.SAFEBLOCK := 1048576</pre>
     
     <table class="appendix">
       <tr><th>Code</th><th>Message</th></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-      <tr></tr>
-    </table>
+      <tr><td><code>-1</code></td><td><code>image buffer overrun error</code></td></tr>
+      <tr><td><code>-2</code></td><td><code>decoding error</code></td></tr>
+      <tr><td><code>-3</code></td><td><code>unknown error</code></td></tr>
+      <tr><td><code>-8</code></td><td><code>bad configuration</code></td></tr>
+      <tr><td><code>-9</code></td><td><code>out of memory error</code></td></tr>
+      </table>
   </section>
 
   <h2 id="truncated">Truncated Loading</h2>
@@ -200,13 +200,13 @@ class PyEncoder {
   
   <table class="appendix">
     <tr><th>Member</th><th>EN</th></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-  </table>
+    <tr><td><code>RequireIncremental()</code></td><td>Throws the incremental-decoding boundary error.</td></tr>
+    <tr><td><code>RequirePyCodecMode()</code></td><td>Throws the PyCodec missing-<code>mode</code> error.</td></tr>
+    <tr><td><code>ParserConcat(a, b)</code></td><td>Concatenates two byte <code>Buffer</code>s.</td></tr>
+    <tr><td><code>ParserWriteTemp(data)</code></td><td>Writes fed data to a temp file with a probed extension.</td></tr>
+    <tr><td><code>ParserProbeExtension(data)</code></td><td>Sniffs magic bytes to a file extension.</td></tr>
+    <tr><td><code>ParserDeleteTemp(path)</code></td><td>Deletes the parser temp file.</td></tr>
+    </table>
 </div>
 </body>
 </html>

@@ -70,30 +70,30 @@ img.Close()</pre>
   
   <table class="appendix">
     <tr><th>Module</th><th>EN</th></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-    <tr></tr>
-  </table>
+    <tr><td><a href="reference/Image.html">Image</a></td><td>The core image class: open, save, convert, resize, rotate, crop, paste, filters, pixels, palette, metadata.</td></tr>
+    <tr><td><a href="reference/ImageDraw.html">ImageDraw</a></td><td>2-D drawing: lines, arcs, ellipses, polygons, rectangles, text.</td></tr>
+    <tr><td><a href="reference/ImageFont.html">ImageFont</a></td><td>Font loading, truetype metrics, variation axes.</td></tr>
+    <tr><td><a href="reference/ImageFilter.html">ImageFilter</a></td><td>Built-in convolution and rank filters.</td></tr>
+    <tr><td><a href="reference/ImageChops.html">ImageChops</a></td><td>Channel operations: add, subtract, multiply, logical, screen, overlay.</td></tr>
+    <tr><td><a href="reference/ImageOps.html">ImageOps</a></td><td>Whole-image operations: grayscale, invert, solarize, posterize, pad, fit, contain, cover.</td></tr>
+    <tr><td><a href="reference/ImageStat.html">ImageStat</a></td><td>Global histogram and per-band statistics.</td></tr>
+    <tr><td><a href="reference/ImageMath.html">ImageMath</a></td><td>Expression evaluation over images (Eval / LambdaEval).</td></tr>
+    <tr><td><a href="reference/ImageCms.html">ImageCms</a></td><td>ICC profile management and color transforms.</td></tr>
+    <tr><td><a href="reference/ImageColor.html">ImageColor</a></td><td>Color name/string parsing, HSL/HSV conversion.</td></tr>
+    <tr><td><a href="reference/ImageEnhance.html">ImageEnhance</a></td><td>Color, contrast, brightness and sharpness adjustment.</td></tr>
+    <tr><td><a href="reference/ImagePalette.html">ImagePalette</a></td><td>Palette objects and palette builders.</td></tr>
+    <tr><td><a href="reference/ImagePath.html">ImagePath</a></td><td>Path object for polygon drawing.</td></tr>
+    <tr><td><a href="reference/ImageDraw2.html">ImageDraw2</a></td><td>Pen/Brush style drawing (experimental module).</td></tr>
+    <tr><td><a href="reference/ImageSequence.html">ImageSequence</a></td><td>Iterator over animated frames.</td></tr>
+    <tr><td><a href="reference/ImageGrab.html">ImageGrab</a></td><td>Screen capture.</td></tr>
+    <tr><td><a href="reference/ImageFile.html">ImageFile</a></td><td>File parser state, block constants.</td></tr>
+    <tr><td><a href="reference/ImageTransform.html">ImageTransform</a></td><td>Affine / perspective / quad / mesh transform handlers.</td></tr>
+    <tr><td><a href="reference/ImageQt.html">ImageQt</a></td><td>Qt interop (boundary — no Qt binding in this runtime).</td></tr>
+    <tr><td><a href="reference/ImageTk.html">ImageTk</a></td><td>Tk interop (boundary — no Tk interpreter in this runtime).</td></tr>
+    <tr><td><a href="reference/Numpy.html">Numpy interop</a></td><td>NumPy linkage with <a href="https://github.com/MonoEven/cnumpy">cnumpy</a>: <code>Image.FromArray</code> / <code>image.AsArray()</code>.</td></tr>
+    <tr><td><a href="reference/constants.html">Constants</a></td><td>Transpose, Transform, Resampling, Dither, Palette, Quantize enums.</td></tr>
+    <tr><td><a href="reference/Pillow.html">Pillow</a></td><td>Entry class: Configure, ABI version, status helpers.</td></tr>
+    </table>
 
   <h2>Parity</h2>
   <p>Behavior is verified against a local Pillow 11.3.0 installation (<code>F:\Python\Python310\python.exe</code>) through oracle probes and a full AutoHotkey test suite: <b>2867/2867</b> tests passing, <b>524/524</b> DLL exports in parity, DLL SHA-256 <code>4B8ABA30335284C99C776B81E0924777A30A644D22BEE6610115C4BC6C4A2481</code>. Every error message, boundary error and conversion rule is pinned against the Python implementation — not just the happy path.</p>

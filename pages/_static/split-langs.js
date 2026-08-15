@@ -26,6 +26,20 @@ function splitSpanBlocks(html, keep) {
     .replace(new RegExp('<p class="' + drop + '">[\\s\\S]*?<\\/p>', 'g'), '');
 }
 
+function splitTables(html, keep) {
+  // inside tables: drop the other language's spans, unwrap kept spans to <span>.
+  // NOTE: tables with plain (span-less) language COLUMNS — e.g.
+  //   <th>Property</th><th>EN</th><th>中文</th> — need per-column mapping on top
+  // of this step: en keeps columns 1..2, zh keeps columns 1 and 3. The 2026-08
+  // one-shot repair (repair-pages-tables.js) did exactly that; keep the rule in
+  // sync if those tables are ever edited.
+  const drop = keep === 'en' ? 'zh' : 'en';
+  return html.replace(/<table[\s\S]*?<\/table>/g, (t) =>
+    t
+      .replace(new RegExp('<span class="' + drop + '">[\\s\\S]*?<\\/span>', 'g'), '')
+      .replace(/<span class="(en|zh)">/g, '<span>'));
+}
+
 function navLabel(html, keep) {
   let out = html;
   for (const [mixed, pair] of Object.entries(NAV)) {
@@ -70,6 +84,8 @@ function build(html, keep, srcRel, outRel) {
   let out = html;
   // language markers: strip the other language's spans/paragraphs
   out = splitSpanBlocks(out, keep);
+  // tables: strip the other language's spans inside cells
+  out = splitTables(out, keep);
   // heading splits
   out = out.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/g, (m, inner) => {
     const kept = headSplit(inner.trim(), keep);
