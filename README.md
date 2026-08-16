@@ -170,7 +170,12 @@ p.Close()
 The bridge functions are `Pillow.Image.FromImagePut(source, mode := "RGBA")`
 and `Pillow.Image.ToImagePut(image)` / `image.ToImagePut()`. They convert
 through ImagePut's 32-bit ARGB buffer layout, so the two libraries can share
-pixels without ImagePut being modified.
+pixels without ImagePut being modified. `FromImagePut` validates its input
+with `ImageCheckSafe`: raw pointers, handles and monitor numbers are rejected;
+safe sources are file paths, URLs, clipboard data, screenshot region arrays
+(`[x, y, w, h]`), and ImagePut buffers. Including `pillow.ahk` without
+ImagePut adds no load-time warnings and calling the bridge raises a clear
+"requires ImagePut" error.
 
 ## Behavioral parity
 

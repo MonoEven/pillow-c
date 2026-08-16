@@ -9137,27 +9137,27 @@ class Pillow {
 
             pathBytes := Pillow.Image.Utf8Buffer(path)
             lastStatus := -3
-            for format in openFormats {
+            for fmt in openFormats {
                 outHandle := 0
-                if format = "DIB" {
+                if fmt = "DIB" {
                     ; BEHAV-DIB-001: Pillow's DIB is byte-identical to its
                     ; BMP minus the 14-byte BITMAPFILEHEADER; open rebuilds
                     ; that header from the BITMAPINFOHEADER and reuses the
                     ; native BMP decoder.
                     lastStatus := Pillow.Image.OpenDibHandle(path, &outHandle)
-                } else if format = "IM" {
+                } else if fmt = "IM" {
                     ; BEHAV-IM-001: parse the ASCII header, then feed the
                     ; raw payload (and P-mode LUT) into native storage.
                     lastStatus := Pillow.Image.OpenImHandle(path, &outHandle)
-                } else if format = "PALM" {
+                } else if fmt = "PALM" {
                     ; BEHAV-PALM-001: Pillow registers no Palm OPEN, so
                     ; identification fails with the Pillow-shaped message.
                     throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "SPIDER" {
+                } else if fmt = "SPIDER" {
                     ; BEHAV-SPIDER-001: parse the float header records and
                     ; feed the native float32 samples into an F image.
                     lastStatus := Pillow.Image.OpenSpiderHandle(path, &outHandle)
-                } else if format = "SGI" {
+                } else if fmt = "SGI" {
                     ; BEHAV-SGI-001: the native SGI decoder returns local
                     ; status codes for Pillow's distinct error shapes
                     ; (bad magic, unsupported (bpc, dimension, zsize)
@@ -9182,7 +9182,7 @@ class Pillow {
                         throw Error("image file is truncated (" Pillow.Image.SgiTruncatedCount(path) " bytes not processed)", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "DDS" {
+                } else if fmt = "DDS" {
                     ; BEHAV-DDS-001: the native DDS decoder returns local
                     ; status codes for Pillow's distinct error shapes;
                     ; rebuild the exact messages from the file header.
@@ -9196,7 +9196,7 @@ class Pillow {
                         throw Error(Pillow.Image.DdsOpenError(lastStatus, path), -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "ICNS" {
+                } else if fmt = "ICNS" {
                     ; BEHAV-ICNS-001: the native ICNS decoder returns local
                     ; status codes for Pillow's load-time error shapes;
                     ; container-level failures collapse to Pillow's
@@ -9222,7 +9222,7 @@ class Pillow {
                         throw Error("image file is truncated", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "EPS" {
+                } else if fmt = "EPS" {
                     ; BEHAV-EPS-001: Pillow's EpsImageFile parses the DSC
                     ; header at open (its SyntaxErrors collapse to the
                     ; identification error; "cannot determine EPS bounding
@@ -9240,12 +9240,12 @@ class Pillow {
                         ; SyntaxError into UnidentifiedImageError.
                         throw Error("cannot identify image file '" path "'", -1)
                     throw Error(epsError, -1)
-                } else if format = "PDF" {
+                } else if fmt = "PDF" {
                     ; BEHAV-PDF-001: Pillow 11.3.0 registers no PDF open
                     ; (PdfImagePlugin is save-only), so identification
                     ; fails exactly like an unknown file.
                     throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "PIXAR" {
+                } else if fmt = "PIXAR" {
                     ; BEHAV-OPEN-001: Pillow's PixarImageFile reads the
                     ; 512-byte header (size at 418/416, mode 14,2 = RGB)
                     ; and a raw dump at offset 1024; short dumps raise
@@ -9261,7 +9261,7 @@ class Pillow {
                         throw Error("image file is truncated (" Pillow.Image.OpenSimpleTruncatedCount(path, Pillow.Image.PixarWidth(path) * 3, 1024) " bytes not processed)", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "XVTHUMB" {
+                } else if fmt = "XVTHUMB" {
                     ; BEHAV-OPEN-001: Pillow's XVThumbImageFile parses
                     ; "P7 332", skips "#" comments, reads "W H", and
                     ; decodes raw indices with the RGB332 palette; every
@@ -9278,7 +9278,7 @@ class Pillow {
                         throw Error("image file is truncated (" Pillow.Image.XvThumbTruncatedCount(path, Pillow.Image.XvThumbHeader(path)) " bytes not processed)", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "DCX" {
+                } else if fmt = "DCX" {
                     ; BEHAV-OPEN-001: Pillow's DcxImageFile is the PCX
                     ; multi-page container (LE32 directory, frames at
                     ; each offset); the eager facade decodes frame 0
@@ -9292,7 +9292,7 @@ class Pillow {
                     )
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "FTEX" {
+                } else if fmt = "FTEX" {
                     ; BEHAV-OPEN-002: FtexImageFile — "FTEX" magic, one
                     ; format entry (else Pillow's AssertionError), format
                     ; 1 = raw RGB at the directory offset, format 0 =
@@ -9314,7 +9314,7 @@ class Pillow {
                         throw Error("image file is truncated (" Pillow.Image.FtexTruncatedCount(path) " bytes not processed)", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "SUN" {
+                } else if fmt = "SUN" {
                     ; BEHAV-OPEN-002: SunImageFile — big-endian 32-byte
                     ; header, depths 1/4/8/24/32 with the 16-bit-padded
                     ; stride, optional RGB;L palette (P mode), raw or the
@@ -9332,7 +9332,7 @@ class Pillow {
                         throw Error("image file is truncated (" Pillow.Image.OpenSimpleTruncatedCount(path, Pillow.Image.SunStride(path), 0) " bytes not processed)", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "GBR" {
+                } else if fmt = "GBR" {
                     ; BEHAV-OPEN-002: GbrImageFile — big-endian header
                     ; (version 1/2, depth 1 = L or 4 = RGBA), the GIMP
                     ; magic for version 2, comment/spacing info, and the
@@ -9348,7 +9348,7 @@ class Pillow {
                         throw Error("not enough image data", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "FITS" {
+                } else if fmt = "FITS" {
                     ; BEHAV-OPEN-002: FitsImageFile — 80-byte card walk,
                     ; 2880-boundary data offset with Pillow's tell()-80
                     ; arithmetic, BITPIX 8/16/32/-32/-64 as L/I;16/I/F
@@ -9367,7 +9367,7 @@ class Pillow {
                         throw Error("image file is truncated (" Pillow.Image.FitsTruncatedCount(path) " bytes not processed)", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "XPM" {
+                } else if fmt = "XPM" {
                     ; BEHAV-OPEN-002: XpmImageFile — "/* XPM */" magic,
                     ; the quoted header, palette lines with "c" colors or
                     ; "None" transparency keys, P (<= 256) or RGB mode,
@@ -9391,7 +9391,7 @@ class Pillow {
                         throw Error("b'" Pillow.Image.XpmRgbUnknownKey(path) "'", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "IPTC" {
+                } else if fmt = "IPTC" {
                     ; BEHAV-OPEN-003: IptcImageFile — facade-only field
                     ; walker; raw payloads become L images and JPEG
                     ; payloads decode through the native JPEG route.
@@ -9400,7 +9400,7 @@ class Pillow {
                     image.FramePath := path
                     image.FrameFormat := "IPTC"
                     return image
-                } else if format = "MCIDAS" {
+                } else if fmt = "MCIDAS" {
                     ; BEHAV-OPEN-003: McIdasImageFile — facade-only
                     ; big-endian directory parse with the stride rows
                     ; fed through the raw decoder.
@@ -9409,7 +9409,7 @@ class Pillow {
                     image.FramePath := path
                     image.FrameFormat := "MCIDAS"
                     return image
-                } else if format = "PSD" {
+                } else if fmt = "PSD" {
                     ; BEHAV-OPEN-004: PsdImageFile — the native opener
                     ; decodes the base image (raw or PackBits channels,
                     ; CMYK inverted, RGB;L palette, mode 1 packed bits);
@@ -9437,7 +9437,7 @@ class Pillow {
                     }
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "FLI" {
+                } else if fmt = "FLI" {
                     ; BEHAV-OPEN-005: FliImageFile — the native opener
                     ; parses the 128-byte header (magic, zero field,
                     ; duration), walks the F100 prefix + frame-0 COLOR
@@ -9470,7 +9470,7 @@ class Pillow {
                     }
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "MIC" {
+                } else if fmt = "MIC" {
                     ; BEHAV-OPEN-006: MicImageFile — the native opener
                     ; parses the OLE2/CFB container (v3: 512-byte
                     ; sectors, mini FAT and mini stream), finds the
@@ -9491,7 +9491,7 @@ class Pillow {
                         throw Error("bytes length not a multiple of item size", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "PCD" {
+                } else if fmt = "PCD" {
                     ; BEHAV-OPEN-007: PcdImageFile — the native opener
                     ; decodes the 768x512 base image at sector 96 with
                     ; the PhotoYCC lookup tables. Orientations 1/3 crash
@@ -9520,7 +9520,7 @@ class Pillow {
                     }
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "MPEG" {
+                } else if fmt = "MPEG" {
                     ; BEHAV-OPEN-008: MpegImageFile parses the
                     ; 0x000001B3 sequence-header bits into an RGB
                     ; (w,h) image with no tile, so Pillow's load
@@ -9531,7 +9531,7 @@ class Pillow {
                     if !Pillow.Image.MpegAccepts(path)
                         throw Error("cannot identify image file '" path "'", -1)
                     throw Error("cannot load this image", -1)
-                } else if format = "WMF" {
+                } else if fmt = "WMF" {
                     ; BEHAV-OPEN-009: WmfImageFile — the native opener
                     ; parses the 44-byte placeable/EMF header (size and
                     ; dpi math) and renders the metafile through GDI
@@ -9555,21 +9555,21 @@ class Pillow {
                         throw Error("cannot select bitmap", -1)
                     if lastStatus = -3
                         throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "HDF5" || format = "BUFR" || format = "GRIB" {
+                } else if fmt = "HDF5" || fmt = "BUFR" || fmt = "GRIB" {
                     ; BEHAV-OPEN-001: the HDF5/BUFR/GRIB stub plugins
                     ; accept the magic and open an F(1,1) image whose
                     ; load raises "cannot find loader for this X file" —
                     ; the eager facade surfaces that load error at Open
                     ; (no handler is ever registered in this runtime).
-                    if !Pillow.Image.StubAccepts(path, format)
+                    if !Pillow.Image.StubAccepts(path, fmt)
                         throw Error("cannot identify image file '" path "'", -1)
-                    throw Error("cannot find loader for this " format " file", -1)
-                } else if format = "IMT" {
+                    throw Error("cannot find loader for this " fmt " file", -1)
+                } else if fmt = "IMT" {
                     ; BEHAV-OPEN-001: Pillow 11.3.0 registers no IMT
                     ; format at all (the IM plugin only maps ".im"), so
                     ; identification fails.
                     throw Error("cannot identify image file '" path "'", -1)
-                } else if format = "MPO" {
+                } else if fmt = "MPO" {
                     ; BEHAV-MPO-001: Pillow opens MPO through the JPEG
                     ; factory — a file WITH the MPF index reports format
                     ; MPO and a plain JPEG in an .mpo reports JPEG; the
@@ -9582,18 +9582,18 @@ class Pillow {
                         "Int"
                     )
                     if lastStatus = 0
-                        format := Pillow.Image.MpoHasIndex(path) ? "MPO" : "JPEG"
-                } else if format = "WEBP" || format = "AVIF" || format = "JPEG2000" {
+                        fmt := Pillow.Image.MpoHasIndex(path) ? "MPO" : "JPEG"
+                } else if fmt = "WEBP" || fmt = "AVIF" || fmt = "JPEG2000" {
                     ; BEHAV-ERRMSGS-002: Pillow identifies the magic even
                     ; without the codec and then raises the exact decoder
                     ; OSError; unknown content keeps the
                     ; UnidentifiedImageError shape.
-                    if Pillow.Image.SniffCodecMagic(path, format)
-                        throw Error("decoder " StrLower(format) " not available", -1)
+                    if Pillow.Image.SniffCodecMagic(path, fmt)
+                        throw Error("decoder " StrLower(fmt) " not available", -1)
                     throw Error("cannot identify image file '" path "'", -1)
                 } else {
                     lastStatus := DllCall(
-                        Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(format),
+                        Pillow.RequireDllPath() "\pillow_c_image_open_" StrLower(fmt),
                         "Ptr", pathBytes,
                         "Ptr*", &outHandle,
                         "Int"
@@ -9602,14 +9602,14 @@ class Pillow {
                 if lastStatus = 0 {
                     image := Pillow.WrapImageHandle(outHandle)
                     try {
-                        image.Format := format
+                        image.Format := fmt
                         image.FramePath := path
-                        image.FrameFormat := format
+                        image.FrameFormat := fmt
                         image.FrameIndex := 0
-                        image.FrameCount := Pillow.Image.FrameCountForOpen(pathBytes, format)
+                        image.FrameCount := Pillow.Image.FrameCountForOpen(pathBytes, fmt)
                         image.ApplyNativeMetadata()
                         image.ApplyFrameMetadata()
-                        if format = "ICNS" {
+                        if fmt = "ICNS" {
                             ; BEHAV-ICNS-001: expose info["sizes"] like
                             ; Pillow's IcnsImageFile, and remember the
                             ; pre-load rawmode quirk: Pillow's tobytes()
@@ -9623,7 +9623,7 @@ class Pillow {
                             if image.Mode != "RGBA"
                                 image.IcnsQuirkPending := true
                         }
-                        if format = "GBR" {
+                        if fmt = "GBR" {
                             ; BEHAV-OPEN-002: expose info["comment"] and
                             ; info["spacing"] like Pillow's GbrImageFile.
                             gbrInfo := Pillow.Image.GbrInfo(path)
@@ -9632,21 +9632,21 @@ class Pillow {
                             if gbrInfo.Has("spacing")
                                 image.Info["spacing"] := gbrInfo["spacing"]
                         }
-                        if format = "XPM" {
+                        if fmt = "XPM" {
                             ; BEHAV-OPEN-002: Pillow's XpmImageFile stores
                             ; info["transparency"] as the "c None" key.
                             transparencyKey := Pillow.Image.XpmTransparencyKey(path)
                             if transparencyKey != ""
                                 image.Info["transparency"] := transparencyKey
                         }
-                        if format = "PSD" {
+                        if fmt = "PSD" {
                             ; BEHAV-OPEN-004: Pillow exposes
                             ; info["icc_profile"] from resource 1039.
                             icc := Pillow.Image.PsdIcc(path)
                             if icc
                                 image.Info["icc_profile"] := icc
                         }
-                        if format = "FLI" {
+                        if fmt = "FLI" {
                             ; BEHAV-OPEN-005: Pillow exposes
                             ; info["duration"] (AF11 speed-jiffies
                             ; scaled *1000//70, AF12 raw milliseconds).
@@ -9904,14 +9904,33 @@ class Pillow {
         ; =========================================================================
 
         static FromImagePut(source, mode := "RGBA") {
-            if !IsSet(ImagePut) || !(ImagePut is Class)
+            ; Every optional ImagePut global is checked with IsSet(): this both
+            ; raises a clear error when ImagePut.ahk is missing and keeps each
+            ; identifier out of load-time resolution, so including pillow.ahk
+            ; without ImagePut triggers no #Warn "never assigned" dialog.
+            if !IsSet(ImagePut) || !(ImagePut is Class) || !IsSet(ImageCheckSafe) || !IsSet(ImagePutBuffer)
                 throw Error("Pillow ImagePut interop requires ImagePut (https://github.com/iseahound/ImagePut): #Include its ImagePut.ahk", -1)
-            ip := ImagePut("Buffer", source)
-            if !(IsObject(ip) && ip.HasProp("ptr") && ip.HasProp("size") && ip.HasProp("width") && ip.HasProp("height"))
+            ; ImageCheckSafe() rejects the dangerous ImagePut designators
+            ; (raw pointers, handles, monitor numbers); safe sources are
+            ; files, URLs, buffers, GDI+ bitmaps, clipboard data, ... It
+            ; raises instead of returning False for screenshot region arrays
+            ; ([x, y, w, h]), which are safe, so arrays are allowed
+            ; explicitly; any other unclassifiable input is rejected.
+            try
+                safe := ImageCheckSafe(source)
+            catch
+                safe := IsObject(source) && source is Array
+            if !safe
+                throw Error("Pillow.Image.FromImagePut rejects unsafe ImagePut designators (pointers, handles); use a file path, buffer, or other safe source", -1)
+            ; ImagePutBuffer returns an ImagePut buffer object on success, or
+            ; "" / 0 on recoverable failure; it throws only on unrecoverable
+            ; failures (see ImagePut "Buffer" codomain).
+            ip := ImagePutBuffer(source)
+            if !ip
                 throw Error("Pillow.Image.FromImagePut could not obtain an ImagePut buffer", -1)
-            data := Buffer(ip.size, 0)
-            DllCall("RtlMoveMemory", "Ptr", data.Ptr, "Ptr", ip.ptr, "UPtr", ip.size)
-            image := Pillow.Image.FromBytes("RGBA", [ip.width, ip.height], data, "raw", "BGRA", ip.stride)
+            ; FromBytes copies the raw pixels, so the ImagePut buffer (which
+            ; stays owned by ImagePut) can be passed directly without a copy.
+            image := Pillow.Image.FromBytes("RGBA", [ip.width, ip.height], ip, "raw", "BGRA", ip.stride)
             if mode = "RGBA"
                 return image
             try {
@@ -10838,8 +10857,8 @@ class Pillow {
                 if formats.Length < 1
                     throw Error("Pillow.Image.Open formats must not be empty", -1)
                 normalized := []
-                for format in formats
-                    normalized.Push(Pillow.Image.NormalizeFileFormat(format))
+                for fmt in formats
+                    normalized.Push(Pillow.Image.NormalizeFileFormat(fmt))
                 return normalized
             }
             try {

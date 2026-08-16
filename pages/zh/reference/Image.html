@@ -636,7 +636,7 @@ image.ToQPixmap()    ;  alias: toqpixmap()</pre>
   <section class="api" id="Image.FromImagePut">
     <h3>FromImagePut <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.FromImagePut(source, mode := "RGBA")</pre>
-    <p>接受任意 ImagePut 兼容输入（文件路径、URL、剪贴板、窗口、屏幕区域、HBitmap、已有 ImagePut buffer 等），通过 ImagePut 的 32-bit ARGB buffer 转换后返回新的 Pillow Image。如果 <code>mode</code> 不是 <code>"RGBA"</code>，会先以 RGBA 导入，再转换为请求的模式。</p>
+    <p>接受安全的 ImagePut 兼容输入（文件路径、URL、剪贴板、屏幕区域 <code>[x, y, w, h]</code>、已有 ImagePut buffer 等），通过 ImagePut 的 32-bit ARGB buffer 转换后返回新的 Pillow Image。输入会先经 <code>ImageCheckSafe</code> 校验；裸指针、句柄和监视器数字会被拒绝。如果 <code>mode</code> 不是 <code>"RGBA"</code>，会先以 RGBA 导入，再转换为请求的模式。未先 <code>#Include</code> ImagePut 时抛出明确的“requires ImagePut”错误。</p>
     <p class="returns"><span>返回：一个新的 Image。</span></p>
   </section>
 

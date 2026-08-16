@@ -636,7 +636,7 @@ image.ToQPixmap()    ;  alias: toqpixmap()</pre>
   <section class="api" id="Image.FromImagePut">
     <h3>FromImagePut <span class="kind">static</span></h3>
     <pre class="sig">Pillow.Image.FromImagePut(source, mode := "RGBA")</pre>
-    <p>Accepts any ImagePut-compatible input (file path, URL, clipboard, window, screen region, HBitmap, existing ImagePut buffer, ...), converts it through ImagePut's 32-bit ARGB buffer, and returns a new Pillow Image. If <code>mode</code> is not <code>"RGBA"</code>, the image is first imported as RGBA and then converted to the requested mode.</p>
+    <p>Accepts safe ImagePut-compatible inputs (file path, URL, clipboard, screen region <code>[x, y, w, h]</code>, existing ImagePut buffer, ...) and converts them through ImagePut's 32-bit ARGB buffer into a new Pillow Image. The input is validated with <code>ImageCheckSafe</code>; raw pointers, handles and monitor numbers are rejected. If <code>mode</code> is not <code>"RGBA"</code>, the image is first imported as RGBA and then converted to the requested mode. Without <code>#Include</code>-ing ImagePut first, a clear “requires ImagePut” error is raised.</p>
     <p class="returns"><span>Returns: a new Image.</span></p>
   </section>
 
